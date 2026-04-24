@@ -43,12 +43,12 @@ Stages are roughly sequential; mark `[x]` when done, `[~]` for in-progress.
 
 ## Stage 3 — POC-6: Three-window layout
 
-- [ ] Split-panel overlay: dark translucent left 60%, hit-test-disabled right 40%
-- [ ] Full-width transparent overlay window (spans screen) instead of fixed 420×560 panel
-- [ ] Top widget window (always-on-top minimal controls)
-- [ ] Mini widget window (collapsed state)
-- [ ] Smooth show/hide animations between layouts
-- [ ] Multi-display handling (overlay on active display, follow mouse / key window)
+- [x] Split-panel overlay: dark translucent left 60% (right 40% intentionally empty — click-through is free)
+- [x] Full-width transparent overlay window (spans left 60% of screen) instead of fixed 420×560 panel
+- [x] Top widget window (always-on-top minimal controls)
+- [x] Mini widget window (collapsed state)
+- [x] Smooth show/hide animations between layouts
+- [x] Multi-display handling (overlay on active display, follows mouse at show-time)
 
 ---
 

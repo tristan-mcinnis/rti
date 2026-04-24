@@ -2,14 +2,14 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class TopWidgetWindowController {
+final class MiniWidgetWindowController {
     private let window: NSPanel
-    private let onHideToggle: () -> Void
+    private let onExpand: () -> Void
 
-    init(onHideToggle: @escaping () -> Void) {
-        self.onHideToggle = onHideToggle
+    init(onExpand: @escaping () -> Void) {
+        self.onExpand = onExpand
 
-        let size = NSSize(width: 260, height: 54)
+        let size = NSSize(width: 44, height: 44)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -25,19 +25,17 @@ final class TopWidgetWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true
-
-        panel.contentView = NSHostingView(rootView: TopWidgetView(onHideToggle: onHideToggle))
+        panel.contentView = NSHostingView(rootView: MiniWidgetView(onExpand: onExpand))
 
         self.window = panel
-        positionOnActiveScreen()
     }
 
-    func positionOnActiveScreen() {
+    private func positionOnActiveScreen() {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let origin = NSPoint(
-            x: visible.midX - window.frame.width / 2,
+            x: visible.maxX - window.frame.width - 12,
             y: visible.maxY - window.frame.height - 8
         )
         window.setFrameOrigin(origin)
@@ -61,10 +59,6 @@ final class TopWidgetWindowController {
             window.orderOut(nil)
             window.alphaValue = 1
         })
-    }
-
-    func toggle() {
-        if window.isVisible { hide() } else { show() }
     }
 
     var isVisible: Bool { window.isVisible }

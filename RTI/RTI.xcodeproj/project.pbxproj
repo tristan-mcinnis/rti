@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0C3926E9622B402E66C8616B /* MiniWidgetWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0368F1D29012BA31260AFB /* MiniWidgetWindowController.swift */; };
 		0C930D4CA1010E41BF1CF1E1 /* WAVWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857295A827688BF13CBC8A7E /* WAVWriter.swift */; };
 		10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */; };
 		13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */; };
@@ -30,6 +31,7 @@
 		BC57220A05F60410ED96C0B3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82F3B4333865A3ABDED731A3 /* SettingsView.swift */; };
 		BCA431840666D993AF1A700A /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = D0B6C86BEF9143E9BCEC2BE1 /* Starscream */; };
 		C1D2AF666B90D25E0C08C4BF /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21CA524CCE9E69648B4A72A8 /* SettingsWindowController.swift */; };
+		CAF7AC115BCF92DEC21FFCB2 /* MiniWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F341C141A143DA85F4DC6E1 /* MiniWidgetView.swift */; };
 		CB82055FF93F65006B55C5C7 /* RTIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA159B350466B311F95C6E82 /* RTIApp.swift */; };
 		D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541406A822542146389D5B7E /* Secrets.swift */; };
 		DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
@@ -45,6 +47,7 @@
 
 /* Begin PBXFileReference section */
 		06A06B1213AE703E8255C169 /* KimiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KimiClient.swift; sourceTree = "<group>"; };
+		0F341C141A143DA85F4DC6E1 /* MiniWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniWidgetView.swift; sourceTree = "<group>"; };
 		0F81C4D0121A52619B08FC56 /* ResponseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseView.swift; sourceTree = "<group>"; };
 		166C8635ECAD7923D5605360 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		21CA524CCE9E69648B4A72A8 /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
@@ -53,6 +56,7 @@
 		2CF67E26C43E305EB5AA35F8 /* RTIDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIDatabase.swift; sourceTree = "<group>"; };
 		39B314C441C040CC10C72B28 /* OverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowController.swift; sourceTree = "<group>"; };
 		3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		3C0368F1D29012BA31260AFB /* MiniWidgetWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniWidgetWindowController.swift; sourceTree = "<group>"; };
 		49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinator.swift; sourceTree = "<group>"; };
 		541406A822542146389D5B7E /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		54F657FFCA8180572D204BFC /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
@@ -173,6 +177,8 @@
 		500D82A363AF85F130D5729B /* Widgets */ = {
 			isa = PBXGroup;
 			children = (
+				0F341C141A143DA85F4DC6E1 /* MiniWidgetView.swift */,
+				3C0368F1D29012BA31260AFB /* MiniWidgetWindowController.swift */,
 				ABDB87EDDE7A93D1611068A7 /* TopWidgetView.swift */,
 				9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */,
 			);
@@ -320,6 +326,8 @@
 				EAEDDC7CEAF3308781A40483 /* KimiClient.swift in Sources */,
 				1805824B399E461209711058 /* KimiProtocol.swift in Sources */,
 				FFD5B192F9BB067609DF60FD /* LLMController.swift in Sources */,
+				CAF7AC115BCF92DEC21FFCB2 /* MiniWidgetView.swift in Sources */,
+				0C3926E9622B402E66C8616B /* MiniWidgetWindowController.swift in Sources */,
 				2BC80B64267C234E010ABCEB /* Mode.swift in Sources */,
 				FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */,
 				13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */,
