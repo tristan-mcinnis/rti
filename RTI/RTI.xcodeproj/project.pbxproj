@@ -17,9 +17,11 @@
 		2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B43315BBB57BE38A913848E /* SonioxProtocol.swift */; };
 		2BC80B64267C234E010ABCEB /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906F7DCF321C17392E3DA594 /* Mode.swift */; };
 		32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */; };
+		3CF7BA318F9E008AB26485A5 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */; };
 		44CBAA0BB8BCCF9DEE1CDFF3 /* PromptActionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */; };
 		45702D4E7A2DEF80C47A4F10 /* ResponseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F81C4D0121A52619B08FC56 /* ResponseView.swift */; };
 		4DE65CFB81D76D7F0A0F062E /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 08E319D06810A68709A49060 /* GRDB */; };
+		5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */; };
 		5D53AB334A181274357817CD /* TopWidgetWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */; };
 		5FDDEF1F7691B954741886BF /* ScreenshotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22E402C93F783C8020AFDCDE /* ScreenshotManager.swift */; };
 		6253C8E7925BDAEF2F4D72C4 /* TranscriptRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80B860CBE5C88CADCC97EC4D /* TranscriptRowView.swift */; };
@@ -57,6 +59,7 @@
 		39B314C441C040CC10C72B28 /* OverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowController.swift; sourceTree = "<group>"; };
 		3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		3C0368F1D29012BA31260AFB /* MiniWidgetWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniWidgetWindowController.swift; sourceTree = "<group>"; };
+		475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
 		49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinator.swift; sourceTree = "<group>"; };
 		541406A822542146389D5B7E /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		54F657FFCA8180572D204BFC /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
@@ -79,6 +82,7 @@
 		CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayPanelView.swift; sourceTree = "<group>"; };
 		D625FEFD7781EE62D733E2B3 /* DebugConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugConsoleView.swift; sourceTree = "<group>"; };
 		DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxClient.swift; sourceTree = "<group>"; };
+		F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStore.swift; sourceTree = "<group>"; };
 		FA159B350466B311F95C6E82 /* RTIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIApp.swift; sourceTree = "<group>"; };
 		FDC5292C23D09D793067E231 /* AssistantInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantInputView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -100,6 +104,7 @@
 			isa = PBXGroup;
 			children = (
 				C1739AC4265146BE278C238F /* KeychainStore.swift */,
+				475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */,
 				82F3B4333865A3ABDED731A3 /* SettingsView.swift */,
 				21CA524CCE9E69648B4A72A8 /* SettingsWindowController.swift */,
 			);
@@ -128,6 +133,7 @@
 				53DEECA334B6E32693711DB5 /* Audio */,
 				3C92AB18BA67FF02D2AA786D /* Database */,
 				74379EF2733A8C42B2CAD070 /* LLM */,
+				9078B056DC9BCFE0439E87F9 /* Modes */,
 				24455A8877022B93FB06BB57 /* Screenshot */,
 				8FEE3FA4D78A07D0B0C1F862 /* Session */,
 				1986E83FB3008C46AB029C74 /* Settings */,
@@ -210,6 +216,14 @@
 				49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */,
 			);
 			path = Session;
+			sourceTree = "<group>";
+		};
+		9078B056DC9BCFE0439E87F9 /* Modes */ = {
+			isa = PBXGroup;
+			children = (
+				F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */,
+			);
+			path = Modes;
 			sourceTree = "<group>";
 		};
 		93C3B71700B313358BBEB139 = {
@@ -326,9 +340,11 @@
 				EAEDDC7CEAF3308781A40483 /* KimiClient.swift in Sources */,
 				1805824B399E461209711058 /* KimiProtocol.swift in Sources */,
 				FFD5B192F9BB067609DF60FD /* LLMController.swift in Sources */,
+				3CF7BA318F9E008AB26485A5 /* LaunchAtLogin.swift in Sources */,
 				CAF7AC115BCF92DEC21FFCB2 /* MiniWidgetView.swift in Sources */,
 				0C3926E9622B402E66C8616B /* MiniWidgetWindowController.swift in Sources */,
 				2BC80B64267C234E010ABCEB /* Mode.swift in Sources */,
+				5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */,
 				FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */,
 				13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */,
 				69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */,

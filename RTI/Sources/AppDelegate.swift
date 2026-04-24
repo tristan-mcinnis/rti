@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         CredentialStore.migrateLegacyIfNeeded()
 
         SessionCoordinator.shared.bootstrapChatSession()
+        _ = ModeStore.shared
         LLMController.shared.loadHistoryForCurrentSession()
 
         installStatusItem()

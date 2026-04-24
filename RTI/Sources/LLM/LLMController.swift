@@ -157,7 +157,19 @@ final class LLMController: ObservableObject {
             persistMessage(sessionId: persistSessionId, role: "user", action: action, content: userInput, hadTranscript: contextUsed, hadScreen: screenContextUsed)
         }
 
-        var kimiMessages: [KimiMessage] = [KimiMessage(role: "system", content: Self.systemPrompt)]
+        let activeMode = ModeStore.shared.activeMode
+        let basePrompt = activeMode?.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? activeMode!.systemPrompt
+            : Self.systemPrompt
+
+        var kimiMessages: [KimiMessage] = [KimiMessage(role: "system", content: basePrompt)]
+        if let reference = activeMode?.referenceText, !reference.isEmpty {
+            let capped = reference.count > 8000 ? String(reference.prefix(8000)) + "\n…[truncated]" : reference
+            kimiMessages.append(KimiMessage(
+                role: "system",
+                content: "Reference material attached to the active mode '\(activeMode?.name ?? "")'. Use it when relevant.\n---\n\(capped)\n---"
+            ))
+        }
         if let screenContext {
             kimiMessages.append(KimiMessage(
                 role: "system",

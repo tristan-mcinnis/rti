@@ -7,6 +7,7 @@ struct Mode: Codable, FetchableRecord, PersistableRecord, Identifiable {
     var systemPrompt: String
     var isBuiltin: Bool
     var createdAt: Date
+    var referenceText: String?
 
     static let databaseTableName = "modes"
 
@@ -16,5 +17,6 @@ struct Mode: Codable, FetchableRecord, PersistableRecord, Identifiable {
         case systemPrompt = "system_prompt"
         case isBuiltin = "is_builtin"
         case createdAt = "created_at"
+        case referenceText = "reference_text"
     }
 }

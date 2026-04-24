@@ -82,6 +82,11 @@ final class RTIDatabase {
                 t.column("created_at", .datetime).notNull()
             }
         }
+        m.registerMigration("v3_mode_reference_text") { db in
+            try db.alter(table: "modes") { t in
+                t.add(column: "reference_text", .text)
+            }
+        }
         return m
     }
 }

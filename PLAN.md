@@ -54,12 +54,12 @@ Stages are roughly sequential; mark `[x]` when done, `[~]` for in-progress.
 
 ## Stage 4 — POC-7: Modes, reference files, settings
 
-- [ ] Mode selector UI (Meeting / Interview / Coding / Custom)
-- [ ] Per-mode system prompt templates stored in GRDB
-- [ ] Reference file upload (paste resume, notes, etc.) — indexed locally
-- [ ] Settings pane: hotkeys, audio device, display, retention, API keys
-- [ ] Keychain-backed credential storage (completes Stage 0 migration if deferred)
-- [ ] Launch-at-login toggle (`SMAppService`)
+- [x] Mode selector UI (Meeting / Interview / Coding / Custom) — in Settings tab; top-widget dropdown deferred
+- [x] Per-mode system prompt templates stored in GRDB
+- [x] Reference file upload (paste resume, notes, etc.) — per-mode `reference_text`, capped 8k chars
+- [x] Settings pane: hotkeys (read-only), API keys, launch-at-login, modes — audio device + retention tabs deferred
+- [x] Keychain-backed credential storage (already shipped in Stage 0; Secrets.swift confirmed literal-free)
+- [x] Launch-at-login toggle (`SMAppService`)
 
 ---
 
