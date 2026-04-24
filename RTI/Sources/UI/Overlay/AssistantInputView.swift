@@ -28,7 +28,11 @@ struct AssistantInputView: View {
                 moreDots
                 smartPill
                 Spacer()
-                sendButton
+                if llm.streaming {
+                    stopButton
+                } else {
+                    sendButton
+                }
             }
             .padding(.horizontal, 4)
         }
@@ -77,6 +81,18 @@ struct AssistantInputView: View {
         }
         .buttonStyle(.plain)
         .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || llm.streaming)
+    }
+
+    private var stopButton: some View {
+        Button(action: { llm.cancel() }) {
+            Image(systemName: "stop.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 30)
+                .background(Capsule().fill(Color.red.opacity(0.85)))
+        }
+        .buttonStyle(.plain)
+        .help("Stop streaming response")
     }
 
     private func submit() {

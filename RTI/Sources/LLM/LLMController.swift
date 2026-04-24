@@ -16,11 +16,16 @@ final class LLMController: ObservableObject {
     @Published private(set) var entries: [ChatEntry] = []
     @Published private(set) var streaming = false
     @Published private(set) var lastError: String?
-    @Published var smartMode: Bool = false
+    @Published private(set) var lastErrorIsAuth: Bool = false
+    @Published var smartMode: Bool {
+        didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
+    }
 
     private let client: KimiClient
     private var currentTask: Task<Void, Never>?
     private var streamingEntryID: UUID?
+
+    private static let smartModeKey = "rti.llm.smartMode"
 
     private static let systemPrompt = """
     You are RTI, a real-time meeting assistant. The user is in an active conversation.
@@ -29,10 +34,14 @@ final class LLMController: ObservableObject {
     """
 
     private static let assistPrompt = "Based on the recent conversation, suggest what I should say or ask next. Be concise — max 3 short lines."
+    private static let saySomethingPrompt = "Given the conversation so far, draft exactly one short reply I could say next. One line, natural, in my voice. No preamble."
+    private static let followupsPrompt = "List 3 thoughtful follow-up questions I could ask the other person right now. Bullet points, one line each."
+    private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items."
 
     private static let contextWindowSeconds: Double = 360
 
     private init() {
+        self.smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
         self.client = KimiClient(apiKey: Secrets.kimiAPIKey, baseURL: Secrets.kimiBaseURL)
     }
 
@@ -44,6 +53,18 @@ final class LLMController: ObservableObject {
 
     func sendAssist() {
         performSend(userInput: Self.assistPrompt, action: "Assist")
+    }
+
+    func sendSaySomething() {
+        performSend(userInput: Self.saySomethingPrompt, action: "Say next")
+    }
+
+    func sendFollowupQuestions() {
+        performSend(userInput: Self.followupsPrompt, action: "Follow-ups")
+    }
+
+    func sendRecap() {
+        performSend(userInput: Self.recapPrompt, action: "Recap")
     }
 
     func cancel() {
@@ -61,6 +82,7 @@ final class LLMController: ObservableObject {
     private func performSend(userInput: String, action: String) {
         currentTask?.cancel()
         lastError = nil
+        lastErrorIsAuth = false
 
         let transcript = recentTranscriptText()
         let contextUsed = !transcript.isEmpty
@@ -94,7 +116,22 @@ final class LLMController: ObservableObject {
                 }
             } catch {
                 if Task.isCancelled { return }
-                self.lastError = "\(error)"
+                if let kimi = error as? KimiError {
+                    switch kimi {
+                    case .unauthorized:
+                        self.lastError = "Kimi rejected the API key (401). Open Settings to paste a valid key."
+                        self.lastErrorIsAuth = true
+                    case .missingAPIKey:
+                        self.lastError = "No Kimi API key set. Open Settings to add one."
+                        self.lastErrorIsAuth = true
+                    case .httpError(let code, let body):
+                        self.lastError = "Kimi error \(code): \(body.prefix(300))"
+                    case .badResponse:
+                        self.lastError = "Kimi returned an unexpected response."
+                    }
+                } else {
+                    self.lastError = "\(error)"
+                }
                 NSLog("[RTI] LLM stream error: \(error)")
             }
             guard self.streamingEntryID == thisEntryID else { return }

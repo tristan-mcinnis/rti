@@ -2,7 +2,9 @@ import Foundation
 
 enum KimiError: Error {
     case httpError(Int, String)
+    case unauthorized
     case badResponse
+    case missingAPIKey
 }
 
 final class KimiClient {
@@ -25,6 +27,9 @@ final class KimiClient {
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
+                    if apiKey.isEmpty {
+                        throw KimiError.missingAPIKey
+                    }
                     let body = KimiRequest(model: model, messages: messages, stream: true, temperature: temperature, thinking: thinking)
                     var request = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
                     request.httpMethod = "POST"
@@ -42,6 +47,9 @@ final class KimiClient {
                     NSLog("[RTI] KimiClient: HTTP \(http.statusCode)")
                     guard (200..<300).contains(http.statusCode) else {
                         let errText = try await readAll(bytes)
+                        if http.statusCode == 401 {
+                            throw KimiError.unauthorized
+                        }
                         throw KimiError.httpError(http.statusCode, errText)
                     }
 

@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct PromptActionRow: View {
-    let onDeferred: (String) -> Void
-
     var body: some View {
         HStack(spacing: 14) {
             actionButton(icon: "sparkles", label: "Assist", isPrimary: true) {
@@ -10,15 +8,15 @@ struct PromptActionRow: View {
             }
             dot
             actionButton(icon: "wand.and.rays", label: "What should I say?", isPrimary: false) {
-                onDeferred("What should I say?")
+                LLMController.shared.sendSaySomething()
             }
             dot
-            actionButton(icon: "bubble.left.and.text.bubble.right", label: "Follow-up questions", isPrimary: false) {
-                onDeferred("Follow-up questions")
+            actionButton(icon: "bubble.left.and.text.bubble.right", label: "Follow-ups", isPrimary: false) {
+                LLMController.shared.sendFollowupQuestions()
             }
             dot
             actionButton(icon: "arrow.clockwise", label: "Recap", isPrimary: false) {
-                onDeferred("Recap")
+                LLMController.shared.sendRecap()
             }
             Spacer(minLength: 0)
         }

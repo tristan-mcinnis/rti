@@ -7,13 +7,13 @@ Stages are roughly sequential; mark `[x]` when done, `[~]` for in-progress.
 
 ## Stage 0 — POC-3 polish (before adding more features)
 
-- [ ] Move API keys out of `Secrets.swift` plaintext into macOS Keychain (`SecItemAdd`)
-- [ ] Add first-run Settings sheet to paste + store Kimi / Soniox keys
-- [ ] Wire a visible Stop button while `streaming == true` (calls `LLMController.cancel()`)
-- [ ] Persist `smartMode` across app relaunches (UserDefaults)
-- [ ] Show a subtle "thinking…" state while Smart is on and no deltas have arrived yet
-- [ ] Handle Kimi 401 (bad key) with a clear error + link to Settings
-- [ ] Kill the leftover deferred-button hint banner once POC-4/POC-5 wire those actions for real
+- [x] Move API keys out of `Secrets.swift` plaintext into macOS Keychain (`SecItemAdd`)
+- [x] Add first-run Settings sheet to paste + store Kimi / Soniox keys
+- [x] Wire a visible Stop button while `streaming == true` (calls `LLMController.cancel()`)
+- [x] Persist `smartMode` across app relaunches (UserDefaults)
+- [x] Show a subtle "thinking…" state while Smart is on and no deltas have arrived yet
+- [x] Handle Kimi 401 (bad key) with a clear error + link to Settings
+- [x] Kill the leftover deferred-button hint banner once POC-4/POC-5 wire those actions for real
 
 ---
 

@@ -11,7 +11,7 @@ private final class KeyableOverlayPanel: NSPanel {
 final class OverlayWindowController {
     private let window: NSPanel
 
-    init() {
+    init(onOpenSettings: @escaping () -> Void = {}) {
         let size = NSSize(width: 658, height: 555)
         let margin: CGFloat = 24
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
@@ -37,7 +37,7 @@ final class OverlayWindowController {
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true
 
-        panel.contentView = NSHostingView(rootView: OverlayPanelView())
+        panel.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
 
         self.window = panel
     }

@@ -9,14 +9,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var overlayController: OverlayWindowController?
     private var topWidget: TopWidgetWindowController?
     private var debugConsole: DebugConsoleWindowController?
+    private var settingsWindow: SettingsWindowController?
     private var hotkey: GlobalHotkey?
     private var sessionMenuItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        CredentialStore.migrateLegacyIfNeeded()
+
         installStatusItem()
 
-        let controller = OverlayWindowController()
+        settingsWindow = SettingsWindowController()
+
+        let controller = OverlayWindowController { [weak self] in
+            self?.openSettings()
+        }
         controller.show()
         overlayController = controller
 
@@ -46,7 +53,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 MainActor.assumeIsolated { self?.refreshStatusItemTitle() }
             }
             .store(in: &cancellables)
+
+        if CredentialStore.kimi == nil {
+            settingsWindow?.show()
+        }
     }
+
+    func openSettings() { settingsWindow?.show() }
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -62,6 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let consoleItem = NSMenuItem(title: "Show Debug Console", action: #selector(showDebugConsole), keyEquivalent: "")
         consoleItem.target = self
         menu.addItem(consoleItem)
+
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -97,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleSession() { SessionCoordinator.shared.toggleSession() }
     @objc private func showDebugConsole() { debugConsole?.show() }
+    @objc private func showSettings() { settingsWindow?.show() }
     @objc private func toggleOverlay() { overlayController?.toggle() }
     @objc private func toggleTopWidget() { topWidget?.toggle() }
     @objc private func quit() { NSApp.terminate(nil) }

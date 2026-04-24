@@ -4,6 +4,8 @@ struct ResponseView: View {
     let entries: [ChatEntry]
     let streaming: Bool
     let error: String?
+    var errorIsAuth: Bool = false
+    var onOpenSettings: () -> Void = {}
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -21,10 +23,17 @@ struct ResponseView: View {
                     }
 
                     if let error, !error.isEmpty {
-                        Text(error)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.red.opacity(0.9))
-                            .textSelection(.enabled)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(error)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.red.opacity(0.9))
+                                .textSelection(.enabled)
+                            if errorIsAuth {
+                                Button("Open Settings…", action: onOpenSettings)
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                            }
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -86,16 +95,28 @@ struct ResponseView: View {
         }
     }
 
+    @ViewBuilder
     private func assistantBody(_ entry: ChatEntry) -> some View {
         let isStreamingThis = streaming && entry.id == entries.last?.id
-        let display = entry.text + (isStreamingThis ? " ▍" : "")
-        let attributed = (try? AttributedString(markdown: display,
-                                                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(display)
-        return Text(attributed)
-            .font(.system(size: 14))
-            .foregroundStyle(.white.opacity(0.92))
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
+        if isStreamingThis && entry.text.isEmpty {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.7)
+                Text(LLMController.shared.smartMode ? "thinking…" : "responding…")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+        } else {
+            let display = entry.text + (isStreamingThis ? " ▍" : "")
+            let attributed = (try? AttributedString(markdown: display,
+                                                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                ?? AttributedString(display)
+            Text(attributed)
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.92))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
