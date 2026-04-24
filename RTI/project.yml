@@ -1,0 +1,41 @@
+name: RTI
+options:
+  bundleIdPrefix: com.tristan
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    ENABLE_HARDENED_RUNTIME: NO
+    CODE_SIGN_ENTITLEMENTS: Sources/RTI.entitlements
+    INFOPLIST_FILE: Sources/Info.plist
+    PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti
+    GENERATE_INFOPLIST_FILE: NO
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: "6.29.0"
+  Starscream:
+    url: https://github.com/daltoniam/Starscream
+    from: "4.0.8"
+
+targets:
+  RTI:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        excludes:
+          - Info.plist
+          - RTI.entitlements
+          - Secrets.swift.example
+    dependencies:
+      - package: GRDB
+      - package: Starscream

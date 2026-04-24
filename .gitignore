@@ -1,0 +1,24 @@
+# Secrets
+RTI/Sources/Secrets.swift
+
+# macOS
+.DS_Store
+
+# Xcode
+DerivedData/
+build/
+*.xcuserdatad/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# SPM
+.swiftpm/
+Package.resolved
+
+# Misc
+*.swp
+*~
+
+# Local harness state
+.omc/
+.claude/

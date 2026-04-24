@@ -1,0 +1,525 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0C930D4CA1010E41BF1CF1E1 /* WAVWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857295A827688BF13CBC8A7E /* WAVWriter.swift */; };
+		10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */; };
+		13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */; };
+		1805824B399E461209711058 /* KimiProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AD74EC7166E4C8CDC546EF /* KimiProtocol.swift */; };
+		1F9CF8485D7C0F0640A03890 /* AudioCaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AA2069EE07C9ADBE94147E8 /* AudioCaptureManager.swift */; };
+		217A70742CDAB0DB3D538B89 /* RTIDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF67E26C43E305EB5AA35F8 /* RTIDatabase.swift */; };
+		2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B43315BBB57BE38A913848E /* SonioxProtocol.swift */; };
+		32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */; };
+		44CBAA0BB8BCCF9DEE1CDFF3 /* PromptActionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */; };
+		45702D4E7A2DEF80C47A4F10 /* ResponseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F81C4D0121A52619B08FC56 /* ResponseView.swift */; };
+		4DE65CFB81D76D7F0A0F062E /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 08E319D06810A68709A49060 /* GRDB */; };
+		5D53AB334A181274357817CD /* TopWidgetWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */; };
+		6253C8E7925BDAEF2F4D72C4 /* TranscriptRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80B860CBE5C88CADCC97EC4D /* TranscriptRowView.swift */; };
+		66AE173856AED09FC72A2D58 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166C8635ECAD7923D5605360 /* Session.swift */; };
+		69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B314C441C040CC10C72B28 /* OverlayWindowController.swift */; };
+		6D619EF785EABFE337BBBB56 /* TopWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDB87EDDE7A93D1611068A7 /* TopWidgetView.swift */; };
+		A9E5A4F3E878C5FF3DC90168 /* TranscriptEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */; };
+		AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC5292C23D09D793067E231 /* AssistantInputView.swift */; };
+		BCA431840666D993AF1A700A /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = D0B6C86BEF9143E9BCEC2BE1 /* Starscream */; };
+		CB82055FF93F65006B55C5C7 /* RTIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA159B350466B311F95C6E82 /* RTIApp.swift */; };
+		D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541406A822542146389D5B7E /* Secrets.swift */; };
+		DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
+		EAEDDC7CEAF3308781A40483 /* KimiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A06B1213AE703E8255C169 /* KimiClient.swift */; };
+		F501C2DB4B95AC2E17320050 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */; };
+		F5EA15C170481EAFC11AF277 /* DebugConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D625FEFD7781EE62D733E2B3 /* DebugConsoleView.swift */; };
+		FA9C81A466AC2873E158A3AB /* DebugConsoleWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF34905668FDEDBD43CD8E /* DebugConsoleWindowController.swift */; };
+		FFD5B192F9BB067609DF60FD /* LLMController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD2D289259AD477B911940D /* LLMController.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		06A06B1213AE703E8255C169 /* KimiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KimiClient.swift; sourceTree = "<group>"; };
+		0F81C4D0121A52619B08FC56 /* ResponseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseView.swift; sourceTree = "<group>"; };
+		166C8635ECAD7923D5605360 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		2AA2069EE07C9ADBE94147E8 /* AudioCaptureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureManager.swift; sourceTree = "<group>"; };
+		2CF67E26C43E305EB5AA35F8 /* RTIDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIDatabase.swift; sourceTree = "<group>"; };
+		39B314C441C040CC10C72B28 /* OverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowController.swift; sourceTree = "<group>"; };
+		3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinator.swift; sourceTree = "<group>"; };
+		541406A822542146389D5B7E /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
+		69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotkey.swift; sourceTree = "<group>"; };
+		7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEntry.swift; sourceTree = "<group>"; };
+		80B860CBE5C88CADCC97EC4D /* TranscriptRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRowView.swift; sourceTree = "<group>"; };
+		857295A827688BF13CBC8A7E /* WAVWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVWriter.swift; sourceTree = "<group>"; };
+		9AD2D289259AD477B911940D /* LLMController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMController.swift; sourceTree = "<group>"; };
+		9B43315BBB57BE38A913848E /* SonioxProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxProtocol.swift; sourceTree = "<group>"; };
+		9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopWidgetWindowController.swift; sourceTree = "<group>"; };
+		A2AD74EC7166E4C8CDC546EF /* KimiProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KimiProtocol.swift; sourceTree = "<group>"; };
+		ABDB87EDDE7A93D1611068A7 /* TopWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopWidgetView.swift; sourceTree = "<group>"; };
+		ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptActionRow.swift; sourceTree = "<group>"; };
+		BEEF34905668FDEDBD43CD8E /* DebugConsoleWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugConsoleWindowController.swift; sourceTree = "<group>"; };
+		C1F0544DED98C9C9C8A525F7 /* RTI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RTI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayPanelView.swift; sourceTree = "<group>"; };
+		D625FEFD7781EE62D733E2B3 /* DebugConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugConsoleView.swift; sourceTree = "<group>"; };
+		DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxClient.swift; sourceTree = "<group>"; };
+		FA159B350466B311F95C6E82 /* RTIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIApp.swift; sourceTree = "<group>"; };
+		FDC5292C23D09D793067E231 /* AssistantInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantInputView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2F50C7F51B41B0EB703EC7F0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4DE65CFB81D76D7F0A0F062E /* GRDB in Frameworks */,
+				BCA431840666D993AF1A700A /* Starscream in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1CE76FE000C93722B12D033C /* DebugConsole */ = {
+			isa = PBXGroup;
+			children = (
+				D625FEFD7781EE62D733E2B3 /* DebugConsoleView.swift */,
+				BEEF34905668FDEDBD43CD8E /* DebugConsoleWindowController.swift */,
+				80B860CBE5C88CADCC97EC4D /* TranscriptRowView.swift */,
+			);
+			path = DebugConsole;
+			sourceTree = "<group>";
+		};
+		1DC3BF0CDA31806B027312AE /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */,
+				69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */,
+				CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */,
+				39B314C441C040CC10C72B28 /* OverlayWindowController.swift */,
+				FA159B350466B311F95C6E82 /* RTIApp.swift */,
+				541406A822542146389D5B7E /* Secrets.swift */,
+				53DEECA334B6E32693711DB5 /* Audio */,
+				3C92AB18BA67FF02D2AA786D /* Database */,
+				74379EF2733A8C42B2CAD070 /* LLM */,
+				8FEE3FA4D78A07D0B0C1F862 /* Session */,
+				D09F915A48541D3D3BECCBB4 /* Soniox */,
+				D22562E9A8C896A2CCAAB90B /* UI */,
+				500D82A363AF85F130D5729B /* Widgets */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		25AC245E8735D765951A3A63 /* Overlay */ = {
+			isa = PBXGroup;
+			children = (
+				FDC5292C23D09D793067E231 /* AssistantInputView.swift */,
+				ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */,
+				0F81C4D0121A52619B08FC56 /* ResponseView.swift */,
+			);
+			path = Overlay;
+			sourceTree = "<group>";
+		};
+		2F60E31386655AA08CC1C2A9 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C1F0544DED98C9C9C8A525F7 /* RTI.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3C92AB18BA67FF02D2AA786D /* Database */ = {
+			isa = PBXGroup;
+			children = (
+				2CF67E26C43E305EB5AA35F8 /* RTIDatabase.swift */,
+				C189AA89598484AE8E84DC55 /* Models */,
+			);
+			path = Database;
+			sourceTree = "<group>";
+		};
+		500D82A363AF85F130D5729B /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				ABDB87EDDE7A93D1611068A7 /* TopWidgetView.swift */,
+				9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */,
+			);
+			path = Widgets;
+			sourceTree = "<group>";
+		};
+		53DEECA334B6E32693711DB5 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				2AA2069EE07C9ADBE94147E8 /* AudioCaptureManager.swift */,
+				857295A827688BF13CBC8A7E /* WAVWriter.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		74379EF2733A8C42B2CAD070 /* LLM */ = {
+			isa = PBXGroup;
+			children = (
+				06A06B1213AE703E8255C169 /* KimiClient.swift */,
+				A2AD74EC7166E4C8CDC546EF /* KimiProtocol.swift */,
+				9AD2D289259AD477B911940D /* LLMController.swift */,
+			);
+			path = LLM;
+			sourceTree = "<group>";
+		};
+		8FEE3FA4D78A07D0B0C1F862 /* Session */ = {
+			isa = PBXGroup;
+			children = (
+				49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */,
+			);
+			path = Session;
+			sourceTree = "<group>";
+		};
+		93C3B71700B313358BBEB139 = {
+			isa = PBXGroup;
+			children = (
+				1DC3BF0CDA31806B027312AE /* Sources */,
+				2F60E31386655AA08CC1C2A9 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C189AA89598484AE8E84DC55 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				166C8635ECAD7923D5605360 /* Session.swift */,
+				7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		D09F915A48541D3D3BECCBB4 /* Soniox */ = {
+			isa = PBXGroup;
+			children = (
+				DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */,
+				9B43315BBB57BE38A913848E /* SonioxProtocol.swift */,
+			);
+			path = Soniox;
+			sourceTree = "<group>";
+		};
+		D22562E9A8C896A2CCAAB90B /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				1CE76FE000C93722B12D033C /* DebugConsole */,
+				25AC245E8735D765951A3A63 /* Overlay */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		22DBF3C143F42F8755F2A18A /* RTI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 44F1430CCE0AAF7D6890D4BF /* Build configuration list for PBXNativeTarget "RTI" */;
+			buildPhases = (
+				3A71D0192EC132F6AE2C0A5F /* Sources */,
+				2F50C7F51B41B0EB703EC7F0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RTI;
+			packageProductDependencies = (
+				08E319D06810A68709A49060 /* GRDB */,
+				D0B6C86BEF9143E9BCEC2BE1 /* Starscream */,
+			);
+			productName = RTI;
+			productReference = C1F0544DED98C9C9C8A525F7 /* RTI.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FF9B2702955BDB65AA4249D3 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					22DBF3C143F42F8755F2A18A = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 00E8A6D0577481650AFDA8AF /* Build configuration list for PBXProject "RTI" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 93C3B71700B313358BBEB139;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CB2F14DE9749173640F2D96B /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				8A1C41FE0398140150F33ED7 /* XCRemoteSwiftPackageReference "Starscream" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 2F60E31386655AA08CC1C2A9 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				22DBF3C143F42F8755F2A18A /* RTI */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3A71D0192EC132F6AE2C0A5F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F501C2DB4B95AC2E17320050 /* AppDelegate.swift in Sources */,
+				AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */,
+				1F9CF8485D7C0F0640A03890 /* AudioCaptureManager.swift in Sources */,
+				F5EA15C170481EAFC11AF277 /* DebugConsoleView.swift in Sources */,
+				FA9C81A466AC2873E158A3AB /* DebugConsoleWindowController.swift in Sources */,
+				10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */,
+				EAEDDC7CEAF3308781A40483 /* KimiClient.swift in Sources */,
+				1805824B399E461209711058 /* KimiProtocol.swift in Sources */,
+				FFD5B192F9BB067609DF60FD /* LLMController.swift in Sources */,
+				13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */,
+				69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */,
+				44CBAA0BB8BCCF9DEE1CDFF3 /* PromptActionRow.swift in Sources */,
+				CB82055FF93F65006B55C5C7 /* RTIApp.swift in Sources */,
+				217A70742CDAB0DB3D538B89 /* RTIDatabase.swift in Sources */,
+				45702D4E7A2DEF80C47A4F10 /* ResponseView.swift in Sources */,
+				D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */,
+				66AE173856AED09FC72A2D58 /* Session.swift in Sources */,
+				32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */,
+				DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */,
+				2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */,
+				6D619EF785EABFE337BBBB56 /* TopWidgetView.swift in Sources */,
+				5D53AB334A181274357817CD /* TopWidgetWindowController.swift in Sources */,
+				A9E5A4F3E878C5FF3DC90168 /* TranscriptEntry.swift in Sources */,
+				6253C8E7925BDAEF2F4D72C4 /* TranscriptRowView.swift in Sources */,
+				0C930D4CA1010E41BF1CF1E1 /* WAVWriter.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		19F47C4D6FC09C620232096B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_ENTITLEMENTS = Sources/RTI.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		373E0C5B08E094E6221EE13E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_ENTITLEMENTS = Sources/RTI.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		3F532576CCD232C676CEA0F1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		D3ABDCD0CF1B7C8CC808D677 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		00E8A6D0577481650AFDA8AF /* Build configuration list for PBXProject "RTI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				19F47C4D6FC09C620232096B /* Debug */,
+				373E0C5B08E094E6221EE13E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		44F1430CCE0AAF7D6890D4BF /* Build configuration list for PBXNativeTarget "RTI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F532576CCD232C676CEA0F1 /* Debug */,
+				D3ABDCD0CF1B7C8CC808D677 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8A1C41FE0398140150F33ED7 /* XCRemoteSwiftPackageReference "Starscream" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/daltoniam/Starscream";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.0.8;
+			};
+		};
+		CB2F14DE9749173640F2D96B /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.29.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		08E319D06810A68709A49060 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CB2F14DE9749173640F2D96B /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+		D0B6C86BEF9143E9BCEC2BE1 /* Starscream */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8A1C41FE0398140150F33ED7 /* XCRemoteSwiftPackageReference "Starscream" */;
+			productName = Starscream;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = FF9B2702955BDB65AA4249D3 /* Project object */;
+}
