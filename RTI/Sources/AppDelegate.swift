@@ -17,8 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        CrashLog.install()
         CredentialStore.migrateLegacyIfNeeded()
 
+        SessionCoordinator.shared.pruneOldSessions(days: 30)
         SessionCoordinator.shared.bootstrapChatSession()
         _ = ModeStore.shared
         LLMController.shared.loadHistoryForCurrentSession()

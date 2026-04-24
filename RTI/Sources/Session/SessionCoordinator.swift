@@ -92,6 +92,21 @@ final class SessionCoordinator: ObservableObject {
         }
     }
 
+    /// Delete sessions (and FK-cascaded transcripts + chat_messages) older than
+    /// `days` from `started_at`. Called on launch for retention.
+    func pruneOldSessions(days: Int = 30) {
+        let threshold = Date().addingTimeInterval(-Double(days) * 86_400)
+        do {
+            try RTIDatabase.shared.pool.write { db in
+                _ = try Session
+                    .filter(Column("started_at") < threshold)
+                    .deleteAll(db)
+            }
+        } catch {
+            NSLog("[RTI] pruneOldSessions failed: \(error)")
+        }
+    }
+
     func clearCurrentSessionMessages() {
         guard let sid = currentSessionId else { return }
         do {

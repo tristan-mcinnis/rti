@@ -37,7 +37,7 @@ Stages are roughly sequential; mark `[x]` when done, `[~]` for in-progress.
 - [x] Session lifecycle: start new on launch, resume active session on ⌘+\\ if recent
 - [x] "Clear" button on overlay wipes current session entries (keeps transcript)
 - [x] Session list UI in menubar dropdown (recent N sessions)
-- [ ] Prune old screenshots / temp data on launch (30-day retention) — deferred to Stage 5
+- [x] Prune old sessions / transcripts / chat_messages on launch (30-day retention — landed in Stage 5)
 
 ---
 
@@ -65,11 +65,11 @@ Stages are roughly sequential; mark `[x]` when done, `[~]` for in-progress.
 
 ## Stage 5 — Release prep
 
-- [ ] Code-sign + notarize the app
-- [ ] Crash reporting (simple local log rotation, no third-party SDK for v1)
-- [ ] README with install + setup + demo GIF
-- [ ] Privacy doc: what's captured, what leaves the device, retention policy
-- [ ] Create GitHub release + DMG
+- [~] Code-sign + notarize the app — RELEASE.md documents the full flow; requires user's Developer ID to execute
+- [x] Crash reporting (`Support/CrashLog.swift`, `NSSetUncaughtExceptionHandler`, 1 MB rotation)
+- [x] README with install + setup (demo GIF still to be recorded)
+- [x] Privacy doc: what's captured, what leaves the device, retention policy — `PRIVACY.md`
+- [~] Create GitHub release + DMG — scripted in RELEASE.md; final `gh release create` requires user action with signing credentials
 
 ---
 
