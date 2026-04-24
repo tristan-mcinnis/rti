@@ -27,7 +27,81 @@ final class SessionCoordinator: ObservableObject {
     private var soniox: SonioxClient?
     private var lastFinalizedEndMs: Int = 0
 
+    private static let resumeWindowSeconds: TimeInterval = 300
+
     private init() {}
+
+    /// Ensure there is a chat session available for LLM turns before any audio
+    /// is started. Resumes the most recent session if it was active within the
+    /// last 5 minutes; otherwise creates a chat-only session (no WAV path yet).
+    func bootstrapChatSession() {
+        guard currentSessionId == nil else { return }
+
+        do {
+            let recent: Session? = try RTIDatabase.shared.pool.read { db in
+                try Session
+                    .order(Column("started_at").desc)
+                    .limit(1)
+                    .fetchOne(db)
+            }
+            let now = Date()
+            if let recent {
+                let reference = recent.endedAt ?? recent.startedAt
+                if now.timeIntervalSince(reference) <= Self.resumeWindowSeconds {
+                    currentSessionId = recent.id
+                    startedAt = recent.startedAt
+                    return
+                }
+            }
+            let sessionId = UUID().uuidString
+            let session = Session(id: sessionId, startedAt: now, endedAt: nil, wavPath: nil, notes: nil)
+            try RTIDatabase.shared.pool.write { db in try session.insert(db) }
+            currentSessionId = sessionId
+            startedAt = now
+        } catch {
+            NSLog("[RTI] bootstrapChatSession failed: \(error)")
+        }
+    }
+
+    func switchToSession(id: String) {
+        guard !isRunning else { return } // don't swap active-audio session
+        do {
+            guard let session = try RTIDatabase.shared.pool.read({ db in
+                try Session.fetchOne(db, key: id)
+            }) else { return }
+            currentSessionId = session.id
+            startedAt = session.startedAt
+            liveEntries = []
+            interimLine = nil
+        } catch {
+            NSLog("[RTI] switchToSession failed: \(error)")
+        }
+    }
+
+    func recentSessions(limit: Int = 10) -> [Session] {
+        do {
+            return try RTIDatabase.shared.pool.read { db in
+                try Session
+                    .order(Column("started_at").desc)
+                    .limit(limit)
+                    .fetchAll(db)
+            }
+        } catch {
+            NSLog("[RTI] recentSessions failed: \(error)")
+            return []
+        }
+    }
+
+    func clearCurrentSessionMessages() {
+        guard let sid = currentSessionId else { return }
+        do {
+            try RTIDatabase.shared.pool.write { db in
+                _ = try ChatMessage.filter(Column("session_id") == sid).deleteAll(db)
+            }
+        } catch {
+            NSLog("[RTI] clearCurrentSessionMessages failed: \(error)")
+        }
+    }
 
     func toggleSession() {
         if isRunning {
@@ -52,14 +126,22 @@ final class SessionCoordinator: ObservableObject {
     }
 
     private func launchSession() {
-        let sessionId = UUID().uuidString
         let now = Date()
+        // Reuse the existing chat session if the user is starting audio on an
+        // already-open chat session; otherwise create a new row.
+        let sessionId = currentSessionId ?? UUID().uuidString
         let wavURL = WAVWriter.defaultURL(for: sessionId)
 
         do {
             try RTIDatabase.shared.pool.write { db in
-                let session = Session(id: sessionId, startedAt: now, endedAt: nil, wavPath: wavURL.path, notes: nil)
-                try session.insert(db)
+                if var existing = try Session.fetchOne(db, key: sessionId) {
+                    existing.wavPath = wavURL.path
+                    existing.endedAt = nil
+                    try existing.update(db)
+                } else {
+                    let session = Session(id: sessionId, startedAt: now, endedAt: nil, wavPath: wavURL.path, notes: nil)
+                    try session.insert(db)
+                }
             }
         } catch {
             lastError = "DB insert failed: \(error)"
@@ -87,7 +169,7 @@ final class SessionCoordinator: ObservableObject {
         }
 
         currentSessionId = sessionId
-        startedAt = now
+        if startedAt == nil { startedAt = now }
         liveEntries = []
         interimLine = nil
         lastFinalizedEndMs = 0
@@ -126,8 +208,9 @@ final class SessionCoordinator: ObservableObject {
             NSLog("[RTI] session update failed: \(error)")
         }
 
-        currentSessionId = nil
-        startedAt = nil
+        // Keep currentSessionId/startedAt set: chat turns can continue against
+        // the same session after audio stops. A fresh session is only minted on
+        // next app launch (via bootstrapChatSession) past the 5-minute window.
         interimLine = nil
     }
 

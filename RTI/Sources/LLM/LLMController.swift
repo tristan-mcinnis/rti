@@ -90,6 +90,49 @@ final class LLMController: ObservableObject {
         cancel()
         entries = []
         lastError = nil
+        SessionCoordinator.shared.clearCurrentSessionMessages()
+    }
+
+    func loadHistoryForCurrentSession() {
+        guard let sid = SessionCoordinator.shared.currentSessionId else { return }
+        do {
+            let rows = try RTIDatabase.shared.pool.read { db in
+                try ChatMessage
+                    .filter(Column("session_id") == sid)
+                    .order(Column("created_at"))
+                    .fetchAll(db)
+            }
+            entries = rows.compactMap { row in
+                guard row.role == "user" || row.role == "assistant" else { return nil }
+                return ChatEntry(
+                    role: row.role,
+                    text: row.content,
+                    action: row.action,
+                    contextUsed: row.hadTranscriptContext,
+                    screenContextUsed: row.hadScreenContext
+                )
+            }
+        } catch {
+            NSLog("[RTI] loadHistoryForCurrentSession failed: \(error)")
+        }
+    }
+
+    private func persistMessage(sessionId: String, role: String, action: String?, content: String, hadTranscript: Bool, hadScreen: Bool) {
+        let msg = ChatMessage(
+            id: UUID().uuidString,
+            sessionId: sessionId,
+            role: role,
+            action: action,
+            content: content,
+            hadScreenContext: hadScreen,
+            hadTranscriptContext: hadTranscript,
+            createdAt: Date()
+        )
+        do {
+            try RTIDatabase.shared.pool.write { db in try msg.insert(db) }
+        } catch {
+            NSLog("[RTI] persist chat_message failed: \(error)")
+        }
     }
 
     private func performSend(userInput: String, action: String) {
@@ -108,6 +151,11 @@ final class LLMController: ObservableObject {
         let screenContextUsed = screenContext != nil
 
         entries.append(ChatEntry(role: "user", text: userInput, action: action, contextUsed: contextUsed, screenContextUsed: screenContextUsed))
+
+        let persistSessionId = SessionCoordinator.shared.currentSessionId
+        if let persistSessionId {
+            persistMessage(sessionId: persistSessionId, role: "user", action: action, content: userInput, hadTranscript: contextUsed, hadScreen: screenContextUsed)
+        }
 
         var kimiMessages: [KimiMessage] = [KimiMessage(role: "system", content: Self.systemPrompt)]
         if let screenContext {
@@ -161,6 +209,12 @@ final class LLMController: ObservableObject {
             self.streaming = false
             self.pruneTrailingEmptyAssistant()
             self.streamingEntryID = nil
+
+            if let persistSessionId,
+               let finalText = self.entries.last(where: { $0.id == thisEntryID })?.text,
+               !finalText.isEmpty {
+                self.persistMessage(sessionId: persistSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
+            }
         }
     }
 

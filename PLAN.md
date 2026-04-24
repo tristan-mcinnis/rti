@@ -32,12 +32,12 @@ Stages are roughly sequential; mark `[x]` when done, `[~]` for in-progress.
 
 ## Stage 2 — POC-5: Persistence layer
 
-- [ ] Finalize GRDB schema: `sessions`, `transcript_entries` (exists), `chat_messages`, `modes`
-- [ ] Migrate `LLMController.entries` to load + persist via GRDB
-- [ ] Session lifecycle: start new on launch, resume active session on ⌘+\\ if recent
-- [ ] "Clear" button on overlay wipes current session entries (keeps transcript)
-- [ ] Session list UI in menubar dropdown (recent N sessions)
-- [ ] Prune old screenshots / temp data on launch (30-day retention)
+- [x] Finalize GRDB schema: `sessions`, `transcript_entries` (exists), `chat_messages`, `modes`
+- [x] Migrate `LLMController.entries` to load + persist via GRDB
+- [x] Session lifecycle: start new on launch, resume active session on ⌘+\\ if recent
+- [x] "Clear" button on overlay wipes current session entries (keeps transcript)
+- [x] Session list UI in menubar dropdown (recent N sessions)
+- [ ] Prune old screenshots / temp data on launch (30-day retention) — deferred to Stage 5
 
 ---
 

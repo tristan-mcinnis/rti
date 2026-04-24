@@ -14,6 +14,7 @@
 		1F9CF8485D7C0F0640A03890 /* AudioCaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AA2069EE07C9ADBE94147E8 /* AudioCaptureManager.swift */; };
 		217A70742CDAB0DB3D538B89 /* RTIDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF67E26C43E305EB5AA35F8 /* RTIDatabase.swift */; };
 		2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B43315BBB57BE38A913848E /* SonioxProtocol.swift */; };
+		2BC80B64267C234E010ABCEB /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906F7DCF321C17392E3DA594 /* Mode.swift */; };
 		32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */; };
 		44CBAA0BB8BCCF9DEE1CDFF3 /* PromptActionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */; };
 		45702D4E7A2DEF80C47A4F10 /* ResponseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F81C4D0121A52619B08FC56 /* ResponseView.swift */; };
@@ -34,6 +35,7 @@
 		DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
 		E99A2E3907A22BFFDAA70011 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1739AC4265146BE278C238F /* KeychainStore.swift */; };
 		EAEDDC7CEAF3308781A40483 /* KimiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A06B1213AE703E8255C169 /* KimiClient.swift */; };
+		EE90D8606F09CEE04504490C /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2889365203C94D35E404CD /* ChatMessage.swift */; };
 		F501C2DB4B95AC2E17320050 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */; };
 		F5EA15C170481EAFC11AF277 /* DebugConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D625FEFD7781EE62D733E2B3 /* DebugConsoleView.swift */; };
 		FA9C81A466AC2873E158A3AB /* DebugConsoleWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF34905668FDEDBD43CD8E /* DebugConsoleWindowController.swift */; };
@@ -59,6 +61,7 @@
 		80B860CBE5C88CADCC97EC4D /* TranscriptRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRowView.swift; sourceTree = "<group>"; };
 		82F3B4333865A3ABDED731A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		857295A827688BF13CBC8A7E /* WAVWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVWriter.swift; sourceTree = "<group>"; };
+		906F7DCF321C17392E3DA594 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
 		9AD2D289259AD477B911940D /* LLMController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMController.swift; sourceTree = "<group>"; };
 		9B43315BBB57BE38A913848E /* SonioxProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxProtocol.swift; sourceTree = "<group>"; };
 		9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopWidgetWindowController.swift; sourceTree = "<group>"; };
@@ -66,6 +69,7 @@
 		ABDB87EDDE7A93D1611068A7 /* TopWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopWidgetView.swift; sourceTree = "<group>"; };
 		ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptActionRow.swift; sourceTree = "<group>"; };
 		BEEF34905668FDEDBD43CD8E /* DebugConsoleWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugConsoleWindowController.swift; sourceTree = "<group>"; };
+		BF2889365203C94D35E404CD /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		C1739AC4265146BE278C238F /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		C1F0544DED98C9C9C8A525F7 /* RTI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RTI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayPanelView.swift; sourceTree = "<group>"; };
@@ -213,6 +217,8 @@
 		C189AA89598484AE8E84DC55 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				BF2889365203C94D35E404CD /* ChatMessage.swift */,
+				906F7DCF321C17392E3DA594 /* Mode.swift */,
 				166C8635ECAD7923D5605360 /* Session.swift */,
 				7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */,
 			);
@@ -306,6 +312,7 @@
 				F501C2DB4B95AC2E17320050 /* AppDelegate.swift in Sources */,
 				AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */,
 				1F9CF8485D7C0F0640A03890 /* AudioCaptureManager.swift in Sources */,
+				EE90D8606F09CEE04504490C /* ChatMessage.swift in Sources */,
 				F5EA15C170481EAFC11AF277 /* DebugConsoleView.swift in Sources */,
 				FA9C81A466AC2873E158A3AB /* DebugConsoleWindowController.swift in Sources */,
 				10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */,
@@ -313,6 +320,7 @@
 				EAEDDC7CEAF3308781A40483 /* KimiClient.swift in Sources */,
 				1805824B399E461209711058 /* KimiProtocol.swift in Sources */,
 				FFD5B192F9BB067609DF60FD /* LLMController.swift in Sources */,
+				2BC80B64267C234E010ABCEB /* Mode.swift in Sources */,
 				FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */,
 				13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */,
 				69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */,

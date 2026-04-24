@@ -57,6 +57,31 @@ final class RTIDatabase {
                 columns: ["session_id", "start_ms"]
             )
         }
+        m.registerMigration("v2_chat_and_modes") { db in
+            try db.create(table: "chat_messages") { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull().references("sessions", onDelete: .cascade)
+                t.column("role", .text).notNull()
+                t.column("action", .text)
+                t.column("content", .text).notNull()
+                t.column("had_screen_context", .integer).notNull().defaults(to: 0)
+                t.column("had_transcript_context", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .datetime).notNull()
+            }
+            try db.create(
+                index: "idx_chat_session_time",
+                on: "chat_messages",
+                columns: ["session_id", "created_at"]
+            )
+
+            try db.create(table: "modes") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("system_prompt", .text).notNull()
+                t.column("is_builtin", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .datetime).notNull()
+            }
+        }
         return m
     }
 }

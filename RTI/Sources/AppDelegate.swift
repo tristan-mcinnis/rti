@@ -12,10 +12,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settingsWindow: SettingsWindowController?
     private var hotkey: GlobalHotkey?
     private var sessionMenuItem: NSMenuItem?
+    private var recentSessionsItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         CredentialStore.migrateLegacyIfNeeded()
+
+        SessionCoordinator.shared.bootstrapChatSession()
+        LLMController.shared.loadHistoryForCurrentSession()
 
         installStatusItem()
 
@@ -93,6 +97,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         widgetItem.target = self
         menu.addItem(widgetItem)
 
+        let clearItem = NSMenuItem(title: "Clear Current Chat", action: #selector(clearChat), keyEquivalent: "")
+        clearItem.target = self
+        menu.addItem(clearItem)
+
+        let recentItem = NSMenuItem(title: "Recent Sessions", action: nil, keyEquivalent: "")
+        recentItem.submenu = NSMenu(title: "Recent Sessions")
+        menu.addItem(recentItem)
+        recentSessionsItem = recentItem
+
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "Quit RTI", action: #selector(quit), keyEquivalent: "q")
@@ -105,6 +118,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         refreshSessionMenuItemTitle()
+        rebuildRecentSessionsSubmenu()
+    }
+
+    private func rebuildRecentSessionsSubmenu() {
+        guard let submenu = recentSessionsItem?.submenu else { return }
+        submenu.removeAllItems()
+
+        let sessions = SessionCoordinator.shared.recentSessions(limit: 10)
+        if sessions.isEmpty {
+            let empty = NSMenuItem(title: "No sessions yet", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            submenu.addItem(empty)
+            return
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+
+        let currentId = SessionCoordinator.shared.currentSessionId
+        for s in sessions {
+            let title = "\(formatter.string(from: s.startedAt))\(s.id == currentId ? "  •" : "")"
+            let item = NSMenuItem(title: title, action: #selector(switchSession(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = s.id
+            submenu.addItem(item)
+        }
+    }
+
+    @objc private func switchSession(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        if SessionCoordinator.shared.isRunning {
+            NSSound.beep()
+            return
+        }
+        SessionCoordinator.shared.switchToSession(id: id)
+        LLMController.shared.loadHistoryForCurrentSession()
     }
 
     private func refreshSessionMenuItemTitle() {
@@ -120,5 +170,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showSettings() { settingsWindow?.show() }
     @objc private func toggleOverlay() { overlayController?.toggle() }
     @objc private func toggleTopWidget() { topWidget?.toggle() }
+    @objc private func clearChat() { LLMController.shared.clear() }
     @objc private func quit() { NSApp.terminate(nil) }
 }
