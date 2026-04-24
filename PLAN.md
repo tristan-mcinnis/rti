@@ -19,14 +19,14 @@ Stages are roughly sequential; mark `[x]` when done, `[~]` for in-progress.
 
 ## Stage 1 — POC-4: Smart Screenshot + Vision OCR
 
-- [ ] Register ⌘+H global hotkey (Carbon, same pattern as ⌘+\\)
-- [ ] Integrate `SCScreenshotManager` to capture the active display
-- [ ] Request Screen Recording permission on first use; handle denial gracefully
-- [ ] Run Vision `VNRecognizeTextRequest` on the captured image (fast, on-device)
-- [ ] Attach OCR text as a system message prefix on the next LLM call, discard the image
-- [ ] Show "Viewed screen" label on the user bubble when screen context was used
-- [ ] Verify screenshots are excluded from other apps' capture (sharingType=.none check)
-- [ ] Write POC-4 findings doc + user-attestation table
+- [x] Register ⌘+H global hotkey (Carbon, same pattern as ⌘+\\)
+- [x] Integrate `SCScreenshotManager` to capture the active display
+- [x] Request Screen Recording permission on first use; handle denial gracefully
+- [x] Run Vision `VNRecognizeTextRequest` on the captured image (fast, on-device)
+- [x] Attach OCR text as a system message prefix on the next LLM call, discard the image
+- [x] Show "Viewed screen" label on the user bubble when screen context was used
+- [x] Verify screenshots are excluded from other apps' capture (sharingType=.none check)
+- [x] Write POC-4 findings doc + user-attestation table
 
 ---
 

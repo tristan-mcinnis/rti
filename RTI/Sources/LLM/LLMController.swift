@@ -6,7 +6,8 @@ struct ChatEntry: Identifiable, Equatable {
     let role: String           // "user" | "assistant"
     var text: String
     let action: String?        // "Ask" | "Assist" — user entries only
-    let contextUsed: Bool      // user entries only
+    let contextUsed: Bool      // user entries only — transcript attached
+    let screenContextUsed: Bool // user entries only — OCR screen attached
 }
 
 @MainActor
@@ -17,6 +18,7 @@ final class LLMController: ObservableObject {
     @Published private(set) var streaming = false
     @Published private(set) var lastError: String?
     @Published private(set) var lastErrorIsAuth: Bool = false
+    @Published private(set) var pendingScreenContext: String?
     @Published var smartMode: Bool {
         didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
     }
@@ -67,6 +69,17 @@ final class LLMController: ObservableObject {
         performSend(userInput: Self.recapPrompt, action: "Recap")
     }
 
+    func attachScreenContext(_ text: String) {
+        pendingScreenContext = text
+        lastError = nil
+        lastErrorIsAuth = false
+    }
+
+    func setScreenAttachError(_ message: String) {
+        lastError = message
+        lastErrorIsAuth = false
+    }
+
     func cancel() {
         currentTask?.cancel()
         currentTask = nil
@@ -90,9 +103,19 @@ final class LLMController: ObservableObject {
             ? "Recent conversation (last 6 minutes, diarized):\n\(transcript)\n\nUser question: \(userInput)"
             : userInput
 
-        entries.append(ChatEntry(role: "user", text: userInput, action: action, contextUsed: contextUsed))
+        let screenContext = pendingScreenContext
+        pendingScreenContext = nil
+        let screenContextUsed = screenContext != nil
+
+        entries.append(ChatEntry(role: "user", text: userInput, action: action, contextUsed: contextUsed, screenContextUsed: screenContextUsed))
 
         var kimiMessages: [KimiMessage] = [KimiMessage(role: "system", content: Self.systemPrompt)]
+        if let screenContext {
+            kimiMessages.append(KimiMessage(
+                role: "system",
+                content: "User attached a screenshot. OCR text from the screen follows. Treat it as what the user is looking at.\n---\n\(screenContext)\n---"
+            ))
+        }
         for (idx, entry) in entries.enumerated() {
             let isLatestUser = idx == entries.count - 1 && entry.role == "user"
             let content = isLatestUser ? fullContent : entry.text
@@ -101,7 +124,7 @@ final class LLMController: ObservableObject {
             kimiMessages.append(KimiMessage(role: entry.role, content: content))
         }
 
-        let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false)
+        let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false)
         streamingEntryID = assistantEntry.id
         entries.append(assistantEntry)
 

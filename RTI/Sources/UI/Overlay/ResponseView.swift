@@ -66,6 +66,11 @@ struct ResponseView: View {
     private func userBubble(_ entry: ChatEntry) -> some View {
         VStack(alignment: .trailing, spacing: 6) {
             HStack(spacing: 8) {
+                if entry.screenContextUsed {
+                    Text("Viewed screen")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
                 if entry.contextUsed {
                     Text("Viewed conversation")
                         .font(.system(size: 11))

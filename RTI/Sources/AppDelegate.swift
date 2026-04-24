@@ -45,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hk.register(keyCode: UInt32(kVK_Return), modifiers: UInt32(cmdKey)) {
             LLMController.shared.sendAssist()
         }
+        hk.register(keyCode: UInt32(kVK_ANSI_H), modifiers: UInt32(cmdKey)) {
+            ScreenshotManager.shared.captureAndAttach()
+        }
         hotkey = hk
 
         SessionCoordinator.shared.$isRunning

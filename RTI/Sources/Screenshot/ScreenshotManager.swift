@@ -1,0 +1,86 @@
+import AppKit
+import CoreGraphics
+import Foundation
+import ScreenCaptureKit
+
+@MainActor
+final class ScreenshotManager {
+    static let shared = ScreenshotManager()
+
+    private static let maxOCRChars = 12_000
+
+    private init() {}
+
+    /// Capture the display under the mouse cursor, OCR it, and attach the text
+    /// to `LLMController` as pending screen context for the next turn.
+    func captureAndAttach() {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let cgImage = try await self.captureActiveDisplay()
+                let text = try await OCRService.recognizeText(in: cgImage)
+                let trimmed = self.truncate(text)
+                if trimmed.isEmpty {
+                    LLMController.shared.setScreenAttachError("No text found on the captured screen.")
+                    return
+                }
+                LLMController.shared.attachScreenContext(trimmed)
+                NSLog("[RTI] Screenshot OCR: attached \(trimmed.count) chars of screen context.")
+            } catch {
+                NSLog("[RTI] Screenshot capture/OCR failed: \(error)")
+                let msg = self.errorDescription(for: error)
+                LLMController.shared.setScreenAttachError(msg)
+            }
+        }
+    }
+
+    private func captureActiveDisplay() async throws -> CGImage {
+        let content = try await SCShareableContent.current
+        let targetDisplay = pickActiveDisplay(from: content.displays)
+        guard let display = targetDisplay else {
+            throw ScreenshotError.noDisplay
+        }
+
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let config = SCStreamConfiguration()
+        config.width = Int(display.width)
+        config.height = Int(display.height)
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.showsCursor = false
+        config.capturesAudio = false
+
+        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+    }
+
+    private func pickActiveDisplay(from displays: [SCDisplay]) -> SCDisplay? {
+        let mouse = NSEvent.mouseLocation
+        for screen in NSScreen.screens {
+            if screen.frame.contains(mouse) {
+                let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+                if let displayID, let match = displays.first(where: { $0.displayID == displayID }) {
+                    return match
+                }
+            }
+        }
+        return displays.first
+    }
+
+    private func truncate(_ text: String) -> String {
+        guard text.count > Self.maxOCRChars else { return text }
+        let idx = text.index(text.startIndex, offsetBy: Self.maxOCRChars)
+        return String(text[..<idx]) + "\n…[truncated]"
+    }
+
+    private func errorDescription(for error: Error) -> String {
+        let ns = error as NSError
+        // TCC-denied screen recording typically surfaces as SCStreamError / domain com.apple.ScreenCaptureKit.
+        if ns.domain.contains("ScreenCaptureKit") || ns.domain.contains("TCC") {
+            return "Screen Recording permission required. Open System Settings → Privacy & Security → Screen Recording and enable RTI."
+        }
+        return "Screenshot failed: \(ns.localizedDescription)"
+    }
+}
+
+enum ScreenshotError: Error {
+    case noDisplay
+}
