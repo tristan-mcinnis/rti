@@ -44,7 +44,7 @@ final class LLMController: ObservableObject {
 
     private init() {
         self.smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
-        self.client = KimiClient(apiKey: Secrets.kimiAPIKey, baseURL: Secrets.kimiBaseURL)
+        self.client = KimiClient(baseURL: Secrets.kimiBaseURL)
     }
 
     func sendAskAnything(_ input: String) {

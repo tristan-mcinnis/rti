@@ -8,13 +8,13 @@ enum KimiError: Error {
 }
 
 final class KimiClient {
-    private let apiKey: String
     private let baseURL: URL
 
-    init(apiKey: String, baseURL: URL) {
-        self.apiKey = apiKey
+    init(baseURL: URL) {
         self.baseURL = baseURL
     }
+
+    private var apiKey: String { Secrets.kimiAPIKey }
 
     /// Streams delta.content strings from a Kimi chat completion as they arrive.
     /// The stream terminates on `data: [DONE]` sentinel or on error.

@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 
+private let savedFrameKey = "rti.overlay.savedFrame"
+
 /// Non-activating panel that still accepts keyboard input when clicked,
 /// so the text field works without activating RTI over the meeting app.
 private final class KeyableOverlayPanel: NSPanel {
@@ -13,7 +15,7 @@ final class OverlayWindowController {
 
     init(onOpenSettings: @escaping () -> Void = {}) {
         let panel = KeyableOverlayPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 658, height: 555),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 600),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -26,25 +28,32 @@ final class OverlayWindowController {
         panel.sharingType = .none
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = false
+        panel.isMovableByWindowBackground = true
 
         panel.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
 
         self.window = panel
-        positionOnActiveScreen()
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in self?.saveFrame() }
+
+        if let saved = Self.loadSavedFrame() {
+            window.setFrame(saved, display: false)
+        } else {
+            positionOnActiveScreen()
+        }
     }
 
-    /// Place the overlay on the screen containing the mouse cursor, sized to
-    /// the left 60% of that screen's visible frame minus a margin at the top
-    /// for the top widget. The right 40% is deliberately empty — no window
-    /// there means click-through is free.
     func positionOnActiveScreen() {
         let screen = screenUnderMouse() ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let widgetReserve: CGFloat = 72
         let margin: CGFloat = 16
-        let width = max(420, visible.width * 0.6)
-        let height = max(360, visible.height - widgetReserve - margin)
+        let width: CGFloat = 480
+        let height = min(600, visible.height - widgetReserve - margin)
         let origin = NSPoint(
             x: visible.minX + margin,
             y: visible.maxY - widgetReserve - height
@@ -58,7 +67,6 @@ final class OverlayWindowController {
     }
 
     func show() {
-        positionOnActiveScreen()
         window.alphaValue = 0
         window.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
@@ -83,5 +91,23 @@ final class OverlayWindowController {
         } else {
             show()
         }
+    }
+
+    // MARK: - Frame persistence
+
+    private func saveFrame() {
+        guard window.isVisible else { return }
+        let frame = window.frame
+        let dict: [String: CGFloat] = ["x": frame.origin.x, "y": frame.origin.y, "w": frame.width, "h": frame.height]
+        UserDefaults.standard.set(dict, forKey: savedFrameKey)
+    }
+
+    private static func loadSavedFrame() -> NSRect? {
+        guard let dict = UserDefaults.standard.dictionary(forKey: savedFrameKey) as? [String: CGFloat],
+              let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"] else { return nil }
+        let frame = NSRect(x: x, y: y, width: w, height: h)
+        // Validate the frame is still on some screen
+        guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) else { return nil }
+        return frame
     }
 }

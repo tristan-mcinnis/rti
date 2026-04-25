@@ -181,7 +181,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func clearChat() { LLMController.shared.clear() }
 
     private func collapseToMini() {
-        overlayController?.hide()
         topWidget?.hide()
         miniWidget?.show()
     }
