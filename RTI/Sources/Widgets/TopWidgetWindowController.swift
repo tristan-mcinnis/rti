@@ -4,12 +4,9 @@ import SwiftUI
 @MainActor
 final class TopWidgetWindowController {
     private let window: NSPanel
-    private let onHideToggle: () -> Void
 
-    init(onHideToggle: @escaping () -> Void) {
-        self.onHideToggle = onHideToggle
-
-        let size = NSSize(width: 260, height: 54)
+    init() {
+        let size = NSSize(width: 180, height: 54)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -26,7 +23,7 @@ final class TopWidgetWindowController {
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true
 
-        panel.contentView = NSHostingView(rootView: TopWidgetView(onHideToggle: onHideToggle))
+        panel.contentView = NSHostingView(rootView: TopWidgetView())
 
         self.window = panel
         positionOnActiveScreen()

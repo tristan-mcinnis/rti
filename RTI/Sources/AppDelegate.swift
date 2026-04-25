@@ -8,7 +8,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var overlayController: OverlayWindowController?
     private var topWidget: TopWidgetWindowController?
-    private var miniWidget: MiniWidgetWindowController?
     private var debugConsole: DebugConsoleWindowController?
     private var settingsWindow: SettingsWindowController?
     private var hotkey: GlobalHotkey?
@@ -35,15 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller.show()
         overlayController = controller
 
-        let top = TopWidgetWindowController { [weak self] in
-            self?.collapseToMini()
-        }
+        let top = TopWidgetWindowController()
         top.show()
         topWidget = top
-
-        miniWidget = MiniWidgetWindowController { [weak self] in
-            self?.expandFromMini()
-        }
 
         debugConsole = DebugConsoleWindowController()
 
@@ -180,14 +173,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleTopWidget() { topWidget?.toggle() }
     @objc private func clearChat() { LLMController.shared.clear() }
 
-    private func collapseToMini() {
-        topWidget?.hide()
-        miniWidget?.show()
-    }
-
-    private func expandFromMini() {
-        miniWidget?.hide()
-        topWidget?.show()
-    }
     @objc private func quit() { NSApp.terminate(nil) }
 }

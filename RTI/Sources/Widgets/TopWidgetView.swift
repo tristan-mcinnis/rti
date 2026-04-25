@@ -1,14 +1,12 @@
 import SwiftUI
 
 struct TopWidgetView: View {
-    let onHideToggle: () -> Void
     @ObservedObject private var coordinator = SessionCoordinator.shared
 
     var body: some View {
         HStack(spacing: 10) {
             compass
-            hideButton
-            stopButton
+            recordButton
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -28,31 +26,29 @@ struct TopWidgetView: View {
             .background(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
     }
 
-    private var hideButton: some View {
-        Button(action: onHideToggle) {
-            HStack(spacing: 4) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Hide")
-                    .font(.system(size: 13, weight: .medium))
+    private var recordButton: some View {
+        Button(action: { SessionCoordinator.shared.toggleSession() }) {
+            ZStack {
+                if coordinator.isRunning {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                } else {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 11, height: 11)
+                }
             }
-            .foregroundStyle(.white.opacity(0.9))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Capsule().fill(Color.white.opacity(0.10)))
+            .frame(width: 32, height: 32)
+            .background(
+                Circle()
+                    .fill(Color.white.opacity(coordinator.isRunning ? 0.10 : 0.06))
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(coordinator.isRunning ? 0.15 : 0.10), lineWidth: 1)
+                    )
+            )
         }
         .buttonStyle(.plain)
-    }
-
-    private var stopButton: some View {
-        Button(action: { SessionCoordinator.shared.stopSession() }) {
-            Image(systemName: "stop.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(coordinator.isRunning ? Color.white : Color.white.opacity(0.3))
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(Color.white.opacity(0.10)))
-        }
-        .buttonStyle(.plain)
-        .disabled(!coordinator.isRunning)
     }
 }
