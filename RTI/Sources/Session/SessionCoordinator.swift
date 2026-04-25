@@ -129,6 +129,7 @@ final class SessionCoordinator: ObservableObject {
     func startSession() {
         guard !isRunning else { return }
         lastError = nil
+        LLMController.shared.clear()
 
         audio.requestPermission { [weak self] granted in
             guard let self else { return }
@@ -142,22 +143,12 @@ final class SessionCoordinator: ObservableObject {
 
     private func launchSession() {
         let now = Date()
-        // Reuse the existing chat session if the user is starting audio on an
-        // already-open chat session; otherwise create a new row.
-        let sessionId = currentSessionId ?? UUID().uuidString
+        let sessionId = UUID().uuidString
         let wavURL = WAVWriter.defaultURL(for: sessionId)
 
         do {
-            try RTIDatabase.shared.pool.write { db in
-                if var existing = try Session.fetchOne(db, key: sessionId) {
-                    existing.wavPath = wavURL.path
-                    existing.endedAt = nil
-                    try existing.update(db)
-                } else {
-                    let session = Session(id: sessionId, startedAt: now, endedAt: nil, wavPath: wavURL.path, notes: nil)
-                    try session.insert(db)
-                }
-            }
+            let session = Session(id: sessionId, startedAt: now, endedAt: nil, wavPath: wavURL.path, notes: nil)
+            try RTIDatabase.shared.pool.write { db in try session.insert(db) }
         } catch {
             lastError = "DB insert failed: \(error)"
             return
@@ -184,11 +175,12 @@ final class SessionCoordinator: ObservableObject {
         }
 
         currentSessionId = sessionId
-        if startedAt == nil { startedAt = now }
+        startedAt = now
         liveEntries = []
         interimLine = nil
         lastFinalizedEndMs = 0
         isRunning = true
+        LLMController.shared.loadHistoryForCurrentSession()
     }
 
     func stopSession() {
@@ -227,6 +219,28 @@ final class SessionCoordinator: ObservableObject {
         // the same session after audio stops. A fresh session is only minted on
         // next app launch (via bootstrapChatSession) past the 5-minute window.
         interimLine = nil
+
+        triggerSummaryIfNeeded(sessionId: sessionId)
+    }
+
+    private func triggerSummaryIfNeeded(sessionId: String) {
+        let hasTranscripts: Bool = {
+            do {
+                return try RTIDatabase.shared.pool.read { db in
+                    try TranscriptEntry
+                        .filter(Column("session_id") == sessionId)
+                        .filter(Column("is_final") == 1)
+                        .limit(1)
+                        .fetchOne(db) != nil
+                }
+            } catch { return false }
+        }()
+
+        guard hasTranscripts else { return }
+
+        Task { @MainActor in
+            await SummaryController.shared.generateSummary(for: sessionId)
+        }
     }
 
     private func teardownOnFailure() {

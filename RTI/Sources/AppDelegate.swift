@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var topWidget: TopWidgetWindowController?
     private var debugConsole: DebugConsoleWindowController?
     private var settingsWindow: SettingsWindowController?
+    private var sessionDetail: SessionDetailWindowController?
     private var hotkey: GlobalHotkey?
     private var sessionMenuItem: NSMenuItem?
     private var recentSessionsItem: NSMenuItem?
@@ -80,6 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(sessionItem)
         self.sessionMenuItem = sessionItem
 
+        let detailItem = NSMenuItem(title: "View Session Detail", action: #selector(openCurrentSessionDetail), keyEquivalent: "")
+        detailItem.target = self
+        menu.addItem(detailItem)
+
         let consoleItem = NSMenuItem(title: "Show Debug Console", action: #selector(showDebugConsole), keyEquivalent: "")
         consoleItem.target = self
         menu.addItem(consoleItem)
@@ -141,21 +146,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let currentId = SessionCoordinator.shared.currentSessionId
         for s in sessions {
             let title = "\(formatter.string(from: s.startedAt))\(s.id == currentId ? "  •" : "")"
-            let item = NSMenuItem(title: title, action: #selector(switchSession(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: title, action: #selector(openSessionDetail(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = s.id
             submenu.addItem(item)
         }
     }
 
-    @objc private func switchSession(_ sender: NSMenuItem) {
+    @objc private func openSessionDetail(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
-        if SessionCoordinator.shared.isRunning {
+        openSessionDetail(for: id)
+    }
+
+    @objc private func openCurrentSessionDetail() {
+        guard let id = SessionCoordinator.shared.currentSessionId else {
             NSSound.beep()
             return
         }
-        SessionCoordinator.shared.switchToSession(id: id)
-        LLMController.shared.loadHistoryForCurrentSession()
+        openSessionDetail(for: id)
+    }
+
+    private func openSessionDetail(for id: String) {
+        if let existing = sessionDetail {
+            existing.show(for: id)
+        } else {
+            let controller = SessionDetailWindowController()
+            controller.show(for: id)
+            sessionDetail = controller
+        }
     }
 
     private func refreshSessionMenuItemTitle() {

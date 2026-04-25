@@ -9,9 +9,11 @@
 /* Begin PBXBuildFile section */
 		0C3926E9622B402E66C8616B /* MiniWidgetWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0368F1D29012BA31260AFB /* MiniWidgetWindowController.swift */; };
 		0C930D4CA1010E41BF1CF1E1 /* WAVWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857295A827688BF13CBC8A7E /* WAVWriter.swift */; };
+		0E94DDBB01100ED1B197831A /* SessionSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1275DFE4AE979EA226EC9A7A /* SessionSummary.swift */; };
 		10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */; };
 		13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */; };
 		1805824B399E461209711058 /* KimiProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AD74EC7166E4C8CDC546EF /* KimiProtocol.swift */; };
+		1CC17C00D5AA7311B31F98F3 /* SessionDetailWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 869AD9A19D38A8A7501920EF /* SessionDetailWindowController.swift */; };
 		1F9CF8485D7C0F0640A03890 /* AudioCaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AA2069EE07C9ADBE94147E8 /* AudioCaptureManager.swift */; };
 		217A70742CDAB0DB3D538B89 /* RTIDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF67E26C43E305EB5AA35F8 /* RTIDatabase.swift */; };
 		2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B43315BBB57BE38A913848E /* SonioxProtocol.swift */; };
@@ -32,10 +34,12 @@
 		AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC5292C23D09D793067E231 /* AssistantInputView.swift */; };
 		BC57220A05F60410ED96C0B3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82F3B4333865A3ABDED731A3 /* SettingsView.swift */; };
 		BCA431840666D993AF1A700A /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = D0B6C86BEF9143E9BCEC2BE1 /* Starscream */; };
+		C1A6994A79F13D39CF7A6691 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6281C5C4478788699F815620 /* SessionDetailView.swift */; };
 		C1D2AF666B90D25E0C08C4BF /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21CA524CCE9E69648B4A72A8 /* SettingsWindowController.swift */; };
 		CAF7AC115BCF92DEC21FFCB2 /* MiniWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F341C141A143DA85F4DC6E1 /* MiniWidgetView.swift */; };
 		CB82055FF93F65006B55C5C7 /* RTIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA159B350466B311F95C6E82 /* RTIApp.swift */; };
 		D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541406A822542146389D5B7E /* Secrets.swift */; };
+		D56CF6E647EE493B3AC093CA /* SummaryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43DD3812D8E05D29D6E39AB0 /* SummaryController.swift */; };
 		DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
 		E99A2E3907A22BFFDAA70011 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1739AC4265146BE278C238F /* KeychainStore.swift */; };
 		EAEDDC7CEAF3308781A40483 /* KimiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A06B1213AE703E8255C169 /* KimiClient.swift */; };
@@ -52,6 +56,7 @@
 		06A06B1213AE703E8255C169 /* KimiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KimiClient.swift; sourceTree = "<group>"; };
 		0F341C141A143DA85F4DC6E1 /* MiniWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniWidgetView.swift; sourceTree = "<group>"; };
 		0F81C4D0121A52619B08FC56 /* ResponseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseView.swift; sourceTree = "<group>"; };
+		1275DFE4AE979EA226EC9A7A /* SessionSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSummary.swift; sourceTree = "<group>"; };
 		166C8635ECAD7923D5605360 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		21CA524CCE9E69648B4A72A8 /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
 		22E402C93F783C8020AFDCDE /* ScreenshotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotManager.swift; sourceTree = "<group>"; };
@@ -60,15 +65,18 @@
 		39B314C441C040CC10C72B28 /* OverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowController.swift; sourceTree = "<group>"; };
 		3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		3C0368F1D29012BA31260AFB /* MiniWidgetWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniWidgetWindowController.swift; sourceTree = "<group>"; };
+		43DD3812D8E05D29D6E39AB0 /* SummaryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryController.swift; sourceTree = "<group>"; };
 		475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
 		49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinator.swift; sourceTree = "<group>"; };
 		541406A822542146389D5B7E /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		54F657FFCA8180572D204BFC /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
+		6281C5C4478788699F815620 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotkey.swift; sourceTree = "<group>"; };
 		7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEntry.swift; sourceTree = "<group>"; };
 		80B860CBE5C88CADCC97EC4D /* TranscriptRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRowView.swift; sourceTree = "<group>"; };
 		82F3B4333865A3ABDED731A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		857295A827688BF13CBC8A7E /* WAVWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVWriter.swift; sourceTree = "<group>"; };
+		869AD9A19D38A8A7501920EF /* SessionDetailWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailWindowController.swift; sourceTree = "<group>"; };
 		906F7DCF321C17392E3DA594 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
 		9AD2D289259AD477B911940D /* LLMController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMController.swift; sourceTree = "<group>"; };
 		9B43315BBB57BE38A913848E /* SonioxProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxProtocol.swift; sourceTree = "<group>"; };
@@ -140,6 +148,7 @@
 				8FEE3FA4D78A07D0B0C1F862 /* Session */,
 				1986E83FB3008C46AB029C74 /* Settings */,
 				D09F915A48541D3D3BECCBB4 /* Soniox */,
+				970DE934759A39E9AF17BAE6 /* Summary */,
 				86CDB24EE24962E63F12AE22 /* Support */,
 				D22562E9A8C896A2CCAAB90B /* UI */,
 				500D82A363AF85F130D5729B /* Widgets */,
@@ -245,12 +254,21 @@
 			);
 			sourceTree = "<group>";
 		};
+		970DE934759A39E9AF17BAE6 /* Summary */ = {
+			isa = PBXGroup;
+			children = (
+				43DD3812D8E05D29D6E39AB0 /* SummaryController.swift */,
+			);
+			path = Summary;
+			sourceTree = "<group>";
+		};
 		C189AA89598484AE8E84DC55 /* Models */ = {
 			isa = PBXGroup;
 			children = (
 				BF2889365203C94D35E404CD /* ChatMessage.swift */,
 				906F7DCF321C17392E3DA594 /* Mode.swift */,
 				166C8635ECAD7923D5605360 /* Session.swift */,
+				1275DFE4AE979EA226EC9A7A /* SessionSummary.swift */,
 				7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */,
 			);
 			path = Models;
@@ -270,8 +288,18 @@
 			children = (
 				1CE76FE000C93722B12D033C /* DebugConsole */,
 				25AC245E8735D765951A3A63 /* Overlay */,
+				D69AC42C5BA3AB66012A8255 /* SessionDetail */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		D69AC42C5BA3AB66012A8255 /* SessionDetail */ = {
+			isa = PBXGroup;
+			children = (
+				6281C5C4478788699F815620 /* SessionDetailView.swift */,
+				869AD9A19D38A8A7501920EF /* SessionDetailWindowController.swift */,
+			);
+			path = SessionDetail;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -368,10 +396,14 @@
 				D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */,
 				66AE173856AED09FC72A2D58 /* Session.swift in Sources */,
 				32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */,
+				C1A6994A79F13D39CF7A6691 /* SessionDetailView.swift in Sources */,
+				1CC17C00D5AA7311B31F98F3 /* SessionDetailWindowController.swift in Sources */,
+				0E94DDBB01100ED1B197831A /* SessionSummary.swift in Sources */,
 				BC57220A05F60410ED96C0B3 /* SettingsView.swift in Sources */,
 				C1D2AF666B90D25E0C08C4BF /* SettingsWindowController.swift in Sources */,
 				DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */,
 				2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */,
+				D56CF6E647EE493B3AC093CA /* SummaryController.swift in Sources */,
 				6D619EF785EABFE337BBBB56 /* TopWidgetView.swift in Sources */,
 				5D53AB334A181274357817CD /* TopWidgetWindowController.swift in Sources */,
 				A9E5A4F3E878C5FF3DC90168 /* TranscriptEntry.swift in Sources */,

@@ -87,6 +87,20 @@ final class RTIDatabase {
                 t.add(column: "reference_text", .text)
             }
         }
+        m.registerMigration("v4_session_summaries") { db in
+            try db.create(table: "session_summaries") { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull().unique().references("sessions", onDelete: .cascade)
+                t.column("summary_text", .text).notNull()
+                t.column("action_items", .text)
+                t.column("key_topics", .text)
+                t.column("decisions", .text)
+                t.column("follow_ups", .text)
+                t.column("raw_response", .text)
+                t.column("created_at", .datetime).notNull()
+                t.column("regenerated_at", .datetime)
+            }
+        }
         return m
     }
 }
