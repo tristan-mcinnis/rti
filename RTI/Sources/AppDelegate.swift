@@ -58,6 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hk.register(keyCode: UInt32(kVK_ANSI_H), modifiers: UInt32(cmdKey)) {
             ScreenshotManager.shared.captureAndAttach()
         }
+        hk.register(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(cmdKey | optionKey)) { [weak self] in
+            self?.debugConsole?.toggle()
+        }
         hotkey = hk
 
         SessionCoordinator.shared.$isRunning
@@ -123,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         detailItem.target = self
         menu.addItem(detailItem)
 
-        let consoleItem = NSMenuItem(title: "Show Live Transcript", action: #selector(showDebugConsole), keyEquivalent: "")
+        let consoleItem = NSMenuItem(title: "Show Live Transcript (⌘⌥T)", action: #selector(showDebugConsole), keyEquivalent: "")
         consoleItem.target = self
         menu.addItem(consoleItem)
 

@@ -168,14 +168,17 @@ struct SessionDetailView: View {
                 VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxl) {
                     let summaryParagraph = extractSummarySection(summary.rawResponse ?? summary.summaryText)
                     if !summaryParagraph.isEmpty {
-                        summaryBlock(title: "Summary", icon: "text.alignleft", content: summaryParagraph)
+                        summaryBlock(title: "Summary", content: summaryParagraph)
                     }
-                    summarySection(title: "Key Topics", content: summary.keyTopics, icon: "lightbulb")
-                    summarySection(title: "Decisions Made", content: summary.decisions, icon: "hammer")
-                    summarySection(title: "Action Items", content: summary.actionItems, icon: "checklist")
-                    // followUps contains combined Open Questions + Next Steps
+                    summarySection(title: "Key Topics", content: summary.keyTopics)
+                    summarySection(title: "Decisions Made", content: summary.decisions)
+                    summarySection(title: "Action Items", content: summary.actionItems)
+                    // followUps is markdown containing "## Open Questions" + "## Next Steps".
+                    // Split into the same heading-styled blocks rather than dumping raw markdown.
                     if let followUps = summary.followUps {
-                        combinedFollowUpsBlock(followUps)
+                        ForEach(splitFollowUps(followUps), id: \.title) { section in
+                            summarySection(title: section.title, content: section.body)
+                        }
                     }
                 }
                 .padding(.horizontal, RTIDesign.Spacing.xl)
@@ -488,10 +491,11 @@ struct SessionDetailView: View {
 
     // MARK: - Helpers
 
-    private func summaryBlock(title: String, icon: String, content: String) -> some View {
+    private func summaryBlock(title: String, content: String) -> some View {
         VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm) {
-            Label(title, systemImage: icon)
+            Text(title)
                 .font(RTIDesign.Font.heading)
+                .foregroundStyle(RTIDesign.Color.textPrimary)
             let attributed = (try? AttributedString(markdown: content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content)
             Text(attributed)
                 .font(RTIDesign.Font.body)
@@ -502,7 +506,7 @@ struct SessionDetailView: View {
         }
     }
 
-    private func summarySection(title: String, content: String?, icon: String) -> some View {
+    private func summarySection(title: String, content: String?) -> some View {
         guard let raw = content else { return AnyView(EmptyView()) }
         // Normalize so the LLM saying "None.", "none", "(none)" or "*None*"
         // all collapse to the same empty signal.
@@ -521,8 +525,9 @@ struct SessionDetailView: View {
         let content = raw
         return AnyView(
             VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm) {
-                Label(title, systemImage: icon)
+                Text(title)
                     .font(RTIDesign.Font.heading)
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
                 let attributed = (try? AttributedString(markdown: content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content)
                 Text(attributed)
                     .font(RTIDesign.Font.body)
@@ -534,14 +539,41 @@ struct SessionDetailView: View {
         )
     }
 
-    private func combinedFollowUpsBlock(_ content: String) -> some View {
-        let attributed = (try? AttributedString(markdown: content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content)
-        return Text(attributed)
-            .font(RTIDesign.Font.body)
-            .foregroundStyle(RTIDesign.Color.textPrimary)
-            .lineSpacing(4)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private struct FollowUpSection {
+        let title: String
+        let body: String
+    }
+
+    /// followUps comes back as concatenated markdown like:
+    ///   ## Open Questions
+    ///   - foo
+    ///   ## Next Steps
+    ///   - bar
+    /// Split it on `## ` headings so each lands in its own styled block.
+    private func splitFollowUps(_ raw: String) -> [FollowUpSection] {
+        let lines = raw.components(separatedBy: "\n")
+        var sections: [FollowUpSection] = []
+        var currentTitle: String?
+        var currentBody: [String] = []
+        func flush() {
+            if let title = currentTitle {
+                let body = currentBody.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                sections.append(FollowUpSection(title: title, body: body))
+            }
+            currentTitle = nil
+            currentBody = []
+        }
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("## ") {
+                flush()
+                currentTitle = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            } else if currentTitle != nil {
+                currentBody.append(line)
+            }
+        }
+        flush()
+        return sections
     }
 
     private func extractSummarySection(_ text: String) -> String {
@@ -587,6 +619,11 @@ struct SessionDetailView: View {
         // Hard cap so a pasted essay doesn't bounce off DeepSeek as a 400.
         let capped = question.count > 4000 ? String(question.prefix(4000)) : question
         qaInput = ""
+        // If the user typed a question while looking at Summary/Transcript/Usage,
+        // jump them to the Q&A tab so they actually see the answer stream in.
+        if selectedTab != .qa {
+            withAnimation(.easeInOut(duration: 0.18)) { selectedTab = .qa }
+        }
         Task {
             await qaController.ask(question: capped, sessionId: sessionId)
         }

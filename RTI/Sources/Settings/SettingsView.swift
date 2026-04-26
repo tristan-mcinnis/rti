@@ -324,6 +324,7 @@ private struct GeneralTab: View {
                 hotkeyRow("Start / stop session", "⌘ ⇧ R")
                 hotkeyRow("Assist (from any app)", "⌘ ↵")
                 hotkeyRow("Attach screenshot", "⌘ H")
+                hotkeyRow("Show / hide live transcript", "⌘ ⌥ T")
             }
             .font(.system(size: 12))
             .foregroundStyle(.secondary)

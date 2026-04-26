@@ -110,6 +110,7 @@ struct AssistantInputView: View {
                 } label: {
                     Label("Show live transcript", systemImage: "waveform")
                 }
+                .keyboardShortcut("t", modifiers: [.command, .option])
             }
 
             Menu {

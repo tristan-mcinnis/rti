@@ -28,4 +28,12 @@ final class DebugConsoleWindowController {
         NSApp.activate(ignoringOtherApps: true)
         window = w
     }
+
+    func toggle() {
+        if let window = window, window.isVisible, window.isKeyWindow {
+            window.orderOut(nil)
+        } else {
+            show()
+        }
+    }
 }

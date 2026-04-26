@@ -9,28 +9,38 @@ struct TopWidgetView: View {
     private let tick = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        HStack(spacing: 8) {
-            recordButton
-            if let label = timerLabel {
-                Text(label)
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(coordinator.isRunning ? 0.95 : 0.55))
-                    .monospacedDigit()
-                    .padding(.trailing, 6)
-                    .help(coordinator.isRunning ? "Recording — elapsed time" : "Last session duration")
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                recordButton
+                if coordinator.isRunning, let label = timerLabel {
+                    Text(label)
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .monospacedDigit()
+                        .kerning(0.2)
+                        .padding(.trailing, 6)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .leading)),
+                            removal: .opacity
+                        ))
+                        .help("Recording — elapsed time")
+                }
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.black.opacity(0.6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+            )
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black.opacity(0.6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-        )
         .padding(4)
+        .animation(.easeInOut(duration: 0.22), value: coordinator.isRunning)
         .onReceive(tick) { _ in
             if coordinator.isRunning { now = Date() }
         }
@@ -38,15 +48,7 @@ struct TopWidgetView: View {
 
     private var timerLabel: String? {
         guard let started = coordinator.startedAt else { return nil }
-        let endDate: Date
-        if coordinator.isRunning {
-            endDate = now
-        } else if let ended = coordinator.endedAt {
-            endDate = ended
-        } else {
-            return nil
-        }
-        return Self.format(endDate.timeIntervalSince(started))
+        return Self.format(now.timeIntervalSince(started))
     }
 
     static func format(_ interval: TimeInterval) -> String {

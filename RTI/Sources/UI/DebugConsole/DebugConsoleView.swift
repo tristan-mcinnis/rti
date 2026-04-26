@@ -1,9 +1,12 @@
+import AppKit
 import SwiftUI
 
 struct DebugConsoleView: View {
     @EnvironmentObject var coordinator: SessionCoordinator
     @State private var elapsed: TimeInterval = 0
     @State private var timer: Timer?
+    @State private var copedFlash: String?
+    @State private var hoveredId: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,12 +40,25 @@ struct DebugConsoleView: View {
                     .foregroundStyle(.red)
                     .lineLimit(1)
             }
+            Button(action: copyAll) {
+                HStack(spacing: 4) {
+                    Image(systemName: copedFlash == "all" ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11, weight: .medium))
+                    Text(copedFlash == "all" ? "Copied" : "Copy")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(paragraphs.isEmpty)
+            .help("Copy the full live transcript")
         }
     }
 
     private struct LiveParagraph: Identifiable {
         let id: UUID
         let speakerId: String
+        let startMs: Int
         let text: String
     }
 
@@ -56,6 +72,7 @@ struct DebugConsoleView: View {
                 let merged = LiveParagraph(
                     id: last.id,
                     speakerId: last.speakerId,
+                    startMs: last.startMs,
                     text: last.text + " " + entry.text
                 )
                 out.removeLast()
@@ -64,6 +81,7 @@ struct DebugConsoleView: View {
                 out.append(LiveParagraph(
                     id: entry.id,
                     speakerId: entry.speakerId,
+                    startMs: entry.startMs,
                     text: entry.text
                 ))
             }
@@ -107,15 +125,66 @@ struct DebugConsoleView: View {
     @ViewBuilder
     private func paragraphRow(_ p: LiveParagraph) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(speakerDisplayName(p.speakerId))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Text(speakerDisplayName(p.speakerId))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(timeLabel(ms: p.startMs))
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                if hoveredId == p.id {
+                    Button(action: { copyParagraph(p) }) {
+                        Image(systemName: copedFlash == p.id.uuidString ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy this paragraph")
+                }
+            }
             Text(p.text.trimmingCharacters(in: .whitespaces))
                 .font(.system(size: 14))
                 .lineSpacing(3)
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .contentShape(Rectangle())
+        .onHover { inside in hoveredId = inside ? p.id : (hoveredId == p.id ? nil : hoveredId) }
+    }
+
+    private func timeLabel(ms: Int) -> String {
+        let total = max(0, ms / 1000)
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        return String(format: "%d:%02d", m, s)
+    }
+
+    private func copyAll() {
+        let text = paragraphs.map {
+            "[\(timeLabel(ms: $0.startMs))] \(speakerDisplayName($0.speakerId)): \($0.text.trimmingCharacters(in: .whitespaces))"
+        }.joined(separator: "\n\n")
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        flashCopied("all")
+    }
+
+    private func copyParagraph(_ p: LiveParagraph) {
+        let text = "[\(timeLabel(ms: p.startMs))] \(speakerDisplayName(p.speakerId)): \(p.text.trimmingCharacters(in: .whitespaces))"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        flashCopied(p.id.uuidString)
+    }
+
+    private func flashCopied(_ key: String) {
+        copedFlash = key
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            await MainActor.run { if copedFlash == key { copedFlash = nil } }
         }
     }
 
