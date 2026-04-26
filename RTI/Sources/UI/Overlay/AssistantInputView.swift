@@ -5,6 +5,8 @@ struct AssistantInputView: View {
 
     @State private var input: String = ""
     @ObservedObject private var llm = LLMController.shared
+    @ObservedObject private var modes = ModeStore.shared
+    @ObservedObject private var session = SessionCoordinator.shared
 
     var body: some View {
         VStack(spacing: 10) {
@@ -41,15 +43,77 @@ struct AssistantInputView: View {
     }
 
     private var moreDots: some View {
-        Button(action: onOpenSettings) {
+        Menu {
+            Section("Keybinds") {
+                Button {
+                    NotificationCenter.default.post(name: .rtiToggleOverlay, object: nil)
+                } label: {
+                    Label("Show / hide overlay", systemImage: "rectangle.dashed")
+                }
+                .keyboardShortcut("\\", modifiers: .command)
+
+                Button {
+                    LLMController.shared.sendAssist()
+                } label: {
+                    Label("Assist", systemImage: "sparkles")
+                }
+                .keyboardShortcut(.return, modifiers: .command)
+
+                Button {
+                    NotificationCenter.default.post(name: .rtiClearChat, object: nil)
+                } label: {
+                    Label("Clear chat", systemImage: "eraser")
+                }
+
+                Button {
+                    SessionCoordinator.shared.toggleSession()
+                } label: {
+                    Label(session.isRunning ? "Stop session" : "Start session",
+                          systemImage: session.isRunning ? "stop.circle" : "mic")
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Button {
+                    ScreenshotManager.shared.captureAndAttach()
+                } label: {
+                    Label("Attach screenshot", systemImage: "camera.viewfinder")
+                }
+                .keyboardShortcut("h", modifiers: .command)
+            }
+
+            Menu {
+                ForEach(modes.modes) { mode in
+                    Button {
+                        modes.activeModeId = mode.id
+                    } label: {
+                        if mode.id == modes.activeModeId {
+                            Label(mode.name, systemImage: "checkmark")
+                        } else {
+                            Text(mode.name)
+                        }
+                    }
+                }
+            } label: {
+                Label("Modes", systemImage: "square.stack.3d.up")
+            }
+
+            Divider()
+
+            Button(action: onOpenSettings) {
+                Label("Settings…", systemImage: "gearshape")
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.5))
                 .frame(width: 28, height: 26)
                 .background(Capsule().fill(Color.white.opacity(0.06)))
         }
-        .buttonStyle(.plain)
-        .help("Open Settings")
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: 28)
+        .help("Quick actions and settings")
     }
 
     private var smartPill: some View {

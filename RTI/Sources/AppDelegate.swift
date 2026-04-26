@@ -73,6 +73,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: .openSessionDetail,
             object: nil
         )
+        // Posted from the overlay's ellipsis menu so AppDelegate stays the
+        // single owner of the OverlayWindowController and the clear-chat
+        // confirmation flow.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(toggleOverlay),
+            name: .rtiToggleOverlay,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(clearChat),
+            name: .rtiClearChat,
+            object: nil
+        )
 
         if CredentialStore.kimi == nil {
             settingsWindow?.show()

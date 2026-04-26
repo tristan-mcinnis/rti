@@ -3,6 +3,8 @@ import SwiftUI
 
 extension Notification.Name {
     static let openSessionDetail = Notification.Name("rti.openSessionDetail")
+    static let rtiToggleOverlay = Notification.Name("rti.toggleOverlay")
+    static let rtiClearChat = Notification.Name("rti.clearChat")
 }
 
 struct SessionHistoryView: View {
