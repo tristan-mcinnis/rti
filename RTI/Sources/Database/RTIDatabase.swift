@@ -43,7 +43,12 @@ final class RTIDatabase {
         try fm.createDirectory(at: rtiDir, withIntermediateDirectories: true)
 
         let dbURL = rtiDir.appendingPathComponent("rti.db")
-        self.pool = try DatabasePool(path: dbURL.path)
+        // Wait up to 5s on a locked DB before throwing instead of failing
+        // immediately. The menubar opening (rebuildRecentSessionsSubmenu) and
+        // the live transcript writer can briefly contend during a session.
+        var config = Configuration()
+        config.busyMode = .timeout(5)
+        self.pool = try DatabasePool(path: dbURL.path, configuration: config)
 
         try Self.migrator().migrate(pool)
     }

@@ -39,8 +39,8 @@ final class CalendarManager: ObservableObject {
             calendars: calendars
         )
         let events = store.events(matching: predicate)
-            .filter { !$0.isAllDay }
-            .sorted { $0.startDate < $1.startDate }
+            .filter { !$0.isAllDay && $0.startDate != nil }
+            .sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
 
         return events.first
     }

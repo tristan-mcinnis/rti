@@ -12,6 +12,7 @@ private final class KeyableOverlayPanel: NSPanel {
 
 final class OverlayWindowController {
     private let window: NSPanel
+    private var frameSaveWorkItem: DispatchWorkItem?
 
     init(onOpenSettings: @escaping () -> Void = {}) {
         let panel = KeyableOverlayPanel(
@@ -96,10 +97,17 @@ final class OverlayWindowController {
     // MARK: - Frame persistence
 
     private func saveFrame() {
-        guard window.isVisible else { return }
-        let frame = window.frame
-        let dict: [String: CGFloat] = ["x": frame.origin.x, "y": frame.origin.y, "w": frame.width, "h": frame.height]
-        UserDefaults.standard.set(dict, forKey: savedFrameKey)
+        // Debounce: didMoveNotification fires per pixel of drag. Without this
+        // we'd hit UserDefaults dozens of times per second during a drag.
+        frameSaveWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.window.isVisible else { return }
+            let frame = self.window.frame
+            let dict: [String: CGFloat] = ["x": frame.origin.x, "y": frame.origin.y, "w": frame.width, "h": frame.height]
+            UserDefaults.standard.set(dict, forKey: savedFrameKey)
+        }
+        frameSaveWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)
     }
 
     private static func loadSavedFrame() -> NSRect? {
