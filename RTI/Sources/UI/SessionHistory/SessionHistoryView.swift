@@ -88,11 +88,32 @@ struct SessionHistoryView: View {
                             .contextMenu { contextMenu(for: result.session) }
                     }
                 } else {
-                    ForEach(sortedSessions) { session in
-                        sessionRow(session, snippet: nil)
-                            .contentShape(Rectangle())
-                            .onTapGesture { openSession(session.id) }
-                            .contextMenu { contextMenu(for: session) }
+                    // Group only on the default Newest sort, where chronological
+                    // bands map cleanly to recency. Other sort orders ignore
+                    // grouping and just show the flat list.
+                    if sortOrder == .newest {
+                        ForEach(groupedSessions, id: \.label) { group in
+                            Section {
+                                ForEach(group.sessions) { session in
+                                    sessionRow(session, snippet: nil)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture { openSession(session.id) }
+                                        .contextMenu { contextMenu(for: session) }
+                                }
+                            } header: {
+                                Text(group.label)
+                                    .font(RTIDesign.Font.caption)
+                                    .foregroundStyle(RTIDesign.Color.textTertiary)
+                                    .textCase(nil)
+                            }
+                        }
+                    } else {
+                        ForEach(sortedSessions) { session in
+                            sessionRow(session, snippet: nil)
+                                .contentShape(Rectangle())
+                                .onTapGesture { openSession(session.id) }
+                                .contextMenu { contextMenu(for: session) }
+                        }
                     }
                 }
             }
@@ -112,6 +133,49 @@ struct SessionHistoryView: View {
         case .longest:
             return sessions.sorted { sessionDuration($0) > sessionDuration($1) }
         }
+    }
+
+    private struct SessionGroup {
+        let label: String
+        let sessions: [Session]
+    }
+
+    private var groupedSessions: [SessionGroup] {
+        let cal = Calendar.current
+        let now = Date()
+        let startOfToday = cal.startOfDay(for: now)
+        let startOfYesterday = cal.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
+        let startOfWeek = cal.date(byAdding: .day, value: -7, to: startOfToday) ?? startOfToday
+        let startOfMonth = cal.date(byAdding: .day, value: -30, to: startOfToday) ?? startOfToday
+
+        var today: [Session] = []
+        var yesterday: [Session] = []
+        var thisWeek: [Session] = []
+        var thisMonth: [Session] = []
+        var earlier: [Session] = []
+
+        for s in sortedSessions {
+            switch s.startedAt {
+            case startOfToday...:
+                today.append(s)
+            case startOfYesterday..<startOfToday:
+                yesterday.append(s)
+            case startOfWeek..<startOfYesterday:
+                thisWeek.append(s)
+            case startOfMonth..<startOfWeek:
+                thisMonth.append(s)
+            default:
+                earlier.append(s)
+            }
+        }
+
+        var groups: [SessionGroup] = []
+        if !today.isEmpty { groups.append(.init(label: "Today", sessions: today)) }
+        if !yesterday.isEmpty { groups.append(.init(label: "Yesterday", sessions: yesterday)) }
+        if !thisWeek.isEmpty { groups.append(.init(label: "This Week", sessions: thisWeek)) }
+        if !thisMonth.isEmpty { groups.append(.init(label: "This Month", sessions: thisMonth)) }
+        if !earlier.isEmpty { groups.append(.init(label: "Earlier", sessions: earlier)) }
+        return groups
     }
 
     private func sessionRow(_ session: Session, snippet: String?) -> some View {

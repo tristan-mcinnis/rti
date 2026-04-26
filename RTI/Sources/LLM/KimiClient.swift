@@ -11,6 +11,11 @@ final class KimiClient {
     private let baseURL: URL
     private let session: URLSession
 
+    /// Fires on the main thread for every reasoning_content chunk in smart
+    /// mode. Callers that don't care can leave this nil. Used by
+    /// LLMController to drive the "reasoning…" indicator.
+    var onReasoning: ((String) -> Void)?
+
     init(baseURL: URL) {
         self.baseURL = baseURL
         let config = URLSessionConfiguration.default
@@ -86,6 +91,10 @@ final class KimiClient {
                         }
                         do {
                             let chunk = try decoder.decode(KimiChatChunk.self, from: data)
+                            if let reasoning = chunk.choices.first?.delta?.reasoning_content, !reasoning.isEmpty {
+                                let cb = self.onReasoning
+                                DispatchQueue.main.async { cb?(reasoning) }
+                            }
                             if let delta = chunk.choices.first?.delta?.content, !delta.isEmpty {
                                 deltaCount += 1
                                 continuation.yield(delta)

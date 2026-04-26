@@ -7,6 +7,21 @@ struct ResponseView: View {
     var errorIsAuth: Bool = false
     var onOpenSettings: () -> Void = {}
 
+    @ObservedObject private var llm = LLMController.shared
+    @ObservedObject private var sessionCoord = SessionCoordinator.shared
+
+    private var streamingPlaceholderLabel: String {
+        if llm.reasoning { return "reasoning…" }
+        if llm.smartMode { return "thinking…" }
+        return "responding…"
+    }
+
+    private var displayedError: String? {
+        if let e = error, !e.isEmpty { return e }
+        if let s = sessionCoord.lastError, !s.isEmpty { return s }
+        return nil
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -37,9 +52,9 @@ struct ResponseView: View {
                             .id(entry.id)
                     }
 
-                    if let error, !error.isEmpty {
+                    if let displayedError, !displayedError.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(error)
+                            Text(displayedError)
                                 .font(.system(size: 12))
                                 .foregroundStyle(.red.opacity(0.9))
                                 .textSelection(.enabled)
@@ -131,7 +146,7 @@ struct ResponseView: View {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.7)
-                Text(LLMController.shared.smartMode ? "thinking…" : "responding…")
+                Text(streamingPlaceholderLabel)
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.55))
             }

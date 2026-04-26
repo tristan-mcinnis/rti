@@ -16,6 +16,7 @@ final class LLMController: ObservableObject {
 
     @Published private(set) var entries: [ChatEntry] = []
     @Published private(set) var streaming = false
+    @Published private(set) var reasoning = false
     @Published private(set) var lastError: String?
     @Published private(set) var lastErrorIsAuth: Bool = false
     @Published private(set) var pendingScreenContext: String?
@@ -45,6 +46,9 @@ final class LLMController: ObservableObject {
     private init() {
         self.smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
         self.client = KimiClient(baseURL: Secrets.kimiBaseURL)
+        self.client.onReasoning = { [weak self] _ in
+            self?.reasoning = true
+        }
     }
 
     func sendAskAnything(_ input: String) {
@@ -204,12 +208,15 @@ final class LLMController: ObservableObject {
         entries.append(assistantEntry)
 
         streaming = true
+        reasoning = false
         let thisEntryID = assistantEntry.id
         currentTask = Task { [weak self] in
             guard let self else { return }
             do {
                 for try await delta in client.streamChat(messages: kimiMessages, smart: smartMode) {
                     if Task.isCancelled { return }
+                    // First content delta means reasoning is over.
+                    if self.reasoning { self.reasoning = false }
                     self.appendToStreamingEntry(delta)
                 }
             } catch {
@@ -234,6 +241,7 @@ final class LLMController: ObservableObject {
             }
             guard self.streamingEntryID == thisEntryID else { return }
             self.streaming = false
+            self.reasoning = false
             self.pruneTrailingEmptyAssistant()
             self.streamingEntryID = nil
 
