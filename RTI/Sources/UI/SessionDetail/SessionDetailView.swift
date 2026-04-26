@@ -92,9 +92,24 @@ struct SessionDetailView: View {
                     Text("·")
                     Text(formatDuration(endedAt.timeIntervalSince(session.startedAt)))
                 } else {
-                    Text("·")
-                    Text("Active")
-                        .foregroundStyle(RTIDesign.Color.accentText)
+                    // Live ticker via TimelineView so the elapsed time updates
+                    // without a manual Timer + @State. Refreshes every second.
+                    TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                        HStack(spacing: 6) {
+                            Text("·")
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 7, height: 7)
+                                Text("Active")
+                                    .foregroundStyle(RTIDesign.Color.accentText)
+                                Text("·")
+                                Text(formatDuration(ctx.date.timeIntervalSince(session.startedAt)))
+                                    .monospacedDigit()
+                                    .foregroundStyle(RTIDesign.Color.accentText)
+                            }
+                        }
+                    }
                 }
                 if let modeId = session.modeId,
                    let mode = ModeStore.shared.modes.first(where: { $0.id == modeId }) {

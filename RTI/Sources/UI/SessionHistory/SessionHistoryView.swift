@@ -200,12 +200,20 @@ struct SessionHistoryView: View {
                     .foregroundStyle(RTIDesign.Color.textPrimary)
                 Spacer()
                 if session.id == currentSessionId, isCurrentSessionActive {
-                    Text("Active")
+                    TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 7, height: 7)
+                            Text("Active · \(liveDurationText(start: session.startedAt, now: ctx.date))")
+                                .monospacedDigit()
+                        }
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(RTIDesign.Color.chipActiveText)
                         .padding(.horizontal, 10)
                         .frame(height: 24)
                         .background(RTIDesign.Color.chipActiveBg, in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
             }
             HStack(spacing: 6) {
@@ -258,6 +266,15 @@ struct SessionHistoryView: View {
         let mins = Int(duration) / 60
         let secs = Int(duration) % 60
         return mins > 0 ? "\(mins)m \(secs)s" : "\(secs)s"
+    }
+
+    private func liveDurationText(start: Date, now: Date) -> String {
+        let total = max(0, Int(now.timeIntervalSince(start)))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        return String(format: "%d:%02d", m, s)
     }
 
     private func modeName(for session: Session) -> String? {
