@@ -28,5 +28,9 @@ struct KimiChatChunk: Decodable {
     struct Delta: Decodable {
         let content: String?
         let role: String?
+        // Smart mode (kimi-k2.6) streams thinking output via reasoning_content.
+        // We don't display it, but decoding it explicitly stops the stream
+        // parser from logging a decode error on every reasoning chunk.
+        let reasoning_content: String?
     }
 }

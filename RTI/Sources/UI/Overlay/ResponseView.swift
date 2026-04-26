@@ -38,12 +38,20 @@ struct ResponseView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .onChange(of: entries.last?.text) { _, _ in
-                if let lastId = entries.last?.id {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo(lastId, anchor: .bottom)
-                    }
+            // Drive scroll-to-bottom from the entry id (changes once per turn)
+            // plus a low-rate timer while streaming. Watching `text` directly
+            // fires multiple times per frame during a fast SSE stream and
+            // triggers SwiftUI's "tried to update multiple times per frame"
+            // warning.
+            .onChange(of: entries.last?.id) { _, _ in
+                guard let lastId = entries.last?.id else { return }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo(lastId, anchor: .bottom)
                 }
+            }
+            .onReceive(Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()) { _ in
+                guard streaming, let lastId = entries.last?.id else { return }
+                proxy.scrollTo(lastId, anchor: .bottom)
             }
         }
     }

@@ -9,9 +9,16 @@ enum KimiError: Error {
 
 final class KimiClient {
     private let baseURL: URL
+    private let session: URLSession
 
     init(baseURL: URL) {
         self.baseURL = baseURL
+        let config = URLSessionConfiguration.default
+        // Per-request timeout is set on the URLRequest below; resource timeout
+        // is the upper bound on the entire transfer including the SSE stream,
+        // so it must be long enough to cover smart-mode reasoning + content.
+        config.timeoutIntervalForResource = 300
+        self.session = URLSession(configuration: config)
     }
 
     private var apiKey: String { Secrets.kimiAPIKey }
@@ -37,10 +44,12 @@ final class KimiClient {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.httpBody = try JSONEncoder().encode(body)
-                    request.timeoutInterval = 60
+                    // Smart mode runs reasoning before any content, so the
+                    // first byte can take much longer to arrive than turbo.
+                    request.timeoutInterval = smart ? 120 : 60
 
                     NSLog("[RTI] KimiClient: POST \(request.url?.absoluteString ?? "?") model=\(model) messages=\(messages.count)")
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else {
                         throw KimiError.badResponse
                     }
@@ -69,6 +78,12 @@ final class KimiClient {
                             return
                         }
                         guard let data = payload.data(using: .utf8) else { continue }
+                        // Some servers send {"error": {...}} mid-stream instead of [DONE].
+                        // Surface that to the caller instead of silently swallowing it.
+                        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                           let err = obj["error"] {
+                            throw KimiError.httpError(0, "Kimi stream error: \(err)")
+                        }
                         do {
                             let chunk = try decoder.decode(KimiChatChunk.self, from: data)
                             if let delta = chunk.choices.first?.delta?.content, !delta.isEmpty {
