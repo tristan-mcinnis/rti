@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRDB
 
@@ -10,7 +11,24 @@ final class RTIDatabase {
         do {
             return try RTIDatabase()
         } catch {
-            fatalError("RTIDatabase init failed: \(error)")
+            NSLog("[RTI] RTIDatabase init failed: \(error)")
+            let alert = NSAlert()
+            alert.messageText = "RTI couldn't open its database"
+            alert.informativeText = """
+            \(error)
+
+            RTI will quit. If this persists, remove the database file at:
+            ~/Library/Application Support/RTI/rti.db
+            (this will erase your session history).
+            """
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: "Quit")
+            alert.runModal()
+            NSApp.terminate(nil)
+            // NSApp.terminate is async; block here so callers don't see a phantom value.
+            // The terminate will fire on the next runloop tick.
+            Thread.sleep(forTimeInterval: 60)
+            fatalError("RTIDatabase unrecoverable")
         }
     }()
 

@@ -6,8 +6,9 @@ final class WAVWriter {
     private(set) var url: URL?
 
     static func defaultURL(for sessionId: String) -> URL {
-        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("RTI/sessions", isDirectory: true)
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let base = docs.appendingPathComponent("RTI/sessions", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("\(sessionId).wav")
     }
