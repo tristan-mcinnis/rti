@@ -65,14 +65,19 @@ final class SummaryController: ObservableObject {
 
         // Wrap the work in a tracked Task so cancel() can interrupt it. We
         // still await its value so the caller's `await generateSummary(...)`
-        // semantics are preserved.
+        // semantics are preserved. The closure must return Void (not ()?) so
+        // currentTask's typed Task<Void, Never> matches; weak-self optional-
+        // chaining would have made it Task<()?, Never>.
         let task = Task { [weak self] in
-            await self?._performGeneration(sessionId: sessionId)
+            guard let self else { return }
+            await self._performGeneration(sessionId: sessionId)
         }
         currentTask = task
         await task.value
-        // If cancel() ran, currentTask is already nil; otherwise clear it.
-        if currentTask === task { currentTask = nil }
+        // We're back on MainActor: if cancel() ran during await, it already
+        // nilled currentTask and flipped isGenerating. Idempotent reset is
+        // safe either way.
+        currentTask = nil
         isGenerating = false
     }
 
