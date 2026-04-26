@@ -31,13 +31,28 @@ private struct KeysTab: View {
     @State private var soniox = ""
     @State private var saved = false
 
+    private var isFirstRun: Bool {
+        kimi.isEmpty && soniox.isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("API Keys")
-                .font(.system(size: 16, weight: .semibold))
-            Text("Stored in macOS Keychain. Required to use RTI.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+            if isFirstRun {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Welcome to RTI")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("RTI needs two API keys to work: Kimi (Moonshot) for the LLM, and Soniox for live transcription. Both stay in the macOS Keychain on this Mac.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text("API Keys")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Stored in macOS Keychain. Required to use RTI.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
 
             field("Kimi (Moonshot) API key", "sk-…", $kimi)
             field("Soniox API key", "…", $soniox)
@@ -284,7 +299,20 @@ private struct GeneralTab: View {
             }
 
             Spacer()
+
+            // Version footer — useful when reporting an issue.
+            Text(versionFooter)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
+    }
+
+    private var versionFooter: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "RTI \(version) (\(build))"
     }
 
     private func revealRTIFolder() {
