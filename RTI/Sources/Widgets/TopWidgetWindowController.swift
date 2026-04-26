@@ -6,7 +6,8 @@ final class TopWidgetWindowController {
     private let window: NSPanel
 
     init() {
-        let size = NSSize(width: 64, height: 54)
+        // Wide enough for a "00:00:00" timer label next to the record button.
+        let size = NSSize(width: 130, height: 50)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],

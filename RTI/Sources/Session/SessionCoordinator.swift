@@ -19,6 +19,7 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var currentSessionId: String?
     @Published private(set) var startedAt: Date?
+    @Published private(set) var endedAt: Date?
     @Published private(set) var liveEntries: [LiveEntry] = []
     @Published private(set) var interimLine: String?
     @Published private(set) var lastError: String?
@@ -330,6 +331,7 @@ final class SessionCoordinator: ObservableObject {
 
         currentSessionId = sessionId
         startedAt = now
+        endedAt = nil
         liveEntries = []
         interimLine = nil
         lastFinalizedEndMs = 0
@@ -357,6 +359,9 @@ final class SessionCoordinator: ObservableObject {
         soniox?.disconnect()
         soniox = nil
         wav.close()
+
+        // Capture for the top widget's frozen duration display.
+        self.endedAt = endedAt
 
         do {
             try RTIDatabase.shared.pool.write { db in
