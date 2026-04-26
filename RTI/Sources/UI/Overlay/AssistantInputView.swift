@@ -160,7 +160,7 @@ struct AssistantInputView: View {
         }
         .buttonStyle(.plain)
         .disabled(llm.streaming)
-        .help(llm.smartMode ? "Smart: K2.6 with thinking (slower, deeper)" : "Fast: Turbo (tap to switch to Smart)")
+        .help(llm.smartMode ? "Smart: deepseek-reasoner (slower, deeper)" : "Fast: deepseek-chat (tap to switch to Smart)")
     }
 
     private var sendButton: some View {

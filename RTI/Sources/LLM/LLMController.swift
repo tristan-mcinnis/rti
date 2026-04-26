@@ -24,7 +24,7 @@ final class LLMController: ObservableObject {
         didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
     }
 
-    private let client: KimiClient
+    private let client: DeepSeekClient
     private var currentTask: Task<Void, Never>?
     private var streamingEntryID: UUID?
 
@@ -45,7 +45,7 @@ final class LLMController: ObservableObject {
 
     private init() {
         self.smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
-        self.client = KimiClient(baseURL: Secrets.kimiBaseURL)
+        self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
         self.client.onReasoning = { [weak self] _ in
             self?.reasoning = true
         }
@@ -180,17 +180,17 @@ final class LLMController: ObservableObject {
             return Self.systemPrompt
         }()
 
-        var kimiMessages: [KimiMessage] = [KimiMessage(role: "system", content: basePrompt)]
+        var apiMessages: [DeepSeekMessage] = [DeepSeekMessage(role: "system", content: basePrompt)]
         if let reference = activeMode?.referenceText, !reference.isEmpty {
             let capped = reference.count > 8000 ? String(reference.prefix(8000)) + "\n…[truncated]" : reference
             let modeName = activeMode?.name ?? "active mode"
-            kimiMessages.append(KimiMessage(
+            apiMessages.append(DeepSeekMessage(
                 role: "system",
                 content: "Reference material attached to the active mode '\(modeName)'. Use it when relevant.\n---\n\(capped)\n---"
             ))
         }
         if let screenContext {
-            kimiMessages.append(KimiMessage(
+            apiMessages.append(DeepSeekMessage(
                 role: "system",
                 content: "User attached a screenshot. OCR text from the screen follows. Treat it as what the user is looking at.\n---\n\(screenContext)\n---"
             ))
@@ -198,9 +198,9 @@ final class LLMController: ObservableObject {
         for (idx, entry) in entries.enumerated() {
             let isLatestUser = idx == entries.count - 1 && entry.role == "user"
             let content = isLatestUser ? fullContent : entry.text
-            // Kimi rejects empty-content messages (e.g. a placeholder from a failed prior stream).
+            // DeepSeek rejects empty-content messages (e.g. a placeholder from a failed prior stream).
             if content.isEmpty { continue }
-            kimiMessages.append(KimiMessage(role: entry.role, content: content))
+            apiMessages.append(DeepSeekMessage(role: entry.role, content: content))
         }
 
         let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false)
@@ -213,7 +213,7 @@ final class LLMController: ObservableObject {
         currentTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await delta in client.streamChat(messages: kimiMessages, smart: smartMode) {
+                for try await delta in client.streamChat(messages: apiMessages, smart: smartMode) {
                     if Task.isCancelled { return }
                     // First content delta means reasoning is over.
                     if self.reasoning { self.reasoning = false }
@@ -221,18 +221,18 @@ final class LLMController: ObservableObject {
                 }
             } catch {
                 if Task.isCancelled { return }
-                if let kimi = error as? KimiError {
-                    switch kimi {
+                if let api = error as? DeepSeekError {
+                    switch api {
                     case .unauthorized:
-                        self.lastError = "Kimi rejected the API key (401). Open Settings to paste a valid key."
+                        self.lastError = "DeepSeek rejected the API key (401). Open Settings to paste a valid key."
                         self.lastErrorIsAuth = true
                     case .missingAPIKey:
-                        self.lastError = "No Kimi API key set. Open Settings to add one."
+                        self.lastError = "No DeepSeek API key set. Open Settings to add one."
                         self.lastErrorIsAuth = true
                     case .httpError(let code, let body):
-                        self.lastError = "Kimi error \(code): \(body.prefix(300))"
+                        self.lastError = "DeepSeek error \(code): \(body.prefix(300))"
                     case .badResponse:
-                        self.lastError = "Kimi returned an unexpected response."
+                        self.lastError = "DeepSeek returned an unexpected response."
                     }
                 } else {
                     self.lastError = "\(error)"

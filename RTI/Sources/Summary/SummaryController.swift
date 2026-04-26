@@ -8,11 +8,11 @@ final class SummaryController: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
 
-    private let client: KimiClient
+    private let client: DeepSeekClient
     private var currentTask: Task<Void, Never>?
 
     private init() {
-        self.client = KimiClient(baseURL: Secrets.kimiBaseURL)
+        self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
     }
 
     /// Cancel an in-flight summary generation. Safe to call when nothing is
@@ -101,7 +101,7 @@ final class SummaryController: ObservableObject {
         }
 
         let fullPrompt = Self.summaryPrompt + "\n" + transcript
-        let messages = [KimiMessage(role: "user", content: fullPrompt)]
+        let messages = [DeepSeekMessage(role: "user", content: fullPrompt)]
 
         var fullResponse = ""
         do {

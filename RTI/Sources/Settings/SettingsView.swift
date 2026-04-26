@@ -27,12 +27,12 @@ struct SettingsView: View {
 // MARK: - Keys
 
 private struct KeysTab: View {
-    @State private var kimi = ""
+    @State private var deepseek = ""
     @State private var soniox = ""
     @State private var saved = false
 
     private var isFirstRun: Bool {
-        kimi.isEmpty && soniox.isEmpty
+        deepseek.isEmpty && soniox.isEmpty
     }
 
     var body: some View {
@@ -41,7 +41,7 @@ private struct KeysTab: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Welcome to RTI")
                         .font(.system(size: 18, weight: .semibold))
-                    Text("RTI needs two API keys to work: Kimi (Moonshot) for the LLM, and Soniox for live transcription. Both stay in the macOS Keychain on this Mac.")
+                    Text("RTI needs two API keys to work: DeepSeek for the LLM, and Soniox for live transcription. Both stay in the macOS Keychain on this Mac.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -54,7 +54,7 @@ private struct KeysTab: View {
                     .foregroundStyle(.secondary)
             }
 
-            field("Kimi (Moonshot) API key", "sk-…", $kimi)
+            field("DeepSeek API key", "sk-…", $deepseek)
             field("Soniox API key", "…", $soniox)
 
             HStack {
@@ -66,13 +66,13 @@ private struct KeysTab: View {
                 Spacer()
                 Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(kimi.trimmingCharacters(in: .whitespaces).isEmpty &&
+                    .disabled(deepseek.trimmingCharacters(in: .whitespaces).isEmpty &&
                               soniox.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             Spacer()
         }
         .onAppear {
-            kimi = CredentialStore.kimi ?? ""
+            deepseek = CredentialStore.deepseek ?? ""
             soniox = CredentialStore.soniox ?? ""
         }
     }
@@ -87,9 +87,9 @@ private struct KeysTab: View {
     }
 
     private func save() {
-        let k = kimi.trimmingCharacters(in: .whitespacesAndNewlines)
+        let k = deepseek.trimmingCharacters(in: .whitespacesAndNewlines)
         let s = soniox.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !k.isEmpty { CredentialStore.setKimi(k) }
+        if !k.isEmpty { CredentialStore.setDeepSeek(k) }
         if !s.isEmpty { CredentialStore.setSoniox(s) }
         saved = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
@@ -336,7 +336,7 @@ private struct GeneralTab: View {
 
             Text("Data & Support")
                 .font(.system(size: 13, weight: .medium))
-            Text("All session data — transcripts, audio, chat history, summaries — stays on this Mac. Nothing is uploaded except the prompts you send to Kimi and the audio you stream to Soniox.")
+            Text("All session data — transcripts, audio, chat history, summaries — stays on this Mac. Nothing is uploaded except the prompts you send to DeepSeek and the audio you stream to Soniox.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

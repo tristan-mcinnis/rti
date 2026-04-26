@@ -532,7 +532,7 @@ struct SessionDetailView: View {
     private func submitQA() {
         let question = qaInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
-        // Hard cap so a pasted essay doesn't bounce off Kimi as a 400.
+        // Hard cap so a pasted essay doesn't bounce off DeepSeek as a 400.
         let capped = question.count > 4000 ? String(question.prefix(4000)) : question
         qaInput = ""
         Task {

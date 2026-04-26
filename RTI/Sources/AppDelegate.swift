@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             object: nil
         )
 
-        if CredentialStore.kimi == nil {
+        if CredentialStore.deepseek == nil {
             settingsWindow?.show()
         }
     }

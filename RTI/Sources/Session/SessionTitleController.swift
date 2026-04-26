@@ -8,10 +8,10 @@ final class SessionTitleController: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
 
-    private let client: KimiClient
+    private let client: DeepSeekClient
 
     private init() {
-        self.client = KimiClient(baseURL: Secrets.kimiBaseURL)
+        self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
     }
 
     private static let titlePrompt = """
@@ -62,7 +62,7 @@ final class SessionTitleController: ObservableObject {
             return
         }
 
-        let messages = [KimiMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
+        let messages = [DeepSeekMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
         var fullResponse = ""
 
         do {

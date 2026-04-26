@@ -9,10 +9,10 @@ final class SessionQAController: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var messages: [QAEntry] = []
 
-    private let client: KimiClient
+    private let client: DeepSeekClient
 
     private init() {
-        self.client = KimiClient(baseURL: Secrets.kimiBaseURL)
+        self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
     }
 
     struct QAEntry: Identifiable {
@@ -49,9 +49,9 @@ final class SessionQAController: ObservableObject {
         \(context)
         """
 
-        let kimiMessages = [
-            KimiMessage(role: "system", content: systemPrompt),
-            KimiMessage(role: "user", content: question)
+        let apiMessages = [
+            DeepSeekMessage(role: "system", content: systemPrompt),
+            DeepSeekMessage(role: "user", content: question)
         ]
 
         let assistantEntry = QAEntry(role: "assistant", text: "")
@@ -61,7 +61,7 @@ final class SessionQAController: ObservableObject {
         defer { isGenerating = false }
 
         do {
-            for try await delta in client.streamChat(messages: kimiMessages, smart: false) {
+            for try await delta in client.streamChat(messages: apiMessages, smart: false) {
                 if let idx = messages.firstIndex(where: { $0.id == entryId }) {
                     messages[idx].text += delta
                 }

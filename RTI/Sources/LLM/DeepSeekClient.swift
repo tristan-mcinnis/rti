@@ -1,13 +1,13 @@
 import Foundation
 
-enum KimiError: Error {
+enum DeepSeekError: Error {
     case httpError(Int, String)
     case unauthorized
     case badResponse
     case missingAPIKey
 }
 
-final class KimiClient {
+final class DeepSeekClient {
     private let baseURL: URL
     private let session: URLSession
 
@@ -26,23 +26,24 @@ final class KimiClient {
         self.session = URLSession(configuration: config)
     }
 
-    private var apiKey: String { Secrets.kimiAPIKey }
+    private var apiKey: String { Secrets.deepseekAPIKey }
 
-    /// Streams delta.content strings from a Kimi chat completion as they arrive.
-    /// The stream terminates on `data: [DONE]` sentinel or on error.
-    /// `smart=true` routes to kimi-k2.6 with thinking enabled (deeper, slower).
-    /// `smart=false` routes to kimi-k2-turbo-preview (fast default).
-    func streamChat(messages: [KimiMessage], smart: Bool = false) -> AsyncThrowingStream<String, Error> {
-        let model = smart ? "kimi-k2.6" : "kimi-k2-turbo-preview"
-        let temperature = smart ? 1.0 : 0.6
-        let thinking: KimiRequest.Thinking? = smart ? KimiRequest.Thinking(type: "enabled") : nil
+    /// Streams delta.content strings from a DeepSeek chat completion as they
+    /// arrive. The stream terminates on `data: [DONE]` sentinel or on error.
+    /// `smart=true` routes to deepseek-reasoner (longer thinking, slower).
+    /// `smart=false` routes to deepseek-chat (fast default).
+    func streamChat(messages: [DeepSeekMessage], smart: Bool = false) -> AsyncThrowingStream<String, Error> {
+        let model = smart ? "deepseek-reasoner" : "deepseek-chat"
+        // deepseek-reasoner ignores temperature in its docs and rejects some
+        // sampling params outright; only send temperature for deepseek-chat.
+        let temperature: Double? = smart ? nil : 0.6
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     if apiKey.isEmpty {
-                        throw KimiError.missingAPIKey
+                        throw DeepSeekError.missingAPIKey
                     }
-                    let body = KimiRequest(model: model, messages: messages, stream: true, temperature: temperature, thinking: thinking)
+                    let body = DeepSeekRequest(model: model, messages: messages, stream: true, temperature: temperature)
                     var request = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -50,21 +51,21 @@ final class KimiClient {
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.httpBody = try JSONEncoder().encode(body)
                     // Smart mode runs reasoning before any content, so the
-                    // first byte can take much longer to arrive than turbo.
+                    // first byte can take much longer to arrive than chat.
                     request.timeoutInterval = smart ? 120 : 60
 
-                    NSLog("[RTI] KimiClient: POST \(request.url?.absoluteString ?? "?") model=\(model) messages=\(messages.count)")
+                    NSLog("[RTI] DeepSeekClient: POST \(request.url?.absoluteString ?? "?") model=\(model) messages=\(messages.count)")
                     let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else {
-                        throw KimiError.badResponse
+                        throw DeepSeekError.badResponse
                     }
-                    NSLog("[RTI] KimiClient: HTTP \(http.statusCode)")
+                    NSLog("[RTI] DeepSeekClient: HTTP \(http.statusCode)")
                     guard (200..<300).contains(http.statusCode) else {
                         let errText = try await readAll(bytes)
                         if http.statusCode == 401 {
-                            throw KimiError.unauthorized
+                            throw DeepSeekError.unauthorized
                         }
-                        throw KimiError.httpError(http.statusCode, errText)
+                        throw DeepSeekError.httpError(http.statusCode, errText)
                     }
 
                     let decoder = JSONDecoder()
@@ -73,12 +74,12 @@ final class KimiClient {
                     for try await line in bytes.lines {
                         lineCount += 1
                         if lineCount <= 3 {
-                            NSLog("[RTI] KimiClient line[\(lineCount)]: %@", line.prefix(200) as NSString)
+                            NSLog("[RTI] DeepSeekClient line[\(lineCount)]: %@", line.prefix(200) as NSString)
                         }
                         guard line.hasPrefix("data: ") else { continue }
                         let payload = String(line.dropFirst(6))
                         if payload == "[DONE]" {
-                            NSLog("[RTI] KimiClient: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
+                            NSLog("[RTI] DeepSeekClient: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
                             continuation.finish()
                             return
                         }
@@ -87,10 +88,10 @@ final class KimiClient {
                         // Surface that to the caller instead of silently swallowing it.
                         if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let err = obj["error"] {
-                            throw KimiError.httpError(0, "Kimi stream error: \(err)")
+                            throw DeepSeekError.httpError(0, "DeepSeek stream error: \(err)")
                         }
                         do {
-                            let chunk = try decoder.decode(KimiChatChunk.self, from: data)
+                            let chunk = try decoder.decode(DeepSeekChatChunk.self, from: data)
                             if let reasoning = chunk.choices.first?.delta?.reasoning_content, !reasoning.isEmpty {
                                 let cb = self.onReasoning
                                 DispatchQueue.main.async { cb?(reasoning) }
@@ -100,7 +101,7 @@ final class KimiClient {
                                 continuation.yield(delta)
                             }
                         } catch {
-                            NSLog("[RTI] KimiClient chunk decode failed: \(error) payload=\(payload.prefix(200))")
+                            NSLog("[RTI] DeepSeekClient chunk decode failed: \(error) payload=\(payload.prefix(200))")
                         }
                     }
                     continuation.finish()
