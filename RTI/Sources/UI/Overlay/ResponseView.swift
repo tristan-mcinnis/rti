@@ -12,9 +12,24 @@ struct ResponseView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if entries.isEmpty && !streaming && error == nil {
-                        Text("Responses appear here. Type a question below, or press ⌘↵ for Assist.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.45))
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Responses appear here. Type a question below, or press ⌘↵ for Assist.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.white.opacity(0.45))
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Try asking:")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.35))
+                                ForEach(["Summarize the last few minutes",
+                                         "What did they decide?",
+                                         "Help me reply"], id: \.self) { example in
+                                    Text("• " + example)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.white.opacity(0.4))
+                                }
+                            }
+                        }
                     }
 
                     ForEach(entries) { entry in

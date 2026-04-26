@@ -5,6 +5,7 @@ extension Notification.Name {
     static let openSessionDetail = Notification.Name("rti.openSessionDetail")
     static let rtiToggleOverlay = Notification.Name("rti.toggleOverlay")
     static let rtiClearChat = Notification.Name("rti.clearChat")
+    static let rtiOverlayDidBecomeKey = Notification.Name("rti.overlayDidBecomeKey")
 }
 
 struct SessionHistoryView: View {

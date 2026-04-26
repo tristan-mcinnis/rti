@@ -8,6 +8,17 @@ private let savedFrameKey = "rti.overlay.savedFrame"
 private final class KeyableOverlayPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// Called when the panel transitions to key — used to auto-focus the input.
+    override func becomeKey() {
+        super.becomeKey()
+        NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
+    }
+
+    /// ESC dismisses the overlay — universal expectation for transient surfaces.
+    override func cancelOperation(_ sender: Any?) {
+        orderOut(nil)
+    }
 }
 
 final class OverlayWindowController {

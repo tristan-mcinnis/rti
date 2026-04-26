@@ -4,6 +4,7 @@ struct AssistantInputView: View {
     var onOpenSettings: () -> Void = {}
 
     @State private var input: String = ""
+    @FocusState private var isInputFocused: Bool
     @ObservedObject private var llm = LLMController.shared
     @ObservedObject private var modes = ModeStore.shared
     @ObservedObject private var session = SessionCoordinator.shared
@@ -15,6 +16,7 @@ struct AssistantInputView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.95))
+                    .focused($isInputFocused)
                     .onSubmit(submit)
             }
             .padding(.horizontal, 14)
@@ -31,6 +33,7 @@ struct AssistantInputView: View {
             HStack(spacing: 10) {
                 moreDots
                 smartPill
+                if session.isRunning { recordingBadge }
                 Spacer()
                 if llm.streaming {
                     stopButton
@@ -40,6 +43,28 @@ struct AssistantInputView: View {
             }
             .padding(.horizontal, 4)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
+            // Defer so the focus change lands after the panel finishes its
+            // becomeKey transition; otherwise SwiftUI sometimes drops it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isInputFocused = true
+            }
+        }
+    }
+
+    private var recordingBadge: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 6, height: 6)
+            Text("Recording")
+                .font(.system(size: 11, weight: .medium))
+        }
+        .foregroundStyle(.white.opacity(0.75))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.red.opacity(0.18)))
+        .help("Audio is being captured and transcribed. Press ⌘⇧R to stop.")
     }
 
     private var moreDots: some View {
