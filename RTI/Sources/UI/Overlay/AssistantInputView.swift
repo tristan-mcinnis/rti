@@ -104,6 +104,12 @@ struct AssistantInputView: View {
                     Label("Attach screenshot", systemImage: "camera.viewfinder")
                 }
                 .keyboardShortcut("h", modifiers: .command)
+
+                Button {
+                    NotificationCenter.default.post(name: .rtiShowLiveTranscript, object: nil)
+                } label: {
+                    Label("Show live transcript", systemImage: "waveform")
+                }
             }
 
             Menu {

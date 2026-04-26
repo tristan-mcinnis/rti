@@ -206,10 +206,47 @@ struct SessionDetailView: View {
 
     // MARK: - Transcript Body
 
+    private struct TranscriptGroup: Identifiable {
+        let id: String
+        let speakerId: String
+        let startMs: Int
+        let text: String
+    }
+
+    /// Soniox finalizes transcripts in small chunks (1–3s windows). Rendering
+    /// every chunk as its own card produces a visually fragmented "every line
+    /// is a new card" view. Group consecutive entries from the same speaker
+    /// when they're within ~5 seconds of each other into a single paragraph.
+    private var groupedTranscripts: [TranscriptGroup] {
+        var groups: [TranscriptGroup] = []
+        for entry in transcripts {
+            if let last = groups.last,
+               last.speakerId == entry.speakerId,
+               entry.startMs - (last.startMs + (last.text.count * 50)) < 5000 {
+                let merged = TranscriptGroup(
+                    id: last.id,
+                    speakerId: last.speakerId,
+                    startMs: last.startMs,
+                    text: last.text + " " + entry.text
+                )
+                groups.removeLast()
+                groups.append(merged)
+            } else {
+                groups.append(TranscriptGroup(
+                    id: entry.id,
+                    speakerId: entry.speakerId,
+                    startMs: entry.startMs,
+                    text: entry.text
+                ))
+            }
+        }
+        return groups
+    }
+
     private var transcriptBody: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("\(transcripts.count) entries")
+                Text("\(transcripts.count) entries · \(groupedTranscripts.count) paragraphs")
                     .font(RTIDesign.Font.meta)
                     .foregroundStyle(RTIDesign.Color.textTertiary)
                 Spacer()
@@ -221,8 +258,8 @@ struct SessionDetailView: View {
             .padding(.horizontal, RTIDesign.Spacing.xl)
             .padding(.vertical, RTIDesign.Spacing.sm)
 
-            List(transcripts) { entry in
-                transcriptRow(entry)
+            List(groupedTranscripts) { group in
+                transcriptRow(group)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .padding(.vertical, RTIDesign.Spacing.sm)
@@ -232,17 +269,17 @@ struct SessionDetailView: View {
         }
     }
 
-    private func transcriptRow(_ entry: TranscriptEntry) -> some View {
+    private func transcriptRow(_ group: TranscriptGroup) -> some View {
         VStack(alignment: .leading, spacing: RTIDesign.Spacing.xs) {
             HStack(spacing: RTIDesign.Spacing.md) {
-                Text(entry.speakerId)
+                Text(group.speakerId)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(RTIDesign.Color.accentText)
-                Text(timeLabel(ms: entry.startMs))
+                Text(timeLabel(ms: group.startMs))
                     .font(RTIDesign.Font.meta)
                     .foregroundStyle(RTIDesign.Color.textTertiary)
             }
-            Text(entry.text)
+            Text(group.text.trimmingCharacters(in: .whitespaces))
                 .font(RTIDesign.Font.body)
                 .foregroundStyle(RTIDesign.Color.textPrimary)
                 .lineSpacing(4)

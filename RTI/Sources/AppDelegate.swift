@@ -88,6 +88,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: .rtiClearChat,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showDebugConsole),
+            name: .rtiShowLiveTranscript,
+            object: nil
+        )
 
         if CredentialStore.deepseek == nil {
             settingsWindow?.show()
@@ -117,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         detailItem.target = self
         menu.addItem(detailItem)
 
-        let consoleItem = NSMenuItem(title: "Show Debug Console", action: #selector(showDebugConsole), keyEquivalent: "")
+        let consoleItem = NSMenuItem(title: "Show Live Transcript", action: #selector(showDebugConsole), keyEquivalent: "")
         consoleItem.target = self
         menu.addItem(consoleItem)
 
