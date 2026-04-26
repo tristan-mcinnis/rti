@@ -30,20 +30,21 @@ final class DeepSeekClient {
 
     /// Streams delta.content strings from a DeepSeek chat completion as they
     /// arrive. The stream terminates on `data: [DONE]` sentinel or on error.
-    /// `smart=true` routes to deepseek-reasoner (longer thinking, slower).
-    /// `smart=false` routes to deepseek-chat (fast default).
+    /// Routes to deepseek-v4-flash with `thinking.type=enabled` (smart=true,
+    /// slower with reasoning) or `disabled` (smart=false, fast).
     func streamChat(messages: [DeepSeekMessage], smart: Bool = false) -> AsyncThrowingStream<String, Error> {
-        let model = smart ? "deepseek-reasoner" : "deepseek-chat"
-        // deepseek-reasoner ignores temperature in its docs and rejects some
-        // sampling params outright; only send temperature for deepseek-chat.
+        let model = "deepseek-v4-flash"
+        // Thinking mode ignores sampling params; only send temperature when
+        // thinking is disabled.
         let temperature: Double? = smart ? nil : 0.6
+        let thinking = DeepSeekRequest.Thinking(type: smart ? "enabled" : "disabled")
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     if apiKey.isEmpty {
                         throw DeepSeekError.missingAPIKey
                     }
-                    let body = DeepSeekRequest(model: model, messages: messages, stream: true, temperature: temperature)
+                    let body = DeepSeekRequest(model: model, messages: messages, stream: true, temperature: temperature, thinking: thinking)
                     var request = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
