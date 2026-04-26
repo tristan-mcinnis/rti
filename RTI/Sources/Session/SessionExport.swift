@@ -1,7 +1,39 @@
+import AppKit
 import Foundation
 import GRDB
+import UniformTypeIdentifiers
 
 enum SessionExport {
+    /// Render the session as Markdown and prompt the user with an NSSavePanel.
+    /// Pre-fills the filename via `suggestedFilename(for:)` so users get a
+    /// consistent `YYYYMMDD-slug.md` naming convention out of the box.
+    @MainActor
+    static func exportToFile(sessionId: String) {
+        guard let markdown = exportMarkdown(sessionId: sessionId) else {
+            NSSound.beep()
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.title = "Export Session"
+        panel.nameFieldStringValue = suggestedFilename(for: sessionId)
+        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try markdown.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Couldn't write export"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
+}
+
+extension SessionExport {
     static func exportMarkdown(sessionId: String) -> String? {
         do {
             return try RTIDatabase.shared.pool.read { db in

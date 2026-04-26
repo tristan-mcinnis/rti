@@ -11,44 +11,44 @@ enum SessionSearch {
     static func search(query: String, limit: Int = 50) -> [SessionSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let pattern = "%\(trimmed)%"
+        let ftsQuery = makeFTSQuery(from: trimmed)
 
         do {
             return try RTIDatabase.shared.pool.read { db in
-                // Find matching session IDs from all text sources
-                let transcriptIds = try String.fetchAll(db, sql: """
-                    SELECT DISTINCT session_id FROM transcript_entries
-                    WHERE text LIKE ? AND is_final = 1
-                    """, arguments: [pattern])
+                // FTS5 ranks by bm25 (lower = better). Pull matched rows with a
+                // pre-built snippet from the FTS engine itself.
+                let rows = try Row.fetchAll(db, sql: """
+                    SELECT session_id,
+                           snippet(session_search, 3, '«', '»', '…', 12) AS snip,
+                           bm25(session_search) AS rank
+                    FROM session_search
+                    WHERE session_search MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                    """, arguments: [ftsQuery, limit * 4])
 
-                let summaryIds = try String.fetchAll(db, sql: """
-                    SELECT DISTINCT session_id FROM session_summaries
-                    WHERE summary_text LIKE ? OR action_items LIKE ? OR key_topics LIKE ?
-                    OR decisions LIKE ? OR follow_ups LIKE ?
-                    """, arguments: [pattern, pattern, pattern, pattern, pattern])
+                // Collapse to one row per session, keeping the best-ranked snippet.
+                var bestSnippetBySession: [String: String] = [:]
+                var orderedSessionIds: [String] = []
+                for row in rows {
+                    guard let sessionId: String = row["session_id"] else { continue }
+                    if bestSnippetBySession[sessionId] == nil {
+                        bestSnippetBySession[sessionId] = (row["snip"] as String?) ?? ""
+                        orderedSessionIds.append(sessionId)
+                    }
+                    if orderedSessionIds.count >= limit { break }
+                }
+                guard !orderedSessionIds.isEmpty else { return [] }
 
-                let chatIds = try String.fetchAll(db, sql: """
-                    SELECT DISTINCT session_id FROM chat_messages
-                    WHERE content LIKE ?
-                    """, arguments: [pattern])
-
-                var sessionIds = Set(transcriptIds)
-                sessionIds.formUnion(summaryIds)
-                sessionIds.formUnion(chatIds)
-
-                guard !sessionIds.isEmpty else { return [] }
-
-                // Fetch sessions
                 let sessions = try Session
-                    .filter(sessionIds.contains(Column("id")))
-                    .order(Column("started_at").desc)
-                    .limit(limit)
+                    .filter(orderedSessionIds.contains(Column("id")))
                     .fetchAll(db)
+                let byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
 
-                // Build snippets
-                return sessions.map { session in
-                    let snippet = buildSnippet(db: db, sessionId: session.id, query: trimmed)
-                    return SessionSearchResult(id: session.id, session: session, snippet: snippet)
+                return orderedSessionIds.compactMap { id in
+                    guard let session = byId[id] else { return nil }
+                    let snip = bestSnippetBySession[id] ?? ""
+                    return SessionSearchResult(id: id, session: session, snippet: snip)
                 }
             }
         } catch {
@@ -57,50 +57,16 @@ enum SessionSearch {
         }
     }
 
-    private static func buildSnippet(db: Database, sessionId: String, query: String) -> String {
-        do {
-            // Try transcript first
-            if let text = try String.fetchOne(db, sql: """
-                SELECT text FROM transcript_entries
-                WHERE session_id = ? AND is_final = 1 AND text LIKE ?
-                ORDER BY start_ms DESC
-                LIMIT 1
-                """, arguments: [sessionId, "%\(query)%"]) {
-                return truncate(text, around: query)
-            }
-            // Then summary
-            if let text = try String.fetchOne(db, sql: """
-                SELECT summary_text FROM session_summaries
-                WHERE session_id = ? AND summary_text LIKE ?
-                LIMIT 1
-                """, arguments: [sessionId, "%\(query)%"]) {
-                return truncate(text, around: query)
-            }
-            // Then chat
-            if let text = try String.fetchOne(db, sql: """
-                SELECT content FROM chat_messages
-                WHERE session_id = ? AND content LIKE ?
-                ORDER BY created_at DESC
-                LIMIT 1
-                """, arguments: [sessionId, "%\(query)%"]) {
-                return truncate(text, around: query)
-            }
-        } catch {
-            NSLog("[RTI] buildSnippet failed: \(error)")
-        }
-        return ""
+    /// Map a free-text query into FTS5 syntax. Splits on whitespace, escapes
+    /// each token with surrounding quotes, and appends `*` for prefix matches.
+    /// All tokens AND together so "open question" matches rows containing both.
+    private static func makeFTSQuery(from raw: String) -> String {
+        let tokens = raw
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        guard !tokens.isEmpty else { return "\"\(raw)\"" }
+        return tokens.map { "\"\($0)\"*" }.joined(separator: " AND ")
     }
 
-    private static func truncate(_ text: String, around query: String, maxLength: Int = 140) -> String {
-        let lower = text.lowercased()
-        let qLower = query.lowercased()
-        guard let range = lower.range(of: qLower) else { return String(text.prefix(maxLength)) }
-        let start = text.index(range.lowerBound, offsetBy: 0, limitedBy: text.startIndex) ?? text.startIndex
-        let prefixStart = text.index(start, offsetBy: -40, limitedBy: text.startIndex) ?? text.startIndex
-        let suffixEnd = text.index(start, offsetBy: maxLength, limitedBy: text.endIndex) ?? text.endIndex
-        var result = String(text[prefixStart..<suffixEnd])
-        if prefixStart > text.startIndex { result = "…" + result }
-        if suffixEnd < text.endIndex { result += "…" }
-        return result
-    }
 }

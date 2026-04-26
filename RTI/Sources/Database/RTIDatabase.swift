@@ -136,6 +136,118 @@ final class RTIDatabase {
                 t.add(column: "title", .text)
             }
         }
+        m.registerMigration("v7_session_search_fts") { db in
+            // Single FTS5 contentless table indexing every searchable text source.
+            // `kind` lets the query layer route a hit back to its origin row.
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE session_search USING fts5(
+                    session_id UNINDEXED,
+                    kind UNINDEXED,
+                    row_id UNINDEXED,
+                    text,
+                    tokenize = 'porter unicode61 remove_diacritics 2'
+                );
+            """)
+
+            // Backfill from existing rows so search works on day one without
+            // requiring a regenerate pass.
+            try db.execute(sql: """
+                INSERT INTO session_search(session_id, kind, row_id, text)
+                SELECT session_id, 'transcript', id, text FROM transcript_entries WHERE is_final = 1;
+            """)
+            try db.execute(sql: """
+                INSERT INTO session_search(session_id, kind, row_id, text)
+                SELECT session_id, 'chat', id, content FROM chat_messages;
+            """)
+            try db.execute(sql: """
+                INSERT INTO session_search(session_id, kind, row_id, text)
+                SELECT session_id, 'summary', id,
+                       COALESCE(summary_text, '') || ' ' ||
+                       COALESCE(action_items, '') || ' ' ||
+                       COALESCE(key_topics, '') || ' ' ||
+                       COALESCE(decisions, '') || ' ' ||
+                       COALESCE(follow_ups, '')
+                FROM session_summaries;
+            """)
+
+            // Triggers keep FTS in sync going forward. We only mirror final
+            // transcript entries — interims churn too aggressively for FTS to
+            // be useful.
+            try db.execute(sql: """
+                CREATE TRIGGER transcript_entries_ai_fts AFTER INSERT ON transcript_entries
+                WHEN NEW.is_final = 1
+                BEGIN
+                    INSERT INTO session_search(session_id, kind, row_id, text)
+                    VALUES (NEW.session_id, 'transcript', NEW.id, NEW.text);
+                END;
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER transcript_entries_ad_fts AFTER DELETE ON transcript_entries
+                BEGIN
+                    DELETE FROM session_search WHERE kind = 'transcript' AND row_id = OLD.id;
+                END;
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER transcript_entries_au_fts AFTER UPDATE ON transcript_entries
+                BEGIN
+                    DELETE FROM session_search WHERE kind = 'transcript' AND row_id = OLD.id;
+                    INSERT INTO session_search(session_id, kind, row_id, text)
+                    SELECT NEW.session_id, 'transcript', NEW.id, NEW.text
+                    WHERE NEW.is_final = 1;
+                END;
+            """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER chat_messages_ai_fts AFTER INSERT ON chat_messages
+                BEGIN
+                    INSERT INTO session_search(session_id, kind, row_id, text)
+                    VALUES (NEW.session_id, 'chat', NEW.id, NEW.content);
+                END;
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER chat_messages_ad_fts AFTER DELETE ON chat_messages
+                BEGIN
+                    DELETE FROM session_search WHERE kind = 'chat' AND row_id = OLD.id;
+                END;
+            """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_ai_fts AFTER INSERT ON session_summaries
+                BEGIN
+                    INSERT INTO session_search(session_id, kind, row_id, text)
+                    VALUES (NEW.session_id, 'summary', NEW.id,
+                            COALESCE(NEW.summary_text, '') || ' ' ||
+                            COALESCE(NEW.action_items, '') || ' ' ||
+                            COALESCE(NEW.key_topics, '') || ' ' ||
+                            COALESCE(NEW.decisions, '') || ' ' ||
+                            COALESCE(NEW.follow_ups, ''));
+                END;
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_au_fts AFTER UPDATE ON session_summaries
+                BEGIN
+                    DELETE FROM session_search WHERE kind = 'summary' AND row_id = OLD.id;
+                    INSERT INTO session_search(session_id, kind, row_id, text)
+                    VALUES (NEW.session_id, 'summary', NEW.id,
+                            COALESCE(NEW.summary_text, '') || ' ' ||
+                            COALESCE(NEW.action_items, '') || ' ' ||
+                            COALESCE(NEW.key_topics, '') || ' ' ||
+                            COALESCE(NEW.decisions, '') || ' ' ||
+                            COALESCE(NEW.follow_ups, ''));
+                END;
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_ad_fts AFTER DELETE ON session_summaries
+                BEGIN
+                    DELETE FROM session_search WHERE kind = 'summary' AND row_id = OLD.id;
+                END;
+            """)
+        }
+        m.registerMigration("v8_session_transcript_quality") { db in
+            try db.alter(table: "sessions") { t in
+                t.add(column: "transcript_quality", .text)
+            }
+        }
         return m
     }
 }

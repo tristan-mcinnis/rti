@@ -90,7 +90,11 @@ final class SummaryController: ObservableObject {
                     .filter(Column("is_final") == 1)
                     .order(Column("start_ms"))
                     .fetchAll(db)
-                return entries.map { "\($0.speakerId): \($0.text)" }.joined(separator: "\n")
+                return entries.map { e in
+                    e.speakerId == "note"
+                        ? "[user note]: \(e.text)"
+                        : "\(e.speakerId): \(e.text)"
+                }.joined(separator: "\n")
             }
         } catch {
             lastError = "Failed to load transcript: \(error)"

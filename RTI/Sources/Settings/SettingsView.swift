@@ -241,6 +241,8 @@ private struct CalendarTab: View {
 private struct GeneralTab: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchError: String?
+    @State private var inputDevices: [AudioInputDevice] = []
+    @State private var selectedInputUID: String = AudioInputDeviceStore.preferredUID
 
     @AppStorage(OverlayAppearanceDefaults.widthKey) private var overlayWidth: Double = OverlayAppearanceDefaults.defaultWidth
     @AppStorage(OverlayAppearanceDefaults.heightKey) private var overlayHeight: Double = OverlayAppearanceDefaults.defaultHeight
@@ -270,6 +272,26 @@ private struct GeneralTab: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
             }
+
+            Divider().padding(.vertical, 8)
+
+            Text("Audio Input")
+                .font(.system(size: 13, weight: .medium))
+            Picker("Capture from", selection: $selectedInputUID) {
+                Text("System default microphone").tag(AudioInputDevice.systemDefaultUID)
+                if !inputDevices.isEmpty { Divider() }
+                ForEach(inputDevices, id: \.uid) { device in
+                    Text(device.name).tag(device.uid)
+                }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: selectedInputUID) { _, newValue in
+                AudioInputDeviceStore.preferredUID = newValue
+            }
+            Text("Pick BlackHole (or an aggregate device that combines mic + BlackHole) to capture system audio from calls. The change applies the next time you start a session.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Divider().padding(.vertical, 8)
 
@@ -358,6 +380,7 @@ private struct GeneralTab: View {
         }
         .padding(.bottom, 4)
         }
+        .onAppear { inputDevices = AudioInputDeviceStore.availableInputDevices() }
     }
 
     private var versionFooter: String {

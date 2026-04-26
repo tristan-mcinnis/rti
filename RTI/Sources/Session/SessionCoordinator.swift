@@ -80,6 +80,41 @@ final class SessionCoordinator: ObservableObject {
         }
     }
 
+    /// Insert a user-authored note into the current session's transcript at the
+    /// current playback offset. Notes use a dedicated speaker_id so the live
+    /// view, session detail, and LLM context can render them distinctly while
+    /// still flowing through the same TranscriptEntry pipeline.
+    @discardableResult
+    func insertNote(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let sessionId = currentSessionId else { return false }
+        let offsetMs = Int(max(0, Date().timeIntervalSince(startedAt ?? Date()) * 1000))
+        let entry = TranscriptEntry(
+            id: UUID().uuidString,
+            sessionId: sessionId,
+            speakerId: "note",
+            startMs: offsetMs,
+            endMs: offsetMs,
+            text: trimmed,
+            confidence: 1.0,
+            isFinal: true,
+            createdAt: Date()
+        )
+        do {
+            try RTIDatabase.shared.pool.write { db in try entry.insert(db) }
+            liveEntries.append(LiveEntry(
+                speakerId: "note",
+                text: trimmed,
+                startMs: offsetMs,
+                confidence: 1.0
+            ))
+            return true
+        } catch {
+            NSLog("[RTI] insertNote failed: \(error)")
+            return false
+        }
+    }
+
     func recentSessions(limit: Int = 10) -> [Session] {
         do {
             return try RTIDatabase.shared.pool.read { db in

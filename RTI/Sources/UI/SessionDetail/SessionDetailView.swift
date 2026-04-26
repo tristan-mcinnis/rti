@@ -14,6 +14,7 @@ struct SessionDetailView: View {
 
     @ObservedObject private var qaController = SessionQAController.shared
     @ObservedObject private var summaryController = SummaryController.shared
+    @ObservedObject private var regenerator = TranscriptRegenerator.shared
 
     enum Tab: String, CaseIterable, CustomStringConvertible {
         case summary = "Summary"
@@ -62,6 +63,11 @@ struct SessionDetailView: View {
         .task { loadData() }
         .onChange(of: sessionId) { _, _ in loadData() }
         .onChange(of: selectedTab) { _, _ in copedLabel = nil }
+        .onChange(of: regenerator.generatingSessionId) { old, new in
+            // Reload transcripts when a regen for this session finishes (the
+            // generating id flips to nil only after the DB write commits).
+            if old == sessionId && new == nil { loadData() }
+        }
     }
 
     // MARK: - Header Block
@@ -141,9 +147,40 @@ struct SessionDetailView: View {
             .padding(.horizontal, 18)
             .frame(height: RTIDesign.Control.heightMd)
 
-            // Regenerate
+            // Export
+            Button(action: exportSession) {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.borderless)
+            .font(RTIDesign.Font.button)
+            .padding(.horizontal, 18)
+            .frame(height: RTIDesign.Control.heightMd)
+
+            // Regenerate transcript (hi-fi async pass) — only meaningful when
+            // we still have the WAV and the user hasn't already done a regen.
+            if let session = session,
+               let wavPath = session.wavPath,
+               FileManager.default.fileExists(atPath: wavPath) {
+                Button(action: regenerateTranscript) {
+                    if regenerator.generatingSessionId == sessionId {
+                        Label("Regenerating…", systemImage: "waveform.path.ecg")
+                    } else if session.transcriptQuality == "hifi" {
+                        Label("Re-Regenerate Transcript", systemImage: "waveform")
+                    } else {
+                        Label("Regenerate Transcript", systemImage: "waveform")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .font(RTIDesign.Font.button)
+                .padding(.horizontal, 18)
+                .frame(height: RTIDesign.Control.heightMd)
+                .disabled(regenerator.isGenerating)
+                .help("Re-transcribe from the recording for higher accuracy + speaker diarization")
+            }
+
+            // Regenerate summary
             Button(action: regenerateSummary) {
-                Label("Regenerate", systemImage: "arrow.triangle.2.circlepath")
+                Label("Regenerate Summary", systemImage: "arrow.triangle.2.circlepath")
             }
             .buttonStyle(.borderless)
             .font(RTIDesign.Font.button)
@@ -288,20 +325,40 @@ struct SessionDetailView: View {
     }
 
     private func transcriptRow(_ group: TranscriptGroup) -> some View {
-        VStack(alignment: .leading, spacing: RTIDesign.Spacing.xs) {
+        let isNote = group.speakerId == "note"
+        return VStack(alignment: .leading, spacing: RTIDesign.Spacing.xs) {
             HStack(spacing: RTIDesign.Spacing.md) {
-                Text(group.speakerId)
+                if isNote {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.orange)
+                }
+                Text(isNote ? "Note" : group.speakerId)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(RTIDesign.Color.accentText)
+                    .foregroundStyle(isNote ? .orange : RTIDesign.Color.accentText)
                 Text(timeLabel(ms: group.startMs))
                     .font(RTIDesign.Font.meta)
                     .foregroundStyle(RTIDesign.Color.textTertiary)
             }
             Text(group.text.trimmingCharacters(in: .whitespaces))
                 .font(RTIDesign.Font.body)
+                .italic(isNote)
                 .foregroundStyle(RTIDesign.Color.textPrimary)
                 .lineSpacing(4)
                 .textSelection(.enabled)
+                .padding(isNote ? 10 : 0)
+                .background(
+                    isNote
+                    ? RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.08))
+                    : nil
+                )
+                .overlay(alignment: .leading) {
+                    if isNote {
+                        Rectangle()
+                            .fill(Color.orange.opacity(0.5))
+                            .frame(width: 2)
+                    }
+                }
         }
     }
 
@@ -606,6 +663,14 @@ struct SessionDetailView: View {
 
     private func regenerateSummary() {
         Task { await generateSummary() }
+    }
+
+    private func regenerateTranscript() {
+        regenerator.regenerate(sessionId: sessionId)
+    }
+
+    private func exportSession() {
+        SessionExport.exportToFile(sessionId: sessionId)
     }
 
     private func generateSummary() async {

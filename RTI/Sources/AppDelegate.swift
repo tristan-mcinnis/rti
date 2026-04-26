@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settingsWindow: SettingsWindowController?
     private var sessionDetail: SessionDetailWindowController?
     private var sessionHistory: SessionHistoryWindowController?
+    private var onboarding: OnboardingWindowController?
     private var hotkey: GlobalHotkey?
     private var sessionMenuItem: NSMenuItem?
     private var recentSessionsItem: NSMenuItem?
@@ -98,7 +99,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             object: nil
         )
 
-        if CredentialStore.deepseek == nil {
+        // Show the 3-step onboarding once on first launch (and when the user
+        // hasn't completed it yet). Falls back to opening Settings directly if
+        // the onboarding flow has already been dismissed but keys are missing.
+        if !OnboardingDefaults.hasCompleted {
+            let controller = OnboardingWindowController()
+            controller.showIfNeeded()
+            onboarding = controller
+        } else if CredentialStore.deepseek == nil {
             settingsWindow?.show()
         }
     }

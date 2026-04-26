@@ -124,11 +124,17 @@ struct DebugConsoleView: View {
 
     @ViewBuilder
     private func paragraphRow(_ p: LiveParagraph) -> some View {
+        let isNote = p.speakerId == "note"
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
+                if isNote {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.yellow)
+                }
                 Text(speakerDisplayName(p.speakerId))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isNote ? Color.yellow : .secondary)
                 Text(timeLabel(ms: p.startMs))
                     .font(.system(size: 10, weight: .regular, design: .monospaced))
                     .foregroundStyle(.tertiary)
@@ -144,11 +150,25 @@ struct DebugConsoleView: View {
                 }
             }
             Text(p.text.trimmingCharacters(in: .whitespaces))
-                .font(.system(size: 14))
+                .font(.system(size: 14, weight: isNote ? .regular : .regular))
+                .italic(isNote)
                 .lineSpacing(3)
-                .foregroundStyle(.primary)
+                .foregroundStyle(isNote ? Color.primary.opacity(0.85) : .primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(isNote ? 8 : 0)
+                .background(
+                    isNote
+                    ? RoundedRectangle(cornerRadius: 6).fill(Color.yellow.opacity(0.08))
+                    : nil
+                )
+                .overlay(alignment: .leading) {
+                    if isNote {
+                        Rectangle()
+                            .fill(Color.yellow.opacity(0.5))
+                            .frame(width: 2)
+                    }
+                }
         }
         .contentShape(Rectangle())
         .onHover { inside in hoveredId = inside ? p.id : (hoveredId == p.id ? nil : hoveredId) }
@@ -191,6 +211,7 @@ struct DebugConsoleView: View {
     private func speakerDisplayName(_ id: String) -> String {
         switch id {
         case "self": return "You"
+        case "note": return "Note"
         case let other where other.hasPrefix("them_"):
             let n = String(other.dropFirst("them_".count))
             return "Speaker \(n)"

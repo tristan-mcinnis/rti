@@ -1,10 +1,12 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 
 enum AudioCaptureError: Error {
     case permissionDenied
     case engineStartFailed(Error)
     case converterCreationFailed
+    case deviceSelectionFailed(OSStatus)
 }
 
 final class AudioCaptureManager {
@@ -37,7 +39,26 @@ final class AudioCaptureManager {
             throw AudioCaptureError.permissionDenied
         }
 
+        // If the user picked a non-default input device (e.g. BlackHole or an
+        // aggregate that combines mic + system audio), point the AVAudioEngine
+        // input AUHAL at that device before installing the tap. The AUHAL only
+        // surfaces after `engine.inputNode` is touched, so do this in order.
         let input = engine.inputNode
+        if let preferred = AudioInputDeviceStore.resolvePreferredDeviceID(),
+           let unit = input.audioUnit {
+            var deviceID = preferred
+            let setStatus = AudioUnitSetProperty(
+                unit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &deviceID,
+                UInt32(MemoryLayout.size(ofValue: deviceID))
+            )
+            if setStatus != noErr {
+                NSLog("[RTI] audio: failed to bind input device (status=\(setStatus)) — falling back to system default")
+            }
+        }
         let nativeFormat = input.outputFormat(forBus: 0)
 
         guard let converter = AVAudioConverter(from: nativeFormat, to: Self.targetFormat) else {

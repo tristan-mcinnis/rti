@@ -282,7 +282,11 @@ final class LLMController: ObservableObject {
                     .filter(Column("start_ms") >= threshold)
                     .order(Column("start_ms"))
                     .fetchAll(db)
-                return entries.map { "\($0.speakerId): \($0.text)" }.joined(separator: "\n")
+                return entries.map { e in
+                    e.speakerId == "note"
+                        ? "[user note]: \(e.text)"
+                        : "\(e.speakerId): \(e.text)"
+                }.joined(separator: "\n")
             }
         } catch {
             NSLog("[RTI] transcript fetch failed: \(error)")

@@ -35,6 +35,9 @@ struct AssistantInputView: View {
                 smartPill
                 if session.isRunning { recordingBadge }
                 Spacer()
+                if session.isRunning, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    noteButton
+                }
                 if llm.streaming {
                     stopButton
                 } else {
@@ -199,10 +202,35 @@ struct AssistantInputView: View {
         .help("Stop streaming response")
     }
 
+    private var noteButton: some View {
+        Button(action: submitAsNote) {
+            HStack(spacing: 5) {
+                Image(systemName: "note.text")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Note")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Color.white.opacity(0.10)))
+        }
+        .buttonStyle(.plain)
+        .help("Insert as inline note in the transcript (not sent to LLM)")
+    }
+
     private func submit() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         llm.sendAskAnything(text)
         input = ""
+    }
+
+    private func submitAsNote() {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if SessionCoordinator.shared.insertNote(text) {
+            input = ""
+        }
     }
 }

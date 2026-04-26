@@ -4,13 +4,14 @@ import GRDB
 struct Session: Codable, FetchableRecord, PersistableRecord, Identifiable {
     var id: String
     var startedAt: Date
-    var endedAt: Date?
-    var wavPath: String?
-    var notes: String?
-    var title: String?
-    var modeId: String?
-    var calendarEventId: String?
-    var calendarTitle: String?
+    var endedAt: Date? = nil
+    var wavPath: String? = nil
+    var notes: String? = nil
+    var title: String? = nil
+    var modeId: String? = nil
+    var calendarEventId: String? = nil
+    var calendarTitle: String? = nil
+    var transcriptQuality: String? = nil
 
     static let databaseTableName = "sessions"
 
@@ -24,5 +25,6 @@ struct Session: Codable, FetchableRecord, PersistableRecord, Identifiable {
         case modeId = "mode_id"
         case calendarEventId = "calendar_event_id"
         case calendarTitle = "calendar_title"
+        case transcriptQuality = "transcript_quality"
     }
 }
