@@ -98,11 +98,11 @@ enum CredentialStore {
 
     /// One-time migration of any plaintext keys still living in Secrets.swift.
     /// Earlier versions also wrote into the macOS Keychain; we no longer touch
-    /// the system Keychain at all (see KeychainStore comment), so any prior
-    /// "kimi" / "deepseek" / "soniox" entries linger there harmlessly until
-    /// the user clears them via Keychain Access. We don't try to read them
-    /// because reading would trigger the very prompt this migration was
-    /// intended to silence.
+    /// the system Keychain at all (see KeychainStore comment). Any orphaned
+    /// entries from older builds (under com.tristan.rti) linger there
+    /// harmlessly until the user clears them via Keychain Access. We don't
+    /// try to read them because reading would trigger the very prompt this
+    /// migration was intended to silence.
     static func migrateLegacyIfNeeded() {
         let flag = "rti.credentials.migratedV1"
         let defaults = UserDefaults.standard
