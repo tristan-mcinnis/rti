@@ -11,6 +11,7 @@ struct SessionHistoryView: View {
     @State private var searchResults: [SessionSearchResult] = []
     @State private var isSearching = false
     @State private var sortOrder: SortOrder = .newest
+    @State private var searchTask: Task<Void, Never>?
 
     enum SortOrder: String, CaseIterable, CustomStringConvertible {
         case newest = "Newest"
@@ -196,6 +197,9 @@ struct SessionHistoryView: View {
     }
 
     private func performSearch() {
+        // Cancel any in-flight search so rapid typing doesn't fan out N
+        // concurrent DB scans whose results race to win the last write.
+        searchTask?.cancel()
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             isSearching = false
@@ -203,8 +207,9 @@ struct SessionHistoryView: View {
             return
         }
         isSearching = true
-        Task {
+        searchTask = Task {
             let results = SessionSearch.search(query: trimmed)
+            if Task.isCancelled { return }
             await MainActor.run {
                 searchResults = results
                 isSearching = false

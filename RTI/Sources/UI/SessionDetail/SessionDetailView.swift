@@ -61,6 +61,7 @@ struct SessionDetailView: View {
         .background(RTIDesign.Color.panelBackground)
         .task { loadData() }
         .onChange(of: sessionId) { _, _ in loadData() }
+        .onChange(of: selectedTab) { _, _ in copedLabel = nil }
     }
 
     // MARK: - Header Block
@@ -435,10 +436,22 @@ struct SessionDetailView: View {
     }
 
     private func summarySection(title: String, content: String?, icon: String) -> some View {
-        guard let content = content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              content.trimmingCharacters(in: .whitespacesAndNewlines) != "None." else {
+        guard let raw = content else { return AnyView(EmptyView()) }
+        // Normalize so the LLM saying "None.", "none", "(none)" or "*None*"
+        // all collapse to the same empty signal.
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: "(", with: "")
+            .replacingOccurrences(of: ")", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty,
+              normalized != "none",
+              normalized != "none." else {
             return AnyView(EmptyView())
         }
+        let content = raw
         return AnyView(
             VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm) {
                 Label(title, systemImage: icon)
@@ -504,9 +517,11 @@ struct SessionDetailView: View {
     private func submitQA() {
         let question = qaInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
+        // Hard cap so a pasted essay doesn't bounce off Kimi as a 400.
+        let capped = question.count > 4000 ? String(question.prefix(4000)) : question
         qaInput = ""
         Task {
-            await qaController.ask(question: question, sessionId: sessionId)
+            await qaController.ask(question: capped, sessionId: sessionId)
         }
     }
 
