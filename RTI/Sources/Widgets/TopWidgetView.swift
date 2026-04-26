@@ -4,26 +4,15 @@ struct TopWidgetView: View {
     @ObservedObject private var coordinator = SessionCoordinator.shared
 
     var body: some View {
-        HStack(spacing: 10) {
-            compass
-            recordButton
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color.black.opacity(0.55))
-                .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
-        )
-        .padding(4)
-    }
-
-    private var compass: some View {
-        Image(systemName: "location.north")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(.white.opacity(0.85))
-            .frame(width: 32, height: 32)
-            .background(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+        recordButton
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.55))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+            )
+            .padding(4)
     }
 
     private var recordButton: some View {

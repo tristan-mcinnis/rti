@@ -30,7 +30,7 @@ struct OverlayPanelView: View {
                     .padding(.top, 12)
                     .padding(.bottom, 10)
 
-                AssistantInputView()
+                AssistantInputView(onOpenSettings: onOpenSettings)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 14)
             }

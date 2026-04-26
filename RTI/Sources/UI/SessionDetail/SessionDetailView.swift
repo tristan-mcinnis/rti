@@ -179,6 +179,7 @@ struct SessionDetailView: View {
                 Image(systemName: "doc.text.magnifyingglass")
                     .font(.system(size: 32))
                     .foregroundStyle(RTIDesign.Color.textTertiary)
+                    .allowsHitTesting(false)
                 Text("No summary yet")
                     .font(RTIDesign.Font.heading)
                     .foregroundStyle(RTIDesign.Color.textSecondary)

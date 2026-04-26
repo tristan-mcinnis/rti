@@ -6,7 +6,7 @@ final class TopWidgetWindowController {
     private let window: NSPanel
 
     init() {
-        let size = NSSize(width: 180, height: 54)
+        let size = NSSize(width: 64, height: 54)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],

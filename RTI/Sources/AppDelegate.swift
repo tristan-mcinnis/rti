@@ -145,6 +145,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         refreshSessionMenuItemTitle()
         rebuildRecentSessionsSubmenu()
+        refreshDetailMenuItemEnablement(menu: menu)
+    }
+
+    private func refreshDetailMenuItemEnablement(menu: NSMenu) {
+        guard let detailItem = menu.items.first(where: { $0.action == #selector(openCurrentSessionDetail) }) else { return }
+        let hasSession = SessionCoordinator.shared.currentSessionId != nil
+        detailItem.isEnabled = hasSession
+        detailItem.title = hasSession ? "View Session Detail" : "View Session Detail (no active session)"
     }
 
     private func rebuildRecentSessionsSubmenu() {
@@ -215,7 +223,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     @objc private func toggleOverlay() { overlayController?.toggle() }
     @objc private func toggleTopWidget() { topWidget?.toggle() }
-    @objc private func clearChat() { LLMController.shared.clear() }
+    @objc private func clearChat() {
+        let alert = NSAlert()
+        alert.messageText = "Clear current chat?"
+        alert.informativeText = "This deletes the chat messages for the current session from the database. The transcript and audio recording are not affected."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Clear")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            LLMController.shared.clear()
+        }
+    }
 
     @objc private func quit() { NSApp.terminate(nil) }
 

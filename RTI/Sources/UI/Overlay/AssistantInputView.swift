@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct AssistantInputView: View {
+    var onOpenSettings: () -> Void = {}
+
     @State private var input: String = ""
     @ObservedObject private var llm = LLMController.shared
 
@@ -39,11 +41,15 @@ struct AssistantInputView: View {
     }
 
     private var moreDots: some View {
-        Image(systemName: "ellipsis")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.5))
-            .frame(width: 28, height: 26)
-            .background(Capsule().fill(Color.white.opacity(0.06)))
+        Button(action: onOpenSettings) {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 28, height: 26)
+                .background(Capsule().fill(Color.white.opacity(0.06)))
+        }
+        .buttonStyle(.plain)
+        .help("Open Settings")
     }
 
     private var smartPill: some View {
@@ -64,6 +70,7 @@ struct AssistantInputView: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(llm.streaming)
         .help(llm.smartMode ? "Smart: K2.6 with thinking (slower, deeper)" : "Fast: Turbo (tap to switch to Smart)")
     }
 
