@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "RTI"
+        item.button?.toolTip = "RTI — click for menu (⌘\\ to toggle overlay)"
         let menu = NSMenu()
         menu.delegate = self
 
@@ -224,7 +225,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refreshStatusItemTitle() {
-        statusItem?.button?.title = SessionCoordinator.shared.isRunning ? "RTI ●" : "RTI"
+        let running = SessionCoordinator.shared.isRunning
+        statusItem?.button?.title = running ? "RTI ●" : "RTI"
+        statusItem?.button?.toolTip = running
+            ? "RTI — recording in progress"
+            : "RTI — click for menu (⌘\\ to toggle overlay)"
     }
 
     @objc private func toggleSession() { SessionCoordinator.shared.toggleSession() }

@@ -5,7 +5,7 @@ struct MiniWidgetView: View {
 
     var body: some View {
         Button(action: onExpand) {
-            Image(systemName: "location.north")
+            Image(systemName: "sparkles")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.9))
                 .frame(width: 36, height: 36)
@@ -17,5 +17,6 @@ struct MiniWidgetView: View {
         }
         .buttonStyle(.plain)
         .padding(4)
+        .help("Expand RTI overlay")
     }
 }

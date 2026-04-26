@@ -13,7 +13,7 @@ xcuserdata/
 
 # SPM
 .swiftpm/
-Package.resolved
+# Package.resolved is intentionally tracked for reproducible builds.
 
 # Misc
 *.swp

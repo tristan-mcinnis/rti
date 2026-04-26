@@ -264,7 +264,7 @@ private struct GeneralTab: View {
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
 
-            Text("Hotkeys are fixed in this build; customization is planned.")
+            Text("Hotkeys are fixed in this build; customization is planned. The overlay's \"…\" menu lists the same keybinds for quick access.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
