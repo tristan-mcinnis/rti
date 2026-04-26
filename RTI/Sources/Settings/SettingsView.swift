@@ -242,7 +242,12 @@ private struct GeneralTab: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchError: String?
 
+    @AppStorage(OverlayAppearanceDefaults.widthKey) private var overlayWidth: Double = OverlayAppearanceDefaults.defaultWidth
+    @AppStorage(OverlayAppearanceDefaults.heightKey) private var overlayHeight: Double = OverlayAppearanceDefaults.defaultHeight
+    @AppStorage(OverlayAppearanceDefaults.opacityKey) private var overlayOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
+
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 14) {
             Text("General")
                 .font(.system(size: 16, weight: .semibold))
@@ -264,6 +269,50 @@ private struct GeneralTab: View {
                 Text(launchError)
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
+            }
+
+            Divider().padding(.vertical, 8)
+
+            Text("Overlay Appearance")
+                .font(.system(size: 13, weight: .medium))
+
+            sliderRow(
+                label: "Width",
+                value: $overlayWidth,
+                range: OverlayAppearanceDefaults.widthRange,
+                step: 10,
+                format: "%.0f px",
+                postsResize: true
+            )
+
+            sliderRow(
+                label: "Height",
+                value: $overlayHeight,
+                range: OverlayAppearanceDefaults.heightRange,
+                step: 10,
+                format: "%.0f px",
+                postsResize: true
+            )
+
+            sliderRow(
+                label: "Background opacity",
+                value: $overlayOpacity,
+                range: OverlayAppearanceDefaults.opacityRange,
+                step: 0.05,
+                format: "%.0f%%",
+                postsResize: false,
+                displayTransform: { $0 * 100 }
+            )
+
+            HStack {
+                Spacer()
+                Button("Reset to Defaults") {
+                    overlayWidth = OverlayAppearanceDefaults.defaultWidth
+                    overlayHeight = OverlayAppearanceDefaults.defaultHeight
+                    overlayOpacity = OverlayAppearanceDefaults.defaultOpacity
+                    NotificationCenter.default.post(name: .rtiOverlaySizeChanged, object: nil)
+                }
+                .controlSize(.small)
             }
 
             Divider().padding(.vertical, 8)
@@ -306,6 +355,8 @@ private struct GeneralTab: View {
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .padding(.bottom, 4)
+        }
     }
 
     private var versionFooter: String {
@@ -313,6 +364,33 @@ private struct GeneralTab: View {
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
         return "RTI \(version) (\(build))"
+    }
+
+    @ViewBuilder
+    private func sliderRow(
+        label: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        format: String,
+        postsResize: Bool,
+        displayTransform: ((Double) -> Double)? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                    .font(.system(size: 12))
+                Spacer()
+                Text(String(format: format, displayTransform?(value.wrappedValue) ?? value.wrappedValue))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: range, step: step) { editing in
+                if !editing && postsResize {
+                    NotificationCenter.default.post(name: .rtiOverlaySizeChanged, object: nil)
+                }
+            }
+        }
     }
 
     private func revealRTIFolder() {

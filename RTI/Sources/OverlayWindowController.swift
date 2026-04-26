@@ -26,8 +26,9 @@ final class OverlayWindowController {
     private var frameSaveWorkItem: DispatchWorkItem?
 
     init(onOpenSettings: @escaping () -> Void = {}) {
+        let initialSize = Self.configuredSize()
         let panel = KeyableOverlayPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: initialSize.width, height: initialSize.height),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -52,6 +53,14 @@ final class OverlayWindowController {
             queue: .main
         ) { [weak self] _ in self?.saveFrame() }
 
+        // Settings → "Overlay Appearance" sliders post this when width/height
+        // change, so the live overlay resizes immediately.
+        NotificationCenter.default.addObserver(
+            forName: .rtiOverlaySizeChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in self?.applyConfiguredSize() }
+
         if let saved = Self.loadSavedFrame() {
             window.setFrame(saved, display: false)
         } else {
@@ -59,13 +68,41 @@ final class OverlayWindowController {
         }
     }
 
+    private static func configuredSize() -> NSSize {
+        let d = UserDefaults.standard
+        let w = d.double(forKey: OverlayAppearanceDefaults.widthKey)
+        let h = d.double(forKey: OverlayAppearanceDefaults.heightKey)
+        return NSSize(
+            width: w > 0 ? w : OverlayAppearanceDefaults.defaultWidth,
+            height: h > 0 ? h : OverlayAppearanceDefaults.defaultHeight
+        )
+    }
+
+    /// Resize the overlay in place when the user drags a Settings slider.
+    /// Keeps the current top-left origin so the window doesn't jump.
+    private func applyConfiguredSize() {
+        let newSize = Self.configuredSize()
+        let currentFrame = window.frame
+        // NSWindow origin is bottom-left; preserve top-left by adjusting y.
+        let newOriginY = currentFrame.maxY - newSize.height
+        let newFrame = NSRect(
+            x: currentFrame.origin.x,
+            y: newOriginY,
+            width: newSize.width,
+            height: newSize.height
+        )
+        window.setFrame(newFrame, display: true, animate: false)
+        saveFrame()
+    }
+
     func positionOnActiveScreen() {
         let screen = screenUnderMouse() ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let widgetReserve: CGFloat = 72
         let margin: CGFloat = 16
-        let width: CGFloat = 480
-        let height = min(600, visible.height - widgetReserve - margin)
+        let configured = Self.configuredSize()
+        let width: CGFloat = configured.width
+        let height = min(configured.height, visible.height - widgetReserve - margin)
         let origin = NSPoint(
             x: visible.minX + margin,
             y: visible.maxY - widgetReserve - height

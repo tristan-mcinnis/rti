@@ -4,10 +4,12 @@ struct OverlayPanelView: View {
     @ObservedObject private var llm = LLMController.shared
     var onOpenSettings: () -> Void = {}
 
+    @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black.opacity(0.55))
+                .fill(Color.black.opacity(backgroundOpacity))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(Color.white.opacity(0.10), lineWidth: 1)
