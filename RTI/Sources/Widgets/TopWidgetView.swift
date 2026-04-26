@@ -39,5 +39,6 @@ struct TopWidgetView: View {
             )
         }
         .buttonStyle(.plain)
+        .help(coordinator.isRunning ? "Stop session (⌘⇧R)" : "Start session (⌘⇧R)")
     }
 }

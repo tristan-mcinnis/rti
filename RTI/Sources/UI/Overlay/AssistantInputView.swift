@@ -152,6 +152,7 @@ struct AssistantInputView: View {
         }
         .buttonStyle(.plain)
         .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || llm.streaming)
+        .help("Send message (return)")
     }
 
     private var stopButton: some View {

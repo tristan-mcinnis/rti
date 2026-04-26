@@ -268,8 +268,40 @@ private struct GeneralTab: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
+            Divider().padding(.vertical, 8)
+
+            Text("Data & Support")
+                .font(.system(size: 13, weight: .medium))
+            Text("All session data — transcripts, audio, chat history, summaries — stays on this Mac. Nothing is uploaded except the prompts you send to Kimi and the audio you stream to Soniox.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button("Show RTI Folder") { revealRTIFolder() }
+                Button("Show Crash Log") { revealCrashLog() }
+                    .disabled(crashLogURL() == nil || !FileManager.default.fileExists(atPath: crashLogURL()?.path ?? ""))
+            }
+
             Spacer()
         }
+    }
+
+    private func revealRTIFolder() {
+        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        let rti = dir.appendingPathComponent("RTI", isDirectory: true)
+        try? FileManager.default.createDirectory(at: rti, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(rti)
+    }
+
+    private func crashLogURL() -> URL? {
+        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        return dir.appendingPathComponent("RTI/crash.log")
+    }
+
+    private func revealCrashLog() {
+        guard let url = crashLogURL(), FileManager.default.fileExists(atPath: url.path) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     private func hotkeyRow(_ label: String, _ key: String) -> some View {
