@@ -9,6 +9,8 @@ struct SettingsView: View {
                 .tabItem { Label("Keys", systemImage: "key.fill") }
             ModesTab()
                 .tabItem { Label("Modes", systemImage: "square.stack.3d.up") }
+            CalendarTab()
+                .tabItem { Label("Calendar", systemImage: "calendar") }
             GeneralTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
         }
@@ -166,6 +168,56 @@ private struct ModesTab: View {
         store.update(id: id, name: name, systemPrompt: prompt, referenceText: reference)
         saved = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
+    }
+}
+
+// MARK: - Calendar
+
+private struct CalendarTab: View {
+    @ObservedObject private var calendar = CalendarManager.shared
+    @State private var requestInProgress = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Calendar")
+                .font(.system(size: 16, weight: .semibold))
+
+            if calendar.isAuthorized {
+                Label("Calendar access granted", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("RTI will detect active meetings when a session starts and attach the event title to the session.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("Calendar access not granted", systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.orange)
+                Text("Grant access so RTI can detect active meetings from your calendar when recording starts.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+
+                Button(action: requestAccess) {
+                    if requestInProgress {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else {
+                        Text("Grant Calendar Access")
+                    }
+                }
+                .disabled(requestInProgress)
+            }
+
+            Spacer()
+        }
+    }
+
+    private func requestAccess() {
+        requestInProgress = true
+        Task {
+            _ = await calendar.requestAccess()
+            await MainActor.run {
+                requestInProgress = false
+            }
+        }
     }
 }
 

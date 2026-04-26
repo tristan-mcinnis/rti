@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var debugConsole: DebugConsoleWindowController?
     private var settingsWindow: SettingsWindowController?
     private var sessionDetail: SessionDetailWindowController?
+    private var sessionHistory: SessionHistoryWindowController?
     private var hotkey: GlobalHotkey?
     private var sessionMenuItem: NSMenuItem?
     private var recentSessionsItem: NSMenuItem?
@@ -21,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         CredentialStore.migrateLegacyIfNeeded()
 
         SessionCoordinator.shared.pruneOldSessions(days: 30)
+        SessionCoordinator.shared.normalizeLegacySessions()
         SessionCoordinator.shared.bootstrapChatSession()
         _ = ModeStore.shared
         LLMController.shared.loadHistoryForCurrentSession()
@@ -63,9 +65,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             .store(in: &cancellables)
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleOpenSessionDetailNotification(_:)),
+            name: .openSessionDetail,
+            object: nil
+        )
+
         if CredentialStore.kimi == nil {
             settingsWindow?.show()
         }
+    }
+
+    @objc private func handleOpenSessionDetailNotification(_ notification: Notification) {
+        guard let id = notification.object as? String else { return }
+        openSessionDetail(for: id)
     }
 
     func openSettings() { settingsWindow?.show() }
@@ -111,6 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         recentItem.submenu = NSMenu(title: "Recent Sessions")
         menu.addItem(recentItem)
         recentSessionsItem = recentItem
+
+        let historyItem = NSMenuItem(title: "Session History…", action: #selector(showSessionHistory), keyEquivalent: "")
+        historyItem.target = self
+        menu.addItem(historyItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -187,6 +205,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleSession() { SessionCoordinator.shared.toggleSession() }
     @objc private func showDebugConsole() { debugConsole?.show() }
     @objc private func showSettings() { settingsWindow?.show() }
+    @objc private func showSessionHistory() {
+        if sessionHistory == nil {
+            sessionHistory = SessionHistoryWindowController()
+        }
+        sessionHistory?.show()
+    }
     @objc private func toggleOverlay() { overlayController?.toggle() }
     @objc private func toggleTopWidget() { topWidget?.toggle() }
     @objc private func clearChat() { LLMController.shared.clear() }

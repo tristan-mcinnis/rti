@@ -101,6 +101,13 @@ final class RTIDatabase {
                 t.column("regenerated_at", .datetime)
             }
         }
+        m.registerMigration("v5_session_mode_and_calendar") { db in
+            try db.alter(table: "sessions") { t in
+                t.add(column: "mode_id", .text)
+                t.add(column: "calendar_event_id", .text)
+                t.add(column: "calendar_title", .text)
+            }
+        }
         return m
     }
 }

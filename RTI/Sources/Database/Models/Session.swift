@@ -7,6 +7,9 @@ struct Session: Codable, FetchableRecord, PersistableRecord, Identifiable {
     var endedAt: Date?
     var wavPath: String?
     var notes: String?
+    var modeId: String?
+    var calendarEventId: String?
+    var calendarTitle: String?
 
     static let databaseTableName = "sessions"
 
@@ -16,5 +19,8 @@ struct Session: Codable, FetchableRecord, PersistableRecord, Identifiable {
         case endedAt = "ended_at"
         case wavPath = "wav_path"
         case notes
+        case modeId = "mode_id"
+        case calendarEventId = "calendar_event_id"
+        case calendarTitle = "calendar_title"
     }
 }

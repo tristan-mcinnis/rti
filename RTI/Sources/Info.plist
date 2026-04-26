@@ -28,6 +28,8 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>RTI transcribes your microphone in real time.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>RTI reads your calendar to attach meeting titles to sessions.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

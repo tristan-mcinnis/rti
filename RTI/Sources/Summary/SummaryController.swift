@@ -15,23 +15,34 @@ final class SummaryController: ObservableObject {
     }
 
     private static let summaryPrompt = """
-    You are an AI meeting assistant. Below is the full transcript of a conversation.
+    You are an AI meeting assistant. Below is the full transcript of a meeting conversation.
 
-    Produce a structured meeting summary using this exact format:
+    Produce a structured meeting summary using this exact format. Be thorough but concise.
 
-    ## Action Items
-    - List each action item with the person responsible (if identifiable from context).
+    ## Summary
+    Write a 2-3 paragraph factual summary covering what was discussed, the overall arc of the conversation, and any major conclusions reached. Do NOT list action items here — put those in the Action Items section.
 
     ## Key Topics
-    - List the main topics discussed, one per bullet.
+    - List the main topics discussed, one per bullet. Be specific; avoid vague labels.
 
-    ## Decisions
-    - List any decisions that were made, one per bullet.
+    ## Decisions Made
+    - List each decision that was made, with context for why (if evident). One per bullet.
 
-    ## Follow-ups
-    - List any follow-up items or next steps needed, one per bullet.
+    ## Action Items
+    Only extract items that meet ALL of these criteria:
+    - Someone is explicitly named as responsible (skip "we should…" items)
+    - A deadline or timeframe was mentioned (skip "soon" / "later")
+    - The item was NOT resolved during the meeting itself
+    - The item has a concrete deliverable (skip "think about" / "explore")
+    List each as: `- [ ] Task description — Owner: @name — Due: date/timeframe`
 
-    If a section has no content, write "None." under that heading.
+    ## Open Questions
+    - List any open questions raised during the meeting that still need answers.
+
+    ## Next Steps
+    - List what happens next: follow-up meetings, deliverables, check-ins.
+
+    If a section truly has no content, write "None." under that heading.
 
     Transcript:
     """
@@ -85,6 +96,7 @@ final class SummaryController: ObservableObject {
 
         let parsed = Self.parseSections(from: fullResponse)
         let responseText = fullResponse
+        let combinedFollowUps = Self.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"])
 
         let summary = SessionSummary(
             id: UUID().uuidString,
@@ -92,8 +104,8 @@ final class SummaryController: ObservableObject {
             summaryText: responseText,
             actionItems: parsed["Action Items"],
             keyTopics: parsed["Key Topics"],
-            decisions: parsed["Decisions"],
-            followUps: parsed["Follow-ups"],
+            decisions: parsed["Decisions Made"],
+            followUps: combinedFollowUps,
             rawResponse: responseText,
             createdAt: Date(),
             regeneratedAt: nil
@@ -101,13 +113,13 @@ final class SummaryController: ObservableObject {
 
         do {
             try await RTIDatabase.shared.pool.write { db in
-                if let existing = try SessionSummary.fetchOne(db, key: sessionId) {
+                if let existing = try SessionSummary.filter(Column("session_id") == sessionId).fetchOne(db) {
                     var updated = existing
                     updated.summaryText = responseText
                     updated.actionItems = parsed["Action Items"]
                     updated.keyTopics = parsed["Key Topics"]
-                    updated.decisions = parsed["Decisions"]
-                    updated.followUps = parsed["Follow-ups"]
+                    updated.decisions = parsed["Decisions Made"]
+                    updated.followUps = combinedFollowUps
                     updated.rawResponse = responseText
                     updated.regeneratedAt = Date()
                     try updated.update(db)
@@ -124,7 +136,7 @@ final class SummaryController: ObservableObject {
     func loadSummary(for sessionId: String) -> SessionSummary? {
         do {
             return try RTIDatabase.shared.pool.read { db in
-                try SessionSummary.fetchOne(db, key: sessionId)
+                try SessionSummary.filter(Column("session_id") == sessionId).fetchOne(db)
             }
         } catch {
             NSLog("[RTI] SummaryController load failed: \(error)")
@@ -159,5 +171,16 @@ final class SummaryController: ObservableObject {
         }
 
         return result
+    }
+
+    private static func combineFollowUps(openQuestions: String?, nextSteps: String?) -> String? {
+        var parts: [String] = []
+        if let q = openQuestions, q != "None.", !q.isEmpty {
+            parts.append("## Open Questions\n\(q)")
+        }
+        if let s = nextSteps, s != "None.", !s.isEmpty {
+            parts.append("## Next Steps\n\(s)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
     }
 }

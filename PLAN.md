@@ -75,38 +75,38 @@ Stages are roughly sequential; mark `[x]` when done, `[~]` for in-progress.
 
 ## Stage 6 — POC-8: Post-session summary & action items
 
-- [ ] AI-generated structured meeting summary after recording stops (sections: Action Items, Key Topics, Decisions, Follow-ups)
-- [ ] Action items extraction with speaker-assigned ownership
-- [ ] Summary | Transcript | Usage tabbed view in the session detail panel
-- [ ] Regenerate summary button (re-prompts LLM with full transcript)
-- [ ] Copy summary / Copy transcript clipboard buttons
+- [x] AI-generated structured meeting summary after recording stops (sections: Action Items, Key Topics, Decisions, Follow-ups)
+- [x] Action items extraction with speaker-assigned ownership
+- [x] Summary | Transcript | Usage tabbed view in the session detail panel
+- [x] Regenerate summary button (re-prompts LLM with full transcript)
+- [x] Copy summary / Copy transcript clipboard buttons
 
 ---
 
 ## Stage 7 — POC-9: Post-session Q&A & follow-up
 
-- [ ] "Ask about this session" — contextual LLM Q&A scoped to the session transcript + summary
-- [ ] Follow-up email generation from meeting content (paste-able into Mail.app)
-- [ ] Session resume — re-open a past session, continue appending transcript + LLM messages
-- [ ] Usage tab shows what context was consumed (screenshots taken, reference files attached, mode used)
+- [x] "Ask about this session" — contextual LLM Q&A scoped to the session transcript + summary
+- [x] Follow-up email generation from meeting content (paste-able into Mail.app)
+- [x] Session resume — re-open a past session, continue appending transcript + LLM messages
+- [x] Usage tab shows what context was consumed (screenshots taken, reference files attached, mode used)
 
 ---
 
 ## Stage 8 — POC-10: Session search & archive
 
-- [ ] Full-text search across all sessions (transcripts, summaries, action items, chat messages)
-- [ ] Session history browser with sort/filter (date, mode, duration) — replaces menubar-only list
-- [ ] Session detail panel opens from search result or history browser
-- [ ] Export session as markdown with frontmatter (title, date, mode, action items)
+- [x] Full-text search across all sessions (transcripts, summaries, action items, chat messages)
+- [x] Session history browser with sort/filter (date, mode, duration) — replaces menubar-only list
+- [x] Session detail panel opens from search result or history browser
+- [x] Export session as markdown with frontmatter (title, date, mode, action items)
 
 ---
 
 ## Stage 9 — POC-11: Calendar integration
 
-- [ ] Read system calendar events via EventKit (read-only, permission-gated)
-- [ ] Detect active meeting from calendar when recording starts; attach event metadata to session
-- [ ] Show calendar event title + attendees in session header
-- [ ] Calendar tab in Settings (grant/revoke Calendar permission, link behavior)
+- [x] Read system calendar events via EventKit (read-only, permission-gated)
+- [x] Detect active meeting from calendar when recording starts; attach event metadata to session
+- [x] Show calendar event title + attendees in session header
+- [x] Calendar tab in Settings (grant/revoke Calendar permission, link behavior)
 
 ---
 

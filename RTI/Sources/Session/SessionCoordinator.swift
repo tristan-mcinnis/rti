@@ -107,6 +107,24 @@ final class SessionCoordinator: ObservableObject {
         }
     }
 
+    /// One-time cleanup: close orphaned sessions (endedAt == nil but not current),
+    /// fill missing durations for completed sessions.
+    func normalizeLegacySessions() {
+        do {
+            try RTIDatabase.shared.pool.write { db in
+                let currentId = currentSessionId
+                // Close orphaned open sessions
+                try db.execute(sql: """
+                    UPDATE sessions
+                    SET ended_at = started_at
+                    WHERE ended_at IS NULL AND id != ?
+                    """, arguments: [currentId ?? ""])
+            }
+        } catch {
+            NSLog("[RTI] normalizeLegacySessions failed: \(error)")
+        }
+    }
+
     func clearCurrentSessionMessages() {
         guard let sid = currentSessionId else { return }
         do {
@@ -141,17 +159,83 @@ final class SessionCoordinator: ObservableObject {
         }
     }
 
+    func resumeSession(id: String) {
+        guard !isRunning else { return }
+        do {
+            guard var session = try RTIDatabase.shared.pool.read({ db in
+                try Session.fetchOne(db, key: id)
+            }) else { return }
+
+            session.endedAt = nil
+            try RTIDatabase.shared.pool.write { db in try session.update(db) }
+
+            currentSessionId = session.id
+            startedAt = session.startedAt
+            liveEntries = []
+            interimLine = nil
+            LLMController.shared.loadHistoryForCurrentSession()
+        } catch {
+            NSLog("[RTI] resumeSession failed: \(error)")
+        }
+    }
+
     private func launchSession() {
         let now = Date()
-        let sessionId = UUID().uuidString
-        let wavURL = WAVWriter.defaultURL(for: sessionId)
+        let sessionId: String
+        let wavURL: URL
 
+        // If current session is ended (resumed), reuse it for recording
+        if let currentId = currentSessionId,
+           let existing = try? RTIDatabase.shared.pool.read({ db in try Session.fetchOne(db, key: currentId) }),
+           existing.endedAt != nil {
+            sessionId = currentId
+            wavURL = WAVWriter.defaultURL(for: sessionId)
+            do {
+                try RTIDatabase.shared.pool.write { db in
+                    if var s = try Session.fetchOne(db, key: sessionId) {
+                        s.endedAt = nil
+                        s.wavPath = wavURL.path
+                        s.modeId = ModeStore.shared.activeModeId
+                        try s.update(db)
+                    }
+                }
+            } catch {
+                lastError = "DB update failed: \(error)"
+                return
+            }
+        } else {
+            // Close any previous open session before creating a new one
+            if let prevId = currentSessionId {
+                do {
+                    try RTIDatabase.shared.pool.write { db in
+                        if var prev = try Session.fetchOne(db, key: prevId), prev.endedAt == nil {
+                            prev.endedAt = now
+                            try prev.update(db)
+                        }
+                    }
+                } catch {
+                    NSLog("[RTI] close previous session failed: \(error)")
+                }
+            }
+            sessionId = UUID().uuidString
+            wavURL = WAVWriter.defaultURL(for: sessionId)
+        let calendarEvent = CalendarManager.shared.activeEvent()
         do {
-            let session = Session(id: sessionId, startedAt: now, endedAt: nil, wavPath: wavURL.path, notes: nil)
+            let session = Session(
+                id: sessionId,
+                startedAt: now,
+                endedAt: nil,
+                wavPath: wavURL.path,
+                notes: nil,
+                modeId: ModeStore.shared.activeModeId,
+                calendarEventId: calendarEvent?.eventIdentifier,
+                calendarTitle: calendarEvent?.title
+            )
             try RTIDatabase.shared.pool.write { db in try session.insert(db) }
         } catch {
             lastError = "DB insert failed: \(error)"
             return
+        }
         }
 
         do {
@@ -193,7 +277,7 @@ final class SessionCoordinator: ObservableObject {
         let endedAt = Date()
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            await self?.completeStop(sessionId: sessionId, endedAt: endedAt)
+            self?.completeStop(sessionId: sessionId, endedAt: endedAt)
         }
     }
 
