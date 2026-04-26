@@ -277,6 +277,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard SessionCoordinator.shared.isRunning else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Recording in progress"
+        alert.informativeText = "RTI is currently recording a session. Quitting will stop the recording, flush the WAV file, and finalize the session."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Stop & Quit")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         // Synchronously flush an in-flight session so we don't truncate the WAV
         // header or leave ended_at = NULL after a ⌘Q. Soniox is dropped without

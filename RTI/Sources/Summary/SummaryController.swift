@@ -9,9 +9,19 @@ final class SummaryController: ObservableObject {
     @Published private(set) var lastError: String?
 
     private let client: KimiClient
+    private var currentTask: Task<Void, Never>?
 
     private init() {
         self.client = KimiClient(baseURL: Secrets.kimiBaseURL)
+    }
+
+    /// Cancel an in-flight summary generation. Safe to call when nothing is
+    /// running. Flips isGenerating immediately so the UI returns to its
+    /// empty state without waiting for the URLSession to unwind.
+    func cancel() {
+        currentTask?.cancel()
+        currentTask = nil
+        isGenerating = false
     }
 
     private static let summaryPrompt = """
@@ -49,11 +59,24 @@ final class SummaryController: ObservableObject {
 
     func generateSummary(for sessionId: String) async {
         guard !isGenerating else { return }
+        cancel()  // belt-and-suspenders: clear any orphaned task
         isGenerating = true
         lastError = nil
 
-        defer { isGenerating = false }
+        // Wrap the work in a tracked Task so cancel() can interrupt it. We
+        // still await its value so the caller's `await generateSummary(...)`
+        // semantics are preserved.
+        let task = Task { [weak self] in
+            await self?._performGeneration(sessionId: sessionId)
+        }
+        currentTask = task
+        await task.value
+        // If cancel() ran, currentTask is already nil; otherwise clear it.
+        if currentTask === task { currentTask = nil }
+        isGenerating = false
+    }
 
+    private func _performGeneration(sessionId: String) async {
         let transcript: String
         do {
             transcript = try await RTIDatabase.shared.pool.read { db in
@@ -70,6 +93,8 @@ final class SummaryController: ObservableObject {
             return
         }
 
+        if Task.isCancelled { return }
+
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             lastError = "No transcript content to summarize."
             return
@@ -81,13 +106,19 @@ final class SummaryController: ObservableObject {
         var fullResponse = ""
         do {
             for try await delta in client.streamChat(messages: messages, smart: true) {
+                if Task.isCancelled { return }
                 fullResponse += delta
             }
+        } catch is CancellationError {
+            return
         } catch {
+            if Task.isCancelled { return }
             lastError = "Summary generation failed: \(error)"
             NSLog("[RTI] SummaryController stream error: \(error)")
             return
         }
+
+        if Task.isCancelled { return }
 
         guard !fullResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             lastError = "Summary generation returned empty response."

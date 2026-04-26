@@ -176,6 +176,8 @@ struct SessionDetailView: View {
             if summaryController.isGenerating {
                 ProgressView("Generating summary…")
                     .font(RTIDesign.Font.body)
+                Button("Cancel") { summaryController.cancel() }
+                    .controlSize(.small)
             } else {
                 Image(systemName: "doc.text.magnifyingglass")
                     .font(.system(size: 32))
