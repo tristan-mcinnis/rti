@@ -93,13 +93,18 @@ final class SessionCoordinator: ObservableObject {
     }
 
     /// Delete sessions (and FK-cascaded transcripts + chat_messages) older than
-    /// `days` from `started_at`. Called on launch for retention.
+    /// `days` from `started_at`. Called on launch for retention. Skips the
+    /// currently-active session and any still-open session so we don't pull
+    /// data out from under a live recording.
     func pruneOldSessions(days: Int = 30) {
         let threshold = Date().addingTimeInterval(-Double(days) * 86_400)
+        let activeId = currentSessionId ?? ""
         do {
             try RTIDatabase.shared.pool.write { db in
                 _ = try Session
                     .filter(Column("started_at") < threshold)
+                    .filter(Column("ended_at") != nil)
+                    .filter(Column("id") != activeId)
                     .deleteAll(db)
             }
         } catch {
@@ -147,7 +152,10 @@ final class SessionCoordinator: ObservableObject {
     func startSession() {
         guard !isRunning else { return }
         lastError = nil
-        LLMController.shared.clear()
+        // Cancel any in-flight stream and reset the in-memory entries, but do
+        // NOT delete chat_messages from the DB here — that would erase the
+        // history of a session the user is about to resume.
+        LLMController.shared.resetMemory()
 
         audio.requestPermission { [weak self] granted in
             guard let self else { return }
@@ -165,6 +173,13 @@ final class SessionCoordinator: ObservableObject {
             guard var session = try RTIDatabase.shared.pool.read({ db in
                 try Session.fetchOne(db, key: id)
             }) else { return }
+
+            // If the saved mode has been deleted since this session was created,
+            // clear the reference so LLMController falls back to the default.
+            if let modeId = session.modeId,
+               !ModeStore.shared.modes.contains(where: { $0.id == modeId }) {
+                session.modeId = nil
+            }
 
             session.endedAt = nil
             try RTIDatabase.shared.pool.write { db in try session.update(db) }
@@ -341,6 +356,31 @@ final class SessionCoordinator: ObservableObject {
         soniox?.disconnect()
         soniox = nil
         wav.close()
+    }
+
+    /// Synchronous teardown invoked from applicationWillTerminate. Soniox is
+    /// dropped without waiting for the 1.5s finalize roundtrip — remaining
+    /// audio is already on disk via the WAV writer; transcript finals for the
+    /// last second or two will be lost, which beats truncating the WAV header.
+    func emergencyShutdown() {
+        guard isRunning else { return }
+        audio.stop()
+        soniox?.disconnect()
+        soniox = nil
+        wav.close()
+        if let sid = currentSessionId {
+            do {
+                try RTIDatabase.shared.pool.write { db in
+                    if var s = try Session.fetchOne(db, key: sid), s.endedAt == nil {
+                        s.endedAt = Date()
+                        try s.update(db)
+                    }
+                }
+            } catch {
+                NSLog("[RTI] emergencyShutdown DB write failed: \(error)")
+            }
+        }
+        isRunning = false
     }
 
     private func handleAudioBuffer(_ buffer: AVAudioPCMBuffer) {

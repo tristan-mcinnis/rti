@@ -86,10 +86,20 @@ final class LLMController: ObservableObject {
         streaming = false
     }
 
-    func clear() {
+    /// Cancel any in-flight stream and drop the in-memory entries without
+    /// touching persisted chat_messages. Used when starting/resuming a session
+    /// where the user expects history to remain on disk.
+    func resetMemory() {
         cancel()
         entries = []
         lastError = nil
+        lastErrorIsAuth = false
+    }
+
+    /// Destructive: in-memory reset PLUS deletion of chat_messages for the
+    /// current session. Wired to the menubar "Clear Current Chat" action.
+    func clear() {
+        resetMemory()
         SessionCoordinator.shared.clearCurrentSessionMessages()
     }
 

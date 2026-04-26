@@ -21,9 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         CrashLog.install()
         CredentialStore.migrateLegacyIfNeeded()
 
-        SessionCoordinator.shared.pruneOldSessions(days: 30)
-        SessionCoordinator.shared.normalizeLegacySessions()
+        // Bootstrap first so currentSessionId is set before normalize/prune run —
+        // they consult it to avoid touching the active session.
         SessionCoordinator.shared.bootstrapChatSession()
+        SessionCoordinator.shared.normalizeLegacySessions()
+        SessionCoordinator.shared.pruneOldSessions(days: 30)
         _ = ModeStore.shared
         LLMController.shared.loadHistoryForCurrentSession()
 
@@ -216,4 +218,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func clearChat() { LLMController.shared.clear() }
 
     @objc private func quit() { NSApp.terminate(nil) }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Synchronously flush an in-flight session so we don't truncate the WAV
+        // header or leave ended_at = NULL after a ⌘Q. Soniox is dropped without
+        // its 1.5s finalize wait; remaining audio is already on disk.
+        SessionCoordinator.shared.emergencyShutdown()
+    }
 }
