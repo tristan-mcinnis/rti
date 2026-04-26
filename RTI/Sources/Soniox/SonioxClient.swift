@@ -5,6 +5,9 @@ final class SonioxClient: WebSocketDelegate {
     static let defaultURL = URL(string: "wss://stt-rt.soniox.com/transcribe-websocket")!
 
     var onWords: (([SonioxWord]) -> Void)?
+    /// Fires on terminal failures the user should see: server-reported errors,
+    /// or reaching `maxRetries` without reconnecting. Always dispatched on main.
+    var onError: ((String) -> Void)?
 
     private let apiKey: String
     private let url: URL
@@ -44,8 +47,13 @@ final class SonioxClient: WebSocketDelegate {
 
     /// Signal end-of-audio to Soniox so remaining interim tokens get finalized.
     /// The caller should wait briefly before calling disconnect() to let finals arrive.
+    /// Also marks the connection as intentionally winding down so the server's
+    /// clean close (code=1000) during the wait window does not trigger a reconnect.
     func finalize() {
         guard isConnected else { return }
+        intentionalDisconnect = true
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
         socket?.write(string: "")
     }
 
@@ -105,6 +113,9 @@ final class SonioxClient: WebSocketDelegate {
     private func scheduleReconnect() {
         guard retryCount < Self.maxRetries else {
             NSLog("[RTI] SonioxClient: max retries reached")
+            DispatchQueue.main.async { [weak self] in
+                self?.onError?("Soniox connection lost — transcription stopped after \(Self.maxRetries) reconnect attempts.")
+            }
             return
         }
         let delay = Self.retryDelays[min(retryCount, Self.retryDelays.count - 1)]
@@ -124,7 +135,11 @@ final class SonioxClient: WebSocketDelegate {
         do {
             let msg = try JSONDecoder().decode(SonioxTranscriptMessage.self, from: data)
             if let code = msg.error_code {
-                NSLog("[RTI] SonioxClient server error: code=\(code) \(msg.error_message ?? "")")
+                let detail = msg.error_message ?? "no detail"
+                NSLog("[RTI] SonioxClient server error: code=\(code) \(detail)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onError?("Soniox error \(code): \(detail)")
+                }
                 return
             }
             guard let raw = msg.tokens, !raw.isEmpty else { return }

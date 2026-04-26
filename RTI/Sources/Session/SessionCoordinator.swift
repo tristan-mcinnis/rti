@@ -247,6 +247,13 @@ final class SessionCoordinator: ObservableObject {
 
         let client = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
         client.onWords = { [weak self] words in self?.handleWords(words) }
+        client.onError = { [weak self] message in
+            guard let self else { return }
+            self.lastError = message
+            // A terminal Soniox failure means transcription is done; tear down audio
+            // so isRunning flips off and the UI stops showing the live state.
+            if self.isRunning { self.stopSession() }
+        }
         client.connect()
         self.soniox = client
 
