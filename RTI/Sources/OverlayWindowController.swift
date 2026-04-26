@@ -10,9 +10,14 @@ private final class KeyableOverlayPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     /// Called when the panel transitions to key — used to auto-focus the input.
+    /// Posting synchronously inside becomeKey re-enters layout because the
+    /// SwiftUI focus change drives a layout pass while AppKit is still in one,
+    /// which logs "_NSDetectedLayoutRecursion". Defer to the next runloop tick.
     override func becomeKey() {
         super.becomeKey()
-        NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
+        }
     }
 
     /// ESC dismisses the overlay — universal expectation for transient surfaces.

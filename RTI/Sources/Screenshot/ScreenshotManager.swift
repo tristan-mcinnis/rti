@@ -30,7 +30,32 @@ final class ScreenshotManager {
                 NSLog("[RTI] Screenshot capture/OCR failed: \(error)")
                 let msg = self.errorDescription(for: error)
                 LLMController.shared.setScreenAttachError(msg)
+                // TCC denial: deep-link the user into the right pane instead of
+                // leaving them to find Privacy → Screen Recording manually.
+                if Self.isScreenRecordingDenied(error) {
+                    self.promptForScreenRecordingAccess()
+                }
             }
+        }
+    }
+
+    private static func isScreenRecordingDenied(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain.contains("ScreenCaptureKit") && ns.code == -3801 { return true }
+        if ns.domain.contains("TCC") { return true }
+        return false
+    }
+
+    private func promptForScreenRecordingAccess() {
+        let alert = NSAlert()
+        alert.messageText = "Screen Recording access required"
+        alert.informativeText = "RTI needs Screen Recording access to capture and read your screen. Open System Settings to grant access, then try ⌘H again."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
         }
     }
 

@@ -1,6 +1,8 @@
 import CoreGraphics
 import Foundation
-import Vision
+// Vision's request types aren't Sendable yet; @preconcurrency silences the
+// strict-concurrency capture warnings without changing runtime behavior.
+@preconcurrency import Vision
 
 enum OCRService {
     /// Runs Vision text recognition on `cgImage` and returns observations sorted
