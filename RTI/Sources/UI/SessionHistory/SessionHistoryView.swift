@@ -85,12 +85,14 @@ struct SessionHistoryView: View {
                         sessionRow(result.session, snippet: result.snippet)
                             .contentShape(Rectangle())
                             .onTapGesture { openSession(result.session.id) }
+                            .contextMenu { contextMenu(for: result.session) }
                     }
                 } else {
                     ForEach(sortedSessions) { session in
                         sessionRow(session, snippet: nil)
                             .contentShape(Rectangle())
                             .onTapGesture { openSession(session.id) }
+                            .contextMenu { contextMenu(for: session) }
                     }
                 }
             }
@@ -197,6 +199,34 @@ struct SessionHistoryView: View {
 
     private func openSession(_ id: String) {
         NotificationCenter.default.post(name: .openSessionDetail, object: id)
+    }
+
+    @ViewBuilder
+    private func contextMenu(for session: Session) -> some View {
+        Button("Open") { openSession(session.id) }
+        if let path = session.wavPath, FileManager.default.fileExists(atPath: path) {
+            Button("Reveal Audio in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            }
+        }
+        Divider()
+        Button("Delete Session…", role: .destructive) {
+            confirmDelete(session: session)
+        }
+        .disabled(SessionCoordinator.shared.isRunning && SessionCoordinator.shared.currentSessionId == session.id)
+    }
+
+    private func confirmDelete(session: Session) {
+        let alert = NSAlert()
+        alert.messageText = "Delete this session?"
+        alert.informativeText = "This permanently deletes the transcript, chat history, summary, and audio recording for \(sessionTitle(session)). This cannot be undone."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            SessionCoordinator.shared.deleteSession(id: session.id)
+            loadSessions()
+        }
     }
 
     private func performSearch() {

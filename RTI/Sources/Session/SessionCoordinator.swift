@@ -141,6 +141,35 @@ final class SessionCoordinator: ObservableObject {
         }
     }
 
+    /// Delete a saved session: removes the row (cascades to transcripts /
+    /// chat_messages / summary), unlinks the WAV file if present, and clears
+    /// currentSessionId if it pointed at the deleted session.
+    func deleteSession(id: String) {
+        guard !isRunning || currentSessionId != id else {
+            // Refuse to delete the actively-recording session.
+            return
+        }
+        do {
+            let session = try RTIDatabase.shared.pool.read { db in
+                try Session.fetchOne(db, key: id)
+            }
+            if let path = session?.wavPath {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+            try RTIDatabase.shared.pool.write { db in
+                _ = try Session.filter(Column("id") == id).deleteAll(db)
+            }
+            if currentSessionId == id {
+                currentSessionId = nil
+                startedAt = nil
+                liveEntries = []
+                interimLine = nil
+            }
+        } catch {
+            NSLog("[RTI] deleteSession failed: \(error)")
+        }
+    }
+
     func toggleSession() {
         if isRunning {
             stopSession()
@@ -160,10 +189,27 @@ final class SessionCoordinator: ObservableObject {
         audio.requestPermission { [weak self] granted in
             guard let self else { return }
             guard granted else {
-                self.lastError = "Microphone permission denied. Grant access in System Settings → Privacy → Microphone."
+                self.lastError = "Microphone permission denied."
+                self.promptForMicrophoneAccess()
                 return
             }
             self.launchSession()
+        }
+    }
+
+    /// Surface mic denial as an actionable NSAlert with a deep link into the
+    /// macOS Privacy pane, instead of just leaving an error string on a
+    /// surface the user may not be looking at.
+    private func promptForMicrophoneAccess() {
+        let alert = NSAlert()
+        alert.messageText = "Microphone access required"
+        alert.informativeText = "RTI needs microphone access to transcribe audio. Open System Settings to grant access, then try Start Session again."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
         }
     }
 

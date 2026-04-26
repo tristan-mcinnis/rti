@@ -325,9 +325,22 @@ struct SessionDetailView: View {
                         infoRow("Screenshots attached", "\(screenCount)")
                     }
                 }
-                if session?.wavPath != nil {
+                if let wavPath = session?.wavPath {
                     usageCard(title: "Audio", icon: "waveform") {
-                        infoRow("Recording", session?.wavPath ?? "N/A")
+                        infoRow("Recording", wavPath)
+                        if FileManager.default.fileExists(atPath: wavPath) {
+                            HStack {
+                                Spacer()
+                                Button("Reveal in Finder") {
+                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: wavPath)])
+                                }
+                                .controlSize(.small)
+                            }
+                        } else {
+                            Text("File no longer exists at this path.")
+                                .font(RTIDesign.Font.caption)
+                                .foregroundStyle(RTIDesign.Color.textTertiary)
+                        }
                     }
                 }
             }
