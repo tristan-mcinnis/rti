@@ -40,23 +40,59 @@ struct DebugConsoleView: View {
         }
     }
 
+    private struct LiveParagraph: Identifiable {
+        let id: UUID
+        let speakerId: String
+        let text: String
+    }
+
+    /// Soniox finalizes in 1–3s windows so the raw stream is dozens of tiny
+    /// fragments. Coalesce consecutive same-speaker entries into paragraphs
+    /// for a readable live view. Computed each render — small list, cheap.
+    private var paragraphs: [LiveParagraph] {
+        var out: [LiveParagraph] = []
+        for entry in coordinator.liveEntries {
+            if let last = out.last, last.speakerId == entry.speakerId {
+                let merged = LiveParagraph(
+                    id: last.id,
+                    speakerId: last.speakerId,
+                    text: last.text + " " + entry.text
+                )
+                out.removeLast()
+                out.append(merged)
+            } else {
+                out.append(LiveParagraph(
+                    id: entry.id,
+                    speakerId: entry.speakerId,
+                    text: entry.text
+                ))
+            }
+        }
+        return out
+    }
+
     private var transcriptList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(coordinator.liveEntries) { entry in
-                        TranscriptRowView(speakerId: entry.speakerId, text: entry.text, isFinal: true)
-                            .id(entry.id)
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    ForEach(paragraphs) { p in
+                        paragraphRow(p)
+                            .id(p.id)
                     }
                     if let interim = coordinator.interimLine, !interim.isEmpty {
-                        TranscriptRowView(speakerId: nil, text: interim, isFinal: false)
+                        Text(interim)
+                            .font(.system(size: 14))
+                            .italic()
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .id("interim")
                     }
                 }
-                .padding(16)
+                .padding(20)
             }
-            .onChange(of: coordinator.liveEntries.count) { _, _ in
-                if let last = coordinator.liveEntries.last {
+            .onChange(of: paragraphs.last?.id) { _, _ in
+                if let last = paragraphs.last {
                     withAnimation(.easeOut(duration: 0.15)) {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
@@ -65,6 +101,31 @@ struct DebugConsoleView: View {
             .onChange(of: coordinator.interimLine) { _, _ in
                 proxy.scrollTo("interim", anchor: .bottom)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func paragraphRow(_ p: LiveParagraph) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(speakerDisplayName(p.speakerId))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(p.text.trimmingCharacters(in: .whitespaces))
+                .font(.system(size: 14))
+                .lineSpacing(3)
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func speakerDisplayName(_ id: String) -> String {
+        switch id {
+        case "self": return "You"
+        case let other where other.hasPrefix("them_"):
+            let n = String(other.dropFirst("them_".count))
+            return "Speaker \(n)"
+        default: return id.capitalized
         }
     }
 

@@ -19,7 +19,7 @@ final class DebugConsoleWindowController {
             backing: .buffered,
             defer: false
         )
-        w.title = "RTI Debug — Transcript"
+        w.title = "Live Transcript"
         w.setFrameAutosaveName("rti.debugConsole")
         w.contentView = NSHostingView(rootView: DebugConsoleView().environmentObject(SessionCoordinator.shared))
         w.isReleasedWhenClosed = false
