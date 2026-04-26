@@ -108,6 +108,11 @@ final class RTIDatabase {
                 t.add(column: "calendar_title", .text)
             }
         }
+        m.registerMigration("v6_session_title") { db in
+            try db.alter(table: "sessions") { t in
+                t.add(column: "title", .text)
+            }
+        }
         return m
     }
 }

@@ -227,6 +227,7 @@ final class SessionCoordinator: ObservableObject {
                 endedAt: nil,
                 wavPath: wavURL.path,
                 notes: nil,
+                title: nil,
                 modeId: ModeStore.shared.activeModeId,
                 calendarEventId: calendarEvent?.eventIdentifier,
                 calendarTitle: calendarEvent?.title
@@ -323,6 +324,7 @@ final class SessionCoordinator: ObservableObject {
         guard hasTranscripts else { return }
 
         Task { @MainActor in
+            await SessionTitleController.shared.generateTitle(for: sessionId)
             await SummaryController.shared.generateSummary(for: sessionId)
         }
     }

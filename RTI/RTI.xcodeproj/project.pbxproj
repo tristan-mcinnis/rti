@@ -24,6 +24,7 @@
 		44CBAA0BB8BCCF9DEE1CDFF3 /* PromptActionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */; };
 		45702D4E7A2DEF80C47A4F10 /* ResponseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F81C4D0121A52619B08FC56 /* ResponseView.swift */; };
 		4DE65CFB81D76D7F0A0F062E /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 08E319D06810A68709A49060 /* GRDB */; };
+		506FA1EED04872D658BE8E4E /* SessionTitleController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C6B19B466BE378C1C09EAFD /* SessionTitleController.swift */; };
 		5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */; };
 		5D53AB334A181274357817CD /* TopWidgetWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */; };
 		5FDDEF1F7691B954741886BF /* ScreenshotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22E402C93F783C8020AFDCDE /* ScreenshotManager.swift */; };
@@ -87,6 +88,7 @@
 		82F3B4333865A3ABDED731A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		857295A827688BF13CBC8A7E /* WAVWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVWriter.swift; sourceTree = "<group>"; };
 		869AD9A19D38A8A7501920EF /* SessionDetailWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailWindowController.swift; sourceTree = "<group>"; };
+		8C6B19B466BE378C1C09EAFD /* SessionTitleController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTitleController.swift; sourceTree = "<group>"; };
 		906F7DCF321C17392E3DA594 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
 		9A849422D5702D40826048AF /* SessionHistoryWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryWindowController.swift; sourceTree = "<group>"; };
 		9AD2D289259AD477B911940D /* LLMController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMController.swift; sourceTree = "<group>"; };
@@ -252,6 +254,7 @@
 				4DED40E2036B38F0362B81D5 /* SessionExport.swift */,
 				B5A65E39B5589BEA9AE341B2 /* SessionQAController.swift */,
 				D67B7ED9699397B8D95DD0B0 /* SessionSearch.swift */,
+				8C6B19B466BE378C1C09EAFD /* SessionTitleController.swift */,
 			);
 			path = Session;
 			sourceTree = "<group>";
@@ -443,6 +446,7 @@
 				70BC938F0CA9C04A5FEE5059 /* SessionQAController.swift in Sources */,
 				AA632F7F7DC4BBFC918D6941 /* SessionSearch.swift in Sources */,
 				0E94DDBB01100ED1B197831A /* SessionSummary.swift in Sources */,
+				506FA1EED04872D658BE8E4E /* SessionTitleController.swift in Sources */,
 				BC57220A05F60410ED96C0B3 /* SettingsView.swift in Sources */,
 				C1D2AF666B90D25E0C08C4BF /* SettingsWindowController.swift in Sources */,
 				DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */,

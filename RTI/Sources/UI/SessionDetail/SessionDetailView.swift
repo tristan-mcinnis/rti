@@ -108,6 +108,7 @@ struct SessionDetailView: View {
 
     private var sessionTitle: String {
         if let title = session?.calendarTitle, !title.isEmpty { return title }
+        if let title = session?.title, !title.isEmpty { return title }
         return "Meeting Session"
     }
 

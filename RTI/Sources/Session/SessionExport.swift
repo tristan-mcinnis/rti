@@ -21,9 +21,11 @@ enum SessionExport {
                     try? Mode.fetchOne(db, key: id)
                 }
 
+                let displayTitle = session.calendarTitle ?? session.title ?? "Session \(session.startedAt.formatted(date: .numeric, time: .shortened))"
+
                 var lines: [String] = []
                 lines.append("---")
-                lines.append("title: Session \(session.startedAt.formatted(date: .numeric, time: .shortened))")
+                lines.append("title: \(displayTitle)")
                 lines.append("date: \(ISO8601DateFormatter().string(from: session.startedAt))")
                 if let endedAt = session.endedAt {
                     lines.append("ended: \(ISO8601DateFormatter().string(from: endedAt))")
@@ -77,6 +79,39 @@ enum SessionExport {
         } catch {
             NSLog("[RTI] SessionExport failed: \(error)")
             return nil
+        }
+    }
+
+    /// Generate a filesystem-safe suggested filename for the session export.
+    static func suggestedFilename(for sessionId: String) -> String {
+        do {
+            return try RTIDatabase.shared.pool.read { db in
+                guard let session = try Session.fetchOne(db, key: sessionId) else {
+                    return "session-export.md"
+                }
+
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyyMMdd"
+                let datePrefix = formatter.string(from: session.startedAt)
+
+                let rawTitle = session.calendarTitle ?? session.title ?? "meeting"
+                let slug = rawTitle
+                    .lowercased()
+                    .replacingOccurrences(of: " ", with: "-")
+                    .replacingOccurrences(of: "'", with: "")
+                    .replacingOccurrences(of: "\"", with: "")
+                    .replacingOccurrences(of: ",", with: "")
+                    .replacingOccurrences(of: ":", with: "")
+                    .replacingOccurrences(of: ";", with: "")
+
+                let safeSlug = String(slug.filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+                    .replacingOccurrences(of: "--", with: "-")
+                    .prefix(60))
+
+                return "\(datePrefix)-\(safeSlug).md"
+            }
+        } catch {
+            return "session-export.md"
         }
     }
 

@@ -153,6 +153,9 @@ struct SessionHistoryView: View {
         if let calendarTitle = session.calendarTitle, !calendarTitle.isEmpty {
             return calendarTitle
         }
+        if let title = session.title, !title.isEmpty {
+            return title
+        }
         return "Session \(session.startedAt.formatted(date: .numeric, time: .shortened))"
     }
 
