@@ -75,9 +75,15 @@ struct ResponseView: View {
             // the new row before we ask the ScrollViewReader to seek to it.
             .onChange(of: entries.count) { _, _ in scrollToBottom(proxy: proxy) }
             .onChange(of: entries.last?.id) { _, _ in scrollToBottom(proxy: proxy) }
-            .onReceive(Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()) { _ in
-                guard streaming, let lastId = entries.last?.id else { return }
-                proxy.scrollTo(lastId, anchor: .bottom)
+            // Streaming: each SSE token mutates entries.last?.text, which
+            // re-renders the body. An inline Timer.publish would be re-created
+            // on every rebuild and never fire while tokens arrive faster than
+            // its interval, so drive scroll directly off the text growing.
+            .onChange(of: entries.last?.text) { _, _ in
+                guard let lastId = entries.last?.id else { return }
+                DispatchQueue.main.async {
+                    proxy.scrollTo(lastId, anchor: .bottom)
+                }
             }
         }
     }
