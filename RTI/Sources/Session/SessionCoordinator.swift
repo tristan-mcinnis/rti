@@ -341,7 +341,9 @@ final class SessionCoordinator: ObservableObject {
         do {
             try wav.open(at: wavURL)
         } catch {
-            NSLog("[RTI] WAV open failed: \(error)")
+            lastError = "Couldn't create audio file: \(error)"
+            teardownOnFailure()
+            return
         }
 
         let client = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)

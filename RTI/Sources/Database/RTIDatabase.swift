@@ -24,11 +24,7 @@ final class RTIDatabase {
             alert.alertStyle = .critical
             alert.addButton(withTitle: "Quit")
             alert.runModal()
-            NSApp.terminate(nil)
-            // NSApp.terminate is async; block here so callers don't see a phantom value.
-            // The terminate will fire on the next runloop tick.
-            Thread.sleep(forTimeInterval: 60)
-            fatalError("RTIDatabase unrecoverable")
+            exit(1)
         }
     }()
 

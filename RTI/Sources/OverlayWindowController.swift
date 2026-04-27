@@ -21,8 +21,10 @@ private final class KeyableOverlayPanel: NSPanel {
     }
 
     /// ESC dismisses the overlay — universal expectation for transient surfaces.
+    /// Posts a notification so the controller can route through hide() and keep
+    /// alphaValue / isVisible in sync, instead of calling orderOut directly.
     override func cancelOperation(_ sender: Any?) {
-        orderOut(nil)
+        NotificationCenter.default.post(name: .rtiToggleOverlay, object: nil)
     }
 }
 

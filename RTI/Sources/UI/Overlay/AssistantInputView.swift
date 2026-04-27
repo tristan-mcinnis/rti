@@ -50,7 +50,7 @@ struct AssistantInputView: View {
         .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
             // Defer so the focus change lands after the panel finishes its
             // becomeKey transition; otherwise SwiftUI sometimes drops it.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            DispatchQueue.main.async {
                 isInputFocused = true
             }
         }

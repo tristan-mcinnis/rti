@@ -118,11 +118,7 @@ final class DeepSeekClient {
     }
 
     private func readAll(_ bytes: URLSession.AsyncBytes) async throws -> String {
-        var data = Data()
-        for try await byte in bytes {
-            data.append(byte)
-            if data.count > 8192 { break }
-        }
+        let data = try await Data(collecting: bytes, upTo: 8192)
         return String(data: data, encoding: .utf8) ?? "<binary>"
     }
 }
