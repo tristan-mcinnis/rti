@@ -93,6 +93,11 @@ struct DebugConsoleView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
+                    if paragraphs.isEmpty,
+                       (coordinator.interimLine ?? "").isEmpty,
+                       coordinator.isRunning {
+                        waitingPlaceholder
+                    }
                     ForEach(paragraphs) { p in
                         paragraphRow(p)
                             .id(p.id)
@@ -149,26 +154,34 @@ struct DebugConsoleView: View {
                     .help("Copy this paragraph")
                 }
             }
-            Text(p.text.trimmingCharacters(in: .whitespaces))
-                .font(.system(size: 14, weight: isNote ? .regular : .regular))
-                .italic(isNote)
-                .lineSpacing(3)
-                .foregroundStyle(isNote ? Color.primary.opacity(0.85) : .primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(isNote ? 8 : 0)
-                .background(
-                    isNote
-                    ? RoundedRectangle(cornerRadius: 6).fill(Color.yellow.opacity(0.08))
-                    : nil
-                )
-                .overlay(alignment: .leading) {
-                    if isNote {
+            // Note rows get a yellow card; everything else renders as plain
+            // primary-colored text. Branching the modifier chain (instead of
+            // doing an `isNote ? … : nil` ternary inside .background) avoids a
+            // SwiftUI quirk where the optional-View ternary could compile to a
+            // type that silently swallowed the row body.
+            if isNote {
+                Text(p.text.trimmingCharacters(in: .whitespaces))
+                    .font(.system(size: 14))
+                    .italic()
+                    .lineSpacing(3)
+                    .foregroundStyle(Color.primary.opacity(0.85))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.yellow.opacity(0.08)))
+                    .overlay(alignment: .leading) {
                         Rectangle()
                             .fill(Color.yellow.opacity(0.5))
                             .frame(width: 2)
                     }
-                }
+            } else {
+                Text(p.text.trimmingCharacters(in: .whitespaces))
+                    .font(.system(size: 14))
+                    .lineSpacing(3)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .contentShape(Rectangle())
         .onHover { inside in hoveredId = inside ? p.id : (hoveredId == p.id ? nil : hoveredId) }
@@ -206,6 +219,26 @@ struct DebugConsoleView: View {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await MainActor.run { if copedFlash == key { copedFlash = nil } }
         }
+    }
+
+    /// Shown when the session is recording but Soniox hasn't returned any
+    /// tokens yet — so the user can tell the difference between "nothing was
+    /// said" and "the transcript pipeline is broken." Settings → View Logs…
+    /// has the underlying connection / token receipt timeline.
+    private var waitingPlaceholder: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ProgressView().controlSize(.small).scaleEffect(0.7)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Waiting for transcription…")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("Audio is being captured. Words will appear as Soniox finalizes them. If nothing arrives within a few seconds, check Settings → View Logs.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 8)
     }
 
     private func speakerDisplayName(_ id: String) -> String {

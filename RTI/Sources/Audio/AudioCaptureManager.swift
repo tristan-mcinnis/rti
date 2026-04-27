@@ -57,7 +57,12 @@ final class AudioCaptureManager {
             )
             if setStatus != noErr {
                 NSLog("[RTI] audio: failed to bind input device (status=\(setStatus)) — falling back to system default")
+                RTILog.log("failed to bind input device (status=\(setStatus)) — using system default", category: "audio")
+            } else {
+                RTILog.log("bound to input device id=\(deviceID)", category: "audio")
             }
+        } else {
+            RTILog.log("using system default input device", category: "audio")
         }
         let nativeFormat = input.outputFormat(forBus: 0)
 

@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct PromptActionRow: View {
+    @ObservedObject private var inputState = OverlayInputState.shared
+    @ObservedObject private var session = SessionCoordinator.shared
+
     var body: some View {
         HStack(spacing: 14) {
             actionButton(icon: "sparkles", label: "Assist", isPrimary: true) {
@@ -18,8 +21,31 @@ struct PromptActionRow: View {
             actionButton(icon: "arrow.clockwise", label: "Recap", isPrimary: false) {
                 LLMController.shared.sendRecap()
             }
+            // Note is a *mode toggle* on the input bar, not a one-shot LLM call.
+            // Only meaningful while a session is recording — there's no
+            // transcript to attach to otherwise.
+            if session.isRunning {
+                dot
+                noteToggle
+            }
             Spacer(minLength: 0)
         }
+    }
+
+    private var noteToggle: some View {
+        Button(action: { inputState.isNoteMode.toggle() }) {
+            HStack(spacing: 6) {
+                Image(systemName: "note.text")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Note")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .foregroundStyle(inputState.isNoteMode ? Color.yellow : Color.white.opacity(0.72))
+        }
+        .buttonStyle(.plain)
+        .help(inputState.isNoteMode
+              ? "Note mode on — Enter inserts the input as an inline note"
+              : "Switch to Note mode — Enter will insert as a transcript note")
     }
 
     private var dot: some View {

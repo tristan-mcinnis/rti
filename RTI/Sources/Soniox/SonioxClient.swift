@@ -61,6 +61,7 @@ final class SonioxClient: WebSocketDelegate {
         switch event {
         case .connected:
             NSLog("[RTI] SonioxClient: connected, sending config")
+            RTILog.log("connected — sending config", category: "soniox")
             isConnected = true
             retryCount = 0
             sendConfig()
@@ -86,6 +87,7 @@ final class SonioxClient: WebSocketDelegate {
     private func handleDrop(_ reason: String) {
         isConnected = false
         NSLog("[RTI] SonioxClient: \(reason)")
+        RTILog.log("dropped — \(reason)", category: "soniox")
         if !intentionalDisconnect {
             scheduleReconnect()
         }
@@ -137,6 +139,7 @@ final class SonioxClient: WebSocketDelegate {
             if let code = msg.error_code {
                 let detail = msg.error_message ?? "no detail"
                 NSLog("[RTI] SonioxClient server error: code=\(code) \(detail)")
+                RTILog.log("server error code=\(code) \(detail)", category: "soniox")
                 DispatchQueue.main.async { [weak self] in
                     self?.onError?("Soniox error \(code): \(detail)")
                 }
@@ -144,6 +147,10 @@ final class SonioxClient: WebSocketDelegate {
             }
             guard let raw = msg.tokens, !raw.isEmpty else { return }
             let words = raw.map { $0.toSonioxWord() }
+            let finalCount = words.filter(\.isFinal).count
+            if finalCount > 0 {
+                RTILog.log("received \(words.count) tokens (\(finalCount) final)", category: "soniox")
+            }
             DispatchQueue.main.async { [weak self] in
                 self?.onWords?(words)
             }

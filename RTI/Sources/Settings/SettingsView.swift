@@ -368,6 +368,7 @@ private struct GeneralTab: View {
                 Button("Show RTI Folder") { revealRTIFolder() }
                 Button("Show Crash Log") { revealCrashLog() }
                     .disabled(crashLogURL() == nil || !FileManager.default.fileExists(atPath: crashLogURL()?.path ?? ""))
+                Button("View Logs…") { showLogs() }
             }
 
             Spacer()
@@ -432,6 +433,13 @@ private struct GeneralTab: View {
     private func revealCrashLog() {
         guard let url = crashLogURL(), FileManager.default.fileExists(atPath: url.path) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    /// Singleton-per-window so subsequent presses bring the existing logs
+    /// window to the front instead of stacking new ones.
+    private static let logsController = LogsWindowController()
+    private func showLogs() {
+        Self.logsController.show()
     }
 
     private func hotkeyRow(_ label: String, _ key: String) -> some View {

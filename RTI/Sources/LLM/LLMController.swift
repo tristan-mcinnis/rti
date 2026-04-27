@@ -238,6 +238,7 @@ final class LLMController: ObservableObject {
                     self.lastError = "\(error)"
                 }
                 NSLog("[RTI] LLM stream error: \(error)")
+                RTILog.log("stream error: \(error)", category: "deepseek")
             }
             guard self.streamingEntryID == thisEntryID else { return }
             self.streaming = false

@@ -8,11 +8,12 @@ struct AssistantInputView: View {
     @ObservedObject private var llm = LLMController.shared
     @ObservedObject private var modes = ModeStore.shared
     @ObservedObject private var session = SessionCoordinator.shared
+    @ObservedObject private var inputState = OverlayInputState.shared
 
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                TextField("Ask about your screen or conversation, or ⌘↵ for Assist", text: $input)
+                TextField(textFieldPrompt, text: $input)
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.95))
@@ -26,7 +27,10 @@ struct AssistantInputView: View {
                     .fill(Color.white.opacity(0.06))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            .stroke(inputState.isNoteMode
+                                    ? Color.yellow.opacity(0.55)
+                                    : Color.white.opacity(0.10),
+                                    lineWidth: 1)
                     )
             )
 
@@ -35,9 +39,6 @@ struct AssistantInputView: View {
                 smartPill
                 if session.isRunning { recordingBadge }
                 Spacer()
-                if session.isRunning, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    noteButton
-                }
                 if llm.streaming {
                     stopButton
                 } else {
@@ -139,14 +140,21 @@ struct AssistantInputView: View {
             }
             .keyboardShortcut(",", modifiers: .command)
         } label: {
+            // Menu's .borderlessButton style was recoloring the SF Symbol back
+            // to the system label color (black on the dark overlay), which made
+            // the dots invisible even though the hit target still worked. Force
+            // the symbol to render monochrome with an explicit white tint, and
+            // pin the surrounding Menu's tint so it doesn't override us.
             Image(systemName: "ellipsis")
+                .symbolRenderingMode(.monochrome)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundColor(.white.opacity(0.7))
                 .frame(width: 28, height: 26)
                 .background(Capsule().fill(Color.white.opacity(0.06)))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .tint(.white.opacity(0.7))
         .frame(width: 28)
         .help("Quick actions and settings")
     }
@@ -202,34 +210,22 @@ struct AssistantInputView: View {
         .help("Stop streaming response")
     }
 
-    private var noteButton: some View {
-        Button(action: submitAsNote) {
-            HStack(spacing: 5) {
-                Image(systemName: "note.text")
-                    .font(.system(size: 11, weight: .semibold))
-                Text("Note")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(.white.opacity(0.85))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(Color.white.opacity(0.10)))
+    private var textFieldPrompt: String {
+        if inputState.isNoteMode {
+            return "Type a note — Enter inserts inline into the transcript"
         }
-        .buttonStyle(.plain)
-        .help("Insert as inline note in the transcript (not sent to LLM)")
+        return "Ask about your screen or conversation, or ⌘↵ for Assist"
     }
 
     private func submit() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        llm.sendAskAnything(text)
-        input = ""
-    }
-
-    private func submitAsNote() {
-        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        if SessionCoordinator.shared.insertNote(text) {
+        if inputState.isNoteMode {
+            if SessionCoordinator.shared.insertNote(text) {
+                input = ""
+            }
+        } else {
+            llm.sendAskAnything(text)
             input = ""
         }
     }

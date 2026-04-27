@@ -68,19 +68,28 @@ struct ResponseView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Drive scroll-to-bottom from the entry id (changes once per turn)
-            // plus a low-rate timer while streaming. Watching `text` directly
-            // fires multiple times per frame during a fast SSE stream and
-            // triggers SwiftUI's "tried to update multiple times per frame"
-            // warning.
-            .onChange(of: entries.last?.id) { _, _ in
-                guard let lastId = entries.last?.id else { return }
-                withAnimation(.easeOut(duration: 0.15)) {
-                    proxy.scrollTo(lastId, anchor: .bottom)
-                }
-            }
+            // Drive scroll-to-bottom from a few signals so a new turn lands
+            // visibly even if the row hasn't laid out yet when onChange first
+            // fires. We watch entries.count (catches batched user+assistant
+            // appends), then defer one runloop tick so SwiftUI has measured
+            // the new row before we ask the ScrollViewReader to seek to it.
+            .onChange(of: entries.count) { _, _ in scrollToBottom(proxy: proxy) }
+            .onChange(of: entries.last?.id) { _, _ in scrollToBottom(proxy: proxy) }
             .onReceive(Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()) { _ in
                 guard streaming, let lastId = entries.last?.id else { return }
+                proxy.scrollTo(lastId, anchor: .bottom)
+            }
+        }
+    }
+
+    /// Defer the scroll by one runloop tick so SwiftUI has actually laid out
+    /// the newly-appended row before we ask the proxy to seek to it. Without
+    /// this, hitting Assist on a long conversation often left the new turn
+    /// off-screen because onChange fired before layout completed.
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            guard let lastId = entries.last?.id else { return }
+            withAnimation(.easeOut(duration: 0.18)) {
                 proxy.scrollTo(lastId, anchor: .bottom)
             }
         }

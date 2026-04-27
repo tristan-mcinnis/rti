@@ -56,11 +56,13 @@ final class DeepSeekClient {
                     request.timeoutInterval = smart ? 120 : 60
 
                     NSLog("[RTI] DeepSeekClient: POST \(request.url?.absoluteString ?? "?") model=\(model) messages=\(messages.count)")
+                    RTILog.log("POST model=\(model) messages=\(messages.count) smart=\(smart)", category: "deepseek")
                     let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else {
                         throw DeepSeekError.badResponse
                     }
                     NSLog("[RTI] DeepSeekClient: HTTP \(http.statusCode)")
+                    RTILog.log("HTTP \(http.statusCode)", category: "deepseek")
                     guard (200..<300).contains(http.statusCode) else {
                         let errText = try await readAll(bytes)
                         if http.statusCode == 401 {
@@ -81,6 +83,7 @@ final class DeepSeekClient {
                         let payload = String(line.dropFirst(6))
                         if payload == "[DONE]" {
                             NSLog("[RTI] DeepSeekClient: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
+                            RTILog.log("done — lines=\(lineCount) deltas=\(deltaCount)", category: "deepseek")
                             continuation.finish()
                             return
                         }

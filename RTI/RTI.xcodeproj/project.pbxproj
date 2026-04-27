@@ -37,6 +37,7 @@
 		69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B314C441C040CC10C72B28 /* OverlayWindowController.swift */; };
 		6D619EF785EABFE337BBBB56 /* TopWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDB87EDDE7A93D1611068A7 /* TopWidgetView.swift */; };
 		70BC938F0CA9C04A5FEE5059 /* SessionQAController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A65E39B5589BEA9AE341B2 /* SessionQAController.swift */; };
+		855ABD64A74C97B2364A1424 /* LogsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3CCC571EA79668AD435B0A3 /* LogsWindowController.swift */; };
 		8C6CFEEBEB89C08AC8B8C33B /* SessionExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DED40E2036B38F0362B81D5 /* SessionExport.swift */; };
 		A9E5A4F3E878C5FF3DC90168 /* TranscriptEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */; };
 		AA632F7F7DC4BBFC918D6941 /* SessionSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67B7ED9699397B8D95DD0B0 /* SessionSearch.swift */; };
@@ -51,6 +52,8 @@
 		D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541406A822542146389D5B7E /* Secrets.swift */; };
 		D56CF6E647EE493B3AC093CA /* SummaryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43DD3812D8E05D29D6E39AB0 /* SummaryController.swift */; };
 		DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
+		DF9B733225B63D3BEE464B79 /* OverlayInputState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */; };
+		E2687F74F0EF7AABB539A434 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */; };
 		E99A2E3907A22BFFDAA70011 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1739AC4265146BE278C238F /* KeychainStore.swift */; };
 		EAD660CCEB4135C933D64193 /* OnboardingWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3A09E60F6A13E2B21D4E3E /* OnboardingWindowController.swift */; };
 		EE90D8606F09CEE04504490C /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2889365203C94D35E404CD /* ChatMessage.swift */; };
@@ -96,12 +99,14 @@
 		857295A827688BF13CBC8A7E /* WAVWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVWriter.swift; sourceTree = "<group>"; };
 		869AD9A19D38A8A7501920EF /* SessionDetailWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailWindowController.swift; sourceTree = "<group>"; };
 		8C6B19B466BE378C1C09EAFD /* SessionTitleController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTitleController.swift; sourceTree = "<group>"; };
+		8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		906F7DCF321C17392E3DA594 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
 		9A849422D5702D40826048AF /* SessionHistoryWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryWindowController.swift; sourceTree = "<group>"; };
 		9AD2D289259AD477B911940D /* LLMController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMController.swift; sourceTree = "<group>"; };
 		9B43315BBB57BE38A913848E /* SonioxProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxProtocol.swift; sourceTree = "<group>"; };
 		9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopWidgetWindowController.swift; sourceTree = "<group>"; };
 		ABDB87EDDE7A93D1611068A7 /* TopWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopWidgetView.swift; sourceTree = "<group>"; };
+		AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayInputState.swift; sourceTree = "<group>"; };
 		ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptActionRow.swift; sourceTree = "<group>"; };
 		B5A65E39B5589BEA9AE341B2 /* SessionQAController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionQAController.swift; sourceTree = "<group>"; };
 		BEEF34905668FDEDBD43CD8E /* DebugConsoleWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugConsoleWindowController.swift; sourceTree = "<group>"; };
@@ -109,6 +114,7 @@
 		C107488F2C804B55D899C495 /* CalendarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarManager.swift; sourceTree = "<group>"; };
 		C1739AC4265146BE278C238F /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		C1F0544DED98C9C9C8A525F7 /* RTI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RTI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3CCC571EA79668AD435B0A3 /* LogsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsWindowController.swift; sourceTree = "<group>"; };
 		CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayPanelView.swift; sourceTree = "<group>"; };
 		D36DA8F6A89E6D12414595BD /* DeepSeekClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepSeekClient.swift; sourceTree = "<group>"; };
 		D402CDD1E9B3EC6E1BCB848D /* AudioInputDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputDevice.swift; sourceTree = "<group>"; };
@@ -139,6 +145,7 @@
 			children = (
 				C1739AC4265146BE278C238F /* KeychainStore.swift */,
 				475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */,
+				C3CCC571EA79668AD435B0A3 /* LogsWindowController.swift */,
 				0B3A09E60F6A13E2B21D4E3E /* OnboardingWindowController.swift */,
 				82F3B4333865A3ABDED731A3 /* SettingsView.swift */,
 				21CA524CCE9E69648B4A72A8 /* SettingsWindowController.swift */,
@@ -195,6 +202,7 @@
 			isa = PBXGroup;
 			children = (
 				FDC5292C23D09D793067E231 /* AssistantInputView.swift */,
+				AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */,
 				ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */,
 				0F81C4D0121A52619B08FC56 /* ResponseView.swift */,
 			);
@@ -252,6 +260,7 @@
 		86CDB24EE24962E63F12AE22 /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */,
 				F0232A6827F5D8C0C5056320 /* CrashLog.swift */,
 			);
 			path = Support;
@@ -421,6 +430,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F501C2DB4B95AC2E17320050 /* AppDelegate.swift in Sources */,
+				E2687F74F0EF7AABB539A434 /* AppLog.swift in Sources */,
 				AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */,
 				1F9CF8485D7C0F0640A03890 /* AudioCaptureManager.swift in Sources */,
 				29064D2D951C51390FE3EB29 /* AudioInputDevice.swift in Sources */,
@@ -435,12 +445,14 @@
 				E99A2E3907A22BFFDAA70011 /* KeychainStore.swift in Sources */,
 				FFD5B192F9BB067609DF60FD /* LLMController.swift in Sources */,
 				3CF7BA318F9E008AB26485A5 /* LaunchAtLogin.swift in Sources */,
+				855ABD64A74C97B2364A1424 /* LogsWindowController.swift in Sources */,
 				CAF7AC115BCF92DEC21FFCB2 /* MiniWidgetView.swift in Sources */,
 				0C3926E9622B402E66C8616B /* MiniWidgetWindowController.swift in Sources */,
 				2BC80B64267C234E010ABCEB /* Mode.swift in Sources */,
 				5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */,
 				FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */,
 				EAD660CCEB4135C933D64193 /* OnboardingWindowController.swift in Sources */,
+				DF9B733225B63D3BEE464B79 /* OverlayInputState.swift in Sources */,
 				13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */,
 				69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */,
 				44CBAA0BB8BCCF9DEE1CDFF3 /* PromptActionRow.swift in Sources */,
