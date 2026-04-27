@@ -170,9 +170,14 @@ private struct PermissionsStep: View {
     }
 
     /// CGRequestScreenCaptureAccess() prompts and immediately returns the
-    /// current state. The actual approval requires the user to flip the toggle
-    /// in System Settings, so we recheck a moment later.
+    /// current state. Avoid re-prompting users who have already granted it;
+    /// that dialog is confusing. If declined, request and recheck a moment
+    /// later for the System Settings roundtrip.
     private func requestScreen() {
+        guard !CGPreflightScreenCaptureAccess() else {
+            screenGranted = true
+            return
+        }
         _ = CGRequestScreenCaptureAccess()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             screenGranted = CGPreflightScreenCaptureAccess()
@@ -209,8 +214,8 @@ private struct KeysStep: View {
                 }
                 Spacer()
                 Button("Save") { save() }
-                    .disabled(deepseek.trimmingCharacters(in: .whitespaces).isEmpty &&
-                              soniox.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(deepseek.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                              soniox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
             Spacer()

@@ -66,8 +66,8 @@ private struct KeysTab: View {
                 Spacer()
                 Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(deepseek.trimmingCharacters(in: .whitespaces).isEmpty &&
-                              soniox.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(deepseek.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                              soniox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             Spacer()
         }
@@ -89,8 +89,8 @@ private struct KeysTab: View {
     private func save() {
         let k = deepseek.trimmingCharacters(in: .whitespacesAndNewlines)
         let s = soniox.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !k.isEmpty { CredentialStore.setDeepSeek(k) }
-        if !s.isEmpty { CredentialStore.setSoniox(s) }
+        CredentialStore.setDeepSeek(k)
+        CredentialStore.setSoniox(s)
         saved = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
     }

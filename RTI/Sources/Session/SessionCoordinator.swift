@@ -486,7 +486,9 @@ final class SessionCoordinator: ObservableObject {
     private func handleWords(_ words: [SonioxWord]) {
         guard let sessionId = currentSessionId else { return }
 
-        let finals = words.filter { $0.isFinal && $0.endMs > lastFinalizedEndMs }
+        // Zero-endMs finals can't be dedup'd by watermark — accept them rather
+        // than letting them get permanently filtered if every batch returns 0.
+        let finals = words.filter { $0.isFinal && ($0.endMs > lastFinalizedEndMs || $0.endMs == 0) }
         let interims = words.filter { !$0.isFinal }
 
         if !finals.isEmpty {

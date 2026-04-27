@@ -31,6 +31,8 @@ private final class KeyableOverlayPanel: NSPanel {
 final class OverlayWindowController {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
+    private var didMoveObserver: NSObjectProtocol?
+    private var sizeObserver: NSObjectProtocol?
 
     init(onOpenSettings: @escaping () -> Void = {}) {
         let initialSize = Self.configuredSize()
@@ -54,7 +56,7 @@ final class OverlayWindowController {
 
         self.window = panel
 
-        NotificationCenter.default.addObserver(
+        didMoveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification,
             object: panel,
             queue: .main
@@ -62,7 +64,7 @@ final class OverlayWindowController {
 
         // Settings → "Overlay Appearance" sliders post this when width/height
         // change, so the live overlay resizes immediately.
-        NotificationCenter.default.addObserver(
+        sizeObserver = NotificationCenter.default.addObserver(
             forName: .rtiOverlaySizeChanged,
             object: nil,
             queue: .main
@@ -73,6 +75,11 @@ final class OverlayWindowController {
         } else {
             positionOnActiveScreen()
         }
+    }
+
+    deinit {
+        if let o = didMoveObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = sizeObserver { NotificationCenter.default.removeObserver(o) }
     }
 
     private static func configuredSize() -> NSSize {
