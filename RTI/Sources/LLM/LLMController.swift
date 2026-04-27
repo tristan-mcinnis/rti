@@ -88,6 +88,7 @@ final class LLMController: ObservableObject {
         currentTask?.cancel()
         currentTask = nil
         streaming = false
+        reasoning = false
     }
 
     /// Cancel any in-flight stream and drop the in-memory entries without

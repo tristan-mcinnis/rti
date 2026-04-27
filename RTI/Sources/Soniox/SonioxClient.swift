@@ -16,6 +16,9 @@ final class SonioxClient: WebSocketDelegate {
     private var intentionalDisconnect = false
     private var retryCount = 0
     private var retryWorkItem: DispatchWorkItem?
+    /// Serial queue for reconnect timers so openSocket() (which touches
+    /// Starscream's WebSocket delegate/connect) always runs on the same queue.
+    private let reconnectQueue = DispatchQueue(label: "com.tristan.rti.soniox-reconnect")
 
     private static let maxRetries = 5
     private static let retryDelays: [TimeInterval] = [1, 2, 4, 8, 8]
@@ -129,7 +132,7 @@ final class SonioxClient: WebSocketDelegate {
             self.openSocket()
         }
         retryWorkItem = item
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay, execute: item)
+        reconnectQueue.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
     private func handleMessage(_ string: String) {
