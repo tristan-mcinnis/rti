@@ -116,9 +116,10 @@ struct SessionHistoryView: View {
                                 }
                             } header: {
                                 Text(group.label)
-                                    .font(RTIDesign.Font.caption)
-                                    .foregroundStyle(RTIDesign.Color.textTertiary)
+                                    .font(RTIDesign.Font.meta.weight(.semibold))
+                                    .foregroundStyle(RTIDesign.Color.textSecondary)
                                     .textCase(nil)
+                                    .padding(.top, RTIDesign.Spacing.sm)
                             }
                         }
                     } else {

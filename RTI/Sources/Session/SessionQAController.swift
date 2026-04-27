@@ -19,6 +19,7 @@ final class SessionQAController: ObservableObject {
         let id = UUID()
         let role: String // "user" | "assistant"
         var text: String
+        let createdAt: Date = Date()
     }
 
     func clear() {

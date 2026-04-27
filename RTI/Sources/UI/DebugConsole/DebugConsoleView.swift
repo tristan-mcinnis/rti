@@ -242,14 +242,7 @@ struct DebugConsoleView: View {
     }
 
     private func speakerDisplayName(_ id: String) -> String {
-        switch id {
-        case "self": return "You"
-        case "note": return "Note"
-        case let other where other.hasPrefix("them_"):
-            let n = String(other.dropFirst("them_".count))
-            return "Speaker \(n)"
-        default: return id.capitalized
-        }
+        SpeakerLabels.displayName(for: id)
     }
 
     private func startClock() {

@@ -11,11 +11,13 @@ enum RTIDesign {
 
         static let border = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.851, green: 0.851, blue: 0.871, alpha: 1))
         static let borderLight = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.812, green: 0.812, blue: 0.831, alpha: 1))
+        static let borderStrong = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.745, green: 0.745, blue: 0.769, alpha: 1))
         static let divider = border.opacity(0.6)
 
         static let textPrimary = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.067, green: 0.067, blue: 0.078, alpha: 1))
-        static let textSecondary = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.400, green: 0.400, blue: 0.427, alpha: 1))
-        static let textTertiary = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.557, green: 0.557, blue: 0.584, alpha: 1))
+        static let textSecondary = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.345, green: 0.345, blue: 0.380, alpha: 1))
+        // Bumped from (0.557,...) to (0.480,...) so it clears 4.5:1 contrast on panelBackground.
+        static let textTertiary = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.480, green: 0.480, blue: 0.510, alpha: 1))
 
         static let accent = SwiftUI.Color(red: 0.039, green: 0.518, blue: 1.0)
         static let accentText = SwiftUI.Color(red: 0.024, green: 0.463, blue: 0.847)
@@ -23,6 +25,24 @@ enum RTIDesign {
 
         static let chipActiveBg = accentBg
         static let chipActiveText = SwiftUI.Color(red: 0.140, green: 0.514, blue: 0.820)
+
+        // Soft tinted card for AI/assistant outputs (Summary blocks, Q&A assistant turns).
+        static let aiCardBackground = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.965, green: 0.973, blue: 0.984, alpha: 1))
+        static let aiCardBorder = accent.opacity(0.18)
+
+        // Toast (top-right pill).
+        static let toastBackground = SwiftUI.Color.black.opacity(0.85)
+        static let toastText = SwiftUI.Color.white
+
+        // Speaker chip palette — indexed by trailing digit so Speaker 1 / 2 / 3 are stable across sessions.
+        static let speakerPalette: [SwiftUI.Color] = [
+            SwiftUI.Color(red: 0.024, green: 0.463, blue: 0.847), // blue (self/0)
+            SwiftUI.Color(red: 0.847, green: 0.314, blue: 0.235), // red
+            SwiftUI.Color(red: 0.196, green: 0.604, blue: 0.380), // green
+            SwiftUI.Color(red: 0.580, green: 0.341, blue: 0.737), // purple
+            SwiftUI.Color(red: 0.890, green: 0.553, blue: 0.110), // amber
+            SwiftUI.Color(red: 0.180, green: 0.522, blue: 0.620)  // teal
+        ]
     }
 
     // MARK: - Spacing
@@ -34,6 +54,7 @@ enum RTIDesign {
         static let lg: CGFloat = 24
         static let xl: CGFloat = 32
         static let xxl: CGFloat = 48
+        static let xxxl: CGFloat = 64
     }
 
     // MARK: - Radius
@@ -54,7 +75,7 @@ enum RTIDesign {
         static let meta = SwiftUI.Font.system(size: 12)
         static let caption = SwiftUI.Font.system(size: 11)
         static let button = SwiftUI.Font.system(size: 13, weight: .medium)
-        static let tab = SwiftUI.Font.system(size: 13, weight: .medium)
+        static let tab = SwiftUI.Font.system(size: 13, weight: .semibold)
     }
 
     // MARK: - Controls
@@ -68,7 +89,30 @@ enum RTIDesign {
         static let segItemHeight: CGFloat = 32
 
         static let composerHeight: CGFloat = 56
-        static let composerSendSize: CGFloat = 42
+        static let composerSendSize: CGFloat = 44
+    }
+
+    // MARK: - Density
+
+    enum Density: String, CaseIterable {
+        case comfortable
+        case compact
+
+        /// Scale a comfortable-mode value down for compact mode.
+        /// Used for inter-section spacing, line spacing, and group padding.
+        func scaled(_ value: CGFloat) -> CGFloat {
+            switch self {
+            case .comfortable: return value
+            case .compact:     return value * 0.66
+            }
+        }
+
+        static let storageKey = "rti.sessionDetail.density"
+
+        static var current: Density {
+            let raw = UserDefaults.standard.string(forKey: storageKey) ?? Density.comfortable.rawValue
+            return Density(rawValue: raw) ?? .comfortable
+        }
     }
 }
 
@@ -111,6 +155,16 @@ extension View {
                     .frame(height: RTIDesign.Control.segTrackHeight)
             )
     }
+
+    /// Caps content at a comfortable reading width and centers it. Used on
+    /// text-stream tabs (Summary, Q&A) and the wider Transcript tab.
+    func readingWidth(_ maxWidth: CGFloat = 720) -> some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            self.frame(maxWidth: maxWidth, alignment: .leading)
+            Spacer(minLength: 0)
+        }
+    }
 }
 
 // MARK: - Custom Segmented Picker
@@ -118,6 +172,7 @@ extension View {
 struct RTISegmentedPicker<T: Hashable & CustomStringConvertible>: View {
     @Binding var selection: T
     let items: [T]
+    @FocusState private var focusedItem: T?
 
     var body: some View {
         HStack(spacing: 4) {
@@ -133,11 +188,19 @@ struct RTISegmentedPicker<T: Hashable & CustomStringConvertible>: View {
                                 .fill(selection == item ? RTIDesign.Color.cardBackground : .clear)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: RTIDesign.Radius.lg - 4)
-                                        .stroke(selection == item ? RTIDesign.Color.borderLight : .clear, lineWidth: 1)
+                                        .stroke(selection == item ? RTIDesign.Color.borderStrong : .clear, lineWidth: 1)
                                 )
+                                .shadow(color: selection == item ? .black.opacity(0.06) : .clear, radius: 3, y: 1)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: RTIDesign.Radius.lg - 4)
+                                .stroke(RTIDesign.Color.accent, lineWidth: 2)
+                                .opacity(focusedItem == item ? 1 : 0)
                         )
                 }
                 .buttonStyle(.plain)
+                .focusable(true)
+                .focused($focusedItem, equals: item)
             }
         }
         .padding(4)

@@ -9,12 +9,14 @@ struct SessionDetailView: View {
     @State private var chatMessages: [ChatMessage] = []
     @State private var session: Session?
     @State private var selectedTab: Tab = .summary
-    @State private var copedLabel: String?
     @State private var qaInput = ""
+    @State private var jumpToBottomToken = UUID()
+    @AppStorage(RTIDesign.Density.storageKey) private var densityRaw: String = RTIDesign.Density.comfortable.rawValue
 
     @ObservedObject private var qaController = SessionQAController.shared
     @ObservedObject private var summaryController = SummaryController.shared
     @ObservedObject private var regenerator = TranscriptRegenerator.shared
+    @StateObject private var toast = ToastPresenter()
 
     enum Tab: String, CaseIterable, CustomStringConvertible {
         case summary = "Summary"
@@ -24,49 +26,65 @@ struct SessionDetailView: View {
         var description: String { rawValue }
     }
 
+    private var density: RTIDesign.Density {
+        RTIDesign.Density(rawValue: densityRaw) ?? .comfortable
+    }
+
+    private static let quickPrompts: [String] = [
+        "Summarize the decisions",
+        "What are the open questions?",
+        "Draft a follow-up email"
+    ]
+
     var body: some View {
-        VStack(spacing: 0) {
-            // MARK: - Header
-            headerBlock
-                .padding(.horizontal, RTIDesign.Spacing.xl)
-                .padding(.top, RTIDesign.Spacing.xl)
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                // MARK: - Header
+                headerBlock
+                    .padding(.horizontal, RTIDesign.Spacing.xl)
+                    .padding(.top, RTIDesign.Spacing.xl)
 
-            // MARK: - Tabs
-            RTISegmentedPicker(selection: $selectedTab, items: Tab.allCases)
-                .padding(.horizontal, RTIDesign.Spacing.xl)
-                .padding(.top, RTIDesign.Spacing.lg)
+                // MARK: - Tabs
+                RTISegmentedPicker(selection: $selectedTab, items: Tab.allCases)
+                    .padding(.horizontal, RTIDesign.Spacing.xl)
+                    .padding(.top, RTIDesign.Spacing.lg)
+                    .padding(.bottom, RTIDesign.Spacing.sm)
 
-            Divider()
-                .padding(.top, RTIDesign.Spacing.md)
+                // MARK: - Body
+                Group {
+                    switch selectedTab {
+                    case .summary:
+                        summaryBody
+                    case .transcript:
+                        transcriptBody
+                    case .qa:
+                        qaBody
+                    case .usage:
+                        usageBody
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // MARK: - Body
-            Group {
-                switch selectedTab {
-                case .summary:
-                    summaryBody
-                case .transcript:
-                    transcriptBody
-                case .qa:
-                    qaBody
-                case .usage:
-                    usageBody
+                // MARK: - Sticky Footer
+                if session?.endedAt != nil || selectedTab == .qa {
+                    stickyFooter
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // MARK: - Sticky Footer
-            if session?.endedAt != nil || selectedTab == .qa {
-                stickyFooter
-            }
+            // Toast overlay (top-right of panel; non-interactive).
+            ToastOverlay(presenter: toast)
         }
         .background(RTIDesign.Color.panelBackground)
         .task { loadData() }
         .onChange(of: sessionId) { _, _ in loadData() }
-        .onChange(of: selectedTab) { _, _ in copedLabel = nil }
         .onChange(of: regenerator.generatingSessionId) { old, new in
-            // Reload transcripts when a regen for this session finishes (the
-            // generating id flips to nil only after the DB write commits).
-            if old == sessionId && new == nil { loadData() }
+            if old == sessionId && new == nil {
+                loadData()
+                toast.show("Transcript regenerated")
+            }
+        }
+        .onChange(of: selectedTab) { _, new in
+            RTILog.log("[SessionDetail] tab=\(new.rawValue) density=\(density.rawValue)", category: "UI")
         }
     }
 
@@ -74,15 +92,10 @@ struct SessionDetailView: View {
 
     private var headerBlock: some View {
         VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm) {
-            // Meta line
             metaLine
-
-            // Title
             Text(sessionTitle)
                 .font(RTIDesign.Font.pageTitle)
                 .foregroundStyle(RTIDesign.Color.textPrimary)
-
-            // Summary header actions (if summary exists)
             if summary != nil {
                 headerActionsRow
                     .padding(.top, RTIDesign.Spacing.xs)
@@ -98,8 +111,6 @@ struct SessionDetailView: View {
                     Text("·")
                     Text(formatDuration(endedAt.timeIntervalSince(session.startedAt)))
                 } else {
-                    // Live ticker via TimelineView so the elapsed time updates
-                    // without a manual Timer + @State. Refreshes every second.
                     TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
                         HStack(spacing: 6) {
                             Text("·")
@@ -134,66 +145,80 @@ struct SessionDetailView: View {
         return "Meeting Session"
     }
 
+    /// Header action row, grouped: utility (Copy, Export) | AI ops (Regen Transcript, Regen Summary).
     private var headerActionsRow: some View {
         HStack(spacing: RTIDesign.Spacing.sm) {
             Spacer()
 
-            // Copy
-            Button(action: copySummary) {
-                Label("Copy", systemImage: "doc.on.doc")
+            // Group 1 — utility
+            HStack(spacing: RTIDesign.Spacing.xxs) {
+                actionButton(label: "Copy", systemImage: "doc.on.doc", role: .utility, action: copySummary)
+                actionButton(label: "Export", systemImage: "square.and.arrow.up", role: .utility, action: exportSession)
             }
-            .buttonStyle(.borderless)
-            .font(RTIDesign.Font.button)
-            .padding(.horizontal, 18)
-            .frame(height: RTIDesign.Control.heightMd)
 
-            // Export
-            Button(action: exportSession) {
-                Label("Export", systemImage: "square.and.arrow.up")
-            }
-            .buttonStyle(.borderless)
-            .font(RTIDesign.Font.button)
-            .padding(.horizontal, 18)
-            .frame(height: RTIDesign.Control.heightMd)
+            // Divider between utility + AI groups
+            Rectangle()
+                .fill(RTIDesign.Color.divider)
+                .frame(width: 1, height: 20)
+                .padding(.horizontal, RTIDesign.Spacing.xs)
 
-            // Regenerate transcript (hi-fi async pass) — only meaningful when
-            // we still have the WAV and the user hasn't already done a regen.
-            if let session = session,
-               let wavPath = session.wavPath,
-               FileManager.default.fileExists(atPath: wavPath) {
-                Button(action: regenerateTranscript) {
-                    if regenerator.generatingSessionId == sessionId {
-                        Label("Regenerating…", systemImage: "waveform.path.ecg")
-                    } else if session.transcriptQuality == "hifi" {
-                        Label("Re-Regenerate Transcript", systemImage: "waveform")
-                    } else {
-                        Label("Regenerate Transcript", systemImage: "waveform")
-                    }
+            // Group 2 — AI operations
+            HStack(spacing: RTIDesign.Spacing.xxs) {
+                if let session = session,
+                   let wavPath = session.wavPath,
+                   FileManager.default.fileExists(atPath: wavPath) {
+                    let isRegen = regenerator.generatingSessionId == sessionId
+                    let label: String = {
+                        if isRegen { return "Regenerating…" }
+                        if session.transcriptQuality == "hifi" { return "Re-Regenerate Transcript" }
+                        return "Regenerate Transcript"
+                    }()
+                    actionButton(
+                        label: label,
+                        systemImage: isRegen ? "waveform.path.ecg" : "waveform",
+                        role: .ai,
+                        disabled: regenerator.isGenerating,
+                        help: "Re-transcribe from the recording for higher accuracy + speaker diarization (uses tokens)",
+                        action: regenerateTranscript
+                    )
                 }
-                .buttonStyle(.borderless)
-                .font(RTIDesign.Font.button)
-                .padding(.horizontal, 18)
-                .frame(height: RTIDesign.Control.heightMd)
-                .disabled(regenerator.isGenerating)
-                .help("Re-transcribe from the recording for higher accuracy + speaker diarization")
-            }
-
-            // Regenerate summary
-            Button(action: regenerateSummary) {
-                Label("Regenerate Summary", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .buttonStyle(.borderless)
-            .font(RTIDesign.Font.button)
-            .padding(.horizontal, 18)
-            .frame(height: RTIDesign.Control.heightMd)
-            .disabled(summaryController.isGenerating)
-
-            if copedLabel != nil {
-                Text(copedLabel ?? "")
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                actionButton(
+                    label: "Regenerate Summary",
+                    systemImage: "arrow.triangle.2.circlepath",
+                    role: .ai,
+                    disabled: summaryController.isGenerating,
+                    help: "Re-summarize this session (uses tokens)",
+                    action: regenerateSummary
+                )
             }
         }
+    }
+
+    private enum ActionRole { case utility, ai }
+
+    @ViewBuilder
+    private func actionButton(label: String, systemImage: String, role: ActionRole, disabled: Bool = false, help: String? = nil, action: @escaping () -> Void) -> some View {
+        let tint: Color = (role == .utility) ? RTIDesign.Color.textPrimary : RTIDesign.Color.textSecondary
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .medium))
+                Text(label)
+                    .font(RTIDesign.Font.button)
+            }
+            .foregroundStyle(disabled ? RTIDesign.Color.textTertiary : tint)
+            .padding(.horizontal, 14)
+            .frame(height: RTIDesign.Control.heightMd)
+            .background(
+                RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+            )
+        }
+        .buttonStyle(.plain)
+        .focusable(true)
+        .disabled(disabled)
+        .help(help ?? "")
     }
 
     // MARK: - Summary Body
@@ -201,28 +226,47 @@ struct SessionDetailView: View {
     @ViewBuilder
     private var summaryBody: some View {
         if let summary = summary {
-            ScrollView {
-                VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxl) {
-                    let summaryParagraph = extractSummarySection(summary.rawResponse ?? summary.summaryText)
-                    if !summaryParagraph.isEmpty {
-                        summaryBlock(title: "Summary", content: summaryParagraph)
-                    }
-                    summarySection(title: "Key Topics", content: summary.keyTopics)
-                    summarySection(title: "Decisions Made", content: summary.decisions)
-                    summarySection(title: "Action Items", content: summary.actionItems)
-                    // followUps is markdown containing "## Open Questions" + "## Next Steps".
-                    // Split into the same heading-styled blocks rather than dumping raw markdown.
-                    if let followUps = summary.followUps {
-                        ForEach(splitFollowUps(followUps), id: \.title) { section in
-                            summarySection(title: section.title, content: section.body)
+            ZStack(alignment: .top) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.xxxl)) {
+                        let summaryParagraph = extractSummarySection(summary.rawResponse ?? summary.summaryText)
+                        if !summaryParagraph.isEmpty {
+                            sectionBlock(title: "Summary", content: summaryParagraph, isFirst: true)
+                        }
+                        sectionBlockOptional(title: "Key Topics", content: summary.keyTopics)
+                        sectionBlockOptional(title: "Decisions Made", content: summary.decisions)
+                        sectionBlockOptional(title: "Action Items", content: summary.actionItems)
+                        if let followUps = summary.followUps {
+                            ForEach(splitFollowUps(followUps), id: \.title) { section in
+                                sectionBlock(title: section.title, content: section.body, isFirst: false)
+                            }
                         }
                     }
+                    .padding(.horizontal, RTIDesign.Spacing.xl)
+                    .padding(.top, RTIDesign.Spacing.xxl + 36) // clear sticky subheader
+                    .padding(.bottom, RTIDesign.Spacing.lg)
+                    .readingWidth(720)
                 }
-                .padding(.horizontal, RTIDesign.Spacing.xl)
-                .padding(.vertical, RTIDesign.Spacing.lg)
+
+                summaryStickySubheader
             }
         } else {
-            emptyState
+            ZStack(alignment: .top) {
+                emptyState
+                summaryStickySubheader
+            }
+        }
+    }
+
+    private var summaryStickySubheader: some View {
+        StickySubheader(title: "Summary", count: nil) {
+            HStack(spacing: RTIDesign.Spacing.xs) {
+                densityToggleButton
+                Button("Copy") { copySummary() }
+                    .buttonStyle(.plain)
+                    .font(RTIDesign.Font.meta.weight(.medium))
+                    .foregroundStyle(RTIDesign.Color.accentText)
+            }
         }
     }
 
@@ -268,10 +312,6 @@ struct SessionDetailView: View {
         let text: String
     }
 
-    /// Soniox finalizes transcripts in small chunks (1–3s windows). Rendering
-    /// every chunk as its own card produces a visually fragmented "every line
-    /// is a new card" view. Group consecutive entries from the same speaker
-    /// when they're within ~5 seconds of each other into a single paragraph.
     private var groupedTranscripts: [TranscriptGroup] {
         var groups: [TranscriptGroup] = []
         for entry in transcripts {
@@ -299,54 +339,65 @@ struct SessionDetailView: View {
     }
 
     private var transcriptBody: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("\(transcripts.count) entries · \(groupedTranscripts.count) paragraphs")
-                    .font(RTIDesign.Font.meta)
-                    .foregroundStyle(RTIDesign.Color.textTertiary)
-                Spacer()
-                Button(action: copyTranscript) {
-                    Text("Copy")
-                        .font(RTIDesign.Font.meta)
+        ZStack(alignment: .top) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.lg)) {
+                        ForEach(groupedTranscripts) { group in
+                            transcriptRow(group)
+                                .id(group.id)
+                        }
+                    }
+                    .padding(.horizontal, RTIDesign.Spacing.xl)
+                    .padding(.top, RTIDesign.Spacing.xl + 36)
+                    .padding(.bottom, RTIDesign.Spacing.lg)
+                    .readingWidth(880)
+                }
+                .onChange(of: jumpToBottomToken) { _, _ in
+                    if let last = groupedTranscripts.last {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
                 }
             }
-            .padding(.horizontal, RTIDesign.Spacing.xl)
-            .padding(.vertical, RTIDesign.Spacing.sm)
 
-            List(groupedTranscripts) { group in
-                transcriptRow(group)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .padding(.vertical, RTIDesign.Spacing.sm)
+            StickySubheader(
+                title: "Transcript",
+                count: "\(transcripts.count) entries · \(groupedTranscripts.count) paragraphs"
+            ) {
+                HStack(spacing: RTIDesign.Spacing.xs) {
+                    densityToggleButton
+                    Button("Jump to bottom") { jumpToBottomToken = UUID() }
+                        .buttonStyle(.plain)
+                        .font(RTIDesign.Font.meta.weight(.medium))
+                        .foregroundStyle(RTIDesign.Color.accentText)
+                        .disabled(groupedTranscripts.isEmpty)
+                    Button("Copy") { copyTranscript() }
+                        .buttonStyle(.plain)
+                        .font(RTIDesign.Font.meta.weight(.medium))
+                        .foregroundStyle(RTIDesign.Color.accentText)
+                }
             }
-            .listStyle(.plain)
-            .padding(.horizontal, RTIDesign.Spacing.xl)
         }
     }
 
     private func transcriptRow(_ group: TranscriptGroup) -> some View {
-        let isNote = group.speakerId == "note"
+        let isNote = SpeakerLabels.isNote(group.speakerId)
+        let groupPad = density.scaled(10)
         return VStack(alignment: .leading, spacing: RTIDesign.Spacing.xs) {
-            HStack(spacing: RTIDesign.Spacing.md) {
-                if isNote {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.orange)
-                }
-                Text(isNote ? "Note" : group.speakerId)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isNote ? .orange : RTIDesign.Color.accentText)
-                Text(timeLabel(ms: group.startMs))
-                    .font(RTIDesign.Font.meta)
-                    .foregroundStyle(RTIDesign.Color.textTertiary)
+            HStack(spacing: RTIDesign.Spacing.sm) {
+                SpeakerChip(raw: group.speakerId)
+                timestampLink(ms: group.startMs)
+                Spacer()
             }
             Text(group.text.trimmingCharacters(in: .whitespaces))
                 .font(RTIDesign.Font.body)
                 .italic(isNote)
                 .foregroundStyle(RTIDesign.Color.textPrimary)
-                .lineSpacing(4)
+                .lineSpacing(density.scaled(4))
                 .textSelection(.enabled)
-                .padding(isNote ? 10 : 0)
+                .padding(isNote ? groupPad : 0)
                 .background(
                     isNote
                     ? RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.08))
@@ -362,102 +413,166 @@ struct SessionDetailView: View {
         }
     }
 
+    private func timestampLink(ms: Int) -> some View {
+        // Wired as a button so future audio-scrub can land here without
+        // restyling. For now, click logs and is otherwise a no-op.
+        Button(action: {
+            RTILog.log("[SessionDetail] timestamp tapped: \(ms)ms", category: "UI")
+        }) {
+            Text(timeLabel(ms: ms))
+                .font(RTIDesign.Font.meta)
+                .monospacedDigit()
+                .foregroundStyle(RTIDesign.Color.textTertiary)
+                .underline()
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+    }
+
     // MARK: - Q&A Body
 
     private var qaBody: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .top) {
             ScrollView {
-                VStack(alignment: .leading, spacing: RTIDesign.Spacing.md) {
-                    ForEach(qaController.messages) { msg in
-                        if msg.role == "user" {
-                            HStack {
-                                Spacer()
-                                Text(msg.text)
-                                    .font(RTIDesign.Font.bodySmall)
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, RTIDesign.Spacing.md)
-                                    .padding(.vertical, RTIDesign.Spacing.sm)
-                                    .background(RTIDesign.Color.accent, in: RoundedRectangle(cornerRadius: RTIDesign.Radius.lg))
+                VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.lg)) {
+                    if qaController.messages.isEmpty {
+                        qaEmptyState
+                    } else {
+                        ForEach(qaController.messages) { msg in
+                            MessageBubble(
+                                role: msg.role == "user" ? .user : .assistant,
+                                text: msg.text,
+                                timestamp: msg.createdAt,
+                                isPartial: qaController.isGenerating && msg.id == qaController.messages.last?.id && msg.role == "assistant"
+                            )
+                        }
+                        if qaController.isGenerating, qaController.messages.last?.role == "user" {
+                            HStack(spacing: 8) {
+                                ProgressView().scaleEffect(0.7)
+                                Text("Thinking…")
+                                    .font(RTIDesign.Font.caption)
+                                    .foregroundStyle(RTIDesign.Color.textTertiary)
                             }
-                        } else {
-                            Text(msg.text)
-                                .font(RTIDesign.Font.body)
-                                .foregroundStyle(RTIDesign.Color.textPrimary)
-                                .textSelection(.enabled)
                         }
-                    }
-                    if qaController.isGenerating, qaController.messages.last?.role == "user" {
-                        HStack(spacing: 8) {
-                            ProgressView().scaleEffect(0.7)
-                            Text("Thinking…")
+                        if let error = qaController.lastError {
+                            Text(error)
                                 .font(RTIDesign.Font.caption)
-                                .foregroundStyle(RTIDesign.Color.textTertiary)
+                                .foregroundStyle(.red)
                         }
-                    }
-                    if let error = qaController.lastError {
-                        Text(error)
-                            .font(RTIDesign.Font.caption)
-                            .foregroundStyle(.red)
                     }
                 }
                 .padding(.horizontal, RTIDesign.Spacing.xl)
-                .padding(.vertical, RTIDesign.Spacing.lg)
+                .padding(.top, RTIDesign.Spacing.xl + 36)
+                .padding(.bottom, RTIDesign.Spacing.lg)
+                .readingWidth(720)
+            }
+
+            StickySubheader(
+                title: "Q&A",
+                count: qaController.messages.isEmpty ? nil : "\(qaController.messages.count) messages"
+            ) {
+                HStack(spacing: RTIDesign.Spacing.xs) {
+                    densityToggleButton
+                    Button("Clear") { qaController.clear() }
+                        .buttonStyle(.plain)
+                        .font(RTIDesign.Font.meta.weight(.medium))
+                        .foregroundStyle(RTIDesign.Color.accentText)
+                        .disabled(qaController.messages.isEmpty)
+                }
             }
         }
+    }
+
+    private var qaEmptyState: some View {
+        VStack(alignment: .leading, spacing: RTIDesign.Spacing.md) {
+            HStack {
+                Spacer()
+                VStack(spacing: RTIDesign.Spacing.sm) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 28))
+                        .foregroundStyle(RTIDesign.Color.textTertiary)
+                    Text("Ask anything about this meeting.")
+                        .font(RTIDesign.Font.bodySmall)
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
+                }
+                Spacer()
+            }
+            .padding(.vertical, RTIDesign.Spacing.lg)
+
+            HStack(spacing: RTIDesign.Spacing.xs) {
+                ForEach(Self.quickPrompts, id: \.self) { prompt in
+                    QuickPromptChip(label: prompt) {
+                        qaInput = prompt
+                        submitQA()
+                    }
+                }
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Usage Body
 
     private var usageBody: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: RTIDesign.Spacing.xl) {
-                if let session = session {
-                    usageCard(title: "Session Info", icon: "info.circle") {
-                        infoRow("Started", session.startedAt.formatted(date: .abbreviated, time: .shortened))
-                        if let endedAt = session.endedAt {
-                            infoRow("Ended", endedAt.formatted(date: .abbreviated, time: .shortened))
-                            infoRow("Duration", formatDuration(endedAt.timeIntervalSince(session.startedAt)))
-                        } else {
-                            infoRow("Status", "Active")
-                        }
-                        infoRow("Transcript entries", "\(transcripts.count)")
-                        infoRow("Chat messages", "\(chatMessages.count)")
-                        if let modeId = session.modeId,
-                           let mode = ModeStore.shared.modes.first(where: { $0.id == modeId }) {
-                            infoRow("Mode", mode.name)
-                        }
-                        if let calendarTitle = session.calendarTitle, !calendarTitle.isEmpty {
-                            infoRow("Calendar event", calendarTitle)
-                        }
-                    }
-                }
-                let screenCount = chatMessages.filter { $0.hadScreenContext }.count
-                if screenCount > 0 {
-                    usageCard(title: "Context", icon: "rectangle.on.rectangle") {
-                        infoRow("Screenshots attached", "\(screenCount)")
-                    }
-                }
-                if let wavPath = session?.wavPath {
-                    usageCard(title: "Audio", icon: "waveform") {
-                        infoRow("Recording", wavPath)
-                        if FileManager.default.fileExists(atPath: wavPath) {
-                            HStack {
-                                Spacer()
-                                Button("Reveal in Finder") {
-                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: wavPath)])
-                                }
-                                .controlSize(.small)
+        ZStack(alignment: .top) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.xl)) {
+                    if let session = session {
+                        usageCard(title: "Session Info", icon: "info.circle") {
+                            infoRow("Started", session.startedAt.formatted(date: .abbreviated, time: .shortened))
+                            if let endedAt = session.endedAt {
+                                infoRow("Ended", endedAt.formatted(date: .abbreviated, time: .shortened))
+                                infoRow("Duration", formatDuration(endedAt.timeIntervalSince(session.startedAt)))
+                            } else {
+                                infoRow("Status", "Active")
                             }
-                        } else {
-                            Text("File no longer exists at this path.")
-                                .font(RTIDesign.Font.caption)
-                                .foregroundStyle(RTIDesign.Color.textTertiary)
+                            infoRow("Transcript entries", "\(transcripts.count)")
+                            infoRow("Chat messages", "\(chatMessages.count)")
+                            if let modeId = session.modeId,
+                               let mode = ModeStore.shared.modes.first(where: { $0.id == modeId }) {
+                                infoRow("Mode", mode.name)
+                            }
+                            if let calendarTitle = session.calendarTitle, !calendarTitle.isEmpty {
+                                infoRow("Calendar event", calendarTitle)
+                            }
+                        }
+                    }
+                    let screenCount = chatMessages.filter { $0.hadScreenContext }.count
+                    if screenCount > 0 {
+                        usageCard(title: "Context", icon: "rectangle.on.rectangle") {
+                            infoRow("Screenshots attached", "\(screenCount)")
+                        }
+                    }
+                    if let wavPath = session?.wavPath {
+                        usageCard(title: "Audio", icon: "waveform") {
+                            infoRow("Recording", wavPath)
+                            if FileManager.default.fileExists(atPath: wavPath) {
+                                HStack {
+                                    Spacer()
+                                    Button("Reveal in Finder") {
+                                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: wavPath)])
+                                    }
+                                    .controlSize(.small)
+                                }
+                            } else {
+                                Text("File no longer exists at this path.")
+                                    .font(RTIDesign.Font.caption)
+                                    .foregroundStyle(RTIDesign.Color.textTertiary)
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, RTIDesign.Spacing.xl)
+                .padding(.top, RTIDesign.Spacing.xl + 36)
+                .padding(.bottom, RTIDesign.Spacing.lg)
             }
-            .padding(.horizontal, RTIDesign.Spacing.xl)
-            .padding(.vertical, RTIDesign.Spacing.lg)
+
+            StickySubheader(title: "Usage", count: nil) {
+                densityToggleButton
+            }
         }
     }
 
@@ -485,52 +600,81 @@ struct SessionDetailView: View {
         }
     }
 
+    // MARK: - Density toggle
+
+    private var densityToggleButton: some View {
+        Button(action: toggleDensity) {
+            Image(systemName: density == .comfortable ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.plain)
+        .help(density == .comfortable ? "Switch to compact density" : "Switch to comfortable density")
+    }
+
+    private func toggleDensity() {
+        densityRaw = density == .comfortable ? RTIDesign.Density.compact.rawValue : RTIDesign.Density.comfortable.rawValue
+    }
+
     // MARK: - Sticky Footer
 
     private var stickyFooter: some View {
-        HStack(spacing: RTIDesign.Spacing.sm) {
+        HStack(spacing: RTIDesign.Spacing.md) {
             if session?.endedAt != nil {
                 Button(action: resumeSession) {
                     HStack(spacing: 8) {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: 13, weight: .semibold))
                         Text("Resume Session")
                             .font(RTIDesign.Font.button)
                     }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
                     .frame(height: RTIDesign.Control.composerHeight - 8)
-                    .padding(.horizontal, 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.lg)
+                            .fill(RTIDesign.Color.accent)
+                            .shadow(color: RTIDesign.Color.accent.opacity(0.25), radius: 6, y: 2)
+                    )
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
+                .focusable(true)
             }
 
             HStack(spacing: 0) {
+                Button(action: { qaController.clear() }) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 13))
+                        .foregroundStyle(RTIDesign.Color.textTertiary)
+                        .frame(width: 32, height: RTIDesign.Control.composerHeight - 8)
+                }
+                .buttonStyle(.plain)
+                .disabled(qaController.messages.isEmpty)
+                .help("Clear conversation")
+
                 TextField("Ask about this meeting…", text: $qaInput)
                     .textFieldStyle(.plain)
                     .font(RTIDesign.Font.body)
                     .foregroundStyle(RTIDesign.Color.textPrimary)
-                    .padding(.leading, RTIDesign.Spacing.lg)
                     .frame(height: RTIDesign.Control.composerHeight - 8)
                     .onSubmit { submitQA() }
 
                 Button(action: submitQA) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: RTIDesign.Control.composerSendSize - 8, height: RTIDesign.Control.composerSendSize - 8)
-                        .background(RTIDesign.Color.accent, in: Circle())
+                        .background(
+                            Circle()
+                                .fill(RTIDesign.Color.accent)
+                                .shadow(color: RTIDesign.Color.accent.opacity(0.30), radius: 4, y: 1)
+                        )
                 }
                 .buttonStyle(.plain)
-                .padding(.trailing, 8)
+                .focusable(true)
+                .padding(.trailing, 6)
                 .disabled(qaInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || qaController.isGenerating)
-
-                Button(action: { qaController.clear() }) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 14))
-                        .foregroundStyle(RTIDesign.Color.textTertiary)
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, RTIDesign.Spacing.sm)
-                .disabled(qaController.messages.isEmpty)
             }
             .background(
                 RoundedRectangle(cornerRadius: RTIDesign.Radius.xl)
@@ -546,27 +690,27 @@ struct SessionDetailView: View {
         .padding(.vertical, RTIDesign.Spacing.sm)
     }
 
-    // MARK: - Helpers
+    // MARK: - Section rendering
 
-    private func summaryBlock(title: String, content: String) -> some View {
-        VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm) {
-            Text(title)
-                .font(RTIDesign.Font.heading)
-                .foregroundStyle(RTIDesign.Color.textPrimary)
-            let attributed = (try? AttributedString(markdown: content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content)
-            Text(attributed)
-                .font(RTIDesign.Font.body)
-                .foregroundStyle(RTIDesign.Color.textPrimary)
-                .lineSpacing(4)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    /// Single rendering path for "title + markdown body" used by all summary
+    /// sections. Pre-parses bullet lines so they show as proper bullets with
+    /// hanging indent rather than literal `-` characters.
+    private func sectionBlock(title: String, content: String, isFirst: Bool) -> some View {
+        VStack(alignment: .leading, spacing: RTIDesign.Spacing.md) {
+            SectionHeader(title)
+            sectionBody(content)
         }
     }
 
-    private func summarySection(title: String, content: String?) -> some View {
-        guard let raw = content else { return AnyView(EmptyView()) }
-        // Normalize so the LLM saying "None.", "none", "(none)" or "*None*"
-        // all collapse to the same empty signal.
+    private func sectionBlockOptional(title: String, content: String?) -> some View {
+        Group {
+            if let raw = content, !isContentEmpty(raw) {
+                sectionBlock(title: title, content: raw, isFirst: false)
+            }
+        }
+    }
+
+    private func isContentEmpty(_ raw: String) -> Bool {
         let normalized = raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "*", with: "")
@@ -574,26 +718,49 @@ struct SessionDetailView: View {
             .replacingOccurrences(of: ")", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        guard !normalized.isEmpty,
-              normalized != "none",
-              normalized != "none." else {
-            return AnyView(EmptyView())
-        }
-        let content = raw
-        return AnyView(
-            VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm) {
-                Text(title)
-                    .font(RTIDesign.Font.heading)
-                    .foregroundStyle(RTIDesign.Color.textPrimary)
-                let attributed = (try? AttributedString(markdown: content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content)
-                Text(attributed)
-                    .font(RTIDesign.Font.body)
-                    .foregroundStyle(RTIDesign.Color.textPrimary)
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        return normalized.isEmpty || normalized == "none" || normalized == "none."
+    }
+
+    /// Render markdown body as either a bulleted list (when most lines start
+    /// with `-` or `*`) or a flowing paragraph (with inline markdown).
+    @ViewBuilder
+    private func sectionBody(_ raw: String) -> some View {
+        let lines = raw.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let bulletLines = lines.filter { $0.hasPrefix("- ") || $0.hasPrefix("* ") }
+        let isList = !lines.isEmpty && bulletLines.count >= max(1, lines.count - 1)
+
+        if isList {
+            VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.xs)) {
+                ForEach(Array(bulletLines.enumerated()), id: \.offset) { _, line in
+                    let stripped = String(line.dropFirst(2))
+                    HStack(alignment: .top, spacing: RTIDesign.Spacing.sm) {
+                        Text("•")
+                            .font(RTIDesign.Font.body)
+                            .foregroundStyle(RTIDesign.Color.accentText)
+                            .frame(width: 12, alignment: .leading)
+                        Text(attributed(stripped))
+                            .font(RTIDesign.Font.body)
+                            .foregroundStyle(RTIDesign.Color.textPrimary)
+                            .lineSpacing(density.scaled(4))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
-        )
+        } else {
+            Text(attributed(raw))
+                .font(RTIDesign.Font.body)
+                .foregroundStyle(RTIDesign.Color.textPrimary)
+                .lineSpacing(density.scaled(4))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func attributed(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
     }
 
     private struct FollowUpSection {
@@ -601,12 +768,6 @@ struct SessionDetailView: View {
         let body: String
     }
 
-    /// followUps comes back as concatenated markdown like:
-    ///   ## Open Questions
-    ///   - foo
-    ///   ## Next Steps
-    ///   - bar
-    /// Split it on `## ` headings so each lands in its own styled block.
     private func splitFollowUps(_ raw: String) -> [FollowUpSection] {
         let lines = raw.components(separatedBy: "\n")
         var sections: [FollowUpSection] = []
@@ -651,22 +812,26 @@ struct SessionDetailView: View {
         guard let text = summary?.summaryText else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        flashCopied("Copied")
+        toast.show("Summary copied")
     }
 
     private func copyTranscript() {
-        let text = transcripts.map { "\($0.speakerId): \($0.text)" }.joined(separator: "\n")
+        let text = transcripts.map { "\(SpeakerLabels.displayName(for: $0.speakerId)): \($0.text)" }.joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        flashCopied("Copied")
+        toast.show("Transcript copied")
     }
 
     private func regenerateSummary() {
-        Task { await generateSummary() }
+        Task {
+            await generateSummary()
+            await MainActor.run { toast.show("Summary regenerated") }
+        }
     }
 
     private func regenerateTranscript() {
         regenerator.regenerate(sessionId: sessionId)
+        // Completion toast fires from the regenerator state observer above.
     }
 
     private func exportSession() {
@@ -681,11 +846,8 @@ struct SessionDetailView: View {
     private func submitQA() {
         let question = qaInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
-        // Hard cap so a pasted essay doesn't bounce off DeepSeek as a 400.
         let capped = question.count > 4000 ? String(question.prefix(4000)) : question
         qaInput = ""
-        // If the user typed a question while looking at Summary/Transcript/Usage,
-        // jump them to the Q&A tab so they actually see the answer stream in.
         if selectedTab != .qa {
             withAnimation(.easeInOut(duration: 0.18)) { selectedTab = .qa }
         }
@@ -717,14 +879,6 @@ struct SessionDetailView: View {
             summary = SummaryController.shared.loadSummary(for: sessionId)
         } catch {
             NSLog("[RTI] SessionDetail loadData failed: \(error)")
-        }
-    }
-
-    private func flashCopied(_ text: String) {
-        copedLabel = text
-        Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            withAnimation { copedLabel = nil }
         }
     }
 
