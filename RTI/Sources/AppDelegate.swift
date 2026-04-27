@@ -106,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let controller = OnboardingWindowController()
             controller.showIfNeeded()
             onboarding = controller
-        } else if CredentialStore.deepseek == nil {
+        } else if CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
             settingsWindow?.show()
         }
     }

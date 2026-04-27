@@ -88,7 +88,8 @@ final class SessionCoordinator: ObservableObject {
     func insertNote(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let sessionId = currentSessionId else { return false }
-        let offsetMs = Int(max(0, Date().timeIntervalSince(startedAt ?? Date()) * 1000))
+        guard let startedAt else { return false }
+        let offsetMs = Int(max(0, Date().timeIntervalSince(startedAt) * 1000))
         let entry = TranscriptEntry(
             id: UUID().uuidString,
             sessionId: sessionId,
@@ -551,7 +552,7 @@ final class SessionCoordinator: ObservableObject {
             let confidenceAvg = group.map(\.confidence).reduce(0, +) / Double(group.count)
             return Run(
                 speaker: group[0].speaker,
-                text: group.map(\.text).joined(),
+                text: group.map(\.text).joined(separator: " "),
                 startMs: group.first?.startMs ?? 0,
                 endMs: group.last?.endMs ?? 0,
                 confidence: confidenceAvg
