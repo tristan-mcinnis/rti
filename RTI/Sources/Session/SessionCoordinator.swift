@@ -576,7 +576,7 @@ final class SessionCoordinator: ObservableObject {
             let confidenceAvg = group.map(\.confidence).reduce(0, +) / Double(group.count)
             return Run(
                 speaker: group[0].speaker,
-                text: group.map(\.text).joined(separator: " "),
+                text: group.map(\.text).joined(),
                 startMs: group.first?.startMs ?? 0,
                 endMs: group.last?.endMs ?? 0,
                 confidence: confidenceAvg

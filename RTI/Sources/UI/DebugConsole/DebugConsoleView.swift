@@ -28,6 +28,20 @@ struct DebugConsoleView: View {
                 .frame(width: 10, height: 10)
             Text(coordinator.isRunning ? "Recording…" : "Idle")
                 .font(.system(size: 13, weight: .medium))
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 5, height: 5)
+                Text("Realtime")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.orange.opacity(0.10))
+            )
             Spacer()
             if coordinator.isRunning {
                 Text(formatElapsed(elapsed))

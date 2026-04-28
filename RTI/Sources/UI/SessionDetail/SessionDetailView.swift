@@ -80,7 +80,7 @@ struct SessionDetailView: View {
         .onChange(of: regenerator.generatingSessionId) { old, new in
             if old == sessionId && new == nil {
                 loadData()
-                toast.show("Transcript regenerated")
+                toast.show("Transcript regenerated (Hi-Fi quality)")
             }
         }
         .onChange(of: selectedTab) { _, new in
@@ -136,10 +136,30 @@ struct SessionDetailView: View {
                     Text("·")
                     Text(mode.name)
                 }
+                if let quality = session.transcriptQuality {
+                    Text("·")
+                    transcriptQualityBadge(quality)
+                }
             }
         }
         .font(RTIDesign.Font.meta)
         .foregroundStyle(RTIDesign.Color.textSecondary)
+    }
+
+    private func transcriptQualityBadge(_ quality: String) -> some View {
+        let isHifi = quality == "hifi"
+        return HStack(spacing: 4) {
+            Image(systemName: isHifi ? "waveform.path.ecg" : "waveform")
+                .font(.system(size: 9, weight: .semibold))
+            Text(isHifi ? "Hi-Fi" : "Realtime")
+        }
+        .foregroundStyle(isHifi ? Color.green : Color.orange)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill((isHifi ? Color.green : Color.orange).opacity(0.12))
+        )
     }
 
     private var sessionTitle: String {
@@ -187,15 +207,15 @@ struct SessionDetailView: View {
                     let isRegen = regenerator.generatingSessionId == sessionId
                     let label: String = {
                         if isRegen { return "Regenerating…" }
-                        if session.transcriptQuality == "hifi" { return "Re-Regenerate Transcript" }
-                        return "Regenerate Transcript"
+                        if session.transcriptQuality == "hifi" { return "Re-Regenerate (Hi-Fi)" }
+                        return "Hi-Fi Re-Transcript"
                     }()
                     actionButton(
                         label: label,
                         systemImage: isRegen ? "waveform.path.ecg" : "waveform",
                         role: .ai,
                         disabled: regenerator.isGenerating,
-                        help: "Re-transcribe from the recording for higher accuracy + speaker diarization (uses tokens)",
+                        help: "Send the full recording to Soniox as a file for higher accuracy than the live realtime stream (uses tokens)",
                         action: regenerateTranscript
                     )
                 }
@@ -364,6 +384,11 @@ struct SessionDetailView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.lg)) {
+                        if session?.transcriptQuality != "hifi",
+                           let wavPath = session?.wavPath,
+                           FileManager.default.fileExists(atPath: wavPath) {
+                            realtimeQualityCallout
+                        }
                         ForEach(groupedTranscripts) { group in
                             transcriptRow(group)
                                 .id(group.id)
@@ -400,6 +425,33 @@ struct SessionDetailView: View {
                         .foregroundStyle(RTIDesign.Color.accentText)
                 }
             }
+        }
+    }
+
+    private var realtimeQualityCallout: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.orange)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Realtime transcript")
+                    .font(RTIDesign.Font.bodySmall.weight(.semibold))
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
+                Text("This transcript was captured in realtime. Click \"Hi-Fi Re-Transcript\" in the header to reprocess the full recording for higher accuracy.")
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
+                .stroke(Color.orange.opacity(0.2), lineWidth: 1)
         }
     }
 
