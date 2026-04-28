@@ -98,6 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: .rtiShowLiveTranscript,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showSessionHistory),
+            name: .rtiShowSessionHistory,
+            object: nil
+        )
 
         // Show the 3-step onboarding once on first launch (and when the user
         // hasn't completed it yet). Falls back to opening Settings directly if

@@ -105,6 +105,7 @@ struct SessionDetailView: View {
 
     private var metaLine: some View {
         HStack(spacing: 6) {
+            backButton
             if let session = session {
                 Text(session.startedAt.formatted(date: .abbreviated, time: .shortened))
                 if let endedAt = session.endedAt {
@@ -143,6 +144,20 @@ struct SessionDetailView: View {
         if let title = session?.calendarTitle, !title.isEmpty { return title }
         if let title = session?.title, !title.isEmpty { return title }
         return "Meeting Session"
+    }
+
+    private var backButton: some View {
+        Button {
+            NotificationCenter.default.post(name: .rtiShowSessionHistory, object: nil)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("All Sessions")
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(RTIDesign.Color.textSecondary)
     }
 
     /// Header action row, grouped: utility (Copy, Export) | AI ops (Regen Transcript, Regen Summary).
@@ -217,6 +232,7 @@ struct SessionDetailView: View {
         }
         .buttonStyle(.plain)
         .focusable(true)
+        .focusEffectDisabled()
         .disabled(disabled)
         .help(help ?? "")
     }
@@ -640,6 +656,7 @@ struct SessionDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .focusable(true)
+                .focusEffectDisabled()
             }
 
             HStack(spacing: 0) {
@@ -673,6 +690,7 @@ struct SessionDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .focusable(true)
+                .focusEffectDisabled()
                 .padding(.trailing, 6)
                 .disabled(qaInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || qaController.isGenerating)
             }

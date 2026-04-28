@@ -201,6 +201,7 @@ struct RTISegmentedPicker<T: Hashable & CustomStringConvertible>: View {
                 .buttonStyle(.plain)
                 .focusable(true)
                 .focused($focusedItem, equals: item)
+                .focusEffectDisabled()
             }
         }
         .padding(4)
