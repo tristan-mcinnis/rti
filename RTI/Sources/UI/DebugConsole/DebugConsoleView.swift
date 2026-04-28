@@ -5,7 +5,7 @@ struct DebugConsoleView: View {
     @EnvironmentObject var coordinator: SessionCoordinator
     @State private var elapsed: TimeInterval = 0
     @State private var timer: Timer?
-    @State private var copedFlash: String?
+    @State private var copiedFlash: String?
     @State private var hoveredId: UUID?
 
     var body: some View {
@@ -42,9 +42,9 @@ struct DebugConsoleView: View {
             }
             Button(action: copyAll) {
                 HStack(spacing: 4) {
-                    Image(systemName: copedFlash == "all" ? "checkmark" : "doc.on.doc")
+                    Image(systemName: copiedFlash == "all" ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 11, weight: .medium))
-                    Text(copedFlash == "all" ? "Copied" : "Copy")
+                    Text(copiedFlash == "all" ? "Copied" : "Copy")
                         .font(.system(size: 11, weight: .medium))
                 }
                 .foregroundStyle(.secondary)
@@ -146,7 +146,7 @@ struct DebugConsoleView: View {
                 Spacer()
                 if hoveredId == p.id {
                     Button(action: { copyParagraph(p) }) {
-                        Image(systemName: copedFlash == p.id.uuidString ? "checkmark" : "doc.on.doc")
+                        Image(systemName: copiedFlash == p.id.uuidString ? "checkmark" : "doc.on.doc")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
@@ -214,10 +214,10 @@ struct DebugConsoleView: View {
     }
 
     private func flashCopied(_ key: String) {
-        copedFlash = key
+        copiedFlash = key
         Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            await MainActor.run { if copedFlash == key { copedFlash = nil } }
+            await MainActor.run { if copiedFlash == key { copiedFlash = nil } }
         }
     }
 

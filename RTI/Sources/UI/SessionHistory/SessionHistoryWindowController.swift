@@ -22,7 +22,7 @@ final class SessionHistoryWindowController: ObservableObject {
         w.setFrameAutosaveName("rti.sessionhistory")
         w.isReleasedWhenClosed = false
         w.minSize = NSSize(width: 600, height: 400)
-        w.backgroundColor = NSColor(calibratedRed: 0.969, green: 0.969, blue: 0.973, alpha: 1)
+        w.backgroundColor = NSColor(red: 0.969, green: 0.969, blue: 0.973, alpha: 1)
         // Match SessionDetailWindowController: force aqua because the design
         // tokens were built for a light surface.
         w.appearance = NSAppearance(named: .aqua)

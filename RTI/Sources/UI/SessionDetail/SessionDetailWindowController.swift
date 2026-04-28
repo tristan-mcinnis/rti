@@ -24,7 +24,7 @@ final class SessionDetailWindowController: ObservableObject {
         w.setFrameAutosaveName("rti.sessiondetail")
         w.isReleasedWhenClosed = false
         w.minSize = NSSize(width: 720, height: 480)
-        w.backgroundColor = NSColor(calibratedRed: 0.969, green: 0.969, blue: 0.973, alpha: 1)
+        w.backgroundColor = NSColor(red: 0.969, green: 0.969, blue: 0.973, alpha: 1)
         // RTIDesign tokens are calibrated for light mode (textPrimary near
         // black on textBackground near white). Force aqua so dark-mode users
         // don't end up with invisible dark text on dark List rows.

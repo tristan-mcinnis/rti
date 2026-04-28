@@ -3,21 +3,21 @@ import SwiftUI
 enum RTIDesign {
     // MARK: - Color
     enum Color {
-        static let appBackground = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.953, green: 0.953, blue: 0.961, alpha: 1))
-        static let panelBackground = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.969, green: 0.969, blue: 0.973, alpha: 1))
-        static let trackBackground = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.925, green: 0.925, blue: 0.937, alpha: 1))
+        static let appBackground = SwiftUI.Color(nsColor: NSColor(red: 0.953, green: 0.953, blue: 0.961, alpha: 1))
+        static let panelBackground = SwiftUI.Color(nsColor: NSColor(red: 0.969, green: 0.969, blue: 0.973, alpha: 1))
+        static let trackBackground = SwiftUI.Color(nsColor: NSColor(red: 0.925, green: 0.925, blue: 0.937, alpha: 1))
         static let cardBackground = SwiftUI.Color.white
         static let inputBackground = SwiftUI.Color.white
 
-        static let border = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.851, green: 0.851, blue: 0.871, alpha: 1))
-        static let borderLight = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.812, green: 0.812, blue: 0.831, alpha: 1))
-        static let borderStrong = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.745, green: 0.745, blue: 0.769, alpha: 1))
+        static let border = SwiftUI.Color(nsColor: NSColor(red: 0.851, green: 0.851, blue: 0.871, alpha: 1))
+        static let borderLight = SwiftUI.Color(nsColor: NSColor(red: 0.812, green: 0.812, blue: 0.831, alpha: 1))
+        static let borderStrong = SwiftUI.Color(nsColor: NSColor(red: 0.745, green: 0.745, blue: 0.769, alpha: 1))
         static let divider = border.opacity(0.6)
 
-        static let textPrimary = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.067, green: 0.067, blue: 0.078, alpha: 1))
-        static let textSecondary = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.345, green: 0.345, blue: 0.380, alpha: 1))
+        static let textPrimary = SwiftUI.Color(nsColor: NSColor(red: 0.067, green: 0.067, blue: 0.078, alpha: 1))
+        static let textSecondary = SwiftUI.Color(nsColor: NSColor(red: 0.345, green: 0.345, blue: 0.380, alpha: 1))
         // Bumped from (0.557,...) to (0.480,...) so it clears 4.5:1 contrast on panelBackground.
-        static let textTertiary = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.480, green: 0.480, blue: 0.510, alpha: 1))
+        static let textTertiary = SwiftUI.Color(nsColor: NSColor(red: 0.480, green: 0.480, blue: 0.510, alpha: 1))
 
         static let accent = SwiftUI.Color(red: 0.039, green: 0.518, blue: 1.0)
         static let accentText = SwiftUI.Color(red: 0.024, green: 0.463, blue: 0.847)
@@ -27,7 +27,7 @@ enum RTIDesign {
         static let chipActiveText = SwiftUI.Color(red: 0.140, green: 0.514, blue: 0.820)
 
         // Soft tinted card for AI/assistant outputs (Summary blocks, Q&A assistant turns).
-        static let aiCardBackground = SwiftUI.Color(nsColor: NSColor(calibratedRed: 0.965, green: 0.973, blue: 0.984, alpha: 1))
+        static let aiCardBackground = SwiftUI.Color(nsColor: NSColor(red: 0.965, green: 0.973, blue: 0.984, alpha: 1))
         static let aiCardBorder = accent.opacity(0.18)
 
         // Toast (top-right pill).
