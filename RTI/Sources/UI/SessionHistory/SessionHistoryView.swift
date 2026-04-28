@@ -91,18 +91,33 @@ struct SessionHistoryView: View {
             .padding(.horizontal, RTIDesign.Spacing.xl)
             .padding(.top, RTIDesign.Spacing.xl)
 
-            Divider()
-                .padding(.top, RTIDesign.Spacing.lg)
-
-            List {
-                if isSearching && !searchText.isEmpty {
-                    ForEach(searchResults) { result in
-                        sessionRow(result.session, snippet: result.snippet)
-                            .contentShape(Rectangle())
-                            .onTapGesture { openSession(result.session.id) }
-                            .contextMenu { contextMenu(for: result.session) }
-                    }
-                } else {
+            if sessions.isEmpty && searchText.isEmpty {
+                sessionListEmptyState
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    if isSearching && !searchText.isEmpty {
+                        if searchResults.isEmpty {
+                            HStack {
+                                Spacer()
+                                ProgressView("Searching…")
+                                    .font(RTIDesign.Font.caption)
+                                    .foregroundStyle(RTIDesign.Color.textTertiary)
+                                Spacer()
+                            }
+                            .padding(.vertical, RTIDesign.Spacing.xl)
+                            .listRowSeparator(.hidden)
+                        } else {
+                            ForEach(searchResults) { result in
+                                sessionRow(result.session, snippet: result.snippet)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { openSession(result.session.id) }
+                                    .contextMenu { contextMenu(for: result.session) }
+                            }
+                        }
+                    } else if !isSearching && !searchText.isEmpty && searchResults.isEmpty {
+                        searchNoResultsView
+                    } else {
                     // Group only on the default Newest sort, where chronological
                     // bands map cleanly to recency. Other sort orders ignore
                     // grouping and just show the flat list.
@@ -121,6 +136,7 @@ struct SessionHistoryView: View {
                                     .foregroundStyle(RTIDesign.Color.textSecondary)
                                     .textCase(nil)
                                     .padding(.top, RTIDesign.Spacing.sm)
+                                    .padding(.bottom, 4)
                             }
                         }
                     } else {
@@ -134,6 +150,7 @@ struct SessionHistoryView: View {
                 }
             }
             .listStyle(.plain)
+            }
         }
         .background(RTIDesign.Color.panelBackground)
         .task { loadSessions() }
@@ -200,6 +217,8 @@ struct SessionHistoryView: View {
                 Text(sessionTitle(session))
                     .font(RTIDesign.Font.bodySmall.weight(.medium))
                     .foregroundStyle(RTIDesign.Color.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer()
                 if session.id == currentSessionId, isCurrentSessionActive {
                     TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
@@ -216,6 +235,7 @@ struct SessionHistoryView: View {
                         .frame(height: 24)
                         .background(RTIDesign.Color.chipActiveBg, in: RoundedRectangle(cornerRadius: 8))
                     }
+                    .layoutPriority(1)
                 }
             }
             HStack(spacing: 6) {
@@ -311,6 +331,39 @@ struct SessionHistoryView: View {
             confirmDelete(session: session)
         }
         .disabled(SessionCoordinator.shared.isRunning && SessionCoordinator.shared.currentSessionId == session.id)
+    }
+
+    private var sessionListEmptyState: some View {
+        VStack(spacing: RTIDesign.Spacing.md) {
+            Image(systemName: "waveform.badge.mic")
+                .font(.system(size: 32))
+                .foregroundStyle(RTIDesign.Color.textTertiary)
+                .allowsHitTesting(false)
+            Text("No sessions yet")
+                .font(RTIDesign.Font.heading)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+            Text("Start recording with ⌘\\ to create your first session.")
+                .font(RTIDesign.Font.bodySmall)
+                .foregroundStyle(RTIDesign.Color.textTertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var searchNoResultsView: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: RTIDesign.Spacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 24))
+                    .foregroundStyle(RTIDesign.Color.textTertiary)
+                Text("No sessions match your search")
+                    .font(RTIDesign.Font.bodySmall)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, RTIDesign.Spacing.xxl)
+        .listRowSeparator(.hidden)
     }
 
     private func confirmDelete(session: Session) {

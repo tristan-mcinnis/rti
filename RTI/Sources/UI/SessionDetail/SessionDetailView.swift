@@ -107,6 +107,8 @@ struct SessionDetailView: View {
         HStack(spacing: 6) {
             backButton
             if let session = session {
+                Text("·")
+                    .foregroundStyle(RTIDesign.Color.textTertiary)
                 Text(session.startedAt.formatted(date: .abbreviated, time: .shortened))
                 if let endedAt = session.endedAt {
                     Text("·")
@@ -162,7 +164,7 @@ struct SessionDetailView: View {
 
     /// Header action row, grouped: utility (Copy, Export) | AI ops (Regen Transcript, Regen Summary).
     private var headerActionsRow: some View {
-        HStack(spacing: RTIDesign.Spacing.sm) {
+        HStack(spacing: RTIDesign.Spacing.xxs) {
             Spacer()
 
             // Group 1 — utility
@@ -175,7 +177,7 @@ struct SessionDetailView: View {
             Rectangle()
                 .fill(RTIDesign.Color.divider)
                 .frame(width: 1, height: 20)
-                .padding(.horizontal, RTIDesign.Spacing.xs)
+                .padding(.horizontal, RTIDesign.Spacing.xxs)
 
             // Group 2 — AI operations
             HStack(spacing: RTIDesign.Spacing.xxs) {
@@ -365,7 +367,7 @@ struct SessionDetailView: View {
                         }
                     }
                     .padding(.horizontal, RTIDesign.Spacing.xl)
-                    .padding(.top, RTIDesign.Spacing.xl + 36)
+                    .padding(.top, RTIDesign.Spacing.xxl + 36)
                     .padding(.bottom, RTIDesign.Spacing.lg)
                     .readingWidth(880)
                 }
@@ -480,7 +482,7 @@ struct SessionDetailView: View {
                     }
                 }
                 .padding(.horizontal, RTIDesign.Spacing.xl)
-                .padding(.top, RTIDesign.Spacing.xl + 36)
+                .padding(.top, RTIDesign.Spacing.xxl + 36)
                 .padding(.bottom, RTIDesign.Spacing.lg)
                 .readingWidth(720)
             }
@@ -582,7 +584,7 @@ struct SessionDetailView: View {
                     }
                 }
                 .padding(.horizontal, RTIDesign.Spacing.xl)
-                .padding(.top, RTIDesign.Spacing.xl + 36)
+                .padding(.top, RTIDesign.Spacing.xxl + 36)
                 .padding(.bottom, RTIDesign.Spacing.lg)
             }
 

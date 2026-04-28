@@ -12,7 +12,7 @@ final class SessionHistoryWindowController: ObservableObject {
             return
         }
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 640),
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
