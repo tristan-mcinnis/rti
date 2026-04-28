@@ -89,6 +89,8 @@ final class LLMController: ObservableObject {
         currentTask = nil
         streaming = false
         reasoning = false
+        pruneTrailingEmptyAssistant()
+        streamingEntryID = nil
     }
 
     /// Cancel any in-flight stream and drop the in-memory entries without
@@ -199,8 +201,9 @@ final class LLMController: ObservableObject {
         for (idx, entry) in entries.enumerated() {
             let isLatestUser = idx == entries.count - 1 && entry.role == "user"
             let content = isLatestUser ? fullContent : entry.text
-            // DeepSeek rejects empty-content messages (e.g. a placeholder from a failed prior stream).
-            if content.isEmpty { continue }
+            // Skip non-final entries with empty content, but never skip the
+            // last user entry — the API needs at least one user message.
+            if content.isEmpty, !isLatestUser { continue }
             apiMessages.append(DeepSeekMessage(role: entry.role, content: content))
         }
 
@@ -232,6 +235,8 @@ final class LLMController: ObservableObject {
                         self.lastErrorIsAuth = true
                     case .httpError(let code, let body):
                         self.lastError = "DeepSeek error \(code): \(body.prefix(300))"
+                    case .streamError(let detail):
+                        self.lastError = "DeepSeek stream error: \(detail.prefix(300))"
                     case .badResponse:
                         self.lastError = "DeepSeek returned an unexpected response."
                     }

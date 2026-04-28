@@ -332,10 +332,12 @@ struct SessionDetailView: View {
 
     private var groupedTranscripts: [TranscriptGroup] {
         var groups: [TranscriptGroup] = []
+        var lastMergedEndMs: Int?
         for entry in transcripts {
+            let gap = lastMergedEndMs.map { entry.startMs - $0 } ?? Int.max
             if let last = groups.last,
                last.speakerId == entry.speakerId,
-               entry.startMs - (last.startMs + (last.text.count * 50)) < 5000 {
+               gap < 5000 {
                 let merged = TranscriptGroup(
                     id: last.id,
                     speakerId: last.speakerId,
@@ -352,6 +354,7 @@ struct SessionDetailView: View {
                     text: entry.text
                 ))
             }
+            lastMergedEndMs = entry.endMs
         }
         return groups
     }

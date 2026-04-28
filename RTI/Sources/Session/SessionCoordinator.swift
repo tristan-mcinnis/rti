@@ -28,6 +28,8 @@ final class SessionCoordinator: ObservableObject {
     private let wav = WAVWriter()
     private var soniox: SonioxClient?
     private var lastFinalizedEndMs: Int = 0
+    private var zeroEndMsSeen: Set<String> = []
+    private var delayedCompleteTask: Task<Void, Never>?
 
     private static let resumeWindowSeconds: TimeInterval = 300
 
@@ -109,6 +111,9 @@ final class SessionCoordinator: ObservableObject {
                 startMs: offsetMs,
                 confidence: 1.0
             ))
+            if liveEntries.count > 500 {
+                liveEntries.removeFirst(liveEntries.count - 500)
+            }
             return true
         } catch {
             NSLog("[RTI] insertNote failed: \(error)")
@@ -219,6 +224,7 @@ final class SessionCoordinator: ObservableObject {
     func startSession() {
         guard !isRunning else { return }
         lastError = nil
+        delayedCompleteTask?.cancel()
         // Cancel any in-flight stream and reset the in-memory entries, but do
         // NOT delete chat_messages from the DB here — that would erase the
         // history of a session the user is about to resume.
@@ -318,24 +324,24 @@ final class SessionCoordinator: ObservableObject {
             }
             sessionId = UUID().uuidString
             wavURL = WAVWriter.defaultURL(for: sessionId)
-        let calendarEvent = CalendarManager.shared.activeEvent()
-        do {
-            let session = Session(
-                id: sessionId,
-                startedAt: now,
-                endedAt: nil,
-                wavPath: wavURL.path,
-                notes: nil,
-                title: nil,
-                modeId: ModeStore.shared.activeModeId,
-                calendarEventId: calendarEvent?.eventIdentifier,
-                calendarTitle: calendarEvent?.title
-            )
-            try RTIDatabase.shared.pool.write { db in try session.insert(db) }
-        } catch {
-            lastError = "DB insert failed: \(error)"
-            return
-        }
+            let calendarEvent = CalendarManager.shared.activeEvent()
+            do {
+                let session = Session(
+                    id: sessionId,
+                    startedAt: now,
+                    endedAt: nil,
+                    wavPath: wavURL.path,
+                    notes: nil,
+                    title: nil,
+                    modeId: ModeStore.shared.activeModeId,
+                    calendarEventId: calendarEvent?.eventIdentifier,
+                    calendarTitle: calendarEvent?.title
+                )
+                try RTIDatabase.shared.pool.write { db in try session.insert(db) }
+            } catch {
+                lastError = "DB insert failed: \(error)"
+                return
+            }
         }
 
         do {
@@ -373,6 +379,7 @@ final class SessionCoordinator: ObservableObject {
         liveEntries = []
         interimLine = nil
         lastFinalizedEndMs = 0
+        zeroEndMsSeen = []
         isRunning = true
         LLMController.shared.loadHistoryForCurrentSession()
     }
@@ -385,8 +392,10 @@ final class SessionCoordinator: ObservableObject {
         isRunning = false
 
         let endedAt = Date()
-        Task { [weak self] in
+        delayedCompleteTask?.cancel()
+        delayedCompleteTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if Task.isCancelled { return }
             self?.completeStop(sessionId: sessionId, endedAt: endedAt)
         }
     }
@@ -486,9 +495,16 @@ final class SessionCoordinator: ObservableObject {
     private func handleWords(_ words: [SonioxWord]) {
         guard let sessionId = currentSessionId else { return }
 
-        // Zero-endMs finals can't be dedup'd by watermark — accept them rather
-        // than letting them get permanently filtered if every batch returns 0.
-        let finals = words.filter { $0.isFinal && ($0.endMs > lastFinalizedEndMs || $0.endMs == 0) }
+        // Non-zero endMs: use watermark dedup. Zero endMs: dedup by
+        // speaker+text+startMs to avoid duplicates when Soniox doesn't
+        // provide timing data (e.g. very short utterances).
+        let regularFinals = words.filter { $0.isFinal && $0.endMs > lastFinalizedEndMs }
+        let zeroMsFinals: [SonioxWord] = words.compactMap { word in
+            guard word.isFinal, word.endMs == 0 else { return nil }
+            let key = "\(word.speaker)|\(word.text)|\(word.startMs)"
+            return zeroEndMsSeen.insert(key).inserted ? word : nil
+        }
+        let finals = regularFinals + zeroMsFinals
         let interims = words.filter { !$0.isFinal }
 
         if !finals.isEmpty {
@@ -523,7 +539,11 @@ final class SessionCoordinator: ObservableObject {
                     confidence: run.confidence
                 ))
             }
-            lastFinalizedEndMs = max(lastFinalizedEndMs, finals.map(\.endMs).max() ?? lastFinalizedEndMs)
+            if liveEntries.count > 500 {
+                liveEntries.removeFirst(liveEntries.count - 500)
+            }
+            let nonZeroMax = finals.compactMap({ $0.endMs > 0 ? $0.endMs : nil }).max()
+            if let m = nonZeroMax { lastFinalizedEndMs = m }
         }
 
         if interims.isEmpty {

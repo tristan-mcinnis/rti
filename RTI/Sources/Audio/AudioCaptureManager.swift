@@ -11,12 +11,15 @@ enum AudioCaptureError: Error {
 
 final class AudioCaptureManager {
     static let targetFormat: AVAudioFormat = {
-        AVAudioFormat(
+        guard let fmt = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: 16_000,
             channels: 1,
             interleaved: true
-        )!
+        ) else {
+            fatalError("RTI: Failed to create 16 kHz mono Int16 PCM format — AVAudioFormat initializer returned nil")
+        }
+        return fmt
     }()
 
     var onPCMBuffer: ((AVAudioPCMBuffer) -> Void)?

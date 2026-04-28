@@ -230,10 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openCurrentSessionDetail() {
-        guard let id = SessionCoordinator.shared.currentSessionId else {
-            NSSound.beep()
-            return
-        }
+        guard let id = SessionCoordinator.shared.currentSessionId else { return }
         openSessionDetail(for: id)
     }
 

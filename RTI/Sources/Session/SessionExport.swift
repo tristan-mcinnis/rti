@@ -9,10 +9,7 @@ enum SessionExport {
     /// consistent `YYYYMMDD-slug.md` naming convention out of the box.
     @MainActor
     static func exportToFile(sessionId: String) {
-        guard let markdown = exportMarkdown(sessionId: sessionId) else {
-            NSSound.beep()
-            return
-        }
+        guard let markdown = exportMarkdown(sessionId: sessionId) else { return }
 
         let panel = NSSavePanel()
         panel.title = "Export Session"

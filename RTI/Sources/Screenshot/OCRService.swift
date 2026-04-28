@@ -9,7 +9,10 @@ enum OCRService {
     /// top→bottom, left→right. Off-main; call from a background task.
     static func recognizeText(in cgImage: CGImage) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
+            var resumed = false
             let request = VNRecognizeTextRequest { req, err in
+                guard !resumed else { return }
+                resumed = true
                 if let err { continuation.resume(throwing: err); return }
                 let observations = (req.results as? [VNRecognizedTextObservation]) ?? []
                 // Vision origin is bottom-left; sort by -y then x for reading order.
@@ -29,10 +32,14 @@ enum OCRService {
 
             let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
             DispatchQueue.global(qos: .userInitiated).async {
+                guard !resumed else { return }
                 do {
                     try handler.perform([request])
                 } catch {
-                    continuation.resume(throwing: error)
+                    if !resumed {
+                        resumed = true
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
         }

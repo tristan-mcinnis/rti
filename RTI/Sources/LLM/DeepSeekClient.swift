@@ -5,11 +5,18 @@ enum DeepSeekError: Error {
     case unauthorized
     case badResponse
     case missingAPIKey
+    case streamError(String)
 }
 
 final class DeepSeekClient {
     private let baseURL: URL
     private let session: URLSession
+
+    private static let sharedSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForResource = 300
+        return URLSession(configuration: config)
+    }()
 
     /// Fires on the main thread for every reasoning_content chunk in smart
     /// mode. Callers that don't care can leave this nil. Used by
@@ -18,12 +25,7 @@ final class DeepSeekClient {
 
     init(baseURL: URL) {
         self.baseURL = baseURL
-        let config = URLSessionConfiguration.default
-        // Per-request timeout is set on the URLRequest below; resource timeout
-        // is the upper bound on the entire transfer including the SSE stream,
-        // so it must be long enough to cover smart-mode reasoning + content.
-        config.timeoutIntervalForResource = 300
-        self.session = URLSession(configuration: config)
+        self.session = Self.sharedSession
     }
 
     private var apiKey: String { Secrets.deepseekAPIKey }
@@ -92,7 +94,13 @@ final class DeepSeekClient {
                         // Surface that to the caller instead of silently swallowing it.
                         if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let err = obj["error"] {
-                            throw DeepSeekError.httpError(0, "DeepSeek stream error: \(err)")
+                            let detail: String = {
+                                if let msg = err as? [String: Any], let text = msg["message"] as? String {
+                                    return text
+                                }
+                                return "\(err)"
+                            }()
+                            throw DeepSeekError.streamError(detail)
                         }
                         do {
                             let chunk = try decoder.decode(DeepSeekChatChunk.self, from: data)

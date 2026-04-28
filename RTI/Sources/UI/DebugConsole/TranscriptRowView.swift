@@ -29,11 +29,6 @@ struct TranscriptRowView: View {
     }
 
     private func speakerColor(_ id: String) -> Color {
-        if id == "self" { return .blue }
-        let palette: [Color] = [.orange, .green, .purple, .pink]
-        if id.hasPrefix("them_"), let n = Int(id.dropFirst("them_".count)), n > 0 {
-            return palette[(n - 1) % palette.count]
-        }
-        return .gray
+        SpeakerLabels.chipColor(for: id)
     }
 }

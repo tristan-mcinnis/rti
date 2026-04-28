@@ -34,10 +34,13 @@ enum SpeakerLabels {
             return RTIDesign.Color.speakerPalette[0]
         }
         if raw.hasPrefix("them_"),
-           let n = Int(raw.dropFirst("them_".count)) {
+           let n = Int(raw.dropFirst("them_".count)),
+           n >= 1 {
             // Reserve index 0 for "self"; them_1 → palette[1], them_2 → palette[2]…
             let palette = RTIDesign.Color.speakerPalette
-            return palette[(n) % palette.count]
+            let paletteCount = palette.count
+            guard paletteCount > 1 else { return palette[0] }
+            return palette[((n - 1) % (paletteCount - 1)) + 1]
         }
         return RTIDesign.Color.textSecondary
     }
