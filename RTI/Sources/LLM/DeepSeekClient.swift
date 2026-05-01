@@ -40,6 +40,10 @@ final class DeepSeekClient {
         // thinking is disabled.
         let temperature: Double? = smart ? nil : 0.6
         let thinking = DeepSeekRequest.Thinking(type: smart ? "enabled" : "disabled")
+        // Smart mode runs reasoning before any content, so the first byte can
+        // take much longer to arrive than chat.  URLRequest.timeoutInterval is
+        // ignored by the async URLSession API — we use the group below instead.
+        let streamTimeoutSeconds: Double = smart ? 120 : 60
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -53,9 +57,6 @@ final class DeepSeekClient {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.httpBody = try JSONEncoder().encode(body)
-                    // Smart mode runs reasoning before any content, so the
-                    // first byte can take much longer to arrive than chat.
-                    request.timeoutInterval = smart ? 120 : 60
 
                     NSLog("[RTI] DeepSeekClient: POST \(request.url?.absoluteString ?? "?") model=\(model) messages=\(messages.count)")
                     RTILog.log("POST model=\(model) messages=\(messages.count) smart=\(smart)", category: "deepseek")
@@ -73,50 +74,22 @@ final class DeepSeekClient {
                         throw DeepSeekError.httpError(http.statusCode, errText)
                     }
 
-                    let decoder = JSONDecoder()
-                    var lineCount = 0
-                    var deltaCount = 0
-                    for try await line in bytes.lines {
-                        lineCount += 1
-                        if lineCount <= 3 {
-                            NSLog("[RTI] DeepSeekClient line[\(lineCount)]: %@", line.prefix(200) as NSString)
+                    // Race the SSE stream against a timeout.  URLRequest.timeoutInterval
+                    // is only advisory for the async bytes API, so we enforce the window
+                    // ourselves.  This way a hung stream fails fast at 60 s (120 s in smart
+                    // mode) instead of waiting for URLSession's resource timeout (300 s).
+                    try await withThrowingTaskGroup(of: Void.self) { group in
+                        group.addTask {
+                            try await Task.sleep(nanoseconds: UInt64(streamTimeoutSeconds * 1_000_000_000))
+                            throw DeepSeekError.streamError("Stream timed out after \(Int(streamTimeoutSeconds))s")
                         }
-                        guard line.hasPrefix("data: ") else { continue }
-                        let payload = String(line.dropFirst(6))
-                        if payload == "[DONE]" {
-                            NSLog("[RTI] DeepSeekClient: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
-                            RTILog.log("done — lines=\(lineCount) deltas=\(deltaCount)", category: "deepseek")
-                            continuation.finish()
-                            return
+                        group.addTask { [weak self] in
+                            guard let self else { return }
+                            try await processStream(bytes, continuation: continuation)
                         }
-                        guard let data = payload.data(using: .utf8) else { continue }
-                        // Some servers send {"error": {...}} mid-stream instead of [DONE].
-                        // Surface that to the caller instead of silently swallowing it.
-                        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                           let err = obj["error"] {
-                            let detail: String = {
-                                if let msg = err as? [String: Any], let text = msg["message"] as? String {
-                                    return text
-                                }
-                                return "\(err)"
-                            }()
-                            throw DeepSeekError.streamError(detail)
-                        }
-                        do {
-                            let chunk = try decoder.decode(DeepSeekChatChunk.self, from: data)
-                            if let reasoning = chunk.choices.first?.delta?.reasoning_content, !reasoning.isEmpty {
-                                let cb = self.onReasoning
-                                DispatchQueue.main.async { cb?(reasoning) }
-                            }
-                            if let delta = chunk.choices.first?.delta?.content, !delta.isEmpty {
-                                deltaCount += 1
-                                continuation.yield(delta)
-                            }
-                        } catch {
-                            NSLog("[RTI] DeepSeekClient chunk decode failed: \(error) payload=\(payload.prefix(200))")
-                        }
+                        _ = try await group.next()
+                        group.cancelAll()
                     }
-                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -132,5 +105,53 @@ final class DeepSeekClient {
             data.append(byte)
         }
         return String(data: data, encoding: .utf8) ?? "<binary>"
+    }
+
+    private func processStream(_ bytes: URLSession.AsyncBytes, continuation: AsyncThrowingStream<String, Error>.Continuation) async throws {
+        let decoder = JSONDecoder()
+        var lineCount = 0
+        var deltaCount = 0
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            lineCount += 1
+            if lineCount <= 3 {
+                NSLog("[RTI] DeepSeekClient line[\(lineCount)]: %@", line.prefix(200) as NSString)
+            }
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+            if payload == "[DONE]" {
+                NSLog("[RTI] DeepSeekClient: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
+                RTILog.log("done — lines=\(lineCount) deltas=\(deltaCount)", category: "deepseek")
+                continuation.finish()
+                return
+            }
+            guard let data = payload.data(using: .utf8) else { continue }
+            // Some servers send {"error": {...}} mid-stream instead of [DONE].
+            // Surface that to the caller instead of silently swallowing it.
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let err = obj["error"] {
+                let detail: String = {
+                    if let msg = err as? [String: Any], let text = msg["message"] as? String {
+                        return text
+                    }
+                    return "\(err)"
+                }()
+                throw DeepSeekError.streamError(detail)
+            }
+            do {
+                let chunk = try decoder.decode(DeepSeekChatChunk.self, from: data)
+                if let reasoning = chunk.choices.first?.delta?.reasoning_content, !reasoning.isEmpty {
+                    let cb = self.onReasoning
+                    DispatchQueue.main.async { cb?(reasoning) }
+                }
+                if let delta = chunk.choices.first?.delta?.content, !delta.isEmpty {
+                    deltaCount += 1
+                    continuation.yield(delta)
+                }
+            } catch {
+                NSLog("[RTI] DeepSeekClient chunk decode failed: \(error) payload=\(payload.prefix(200))")
+            }
+        }
+        continuation.finish()
     }
 }

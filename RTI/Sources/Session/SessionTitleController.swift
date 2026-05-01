@@ -9,6 +9,7 @@ final class SessionTitleController: ObservableObject {
     @Published private(set) var lastError: String?
 
     private let client: DeepSeekClient
+    private var currentTask: Task<Void, Never>?
 
     private init() {
         self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
@@ -35,13 +36,32 @@ final class SessionTitleController: ObservableObject {
     Transcript:
     """
 
+    /// Cancel an in-flight title generation. Safe to call when nothing is
+    /// running. Flips isGenerating immediately so the UI returns to its
+    /// empty state without waiting for the stream to unwind.
+    func cancel() {
+        currentTask?.cancel()
+        currentTask = nil
+        isGenerating = false
+    }
+
     func generateTitle(for sessionId: String) async {
         guard !isGenerating else { return }
+        cancel()
         isGenerating = true
         lastError = nil
 
-        defer { isGenerating = false }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self._performGeneration(sessionId: sessionId)
+        }
+        currentTask = task
+        await task.value
+        currentTask = nil
+        isGenerating = false
+    }
 
+    private func _performGeneration(sessionId: String) async {
         let transcript: String
         do {
             transcript = try await RTIDatabase.shared.pool.read { db in
@@ -58,22 +78,32 @@ final class SessionTitleController: ObservableObject {
             return
         }
 
+        if Task.isCancelled { return }
+
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
+
+        if Task.isCancelled { return }
 
         let messages = [DeepSeekMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
         var fullResponse = ""
 
         do {
             for try await delta in client.streamChat(messages: messages, smart: false) {
+                if Task.isCancelled { return }
                 fullResponse += delta
             }
+        } catch is CancellationError {
+            return
         } catch {
+            if Task.isCancelled { return }
             lastError = "Title generation failed: \(error)"
             NSLog("[RTI] SessionTitle stream error: \(error)")
             return
         }
+
+        if Task.isCancelled { return }
 
         let title = Self.parseFirstTitle(from: fullResponse) ?? Self.fallbackTitle
         do {
@@ -94,18 +124,19 @@ final class SessionTitleController: ObservableObject {
         return "Meeting at \(df.string(from: Date()))"
     }
 
+    // Cached regex patterns — three patterns cover the common title formats
+    // ("1. Title", "1) Title", "- Title"). Compiling once avoids the
+    // overhead of NSRegularExpression allocation on every parseFirstTitle call.
+    private static let titlePattern1 = try! NSRegularExpression(pattern: "^\\d+\\.\\s+(.+)")
+    private static let titlePattern2 = try! NSRegularExpression(pattern: "^\\d+\\)\\s+(.+)")
+    private static let titlePattern3 = try! NSRegularExpression(pattern: "^\\-\\s+(.+)")
+
     static func parseFirstTitle(from response: String) -> String? {
         let lines = response.components(separatedBy: "\n")
+        let patterns = [titlePattern1, titlePattern2, titlePattern3]
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Match "1. Title Here" or "1) Title Here" or "- Title Here"
-            let patterns = [
-                try? NSRegularExpression(pattern: "^\\d+\\.\\s+(.+)"),
-                try? NSRegularExpression(pattern: "^\\d+\\)\\s+(.+)"),
-                try? NSRegularExpression(pattern: "^\\-\\s+(.+)"),
-            ]
             for pattern in patterns {
-                guard let pattern = pattern else { continue }
                 let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
                 if let match = pattern.firstMatch(in: trimmed, range: range),
                    let captureRange = Range(match.range(at: 1), in: trimmed) {

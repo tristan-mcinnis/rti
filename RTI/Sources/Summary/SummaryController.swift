@@ -191,13 +191,16 @@ final class SummaryController: ObservableObject {
     static func parseSections(from markdown: String) -> [String: String] {
         var result: [String: String] = [:]
         let lines = markdown.components(separatedBy: "\n")
-        var currentSection: String?
+        var currentSection: String? = nil
         var currentContent: [String] = []
 
         for line in lines {
             if line.hasPrefix("## ") {
                 if let section = currentSection {
                     result[section] = currentContent.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if !currentContent.isEmpty {
+                    // Preamble before the first heading — capture so it isn't silently dropped.
+                    result["Preamble"] = currentContent.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 currentSection = String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
                 currentContent = []

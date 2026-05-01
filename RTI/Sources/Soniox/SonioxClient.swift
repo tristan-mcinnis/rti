@@ -11,8 +11,11 @@ final class SonioxClient: WebSocketDelegate {
 
     private let apiKey: String
     private let url: URL
+    private let lock = NSLock()
     private var socket: WebSocket?
     private var isConnected = false
+    /// Set to true when the user deliberately closes the connection,
+    /// to suppress automatic reconnect. Protected by `lock`.
     private var intentionalDisconnect = false
     private var retryCount = 0
     private var retryWorkItem: DispatchWorkItem?
@@ -26,23 +29,35 @@ final class SonioxClient: WebSocketDelegate {
     }
 
     func connect() {
+        lock.lock()
         intentionalDisconnect = false
         retryCount = 0
+        lock.unlock()
         openSocket()
     }
 
     func disconnect() {
+        lock.lock()
         intentionalDisconnect = true
         retryWorkItem?.cancel()
         retryWorkItem = nil
-        socket?.disconnect()
+        let ws = socket
         socket = nil
         isConnected = false
+        lock.unlock()
+        ws?.disconnect()
     }
 
     func sendAudio(_ data: Data) {
-        guard isConnected else { return }
-        socket?.write(data: data)
+        lock.lock()
+        guard let socket = socket else {
+            lock.unlock()
+            return
+        }
+        // Writing to an already-disconnected socket is handled gracefully
+        // by Starscream: it triggers .cancelled, which handleDrop processes.
+        socket.write(data: data)
+        lock.unlock()
     }
 
     /// Signal end-of-audio to Soniox so remaining interim tokens get finalized.
@@ -50,20 +65,27 @@ final class SonioxClient: WebSocketDelegate {
     /// Also marks the connection as intentionally winding down so the server's
     /// clean close (code=1000) during the wait window does not trigger a reconnect.
     func finalize() {
-        guard isConnected else { return }
+        lock.lock()
+        guard let socket = socket, isConnected else {
+            lock.unlock()
+            return
+        }
         intentionalDisconnect = true
         retryWorkItem?.cancel()
         retryWorkItem = nil
-        socket?.write(string: "")
+        socket.write(string: "")
+        lock.unlock()
     }
 
     func didReceive(event: WebSocketEvent, client: WebSocketClient) {
         switch event {
         case .connected:
-            NSLog("[RTI] SonioxClient: connected, sending config")
-            RTILog.log("connected — sending config", category: "soniox")
+            lock.lock()
             isConnected = true
             retryCount = 0
+            lock.unlock()
+            NSLog("[RTI] SonioxClient: connected, sending config")
+            RTILog.log("connected — sending config", category: "soniox")
             sendConfig()
 
         case .text(let string):
@@ -85,10 +107,13 @@ final class SonioxClient: WebSocketDelegate {
     }
 
     private func handleDrop(_ reason: String) {
+        lock.lock()
         isConnected = false
+        let reconnect = !intentionalDisconnect
+        lock.unlock()
         NSLog("[RTI] SonioxClient: \(reason)")
         RTILog.log("dropped — \(reason)", category: "soniox")
-        if !intentionalDisconnect {
+        if reconnect {
             scheduleReconnect()
         }
     }
@@ -97,7 +122,9 @@ final class SonioxClient: WebSocketDelegate {
         let request = URLRequest(url: url)
         let ws = WebSocket(request: request)
         ws.delegate = self
+        lock.lock()
         socket = ws
+        lock.unlock()
         ws.connect()
     }
 
@@ -105,7 +132,9 @@ final class SonioxClient: WebSocketDelegate {
         do {
             let data = try JSONEncoder().encode(SonioxConfigMessage.default(apiKey: apiKey))
             if let string = String(data: data, encoding: .utf8) {
+                lock.lock()
                 socket?.write(string: string)
+                lock.unlock()
             }
         } catch {
             NSLog("[RTI] SonioxClient: config encode failed: \(error)")
@@ -113,7 +142,9 @@ final class SonioxClient: WebSocketDelegate {
     }
 
     private func scheduleReconnect() {
+        lock.lock()
         guard retryCount < Self.maxRetries else {
+            lock.unlock()
             NSLog("[RTI] SonioxClient: max retries reached")
             DispatchQueue.main.async { [weak self] in
                 self?.onError?("Soniox connection lost — transcription stopped after \(Self.maxRetries) reconnect attempts.")
@@ -122,13 +153,22 @@ final class SonioxClient: WebSocketDelegate {
         }
         let delay = Self.retryDelays[min(retryCount, Self.retryDelays.count - 1)]
         retryCount += 1
-        NSLog("[RTI] SonioxClient: reconnect attempt \(retryCount) in \(delay)s")
+        let attempt = retryCount
+        lock.unlock()
+
+        NSLog("[RTI] SonioxClient: reconnect attempt \(attempt) in \(delay)s")
 
         let item = DispatchWorkItem { [weak self] in
-            guard let self, !self.intentionalDisconnect else { return }
+            guard let self else { return }
+            self.lock.lock()
+            let blocked = self.intentionalDisconnect
+            self.lock.unlock()
+            guard !blocked else { return }
             self.openSocket()
         }
+        lock.lock()
         retryWorkItem = item
+        lock.unlock()
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 

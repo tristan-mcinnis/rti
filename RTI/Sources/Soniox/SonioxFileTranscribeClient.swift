@@ -14,6 +14,7 @@ enum SonioxFileTranscribeError: Error, LocalizedError {
     case timedOut
     case cancelled
     case missingTranscript
+    case encodingFailed
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +23,7 @@ enum SonioxFileTranscribeError: Error, LocalizedError {
         case .timedOut: return "Soniox transcription timed out."
         case .cancelled: return "Cancelled."
         case .missingTranscript: return "Soniox returned no transcript words."
+        case .encodingFailed: return "Failed to encode multipart body string."
         }
     }
 }
@@ -69,11 +71,11 @@ actor SonioxFileTranscribeClient {
 
         let fileData = try Data(contentsOf: wavURL)
         var body = Data()
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(wavURL.lastPathComponent)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+        try appendMultipart("--\(boundary)\r\n", to: &body)
+        try appendMultipart("Content-Disposition: form-data; name=\"file\"; filename=\"\(wavURL.lastPathComponent)\"\r\n", to: &body)
+        try appendMultipart("Content-Type: audio/wav\r\n\r\n", to: &body)
         body.append(fileData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        try appendMultipart("\r\n--\(boundary)--\r\n", to: &body)
         req.httpBody = body
 
         let (data, response) = try await session.data(for: req)
@@ -172,6 +174,16 @@ actor SonioxFileTranscribeClient {
             )
         }
         return SonioxFileTranscript(words: words)
+    }
+
+    /// Safely append a UTF-8 encoded string to a multipart body. All strings
+    /// used here are ASCII-safe, but we guard defensively to eliminate the
+    /// force-unwrap anti-pattern.
+    private func appendMultipart(_ string: String, to body: inout Data) throws {
+        guard let data = string.data(using: .utf8) else {
+            throw SonioxFileTranscribeError.encodingFailed
+        }
+        body.append(data)
     }
 
     private static func ensureOK(data: Data, response: URLResponse) throws {

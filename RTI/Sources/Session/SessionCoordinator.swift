@@ -381,7 +381,7 @@ final class SessionCoordinator: ObservableObject {
 
         // System audio: non-fatal if it fails — mic-only transcription still works.
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, self.isRunning else { return }
             let sysClient = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
             sysClient.onWords = { [weak self] words in self?.handleSystemWords(words) }
             sysClient.onError = { [weak self] message in
@@ -424,6 +424,17 @@ final class SessionCoordinator: ObservableObject {
     func stopSession() {
         guard isRunning, let sessionId = currentSessionId else { return }
 
+        // Stop audio capture before finalizing Soniox. This ordering
+        // ensures the mic/system taps are removed so no new audio enters
+        // the pipeline while finalize() signals end-of-stream to the
+        // WebSocket. The 1.5s delay before disconnect() below gives
+        // Soniox time to flush any remaining partial audio and deliver
+        // final transcripts.
+        //
+        // Note: systemAudio.stop() calls SCStream.stopCapture with an
+        // async completion handler that we intentionally do not await.
+        // Prompt stop is preferred; a new session starting would create
+        // a fresh SCStream that is independent of the old one.
         audio.stop()
         systemAudio.stop()
         soniox?.finalize()

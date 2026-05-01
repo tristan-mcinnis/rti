@@ -252,10 +252,13 @@ final class LLMController: ObservableObject {
             self.pruneTrailingEmptyAssistant()
             self.streamingEntryID = nil
 
-            if let persistSessionId,
+            // Re-read session ID after stream completes to avoid persisting
+            // the assistant response to a stale session.
+            let finalSessionId = SessionCoordinator.shared.currentSessionId ?? persistSessionId
+            if let finalSessionId,
                let finalText = self.entries.last(where: { $0.id == thisEntryID })?.text,
                !finalText.isEmpty {
-                self.persistMessage(sessionId: persistSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
+                self.persistMessage(sessionId: finalSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
             }
         }
     }
