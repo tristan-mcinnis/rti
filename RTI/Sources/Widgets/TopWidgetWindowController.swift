@@ -71,4 +71,8 @@ final class TopWidgetWindowController {
     }
 
     var isVisible: Bool { window.isVisible }
+
+    func setSharingInvisible(_ invisible: Bool) {
+        window.sharingType = invisible ? .none : .readOnly
+    }
 }

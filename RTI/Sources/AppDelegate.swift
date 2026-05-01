@@ -14,8 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var sessionHistory: SessionHistoryWindowController?
     private var onboarding: OnboardingWindowController?
     private var hotkey: GlobalHotkey?
+    private var shortcutsController: ShortcutsWindowController?
     private var sessionMenuItem: NSMenuItem?
     private var smartModeItem: NSMenuItem?
+    private var invisibilityItem: NSMenuItem?
     private var recentSessionsItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -36,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installStatusItem()
 
         settingsWindow = SettingsWindowController()
+        shortcutsController = ShortcutsWindowController()
 
         let controller = OverlayWindowController { [weak self] in
             self?.openSettings()
@@ -53,6 +56,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         })
         top.show()
         topWidget = top
+
+        let invisible = UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true
+        overlayController?.setSharingInvisible(invisible)
+        top.setSharingInvisible(invisible)
 
         debugConsole = DebugConsoleWindowController()
 
@@ -151,6 +158,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(smartItem)
         self.smartModeItem = smartItem
 
+        let userInvisible = UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true
+        let invisState: NSControl.StateValue = userInvisible ? .on : .off
+        let invisItem = NSMenuItem(title: userInvisible ? "Invisible: On" : "Invisible: Off", action: #selector(toggleInvisibility), keyEquivalent: "")
+        invisItem.target = self
+        invisItem.state = invisState
+        menu.addItem(invisItem)
+        self.invisibilityItem = invisItem
+
         menu.addItem(NSMenuItem.separator())
 
         let detailItem = NSMenuItem(title: "View Session Detail", action: #selector(openCurrentSessionDetail), keyEquivalent: "")
@@ -168,6 +183,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let aboutItem = NSMenuItem(title: "About RTI", action: #selector(showAbout), keyEquivalent: "")
         aboutItem.target = self
         menu.addItem(aboutItem)
+
+        let shortcutsItem = NSMenuItem(title: "Keyboard Shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
+        shortcutsItem.target = self
+        menu.addItem(shortcutsItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -292,6 +311,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleSession() { SessionCoordinator.shared.toggleSession() }
     @objc private func toggleSmartMode() { LLMController.shared.smartMode.toggle() }
+    private static let invisibleKey = "rti.invisible"
+
+    @objc private func toggleInvisibility() {
+        let isInvisible = invisibilityItem?.state == .on
+        let newState: NSControl.StateValue = isInvisible ? .off : .on
+        invisibilityItem?.state = newState
+        invisibilityItem?.title = newState == .on ? "Invisible: On" : "Invisible: Off"
+        let invisible = newState == .on
+        UserDefaults.standard.set(invisible, forKey: Self.invisibleKey)
+        overlayController?.setSharingInvisible(invisible)
+        topWidget?.setSharingInvisible(invisible)
+    }
+    @objc private func showShortcuts() { shortcutsController?.show() }
     @objc private func showDebugConsole() { debugConsole?.show() }
     @objc private func showSettings() { settingsWindow?.show() }
     @objc private func showSessionHistory() {

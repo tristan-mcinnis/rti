@@ -27,10 +27,21 @@ struct ResponseView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if entries.isEmpty && !streaming && error == nil {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Responses appear here. Type a question below, or press ⌘↵ for Assist.")
-                                .font(.system(size: 13))
+                        VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Ready when you are")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.65))
+                                Text("Type a question below or use a shortcut:")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.white.opacity(0.4))
+                                HStack(spacing: 20) {
+                                    Text("\u{2318}\u{21A9}  Assist")
+                                    Text("\u{2318}H  OCR screen")
+                                }
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundStyle(.white.opacity(0.45))
+                            }
 
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Try asking:")
