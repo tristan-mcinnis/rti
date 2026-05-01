@@ -25,10 +25,16 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var lastError: String?
 
     private let audio = AudioCaptureManager()
+    private let systemAudio = SystemAudioCapture()
     private let wav = WAVWriter()
     private var soniox: SonioxClient?
+    private var systemSoniox: SonioxClient?
     private var lastFinalizedEndMs: Int = 0
+    private var lastSystemFinalizedEndMs: Int = 0
     private var zeroEndMsSeen: Set<String> = []
+    private var zeroSystemEndMsSeen: Set<String> = []
+    private var micInterimText: String?
+    private var systemInterimText: String?
     private var delayedCompleteTask: Task<Void, Never>?
 
     private static let resumeWindowSeconds: TimeInterval = 300
@@ -373,13 +379,44 @@ final class SessionCoordinator: ObservableObject {
             return
         }
 
+        // System audio: non-fatal if it fails — mic-only transcription still works.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let sysClient = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
+            sysClient.onWords = { [weak self] words in self?.handleSystemWords(words) }
+            sysClient.onError = { [weak self] message in
+                guard let self else { return }
+                // System audio Soniox failure is non-fatal — mic keeps running.
+                NSLog("[RTI] system audio Soniox error: \(message)")
+                RTILog.log("system soniox error — \(message)", category: "soniox")
+            }
+            sysClient.connect()
+            self.systemSoniox = sysClient
+
+            self.systemAudio.onPCMBuffer = { [weak self] buffer in self?.handleSystemAudioBuffer(buffer) }
+            self.systemAudio.onError = { [weak self] msg in
+                NSLog("[RTI] system audio capture error: \(msg)")
+                RTILog.log("system capture error — \(msg)", category: "audio")
+            }
+            do {
+                try await self.systemAudio.start()
+            } catch {
+                NSLog("[RTI] system audio start failed: \(error)")
+                RTILog.log("system audio start failed — \(error)", category: "audio")
+            }
+        }
+
         currentSessionId = sessionId
         startedAt = now
         endedAt = nil
         liveEntries = []
         interimLine = nil
+        micInterimText = nil
+        systemInterimText = nil
         lastFinalizedEndMs = 0
+        lastSystemFinalizedEndMs = 0
         zeroEndMsSeen = []
+        zeroSystemEndMsSeen = []
         isRunning = true
         LLMController.shared.loadHistoryForCurrentSession()
     }
@@ -388,7 +425,9 @@ final class SessionCoordinator: ObservableObject {
         guard isRunning, let sessionId = currentSessionId else { return }
 
         audio.stop()
+        systemAudio.stop()
         soniox?.finalize()
+        systemSoniox?.finalize()
         isRunning = false
 
         let endedAt = Date()
@@ -405,6 +444,8 @@ final class SessionCoordinator: ObservableObject {
 
         soniox?.disconnect()
         soniox = nil
+        systemSoniox?.disconnect()
+        systemSoniox = nil
         wav.close()
 
         // Capture for the top widget's frozen duration display.
@@ -424,6 +465,8 @@ final class SessionCoordinator: ObservableObject {
         // Keep currentSessionId/startedAt set: chat turns can continue against
         // the same session after audio stops. A fresh session is only minted on
         // next app launch (via bootstrapChatSession) past the 5-minute window.
+        micInterimText = nil
+        systemInterimText = nil
         interimLine = nil
 
         triggerSummaryIfNeeded(sessionId: sessionId)
@@ -452,8 +495,11 @@ final class SessionCoordinator: ObservableObject {
 
     private func teardownOnFailure() {
         audio.stop()
+        systemAudio.stop()
         soniox?.disconnect()
         soniox = nil
+        systemSoniox?.disconnect()
+        systemSoniox = nil
         wav.close()
     }
 
@@ -464,8 +510,11 @@ final class SessionCoordinator: ObservableObject {
     func emergencyShutdown() {
         guard isRunning else { return }
         audio.stop()
+        systemAudio.stop()
         soniox?.disconnect()
         soniox = nil
+        systemSoniox?.disconnect()
+        systemSoniox = nil
         wav.close()
         if let sid = currentSessionId {
             do {
@@ -490,6 +539,74 @@ final class SessionCoordinator: ObservableObject {
         let byteCount = frameLength * MemoryLayout<Int16>.size
         let data = Data(bytes: int16[0], count: byteCount)
         soniox?.sendAudio(data)
+    }
+
+    private func handleSystemAudioBuffer(_ buffer: AVAudioPCMBuffer) {
+        guard let int16 = buffer.int16ChannelData else { return }
+        let frameLength = Int(buffer.frameLength)
+        let byteCount = frameLength * MemoryLayout<Int16>.size
+        let data = Data(bytes: int16[0], count: byteCount)
+        systemSoniox?.sendAudio(data)
+    }
+
+    private func handleSystemWords(_ words: [SonioxWord]) {
+        guard let sessionId = currentSessionId else { return }
+
+        let regularFinals = words.filter { $0.isFinal && $0.endMs > lastSystemFinalizedEndMs }
+        let zeroMsFinals: [SonioxWord] = words.compactMap { word in
+            guard word.isFinal, word.endMs == 0 else { return nil }
+            let key = "\(word.speaker)|\(word.text)|\(word.startMs)"
+            return zeroSystemEndMsSeen.insert(key).inserted ? word : nil
+        }
+        let finals = regularFinals + zeroMsFinals
+        let interims = words.filter { !$0.isFinal }
+
+        if !finals.isEmpty {
+            let runs = groupByRuns(finals)
+            let now = Date()
+            do {
+                try RTIDatabase.shared.pool.write { db in
+                    for run in runs {
+                        let entry = TranscriptEntry(
+                            id: UUID().uuidString,
+                            sessionId: sessionId,
+                            speakerId: systemSpeakerLabel(run.speaker),
+                            startMs: run.startMs,
+                            endMs: run.endMs,
+                            text: run.text,
+                            confidence: run.confidence,
+                            isFinal: true,
+                            createdAt: now
+                        )
+                        try entry.insert(db)
+                    }
+                }
+            } catch {
+                NSLog("[RTI] system transcript insert failed: \(error)")
+            }
+
+            for run in runs {
+                liveEntries.append(LiveEntry(
+                    speakerId: systemSpeakerLabel(run.speaker),
+                    text: run.text,
+                    startMs: run.startMs,
+                    confidence: run.confidence
+                ))
+            }
+            if liveEntries.count > 500 {
+                liveEntries.removeFirst(liveEntries.count - 500)
+            }
+            let nonZeroMax = finals.compactMap({ $0.endMs > 0 ? $0.endMs : nil }).max()
+            if let m = nonZeroMax { lastSystemFinalizedEndMs = m }
+        }
+
+        if interims.isEmpty {
+            systemInterimText = nil
+        } else {
+            let runs = groupByRuns(interims)
+            systemInterimText = runs.map { "\(systemSpeakerLabel($0.speaker)): \($0.text)" }.joined(separator: "  ")
+        }
+        updateInterimLine()
     }
 
     private func handleWords(_ words: [SonioxWord]) {
@@ -547,11 +664,12 @@ final class SessionCoordinator: ObservableObject {
         }
 
         if interims.isEmpty {
-            interimLine = nil
+            micInterimText = nil
         } else {
             let runs = groupByRuns(interims)
-            interimLine = runs.map { "\(speakerLabel($0.speaker)): \($0.text)" }.joined(separator: "  ")
+            micInterimText = runs.map { "\(speakerLabel($0.speaker)): \($0.text)" }.joined(separator: "  ")
         }
+        updateInterimLine()
     }
 
     private struct Run {
@@ -585,8 +703,15 @@ final class SessionCoordinator: ObservableObject {
     }
 
     private func speakerLabel(_ speaker: Int) -> String {
-        // POC-2 is mic-only: everything captured is the user. When system-audio loopback lands
-        // in a later POC, it will run a second audio stream with a different speaker mapping.
         "self"
+    }
+
+    private func systemSpeakerLabel(_ speaker: Int) -> String {
+        speaker == 0 ? "them" : "them_\(speaker)"
+    }
+
+    private func updateInterimLine() {
+        let parts = [micInterimText, systemInterimText].compactMap { $0 }.filter { !$0.isEmpty }
+        interimLine = parts.isEmpty ? nil : parts.joined(separator: "  ")
     }
 }

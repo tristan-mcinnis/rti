@@ -129,6 +129,8 @@ final class OverlayWindowController {
         return NSScreen.screens.first { $0.frame.contains(mouse) }
     }
 
+    var isVisible: Bool { window.isVisible }
+
     func show() {
         window.alphaValue = 0
         window.orderFrontRegardless()
@@ -136,6 +138,19 @@ final class OverlayWindowController {
             ctx.duration = 0.18
             window.animator().alphaValue = 1
         }
+    }
+
+    /// Position the overlay anchored below a pill frame (top-right of screen),
+    /// then fade it in. The overlay's right edge aligns with the pill's right edge.
+    func showBelow(pillFrame: NSRect) {
+        let configured = Self.configuredSize()
+        let gap = TopWidgetWindowController.chatGap
+        let origin = NSPoint(
+            x: pillFrame.maxX - configured.width,
+            y: pillFrame.minY - gap - configured.height
+        )
+        window.setFrame(NSRect(origin: origin, size: configured), display: false)
+        show()
     }
 
     func hide() {

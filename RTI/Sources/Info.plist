@@ -26,6 +26,8 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>RTI captures system audio to transcribe both sides of your conversations. No screen content is recorded.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>RTI transcribes your microphone in real time.</string>
     <key>NSCalendarsUsageDescription</key>

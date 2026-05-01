@@ -5,9 +5,11 @@ import SwiftUI
 final class TopWidgetWindowController {
     private let window: NSPanel
 
-    init() {
-        // Wide enough for a "00:00:00" timer label next to the record button.
-        let size = NSSize(width: 130, height: 50)
+    static let pillHeight: CGFloat = 38 + 8 // content + padding
+    static let chatGap: CGFloat = 6
+
+    init(onTap: @escaping () -> Void) {
+        let size = NSSize(width: 185, height: Self.pillHeight)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -22,21 +24,24 @@ final class TopWidgetWindowController {
         panel.sharingType = .none
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
+        panel.isMovable = false
+        panel.isMovableByWindowBackground = false
 
-        panel.contentView = NSHostingView(rootView: TopWidgetView())
+        panel.contentView = NSHostingView(rootView: TopWidgetView(onTap: onTap))
 
         self.window = panel
         positionOnActiveScreen()
     }
+
+    var windowFrame: NSRect { window.frame }
 
     func positionOnActiveScreen() {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let origin = NSPoint(
-            x: visible.midX - window.frame.width / 2,
-            y: visible.maxY - window.frame.height - 8
+            x: visible.maxX - window.frame.width - 15,
+            y: visible.maxY - window.frame.height - 12
         )
         window.setFrameOrigin(origin)
     }

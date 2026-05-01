@@ -15,10 +15,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var onboarding: OnboardingWindowController?
     private var hotkey: GlobalHotkey?
     private var sessionMenuItem: NSMenuItem?
+    private var smartModeItem: NSMenuItem?
     private var recentSessionsItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard ensureSingleInstance() else { return }
+
         CrashLog.install()
         CredentialStore.migrateLegacyIfNeeded()
 
@@ -40,7 +43,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller.show()
         overlayController = controller
 
-        let top = TopWidgetWindowController()
+        let top = TopWidgetWindowController(onTap: { [weak self] in
+            guard let self, let overlay = self.overlayController else { return }
+            if overlay.isVisible {
+                overlay.hide()
+            } else {
+                overlay.showBelow(pillFrame: self.topWidget?.windowFrame ?? .zero)
+            }
+        })
         top.show()
         topWidget = top
 
@@ -136,6 +146,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(sessionItem)
         self.sessionMenuItem = sessionItem
 
+        let smartItem = NSMenuItem(title: "Smart Mode: On", action: #selector(toggleSmartMode), keyEquivalent: "")
+        smartItem.target = self
+        menu.addItem(smartItem)
+        self.smartModeItem = smartItem
+
+        menu.addItem(NSMenuItem.separator())
+
         let detailItem = NSMenuItem(title: "View Session Detail", action: #selector(openCurrentSessionDetail), keyEquivalent: "")
         detailItem.target = self
         menu.addItem(detailItem)
@@ -187,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         refreshSessionMenuItemTitle()
+        refreshSmartModeTitle()
         rebuildRecentSessionsSubmenu()
         refreshDetailMenuItemEnablement(menu: menu)
     }
@@ -244,8 +262,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func ensureSingleInstance() -> Bool {
+        let bundleId = Bundle.main.bundleIdentifier ?? "com.tristan.rti"
+        let instances = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+        if instances.count > 1 {
+            instances.first(where: { $0 != NSRunningApplication.current })?.activate(options: .activateIgnoringOtherApps)
+            NSApp.terminate(nil)
+            return false // unreachable in practice; quiets the compiler
+        }
+        return true
+    }
+
     private func refreshSessionMenuItemTitle() {
         sessionMenuItem?.title = SessionCoordinator.shared.isRunning ? "Stop Session (⌘⇧R)" : "Start Session (⌘⇧R)"
+    }
+
+    private func refreshSmartModeTitle() {
+        smartModeItem?.title = LLMController.shared.smartMode ? "Smart Mode: On" : "Smart Mode: Off"
+        smartModeItem?.state = LLMController.shared.smartMode ? .on : .off
     }
 
     private func refreshStatusItemTitle() {
@@ -257,6 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func toggleSession() { SessionCoordinator.shared.toggleSession() }
+    @objc private func toggleSmartMode() { LLMController.shared.smartMode.toggle() }
     @objc private func showDebugConsole() { debugConsole?.show() }
     @objc private func showSettings() { settingsWindow?.show() }
     @objc private func showSessionHistory() {
