@@ -936,24 +936,22 @@ struct SessionDetailView: View {
     }
 
     private func loadData() {
+        // Corpus-backed reads: session metadata + transcript come from
+        // markdown (or live JSONL for an in-flight session); chat history
+        // remains in SQLite as the interaction log.
+        session = CorpusBackedStore.session(id: sessionId)
+        transcripts = CorpusBackedStore.transcripts(forSessionId: sessionId)
+        summary = CorpusBackedStore.summary(forSessionId: sessionId)
+            ?? SummaryController.shared.loadSummary(for: sessionId)
         do {
-            session = try RTIDatabase.shared.pool.read { db in try Session.fetchOne(db, key: sessionId) }
-            transcripts = try RTIDatabase.shared.pool.read { db in
-                try TranscriptEntry
-                    .filter(Column("session_id") == sessionId)
-                    .filter(Column("is_final") == 1)
-                    .order(Column("start_ms"))
-                    .fetchAll(db)
-            }
             chatMessages = try RTIDatabase.shared.pool.read { db in
                 try ChatMessage
                     .filter(Column("session_id") == sessionId)
                     .order(Column("created_at"))
                     .fetchAll(db)
             }
-            summary = SummaryController.shared.loadSummary(for: sessionId)
         } catch {
-            NSLog("[RTI] SessionDetail loadData failed: \(error)")
+            NSLog("[RTI] SessionDetail chat load failed: \(error)")
         }
     }
 

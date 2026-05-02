@@ -305,13 +305,7 @@ struct SessionHistoryView: View {
     }
 
     private func loadSessions() {
-        do {
-            sessions = try RTIDatabase.shared.pool.read { db in
-                try Session.order(Column("started_at").desc).fetchAll(db)
-            }
-        } catch {
-            NSLog("[RTI] SessionHistory load failed: \(error)")
-        }
+        sessions = CorpusBackedStore.allSessions()
     }
 
     private func openSession(_ id: String) {

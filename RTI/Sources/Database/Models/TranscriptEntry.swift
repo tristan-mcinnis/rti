@@ -1,7 +1,10 @@
 import Foundation
-import GRDB
 
-struct TranscriptEntry: Codable, FetchableRecord, PersistableRecord, Identifiable {
+/// In-memory transcript line for the UI layer. No longer GRDB-backed —
+/// canonical storage is the markdown body under `~/meetings/`. Entries
+/// are reconstructed from the body's `## Transcript` section by
+/// `CorpusBackedStore`.
+struct TranscriptEntry: Identifiable, Hashable {
     var id: String
     var sessionId: String
     var speakerId: String
@@ -11,18 +14,4 @@ struct TranscriptEntry: Codable, FetchableRecord, PersistableRecord, Identifiabl
     var confidence: Double
     var isFinal: Bool
     var createdAt: Date
-
-    static let databaseTableName = "transcript_entries"
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case sessionId = "session_id"
-        case speakerId = "speaker_id"
-        case startMs = "start_ms"
-        case endMs = "end_ms"
-        case text
-        case confidence
-        case isFinal = "is_final"
-        case createdAt = "created_at"
-    }
 }

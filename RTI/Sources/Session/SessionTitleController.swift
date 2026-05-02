@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 
 @MainActor
 final class SessionTitleController: ObservableObject {
@@ -8,12 +7,14 @@ final class SessionTitleController: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
 
-    private let client: DeepSeekClient
+    private let client = DeepSeekClient.shared
     private var currentTask: Task<Void, Never>?
+    /// Per-session in-memory cache. `CorpusManager.renderSession` reads
+    /// the title here at session-end and embeds it in the markdown
+    /// frontmatter; once the file is written the cache entry is purged.
+    private var cache: [String: String] = [:]
 
-    private init() {
-        self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
-    }
+    private init() {}
 
     private static let titlePrompt = """
     You are an assistant that creates concise meeting titles from transcript text.
@@ -36,9 +37,6 @@ final class SessionTitleController: ObservableObject {
     Transcript:
     """
 
-    /// Cancel an in-flight title generation. Safe to call when nothing is
-    /// running. Flips isGenerating immediately so the UI returns to its
-    /// empty state without waiting for the stream to unwind.
     func cancel() {
         currentTask?.cancel()
         currentTask = nil
@@ -62,43 +60,20 @@ final class SessionTitleController: ObservableObject {
     }
 
     private func _performGeneration(sessionId: String) async {
-        let transcript: String
-        do {
-            transcript = try await RTIDatabase.shared.pool.read { db in
-                let entries = try TranscriptEntry
-                    .filter(Column("session_id") == sessionId)
-                    .filter(Column("is_final") == 1)
-                    .order(Column("start_ms"))
-                    .fetchAll(db)
-                return entries.map { "\($0.speakerId): \($0.text)" }.joined(separator: "\n")
-            }
-        } catch {
-            lastError = "Failed to load transcript: \(error)"
-            NSLog("[RTI] SessionTitle transcript load failed: \(error)")
-            return
-        }
-
+        let transcript = TranscriptContext.text(forSessionId: sessionId)
         if Task.isCancelled { return }
-
-        guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return
-        }
-
-        if Task.isCancelled { return }
+        guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let messages = [DeepSeekMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
-        var fullResponse = ""
+        let fullResponse: String
 
         do {
-            for try await delta in client.streamChat(messages: messages, smart: false) {
-                if Task.isCancelled { return }
-                fullResponse += delta
-            }
+            fullResponse = try await client.collectStreamedResponse(messages: messages, smart: false)
         } catch is CancellationError {
             return
         } catch {
             if Task.isCancelled { return }
-            lastError = "Title generation failed: \(error)"
+            lastError = (error as? DeepSeekError)?.userMessage ?? "Title generation failed: \(error)"
             NSLog("[RTI] SessionTitle stream error: \(error)")
             return
         }
@@ -106,16 +81,21 @@ final class SessionTitleController: ObservableObject {
         if Task.isCancelled { return }
 
         let title = Self.parseFirstTitle(from: fullResponse) ?? Self.fallbackTitle
-        do {
-            try await RTIDatabase.shared.pool.write { db in
-                if var session = try Session.fetchOne(db, key: sessionId) {
-                    session.title = title
-                    try session.update(db)
-                }
-            }
-        } catch {
-            NSLog("[RTI] SessionTitle save failed: \(error)")
-        }
+        cache[sessionId] = title
+    }
+
+    /// In-memory lookup used by `CorpusManager` and any UI that wants the
+    /// most recently generated title for a session id during this app
+    /// lifetime. Falls back to nil — callers reading post-restart
+    /// titles should read frontmatter via `CorpusBackedStore`.
+    func cachedTitle(forSessionId id: String) -> String? {
+        cache[id]
+    }
+
+    /// Called by `CorpusManager` after a successful markdown render so
+    /// the cache doesn't grow unbounded.
+    func purgeCache(forSessionId id: String) {
+        cache.removeValue(forKey: id)
     }
 
     private static var fallbackTitle: String {
@@ -124,9 +104,6 @@ final class SessionTitleController: ObservableObject {
         return "Meeting at \(df.string(from: Date()))"
     }
 
-    // Cached regex patterns — three patterns cover the common title formats
-    // ("1. Title", "1) Title", "- Title"). Compiling once avoids the
-    // overhead of NSRegularExpression allocation on every parseFirstTitle call.
     private static let titlePattern1 = try! NSRegularExpression(pattern: "^\\d+\\.\\s+(.+)")
     private static let titlePattern2 = try! NSRegularExpression(pattern: "^\\d+\\)\\s+(.+)")
     private static let titlePattern3 = try! NSRegularExpression(pattern: "^\\-\\s+(.+)")

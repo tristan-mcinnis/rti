@@ -11,6 +11,8 @@ struct SettingsView: View {
                 .tabItem { Label("Modes", systemImage: "square.stack.3d.up") }
             CalendarTab()
                 .tabItem { Label("Calendar", systemImage: "calendar") }
+            CorpusTab()
+                .tabItem { Label("Corpus", systemImage: "doc.text.magnifyingglass") }
             GeneralTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
         }
@@ -447,6 +449,141 @@ private struct GeneralTab: View {
             Text(label)
             Spacer()
             Text(key).font(.system(.body, design: .monospaced))
+        }
+    }
+}
+
+// MARK: - Corpus
+
+private struct CorpusTab: View {
+    @AppStorage(CorpusManager.corpusPathKey) private var corpusPath: String = ""
+    @State private var copyConfirmation: String?
+    @State private var reindexStatus: String?
+    @State private var migratedCount: Int?
+
+    private var resolvedPath: String {
+        if corpusPath.isEmpty {
+            return "~/meetings"
+        }
+        return (corpusPath as NSString).abbreviatingWithTildeInPath
+    }
+
+    private var bundledMCPBinary: String {
+        // Use the bundled binary inside the running .app. Falls back to a
+        // placeholder when running unbundled (development).
+        if let resourceURL = Bundle.main.url(forResource: "rti-mcp", withExtension: nil) {
+            return resourceURL.path
+        }
+        return "/Applications/RTI.app/Contents/Resources/rti-mcp"
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Corpus")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Every meeting RTI records is written as a markdown file to this directory. The Corpus is the canonical store — RTI's database is a derived index over it.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Text("Location:")
+                    Text(resolvedPath)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Choose…") { chooseDirectory() }
+                }
+
+                Divider().padding(.vertical, 8)
+
+                Text("MCP Server")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Expose the Corpus to external agents (Claude Desktop, Codex, OpenCode, Gemini CLI). Read-only. Click below to copy a Claude-Desktop-shaped config snippet to your clipboard.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Copy MCP Config") { copyMCPConfig() }
+                if let copyConfirmation {
+                    Text(copyConfirmation)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.green)
+                }
+
+                Divider().padding(.vertical, 8)
+
+                Text("Maintenance")
+                    .font(.system(size: 13, weight: .medium))
+                HStack {
+                    Button("Reindex Corpus") { reindex() }
+                    if let reindexStatus {
+                        Text(reindexStatus)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("Rebuilds the search index from markdown files. Useful after editing files outside RTI or after restoring a backup.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let migratedCount, migratedCount > 0 {
+                    Text("Migrated \(migratedCount) legacy session(s) from the database to the Corpus on first launch with this version.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    private func chooseDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.title = "Choose Corpus directory"
+        if panel.runModal() == .OK, let url = panel.url {
+            corpusPath = url.path
+        }
+    }
+
+    private func copyMCPConfig() {
+        let cfg: [String: Any] = [
+            "mcpServers": [
+                "rti": [
+                    "command": bundledMCPBinary,
+                    "args": ["--corpus", resolvedPath]
+                ]
+            ]
+        ]
+        let data = (try? JSONSerialization.data(withJSONObject: cfg, options: [.prettyPrinted])) ?? Data()
+        let str = String(data: data, encoding: .utf8) ?? "{}"
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(str, forType: .string)
+        copyConfirmation = "Copied. Paste into your agent's MCP server config."
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            self.copyConfirmation = nil
+        }
+    }
+
+    private func reindex() {
+        reindexStatus = "Reindexing…"
+        Task.detached {
+            do {
+                try CorpusFTSReindexer.reindex(
+                    from: await CorpusManager.shared.corpusDirectory,
+                    in: RTIDatabase.shared.pool
+                )
+                await MainActor.run { reindexStatus = "Done." }
+            } catch {
+                await MainActor.run { reindexStatus = "Failed: \(error)" }
+            }
         }
     }
 }

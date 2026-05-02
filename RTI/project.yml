@@ -25,6 +25,9 @@ packages:
   Starscream:
     url: https://github.com/daltoniam/Starscream
     from: "4.0.8"
+  Yams:
+    url: https://github.com/jpsim/Yams
+    from: "5.1.0"
 
 targets:
   RTI:
@@ -39,3 +42,74 @@ targets:
     dependencies:
       - package: GRDB
       - package: Starscream
+      - package: Yams
+      - target: RTIMCP
+        copy:
+          destination: resources
+
+  # Standalone command-line binary that exposes the markdown Corpus to
+  # external agents (Claude Desktop, Codex, OpenCode, Gemini CLI, Claude
+  # Code) over JSON-RPC stdio. Reads ~/meetings/, the SQLite FTS sidecar,
+  # and live-session JSONL streams. Read-only in v1.
+  RTIMCP:
+    type: tool
+    platform: macOS
+    sources:
+      - path: MCP
+      - path: Sources/Corpus/CorpusEntry.swift
+      - path: Sources/Corpus/CorpusReader.swift
+      - path: Sources/Corpus/LiveJSONLWriter.swift
+    dependencies:
+      - package: GRDB
+      - package: Yams
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        PRODUCT_NAME: rti-mcp
+
+  # Standalone test bundle — no host app, no NSApplication. Each Swift file
+  # under test is compiled directly into the bundle (so we can unit-test
+  # internal types without `@testable import RTI`, which would require hosting
+  # into the SwiftUI app and double-instantiating NSApplication).
+  RTITests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Sources/Soniox/SonioxProtocol.swift
+      - path: Sources/Session/SpeakerTurn.swift
+      - path: Sources/Database/Models/TranscriptEntry.swift
+      - path: Sources/LLM/DeepSeekError.swift
+      - path: Sources/Soniox/SonioxFailure.swift
+      - path: Sources/UI/CommandPalette/CommandRegistry.swift
+      - path: Sources/Corpus/CorpusEntry.swift
+      - path: Sources/Corpus/CorpusReader.swift
+      - path: Sources/Corpus/CorpusWriter.swift
+      - path: Sources/Corpus/MarkdownRenderer.swift
+      - path: Sources/Corpus/LiveJSONLWriter.swift
+      - path: Sources/Corpus/CorpusFTSReindexer.swift
+    dependencies:
+      - package: GRDB
+      - package: Yams
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti.tests
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+
+schemes:
+  RTI:
+    build:
+      targets:
+        RTI: all
+        RTITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - RTITests

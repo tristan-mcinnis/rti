@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 
 @MainActor
 final class SessionQAController: ObservableObject {
@@ -9,11 +8,9 @@ final class SessionQAController: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var messages: [QAEntry] = []
 
-    private let client: DeepSeekClient
+    private let client = DeepSeekClient.shared
 
-    private init() {
-        self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
-    }
+    private init() {}
 
     struct QAEntry: Identifiable {
         let id = UUID()
@@ -33,7 +30,7 @@ final class SessionQAController: ObservableObject {
         isGenerating = true
         lastError = nil
 
-        let context = await buildContext(sessionId: sessionId)
+        let context = buildContext(sessionId: sessionId)
         guard !context.isEmpty else {
             lastError = "No transcript or summary available for this session."
             isGenerating = false
@@ -68,7 +65,7 @@ final class SessionQAController: ObservableObject {
                 }
             }
         } catch {
-            lastError = "Q&A failed: \(error)"
+            lastError = (error as? DeepSeekError)?.userMessage ?? "Q&A failed: \(error)"
             NSLog("[RTI] SessionQA error: \(error)")
             if let idx = messages.firstIndex(where: { $0.id == entryId }) {
                 messages.remove(at: idx)
@@ -76,34 +73,17 @@ final class SessionQAController: ObservableObject {
         }
     }
 
-    private func buildContext(sessionId: String) async -> String {
-        do {
-            return try await RTIDatabase.shared.pool.read { db in
-                var parts: [String] = []
-
-                if let summary = try SessionSummary.filter(Column("session_id") == sessionId).fetchOne(db) {
-                    parts.append("## Meeting Summary")
-                    parts.append(summary.summaryText)
-                }
-
-                let entries = try TranscriptEntry
-                    .filter(Column("session_id") == sessionId)
-                    .filter(Column("is_final") == 1)
-                    .order(Column("start_ms"))
-                    .fetchAll(db)
-
-                if !entries.isEmpty {
-                    parts.append("## Full Transcript")
-                    for e in entries {
-                        parts.append("\(e.speakerId): \(e.text)")
-                    }
-                }
-
-                return parts.joined(separator: "\n\n")
-            }
-        } catch {
-            NSLog("[RTI] SessionQA buildContext failed: \(error)")
-            return ""
+    private func buildContext(sessionId: String) -> String {
+        var parts: [String] = []
+        if let summary = CorpusBackedStore.summary(forSessionId: sessionId) {
+            parts.append("## Meeting Summary")
+            parts.append(summary.summaryText)
         }
+        let transcript = TranscriptContext.text(forSessionId: sessionId)
+        if !transcript.isEmpty {
+            parts.append("## Full Transcript")
+            parts.append(transcript)
+        }
+        return parts.joined(separator: "\n\n")
     }
 }

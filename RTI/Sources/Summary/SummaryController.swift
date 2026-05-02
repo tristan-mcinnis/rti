@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 
 @MainActor
 final class SummaryController: ObservableObject {
@@ -8,12 +7,16 @@ final class SummaryController: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
 
-    private let client: DeepSeekClient
+    private let client = DeepSeekClient.shared
     private var currentTask: Task<Void, Never>?
+    /// Per-session in-memory cache. Keyed by session id, populated on
+    /// generation, consumed by `CorpusManager.renderSession` at session-end
+    /// and by `CorpusBackedStore.summary(forSessionId:)` while a session is
+    /// in-flight. Markdown becomes the durable record once written; the
+    /// cache is purged after a successful render.
+    private var cache: [String: SessionSummary] = [:]
 
-    private init() {
-        self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
-    }
+    private init() {}
 
     /// Cancel an in-flight summary generation. Safe to call when nothing is
     /// running. Flips isGenerating immediately so the UI returns to its
@@ -59,51 +62,23 @@ final class SummaryController: ObservableObject {
 
     func generateSummary(for sessionId: String) async {
         guard !isGenerating else { return }
-        cancel()  // belt-and-suspenders: clear any orphaned task
+        cancel()
         isGenerating = true
         lastError = nil
 
-        // Wrap the work in a tracked Task so cancel() can interrupt it. We
-        // still await its value so the caller's `await generateSummary(...)`
-        // semantics are preserved. The closure must return Void (not ()?) so
-        // currentTask's typed Task<Void, Never> matches; weak-self optional-
-        // chaining would have made it Task<()?, Never>.
         let task = Task { [weak self] in
             guard let self else { return }
             await self._performGeneration(sessionId: sessionId)
         }
         currentTask = task
         await task.value
-        // We're back on MainActor: if cancel() ran during await, it already
-        // nilled currentTask and flipped isGenerating. Idempotent reset is
-        // safe either way.
         currentTask = nil
         isGenerating = false
     }
 
     private func _performGeneration(sessionId: String) async {
-        let transcript: String
-        do {
-            transcript = try await RTIDatabase.shared.pool.read { db in
-                let entries = try TranscriptEntry
-                    .filter(Column("session_id") == sessionId)
-                    .filter(Column("is_final") == 1)
-                    .order(Column("start_ms"))
-                    .fetchAll(db)
-                return entries.map { e in
-                    e.speakerId == "note"
-                        ? "[user note]: \(e.text)"
-                        : "\(e.speakerId): \(e.text)"
-                }.joined(separator: "\n")
-            }
-        } catch {
-            lastError = "Failed to load transcript: \(error)"
-            NSLog("[RTI] SummaryController transcript load failed: \(error)")
-            return
-        }
-
+        let transcript = TranscriptContext.text(forSessionId: sessionId)
         if Task.isCancelled { return }
-
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             lastError = "No transcript content to summarize."
             return
@@ -112,17 +87,14 @@ final class SummaryController: ObservableObject {
         let fullPrompt = Self.summaryPrompt + "\n" + transcript
         let messages = [DeepSeekMessage(role: "user", content: fullPrompt)]
 
-        var fullResponse = ""
+        let fullResponse: String
         do {
-            for try await delta in client.streamChat(messages: messages, smart: true) {
-                if Task.isCancelled { return }
-                fullResponse += delta
-            }
+            fullResponse = try await client.collectStreamedResponse(messages: messages, smart: true)
         } catch is CancellationError {
             return
         } catch {
             if Task.isCancelled { return }
-            lastError = "Summary generation failed: \(error)"
+            lastError = (error as? DeepSeekError)?.userMessage ?? "Summary generation failed: \(error)"
             NSLog("[RTI] SummaryController stream error: \(error)")
             return
         }
@@ -135,53 +107,40 @@ final class SummaryController: ObservableObject {
         }
 
         let parsed = Self.parseSections(from: fullResponse)
-        let responseText = fullResponse
         let combinedFollowUps = Self.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"])
 
-        let summary = SessionSummary(
+        cache[sessionId] = SessionSummary(
             id: UUID().uuidString,
             sessionId: sessionId,
-            summaryText: responseText,
+            summaryText: fullResponse,
             actionItems: parsed["Action Items"],
             keyTopics: parsed["Key Topics"],
             decisions: parsed["Decisions Made"],
             followUps: combinedFollowUps,
-            rawResponse: responseText,
+            rawResponse: fullResponse,
             createdAt: Date(),
             regeneratedAt: nil
         )
+    }
 
-        do {
-            try await RTIDatabase.shared.pool.write { db in
-                if let existing = try SessionSummary.filter(Column("session_id") == sessionId).fetchOne(db) {
-                    var updated = existing
-                    updated.summaryText = responseText
-                    updated.actionItems = parsed["Action Items"]
-                    updated.keyTopics = parsed["Key Topics"]
-                    updated.decisions = parsed["Decisions Made"]
-                    updated.followUps = combinedFollowUps
-                    updated.rawResponse = responseText
-                    updated.regeneratedAt = Date()
-                    try updated.update(db)
-                } else {
-                    try summary.insert(db)
-                }
-            }
-        } catch {
-            lastError = "Failed to save summary: \(error)"
-            NSLog("[RTI] SummaryController save failed: \(error)")
-        }
+    /// In-memory cache lookup. Returns the most recently generated
+    /// summary for `sessionId` if `generateSummary` has run during this
+    /// app lifetime; nil otherwise. Callers that need the durable summary
+    /// for a previously-rendered session should read it from markdown via
+    /// `CorpusBackedStore.summary(forSessionId:)` instead.
+    func cachedSummary(forSessionId id: String) -> SessionSummary? {
+        cache[id]
+    }
+
+    /// Drop the cache entry once the durable markdown has been written.
+    /// Called from `CorpusManager` post-render.
+    func purgeCache(forSessionId id: String) {
+        cache.removeValue(forKey: id)
     }
 
     func loadSummary(for sessionId: String) -> SessionSummary? {
-        do {
-            return try RTIDatabase.shared.pool.read { db in
-                try SessionSummary.filter(Column("session_id") == sessionId).fetchOne(db)
-            }
-        } catch {
-            NSLog("[RTI] SummaryController load failed: \(error)")
-            return nil
-        }
+        if let cached = cache[sessionId] { return cached }
+        return CorpusBackedStore.summary(forSessionId: sessionId)
     }
 
     func hasSummary(for sessionId: String) -> Bool {
@@ -199,7 +158,6 @@ final class SummaryController: ObservableObject {
                 if let section = currentSection {
                     result[section] = currentContent.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
                 } else if !currentContent.isEmpty {
-                    // Preamble before the first heading — capture so it isn't silently dropped.
                     result["Preamble"] = currentContent.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 currentSection = String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)

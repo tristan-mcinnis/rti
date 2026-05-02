@@ -8,13 +8,16 @@ struct SessionSearchResult: Identifiable {
 }
 
 enum SessionSearch {
+    @MainActor
     static func search(query: String, limit: Int = 50) -> [SessionSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         let ftsQuery = makeFTSQuery(from: trimmed)
 
+        let bestSnippetBySession: [String: String]
+        let orderedSessionIds: [String]
         do {
-            return try RTIDatabase.shared.pool.read { db in
+            (bestSnippetBySession, orderedSessionIds) = try RTIDatabase.shared.pool.read { db in
                 // FTS5 ranks by bm25 (lower = better). Pull matched rows with a
                 // pre-built snippet from the FTS engine itself.
                 let rows = try Row.fetchAll(db, sql: """
@@ -27,33 +30,28 @@ enum SessionSearch {
                     LIMIT ?
                     """, arguments: [ftsQuery, limit * 4])
 
-                // Collapse to one row per session, keeping the best-ranked snippet.
-                var bestSnippetBySession: [String: String] = [:]
-                var orderedSessionIds: [String] = []
+                var bestSnippet: [String: String] = [:]
+                var ordered: [String] = []
                 for row in rows {
                     guard let sessionId: String = row["session_id"] else { continue }
-                    if bestSnippetBySession[sessionId] == nil {
-                        bestSnippetBySession[sessionId] = (row["snip"] as String?) ?? ""
-                        orderedSessionIds.append(sessionId)
+                    if bestSnippet[sessionId] == nil {
+                        bestSnippet[sessionId] = (row["snip"] as String?) ?? ""
+                        ordered.append(sessionId)
                     }
-                    if orderedSessionIds.count >= limit { break }
+                    if ordered.count >= limit { break }
                 }
-                guard !orderedSessionIds.isEmpty else { return [] }
-
-                let sessions = try Session
-                    .filter(orderedSessionIds.contains(Column("id")))
-                    .fetchAll(db)
-                let byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
-
-                return orderedSessionIds.compactMap { id in
-                    guard let session = byId[id] else { return nil }
-                    let snip = bestSnippetBySession[id] ?? ""
-                    return SessionSearchResult(id: id, session: session, snippet: snip)
-                }
+                return (bestSnippet, ordered)
             }
         } catch {
             NSLog("[RTI] SessionSearch failed: \(error)")
             return []
+        }
+
+        // Resolve session ids to Session structs via the markdown corpus.
+        return orderedSessionIds.compactMap { id in
+            guard let session = CorpusBackedStore.session(id: id) else { return nil }
+            let snip = bestSnippetBySession[id] ?? ""
+            return SessionSearchResult(id: id, session: session, snippet: snip)
         }
     }
 

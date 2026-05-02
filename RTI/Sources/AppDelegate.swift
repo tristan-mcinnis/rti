@@ -10,11 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var topWidget: TopWidgetWindowController?
     private var debugConsole: DebugConsoleWindowController?
     private var settingsWindow: SettingsWindowController?
-    private var sessionDetail: SessionDetailWindowController?
+    private var sessionDetailWindow: NSWindow?
     private var sessionHistory: SessionHistoryWindowController?
     private var onboarding: OnboardingWindowController?
     private var hotkey: GlobalHotkey?
     private var shortcutsController: ShortcutsWindowController?
+    private var commandPalette: CommandPaletteWindowController?
     private var sessionMenuItem: NSMenuItem?
     private var smartModeItem: NSMenuItem?
     private var invisibilityItem: NSMenuItem?
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         SessionCoordinator.shared.pruneOldSessions(days: 30)
         _ = ModeStore.shared
         LLMController.shared.loadHistoryForCurrentSession()
+        CorpusManager.shared.recoverOrphans()
 
         installStatusItem()
 
@@ -79,7 +81,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hk.register(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(cmdKey | optionKey)) { [weak self] in
             self?.debugConsole?.toggle()
         }
+        hk.register(keyCode: UInt32(kVK_ANSI_K), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
+            self?.commandPalette?.toggle()
+        }
         hotkey = hk
+
+        commandPalette = CommandPaletteWindowController()
+        registerPaletteCommands()
 
         SessionCoordinator.shared.$isRunning
             .receive(on: RunLoop.main)
@@ -271,14 +279,186 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         openSessionDetail(for: id)
     }
 
-    private func openSessionDetail(for id: String) {
-        if let existing = sessionDetail {
-            existing.show(for: id)
-        } else {
-            let controller = SessionDetailWindowController()
-            controller.show(for: id)
-            sessionDetail = controller
+    private func registerPaletteCommands() {
+        let coord: () -> SessionCoordinator = { SessionCoordinator.shared }
+        let llm: () -> LLMController = { LLMController.shared }
+        let modes: () -> ModeStore = { ModeStore.shared }
+
+        var cmds: [RTICommand] = [
+            // MARK: - Session
+            RTICommand(
+                id: "session.start",
+                title: "Start Session",
+                subtitle: "⌘⇧R",
+                keywords: ["record", "begin", "transcribe"],
+                isAvailable: { !coord().isRunning },
+                perform: { coord().toggleSession() }
+            ),
+            RTICommand(
+                id: "session.stop",
+                title: "Stop Session",
+                subtitle: "⌘⇧R",
+                keywords: ["end", "finish"],
+                isAvailable: { coord().isRunning },
+                perform: { coord().toggleSession() }
+            ),
+            RTICommand(
+                id: "session.detail",
+                title: "Open Current Session Detail",
+                keywords: ["view", "transcript"],
+                isAvailable: { coord().currentSessionId != nil },
+                perform: { [weak self] in self?.openCurrentSessionDetail() }
+            ),
+
+            // MARK: - Overlay
+            RTICommand(
+                id: "overlay.toggle",
+                title: "Toggle Overlay",
+                subtitle: "⌘\\",
+                keywords: ["panel", "show", "hide"],
+                perform: { [weak self] in self?.overlayController?.toggle() }
+            ),
+            RTICommand(
+                id: "widget.top.toggle",
+                title: "Toggle Top Widget",
+                keywords: ["pill", "bar"],
+                perform: { [weak self] in self?.topWidget?.toggle() }
+            ),
+            RTICommand(
+                id: "invisibility.toggle",
+                title: "Toggle Invisibility",
+                keywords: ["sharing", "screencap", "hide from screen"],
+                perform: { [weak self] in self?.toggleInvisibility() }
+            ),
+            RTICommand(
+                id: "smart.toggle",
+                title: "Toggle Smart Mode",
+                keywords: ["reasoning", "deep"],
+                perform: { llm().smartMode.toggle() }
+            ),
+
+            // MARK: - Chat
+            RTICommand(
+                id: "chat.assist",
+                title: "Assist (suggest what to say)",
+                subtitle: "⌘⏎",
+                keywords: ["help", "suggestion"],
+                perform: { llm().sendAssist() }
+            ),
+            RTICommand(
+                id: "chat.saynext",
+                title: "Say Next (one-line draft reply)",
+                keywords: ["respond", "reply"],
+                perform: { llm().sendSaySomething() }
+            ),
+            RTICommand(
+                id: "chat.followups",
+                title: "Follow-up Questions",
+                keywords: ["questions", "ask"],
+                perform: { llm().sendFollowupQuestions() }
+            ),
+            RTICommand(
+                id: "chat.recap",
+                title: "Recap so far",
+                keywords: ["summary", "review"],
+                perform: { llm().sendRecap() }
+            ),
+            RTICommand(
+                id: "chat.clear",
+                title: "Clear Current Chat",
+                keywords: ["delete", "reset"],
+                perform: { [weak self] in self?.clearChat() }
+            ),
+
+            // MARK: - Capture
+            RTICommand(
+                id: "capture.screen",
+                title: "Capture Screen for AI",
+                subtitle: "⌘H",
+                keywords: ["screenshot", "ocr"],
+                perform: { ScreenshotManager.shared.captureAndAttach() }
+            ),
+            RTICommand(
+                id: "view.live",
+                title: "Show Live Transcript",
+                subtitle: "⌘⌥T",
+                keywords: ["console", "debug"],
+                perform: { [weak self] in self?.debugConsole?.toggle() }
+            ),
+
+            // MARK: - Other
+            RTICommand(
+                id: "view.history",
+                title: "Session History…",
+                keywords: ["past", "old", "meetings"],
+                perform: { [weak self] in self?.showSessionHistory() }
+            ),
+            RTICommand(
+                id: "settings.open",
+                title: "Open Settings…",
+                subtitle: "⌘,",
+                keywords: ["preferences", "config"],
+                perform: { [weak self] in self?.openSettings() }
+            ),
+            RTICommand(
+                id: "settings.shortcuts",
+                title: "Keyboard Shortcuts…",
+                keywords: ["hotkeys", "bindings"],
+                perform: { [weak self] in self?.showShortcuts() }
+            ),
+            RTICommand(
+                id: "app.quit",
+                title: "Quit RTI",
+                subtitle: "⌘Q",
+                perform: { NSApp.terminate(nil) }
+            )
+        ]
+
+        // Mode switching: one entry per registered mode. Marked unavailable
+        // when the mode is already active so we don't surface a no-op.
+        for mode in modes().modes {
+            let modeId = mode.id
+            let modeName = mode.name
+            cmds.append(RTICommand(
+                id: "mode.switch.\(modeId)",
+                title: "Switch to: \(modeName)",
+                keywords: ["mode", "preset"],
+                isAvailable: { modes().activeMode?.id != modeId },
+                perform: { modes().activeModeId = modeId }
+            ))
         }
+
+        CommandRegistry.shared.replaceAll(cmds)
+    }
+
+    private func openSessionDetail(for id: String) {
+        if let window = sessionDetailWindow {
+            window.contentView = NSHostingView(rootView: SessionDetailView(sessionId: id))
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        w.title = "Session"
+        w.titlebarAppearsTransparent = true
+        w.setFrameAutosaveName("rti.sessiondetail")
+        w.isReleasedWhenClosed = false
+        w.minSize = NSSize(width: 720, height: 480)
+        w.backgroundColor = NSColor(red: 0.969, green: 0.969, blue: 0.973, alpha: 1)
+        // RTIDesign tokens are calibrated for light mode (textPrimary near
+        // black on textBackground near white). Force aqua so dark-mode users
+        // don't end up with invisible dark text on dark List rows.
+        w.appearance = NSAppearance(named: .aqua)
+        w.contentView = NSHostingView(rootView: SessionDetailView(sessionId: id))
+        w.center()
+        w.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        sessionDetailWindow = w
     }
 
     private func ensureSingleInstance() -> Bool {

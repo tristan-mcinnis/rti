@@ -24,7 +24,7 @@ final class LLMController: ObservableObject {
         didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
     }
 
-    private let client: DeepSeekClient
+    private let client = DeepSeekClient.shared
     private var currentTask: Task<Void, Never>?
     private var streamingEntryID: UUID?
 
@@ -45,10 +45,6 @@ final class LLMController: ObservableObject {
 
     private init() {
         self.smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
-        self.client = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
-        self.client.onReasoning = { [weak self] _ in
-            self?.reasoning = true
-        }
     }
 
     func sendAskAnything(_ input: String) {
@@ -216,8 +212,11 @@ final class LLMController: ObservableObject {
         let thisEntryID = assistantEntry.id
         currentTask = Task { [weak self] in
             guard let self else { return }
+            let onReasoning: @Sendable (String) -> Void = { [weak self] _ in
+                Task { @MainActor in self?.reasoning = true }
+            }
             do {
-                for try await delta in client.streamChat(messages: apiMessages, smart: smartMode) {
+                for try await delta in client.streamChat(messages: apiMessages, smart: smartMode, onReasoning: onReasoning) {
                     if Task.isCancelled { return }
                     // First content delta means reasoning is over.
                     if self.reasoning { self.reasoning = false }
@@ -226,20 +225,8 @@ final class LLMController: ObservableObject {
             } catch {
                 if Task.isCancelled { return }
                 if let api = error as? DeepSeekError {
-                    switch api {
-                    case .unauthorized:
-                        self.lastError = "DeepSeek rejected the API key (401). Open Settings to paste a valid key."
-                        self.lastErrorIsAuth = true
-                    case .missingAPIKey:
-                        self.lastError = "No DeepSeek API key set. Open Settings to add one."
-                        self.lastErrorIsAuth = true
-                    case .httpError(let code, let body):
-                        self.lastError = "DeepSeek error \(code): \(body.prefix(300))"
-                    case .streamError(let detail):
-                        self.lastError = "DeepSeek stream error: \(detail.prefix(300))"
-                    case .badResponse:
-                        self.lastError = "DeepSeek returned an unexpected response."
-                    }
+                    self.lastError = api.userMessage
+                    self.lastErrorIsAuth = api.isAuth
                 } else {
                     self.lastError = "\(error)"
                 }
@@ -283,24 +270,6 @@ final class LLMController: ObservableObject {
         let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
         let windowMs = Int(Self.contextWindowSeconds * 1000)
         let threshold = max(0, elapsedMs - windowMs)
-
-        do {
-            return try RTIDatabase.shared.pool.read { db in
-                let entries = try TranscriptEntry
-                    .filter(Column("session_id") == sessionId)
-                    .filter(Column("is_final") == 1)
-                    .filter(Column("start_ms") >= threshold)
-                    .order(Column("start_ms"))
-                    .fetchAll(db)
-                return entries.map { e in
-                    e.speakerId == "note"
-                        ? "[user note]: \(e.text)"
-                        : "\(e.speakerId): \(e.text)"
-                }.joined(separator: "\n")
-            }
-        } catch {
-            NSLog("[RTI] transcript fetch failed: \(error)")
-            return ""
-        }
+        return TranscriptContext.text(forSessionId: sessionId, sinceMs: threshold)
     }
 }

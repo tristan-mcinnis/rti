@@ -1,7 +1,9 @@
 import Foundation
-import GRDB
 
-struct Session: Codable, FetchableRecord, PersistableRecord, Identifiable {
+/// In-memory value type representing a session for the UI layer. No
+/// longer GRDB-backed — the canonical store is the markdown file under
+/// `~/meetings/` plus in-memory state for the active session.
+struct Session: Identifiable, Hashable {
     var id: String
     var startedAt: Date
     var endedAt: Date? = nil
@@ -12,19 +14,21 @@ struct Session: Codable, FetchableRecord, PersistableRecord, Identifiable {
     var calendarEventId: String? = nil
     var calendarTitle: String? = nil
     var transcriptQuality: String? = nil
+}
 
-    static let databaseTableName = "sessions"
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case startedAt = "started_at"
-        case endedAt = "ended_at"
-        case wavPath = "wav_path"
-        case notes
-        case title
-        case modeId = "mode_id"
-        case calendarEventId = "calendar_event_id"
-        case calendarTitle = "calendar_title"
-        case transcriptQuality = "transcript_quality"
+extension Session {
+    /// Build from a parsed markdown frontmatter. Fields not in frontmatter
+    /// (`notes`, `calendarEventId`) are left nil.
+    init(from frontmatter: CorpusEntry.Frontmatter) {
+        self.id = frontmatter.id
+        self.startedAt = frontmatter.date
+        self.endedAt = nil
+        self.wavPath = frontmatter.wavPath
+        self.notes = nil
+        self.title = frontmatter.title
+        self.modeId = frontmatter.mode
+        self.calendarEventId = nil
+        self.calendarTitle = nil
+        self.transcriptQuality = frontmatter.transcriptQuality
     }
 }

@@ -244,6 +244,97 @@ final class RTIDatabase {
                 t.add(column: "transcript_quality", .text)
             }
         }
+        m.registerMigration("v9_speaker_overlays") { db in
+            // Cross-session speaker corrections. The minutes-pattern
+            // sidecar — markdown corpus is canonical and never rewritten,
+            // so renames land here and get applied at FTS query/render time.
+            try db.create(table: "speaker_overlays") { t in
+                t.column("speaker_key", .text).notNull()
+                t.column("display_name", .text).notNull()
+                t.column("scope", .text).notNull()
+                t.column("source", .text).notNull()
+                t.column("updated_at", .datetime).notNull()
+                t.primaryKey(["speaker_key", "scope"])
+            }
+        }
+        m.registerMigration("v10_corpus_migration_log") { db in
+            // Backfill journal: tracks which sessions have been rendered to
+            // canonical markdown under ~/meetings/ so the one-shot
+            // migration is idempotent across launches and doesn't re-emit
+            // duplicate files.
+            try db.create(table: "corpus_migration_log") { t in
+                t.column("session_id", .text).primaryKey()
+                t.column("migrated_at", .datetime).notNull()
+                t.column("markdown_path", .text).notNull()
+            }
+        }
+        m.registerMigration("v11_drop_legacy_tables") { db in
+            // Markdown is now the canonical store. Drop every SQLite
+            // table that's been superseded plus their FTS triggers.
+            // chat_messages stays (interaction log); session_search FTS5
+            // table stays (rebuilt from markdown by `CorpusFTSReindexer`).
+            //
+            // chat_messages currently has a FK reference to sessions; we
+            // recreate the table without it so dropping sessions doesn't
+            // strand orphan-FK errors on future inserts.
+            try db.execute(sql: "DROP TRIGGER IF EXISTS transcript_entries_ai_fts")
+            try db.execute(sql: "DROP TRIGGER IF EXISTS transcript_entries_ad_fts")
+            try db.execute(sql: "DROP TRIGGER IF EXISTS transcript_entries_au_fts")
+            try db.execute(sql: "DROP TRIGGER IF EXISTS session_summaries_ai_fts")
+            try db.execute(sql: "DROP TRIGGER IF EXISTS session_summaries_au_fts")
+            try db.execute(sql: "DROP TRIGGER IF EXISTS session_summaries_ad_fts")
+            try db.execute(sql: "DROP TRIGGER IF EXISTS chat_messages_ai_fts")
+            try db.execute(sql: "DROP TRIGGER IF EXISTS chat_messages_ad_fts")
+
+            // Recreate chat_messages without the sessions FK.
+            try db.execute(sql: """
+                CREATE TABLE chat_messages_new (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    action TEXT,
+                    content TEXT NOT NULL,
+                    had_screen_context INTEGER NOT NULL DEFAULT 0,
+                    had_transcript_context INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL
+                )
+            """)
+            try db.execute(sql: """
+                INSERT INTO chat_messages_new
+                SELECT id, session_id, role, action, content,
+                       had_screen_context, had_transcript_context, created_at
+                FROM chat_messages
+            """)
+            try db.execute(sql: "DROP TABLE chat_messages")
+            try db.execute(sql: "ALTER TABLE chat_messages_new RENAME TO chat_messages")
+            try db.execute(sql: """
+                CREATE INDEX idx_chat_session_time
+                ON chat_messages(session_id, created_at)
+            """)
+            // Re-create the chat_messages FTS triggers.
+            try db.execute(sql: """
+                CREATE TRIGGER chat_messages_ai_fts AFTER INSERT ON chat_messages
+                BEGIN
+                    INSERT INTO session_search(session_id, kind, row_id, text)
+                    VALUES (NEW.session_id, 'chat', NEW.id, NEW.content);
+                END;
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER chat_messages_ad_fts AFTER DELETE ON chat_messages
+                BEGIN
+                    DELETE FROM session_search WHERE kind = 'chat' AND row_id = OLD.id;
+                END;
+            """)
+
+            // Now drop the superseded tables. Cascades to FTS rows for
+            // 'transcript' and 'summary' kinds via existing triggers were
+            // dropped above, so we manually clear them.
+            try db.execute(sql: "DELETE FROM session_search WHERE kind IN ('transcript', 'summary')")
+            try db.execute(sql: "DROP TABLE IF EXISTS session_summaries")
+            try db.execute(sql: "DROP TABLE IF EXISTS transcript_entries")
+            try db.execute(sql: "DROP TABLE IF EXISTS sessions")
+            try db.execute(sql: "DROP TABLE IF EXISTS corpus_migration_log")
+        }
         return m
     }
 }

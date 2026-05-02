@@ -1,7 +1,9 @@
 import Foundation
-import GRDB
 
-struct SessionSummary: Codable, FetchableRecord, PersistableRecord, Identifiable {
+/// In-memory session summary for the UI layer. No longer GRDB-backed —
+/// canonical storage is the markdown body under `~/meetings/` plus
+/// SummaryController's in-memory cache for in-flight summaries.
+struct SessionSummary: Identifiable, Hashable {
     var id: String
     var sessionId: String
     var summaryText: String
@@ -12,19 +14,4 @@ struct SessionSummary: Codable, FetchableRecord, PersistableRecord, Identifiable
     var rawResponse: String?
     var createdAt: Date
     var regeneratedAt: Date?
-
-    static let databaseTableName = "session_summaries"
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case sessionId = "session_id"
-        case summaryText = "summary_text"
-        case actionItems = "action_items"
-        case keyTopics = "key_topics"
-        case decisions
-        case followUps = "follow_ups"
-        case rawResponse = "raw_response"
-        case createdAt = "created_at"
-        case regeneratedAt = "regenerated_at"
-    }
 }

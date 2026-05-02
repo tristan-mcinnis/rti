@@ -5,15 +5,23 @@ final class SonioxClient: WebSocketDelegate {
     static let defaultURL = URL(string: "wss://stt-rt.soniox.com/transcribe-websocket")!
 
     var onWords: (([SonioxWord]) -> Void)?
-    /// Fires on terminal failures the user should see: server-reported errors,
-    /// or reaching `maxRetries` without reconnecting. Always dispatched on main.
-    var onError: ((String) -> Void)?
+    /// Fires on terminal failures the user should see: server-reported
+    /// errors, non-retryable failures (auth / clientBug), or reaching
+    /// `maxRetries` without reconnecting. `didOpen` indicates whether the
+    /// WebSocket ever connected, so callers can render handshake failures
+    /// ("check internet / proxy") differently from mid-session drops
+    /// ("reconnecting…"). Always dispatched on main.
+    var onError: ((SonioxFailure, _ didOpen: Bool) -> Void)?
 
     private let apiKey: String
     private let url: URL
     private let lock = NSLock()
     private var socket: WebSocket?
     private var isConnected = false
+    /// True once we have ever successfully connected this session — used
+    /// by `onError` callbacks to distinguish handshake failures from
+    /// mid-stream drops.
+    private var didOpen = false
     /// Set to true when the user deliberately closes the connection,
     /// to suppress automatic reconnect. Protected by `lock`.
     private var intentionalDisconnect = false
@@ -32,6 +40,7 @@ final class SonioxClient: WebSocketDelegate {
         lock.lock()
         intentionalDisconnect = false
         retryCount = 0
+        didOpen = false
         lock.unlock()
         openSocket()
     }
@@ -82,6 +91,7 @@ final class SonioxClient: WebSocketDelegate {
         case .connected:
             lock.lock()
             isConnected = true
+            didOpen = true
             retryCount = 0
             lock.unlock()
             NSLog("[RTI] SonioxClient: connected, sending config")
@@ -93,28 +103,36 @@ final class SonioxClient: WebSocketDelegate {
             handleMessage(string)
 
         case .disconnected(let reason, let code):
-            handleDrop("disconnected code=\(code) reason=\(reason)")
+            handleDrop(SonioxFailure.fromTransport(reason: "disconnected code=\(code) reason=\(reason)"))
 
         case .error(let error):
-            handleDrop("error \(String(describing: error))")
+            handleDrop(SonioxFailure.fromTransport(reason: "transport error \(String(describing: error))"))
 
         case .cancelled:
-            handleDrop("cancelled")
+            handleDrop(SonioxFailure.fromTransport(reason: "cancelled"))
 
         default:
             break
         }
     }
 
-    private func handleDrop(_ reason: String) {
+    private func handleDrop(_ failure: SonioxFailure) {
         lock.lock()
         isConnected = false
-        let reconnect = !intentionalDisconnect
+        let blocked = intentionalDisconnect
+        let phaseDidOpen = didOpen
         lock.unlock()
-        NSLog("[RTI] SonioxClient: \(reason)")
-        RTILog.log("dropped — \(reason)", category: "soniox")
-        if reconnect {
-            scheduleReconnect()
+        NSLog("[RTI] SonioxClient: drop — \(failure)")
+        RTILog.log("dropped — \(failure)", category: "soniox")
+        guard !blocked else { return }
+        if failure.shouldRetry {
+            scheduleReconnect(after: failure)
+        } else {
+            // Non-retryable: surface immediately so the user sees the
+            // right error in <100ms instead of after exponential backoff.
+            DispatchQueue.main.async { [weak self] in
+                self?.onError?(failure, phaseDidOpen)
+            }
         }
     }
 
@@ -141,13 +159,14 @@ final class SonioxClient: WebSocketDelegate {
         }
     }
 
-    private func scheduleReconnect() {
+    private func scheduleReconnect(after failure: SonioxFailure) {
         lock.lock()
+        let phaseDidOpen = didOpen
         guard retryCount < Self.maxRetries else {
             lock.unlock()
             NSLog("[RTI] SonioxClient: max retries reached")
             DispatchQueue.main.async { [weak self] in
-                self?.onError?("Soniox connection lost — transcription stopped after \(Self.maxRetries) reconnect attempts.")
+                self?.onError?(failure, phaseDidOpen)
             }
             return
         }
@@ -180,8 +199,12 @@ final class SonioxClient: WebSocketDelegate {
                 let detail = msg.error_message ?? "no detail"
                 NSLog("[RTI] SonioxClient server error: code=\(code) \(detail)")
                 RTILog.log("server error code=\(code) \(detail)", category: "soniox")
+                let failure = SonioxFailure.fromSonioxApplicationError(code: code, detail: detail)
+                lock.lock()
+                let phaseDidOpen = didOpen
+                lock.unlock()
                 DispatchQueue.main.async { [weak self] in
-                    self?.onError?("Soniox error \(code): \(detail)")
+                    self?.onError?(failure, phaseDidOpen)
                 }
                 return
             }

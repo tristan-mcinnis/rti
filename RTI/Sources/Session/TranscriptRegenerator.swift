@@ -1,11 +1,10 @@
 import Foundation
-import GRDB
 
-/// Re-runs Soniox file-mode transcription against a session's recorded WAV to
-/// produce a higher-fidelity transcript than the realtime stream captured live.
-/// Replaces the existing `transcript_entries` rows for the session and marks
-/// `sessions.transcript_quality = "hifi"` so the UI can stop offering this
-/// action once it's been used.
+/// Re-runs Soniox file-mode transcription against a session's recorded WAV
+/// to produce a higher-fidelity transcript than the realtime stream
+/// captured live. Replaces the transcript section of the canonical
+/// markdown file in `~/meetings/` and updates `transcript_quality: hifi`
+/// in its frontmatter.
 @MainActor
 final class TranscriptRegenerator: ObservableObject {
     static let shared = TranscriptRegenerator()
@@ -31,21 +30,16 @@ final class TranscriptRegenerator: ObservableObject {
             lastError = "Soniox API key not set. Add it in Settings → Keys."
             return
         }
-
-        let session: Session?
-        do {
-            session = try RTIDatabase.shared.pool.read { db in
-                try Session.fetchOne(db, key: sessionId)
-            }
-        } catch {
-            lastError = "Couldn't load session: \(error)"
+        guard let url = CorpusBackedStore.markdownURL(forSessionId: sessionId),
+              let entry = try? CorpusReader.read(url) else {
+            lastError = "No markdown file on disk for this session."
             return
         }
-        guard let session, let wavPath = session.wavPath else {
+        guard let wavPath = entry.frontmatter.wavPath else {
             lastError = "No audio recording on file for this session."
             return
         }
-        let wavURL = URL(fileURLWithPath: wavPath)
+        let wavURL = URL(fileURLWithPath: (wavPath as NSString).expandingTildeInPath)
         guard FileManager.default.fileExists(atPath: wavURL.path) else {
             lastError = "Audio file no longer exists at \(wavPath)."
             return
@@ -53,86 +47,78 @@ final class TranscriptRegenerator: ObservableObject {
 
         generatingSessionId = sessionId
         lastError = nil
+        let fileURL = url
+        let baseEntry = entry
 
-        currentTask = Task {
-            defer { generatingSessionId = nil }
+        currentTask = Task { [weak self] in
+            defer { Task { @MainActor in self?.generatingSessionId = nil } }
             do {
                 let client = SonioxFileTranscribeClient(apiKey: apiKey)
                 let transcript = try await client.transcribe(wavURL: wavURL)
                 try Task.checkCancellation()
-                try await Self.replaceTranscript(sessionId: sessionId, words: transcript.words)
+                try Self.replaceTranscript(in: fileURL, baseEntry: baseEntry, words: transcript.words)
+                // Reindex FTS so the upgraded transcript is searchable.
+                if let dir = await MainActor.run(body: { CorpusManager.shared.corpusDirectory }) as URL? {
+                    try? CorpusFTSReindexer.reindex(from: dir, in: RTIDatabase.shared.pool)
+                }
             } catch is CancellationError {
                 // intentional cancel — no error surface
             } catch {
                 NSLog("[RTI] regenerate transcript failed: \(error)")
-                lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+                await MainActor.run {
+                    self?.lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+                }
             }
         }
     }
 
-    /// Wipe and rewrite. Done in a single transaction so a partial failure
-    /// doesn't leave the session with half the old + half the new transcript
-    /// interleaved.
-    nonisolated private static func replaceTranscript(sessionId: String, words: [SonioxWord]) async throws {
-        let runs = collapseIntoRuns(words)
-        let now = Date()
-        try await RTIDatabase.shared.pool.write { db in
-            try TranscriptEntry
-                .filter(Column("session_id") == sessionId)
-                .deleteAll(db)
-            for run in runs {
-                let entry = TranscriptEntry(
-                    id: UUID().uuidString,
-                    sessionId: sessionId,
-                    speakerId: speakerLabel(run.speaker),
-                    startMs: run.startMs,
-                    endMs: run.endMs,
-                    text: run.text,
-                    confidence: run.confidence,
-                    isFinal: true,
-                    createdAt: now
-                )
-                try entry.insert(db)
-            }
-            try db.execute(sql: "UPDATE sessions SET transcript_quality = ? WHERE id = ?",
-                           arguments: ["hifi", sessionId])
+    /// Re-renders the markdown body's `## Transcript` section with the new
+    /// hi-fi turns; flips `transcript_quality: hifi` in frontmatter so the
+    /// UI can stop offering regenerate. Atomic via `CorpusWriter`'s tmp+
+    /// rename pattern (here we write directly because we already know the
+    /// destination path and want to overwrite).
+    nonisolated private static func replaceTranscript(
+        in url: URL,
+        baseEntry: CorpusEntry,
+        words: [SonioxWord]
+    ) throws {
+        let turns = SpeakerTurn.collapse(words)
+        let lines = turns.map { run -> String in
+            let stamp = formatTimestamp(run.startMs)
+            return "[\(speakerLabel(run.speaker)) \(stamp)] \(run.text)"
+        }
+        // Replace everything from `## Transcript` onward in the body.
+        var body = baseEntry.body
+        let marker = "## Transcript"
+        if let r = body.range(of: marker) {
+            body = String(body[..<r.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !body.isEmpty { body += "\n\n" }
+            body += "## Transcript\n" + lines.joined(separator: "\n")
+        } else {
+            body += (body.hasSuffix("\n") ? "" : "\n") + "\n## Transcript\n" + lines.joined(separator: "\n")
+        }
+
+        var fm = baseEntry.frontmatter
+        fm.transcriptQuality = "hifi"
+        let updated = CorpusEntry(frontmatter: fm, body: body)
+        let rendered = try updated.render()
+        let tmp = url.deletingPathExtension().appendingPathExtension("md.tmp")
+        try rendered.write(to: tmp, atomically: true, encoding: .utf8)
+        if FileManager.default.fileExists(atPath: url.path) {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+        } else {
+            try FileManager.default.moveItem(at: tmp, to: url)
         }
     }
 
-    private struct Run {
-        let speaker: Int
-        let text: String
-        let startMs: Int
-        let endMs: Int
-        let confidence: Double
-    }
-
-    nonisolated private static func collapseIntoRuns(_ words: [SonioxWord]) -> [Run] {
-        guard !words.isEmpty else { return [] }
-        var groups: [[SonioxWord]] = []
-        for word in words {
-            if groups.last?.last?.speaker == word.speaker {
-                groups[groups.count - 1].append(word)
-            } else {
-                groups.append([word])
-            }
-        }
-        return groups.map { group in
-            let avg = group.map(\.confidence).reduce(0, +) / Double(group.count)
-            return Run(
-                speaker: group[0].speaker,
-                text: group.map(\.text).joined(),
-                startMs: group.first?.startMs ?? 0,
-                endMs: group.last?.endMs ?? 0,
-                confidence: avg
-            )
-        }
-    }
-
-    /// Speaker 0 is conventionally the local mic in our pipeline; 1+ are remote
-    /// participants. Soniox async diarization only labels speakers it heard, so
-    /// we trust its assignment without the realtime stream's mic-only override.
     nonisolated private static func speakerLabel(_ speaker: Int) -> String {
         speaker == 0 ? "self" : "them_\(speaker)"
+    }
+
+    nonisolated private static func formatTimestamp(_ ms: Int) -> String {
+        let totalSeconds = ms / 1000
+        let m = totalSeconds / 60
+        let s = totalSeconds % 60
+        return String(format: "%d:%02d", m, s)
     }
 }

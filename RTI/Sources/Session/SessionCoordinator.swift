@@ -23,6 +23,11 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var liveEntries: [LiveEntry] = []
     @Published private(set) var interimLine: String?
     @Published private(set) var lastError: String?
+    /// True when `lastError` came from a Soniox auth/billing failure
+    /// (`SonioxFailure.isAuth`). UI uses this to gate the "Open Settings"
+    /// affordance on the error banner. Reset whenever `lastError` is
+    /// cleared or replaced by a non-auth failure.
+    @Published private(set) var lastErrorIsAuth: Bool = false
 
     private let audio = AudioCaptureManager()
     private let systemAudio = SystemAudioCapture()
@@ -36,6 +41,11 @@ final class SessionCoordinator: ObservableObject {
     private var micInterimText: String?
     private var systemInterimText: String?
     private var delayedCompleteTask: Task<Void, Never>?
+    /// Active session metadata held in memory — there's no `sessions` row
+    /// to persist them. Set on launch, consumed by `CorpusManager.render-
+    /// Session` at session-end, cleared after.
+    private var activeWavPath: String?
+    private var activeModeId: String?
 
     private static let resumeWindowSeconds: TimeInterval = 300
 
@@ -46,46 +56,36 @@ final class SessionCoordinator: ObservableObject {
     /// last 5 minutes; otherwise creates a chat-only session (no WAV path yet).
     func bootstrapChatSession() {
         guard currentSessionId == nil else { return }
-
-        do {
-            let recent: Session? = try RTIDatabase.shared.pool.read { db in
-                try Session
-                    .order(Column("started_at").desc)
-                    .limit(1)
-                    .fetchOne(db)
+        // Try to resume the most recent session from the markdown corpus
+        // if it was within the resume window. Otherwise mint a fresh
+        // in-memory session id — no DB write needed; the session becomes
+        // a markdown file when (and if) the user records audio + the
+        // session ends.
+        let recent = CorpusBackedStore.allSessions().first
+        let now = Date()
+        if let recent {
+            let reference = recent.endedAt ?? recent.startedAt
+            if now.timeIntervalSince(reference) <= Self.resumeWindowSeconds {
+                currentSessionId = recent.id
+                startedAt = recent.startedAt
+                activeModeId = recent.modeId
+                activeWavPath = recent.wavPath
+                return
             }
-            let now = Date()
-            if let recent {
-                let reference = recent.endedAt ?? recent.startedAt
-                if now.timeIntervalSince(reference) <= Self.resumeWindowSeconds {
-                    currentSessionId = recent.id
-                    startedAt = recent.startedAt
-                    return
-                }
-            }
-            let sessionId = UUID().uuidString
-            let session = Session(id: sessionId, startedAt: now, endedAt: nil, wavPath: nil, notes: nil)
-            try RTIDatabase.shared.pool.write { db in try session.insert(db) }
-            currentSessionId = sessionId
-            startedAt = now
-        } catch {
-            NSLog("[RTI] bootstrapChatSession failed: \(error)")
         }
+        currentSessionId = UUID().uuidString
+        startedAt = now
     }
 
     func switchToSession(id: String) {
         guard !isRunning else { return } // don't swap active-audio session
-        do {
-            guard let session = try RTIDatabase.shared.pool.read({ db in
-                try Session.fetchOne(db, key: id)
-            }) else { return }
-            currentSessionId = session.id
-            startedAt = session.startedAt
-            liveEntries = []
-            interimLine = nil
-        } catch {
-            NSLog("[RTI] switchToSession failed: \(error)")
-        }
+        guard let session = CorpusBackedStore.session(id: id) else { return }
+        currentSessionId = session.id
+        startedAt = session.startedAt
+        activeWavPath = session.wavPath
+        activeModeId = session.modeId
+        liveEntries = []
+        interimLine = nil
     }
 
     /// Insert a user-authored note into the current session's transcript at the
@@ -98,85 +98,44 @@ final class SessionCoordinator: ObservableObject {
         guard !trimmed.isEmpty, let sessionId = currentSessionId else { return false }
         guard let startedAt else { return false }
         let offsetMs = Int(max(0, Date().timeIntervalSince(startedAt) * 1000))
-        let entry = TranscriptEntry(
-            id: UUID().uuidString,
-            sessionId: sessionId,
+        // Open a JSONL stream lazily — notes can fire before the audio
+        // session has launched.
+        let writer = CorpusManager.shared.liveWriter(sessionId: sessionId)
+            ?? CorpusManager.shared.openLive(sessionId: sessionId)
+        writer.append(.note(ts: offsetMs, text: trimmed))
+        liveEntries.append(LiveEntry(
             speakerId: "note",
-            startMs: offsetMs,
-            endMs: offsetMs,
             text: trimmed,
-            confidence: 1.0,
-            isFinal: true,
-            createdAt: Date()
-        )
-        do {
-            try RTIDatabase.shared.pool.write { db in try entry.insert(db) }
-            liveEntries.append(LiveEntry(
-                speakerId: "note",
-                text: trimmed,
-                startMs: offsetMs,
-                confidence: 1.0
-            ))
-            if liveEntries.count > 500 {
-                liveEntries.removeFirst(liveEntries.count - 500)
-            }
-            return true
-        } catch {
-            NSLog("[RTI] insertNote failed: \(error)")
-            return false
+            startMs: offsetMs,
+            confidence: 1.0
+        ))
+        if liveEntries.count > 500 {
+            liveEntries.removeFirst(liveEntries.count - 500)
         }
+        return true
     }
 
     func recentSessions(limit: Int = 10) -> [Session] {
-        do {
-            return try RTIDatabase.shared.pool.read { db in
-                try Session
-                    .order(Column("started_at").desc)
-                    .limit(limit)
-                    .fetchAll(db)
-            }
-        } catch {
-            NSLog("[RTI] recentSessions failed: \(error)")
-            return []
-        }
+        Array(CorpusBackedStore.allSessions().prefix(limit))
     }
 
-    /// Delete sessions (and FK-cascaded transcripts + chat_messages) older than
-    /// `days` from `started_at`. Called on launch for retention. Skips the
-    /// currently-active session and any still-open session so we don't pull
-    /// data out from under a live recording.
+    /// Delete completed sessions older than `days`. Deletes the markdown
+    /// file under `~/meetings/` (which is canonical) plus any associated
+    /// chat_messages. Skips the currently-active session.
     func pruneOldSessions(days: Int = 30) {
         let threshold = Date().addingTimeInterval(-Double(days) * 86_400)
-        let activeId = currentSessionId ?? ""
-        do {
-            try RTIDatabase.shared.pool.write { db in
-                _ = try Session
-                    .filter(Column("started_at") < threshold)
-                    .filter(Column("ended_at") != nil)
-                    .filter(Column("id") != activeId)
-                    .deleteAll(db)
-            }
-        } catch {
-            NSLog("[RTI] pruneOldSessions failed: \(error)")
+        let activeId = currentSessionId
+        for session in CorpusBackedStore.allSessions() where session.id != activeId {
+            guard session.endedAt != nil, session.startedAt < threshold else { continue }
+            deleteSession(id: session.id)
         }
     }
 
-    /// One-time cleanup: close orphaned sessions (endedAt == nil but not current),
-    /// fill missing durations for completed sessions.
+    /// No-op now that markdown is canonical. Kept as a stable entry point
+    /// for the AppDelegate launch sequence; older builds used it to fix
+    /// orphaned `sessions` rows.
     func normalizeLegacySessions() {
-        do {
-            try RTIDatabase.shared.pool.write { db in
-                let currentId = currentSessionId
-                // Close orphaned open sessions
-                try db.execute(sql: """
-                    UPDATE sessions
-                    SET ended_at = started_at
-                    WHERE ended_at IS NULL AND id != ?
-                    """, arguments: [currentId ?? ""])
-            }
-        } catch {
-            NSLog("[RTI] normalizeLegacySessions failed: \(error)")
-        }
+        // intentionally empty — no SQL state to normalize.
     }
 
     func clearCurrentSessionMessages() {
@@ -190,32 +149,41 @@ final class SessionCoordinator: ObservableObject {
         }
     }
 
-    /// Delete a saved session: removes the row (cascades to transcripts /
-    /// chat_messages / summary), unlinks the WAV file if present, and clears
-    /// currentSessionId if it pointed at the deleted session.
+    /// Delete a saved session: deletes the markdown file under
+    /// `~/meetings/`, deletes the chat_messages rows for the session,
+    /// unlinks the WAV file if present, and clears currentSessionId if
+    /// it pointed at the deleted session.
     func deleteSession(id: String) {
-        guard !isRunning || currentSessionId != id else {
-            // Refuse to delete the actively-recording session.
-            return
+        guard !isRunning || currentSessionId != id else { return }
+        // Look up the markdown file (if any) for the WAV reference + path.
+        if let url = CorpusBackedStore.markdownURL(forSessionId: id) {
+            if let fm = try? CorpusReader.readFrontmatter(url),
+               let wavPath = fm.wavPath {
+                try? FileManager.default.removeItem(atPath: (wavPath as NSString).expandingTildeInPath)
+            }
+            try? FileManager.default.removeItem(at: url)
         }
+        // Drop chat_messages for the session — they live in SQLite.
         do {
-            let session = try RTIDatabase.shared.pool.read { db in
-                try Session.fetchOne(db, key: id)
-            }
-            if let path = session?.wavPath {
-                try? FileManager.default.removeItem(atPath: path)
-            }
             try RTIDatabase.shared.pool.write { db in
-                _ = try Session.filter(Column("id") == id).deleteAll(db)
-            }
-            if currentSessionId == id {
-                currentSessionId = nil
-                startedAt = nil
-                liveEntries = []
-                interimLine = nil
+                _ = try ChatMessage.filter(Column("session_id") == id).deleteAll(db)
             }
         } catch {
-            NSLog("[RTI] deleteSession failed: \(error)")
+            NSLog("[RTI] deleteSession chat purge failed: \(error)")
+        }
+        // Reindex FTS so the deleted file's transcript/summary rows go.
+        do {
+            try CorpusFTSReindexer.reindex(from: CorpusManager.shared.corpusDirectory, in: RTIDatabase.shared.pool)
+        } catch {
+            NSLog("[RTI] deleteSession FTS reindex failed: \(error)")
+        }
+        // Drop any orphaned live JSONL.
+        CorpusManager.shared.deleteLive(sessionId: id)
+        if currentSessionId == id {
+            currentSessionId = nil
+            startedAt = nil
+            liveEntries = []
+            interimLine = nil
         }
     }
 
@@ -230,6 +198,7 @@ final class SessionCoordinator: ObservableObject {
     func startSession() {
         guard !isRunning else { return }
         lastError = nil
+        lastErrorIsAuth = false
         delayedCompleteTask?.cancel()
         // Cancel any in-flight stream and reset the in-memory entries, but do
         // NOT delete chat_messages from the DB here — that would erase the
@@ -265,29 +234,27 @@ final class SessionCoordinator: ObservableObject {
 
     func resumeSession(id: String) {
         guard !isRunning else { return }
-        do {
-            guard var session = try RTIDatabase.shared.pool.read({ db in
-                try Session.fetchOne(db, key: id)
-            }) else { return }
+        guard let session = CorpusBackedStore.session(id: id) else { return }
 
-            // If the saved mode has been deleted since this session was created,
-            // clear the reference so LLMController falls back to the default.
-            if let modeId = session.modeId,
-               !ModeStore.shared.modes.contains(where: { $0.id == modeId }) {
-                session.modeId = nil
-            }
-
-            session.endedAt = nil
-            try RTIDatabase.shared.pool.write { db in try session.update(db) }
-
-            currentSessionId = session.id
-            startedAt = session.startedAt
-            liveEntries = []
-            interimLine = nil
-            LLMController.shared.loadHistoryForCurrentSession()
-        } catch {
-            NSLog("[RTI] resumeSession failed: \(error)")
+        // If the saved mode has been deleted since this session was
+        // created, clear the reference so LLMController falls back to
+        // the default.
+        let modeId: String?
+        if let mid = session.modeId,
+           ModeStore.shared.modes.contains(where: { $0.id == mid }) {
+            modeId = mid
+        } else {
+            modeId = nil
         }
+
+        currentSessionId = session.id
+        startedAt = session.startedAt
+        endedAt = nil
+        activeWavPath = session.wavPath
+        activeModeId = modeId
+        liveEntries = []
+        interimLine = nil
+        LLMController.shared.loadHistoryForCurrentSession()
     }
 
     private func launchSession() {
@@ -295,60 +262,22 @@ final class SessionCoordinator: ObservableObject {
         let sessionId: String
         let wavURL: URL
 
-        // If current session is ended (resumed), reuse it for recording
+        // Mint a fresh session id if there's no in-memory one (or the
+        // existing one belongs to an already-rendered markdown file we
+        // shouldn't overwrite). The bootstrap path is what populates
+        // currentSessionId on launch — here we trust it.
         if let currentId = currentSessionId,
-           let existing = try? RTIDatabase.shared.pool.read({ db in try Session.fetchOne(db, key: currentId) }),
-           existing.endedAt != nil {
+           CorpusBackedStore.markdownURL(forSessionId: currentId) == nil {
             sessionId = currentId
-            wavURL = WAVWriter.defaultURL(for: sessionId)
-            do {
-                try RTIDatabase.shared.pool.write { db in
-                    if var s = try Session.fetchOne(db, key: sessionId) {
-                        s.endedAt = nil
-                        s.wavPath = wavURL.path
-                        s.modeId = ModeStore.shared.activeModeId
-                        try s.update(db)
-                    }
-                }
-            } catch {
-                lastError = "DB update failed: \(error)"
-                return
-            }
         } else {
-            // Close any previous open session before creating a new one
-            if let prevId = currentSessionId {
-                do {
-                    try RTIDatabase.shared.pool.write { db in
-                        if var prev = try Session.fetchOne(db, key: prevId), prev.endedAt == nil {
-                            prev.endedAt = now
-                            try prev.update(db)
-                        }
-                    }
-                } catch {
-                    NSLog("[RTI] close previous session failed: \(error)")
-                }
-            }
             sessionId = UUID().uuidString
-            wavURL = WAVWriter.defaultURL(for: sessionId)
-            let calendarEvent = CalendarManager.shared.activeEvent()
-            do {
-                let session = Session(
-                    id: sessionId,
-                    startedAt: now,
-                    endedAt: nil,
-                    wavPath: wavURL.path,
-                    notes: nil,
-                    title: nil,
-                    modeId: ModeStore.shared.activeModeId,
-                    calendarEventId: calendarEvent?.eventIdentifier,
-                    calendarTitle: calendarEvent?.title
-                )
-                try RTIDatabase.shared.pool.write { db in try session.insert(db) }
-            } catch {
-                lastError = "DB insert failed: \(error)"
-                return
-            }
         }
+        wavURL = WAVWriter.defaultURL(for: sessionId)
+        activeWavPath = wavURL.path
+        activeModeId = ModeStore.shared.activeModeId
+        currentSessionId = sessionId
+        startedAt = now
+        endedAt = nil
 
         do {
             try wav.open(at: wavURL)
@@ -360,9 +289,15 @@ final class SessionCoordinator: ObservableObject {
 
         let client = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
         client.onWords = { [weak self] words in self?.handleWords(words) }
-        client.onError = { [weak self] message in
+        // Phase 3 dual-write: open a JSONL stream for this session so live
+        // events land in the on-disk record as well as in SQLite.
+        if let sid = currentSessionId {
+            CorpusManager.shared.openLive(sessionId: sid)
+        }
+        client.onError = { [weak self] failure, didOpen in
             guard let self else { return }
-            self.lastError = message
+            self.lastError = failure.userMessage(didOpen: didOpen)
+            self.lastErrorIsAuth = failure.isAuth
             // A terminal Soniox failure means transcription is done; tear down audio
             // so isRunning flips off and the UI stops showing the live state.
             if self.isRunning { self.stopSession() }
@@ -384,9 +319,10 @@ final class SessionCoordinator: ObservableObject {
             guard let self, self.isRunning else { return }
             let sysClient = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
             sysClient.onWords = { [weak self] words in self?.handleSystemWords(words) }
-            sysClient.onError = { [weak self] message in
+            sysClient.onError = { [weak self] failure, didOpen in
                 guard let self else { return }
                 // System audio Soniox failure is non-fatal — mic keeps running.
+                let message = failure.userMessage(didOpen: didOpen)
                 NSLog("[RTI] system audio Soniox error: \(message)")
                 RTILog.log("system soniox error — \(message)", category: "soniox")
             }
@@ -462,17 +398,6 @@ final class SessionCoordinator: ObservableObject {
         // Capture for the top widget's frozen duration display.
         self.endedAt = endedAt
 
-        do {
-            try RTIDatabase.shared.pool.write { db in
-                if var session = try Session.fetchOne(db, key: sessionId) {
-                    session.endedAt = endedAt
-                    try session.update(db)
-                }
-            }
-        } catch {
-            NSLog("[RTI] session update failed: \(error)")
-        }
-
         // Keep currentSessionId/startedAt set: chat turns can continue against
         // the same session after audio stops. A fresh session is only minted on
         // next app launch (via bootstrapChatSession) past the 5-minute window.
@@ -484,23 +409,44 @@ final class SessionCoordinator: ObservableObject {
     }
 
     private func triggerSummaryIfNeeded(sessionId: String) {
-        let hasTranscripts: Bool = {
-            do {
-                return try RTIDatabase.shared.pool.read { db in
-                    try TranscriptEntry
-                        .filter(Column("session_id") == sessionId)
-                        .filter(Column("is_final") == 1)
-                        .limit(1)
-                        .fetchOne(db) != nil
-                }
-            } catch { return false }
+        // Whether we have any transcript content lives in JSONL now.
+        let liveURL = CorpusManager.shared.liveDirectory.appendingPathComponent("\(sessionId).jsonl")
+        let hasContent: Bool = {
+            guard FileManager.default.fileExists(atPath: liveURL.path) else { return false }
+            guard let events = try? LiveJSONLReader.readAll(liveURL) else { return false }
+            return events.contains(where: {
+                if case .word(_, _, _, true, _, _) = $0 { return true }
+                if case .note = $0 { return true }
+                return false
+            })
         }()
 
-        guard hasTranscripts else { return }
+        let renderStartedAt = startedAt ?? Date()
+        let renderEndedAt = endedAt
+        let renderWavPath = activeWavPath
+        let renderModeId = activeModeId
+
+        if !hasContent {
+            // Empty session — no markdown render. Drop in-memory active
+            // metadata so the next session starts clean.
+            activeWavPath = nil
+            activeModeId = nil
+            return
+        }
 
         Task { @MainActor in
             await SessionTitleController.shared.generateTitle(for: sessionId)
             await SummaryController.shared.generateSummary(for: sessionId)
+            await CorpusManager.shared.renderSession(
+                sessionId: sessionId,
+                startedAt: renderStartedAt,
+                endedAt: renderEndedAt,
+                wavPath: renderWavPath,
+                modeId: renderModeId
+            )
+            // Active metadata done with — clear it after the render.
+            self.activeWavPath = nil
+            self.activeModeId = nil
         }
     }
 
@@ -528,16 +474,9 @@ final class SessionCoordinator: ObservableObject {
         systemSoniox = nil
         wav.close()
         if let sid = currentSessionId {
-            do {
-                try RTIDatabase.shared.pool.write { db in
-                    if var s = try Session.fetchOne(db, key: sid), s.endedAt == nil {
-                        s.endedAt = Date()
-                        try s.update(db)
-                    }
-                }
-            } catch {
-                NSLog("[RTI] emergencyShutdown DB write failed: \(error)")
-            }
+            // Best-effort: flush JSONL so on next launch the orphan
+            // recovery path can present this session for re-render.
+            CorpusManager.shared.closeLive(sessionId: sid)
         }
         isRunning = false
     }
@@ -573,27 +512,18 @@ final class SessionCoordinator: ObservableObject {
         let interims = words.filter { !$0.isFinal }
 
         if !finals.isEmpty {
-            let runs = groupByRuns(finals)
-            let now = Date()
-            do {
-                try RTIDatabase.shared.pool.write { db in
-                    for run in runs {
-                        let entry = TranscriptEntry(
-                            id: UUID().uuidString,
-                            sessionId: sessionId,
-                            speakerId: systemSpeakerLabel(run.speaker),
-                            startMs: run.startMs,
-                            endMs: run.endMs,
-                            text: run.text,
-                            confidence: run.confidence,
-                            isFinal: true,
-                            createdAt: now
-                        )
-                        try entry.insert(db)
-                    }
+            let runs = SpeakerTurn.collapse(finals)
+            if let writer = CorpusManager.shared.liveWriter(sessionId: sessionId) {
+                for run in runs {
+                    writer.append(.word(
+                        ts: run.startMs,
+                        speaker: run.speaker,
+                        text: run.text,
+                        isFinal: true,
+                        confidence: run.confidence,
+                        channel: "system"
+                    ))
                 }
-            } catch {
-                NSLog("[RTI] system transcript insert failed: \(error)")
             }
 
             for run in runs {
@@ -614,7 +544,7 @@ final class SessionCoordinator: ObservableObject {
         if interims.isEmpty {
             systemInterimText = nil
         } else {
-            let runs = groupByRuns(interims)
+            let runs = SpeakerTurn.collapse(interims)
             systemInterimText = runs.map { "\(systemSpeakerLabel($0.speaker)): \($0.text)" }.joined(separator: "  ")
         }
         updateInterimLine()
@@ -636,27 +566,20 @@ final class SessionCoordinator: ObservableObject {
         let interims = words.filter { !$0.isFinal }
 
         if !finals.isEmpty {
-            let runs = groupByRuns(finals)
-            let now = Date()
-            do {
-                try RTIDatabase.shared.pool.write { db in
-                    for run in runs {
-                        let entry = TranscriptEntry(
-                            id: UUID().uuidString,
-                            sessionId: sessionId,
-                            speakerId: speakerLabel(run.speaker),
-                            startMs: run.startMs,
-                            endMs: run.endMs,
-                            text: run.text,
-                            confidence: run.confidence,
-                            isFinal: true,
-                            createdAt: now
-                        )
-                        try entry.insert(db)
-                    }
+            let runs = SpeakerTurn.collapse(finals)
+            // JSONL is now canonical for live transcripts. Markdown is
+            // produced at session-end by `CorpusManager.renderSession`.
+            if let writer = CorpusManager.shared.liveWriter(sessionId: sessionId) {
+                for run in runs {
+                    writer.append(.word(
+                        ts: run.startMs,
+                        speaker: run.speaker,
+                        text: run.text,
+                        isFinal: true,
+                        confidence: run.confidence,
+                        channel: "mic"
+                    ))
                 }
-            } catch {
-                NSLog("[RTI] transcript insert failed: \(error)")
             }
 
             for run in runs {
@@ -677,40 +600,10 @@ final class SessionCoordinator: ObservableObject {
         if interims.isEmpty {
             micInterimText = nil
         } else {
-            let runs = groupByRuns(interims)
+            let runs = SpeakerTurn.collapse(interims)
             micInterimText = runs.map { "\(speakerLabel($0.speaker)): \($0.text)" }.joined(separator: "  ")
         }
         updateInterimLine()
-    }
-
-    private struct Run {
-        let speaker: Int
-        let text: String
-        let startMs: Int
-        let endMs: Int
-        let confidence: Double
-    }
-
-    private func groupByRuns(_ words: [SonioxWord]) -> [Run] {
-        guard !words.isEmpty else { return [] }
-        var groups: [[SonioxWord]] = []
-        for word in words {
-            if groups.last?.last?.speaker == word.speaker {
-                groups[groups.count - 1].append(word)
-            } else {
-                groups.append([word])
-            }
-        }
-        return groups.map { group in
-            let confidenceAvg = group.map(\.confidence).reduce(0, +) / Double(group.count)
-            return Run(
-                speaker: group[0].speaker,
-                text: group.map(\.text).joined(),
-                startMs: group.first?.startMs ?? 0,
-                endMs: group.last?.endMs ?? 0,
-                confidence: confidenceAvg
-            )
-        }
     }
 
     private func speakerLabel(_ speaker: Int) -> String {

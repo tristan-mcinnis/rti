@@ -1,14 +1,13 @@
 import Foundation
 
-enum DeepSeekError: Error {
-    case httpError(Int, String)
-    case unauthorized
-    case badResponse
-    case missingAPIKey
-    case streamError(String)
-}
-
 final class DeepSeekClient {
+    /// Single shared instance. All four DeepSeek-using controllers
+    /// (LLMController, SummaryController, SessionTitleController,
+    /// SessionQAController) route through this — `URLSession` is already
+    /// shared underneath, but the explicit `shared` makes the intent visible
+    /// and centralises any future cross-call coordination.
+    static let shared = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
+
     private let baseURL: URL
     private let session: URLSession
 
@@ -17,11 +16,6 @@ final class DeepSeekClient {
         config.timeoutIntervalForResource = 300
         return URLSession(configuration: config)
     }()
-
-    /// Fires on the main thread for every reasoning_content chunk in smart
-    /// mode. Callers that don't care can leave this nil. Used by
-    /// LLMController to drive the "reasoning…" indicator.
-    var onReasoning: ((String) -> Void)?
 
     init(baseURL: URL) {
         self.baseURL = baseURL
@@ -34,7 +28,15 @@ final class DeepSeekClient {
     /// arrive. The stream terminates on `data: [DONE]` sentinel or on error.
     /// Routes to deepseek-v4-flash with `thinking.type=enabled` (smart=true,
     /// slower with reasoning) or `disabled` (smart=false, fast).
-    func streamChat(messages: [DeepSeekMessage], smart: Bool = false) -> AsyncThrowingStream<String, Error> {
+    ///
+    /// `onReasoning`, when supplied, fires on the main thread for every
+    /// reasoning_content chunk in smart mode. LLMController uses it to drive
+    /// the "reasoning…" indicator; other callers leave it nil.
+    func streamChat(
+        messages: [DeepSeekMessage],
+        smart: Bool = false,
+        onReasoning: (@Sendable (String) -> Void)? = nil
+    ) -> AsyncThrowingStream<String, Error> {
         let model = "deepseek-v4-flash"
         // Thinking mode ignores sampling params; only send temperature when
         // thinking is disabled.
@@ -85,7 +87,7 @@ final class DeepSeekClient {
                         }
                         group.addTask { [weak self] in
                             guard let self else { return }
-                            try await processStream(bytes, continuation: continuation)
+                            try await processStream(bytes, continuation: continuation, onReasoning: onReasoning)
                         }
                         _ = try await group.next()
                         group.cancelAll()
@@ -98,6 +100,22 @@ final class DeepSeekClient {
         }
     }
 
+    /// Drains a `streamChat` AsyncThrowingStream into a single String,
+    /// honoring task cancellation between deltas. Used by the one-shot
+    /// generators (Summary, Title) that need the full response before parsing,
+    /// rather than per-delta UI updates.
+    func collectStreamedResponse(
+        messages: [DeepSeekMessage],
+        smart: Bool = false
+    ) async throws -> String {
+        var full = ""
+        for try await delta in streamChat(messages: messages, smart: smart) {
+            try Task.checkCancellation()
+            full += delta
+        }
+        return full
+    }
+
     private func readAll(_ bytes: URLSession.AsyncBytes) async throws -> String {
         var data = Data()
         data.reserveCapacity(8192)
@@ -107,7 +125,11 @@ final class DeepSeekClient {
         return String(data: data, encoding: .utf8) ?? "<binary>"
     }
 
-    private func processStream(_ bytes: URLSession.AsyncBytes, continuation: AsyncThrowingStream<String, Error>.Continuation) async throws {
+    private func processStream(
+        _ bytes: URLSession.AsyncBytes,
+        continuation: AsyncThrowingStream<String, Error>.Continuation,
+        onReasoning: (@Sendable (String) -> Void)?
+    ) async throws {
         let decoder = JSONDecoder()
         var lineCount = 0
         var deltaCount = 0
@@ -140,9 +162,9 @@ final class DeepSeekClient {
             }
             do {
                 let chunk = try decoder.decode(DeepSeekChatChunk.self, from: data)
-                if let reasoning = chunk.choices.first?.delta?.reasoning_content, !reasoning.isEmpty {
-                    let cb = self.onReasoning
-                    DispatchQueue.main.async { cb?(reasoning) }
+                if let reasoning = chunk.choices.first?.delta?.reasoning_content, !reasoning.isEmpty,
+                   let onReasoning {
+                    DispatchQueue.main.async { onReasoning(reasoning) }
                 }
                 if let delta = chunk.choices.first?.delta?.content, !delta.isEmpty {
                     deltaCount += 1
