@@ -112,6 +112,7 @@
 		F0A855E54187ADA60C7AB9D0 /* RTIDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73922AAADA102ECEF611A7B6 /* RTIDesign.swift */; };
 		F501C2DB4B95AC2E17320050 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */; };
 		F5EA15C170481EAFC11AF277 /* DebugConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D625FEFD7781EE62D733E2B3 /* DebugConsoleView.swift */; };
+		F620ED21C7BA06ED9275285D /* NotificationNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567774DB8B379938045D78B3 /* NotificationNames.swift */; };
 		F66899E9870289305445DEB1 /* CorpusEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0685C3FDC77550D1247A872 /* CorpusEntry.swift */; };
 		FA9C81A466AC2873E158A3AB /* DebugConsoleWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF34905668FDEDBD43CD8E /* DebugConsoleWindowController.swift */; };
 		FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F657FFCA8180572D204BFC /* OCRService.swift */; };
@@ -180,6 +181,7 @@
 		529928DBB744C96FC50538C4 /* RTITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RTITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		541406A822542146389D5B7E /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		54F657FFCA8180572D204BFC /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
+		567774DB8B379938045D78B3 /* NotificationNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationNames.swift; sourceTree = "<group>"; };
 		56D5D90FD0A00653C25F73A6 /* DeepSeekProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepSeekProtocol.swift; sourceTree = "<group>"; };
 		583047121E9E536DA823376A /* MCPTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPTools.swift; sourceTree = "<group>"; };
 		6281C5C4478788699F815620 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
@@ -418,6 +420,7 @@
 			children = (
 				8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */,
 				F0232A6827F5D8C0C5056320 /* CrashLog.swift */,
+				567774DB8B379938045D78B3 /* NotificationNames.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -745,6 +748,7 @@
 				0C3926E9622B402E66C8616B /* MiniWidgetWindowController.swift in Sources */,
 				2BC80B64267C234E010ABCEB /* Mode.swift in Sources */,
 				5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */,
+				F620ED21C7BA06ED9275285D /* NotificationNames.swift in Sources */,
 				FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */,
 				EAD660CCEB4135C933D64193 /* OnboardingWindowController.swift in Sources */,
 				DF9B733225B63D3BEE464B79 /* OverlayInputState.swift in Sources */,
