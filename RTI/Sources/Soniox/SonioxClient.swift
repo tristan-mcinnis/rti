@@ -128,12 +128,53 @@ final class SonioxClient: WebSocketDelegate {
         if failure.shouldRetry {
             scheduleReconnect(after: failure)
         } else {
-            // Non-retryable: surface immediately so the user sees the
-            // right error in <100ms instead of after exponential backoff.
             DispatchQueue.main.async { [weak self] in
                 self?.onError?(failure, phaseDidOpen)
             }
         }
+    }
+
+    private func scheduleReconnect(after failure: SonioxFailure) {
+        lock.lock()
+        let phaseDidOpen = didOpen
+
+        // Cancel any in-flight retry so we don't stack overlapping attempts.
+        retryWorkItem?.cancel()
+
+        // Re-check intentionalDisconnect under the lock.  handleDrop releases
+        // the lock between its check and this call, so `finalize` or
+        // `disconnect` may have flipped the flag in that window.
+        guard !intentionalDisconnect else {
+            retryWorkItem = nil
+            lock.unlock()
+            return
+        }
+        guard retryCount < Self.maxRetries else {
+            retryWorkItem = nil
+            lock.unlock()
+            NSLog("[RTI] SonioxClient: max retries reached")
+            DispatchQueue.main.async { [weak self] in
+                self?.onError?(failure, phaseDidOpen)
+            }
+            return
+        }
+        let delay = Self.retryDelays[min(retryCount, Self.retryDelays.count - 1)]
+        retryCount += 1
+        let attempt = retryCount
+
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let blocked = self.intentionalDisconnect
+            self.lock.unlock()
+            guard !blocked else { return }
+            self.openSocket()
+        }
+        retryWorkItem = item
+        lock.unlock()
+
+        NSLog("[RTI] SonioxClient: reconnect attempt \(attempt) in \(delay)s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
     private func openSocket() {
@@ -159,37 +200,6 @@ final class SonioxClient: WebSocketDelegate {
         }
     }
 
-    private func scheduleReconnect(after failure: SonioxFailure) {
-        lock.lock()
-        let phaseDidOpen = didOpen
-        guard retryCount < Self.maxRetries else {
-            lock.unlock()
-            NSLog("[RTI] SonioxClient: max retries reached")
-            DispatchQueue.main.async { [weak self] in
-                self?.onError?(failure, phaseDidOpen)
-            }
-            return
-        }
-        let delay = Self.retryDelays[min(retryCount, Self.retryDelays.count - 1)]
-        retryCount += 1
-        let attempt = retryCount
-        lock.unlock()
-
-        NSLog("[RTI] SonioxClient: reconnect attempt \(attempt) in \(delay)s")
-
-        let item = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.lock.lock()
-            let blocked = self.intentionalDisconnect
-            self.lock.unlock()
-            guard !blocked else { return }
-            self.openSocket()
-        }
-        lock.lock()
-        retryWorkItem = item
-        lock.unlock()
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
-    }
 
     private func handleMessage(_ string: String) {
         guard let data = string.data(using: .utf8) else { return }
