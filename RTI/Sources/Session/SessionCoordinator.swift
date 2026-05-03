@@ -34,12 +34,9 @@ final class SessionCoordinator: ObservableObject {
     private let wav = WAVWriter()
     private var soniox: SonioxClient?
     private var systemSoniox: SonioxClient?
-    private var lastFinalizedEndMs: Int = 0
-    private var lastSystemFinalizedEndMs: Int = 0
-    private var zeroEndMsSeen: Set<String> = []
-    private var zeroSystemEndMsSeen: Set<String> = []
-    private var micInterimText: String?
-    private var systemInterimText: String?
+    private let micAggregator = TranscriptAggregator(channel: "mic")
+    private let systemAggregator = TranscriptAggregator(channel: "system")
+    private var noteEntries: [LiveEntry] = []
     private var delayedCompleteTask: Task<Void, Never>?
     /// Active session metadata held in memory — there's no `sessions` row
     /// to persist them. Set on launch, consumed by `CorpusManager.render-
@@ -49,7 +46,14 @@ final class SessionCoordinator: ObservableObject {
 
     private static let resumeWindowSeconds: TimeInterval = 300
 
-    private init() {}
+    private init() {
+        micAggregator.onTurnsProcessed = { [weak self] turns in
+            self?.writeJSONL(turns, channel: "mic")
+        }
+        systemAggregator.onTurnsProcessed = { [weak self] turns in
+            self?.writeJSONL(turns, channel: "system")
+        }
+    }
 
     /// Ensure there is a chat session available for LLM turns before any audio
     /// is started. Resumes the most recent session if it was active within the
@@ -84,8 +88,10 @@ final class SessionCoordinator: ObservableObject {
         startedAt = session.startedAt
         activeWavPath = session.wavPath
         activeModeId = session.modeId
-        liveEntries = []
-        interimLine = nil
+        micAggregator.reset()
+        systemAggregator.reset()
+        noteEntries = []
+        publishAggregatedState()
     }
 
     /// Insert a user-authored note into the current session's transcript at the
@@ -103,12 +109,17 @@ final class SessionCoordinator: ObservableObject {
         let writer = CorpusManager.shared.liveWriter(sessionId: sessionId)
             ?? CorpusManager.shared.openLive(sessionId: sessionId)
         writer.append(.note(ts: offsetMs, text: trimmed))
-        liveEntries.append(LiveEntry(
+        let entry = LiveEntry(
             speakerId: "note",
             text: trimmed,
             startMs: offsetMs,
             confidence: 1.0
-        ))
+        )
+        noteEntries.append(entry)
+        if noteEntries.count > 500 {
+            noteEntries.removeFirst(noteEntries.count - 500)
+        }
+        liveEntries.append(entry)
         if liveEntries.count > 500 {
             liveEntries.removeFirst(liveEntries.count - 500)
         }
@@ -175,8 +186,9 @@ final class SessionCoordinator: ObservableObject {
         if currentSessionId == id {
             currentSessionId = nil
             startedAt = nil
-            liveEntries = []
-            interimLine = nil
+            micAggregator.reset()
+            systemAggregator.reset()
+            publishAggregatedState()
         }
     }
 
@@ -245,8 +257,10 @@ final class SessionCoordinator: ObservableObject {
         endedAt = nil
         activeWavPath = session.wavPath
         activeModeId = modeId
-        liveEntries = []
-        interimLine = nil
+        micAggregator.reset()
+        systemAggregator.reset()
+        noteEntries = []
+        publishAggregatedState()
         LLMController.shared.loadHistoryForCurrentSession()
     }
 
@@ -338,14 +352,10 @@ final class SessionCoordinator: ObservableObject {
         currentSessionId = sessionId
         startedAt = now
         endedAt = nil
-        liveEntries = []
-        interimLine = nil
-        micInterimText = nil
-        systemInterimText = nil
-        lastFinalizedEndMs = 0
-        lastSystemFinalizedEndMs = 0
-        zeroEndMsSeen = []
-        zeroSystemEndMsSeen = []
+        micAggregator.reset()
+        systemAggregator.reset()
+        noteEntries = []
+        publishAggregatedState()
         isRunning = true
         LLMController.shared.loadHistoryForCurrentSession()
     }
@@ -394,9 +404,10 @@ final class SessionCoordinator: ObservableObject {
         // Keep currentSessionId/startedAt set: chat turns can continue against
         // the same session after audio stops. A fresh session is only minted on
         // next app launch (via bootstrapChatSession) past the 5-minute window.
-        micInterimText = nil
-        systemInterimText = nil
-        interimLine = nil
+        micAggregator.reset()
+        systemAggregator.reset()
+        noteEntries = []
+        publishAggregatedState()
 
         triggerSummaryIfNeeded(sessionId: sessionId)
     }
@@ -493,115 +504,37 @@ final class SessionCoordinator: ObservableObject {
     }
 
     private func handleSystemWords(_ words: [SonioxWord]) {
-        guard let sessionId = currentSessionId else { return }
-
-        let regularFinals = words.filter { $0.isFinal && $0.endMs > lastSystemFinalizedEndMs }
-        let zeroMsFinals: [SonioxWord] = words.compactMap { word in
-            guard word.isFinal, word.endMs == 0 else { return nil }
-            let key = "\(word.speaker)|\(word.text)|\(word.startMs)"
-            return zeroSystemEndMsSeen.insert(key).inserted ? word : nil
-        }
-        let finals = regularFinals + zeroMsFinals
-        let interims = words.filter { !$0.isFinal }
-
-        if !finals.isEmpty {
-            let runs = SpeakerTurn.collapse(finals)
-            if let writer = CorpusManager.shared.liveWriter(sessionId: sessionId) {
-                for run in runs {
-                    writer.append(.word(
-                        ts: run.startMs,
-                        speaker: run.speaker,
-                        text: run.text,
-                        isFinal: true,
-                        confidence: run.confidence,
-                        channel: "system"
-                    ))
-                }
-            }
-
-            for run in runs {
-                liveEntries.append(LiveEntry(
-                    speakerId: SpeakerLabelMapping.rawLabel(speaker: run.speaker, channel: "system"),
-                    text: run.text,
-                    startMs: run.startMs,
-                    confidence: run.confidence
-                ))
-            }
-            if liveEntries.count > 500 {
-                liveEntries.removeFirst(liveEntries.count - 500)
-            }
-            let nonZeroMax = finals.compactMap({ $0.endMs > 0 ? $0.endMs : nil }).max()
-            if let m = nonZeroMax { lastSystemFinalizedEndMs = m }
-        }
-
-        if interims.isEmpty {
-            systemInterimText = nil
-        } else {
-            let runs = SpeakerTurn.collapse(interims)
-            systemInterimText = runs.map { "\(SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: "system")): \($0.text)" }.joined(separator: "  ")
-        }
-        updateInterimLine()
+        guard currentSessionId != nil else { return }
+        systemAggregator.process(words)
+        publishAggregatedState()
     }
 
     private func handleWords(_ words: [SonioxWord]) {
-        guard let sessionId = currentSessionId else { return }
-
-        // Non-zero endMs: use watermark dedup. Zero endMs: dedup by
-        // speaker+text+startMs to avoid duplicates when Soniox doesn't
-        // provide timing data (e.g. very short utterances).
-        let regularFinals = words.filter { $0.isFinal && $0.endMs > lastFinalizedEndMs }
-        let zeroMsFinals: [SonioxWord] = words.compactMap { word in
-            guard word.isFinal, word.endMs == 0 else { return nil }
-            let key = "\(word.speaker)|\(word.text)|\(word.startMs)"
-            return zeroEndMsSeen.insert(key).inserted ? word : nil
-        }
-        let finals = regularFinals + zeroMsFinals
-        let interims = words.filter { !$0.isFinal }
-
-        if !finals.isEmpty {
-            let runs = SpeakerTurn.collapse(finals)
-            // JSONL is now canonical for live transcripts. Markdown is
-            // produced at session-end by `CorpusManager.renderSession`.
-            if let writer = CorpusManager.shared.liveWriter(sessionId: sessionId) {
-                for run in runs {
-                    writer.append(.word(
-                        ts: run.startMs,
-                        speaker: run.speaker,
-                        text: run.text,
-                        isFinal: true,
-                        confidence: run.confidence,
-                        channel: "mic"
-                    ))
-                }
-            }
-
-            for run in runs {
-                liveEntries.append(LiveEntry(
-                    speakerId: SpeakerLabelMapping.rawLabel(speaker: run.speaker, channel: "mic"),
-                    text: run.text,
-                    startMs: run.startMs,
-                    confidence: run.confidence
-                ))
-            }
-            if liveEntries.count > 500 {
-                liveEntries.removeFirst(liveEntries.count - 500)
-            }
-            let nonZeroMax = finals.compactMap({ $0.endMs > 0 ? $0.endMs : nil }).max()
-            if let m = nonZeroMax { lastFinalizedEndMs = m }
-        }
-
-        if interims.isEmpty {
-            micInterimText = nil
-        } else {
-            let runs = SpeakerTurn.collapse(interims)
-            micInterimText = runs.map { "\(SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: "mic")): \($0.text)" }.joined(separator: "  ")
-        }
-        updateInterimLine()
+        guard currentSessionId != nil else { return }
+        micAggregator.process(words)
+        publishAggregatedState()
     }
 
 
-    private func updateInterimLine() {
-        let parts = [micInterimText, systemInterimText].compactMap { $0 }.filter { !$0.isEmpty }
+    private func publishAggregatedState() {
+        let parts = [micAggregator.interimText, systemAggregator.interimText].compactMap { $0 }.filter { !$0.isEmpty }
         interimLine = parts.isEmpty ? nil : parts.joined(separator: "  ")
+        liveEntries = (noteEntries + micAggregator.entries + systemAggregator.entries)
+            .sorted(by: { $0.startMs < $1.startMs })
+    }
+
+    private func writeJSONL(_ turns: [SpeakerTurn], channel: String) {
+        guard let sessionId = currentSessionId,
+              let writer = CorpusManager.shared.liveWriter(sessionId: sessionId) else { return }
+        for turn in turns {
+            writer.append(.word(
+                ts: turn.startMs,
+                speaker: turn.speaker,
+                text: turn.text,
+                isFinal: true,
+                confidence: turn.confidence,
+                channel: channel
+            ))
+        }
     }
 }
