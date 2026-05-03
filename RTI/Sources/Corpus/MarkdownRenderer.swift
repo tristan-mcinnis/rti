@@ -87,9 +87,7 @@ enum MarkdownRenderer {
             switch event {
             case .word(let ts, let speaker, let text, let isFinal, _, let channel):
                 guard isFinal else { continue }
-                let label: String = channel == "system"
-                    ? (speaker == 0 ? "them" : "them_\(speaker)")
-                    : "self"
+                let label = SpeakerLabelMapping.rawLabel(speaker: speaker, channel: channel)
                 if pending?.speaker == label {
                     pending?.text += text
                 } else {

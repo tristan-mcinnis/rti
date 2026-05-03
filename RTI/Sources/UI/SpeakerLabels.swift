@@ -50,4 +50,5 @@ enum SpeakerLabels {
     static func isNote(_ raw: String) -> Bool {
         raw == "note"
     }
+
 }

@@ -234,9 +234,7 @@ enum CorpusBackedStore {
             switch event {
             case .word(let ts, let speaker, let text, let isFinal, let confidence, let channel):
                 guard isFinal else { continue }
-                let label: String = channel == "system"
-                    ? (speaker == 0 ? "them" : "them_\(speaker)")
-                    : "self"
+                let label = SpeakerLabelMapping.rawLabel(speaker: speaker, channel: channel)
                 out.append(TranscriptEntry(
                     id: UUID().uuidString,
                     sessionId: sessionId,

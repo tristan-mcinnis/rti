@@ -85,7 +85,7 @@ final class TranscriptRegenerator: ObservableObject {
         let turns = SpeakerTurn.collapse(words)
         let lines = turns.map { run -> String in
             let stamp = formatTimestamp(run.startMs)
-            return "[\(speakerLabel(run.speaker)) \(stamp)] \(run.text)"
+            return "[\(SpeakerLabelMapping.rawLabel(speaker: run.speaker)) \(stamp)] \(run.text)"
         }
         // Replace everything from `## Transcript` onward in the body.
         var body = baseEntry.body
@@ -111,9 +111,6 @@ final class TranscriptRegenerator: ObservableObject {
         }
     }
 
-    nonisolated private static func speakerLabel(_ speaker: Int) -> String {
-        speaker == 0 ? "self" : "them_\(speaker)"
-    }
 
     nonisolated private static func formatTimestamp(_ ms: Int) -> String {
         let totalSeconds = ms / 1000

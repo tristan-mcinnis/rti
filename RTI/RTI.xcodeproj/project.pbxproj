@@ -70,6 +70,7 @@
 		8C6CFEEBEB89C08AC8B8C33B /* SessionExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DED40E2036B38F0362B81D5 /* SessionExport.swift */; };
 		8CF61F1009ED1DCCFD8F7026 /* RTIMCP in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = A2127891ACC732EA523D20C2 /* RTIMCP */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8DE47C053C0DBFF1B2D65B8E /* SpeakerOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B74C3D26020FEAD142C4777C /* SpeakerOverlay.swift */; };
+		96C0822D8C23C897655D3E03 /* SpeakerLabelMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74DAC4DF2B82C9FBED0DA5EC /* SpeakerLabelMapping.swift */; };
 		9C1666D3BCEA5B933F188486 /* DeepSeekErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A348935B29B36C07BC3683B7 /* DeepSeekErrorTests.swift */; };
 		9F89E22932AA0A661DB33D88 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263A886E22FF815C73AD3DD6 /* SystemAudioCapture.swift */; };
 		A21F64C0CA36C2F7849133FE /* SpeakerLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F88EA5A5405F40A4AF56C7C5 /* SpeakerLabels.swift */; };
@@ -105,6 +106,7 @@
 		DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
 		DF9B733225B63D3BEE464B79 /* OverlayInputState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */; };
 		E2687F74F0EF7AABB539A434 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */; };
+		E29C700EFF6366F258434883 /* SpeakerLabelMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74DAC4DF2B82C9FBED0DA5EC /* SpeakerLabelMapping.swift */; };
 		E7A78919E326DC8E80FBC4B5 /* CorpusFTSReindexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C397F67CAA883C3EE35EF37F /* CorpusFTSReindexer.swift */; };
 		E99A2E3907A22BFFDAA70011 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1739AC4265146BE278C238F /* KeychainStore.swift */; };
 		EAD660CCEB4135C933D64193 /* OnboardingWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3A09E60F6A13E2B21D4E3E /* OnboardingWindowController.swift */; };
@@ -189,6 +191,7 @@
 		6820EA81EE3A97F7E8DB34B1 /* TranscriptContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptContext.swift; sourceTree = "<group>"; };
 		69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotkey.swift; sourceTree = "<group>"; };
 		73922AAADA102ECEF611A7B6 /* RTIDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIDesign.swift; sourceTree = "<group>"; };
+		74DAC4DF2B82C9FBED0DA5EC /* SpeakerLabelMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabelMapping.swift; sourceTree = "<group>"; };
 		7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEntry.swift; sourceTree = "<group>"; };
 		80B860CBE5C88CADCC97EC4D /* TranscriptRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRowView.swift; sourceTree = "<group>"; };
 		82F3B4333865A3ABDED731A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -421,6 +424,7 @@
 				8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */,
 				F0232A6827F5D8C0C5056320 /* CrashLog.swift */,
 				567774DB8B379938045D78B3 /* NotificationNames.swift */,
+				74DAC4DF2B82C9FBED0DA5EC /* SpeakerLabelMapping.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -704,6 +708,7 @@
 				A3127A4220C41C2413B23249 /* SonioxFailure.swift in Sources */,
 				DBCAA5D4FD382ACD913D4980 /* SonioxFailureTests.swift in Sources */,
 				74C468CDEFAC049BEDE3093A /* SonioxProtocol.swift in Sources */,
+				96C0822D8C23C897655D3E03 /* SpeakerLabelMapping.swift in Sources */,
 				CB6002FE9DA7402E4573E874 /* SpeakerTurn.swift in Sources */,
 				FFEF45631B7D83D3141AC09B /* SpeakerTurnTests.swift in Sources */,
 				2AEDD80E612700500221C1B8 /* TranscriptEntry.swift in Sources */,
@@ -779,6 +784,7 @@
 				401324B43BC0199A0BB221CA /* SonioxFailure.swift in Sources */,
 				3F7FB62F0C59D289C7AE4236 /* SonioxFileTranscribeClient.swift in Sources */,
 				2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */,
+				E29C700EFF6366F258434883 /* SpeakerLabelMapping.swift in Sources */,
 				A21F64C0CA36C2F7849133FE /* SpeakerLabels.swift in Sources */,
 				8DE47C053C0DBFF1B2D65B8E /* SpeakerOverlay.swift in Sources */,
 				220D798013E40D1826B23127 /* SpeakerTurn.swift in Sources */,

@@ -89,6 +89,7 @@ targets:
       - path: Sources/Corpus/MarkdownRenderer.swift
       - path: Sources/Corpus/LiveJSONLWriter.swift
       - path: Sources/Corpus/CorpusFTSReindexer.swift
+      - path: Sources/Support/SpeakerLabelMapping.swift
     dependencies:
       - package: GRDB
       - package: Yams

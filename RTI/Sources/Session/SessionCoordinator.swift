@@ -521,7 +521,7 @@ final class SessionCoordinator: ObservableObject {
 
             for run in runs {
                 liveEntries.append(LiveEntry(
-                    speakerId: systemSpeakerLabel(run.speaker),
+                    speakerId: SpeakerLabelMapping.rawLabel(speaker: run.speaker, channel: "system"),
                     text: run.text,
                     startMs: run.startMs,
                     confidence: run.confidence
@@ -538,7 +538,7 @@ final class SessionCoordinator: ObservableObject {
             systemInterimText = nil
         } else {
             let runs = SpeakerTurn.collapse(interims)
-            systemInterimText = runs.map { "\(systemSpeakerLabel($0.speaker)): \($0.text)" }.joined(separator: "  ")
+            systemInterimText = runs.map { "\(SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: "system")): \($0.text)" }.joined(separator: "  ")
         }
         updateInterimLine()
     }
@@ -577,7 +577,7 @@ final class SessionCoordinator: ObservableObject {
 
             for run in runs {
                 liveEntries.append(LiveEntry(
-                    speakerId: speakerLabel(run.speaker),
+                    speakerId: SpeakerLabelMapping.rawLabel(speaker: run.speaker, channel: "mic"),
                     text: run.text,
                     startMs: run.startMs,
                     confidence: run.confidence
@@ -594,18 +594,11 @@ final class SessionCoordinator: ObservableObject {
             micInterimText = nil
         } else {
             let runs = SpeakerTurn.collapse(interims)
-            micInterimText = runs.map { "\(speakerLabel($0.speaker)): \($0.text)" }.joined(separator: "  ")
+            micInterimText = runs.map { "\(SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: "mic")): \($0.text)" }.joined(separator: "  ")
         }
         updateInterimLine()
     }
 
-    private func speakerLabel(_ speaker: Int) -> String {
-        "self"
-    }
-
-    private func systemSpeakerLabel(_ speaker: Int) -> String {
-        speaker == 0 ? "them" : "them_\(speaker)"
-    }
 
     private func updateInterimLine() {
         let parts = [micInterimText, systemInterimText].compactMap { $0 }.filter { !$0.isEmpty }
