@@ -113,9 +113,6 @@ final class TranscriptRegenerator: ObservableObject {
 
 
     nonisolated private static func formatTimestamp(_ ms: Int) -> String {
-        let totalSeconds = ms / 1000
-        let m = totalSeconds / 60
-        let s = totalSeconds % 60
-        return String(format: "%d:%02d", m, s)
+        TimeFormat.stampMs(ms)
     }
 }

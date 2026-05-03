@@ -100,7 +100,7 @@ enum CorpusBackedStore {
                 actionItems: parsed["Action Items"],
                 keyTopics: parsed["Key Topics"],
                 decisions: parsed["Decisions Made"],
-                followUps: combineFollowUps(open: parsed["Open Questions"], next: parsed["Next Steps"]),
+                followUps: SummaryFormatting.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"]),
                 rawResponse: summaryText,
                 createdAt: entry.frontmatter.date,
                 regeneratedAt: nil
@@ -218,12 +218,6 @@ enum CorpusBackedStore {
         }
     }
 
-    private static func combineFollowUps(open: String?, next: String?) -> String? {
-        var parts: [String] = []
-        if let o = open, o != "None.", !o.isEmpty { parts.append("## Open Questions\n\(o)") }
-        if let n = next, n != "None.", !n.isEmpty { parts.append("## Next Steps\n\(n)") }
-        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
-    }
 
     private static func jsonlToTranscriptEntries(
         _ events: [LiveJSONLWriter.Event],

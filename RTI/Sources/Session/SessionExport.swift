@@ -125,9 +125,6 @@ extension SessionExport {
     }
 
     private static func formatTime(ms: Int) -> String {
-        let seconds = ms / 1000
-        let mins = seconds / 60
-        let secs = seconds % 60
-        return String(format: "%d:%02d", mins, secs)
+        TimeFormat.stampMs(ms)
     }
 }

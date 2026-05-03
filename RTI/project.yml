@@ -90,6 +90,8 @@ targets:
       - path: Sources/Corpus/LiveJSONLWriter.swift
       - path: Sources/Corpus/CorpusFTSReindexer.swift
       - path: Sources/Support/SpeakerLabelMapping.swift
+      - path: Sources/Support/TimeFormat.swift
+      - path: Sources/Support/SummaryFormatting.swift
     dependencies:
       - package: GRDB
       - package: Yams

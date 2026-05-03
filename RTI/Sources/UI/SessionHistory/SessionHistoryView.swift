@@ -262,19 +262,11 @@ struct SessionHistoryView: View {
 
     private func sessionDurationText(_ session: Session) -> String? {
         guard session.endedAt != nil else { return nil }
-        let duration = sessionDuration(session)
-        let mins = Int(duration) / 60
-        let secs = Int(duration) % 60
-        return mins > 0 ? "\(mins)m \(secs)s" : "\(secs)s"
+        return TimeFormat.duration(sessionDuration(session))
     }
 
     private func liveDurationText(start: Date, now: Date) -> String {
-        let total = max(0, Int(now.timeIntervalSince(start)))
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
-        return String(format: "%d:%02d", m, s)
+        TimeFormat.elapsed(now.timeIntervalSince(start))
     }
 
     private func modeName(for session: Session) -> String? {

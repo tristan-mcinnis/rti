@@ -107,7 +107,7 @@ final class SummaryController: ObservableObject {
         }
 
         let parsed = Self.parseSections(from: fullResponse)
-        let combinedFollowUps = Self.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"])
+        let combinedFollowUps = SummaryFormatting.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"])
 
         cache[sessionId] = SessionSummary(
             id: UUID().uuidString,
@@ -172,16 +172,5 @@ final class SummaryController: ObservableObject {
         }
 
         return result
-    }
-
-    private static func combineFollowUps(openQuestions: String?, nextSteps: String?) -> String? {
-        var parts: [String] = []
-        if let q = openQuestions, q != "None.", !q.isEmpty {
-            parts.append("## Open Questions\n\(q)")
-        }
-        if let s = nextSteps, s != "None.", !s.isEmpty {
-            parts.append("## Next Steps\n\(s)")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
     }
 }

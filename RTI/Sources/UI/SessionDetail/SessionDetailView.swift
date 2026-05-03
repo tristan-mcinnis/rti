@@ -956,16 +956,10 @@ struct SessionDetailView: View {
     }
 
     private func timeLabel(ms: Int) -> String {
-        let seconds = ms / 1000
-        let mins = seconds / 60
-        let secs = seconds % 60
-        return String(format: "%d:%02d", mins, secs)
+        TimeFormat.stampMs(ms)
     }
 
     private func formatDuration(_ interval: TimeInterval) -> String {
-        let mins = Int(interval) / 60
-        let secs = Int(interval) % 60
-        if mins > 0 { return "\(mins)m \(secs)s" }
-        return "\(secs)s"
+        TimeFormat.duration(interval)
     }
 }
