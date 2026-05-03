@@ -131,13 +131,6 @@ final class SessionCoordinator: ObservableObject {
         }
     }
 
-    /// No-op now that markdown is canonical. Kept as a stable entry point
-    /// for the AppDelegate launch sequence; older builds used it to fix
-    /// orphaned `sessions` rows.
-    func normalizeLegacySessions() {
-        // intentionally empty — no SQL state to normalize.
-    }
-
     func clearCurrentSessionMessages() {
         guard let sid = currentSessionId else { return }
         do {

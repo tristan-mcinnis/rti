@@ -31,7 +31,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Bootstrap first so currentSessionId is set before normalize/prune run —
         // they consult it to avoid touching the active session.
         SessionCoordinator.shared.bootstrapChatSession()
-        SessionCoordinator.shared.normalizeLegacySessions()
         SessionCoordinator.shared.pruneOldSessions(days: 30)
         _ = ModeStore.shared
         LLMController.shared.loadHistoryForCurrentSession()

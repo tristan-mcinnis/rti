@@ -160,40 +160,5 @@ final class CorpusManager {
         }
     }
 
-    // MARK: - private
 
-    private func jsonlToTurns(_ events: [LiveJSONLWriter.Event]) -> [MarkdownRenderer.TurnLine] {
-        // Group consecutive same-speaker word events into single turns.
-        // Notes become standalone turns with speakerId "note".
-        var turns: [MarkdownRenderer.TurnLine] = []
-        var pending: (speaker: String, startMs: Int, text: String)?
-        func flush() {
-            if let p = pending {
-                turns.append(MarkdownRenderer.TurnLine(speakerId: p.speaker, startMs: p.startMs, text: p.text))
-                pending = nil
-            }
-        }
-        for event in events {
-            switch event {
-            case .word(let ts, let speaker, let text, let isFinal, _, let channel):
-                guard isFinal else { continue }
-                let label: String = channel == "system"
-                    ? (speaker == 0 ? "them" : "them_\(speaker)")
-                    : "self"
-                if pending?.speaker == label {
-                    pending?.text += text
-                } else {
-                    flush()
-                    pending = (label, ts, text)
-                }
-            case .note(let ts, let text):
-                flush()
-                turns.append(MarkdownRenderer.TurnLine(speakerId: "note", startMs: ts, text: text))
-            case .chat:
-                continue
-            }
-        }
-        flush()
-        return turns
-    }
 }
