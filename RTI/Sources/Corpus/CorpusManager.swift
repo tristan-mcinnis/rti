@@ -20,9 +20,14 @@ final class CorpusManager {
         return home.appendingPathComponent("meetings", isDirectory: true)
     }
 
+    private var _liveDirectory: URL?
     var liveDirectory: URL {
+        if let dir = _liveDirectory { return dir }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("RTI/live", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("RTI/live", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        _liveDirectory = dir
+        return dir
     }
 
     static let corpusPathKey = "rti.corpus.path"

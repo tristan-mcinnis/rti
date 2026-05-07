@@ -57,7 +57,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onToggleCommandPalette = { [weak self] in self?.windows.toggleCommandPalette() }
         hotkeys.registerAll()
 
-        registerPaletteCommands()
+        CommandRegistry.shared.replaceAll(
+            CommandPaletteFactory.buildCommands(
+                windows: windows,
+                session: SessionCoordinator.shared,
+                llm: LLMController.shared,
+                modes: ModeStore.shared
+            )
+        )
 
         SessionCoordinator.shared.$isRunning
             .receive(on: RunLoop.main)
@@ -66,36 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleOpenSessionDetailNotification(_:)),
-            name: .openSessionDetail,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(toggleOverlay),
-            name: .rtiToggleOverlay,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(clearChat),
-            name: .rtiClearChat,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(showDebugConsole),
-            name: .rtiShowLiveTranscript,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(showSessionHistory),
-            name: .rtiShowSessionHistory,
-            object: nil
-        )
+        registerNotificationObservers()
 
         if !windows.showOnboardingIfNeeded(),
            CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
@@ -108,148 +86,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.openSessionDetail(for: id)
     }
 
-    private func registerPaletteCommands() {
-        let coord: () -> SessionCoordinator = { SessionCoordinator.shared }
-        let llm: () -> LLMController = { LLMController.shared }
-        let modes: () -> ModeStore = { ModeStore.shared }
-
-        var cmds: [RTICommand] = [
-            RTICommand(
-                id: "session.start",
-                title: "Start Session",
-                subtitle: "⌘⇧R",
-                keywords: ["record", "begin", "transcribe"],
-                isAvailable: { !coord().isRunning },
-                perform: { coord().toggleSession() }
-            ),
-            RTICommand(
-                id: "session.stop",
-                title: "Stop Session",
-                subtitle: "⌘⇧R",
-                keywords: ["end", "finish"],
-                isAvailable: { coord().isRunning },
-                perform: { coord().toggleSession() }
-            ),
-            RTICommand(
-                id: "session.detail",
-                title: "Open Current Session Detail",
-                keywords: ["view", "transcript"],
-                isAvailable: { coord().currentSessionId != nil },
-                perform: { [weak self] in
-                    guard let id = coord().currentSessionId else { return }
-                    self?.windows.openSessionDetail(for: id)
-                }
-            ),
-            RTICommand(
-                id: "overlay.toggle",
-                title: "Toggle Overlay",
-                subtitle: "⌘\\",
-                keywords: ["panel", "show", "hide"],
-                perform: { [weak self] in self?.windows.toggleOverlay() }
-            ),
-            RTICommand(
-                id: "widget.top.toggle",
-                title: "Toggle Top Widget",
-                keywords: ["pill", "bar"],
-                perform: { [weak self] in self?.windows.toggleTopWidget() }
-            ),
-            RTICommand(
-                id: "invisibility.toggle",
-                title: "Toggle Invisibility",
-                keywords: ["sharing", "screencap", "hide from screen"],
-                perform: { [weak self] in self?.toggleInvisibility() }
-            ),
-            RTICommand(
-                id: "smart.toggle",
-                title: "Toggle Smart Mode",
-                keywords: ["reasoning", "deep"],
-                perform: { llm().smartMode.toggle() }
-            ),
-            RTICommand(
-                id: "chat.assist",
-                title: "Assist (suggest what to say)",
-                subtitle: "⌘⏎",
-                keywords: ["help", "suggestion"],
-                perform: { llm().sendAssist() }
-            ),
-            RTICommand(
-                id: "chat.saynext",
-                title: "Say Next (one-line draft reply)",
-                keywords: ["respond", "reply"],
-                perform: { llm().sendSaySomething() }
-            ),
-            RTICommand(
-                id: "chat.followups",
-                title: "Follow-up Questions",
-                keywords: ["questions", "ask"],
-                perform: { llm().sendFollowupQuestions() }
-            ),
-            RTICommand(
-                id: "chat.recap",
-                title: "Recap so far",
-                keywords: ["summary", "review"],
-                perform: { llm().sendRecap() }
-            ),
-            RTICommand(
-                id: "chat.clear",
-                title: "Clear Current Chat",
-                keywords: ["delete", "reset"],
-                perform: { [weak self] in self?.clearChat() }
-            ),
-            RTICommand(
-                id: "capture.screen",
-                title: "Capture Screen for AI",
-                subtitle: "⌘H",
-                keywords: ["screenshot", "ocr"],
-                perform: { ScreenshotManager.shared.captureAndAttach() }
-            ),
-            RTICommand(
-                id: "view.live",
-                title: "Show Live Transcript",
-                subtitle: "⌘⌥T",
-                keywords: ["console", "debug"],
-                perform: { [weak self] in self?.windows.showDebugConsole() }
-            ),
-            RTICommand(
-                id: "view.history",
-                title: "Session History…",
-                keywords: ["past", "old", "meetings"],
-                perform: { [weak self] in self?.windows.showSessionHistory() }
-            ),
-            RTICommand(
-                id: "settings.open",
-                title: "Open Settings…",
-                subtitle: "⌘,",
-                keywords: ["preferences", "config"],
-                perform: { [weak self] in self?.windows.openSettings() }
-            ),
-            RTICommand(
-                id: "settings.shortcuts",
-                title: "Keyboard Shortcuts…",
-                keywords: ["hotkeys", "bindings"],
-                perform: { [weak self] in self?.windows.showShortcuts() }
-            ),
-            RTICommand(
-                id: "app.quit",
-                title: "Quit RTI",
-                subtitle: "⌘Q",
-                perform: { NSApp.terminate(nil) }
-            )
+    /// All five notification-center observers registered at launch in one
+    /// call site so the wiring is visible in a single glance.
+    private func registerNotificationObservers() {
+        let observers: [(NSNotification.Name, Selector)] = [
+            (.openSessionDetail, #selector(handleOpenSessionDetailNotification(_:))),
+            (.rtiToggleOverlay, #selector(toggleOverlay)),
+            (.rtiClearChat, #selector(clearChat)),
+            (.rtiShowLiveTranscript, #selector(showDebugConsole)),
+            (.rtiShowSessionHistory, #selector(showSessionHistory)),
         ]
-
-        for mode in modes().modes {
-            let modeId = mode.id
-            let modeName = mode.name
-            cmds.append(RTICommand(
-                id: "mode.switch.\(modeId)",
-                title: "Switch to: \(modeName)",
-                keywords: ["mode", "preset"],
-                isAvailable: { modes().activeMode?.id != modeId },
-                perform: { modes().activeModeId = modeId }
-            ))
+        for (name, sel) in observers {
+            NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
         }
-
-        CommandRegistry.shared.replaceAll(cmds)
     }
 
     private func toggleInvisibility() {
@@ -262,8 +111,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleOverlay() { windows.toggleOverlay() }
     @objc private func showDebugConsole() { windows.showDebugConsole() }
     @objc private func showSessionHistory() { windows.showSessionHistory() }
-    @objc private func clearChat() { _clearChat() }
-    private func _clearChat() {
+    @objc private func clearChat() { Self.confirmThenClearChat() }
+
+    /// Shows a destructive-confirmation alert; on confirm, clears the
+    /// current session's chat messages. Static so `CommandPaletteFactory`
+    /// can reference it without a live AppDelegate instance.
+    static func confirmThenClearChat() {
         let alert = NSAlert()
         alert.messageText = "Clear current chat?"
         alert.informativeText = "This deletes the chat messages for the current session from the database. The transcript and audio recording are not affected."

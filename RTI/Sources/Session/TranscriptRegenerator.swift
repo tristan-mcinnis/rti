@@ -102,7 +102,7 @@ final class TranscriptRegenerator: ObservableObject {
         let tmp = url.deletingPathExtension().appendingPathExtension("md.tmp")
         try rendered.write(to: tmp, atomically: true, encoding: .utf8)
         if FileManager.default.fileExists(atPath: url.path) {
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+            _ = try FileManager.default.replaceItem(at: url, withItemAt: tmp)
         } else {
             try FileManager.default.moveItem(at: tmp, to: url)
         }
