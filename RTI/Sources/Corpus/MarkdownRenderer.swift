@@ -69,40 +69,10 @@ enum MarkdownRenderer {
         }.joined(separator: "\n")
     }
 
-    /// Convert a sequence of live JSONL events into rendered turns. Groups
-    /// consecutive same-speaker word events; notes become standalone turns
-    /// labelled `note`; chat events are skipped (chat is not part of the
-    /// transcript). Exposed as a pure function so the session-end render
-    /// pipeline can be tested without a running session.
+    /// Convert a sequence of live JSONL events into rendered turns.
+    /// Delegates to `TranscriptRender` so the format contract is centralised.
     static func turns(from events: [LiveJSONLWriter.Event]) -> [TurnLine] {
-        var out: [TurnLine] = []
-        var pending: (speaker: String, startMs: Int, text: String)?
-        func flush() {
-            if let p = pending {
-                out.append(TurnLine(speakerId: p.speaker, startMs: p.startMs, text: p.text))
-                pending = nil
-            }
-        }
-        for event in events {
-            switch event {
-            case .word(let ts, let speaker, let text, let isFinal, _, let channel):
-                guard isFinal else { continue }
-                let label = SpeakerLabelMapping.rawLabel(speaker: speaker, channel: channel)
-                if pending?.speaker == label {
-                    pending?.text += text
-                } else {
-                    flush()
-                    pending = (label, ts, text)
-                }
-            case .note(let ts, let text):
-                flush()
-                out.append(TurnLine(speakerId: "note", startMs: ts, text: text))
-            case .chat:
-                continue
-            }
-        }
-        flush()
-        return out
+        TranscriptRender.turns(from: events)
     }
 
     // MARK: - private

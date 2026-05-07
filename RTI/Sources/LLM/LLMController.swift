@@ -24,8 +24,7 @@ final class LLMController: ObservableObject {
         didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
     }
 
-    private let client = DeepSeekClient.shared
-    private var currentTask: Task<Void, Never>?
+    private let request: LLMRequest
     private var streamingEntryID: UUID?
 
     private static let smartModeKey = "rti.llm.smartMode"
@@ -43,7 +42,8 @@ final class LLMController: ObservableObject {
 
     private static let contextWindowSeconds: Double = 360
 
-    private init() {
+    init(request: LLMRequest = LLMRequest()) {
+        self.request = request
         self.smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
     }
 
@@ -81,8 +81,7 @@ final class LLMController: ObservableObject {
     }
 
     func cancel() {
-        currentTask?.cancel()
-        currentTask = nil
+        request.cancel()
         streaming = false
         reasoning = false
         pruneTrailingEmptyAssistant()
@@ -149,7 +148,7 @@ final class LLMController: ObservableObject {
     }
 
     private func performSend(userInput: String, action: String) {
-        currentTask?.cancel()
+        request.cancel()
         lastError = nil
         lastErrorIsAuth = false
 
@@ -210,44 +209,43 @@ final class LLMController: ObservableObject {
         streaming = true
         reasoning = false
         let thisEntryID = assistantEntry.id
-        currentTask = Task { [weak self] in
-            guard let self else { return }
-            let onReasoning: @Sendable (String) -> Void = { [weak self] _ in
-                Task { @MainActor in self?.reasoning = true }
-            }
-            do {
-                for try await delta in client.streamChat(messages: apiMessages, smart: smartMode, onReasoning: onReasoning) {
-                    if Task.isCancelled { return }
-                    // First content delta means reasoning is over.
-                    if self.reasoning { self.reasoning = false }
-                    self.appendToStreamingEntry(delta)
-                }
-            } catch {
-                if Task.isCancelled { return }
-                if let api = error as? DeepSeekError {
-                    self.lastError = api.userMessage
-                    self.lastErrorIsAuth = api.isAuth
-                } else {
-                    self.lastError = "\(error)"
-                }
-                NSLog("[RTI] LLM stream error: \(error)")
-                RTILog.log("stream error: \(error)", category: "deepseek")
-            }
-            guard self.streamingEntryID == thisEntryID else { return }
-            self.streaming = false
-            self.reasoning = false
-            self.pruneTrailingEmptyAssistant()
-            self.streamingEntryID = nil
-
-            // Re-read session ID after stream completes to avoid persisting
-            // the assistant response to a stale session.
-            let finalSessionId = SessionCoordinator.shared.currentSessionId ?? persistSessionId
-            if let finalSessionId,
-               let finalText = self.entries.last(where: { $0.id == thisEntryID })?.text,
-               !finalText.isEmpty {
-                self.persistMessage(sessionId: finalSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
-            }
+        let onReasoning: @Sendable (String) -> Void = { [weak self] _ in
+            Task { @MainActor in self?.reasoning = true }
         }
+
+        request.stream(
+            messages: apiMessages,
+            smart: smartMode,
+            onDelta: { [weak self] delta in
+                // First content delta means reasoning is over.
+                if self?.reasoning == true { self?.reasoning = false }
+                self?.appendToStreamingEntry(delta)
+            },
+            onError: { [weak self] errorMessage, isAuth in
+                self?.lastError = errorMessage
+                self?.lastErrorIsAuth = isAuth
+                NSLog("[RTI] LLM stream error: \(errorMessage)")
+                RTILog.log("stream error: \(errorMessage)", category: "deepseek")
+            },
+            onComplete: { [weak self] in
+                guard let self else { return }
+                guard self.streamingEntryID == thisEntryID else { return }
+                self.streaming = false
+                self.reasoning = false
+                self.pruneTrailingEmptyAssistant()
+                self.streamingEntryID = nil
+
+                // Re-read session ID after stream completes to avoid persisting
+                // the assistant response to a stale session.
+                let finalSessionId = SessionCoordinator.shared.currentSessionId ?? persistSessionId
+                if let finalSessionId,
+                   let finalText = self.entries.last(where: { $0.id == thisEntryID })?.text,
+                   !finalText.isEmpty {
+                    self.persistMessage(sessionId: finalSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
+                }
+            },
+            onReasoning: onReasoning
+        )
     }
 
     private func pruneTrailingEmptyAssistant() {

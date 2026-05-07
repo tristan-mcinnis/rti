@@ -29,14 +29,8 @@ final class SessionCoordinator: ObservableObject {
     /// cleared or replaced by a non-auth failure.
     @Published private(set) var lastErrorIsAuth: Bool = false
 
-    private let audio = AudioCaptureManager()
-    private let systemAudio = SystemAudioCapture()
-    private let wav = WAVWriter()
-    private var soniox: SonioxClient?
-    private var systemSoniox: SonioxClient?
-    private let micAggregator = TranscriptAggregator(channel: "mic")
-    private let systemAggregator = TranscriptAggregator(channel: "system")
-    private var noteEntries: [LiveEntry] = []
+    private let audioPipeline = AudioPipeline()
+    private let transcriptPipeline = TranscriptPipeline()
     private var delayedCompleteTask: Task<Void, Never>?
     /// Active session metadata held in memory — there's no `sessions` row
     /// to persist them. Set on launch, consumed by `CorpusManager.render-
@@ -47,11 +41,16 @@ final class SessionCoordinator: ObservableObject {
     private static let resumeWindowSeconds: TimeInterval = 300
 
     private init() {
-        micAggregator.onTurnsProcessed = { [weak self] turns in
-            self?.writeJSONL(turns, channel: "mic")
+        audioPipeline.onWords = { [weak self] words in
+            self?.handleWords(words)
         }
-        systemAggregator.onTurnsProcessed = { [weak self] turns in
-            self?.writeJSONL(turns, channel: "system")
+        audioPipeline.onSystemWords = { [weak self] words in
+            self?.handleSystemWords(words)
+        }
+        audioPipeline.onError = { [weak self] message, isAuth in
+            self?.lastError = message
+            self?.lastErrorIsAuth = isAuth
+            if self?.isRunning == true { self?.stopSession() }
         }
     }
 
@@ -88,10 +87,8 @@ final class SessionCoordinator: ObservableObject {
         startedAt = session.startedAt
         activeWavPath = session.wavPath
         activeModeId = session.modeId
-        micAggregator.reset()
-        systemAggregator.reset()
-        noteEntries = []
-        publishAggregatedState()
+        transcriptPipeline.reset()
+        publishState()
     }
 
     /// Insert a user-authored note into the current session's transcript at the
@@ -100,30 +97,10 @@ final class SessionCoordinator: ObservableObject {
     /// still flowing through the same TranscriptEntry pipeline.
     @discardableResult
     func insertNote(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let sessionId = currentSessionId else { return false }
-        guard let startedAt else { return false }
-        let offsetMs = Int(max(0, Date().timeIntervalSince(startedAt) * 1000))
-        // Open a JSONL stream lazily — notes can fire before the audio
-        // session has launched.
-        let writer = CorpusManager.shared.liveWriter(sessionId: sessionId)
-            ?? CorpusManager.shared.openLive(sessionId: sessionId)
-        writer.append(.note(ts: offsetMs, text: trimmed))
-        let entry = LiveEntry(
-            speakerId: "note",
-            text: trimmed,
-            startMs: offsetMs,
-            confidence: 1.0
-        )
-        noteEntries.append(entry)
-        if noteEntries.count > 500 {
-            noteEntries.removeFirst(noteEntries.count - 500)
-        }
-        liveEntries.append(entry)
-        if liveEntries.count > 500 {
-            liveEntries.removeFirst(liveEntries.count - 500)
-        }
-        return true
+        guard let sessionId = currentSessionId, let startedAt else { return false }
+        let ok = transcriptPipeline.insertNote(text, sessionId: sessionId, startedAt: startedAt)
+        if ok { publishState() }
+        return ok
     }
 
     func recentSessions(limit: Int = 10) -> [Session] {
@@ -186,9 +163,8 @@ final class SessionCoordinator: ObservableObject {
         if currentSessionId == id {
             currentSessionId = nil
             startedAt = nil
-            micAggregator.reset()
-            systemAggregator.reset()
-            publishAggregatedState()
+            transcriptPipeline.reset()
+            publishState()
         }
     }
 
@@ -210,7 +186,7 @@ final class SessionCoordinator: ObservableObject {
         // history of a session the user is about to resume.
         LLMController.shared.resetMemory()
 
-        audio.requestPermission { [weak self] granted in
+        audioPipeline.requestPermission { [weak self] granted in
             guard let self else { return }
             guard granted else {
                 self.lastError = "Microphone permission denied."
@@ -257,17 +233,14 @@ final class SessionCoordinator: ObservableObject {
         endedAt = nil
         activeWavPath = session.wavPath
         activeModeId = modeId
-        micAggregator.reset()
-        systemAggregator.reset()
-        noteEntries = []
-        publishAggregatedState()
+        transcriptPipeline.reset()
+        publishState()
         LLMController.shared.loadHistoryForCurrentSession()
     }
 
     private func launchSession() {
         let now = Date()
         let sessionId: String
-        let wavURL: URL
 
         // Mint a fresh session id if there's no in-memory one (or the
         // existing one belongs to an already-rendered markdown file we
@@ -279,83 +252,34 @@ final class SessionCoordinator: ObservableObject {
         } else {
             sessionId = UUID().uuidString
         }
-        wavURL = WAVWriter.defaultURL(for: sessionId)
-        activeWavPath = wavURL.path
+        activeWavPath = WAVWriter.defaultURL(for: sessionId).path
         activeModeId = ModeStore.shared.activeModeId
         currentSessionId = sessionId
         startedAt = now
         endedAt = nil
 
         do {
-            try wav.open(at: wavURL)
+            _ = try audioPipeline.prepare(sessionId: sessionId)
         } catch {
             lastError = "Couldn't create audio file: \(error)"
-            teardownOnFailure()
+            audioPipeline.abort()
             return
         }
 
-        let client = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
-        client.onWords = { [weak self] words in self?.handleWords(words) }
         // Phase 3 dual-write: open a JSONL stream for this session so live
         // events land in the on-disk record as well as in SQLite.
-        if let sid = currentSessionId {
-            CorpusManager.shared.openLive(sessionId: sid)
-        }
-        client.onError = { [weak self] failure, didOpen in
-            guard let self else { return }
-            self.lastError = failure.userMessage(didOpen: didOpen)
-            self.lastErrorIsAuth = failure.isAuth
-            // A terminal Soniox failure means transcription is done; tear down audio
-            // so isRunning flips off and the UI stops showing the live state.
-            if self.isRunning { self.stopSession() }
-        }
-        client.connect()
-        self.soniox = client
+        CorpusManager.shared.openLive(sessionId: sessionId)
 
-        audio.onPCMBuffer = { [weak self] buffer in self?.handleAudioBuffer(buffer) }
         do {
-            try audio.start()
+            try audioPipeline.start()
         } catch {
             lastError = "Audio start failed: \(error)"
-            teardownOnFailure()
+            audioPipeline.abort()
             return
         }
 
-        // System audio: non-fatal if it fails — mic-only transcription still works.
-        Task { @MainActor [weak self] in
-            guard let self, self.isRunning else { return }
-            let sysClient = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
-            sysClient.onWords = { [weak self] words in self?.handleSystemWords(words) }
-            sysClient.onError = { [weak self] failure, didOpen in
-                guard let self else { return }
-                // System audio Soniox failure is non-fatal — mic keeps running.
-                let message = failure.userMessage(didOpen: didOpen)
-                NSLog("[RTI] system audio Soniox error: \(message)")
-                RTILog.log("system soniox error — \(message)", category: "soniox")
-            }
-            sysClient.connect()
-            self.systemSoniox = sysClient
-
-            self.systemAudio.onPCMBuffer = { [weak self] buffer in self?.handleSystemAudioBuffer(buffer) }
-            self.systemAudio.onError = { [weak self] msg in
-                NSLog("[RTI] system audio capture error: \(msg)")
-                RTILog.log("system capture error — \(msg)", category: "audio")
-            }
-            do {
-                try await self.systemAudio.start()
-            } catch {
-                NSLog("[RTI] system audio start failed: \(error)")
-                RTILog.log("system audio start failed — \(error)", category: "audio")
-            }
-        }
-
-        currentSessionId = sessionId
-        startedAt = now
-        endedAt = nil
-        micAggregator.reset()
-        systemAggregator.reset()
-        noteEntries = []
-        publishAggregatedState()
+        transcriptPipeline.reset()
+        publishState()
         isRunning = true
         LLMController.shared.loadHistoryForCurrentSession()
     }
@@ -374,10 +298,7 @@ final class SessionCoordinator: ObservableObject {
         // async completion handler that we intentionally do not await.
         // Prompt stop is preferred; a new session starting would create
         // a fresh SCStream that is independent of the old one.
-        audio.stop()
-        systemAudio.stop()
-        soniox?.finalize()
-        systemSoniox?.finalize()
+        audioPipeline.finalize()
         isRunning = false
 
         let endedAt = Date()
@@ -392,11 +313,7 @@ final class SessionCoordinator: ObservableObject {
     private func completeStop(sessionId: String, endedAt: Date) {
         guard currentSessionId == sessionId else { return }
 
-        soniox?.disconnect()
-        soniox = nil
-        systemSoniox?.disconnect()
-        systemSoniox = nil
-        wav.close()
+        audioPipeline.finish()
 
         // Capture for the top widget's frozen duration display.
         self.endedAt = endedAt
@@ -404,10 +321,8 @@ final class SessionCoordinator: ObservableObject {
         // Keep currentSessionId/startedAt set: chat turns can continue against
         // the same session after audio stops. A fresh session is only minted on
         // next app launch (via bootstrapChatSession) past the 5-minute window.
-        micAggregator.reset()
-        systemAggregator.reset()
-        noteEntries = []
-        publishAggregatedState()
+        transcriptPipeline.reset()
+        publishState()
 
         triggerSummaryIfNeeded(sessionId: sessionId)
     }
@@ -439,8 +354,8 @@ final class SessionCoordinator: ObservableObject {
         }
 
         Task { @MainActor in
-            await SessionTitleController.shared.generateTitle(for: sessionId)
-            await SummaryController.shared.generateSummary(for: sessionId)
+            SessionTitleController.shared.generateTitle(for: sessionId)
+            SummaryController.shared.generateSummary(for: sessionId)
             await CorpusManager.shared.renderSession(
                 sessionId: sessionId,
                 startedAt: renderStartedAt,
@@ -455,13 +370,7 @@ final class SessionCoordinator: ObservableObject {
     }
 
     private func teardownOnFailure() {
-        audio.stop()
-        systemAudio.stop()
-        soniox?.disconnect()
-        soniox = nil
-        systemSoniox?.disconnect()
-        systemSoniox = nil
-        wav.close()
+        audioPipeline.abort()
     }
 
     /// Synchronous teardown invoked from applicationWillTerminate. Soniox is
@@ -470,13 +379,7 @@ final class SessionCoordinator: ObservableObject {
     /// last second or two will be lost, which beats truncating the WAV header.
     func emergencyShutdown() {
         guard isRunning else { return }
-        audio.stop()
-        systemAudio.stop()
-        soniox?.disconnect()
-        soniox = nil
-        systemSoniox?.disconnect()
-        systemSoniox = nil
-        wav.close()
+        audioPipeline.abort()
         if let sid = currentSessionId {
             // Best-effort: flush JSONL so on next launch the orphan
             // recovery path can present this session for re-render.
@@ -485,56 +388,20 @@ final class SessionCoordinator: ObservableObject {
         isRunning = false
     }
 
-    private func handleAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        wav.append(buffer)
-
-        guard let int16 = buffer.int16ChannelData else { return }
-        let frameLength = Int(buffer.frameLength)
-        let byteCount = frameLength * MemoryLayout<Int16>.size
-        let data = Data(bytes: int16[0], count: byteCount)
-        soniox?.sendAudio(data)
-    }
-
-    private func handleSystemAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let int16 = buffer.int16ChannelData else { return }
-        let frameLength = Int(buffer.frameLength)
-        let byteCount = frameLength * MemoryLayout<Int16>.size
-        let data = Data(bytes: int16[0], count: byteCount)
-        systemSoniox?.sendAudio(data)
-    }
-
     private func handleSystemWords(_ words: [SonioxWord]) {
         guard currentSessionId != nil else { return }
-        systemAggregator.process(words)
-        publishAggregatedState()
+        transcriptPipeline.process(words: words, channel: "system")
+        publishState()
     }
 
     private func handleWords(_ words: [SonioxWord]) {
         guard currentSessionId != nil else { return }
-        micAggregator.process(words)
-        publishAggregatedState()
+        transcriptPipeline.process(words: words, channel: "mic")
+        publishState()
     }
 
-
-    private func publishAggregatedState() {
-        let parts = [micAggregator.interimText, systemAggregator.interimText].compactMap { $0 }.filter { !$0.isEmpty }
-        interimLine = parts.isEmpty ? nil : parts.joined(separator: "  ")
-        liveEntries = (noteEntries + micAggregator.entries + systemAggregator.entries)
-            .sorted(by: { $0.startMs < $1.startMs })
-    }
-
-    private func writeJSONL(_ turns: [SpeakerTurn], channel: String) {
-        guard let sessionId = currentSessionId,
-              let writer = CorpusManager.shared.liveWriter(sessionId: sessionId) else { return }
-        for turn in turns {
-            writer.append(.word(
-                ts: turn.startMs,
-                speaker: turn.speaker,
-                text: turn.text,
-                isFinal: true,
-                confidence: turn.confidence,
-                channel: channel
-            ))
-        }
+    private func publishState() {
+        interimLine = transcriptPipeline.interimLine
+        liveEntries = transcriptPipeline.liveEntries
     }
 }

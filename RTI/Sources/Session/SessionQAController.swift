@@ -8,9 +8,11 @@ final class SessionQAController: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var messages: [QAEntry] = []
 
-    private let client = DeepSeekClient.shared
+    private let request: LLMRequest
 
-    private init() {}
+    init(request: LLMRequest = LLMRequest()) {
+        self.request = request
+    }
 
     struct QAEntry: Identifiable {
         let id = UUID()
@@ -25,7 +27,7 @@ final class SessionQAController: ObservableObject {
         isGenerating = false
     }
 
-    func ask(question: String, sessionId: String) async {
+    func ask(question: String, sessionId: String) {
         guard !isGenerating else { return }
         isGenerating = true
         lastError = nil
@@ -56,21 +58,24 @@ final class SessionQAController: ObservableObject {
         messages.append(assistantEntry)
         let entryId = assistantEntry.id
 
-        defer { isGenerating = false }
-
-        do {
-            for try await delta in client.streamChat(messages: apiMessages, smart: false) {
-                if let idx = messages.firstIndex(where: { $0.id == entryId }) {
-                    messages[idx].text += delta
+        request.stream(
+            messages: apiMessages,
+            smart: false,
+            onDelta: { [weak self] delta in
+                if let idx = self?.messages.firstIndex(where: { $0.id == entryId }) {
+                    self?.messages[idx].text += delta
                 }
+            },
+            onError: { [weak self] errorMessage, _ in
+                self?.lastError = errorMessage
+                if let idx = self?.messages.firstIndex(where: { $0.id == entryId }) {
+                    self?.messages.remove(at: idx)
+                }
+            },
+            onComplete: { [weak self] in
+                self?.isGenerating = false
             }
-        } catch {
-            lastError = (error as? DeepSeekError)?.userMessage ?? "Q&A failed: \(error)"
-            NSLog("[RTI] SessionQA error: \(error)")
-            if let idx = messages.firstIndex(where: { $0.id == entryId }) {
-                messages.remove(at: idx)
-            }
-        }
+        )
     }
 
     private func buildContext(sessionId: String) -> String {

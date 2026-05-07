@@ -327,7 +327,7 @@ struct SessionDetailView: View {
                     .font(RTIDesign.Font.bodySmall)
                     .foregroundStyle(RTIDesign.Color.textTertiary)
                 Button("Generate Summary") {
-                    Task { await generateSummary() }
+                    generateSummary()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -899,7 +899,7 @@ struct SessionDetailView: View {
 
     private func regenerateSummary() {
         Task {
-            await generateSummary()
+            generateSummary()
             await MainActor.run { toast.show("Summary regenerated") }
         }
     }
@@ -913,8 +913,8 @@ struct SessionDetailView: View {
         SessionExport.exportToFile(sessionId: sessionId)
     }
 
-    private func generateSummary() async {
-        await SummaryController.shared.generateSummary(for: sessionId)
+    private func generateSummary() {
+        SummaryController.shared.generateSummary(for: sessionId)
         summary = SummaryController.shared.loadSummary(for: sessionId)
     }
 
@@ -927,7 +927,7 @@ struct SessionDetailView: View {
             withAnimation(.easeInOut(duration: 0.18)) { selectedTab = .qa }
         }
         Task {
-            await qaController.ask(question: capped, sessionId: sessionId)
+            qaController.ask(question: capped, sessionId: sessionId)
         }
     }
 

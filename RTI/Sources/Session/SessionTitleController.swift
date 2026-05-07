@@ -7,14 +7,15 @@ final class SessionTitleController: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
 
-    private let client = DeepSeekClient.shared
-    private var currentTask: Task<Void, Never>?
+    private let request: LLMRequest
     /// Per-session in-memory cache. `CorpusManager.renderSession` reads
     /// the title here at session-end and embeds it in the markdown
     /// frontmatter; once the file is written the cache entry is purged.
     private var cache: [String: String] = [:]
 
-    private init() {}
+    init(request: LLMRequest = LLMRequest()) {
+        self.request = request
+    }
 
     private static let titlePrompt = """
     You are an assistant that creates concise meeting titles from transcript text.
@@ -38,50 +39,38 @@ final class SessionTitleController: ObservableObject {
     """
 
     func cancel() {
-        currentTask?.cancel()
-        currentTask = nil
+        request.cancel()
         isGenerating = false
     }
 
-    func generateTitle(for sessionId: String) async {
+    func generateTitle(for sessionId: String) {
         guard !isGenerating else { return }
         cancel()
         isGenerating = true
         lastError = nil
 
-        let task = Task { [weak self] in
-            guard let self else { return }
-            await self._performGeneration(sessionId: sessionId)
-        }
-        currentTask = task
-        await task.value
-        currentTask = nil
-        isGenerating = false
-    }
-
-    private func _performGeneration(sessionId: String) async {
         let transcript = TranscriptContext.text(forSessionId: sessionId)
-        if Task.isCancelled { return }
-        guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            isGenerating = false
+            return
+        }
 
         let messages = [DeepSeekMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
-        let fullResponse: String
 
-        do {
-            fullResponse = try await client.collectStreamedResponse(messages: messages, smart: false)
-        } catch is CancellationError {
-            return
-        } catch {
-            if Task.isCancelled { return }
-            lastError = (error as? DeepSeekError)?.userMessage ?? "Title generation failed: \(error)"
-            NSLog("[RTI] SessionTitle stream error: \(error)")
-            return
-        }
-
-        if Task.isCancelled { return }
-
-        let title = Self.parseFirstTitle(from: fullResponse) ?? Self.fallbackTitle
-        cache[sessionId] = title
+        request.collect(
+            messages: messages,
+            smart: false,
+            onResult: { [weak self] fullResponse in
+                guard let self else { return }
+                let title = Self.parseFirstTitle(from: fullResponse) ?? Self.fallbackTitle
+                self.cache[sessionId] = title
+                self.isGenerating = false
+            },
+            onError: { [weak self] errorMessage, _ in
+                self?.lastError = errorMessage
+                self?.isGenerating = false
+            }
+        )
     }
 
     /// In-memory lookup used by `CorpusManager` and any UI that wants the

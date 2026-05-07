@@ -7,8 +7,7 @@ final class SummaryController: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
 
-    private let client = DeepSeekClient.shared
-    private var currentTask: Task<Void, Never>?
+    private let request: LLMRequest
     /// Per-session in-memory cache. Keyed by session id, populated on
     /// generation, consumed by `CorpusManager.renderSession` at session-end
     /// and by `CorpusBackedStore.summary(forSessionId:)` while a session is
@@ -16,14 +15,15 @@ final class SummaryController: ObservableObject {
     /// cache is purged after a successful render.
     private var cache: [String: SessionSummary] = [:]
 
-    private init() {}
+    init(request: LLMRequest = LLMRequest()) {
+        self.request = request
+    }
 
     /// Cancel an in-flight summary generation. Safe to call when nothing is
     /// running. Flips isGenerating immediately so the UI returns to its
     /// empty state without waiting for the URLSession to unwind.
     func cancel() {
-        currentTask?.cancel()
-        currentTask = nil
+        request.cancel()
         isGenerating = false
     }
 
@@ -60,66 +60,52 @@ final class SummaryController: ObservableObject {
     Transcript:
     """
 
-    func generateSummary(for sessionId: String) async {
+    func generateSummary(for sessionId: String) {
         guard !isGenerating else { return }
         cancel()
         isGenerating = true
         lastError = nil
 
-        let task = Task { [weak self] in
-            guard let self else { return }
-            await self._performGeneration(sessionId: sessionId)
-        }
-        currentTask = task
-        await task.value
-        currentTask = nil
-        isGenerating = false
-    }
-
-    private func _performGeneration(sessionId: String) async {
         let transcript = TranscriptContext.text(forSessionId: sessionId)
-        if Task.isCancelled { return }
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             lastError = "No transcript content to summarize."
+            isGenerating = false
             return
         }
 
         let fullPrompt = Self.summaryPrompt + "\n" + transcript
         let messages = [DeepSeekMessage(role: "user", content: fullPrompt)]
 
-        let fullResponse: String
-        do {
-            fullResponse = try await client.collectStreamedResponse(messages: messages, smart: true)
-        } catch is CancellationError {
-            return
-        } catch {
-            if Task.isCancelled { return }
-            lastError = (error as? DeepSeekError)?.userMessage ?? "Summary generation failed: \(error)"
-            NSLog("[RTI] SummaryController stream error: \(error)")
-            return
-        }
-
-        if Task.isCancelled { return }
-
-        guard !fullResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            lastError = "Summary generation returned empty response."
-            return
-        }
-
-        let parsed = Self.parseSections(from: fullResponse)
-        let combinedFollowUps = SummaryFormatting.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"])
-
-        cache[sessionId] = SessionSummary(
-            id: UUID().uuidString,
-            sessionId: sessionId,
-            summaryText: fullResponse,
-            actionItems: parsed["Action Items"],
-            keyTopics: parsed["Key Topics"],
-            decisions: parsed["Decisions Made"],
-            followUps: combinedFollowUps,
-            rawResponse: fullResponse,
-            createdAt: Date(),
-            regeneratedAt: nil
+        request.collect(
+            messages: messages,
+            smart: true,
+            onResult: { [weak self] fullResponse in
+                guard let self else { return }
+                guard !fullResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.lastError = "Summary generation returned empty response."
+                    self.isGenerating = false
+                    return
+                }
+                let parsed = Self.parseSections(from: fullResponse)
+                let combinedFollowUps = SummaryFormatting.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"])
+                self.cache[sessionId] = SessionSummary(
+                    id: UUID().uuidString,
+                    sessionId: sessionId,
+                    summaryText: fullResponse,
+                    actionItems: parsed["Action Items"],
+                    keyTopics: parsed["Key Topics"],
+                    decisions: parsed["Decisions Made"],
+                    followUps: combinedFollowUps,
+                    rawResponse: fullResponse,
+                    createdAt: Date(),
+                    regeneratedAt: nil
+                )
+                self.isGenerating = false
+            },
+            onError: { [weak self] errorMessage, _ in
+                self?.lastError = errorMessage
+                self?.isGenerating = false
+            }
         )
     }
 

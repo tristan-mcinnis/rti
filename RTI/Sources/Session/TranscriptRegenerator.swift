@@ -82,20 +82,17 @@ final class TranscriptRegenerator: ObservableObject {
         baseEntry: CorpusEntry,
         words: [SonioxWord]
     ) throws {
-        let turns = SpeakerTurn.collapse(words)
-        let lines = turns.map { run -> String in
-            let stamp = formatTimestamp(run.startMs)
-            return "[\(SpeakerLabelMapping.rawLabel(speaker: run.speaker)) \(stamp)] \(run.text)"
-        }
+        let turns = TranscriptRender.turns(from: words)
+        let renderedTranscript = TranscriptRender.render(turns: turns)
         // Replace everything from `## Transcript` onward in the body.
         var body = baseEntry.body
         let marker = "## Transcript"
         if let r = body.range(of: marker) {
             body = String(body[..<r.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             if !body.isEmpty { body += "\n\n" }
-            body += "## Transcript\n" + lines.joined(separator: "\n")
+            body += "## Transcript\n" + renderedTranscript
         } else {
-            body += (body.hasSuffix("\n") ? "" : "\n") + "\n## Transcript\n" + lines.joined(separator: "\n")
+            body += (body.hasSuffix("\n") ? "" : "\n") + "\n## Transcript\n" + renderedTranscript
         }
 
         var fm = baseEntry.frontmatter
@@ -109,10 +106,5 @@ final class TranscriptRegenerator: ObservableObject {
         } else {
             try FileManager.default.moveItem(at: tmp, to: url)
         }
-    }
-
-
-    nonisolated private static func formatTimestamp(_ ms: Int) -> String {
-        TimeFormat.stampMs(ms)
     }
 }
