@@ -23,14 +23,7 @@ final class WindowCoordinator {
         controller.show()
         overlayController = controller
 
-        let top = TopWidgetWindowController(onTap: { [weak self] in
-            guard let self, let overlay = self.overlayController else { return }
-            if overlay.isVisible {
-                overlay.hide()
-            } else {
-                overlay.showBelow(pillFrame: self.topWidget?.windowFrame ?? .zero)
-            }
-        })
+        let top = TopWidgetWindowController()
         top.show()
         topWidget = top
 

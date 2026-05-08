@@ -5,11 +5,11 @@ import SwiftUI
 final class TopWidgetWindowController {
     private let window: NSPanel
 
-    static let pillHeight: CGFloat = 38 + 8 // content + padding
+    static let pillHeight: CGFloat = 36 + 8 // content + padding
     static let chatGap: CGFloat = 6
 
-    init(onTap: @escaping () -> Void) {
-        let size = NSSize(width: 185, height: Self.pillHeight)
+    init() {
+        let size = NSSize(width: 140, height: Self.pillHeight)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -27,7 +27,7 @@ final class TopWidgetWindowController {
         panel.isMovable = false
         panel.isMovableByWindowBackground = false
 
-        panel.contentView = NSHostingView(rootView: TopWidgetView(onTap: onTap))
+        panel.contentView = NSHostingView(rootView: TopWidgetView())
 
         self.window = panel
         positionOnActiveScreen()
