@@ -3,6 +3,11 @@ import SwiftUI
 
 struct SessionDetailView: View {
     let sessionId: String
+    /// Search query the user came from (typically command palette → session
+    /// row). When non-nil, the view auto-selects the Transcript tab,
+    /// highlights matched tokens in transcript text, and scrolls the first
+    /// matching paragraph into view.
+    let highlightQuery: String?
 
     @State private var summary: SessionSummary?
     @State private var transcripts: [TranscriptEntry] = []
@@ -11,7 +16,19 @@ struct SessionDetailView: View {
     @State private var selectedTab: Tab = .summary
     @State private var qaInput = ""
     @State private var jumpToBottomToken = UUID()
+    @State private var pendingHighlightScroll: Bool = false
     @AppStorage(RTIDesign.Density.storageKey) private var densityRaw: String = RTIDesign.Density.comfortable.rawValue
+
+    init(sessionId: String, highlightQuery: String? = nil) {
+        self.sessionId = sessionId
+        let trimmed = highlightQuery?.trimmingCharacters(in: .whitespaces)
+        self.highlightQuery = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        // Default Transcript tab when arriving from a search — that's the
+        // surface the user wanted to read.
+        let initialTab: Tab = (trimmed?.isEmpty == false) ? .transcript : .summary
+        _selectedTab = State(initialValue: initialTab)
+        _pendingHighlightScroll = State(initialValue: trimmed?.isEmpty == false)
+    }
 
     @ObservedObject private var qaController = SessionQAController.shared
     @ObservedObject private var summaryController = SummaryController.shared
@@ -389,6 +406,9 @@ struct SessionDetailView: View {
                            FileManager.default.fileExists(atPath: wavPath) {
                             realtimeQualityCallout
                         }
+                        if let q = highlightQuery {
+                            highlightBanner(query: q)
+                        }
                         ForEach(groupedTranscripts) { group in
                             transcriptRow(group)
                                 .id(group.id)
@@ -406,6 +426,10 @@ struct SessionDetailView: View {
                         }
                     }
                 }
+                .onChange(of: transcripts.count) { _, _ in
+                    scrollToFirstHighlightMatch(using: proxy)
+                }
+                .onAppear { scrollToFirstHighlightMatch(using: proxy) }
             }
 
             StickySubheader(
@@ -458,13 +482,15 @@ struct SessionDetailView: View {
     private func transcriptRow(_ group: TranscriptGroup) -> some View {
         let isNote = SpeakerLabels.isNote(group.speakerId)
         let groupPad = density.scaled(10)
+        let trimmed = group.text.trimmingCharacters(in: .whitespaces)
+        let attr = TranscriptHighlight.attributed(trimmed, query: highlightQuery)
         return VStack(alignment: .leading, spacing: RTIDesign.Spacing.xs) {
             HStack(spacing: RTIDesign.Spacing.sm) {
                 SpeakerChip(raw: group.speakerId)
                 timestampLink(ms: group.startMs)
                 Spacer()
             }
-            Text(group.text.trimmingCharacters(in: .whitespaces))
+            Text(attr)
                 .font(RTIDesign.Font.body)
                 .italic(isNote)
                 .foregroundStyle(RTIDesign.Color.textPrimary)
@@ -484,6 +510,50 @@ struct SessionDetailView: View {
                             .frame(width: 2)
                     }
                 }
+        }
+    }
+
+    @ViewBuilder
+    private func highlightBanner(query: String) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(RTIDesign.Color.accentText)
+            Text("Showing matches for ").foregroundStyle(RTIDesign.Color.textSecondary)
+                + Text("\u{201C}\(query)\u{201D}").foregroundStyle(RTIDesign.Color.textPrimary).fontWeight(.medium)
+            Spacer()
+        }
+        .font(RTIDesign.Font.caption)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
+                .fill(Color.yellow.opacity(0.10))
+        )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
+                .stroke(Color.yellow.opacity(0.25), lineWidth: 1)
+        }
+    }
+
+    private func scrollToFirstHighlightMatch(using proxy: ScrollViewProxy) {
+        guard pendingHighlightScroll,
+              let q = highlightQuery,
+              !groupedTranscripts.isEmpty else { return }
+        let texts = groupedTranscripts.map(\.text)
+        guard let idx = TranscriptHighlight.firstMatchIndex(in: texts, query: q) else {
+            // No transcript match — likely the hit was in summary/chat. Stop
+            // trying so we don't keep scrolling on unrelated content updates.
+            pendingHighlightScroll = false
+            return
+        }
+        let target = groupedTranscripts[idx].id
+        // Defer one runloop tick so the LazyVStack has rendered the row.
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.20)) {
+                proxy.scrollTo(target, anchor: .center)
+            }
+            pendingHighlightScroll = false
         }
     }
 

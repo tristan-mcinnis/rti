@@ -83,6 +83,11 @@ targets:
       - path: Sources/LLM/LLMError.swift
       - path: Sources/Soniox/SonioxFailure.swift
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
+      - path: Sources/UI/CommandPalette/PaletteSearch.swift
+      - path: Sources/UI/CommandPalette/SessionDetailRequest.swift
+      - path: Sources/UI/SessionDetail/TranscriptHighlight.swift
+      - path: Sources/Database/Models/Session.swift
+      - path: Sources/Session/SessionSearchResult.swift
       - path: Sources/Corpus/CorpusEntry.swift
       - path: Sources/Corpus/CorpusReader.swift
       - path: Sources/Corpus/CorpusWriter.swift

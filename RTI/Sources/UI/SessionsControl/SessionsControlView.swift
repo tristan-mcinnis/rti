@@ -24,6 +24,10 @@ struct SessionsControlView: View {
     @State private var selectedTab: Tab
     /// Non-nil when the Sessions tab has pushed into a session detail view.
     @State private var sessionNavId: String?
+    /// Optional FTS query the user came from (palette → session). Forwarded
+    /// to `SessionDetailView` so it can highlight matched terms in the
+    /// transcript and auto-scroll to the first hit.
+    @State private var sessionHighlightQuery: String?
 
     init(initialTab: Tab = .liveTranscript) {
         _selectedTab = State(initialValue: initialTab)
@@ -51,13 +55,15 @@ struct SessionsControlView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSessionDetail)) { notif in
-            guard let id = notif.object as? String else { return }
+            guard let parsed = SessionDetailRequest.extract(from: notif.object) else { return }
             selectedTab = .sessions
-            sessionNavId = id
+            sessionNavId = parsed.id
+            sessionHighlightQuery = parsed.query
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiShowSessionHistory)) { _ in
             selectedTab = .sessions
             sessionNavId = nil
+            sessionHighlightQuery = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiShowLiveTranscript)) { _ in
             selectedTab = .liveTranscript
@@ -80,7 +86,10 @@ struct SessionsControlView: View {
 
         case .sessions:
             if let sessionId = sessionNavId {
-                SessionDetailView(sessionId: sessionId)
+                SessionDetailView(
+                    sessionId: sessionId,
+                    highlightQuery: sessionHighlightQuery
+                )
             } else {
                 SessionHistoryView()
             }

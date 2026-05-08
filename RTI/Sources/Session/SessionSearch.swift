@@ -1,12 +1,6 @@
 import Foundation
 import GRDB
 
-struct SessionSearchResult: Identifiable {
-    let id: String
-    let session: Session
-    let snippet: String
-}
-
 enum SessionSearch {
     static func search(query: String, limit: Int = 50) -> [SessionSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
