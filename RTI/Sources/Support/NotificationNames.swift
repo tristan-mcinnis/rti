@@ -8,6 +8,7 @@ extension Notification.Name {
     static let rtiOverlaySizeChanged = Notification.Name("rti.overlaySizeChanged")
     static let rtiShowLiveTranscript = Notification.Name("rti.showLiveTranscript")
     static let rtiShowSessionHistory = Notification.Name("rti.showSessionHistory")
+    static let rtiOrphansDetected = Notification.Name("rti.orphansDetected")
 }
 
 enum OverlayAppearanceDefaults {

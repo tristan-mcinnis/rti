@@ -46,12 +46,15 @@ final class DeepSeekClient {
         // take much longer to arrive than chat.  URLRequest.timeoutInterval is
         // ignored by the async URLSession API — we use the group below instead.
         let streamTimeoutSeconds: Double = smart ? 120 : 60
+        // Fast-fail on missing API key before encoding the request body.
+        guard !apiKey.isEmpty else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DeepSeekError.missingAPIKey)
+            }
+        }
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    if apiKey.isEmpty {
-                        throw DeepSeekError.missingAPIKey
-                    }
                     let body = DeepSeekRequest(model: model, messages: messages, stream: true, temperature: temperature, thinking: thinking)
                     var request = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
                     request.httpMethod = "POST"

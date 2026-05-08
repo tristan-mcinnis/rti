@@ -178,7 +178,8 @@ final class SonioxClient: WebSocketDelegate {
     }
 
     private func openSocket() {
-        let request = URLRequest(url: url)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15 // WebSocket connect timeout
         let ws = WebSocket(request: request)
         ws.delegate = self
         lock.lock()

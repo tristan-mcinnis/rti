@@ -160,8 +160,12 @@ final class CorpusManager {
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         ) else { return }
-        for url in urls where url.pathExtension == "jsonl" {
+        let orphans = urls.filter { $0.pathExtension == "jsonl" }
+        for url in orphans {
             NSLog("[RTI] CorpusManager: orphaned live JSONL at \(url.path)")
+        }
+        if !orphans.isEmpty {
+            NotificationCenter.default.post(name: .rtiOrphansDetected, object: orphans)
         }
     }
 
