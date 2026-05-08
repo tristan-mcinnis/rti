@@ -160,6 +160,7 @@ final class SessionCoordinator: ObservableObject {
         }
         // Drop any orphaned live JSONL.
         CorpusManager.shared.deleteLive(sessionId: id)
+        NotificationCenter.default.post(name: .rtiSessionsChanged, object: nil)
         if currentSessionId == id {
             currentSessionId = nil
             startedAt = nil
@@ -302,6 +303,7 @@ final class SessionCoordinator: ObservableObject {
         isRunning = false
 
         let endedAt = Date()
+        self.endedAt = endedAt   // freeze widget timer immediately
         delayedCompleteTask?.cancel()
         delayedCompleteTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -363,6 +365,7 @@ final class SessionCoordinator: ObservableObject {
                 wavPath: renderWavPath,
                 modeId: renderModeId
             )
+            NotificationCenter.default.post(name: .rtiSessionsChanged, object: nil)
             // Active metadata done with — clear it after the render.
             self.activeWavPath = nil
             self.activeModeId = nil

@@ -2,8 +2,9 @@ import SwiftUI
 
 /// A minimal recording indicator pill shown in the top-right corner of the
 /// screen. When idle it displays a subtle grey dot; when recording it shows
-/// a red pulsing dot and an elapsed timer. Tap anywhere on the pill to start
-/// or stop a session.
+/// a red pulsing dot and a live elapsed timer. After stopping, the timer
+/// freezes at the final duration. Tap anywhere on the pill to start or stop
+/// a session.
 struct TopWidgetView: View {
     @ObservedObject private var coordinator = SessionCoordinator.shared
     @ObservedObject private var llm = LLMController.shared
@@ -14,31 +15,31 @@ struct TopWidgetView: View {
     private let tick = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 8) {
             Button(action: { coordinator.toggleSession() }) {
                 HStack(spacing: 6) {
                     indicatorDot
 
-                    if coordinator.isRunning, let label = timerLabel {
+                    if let label = timerLabel {
                         Text(label)
                             .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.white.opacity(coordinator.isRunning ? 0.95 : 0.55))
                             .monospacedDigit()
                     }
                 }
-                .padding(.leading, coordinator.isRunning ? 11 : 10)
-                .padding(.trailing, coordinator.isRunning ? 11 : 10)
+                .padding(.horizontal, 10)
                 .frame(height: 36)
             }
             .buttonStyle(.plain)
             .background(
-                Capsule()
+                RoundedRectangle(cornerRadius: RTIDesign.Radius.md, style: .continuous)
                     .fill(Color.black.opacity(0.65))
                     .overlay(
-                        Capsule()
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.md, style: .continuous)
                             .stroke(Color.white.opacity(0.10), lineWidth: 1)
                     )
             )
+            .help(coordinator.isRunning ? "Stop recording" : "Start recording")
 
             if llm.smartMode {
                 Text("Smart")
@@ -82,7 +83,15 @@ struct TopWidgetView: View {
 
     private var timerLabel: String? {
         guard let started = coordinator.startedAt else { return nil }
-        return TopWidgetView.format(now.timeIntervalSince(started))
+        let endDate: Date
+        if coordinator.isRunning {
+            endDate = now
+        } else if let ended = coordinator.endedAt {
+            endDate = ended
+        } else {
+            return nil
+        }
+        return TopWidgetView.format(endDate.timeIntervalSince(started))
     }
 
     static func format(_ interval: TimeInterval) -> String {
