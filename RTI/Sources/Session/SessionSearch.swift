@@ -8,7 +8,6 @@ struct SessionSearchResult: Identifiable {
 }
 
 enum SessionSearch {
-    @MainActor
     static func search(query: String, limit: Int = 50) -> [SessionSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
@@ -48,8 +47,12 @@ enum SessionSearch {
         }
 
         // Resolve session ids to Session structs via the markdown corpus.
+        // Build a lookup once to avoid O(N × M) directory scans.
+        let sessionById = Dictionary(
+            uniqueKeysWithValues: CorpusBackedStore.allMarkdownSessions().map { ($0.id, $0) }
+        )
         return orderedSessionIds.compactMap { id in
-            guard let session = CorpusBackedStore.session(id: id) else { return nil }
+            guard let session = sessionById[id] else { return nil }
             let snip = bestSnippetBySession[id] ?? ""
             return SessionSearchResult(id: id, session: session, snippet: snip)
         }

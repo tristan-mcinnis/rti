@@ -3,7 +3,6 @@ import Foundation
 /// Read-only file I/O for the markdown Corpus. Lists files, reads entries,
 /// and resolves session ids to URLs. No parsing beyond frontmatter — the
 /// caller decides what to do with the `CorpusEntry`.
-@MainActor
 enum CorpusCatalog {
 
     /// Every markdown file in the corpus, sorted newest-first by mtime.

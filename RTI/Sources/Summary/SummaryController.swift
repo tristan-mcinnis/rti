@@ -133,7 +133,7 @@ final class SummaryController: ObservableObject {
         loadSummary(for: sessionId) != nil
     }
 
-    static func parseSections(from markdown: String) -> [String: String] {
+    nonisolated static func parseSections(from markdown: String) -> [String: String] {
         var result: [String: String] = [:]
         let lines = markdown.components(separatedBy: "\n")
         var currentSection: String? = nil

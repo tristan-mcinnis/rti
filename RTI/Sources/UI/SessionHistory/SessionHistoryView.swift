@@ -7,7 +7,7 @@ struct SessionHistoryView: View {
     @State private var searchResults: [SessionSearchResult] = []
     @State private var isSearching = false
     @State private var sortOrder: SortOrder = .newest
-    @State private var searchTask: Task<Void, Never>?
+    @State private var searchDebounceItem: DispatchWorkItem?
 
     enum SortOrder: String, CaseIterable, CustomStringConvertible {
         case newest = "Newest"
@@ -91,6 +91,7 @@ struct SessionHistoryView: View {
                                     .contentShape(Rectangle())
                                     .onTapGesture { openSession(result.session.id) }
                                     .contextMenu { contextMenu(for: result.session) }
+                                    .listRowSeparator(.visible)
                             }
                         }
                     } else if !isSearching && !searchText.isEmpty && searchResults.isEmpty {
@@ -132,7 +133,19 @@ struct SessionHistoryView: View {
         }
         .background(RTIDesign.Color.panelBackground)
         .task { loadSessions() }
+        .onAppear { loadSessions() }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiSessionsChanged)) { _ in
+            loadSessions()
+        }
         .onChange(of: searchText) { _, _ in performSearch() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: loadSessions) {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .help("Refresh session list")
+            }
+        }
     }
 
     private var sortedSessions: [Session] {
@@ -275,7 +288,17 @@ struct SessionHistoryView: View {
     }
 
     private func loadSessions() {
-        sessions = CorpusBackedStore.allSessions()
+        Task.detached(priority: .userInitiated) {
+            let markdownSessions = CorpusBackedStore.allMarkdownSessions()
+            await MainActor.run {
+                var sessions = markdownSessions
+                if let active = ActiveSessionProjection.currentSession(),
+                   !sessions.contains(where: { $0.id == active.id }) {
+                    sessions.insert(active, at: 0)
+                }
+                self.sessions = sessions.sorted { $0.startedAt > $1.startedAt }
+            }
+        }
     }
 
     private func openSession(_ id: String) {
@@ -344,23 +367,26 @@ struct SessionHistoryView: View {
     }
 
     private func performSearch() {
-        // Cancel any in-flight search so rapid typing doesn't fan out N
-        // concurrent DB scans whose results race to win the last write.
-        searchTask?.cancel()
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            isSearching = false
-            searchResults = []
-            return
-        }
-        isSearching = true
-        searchTask = Task {
-            let results = SessionSearch.search(query: trimmed)
-            if Task.isCancelled { return }
-            await MainActor.run {
-                searchResults = results
+        // Debounce: wait 200 ms after the last keystroke before hitting the
+        // DB so fast typing doesn't fan out N concurrent scans.
+        searchDebounceItem?.cancel()
+        let item = DispatchWorkItem { [self] in
+            let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
                 isSearching = false
+                searchResults = []
+                return
+            }
+            isSearching = true
+            Task.detached(priority: .userInitiated) {
+                let results = SessionSearch.search(query: trimmed)
+                await MainActor.run {
+                    self.searchResults = results
+                    self.isSearching = false
+                }
             }
         }
+        searchDebounceItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20, execute: item)
     }
 }

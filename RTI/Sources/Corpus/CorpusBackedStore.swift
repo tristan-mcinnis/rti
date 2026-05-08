@@ -7,11 +7,17 @@ import Foundation
 @MainActor
 enum CorpusBackedStore {
 
+    /// Non-isolated: every markdown file in the corpus, sorted newest-first.
+    /// Does not include the in-flight active session.
+    nonisolated static func allMarkdownSessions() -> [Session] {
+        CorpusCatalog.allMarkdownSessions()
+    }
+
     /// Every session known to RTI: every markdown file in the corpus,
     /// plus the in-flight session if there is one. Sorted newest-first
     /// by `startedAt`.
     static func allSessions() -> [Session] {
-        var sessions = CorpusCatalog.allMarkdownSessions()
+        var sessions = allMarkdownSessions()
         // Active session: synthesise a Session row from the in-memory
         // coordinator state if no markdown exists yet for it.
         if let active = ActiveSessionProjection.currentSession(),
@@ -42,7 +48,7 @@ enum CorpusBackedStore {
     /// Final transcript entries for a session. For a completed session,
     /// reads the markdown body's `## Transcript` section. For an active
     /// session, reads the live JSONL stream.
-    static func transcripts(forSessionId id: String) -> [TranscriptEntry] {
+    nonisolated static func transcripts(forSessionId id: String) -> [TranscriptEntry] {
         if let url = CorpusCatalog.url(forSessionId: id),
            let entry = try? CorpusCatalog.read(url) {
             return TranscriptRender.entries(from: entry.body, sessionId: id, createdAt: entry.frontmatter.date)

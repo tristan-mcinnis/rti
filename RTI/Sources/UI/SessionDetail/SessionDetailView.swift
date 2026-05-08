@@ -184,7 +184,7 @@ struct SessionDetailView: View {
 
     /// Header action row, grouped: utility (Copy, Export) | AI ops (Regen Transcript, Regen Summary).
     private var headerActionsRow: some View {
-        HStack(spacing: RTIDesign.Spacing.xxs) {
+        HStack(spacing: 0) {
             Spacer()
 
             // Group 1 — utility
@@ -196,8 +196,8 @@ struct SessionDetailView: View {
             // Divider between utility + AI groups
             Rectangle()
                 .fill(RTIDesign.Color.divider)
-                .frame(width: 1, height: 20)
-                .padding(.horizontal, RTIDesign.Spacing.xxs)
+                .frame(width: 1, height: 16)
+                .padding(.horizontal, RTIDesign.Spacing.sm)
 
             // Group 2 — AI operations
             HStack(spacing: RTIDesign.Spacing.xxs) {
@@ -470,6 +470,7 @@ struct SessionDetailView: View {
                 .foregroundStyle(RTIDesign.Color.textPrimary)
                 .lineSpacing(density.scaled(4))
                 .textSelection(.enabled)
+                .padding(.leading, isNote ? 0 : 20)
                 .padding(isNote ? groupPad : 0)
                 .background(
                     isNote
@@ -661,15 +662,16 @@ struct SessionDetailView: View {
     }
 
     private func infoRow(_ label: String, _ value: String) -> some View {
-        HStack {
+        HStack(alignment: .firstTextBaseline, spacing: RTIDesign.Spacing.sm) {
             Text(label)
                 .font(RTIDesign.Font.bodySmall)
                 .foregroundStyle(RTIDesign.Color.textSecondary)
-            Spacer()
+                .frame(width: 120, alignment: .leading)
             Text(value)
                 .font(RTIDesign.Font.bodySmall)
                 .foregroundStyle(RTIDesign.Color.textPrimary)
                 .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

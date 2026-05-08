@@ -11,7 +11,7 @@ import GRDB
 final class CorpusManager {
     static let shared = CorpusManager()
 
-    var corpusDirectory: URL {
+    nonisolated var corpusDirectory: URL {
         if let custom = UserDefaults.standard.string(forKey: Self.corpusPathKey),
            !custom.isEmpty {
             return URL(fileURLWithPath: (custom as NSString).expandingTildeInPath)
@@ -20,13 +20,10 @@ final class CorpusManager {
         return home.appendingPathComponent("meetings", isDirectory: true)
     }
 
-    private var _liveDirectory: URL?
-    var liveDirectory: URL {
-        if let dir = _liveDirectory { return dir }
+    nonisolated var liveDirectory: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = appSupport.appendingPathComponent("RTI/live", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        _liveDirectory = dir
         return dir
     }
 

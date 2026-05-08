@@ -537,6 +537,9 @@ private struct CorpusTab: View {
             }
             .padding(.horizontal, 4)
         }
+        .onChange(of: corpusPath) { _, _ in
+            NotificationCenter.default.post(name: .rtiSessionsChanged, object: nil)
+        }
     }
 
     private func chooseDirectory() {
@@ -576,10 +579,14 @@ private struct CorpusTab: View {
         Task.detached {
             do {
                 try CorpusFTSReindexer.reindex(
-                    from: await CorpusManager.shared.corpusDirectory,
+                    from: CorpusManager.shared.corpusDirectory,
                     in: RTIDatabase.shared.pool
                 )
                 await MainActor.run { reindexStatus = "Done." }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run {
+                    if reindexStatus == "Done." { reindexStatus = nil }
+                }
             } catch {
                 await MainActor.run { reindexStatus = "Failed: \(error)" }
             }
