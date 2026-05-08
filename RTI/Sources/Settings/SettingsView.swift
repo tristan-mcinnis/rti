@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    var onClose: () -> Void = {}
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
         TabView {
@@ -19,9 +19,11 @@ struct SettingsView: View {
         .padding(16)
         .frame(width: 560, height: 460)
         .overlay(alignment: .bottomTrailing) {
-            Button("Close") { onClose() }
-                .keyboardShortcut(.cancelAction)
-                .padding(8)
+            if let onClose {
+                Button("Close") { onClose() }
+                    .keyboardShortcut(.cancelAction)
+                    .padding(8)
+            }
         }
     }
 }
@@ -437,11 +439,8 @@ private struct GeneralTab: View {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    /// Singleton-per-window so subsequent presses bring the existing logs
-    /// window to the front instead of stacking new ones.
-    private static let logsController = LogsWindowController()
     private func showLogs() {
-        Self.logsController.show()
+        NotificationCenter.default.post(name: .rtiShowLogs, object: nil)
     }
 
     private func hotkeyRow(_ label: String, _ key: String) -> some View {

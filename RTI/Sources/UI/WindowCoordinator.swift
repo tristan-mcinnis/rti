@@ -7,10 +7,7 @@ import SwiftUI
 final class WindowCoordinator {
     private var overlayController: OverlayWindowController?
     private var topWidget: TopWidgetWindowController?
-    private var debugConsole: DebugConsoleWindowController?
-    private var settingsWindow: SettingsWindowController?
-    private var sessionDetailWindow: NSWindow?
-    private var sessionHistory: SessionHistoryWindowController?
+    private var sessionsControl: SessionsControlWindowController?
     private var onboarding: OnboardingWindowController?
     private var shortcutsController: ShortcutsWindowController?
     private var commandPalette: CommandPaletteWindowController?
@@ -19,8 +16,8 @@ final class WindowCoordinator {
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
 
     func install(onOpenSettings: @escaping () -> Void) {
-        settingsWindow = SettingsWindowController()
         shortcutsController = ShortcutsWindowController()
+        sessionsControl = SessionsControlWindowController()
 
         let controller = OverlayWindowController(onOpenSettings: onOpenSettings)
         controller.show()
@@ -37,7 +34,6 @@ final class WindowCoordinator {
         top.show()
         topWidget = top
 
-        debugConsole = DebugConsoleWindowController()
         commandPalette = CommandPaletteWindowController()
     }
 
@@ -62,57 +58,31 @@ final class WindowCoordinator {
     func hideTopWidget() { topWidget?.hide() }
     func toggleTopWidget() { topWidget?.toggle() }
 
-    // MARK: - Settings / Shortcuts
+    // MARK: - Sessions Control (unified: Live Transcript, Sessions, Settings, Logs)
 
-    func openSettings() { settingsWindow?.show() }
+    func showSessionsControl(tab: SessionsControlView.Tab = .liveTranscript) {
+        sessionsControl?.show(tab: tab)
+    }
+
+    func showSessionInSessionsControl(id: String) {
+        sessionsControl?.show(sessionId: id)
+    }
+
+    // MARK: - Legacy convenience wrappers used by AppDelegate / menu
+
+    func showDebugConsole() { showSessionsControl(tab: .liveTranscript) }
+    func toggleDebugConsole() { showSessionsControl(tab: .liveTranscript) }
+    func openSettings() { showSessionsControl(tab: .settings) }
+    func showSessionHistory() { showSessionsControl(tab: .sessions) }
+    func openSessionDetail(for id: String) { showSessionInSessionsControl(id: id) }
+
+    // MARK: - Shortcuts
+
     func showShortcuts() { shortcutsController?.show() }
-
-    // MARK: - Debug Console
-
-    func showDebugConsole() { debugConsole?.show() }
-    func toggleDebugConsole() { debugConsole?.toggle() }
 
     // MARK: - Command Palette
 
     func toggleCommandPalette() { commandPalette?.toggle() }
-
-    // MARK: - Session Detail
-
-    func openSessionDetail(for id: String) {
-        if let window = sessionDetailWindow {
-            window.contentView = NSHostingView(rootView: SessionDetailView(sessionId: id))
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        w.title = "Session"
-        w.titlebarAppearsTransparent = true
-        w.setFrameAutosaveName("rti.sessiondetail")
-        w.isReleasedWhenClosed = false
-        w.minSize = NSSize(width: 720, height: 480)
-        w.backgroundColor = NSColor(red: 0.969, green: 0.969, blue: 0.973, alpha: 1)
-        w.appearance = NSAppearance(named: .aqua)
-        w.contentView = NSHostingView(rootView: SessionDetailView(sessionId: id))
-        w.center()
-        w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        sessionDetailWindow = w
-    }
-
-    // MARK: - Session History
-
-    func showSessionHistory() {
-        if sessionHistory == nil {
-            sessionHistory = SessionHistoryWindowController()
-        }
-        sessionHistory?.show()
-    }
 
     // MARK: - Onboarding
 

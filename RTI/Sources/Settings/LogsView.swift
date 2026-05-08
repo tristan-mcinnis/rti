@@ -1,33 +1,6 @@
-import AppKit
 import SwiftUI
 
-@MainActor
-final class LogsWindowController {
-    private var window: NSWindow?
-
-    func show() {
-        if let window = window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        w.title = "RTI Logs"
-        w.contentView = NSHostingView(rootView: LogsView())
-        w.center()
-        w.isReleasedWhenClosed = false
-        w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        window = w
-    }
-}
-
-private struct LogsView: View {
+struct LogsView: View {
     @ObservedObject private var log = AppLog.shared
     @State private var crashLogText: String = ""
 

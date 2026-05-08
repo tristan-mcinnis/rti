@@ -5,6 +5,7 @@ import AppKit
 /// and lifecycle, not on enumerating every affordance in the app.
 enum CommandPaletteFactory {
 
+    @MainActor
     static func buildCommands(
         windows: WindowCoordinator,
         session: SessionCoordinator,

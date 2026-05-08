@@ -36,6 +36,10 @@ struct OverlayPanelView: View {
                     .padding(.horizontal, 14)
                     .padding(.bottom, 14)
             }
+
+            ResizeHandle()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding([.bottom, .trailing], 6)
         }
     }
 }

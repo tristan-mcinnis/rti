@@ -81,20 +81,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func handleOpenSessionDetailNotification(_ notification: Notification) {
-        guard let id = notification.object as? String else { return }
-        windows.openSessionDetail(for: id)
-    }
-
     /// All five notification-center observers registered at launch in one
     /// call site so the wiring is visible in a single glance.
     private func registerNotificationObservers() {
         let observers: [(NSNotification.Name, Selector)] = [
-            (.openSessionDetail, #selector(handleOpenSessionDetailNotification(_:))),
             (.rtiToggleOverlay, #selector(toggleOverlay)),
             (.rtiClearChat, #selector(clearChat)),
-            (.rtiShowLiveTranscript, #selector(showDebugConsole)),
-            (.rtiShowSessionHistory, #selector(showSessionHistory)),
         ]
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
@@ -109,8 +101,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleOverlay() { windows.toggleOverlay() }
-    @objc private func showDebugConsole() { windows.showDebugConsole() }
-    @objc private func showSessionHistory() { windows.showSessionHistory() }
     @objc private func clearChat() { Self.confirmThenClearChat() }
 
     /// Shows a destructive-confirmation alert; on confirm, clears the

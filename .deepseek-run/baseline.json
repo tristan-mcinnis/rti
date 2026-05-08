@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-05-07T09:03:00+08:00",
+  "build": "BLOCKED",
+  "test": "BLOCKED",
+  "lint": "NOT_RUN",
+  "blocker": "TCC sandbox prevents xcodebuild from accessing ~/Library/Caches/org.swift.swiftpm/manifests/ManifestLoading/*.dia files (com.apple.provenance extended attributes). Build cannot resolve package dependencies.",
+  "workaround": "User must manually delete the *.dia files from Terminal: rm ~/Library/Caches/org.swift.swiftpm/manifests/ManifestLoading/*.dia",
+  "project": "RTI - macOS Swift/Xcode app",
+  "stack": {
+    "language": "Swift 5.9",
+    "platform": "macOS 14+",
+    "build_system": "xcodegen + xcodebuild",
+    "dependencies": ["GRDB 6.29", "Starscream 4.0", "Yams 5.4"],
+    "test_framework": "XCTest",
+    "test_targets": ["RTITests (bundle.unit-test)"]
+  },
+  "test_files": [
+    "DeepSeekErrorTests.swift",
+    "SonioxFailureTests.swift", 
+    "CorpusFTSReindexerTests.swift",
+    "CorpusWriterTests.swift",
+    "MCPSpawnIntegrationTests.swift",
+    "WritePathIntegrationTests.swift",
+    "CommandRegistryTests.swift",
+    "CorpusEntryTests.swift",
+    "MarkdownRendererTests.swift",
+    "SpeakerTurnTests.swift",
+    "LiveJSONLWriterTests.swift"
+  ]
+}
