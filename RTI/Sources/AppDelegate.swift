@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onCaptureScreen = { ScreenshotManager.shared.captureAndAttach() }
         hotkeys.onToggleDebugConsole = { [weak self] in self?.windows.toggleDebugConsole() }
         hotkeys.onToggleCommandPalette = { [weak self] in self?.windows.toggleCommandPalette() }
+        hotkeys.onToggleTopWidget = { [weak self] in self?.windows.toggleTopWidget() }
         hotkeys.registerAll()
 
         CommandRegistry.shared.replaceAll(

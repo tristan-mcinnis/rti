@@ -23,7 +23,10 @@ final class WindowCoordinator {
         controller.show()
         overlayController = controller
 
-        let top = TopWidgetWindowController()
+        let top = TopWidgetWindowController(
+            onOpenChat: { [weak self] in self?.positionOverlayBelowWidget() },
+            onOpenSessionHome: { [weak self] in self?.showSessionsControl(tab: .sessions) }
+        )
         top.show()
         topWidget = top
 

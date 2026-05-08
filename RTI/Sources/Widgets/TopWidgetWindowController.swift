@@ -5,11 +5,16 @@ import SwiftUI
 final class TopWidgetWindowController {
     private let window: NSPanel
 
-    static let pillHeight: CGFloat = 36 + 8 // content + padding
+    /// Pill height (28) + outer 4pt padding ⨉ 2.
+    static let pillHeight: CGFloat = 36
     static let chatGap: CGFloat = 6
 
-    init() {
-        let size = NSSize(width: 140, height: Self.pillHeight)
+    init(onOpenChat: @escaping () -> Void, onOpenSessionHome: @escaping () -> Void) {
+        // Width is generous enough that the wider idle state ("Record" + Smart
+        // badge) fits without truncation. The pill is right-anchored within
+        // the panel via a leading Spacer so the visual position stays glued
+        // to the screen edge regardless of state.
+        let size = NSSize(width: 180, height: Self.pillHeight)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -27,7 +32,10 @@ final class TopWidgetWindowController {
         panel.isMovable = false
         panel.isMovableByWindowBackground = false
 
-        panel.contentView = NSHostingView(rootView: TopWidgetView())
+        panel.contentView = NSHostingView(rootView: TopWidgetView(
+            onOpenChat: onOpenChat,
+            onOpenSessionHome: onOpenSessionHome
+        ))
 
         self.window = panel
         positionOnActiveScreen()

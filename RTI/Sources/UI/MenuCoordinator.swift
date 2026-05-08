@@ -84,7 +84,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         overlayItem.target = self
         menu.addItem(overlayItem)
 
-        let widgetItem = NSMenuItem(title: "Toggle Top Widget", action: #selector(toggleTopWidget), keyEquivalent: "")
+        let widgetItem = NSMenuItem(title: "Toggle Top Widget (⌘⇧B)", action: #selector(toggleTopWidget), keyEquivalent: "")
         widgetItem.target = self
         menu.addItem(widgetItem)
 
