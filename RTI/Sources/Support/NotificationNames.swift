@@ -12,6 +12,7 @@ extension Notification.Name {
     static let rtiShowLogs = Notification.Name("rti.showLogs")
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
     static let rtiSessionsChanged = Notification.Name("rti.sessionsChanged")
+    static let rtiToggleCommandPalette = Notification.Name("rti.toggleCommandPalette")
 }
 
 enum OverlayAppearanceDefaults {

@@ -10,6 +10,7 @@ struct ShortcutsView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 ShortcutRow(key: "\u{2318}\\", desc: "Toggle overlay")
+                ShortcutRow(key: "\u{2318}K", desc: "Search / command palette")
                 ShortcutRow(key: "\u{2318}\u{21E7}R", desc: "Start / Stop recording")
                 ShortcutRow(key: "\u{2318}\u{21A9}", desc: "Send Assist")
                 ShortcutRow(key: "\u{2318}H", desc: "Capture screen & OCR")

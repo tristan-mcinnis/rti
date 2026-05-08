@@ -29,7 +29,7 @@ final class HotkeyCoordinator {
         hk.register(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(cmdKey | optionKey)) { [weak self] in
             self?.onToggleDebugConsole?()
         }
-        hk.register(keyCode: UInt32(kVK_ANSI_K), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
+        hk.register(keyCode: UInt32(kVK_ANSI_K), modifiers: UInt32(cmdKey)) { [weak self] in
             self?.onToggleCommandPalette?()
         }
         hotkey = hk

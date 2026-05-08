@@ -12,13 +12,18 @@ struct CommandPaletteView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            TextField("Type a command…", text: $query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 16, weight: .regular))
-                .padding(14)
-                .focused($inputFocused)
-                .onChange(of: query) { _, _ in selectedIndex = 0 }
-                .onSubmit { runSelected() }
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                TextField("Search for sessions, actions, and settings…", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 16, weight: .regular))
+                    .focused($inputFocused)
+                    .onChange(of: query) { _, _ in selectedIndex = 0 }
+                    .onSubmit { runSelected() }
+            }
+            .padding(14)
 
             Divider()
 
