@@ -76,7 +76,7 @@ Also try `⌘+Shift+5` → "Capture Entire Screen" — same expected result.
 Open `RTI/POC1-findings.md` and check off each row in the user-attestation table. Note any anomalies. Then decide:
 
 - **All critical checks pass** → run `/plan` for POC-2 (audio pipeline)
-- **QuickTime or Zoom check fails** → stop, investigate `sharingType` behavior, maybe try the `kSCStreamConfigurationExcludingWindowIDs` path, read Cluely docs, read NSWindow docs for any additional flags
+- **QuickTime or Zoom check fails** → stop, investigate `sharingType` behavior, maybe try the `kSCStreamConfigurationExcludingWindowIDs` path, read NSWindow / ScreenCaptureKit docs for any additional flags
 
 ## Useful commands
 

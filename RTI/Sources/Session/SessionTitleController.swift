@@ -55,7 +55,7 @@ final class SessionTitleController: ObservableObject {
             return
         }
 
-        let messages = [DeepSeekMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
+        let messages = [LLMMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
 
         request.collect(
             messages: messages,

@@ -1,16 +1,16 @@
 import Foundation
 
-/// Shared execution primitive for DeepSeek-powered features.
+/// Shared execution primitive for LLM-powered features.
 /// Owns task lifecycle (cancel, start), error normalisation, and the
 /// dispatch boundary between network I/O and UI updates.
 ///
-/// Controllers that use DeepSeek (Summary, Title, QA, Chat) compose this
-/// instead of duplicating the ~40-line async boilerplate.
+/// Controllers that talk to the LLM (Summary, Title, QA, Chat) compose
+/// this instead of duplicating the ~40-line async boilerplate.
 final class LLMRequest {
-    private let client: DeepSeekClient
+    private let client: LLMClient
     private var currentTask: Task<Void, Never>?
 
-    init(client: DeepSeekClient = .shared) {
+    init(client: LLMClient = .shared) {
         self.client = client
     }
 
@@ -24,7 +24,7 @@ final class LLMRequest {
     /// One-shot collector: waits for the full response then fires the
     /// callback. Used by SummaryController and SessionTitleController.
     func collect(
-        messages: [DeepSeekMessage],
+        messages: [LLMMessage],
         smart: Bool,
         onResult: @escaping (String) -> Void,
         onError: @escaping (String, Bool) -> Void
@@ -41,8 +41,8 @@ final class LLMRequest {
                 return
             } catch {
                 if Task.isCancelled { return }
-                let ds = error as? DeepSeekError
-                onError(ds?.userMessage ?? "\(error)", ds?.isAuth ?? false)
+                let llmError = error as? LLMError
+                onError(llmError?.userMessage ?? "\(error)", llmError?.isAuth ?? false)
             }
         }
     }
@@ -50,7 +50,7 @@ final class LLMRequest {
     /// Streaming executor: yields deltas as they arrive. Used by
     /// LLMController and SessionQAController.
     func stream(
-        messages: [DeepSeekMessage],
+        messages: [LLMMessage],
         smart: Bool,
         onDelta: @escaping (String) -> Void,
         onError: @escaping (String, Bool) -> Void,
@@ -73,8 +73,8 @@ final class LLMRequest {
                 return
             } catch {
                 if Task.isCancelled { return }
-                let ds = error as? DeepSeekError
-                onError(ds?.userMessage ?? "\(error)", ds?.isAuth ?? false)
+                let llmError = error as? LLMError
+                onError(llmError?.userMessage ?? "\(error)", llmError?.isAuth ?? false)
             }
         }
     }

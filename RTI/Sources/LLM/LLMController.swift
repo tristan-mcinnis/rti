@@ -178,17 +178,17 @@ final class LLMController: ObservableObject {
             return Self.systemPrompt
         }()
 
-        var apiMessages: [DeepSeekMessage] = [DeepSeekMessage(role: "system", content: basePrompt)]
+        var apiMessages: [LLMMessage] = [LLMMessage(role: "system", content: basePrompt)]
         if let reference = activeMode?.referenceText, !reference.isEmpty {
             let capped = reference.count > 8000 ? String(reference.prefix(8000)) + "\n…[truncated]" : reference
             let modeName = activeMode?.name ?? "active mode"
-            apiMessages.append(DeepSeekMessage(
+            apiMessages.append(LLMMessage(
                 role: "system",
                 content: "Reference material attached to the active mode '\(modeName)'. Use it when relevant.\n---\n\(capped)\n---"
             ))
         }
         if let screenContext {
-            apiMessages.append(DeepSeekMessage(
+            apiMessages.append(LLMMessage(
                 role: "system",
                 content: "User attached a screenshot. OCR text from the screen follows. Treat it as what the user is looking at.\n---\n\(screenContext)\n---"
             ))
@@ -199,7 +199,7 @@ final class LLMController: ObservableObject {
             // Skip non-final entries with empty content, but never skip the
             // last user entry — the API needs at least one user message.
             if content.isEmpty, !isLatestUser { continue }
-            apiMessages.append(DeepSeekMessage(role: entry.role, content: content))
+            apiMessages.append(LLMMessage(role: entry.role, content: content))
         }
 
         let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false)

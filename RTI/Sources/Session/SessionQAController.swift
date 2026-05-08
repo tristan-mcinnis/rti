@@ -50,8 +50,8 @@ final class SessionQAController: ObservableObject {
         """
 
         let apiMessages = [
-            DeepSeekMessage(role: "system", content: systemPrompt),
-            DeepSeekMessage(role: "user", content: question)
+            LLMMessage(role: "system", content: systemPrompt),
+            LLMMessage(role: "user", content: question)
         ]
 
         let assistantEntry = QAEntry(role: "assistant", text: "")

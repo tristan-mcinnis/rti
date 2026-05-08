@@ -74,7 +74,7 @@ final class SummaryController: ObservableObject {
         }
 
         let fullPrompt = Self.summaryPrompt + "\n" + transcript
-        let messages = [DeepSeekMessage(role: "user", content: fullPrompt)]
+        let messages = [LLMMessage(role: "user", content: fullPrompt)]
 
         request.collect(
             messages: messages,

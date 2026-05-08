@@ -119,16 +119,6 @@ enum RTIDesign {
 // MARK: - View Extensions
 
 extension View {
-    func rtiPanelStyle(_ color: SwiftUI.Color = RTIDesign.Color.panelBackground) -> some View {
-        self
-            .background(color)
-            .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.md))
-            .overlay(
-                RoundedRectangle(cornerRadius: RTIDesign.Radius.md)
-                    .stroke(RTIDesign.Color.border, lineWidth: 1)
-            )
-    }
-
     func rtiCardStyle() -> some View {
         self
             .padding(RTIDesign.Spacing.md)

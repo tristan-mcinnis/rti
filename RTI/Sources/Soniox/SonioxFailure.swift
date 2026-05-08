@@ -4,7 +4,7 @@ import Foundation
 /// retry policy live as computed properties so they can be unit-tested
 /// without mocking a WebSocket.
 ///
-/// Mirrors the `DeepSeekError.userMessage` / `.isAuth` shape so both
+/// Mirrors the `LLMError.userMessage` / `.isAuth` shape so both
 /// upstream services surface failures through one mental model.
 enum SonioxFailure: Error, Equatable {
     /// 401 / 402 / 403 — authentication or billing problem. Stop retrying;
@@ -35,7 +35,7 @@ extension SonioxFailure {
     }
 
     /// True for the modes the UI uses to gate the "Open Settings"
-    /// affordance — same role `DeepSeekError.isAuth` plays.
+    /// affordance — same role `LLMError.isAuth` plays.
     var isAuth: Bool {
         switch self {
         case .auth: return true

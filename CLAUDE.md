@@ -90,7 +90,7 @@ Layout:
 |-----|---------|--------|
 | POC-1 | Minimum viable invisible overlay (borderless translucent `NSPanel`, `sharingType=.none`, ⌘+\\ Carbon hotkey, menubar status item) | **Implemented, ralph-verified automated checks pass. User-attestation pending (see `RTI/VERIFY.md`).** |
 | POC-2 | Audio → Soniox WebSocket → GRDB/SQLite transcript | **Validated live. User-tested: transcripts land in SQLite as readable text (spacing fix applied).** |
-| POC-3 | Kimi LLM SSE streaming + overlay assistant UI | **Implemented, ralph-verified automated checks pass. Live LLM verification pending (paste Kimi key into `RTI/Sources/Secrets.swift` then see `RTI/POC3-findings.md` user-attestation table).** |
+| POC-3 | LLM SSE streaming + overlay assistant UI (provider-agnostic, DeepSeek default) | **Implemented, ralph-verified automated checks pass. Live LLM verification pending (paste API key via Settings → Keys, then see `RTI/POC3-findings.md` user-attestation table).** |
 | POC-4 | Smart Screenshot (⌘+H, `SCScreenshotManager`, Vision OCR) | Not started |
 | POC-5 | Persistence layer (sessions, transcripts, messages, modes) | Not started |
 | POC-6 | Three-window layout (split-panel overlay, top widget, mini widget) | Not started |
@@ -106,7 +106,7 @@ Three pipelines feed into `AppState`:
 
 1. **Audio pipeline** — `AVAudioEngine` tap → 16 kHz mono PCM → Soniox WebSocket (`wss://api.soniox.com/transcribe-websocket`) → interim + final transcript entries written to SQLite. System-audio loopback via `ScreenCaptureKit` is V2; MVP is mic-only.
 2. **Screen pipeline** — on-demand `SCScreenshotManager` capture + Vision OCR. Screenshots are passed to the LLM then discarded (never persisted).
-3. **LLM pipeline** — Kimi (OpenAI-compatible, `https://api.moonshot.cn/v1`, model `moonshot-v1-128k`) streamed via SSE. Four prompt shapes: Assist, "What should I say?", Follow-up questions, Recap.
+3. **LLM pipeline** — provider-agnostic OpenAI-compatible streaming chat (default DeepSeek `deepseek-v4-flash` at `https://api.deepseek.com/v1`) via SSE. Provider config lives in `Sources/LLM/LLMProvider.swift` (`LLMProviders` registry); swap by changing `LLMProviders.activeId`. Four prompt shapes: Assist, "What should I say?", Follow-up questions, Recap.
 
 Persistence: GRDB/SQLite. Schema sketch in `spec.md` §11 — will be re-derived in POC-5 rather than copied verbatim.
 
@@ -118,9 +118,9 @@ Global hotkeys use Carbon `RegisterEventHotKey` (not SwiftUI shortcuts) so they 
 
 ## Conventions
 
-- **Secrets**: `spec.md` §3 hardcodes Soniox and Kimi API keys for dev convenience. **Do not carry that into RTI code.** When POC-2/POC-3 land, read from Keychain (`SecItemAdd`), never `UserDefaults` or committed plaintext. No `.env` files.
+- **Secrets**: `spec.md` §3 hardcodes Soniox and LLM API keys for dev convenience. **Do not carry that into RTI code.** Keys must live in the local credential store (`KeychainStore` → `~/Library/Application Support/RTI/credentials.json`, mode 0600), never `UserDefaults` or committed plaintext. No `.env` files.
 - **Transcript semantics** (for POC-2): Soniox emits words with `is_final: false` (interim, update in place) and `is_final: true` (commit, persist to `transcript_entries`). Map `speaker: 0` → `"self"`, `1+` → `"them_1"`, `"them_2"`, etc.
-- **Streaming responses** (for POC-3): Kimi SSE parser must handle `data: [DONE]` sentinel and incremental `choices[].delta.content` concatenation.
+- **Streaming responses**: The LLM SSE parser handles the `data: [DONE]` sentinel and concatenates `choices[].delta.content`. DeepSeek's `reasoning_content` field (smart-mode only, gated by `LLMProviderConfig.supportsThinking`) is surfaced through a separate `onReasoning` callback.
 - **Reconnect policy** (for POC-2 Soniox): exponential backoff 1s → 2s → 4s → 8s, max 5 retries, then surface error.
 - **Swift/SwiftUI scope** (POC-1 rule, may loosen later): the overlay is hand-rolled `NSPanel`, not a SwiftUI `WindowGroup`. SwiftUI is used inside the panel via `NSHostingView`. Keep it that way unless a concrete need forces a change.
 - **Dependencies**: POC-1 has zero SPM deps on purpose. Add deps only when the POC requires them (GRDB in POC-5, Starscream in POC-2, swift-markdown if/when needed).
@@ -138,5 +138,5 @@ The `competitor-breakdown/*.sh` scripts use `npx playwright-cli` to capture the 
 - **Hotkey implementation** → `RTI/Sources/GlobalHotkey.swift`.
 - **App entry / status item** → `RTI/Sources/RTIApp.swift` + `RTI/Sources/AppDelegate.swift`.
 - **UI pixel details (full-product target)** → `spec.md` §7 first, then `competitor-breakdown/APP_PRODUCT_BREAKDOWN.md` and screenshots. Treat as reference target, not binding.
-- **API request/response shapes (Soniox, Kimi)** → `spec.md` §6, to be validated against live endpoints during POC-2/POC-3.
+- **API request/response shapes (Soniox, LLM)** → `spec.md` §6 for original drafts; `Sources/Soniox/SonioxProtocol.swift` and `Sources/LLM/LLMWireShapes.swift` are the authoritative live shapes.
 - **Historical snippets** → `_archive/CluelyClone/Sources/` — read-only.

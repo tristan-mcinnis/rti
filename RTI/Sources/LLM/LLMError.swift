@@ -1,6 +1,6 @@
 import Foundation
 
-enum DeepSeekError: Error {
+enum LLMError: Error {
     case httpError(Int, String)
     case unauthorized
     case badResponse
@@ -8,23 +8,23 @@ enum DeepSeekError: Error {
     case streamError(String)
 }
 
-extension DeepSeekError {
-    /// User-facing copy. Single source of truth so all four DeepSeek-using
+extension LLMError {
+    /// User-facing copy. Single source of truth so the four LLM-using
     /// controllers (LLMController, SummaryController, SessionTitleController,
     /// SessionQAController) surface consistent messages instead of three of
     /// them showing raw `\(error)` output.
     var userMessage: String {
         switch self {
         case .unauthorized:
-            return "DeepSeek rejected the API key (401). Open Settings to paste a valid key."
+            return "LLM provider rejected the API key (401). Open Settings to paste a valid key."
         case .missingAPIKey:
-            return "No DeepSeek API key set. Open Settings to add one."
+            return "No LLM API key set. Open Settings to add one."
         case .httpError(let code, let body):
-            return "DeepSeek error \(code): \(body.prefix(300))"
+            return "LLM error \(code): \(body.prefix(300))"
         case .streamError(let detail):
-            return "DeepSeek stream error: \(detail.prefix(300))"
+            return "LLM stream error: \(detail.prefix(300))"
         case .badResponse:
-            return "DeepSeek returned an unexpected response."
+            return "LLM provider returned an unexpected response."
         }
     }
 

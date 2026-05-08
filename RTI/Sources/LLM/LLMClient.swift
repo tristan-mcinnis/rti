@@ -1,14 +1,18 @@
 import Foundation
 
-final class DeepSeekClient {
-    /// Single shared instance. All four DeepSeek-using controllers
-    /// (LLMController, SummaryController, SessionTitleController,
-    /// SessionQAController) route through this — `URLSession` is already
-    /// shared underneath, but the explicit `shared` makes the intent visible
-    /// and centralises any future cross-call coordination.
-    static let shared = DeepSeekClient(baseURL: Secrets.deepseekBaseURL)
+/// Streaming chat client for any OpenAI-compatible provider.
+/// Provider behavior (URL, model, API key, optional `thinking` extension)
+/// is supplied via `LLMProviderConfig`; routing to a different LLM is a
+/// one-line change in `LLMProviders` rather than edits here.
+final class LLMClient {
+    /// Shared instance bound to the active provider. All four LLM-using
+    /// controllers (LLMController, SummaryController, SessionTitleController,
+    /// SessionQAController) route through this. `apiKey` is resolved at
+    /// call time, so key edits in Settings take effect on the next request
+    /// without rebinding the singleton.
+    static let shared = LLMClient(provider: LLMProviders.active)
 
-    private let baseURL: URL
+    let provider: LLMProviderConfig
     private let session: URLSession
 
     private static let sharedSession: URLSession = {
@@ -17,76 +21,88 @@ final class DeepSeekClient {
         return URLSession(configuration: config)
     }()
 
-    init(baseURL: URL) {
-        self.baseURL = baseURL
+    init(provider: LLMProviderConfig) {
+        self.provider = provider
         self.session = Self.sharedSession
     }
 
-    private var apiKey: String { Secrets.deepseekAPIKey }
+    private var apiKey: String { provider.apiKey() }
 
-    /// Streams delta.content strings from a DeepSeek chat completion as they
-    /// arrive. The stream terminates on `data: [DONE]` sentinel or on error.
-    /// Routes to deepseek-v4-flash with `thinking.type=enabled` (smart=true,
-    /// slower with reasoning) or `disabled` (smart=false, fast).
+    /// Streams `delta.content` strings from a chat completion as they
+    /// arrive. The stream terminates on `data: [DONE]` sentinel or on
+    /// error.
     ///
-    /// `onReasoning`, when supplied, fires on the main thread for every
-    /// reasoning_content chunk in smart mode. LLMController uses it to drive
-    /// the "reasoning…" indicator; other callers leave it nil.
+    /// `smart=true` enables provider-side reasoning when the config
+    /// reports `supportsThinking=true`; otherwise it degrades to a normal
+    /// completion. `onReasoning`, when supplied, fires on the main thread
+    /// for every reasoning_content chunk in smart mode. LLMController
+    /// uses it to drive the "reasoning…" indicator; other callers leave
+    /// it nil.
     func streamChat(
-        messages: [DeepSeekMessage],
+        messages: [LLMMessage],
         smart: Bool = false,
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
-        let model = "deepseek-v4-flash"
-        // Thinking mode ignores sampling params; only send temperature when
-        // thinking is disabled.
+        let model = provider.model
+        // Thinking mode ignores sampling params; only send temperature
+        // when thinking is disabled.
         let temperature: Double? = smart ? nil : 0.6
-        let thinking = DeepSeekRequest.Thinking(type: smart ? "enabled" : "disabled")
-        // Smart mode runs reasoning before any content, so the first byte can
-        // take much longer to arrive than chat.  URLRequest.timeoutInterval is
-        // ignored by the async URLSession API — we use the group below instead.
+        let thinking: LLMWireRequest.Thinking? = provider.supportsThinking
+            ? LLMWireRequest.Thinking(type: smart ? "enabled" : "disabled")
+            : nil
+        // Smart mode runs reasoning before any content, so the first byte
+        // can take much longer to arrive than chat. URLRequest.timeout-
+        // Interval is ignored by the async URLSession API — we use the
+        // group below instead.
         let streamTimeoutSeconds: Double = smart ? 120 : 60
         // Fast-fail on missing API key before encoding the request body.
         guard !apiKey.isEmpty else {
             return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: DeepSeekError.missingAPIKey)
+                continuation.finish(throwing: LLMError.missingAPIKey)
             }
         }
+        let providerName = provider.displayName
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let body = DeepSeekRequest(model: model, messages: messages, stream: true, temperature: temperature, thinking: thinking)
-                    var request = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
+                    let body = LLMWireRequest(
+                        model: model,
+                        messages: messages,
+                        stream: true,
+                        temperature: temperature,
+                        thinking: thinking
+                    )
+                    var request = URLRequest(url: provider.baseURL.appendingPathComponent("chat/completions"))
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.httpBody = try JSONEncoder().encode(body)
 
-                    NSLog("[RTI] DeepSeekClient: POST \(request.url?.absoluteString ?? "?") model=\(model) messages=\(messages.count)")
-                    RTILog.log("POST model=\(model) messages=\(messages.count) smart=\(smart)", category: "deepseek")
+                    NSLog("[RTI] LLMClient[\(providerName)]: POST \(request.url?.absoluteString ?? "?") model=\(model) messages=\(messages.count)")
+                    RTILog.log("POST provider=\(providerName) model=\(model) messages=\(messages.count) smart=\(smart)", category: "llm")
                     let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else {
-                        throw DeepSeekError.badResponse
+                        throw LLMError.badResponse
                     }
-                    NSLog("[RTI] DeepSeekClient: HTTP \(http.statusCode)")
-                    RTILog.log("HTTP \(http.statusCode)", category: "deepseek")
+                    NSLog("[RTI] LLMClient[\(providerName)]: HTTP \(http.statusCode)")
+                    RTILog.log("HTTP \(http.statusCode)", category: "llm")
                     guard (200..<300).contains(http.statusCode) else {
                         let errText = try await readAll(bytes)
                         if http.statusCode == 401 {
-                            throw DeepSeekError.unauthorized
+                            throw LLMError.unauthorized
                         }
-                        throw DeepSeekError.httpError(http.statusCode, errText)
+                        throw LLMError.httpError(http.statusCode, errText)
                     }
 
-                    // Race the SSE stream against a timeout.  URLRequest.timeoutInterval
+                    // Race the SSE stream against a timeout. URLRequest.timeoutInterval
                     // is only advisory for the async bytes API, so we enforce the window
-                    // ourselves.  This way a hung stream fails fast at 60 s (120 s in smart
-                    // mode) instead of waiting for URLSession's resource timeout (300 s).
+                    // ourselves. This way a hung stream fails fast at 60s (120s in smart
+                    // mode) instead of waiting for URLSession's resource timeout (300s).
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         group.addTask {
                             try await Task.sleep(nanoseconds: UInt64(streamTimeoutSeconds * 1_000_000_000))
-                            throw DeepSeekError.streamError("Stream timed out after \(Int(streamTimeoutSeconds))s")
+                            throw LLMError.streamError("Stream timed out after \(Int(streamTimeoutSeconds))s")
                         }
                         group.addTask { [weak self] in
                             guard let self else { return }
@@ -105,10 +121,10 @@ final class DeepSeekClient {
 
     /// Drains a `streamChat` AsyncThrowingStream into a single String,
     /// honoring task cancellation between deltas. Used by the one-shot
-    /// generators (Summary, Title) that need the full response before parsing,
-    /// rather than per-delta UI updates.
+    /// generators (Summary, Title) that need the full response before
+    /// parsing, rather than per-delta UI updates.
     func collectStreamedResponse(
-        messages: [DeepSeekMessage],
+        messages: [LLMMessage],
         smart: Bool = false
     ) async throws -> String {
         var full = ""
@@ -134,25 +150,27 @@ final class DeepSeekClient {
         onReasoning: (@Sendable (String) -> Void)?
     ) async throws {
         let decoder = JSONDecoder()
+        let providerName = provider.displayName
         var lineCount = 0
         var deltaCount = 0
         for try await line in bytes.lines {
             try Task.checkCancellation()
             lineCount += 1
             if lineCount <= 3 {
-                NSLog("[RTI] DeepSeekClient line[\(lineCount)]: %@", line.prefix(200) as NSString)
+                NSLog("[RTI] LLMClient[\(providerName)] line[\(lineCount)]: %@", line.prefix(200) as NSString)
             }
             guard line.hasPrefix("data: ") else { continue }
             let payload = String(line.dropFirst(6))
             if payload == "[DONE]" {
-                NSLog("[RTI] DeepSeekClient: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
-                RTILog.log("done — lines=\(lineCount) deltas=\(deltaCount)", category: "deepseek")
+                NSLog("[RTI] LLMClient[\(providerName)]: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
+                RTILog.log("done — lines=\(lineCount) deltas=\(deltaCount)", category: "llm")
                 continuation.finish()
                 return
             }
             guard let data = payload.data(using: .utf8) else { continue }
-            // Some servers send {"error": {...}} mid-stream instead of [DONE].
-            // Surface that to the caller instead of silently swallowing it.
+            // Some servers send {"error": {...}} mid-stream instead of
+            // [DONE]. Surface that to the caller instead of silently
+            // swallowing it.
             if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let err = obj["error"] {
                 let detail: String = {
@@ -161,10 +179,10 @@ final class DeepSeekClient {
                     }
                     return "\(err)"
                 }()
-                throw DeepSeekError.streamError(detail)
+                throw LLMError.streamError(detail)
             }
             do {
-                let chunk = try decoder.decode(DeepSeekChatChunk.self, from: data)
+                let chunk = try decoder.decode(LLMStreamChunk.self, from: data)
                 if let reasoning = chunk.choices.first?.delta?.reasoning_content, !reasoning.isEmpty,
                    let onReasoning {
                     DispatchQueue.main.async { onReasoning(reasoning) }
@@ -174,7 +192,7 @@ final class DeepSeekClient {
                     continuation.yield(delta)
                 }
             } catch {
-                NSLog("[RTI] DeepSeekClient chunk decode failed: \(error) payload=\(payload.prefix(200))")
+                NSLog("[RTI] LLMClient[\(providerName)] chunk decode failed: \(error) payload=\(payload.prefix(200))")
             }
         }
         continuation.finish()

@@ -22,3 +22,6 @@ xcuserdata/
 # Local harness state
 .omc/
 .claude/
+.deepseek/
+.deepseek-run/
+.gnhf/
