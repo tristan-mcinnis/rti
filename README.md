@@ -1,76 +1,76 @@
 # RTI — Real-Time Intelligence
 
-A menubar-only macOS assistant that listens to the microphone, transcribes in real time, and streams LLM responses over a translucent overlay — without showing up in other apps' screen captures.
+A menubar-only macOS assistant that listens to your meetings, transcribes in real time, and streams answers over a translucent overlay that doesn't show up in other apps' screen captures.
 
-> **Status:** Active development. Requires your own Soniox and LLM provider API keys (DeepSeek today; the LLM layer is provider-agnostic — see `Sources/LLM/LLMProvider.swift`). macOS 14+.
+> **Status:** Active development. macOS 14+. Bring your own [Soniox](https://console.soniox.com) and LLM provider keys ([DeepSeek](https://platform.deepseek.com) by default; the LLM layer is provider-agnostic — see [`Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift)).
 
-## Features
+## What it does
 
-- **Invisible overlay** — borderless `NSPanel` with `sharingType = .none`, so it's excluded from QuickTime / Zoom / `screencapture`.
-- **Live transcription** — `AVAudioEngine` tap → 16 kHz PCM → Soniox WebSocket → SQLite + canonical markdown corpus.
-- **Streaming assistant** — OpenAI-compatible streaming chat (DeepSeek by default) over SSE, with a rolling 6-minute transcript context.
-- **Smart Screenshot** — `⌘H` captures the display under the mouse, runs Vision OCR, and attaches the text to the next assistant turn. The image is discarded.
-- **Sessions + chat history** — every turn persisted in GRDB/SQLite; recent-sessions menu; 5-minute resume on relaunch.
-- **Modes** — four builtin system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text.
-- **Sessions Control window** — unified Live Transcript, Sessions, Settings, and Logs tabs.
-- **Local credentials** — keys live in `~/Library/Application Support/RTI/credentials.json` (mode 0600), never plaintext in source.
-- **Launch at login** — `SMAppService.mainApp`.
-- **Markdown Corpus** — every meeting renders to `~/meetings/*.md`. Survives uninstall, queryable via filesystem, exposed to external agents (Claude Desktop, Codex, Gemini CLI, OpenCode) via the bundled `rti-mcp` MCP server.
+- **Live transcription.** `AVAudioEngine` → 16 kHz PCM → Soniox WebSocket → markdown + SQLite, with rolling context for the assistant.
+- **Streaming assistant.** ⌘↵ asks "what should I say next?" using the last few minutes of transcript. OpenAI-compatible streaming chat.
+- **Invisible overlay.** Borderless `NSPanel` with `sharingType = .none` — excluded from QuickTime, Zoom local recording, and `screencapture`. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
+- **Smart Screenshot.** ⌘⇧H captures the display under the mouse, runs Vision OCR on-device, attaches the text to your next prompt. The image is discarded.
+- **Sessions + history.** Every session persists as a markdown file in `~/meetings/` (canonical) plus an FTS-indexed SQLite database (rebuildable from corpus at any time).
+- **Modes.** Four built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text — paste a resume, agenda, or code-style guide.
+- **MCP server.** A bundled `rti-mcp` JSON-RPC binary exposes the markdown corpus to Claude Desktop / Codex / Gemini CLI / OpenCode.
+
+## Privacy
+
+Audio goes to Soniox; transcripts and prompts go to your LLM provider. Everything else stays on this Mac. See [PRIVACY.md](PRIVACY.md) for the full breakdown.
 
 ## Install
 
-Requires Xcode 15+ and [`xcodegen`](https://github.com/yonaskolb/XcodeGen).
+### Option A — pre-built `.dmg` (signed, notarized)
+
+Grab the latest release at <https://github.com/tristan-mcinnis/rti/releases>, double-click the `.dmg`, drag `RTI.app` to `/Applications`. macOS Gatekeeper will accept it without warnings.
+
+### Option B — build from source
+
+Requires Xcode 15+ and [`xcodegen`](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```bash
-# 1) Generate the Xcode project
-cd RTI
+git clone https://github.com/tristan-mcinnis/rti.git
+cd rti/RTI
 xcodegen generate
-
-# 2) Build (Debug)
 xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Debug build
-
-# 3) Launch the built app
 open ~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app
 ```
 
-On first launch:
-1. Menubar → RTI → **Settings…** → **Keys** tab.
-2. Paste your DeepSeek (or other configured LLM provider) API key and Soniox API key. Both are stored locally on this Mac only.
-3. Optional: **Settings → Modes** — tailor the system prompt or paste reference text (resume, meeting agenda, code style guide…) into the active mode.
-4. Optional: **Settings → General** — toggle *Launch at Login* (requires a properly-signed build; ad-hoc-signed local builds will surface an error).
-5. Optional: **Settings → Corpus** — change the `~/meetings/` location, or copy the MCP-server config snippet for Claude Desktop / Codex / Gemini CLI.
+A locally built `.app` is ad-hoc-signed — Gatekeeper will require a right-click → **Open** the first time. `SMAppService.mainApp` (Launch at Login) will not work on ad-hoc builds; either skip that toggle or use a signed release build (see [DISTRIBUTING.md](DISTRIBUTING.md)).
+
+## First run
+
+1. Menubar → RTI → **Welcome…** (or just launch the app — onboarding shows automatically).
+2. Grant **Microphone** and **Screen Recording** permissions.
+3. Paste your **Soniox** and **LLM provider** keys.
+4. Start a session: ⌘⇧R. Toggle the overlay: ⌘\\. Ask the assistant: ⌘↵.
 
 ## Hotkeys
 
 | Key | Action |
 |-----|--------|
-| ⌘ \ | Toggle overlay visibility on the active display |
-| ⌘ ⇧ R | Start / stop the audio session |
-| ⌘ ↵ | "Assist" — ask the LLM what to say next, using recent transcript |
-| ⌘ H | Capture the display under the mouse; attach OCR to the next turn |
-| ⌘ ⌥ T | Show / hide the Live Transcript window |
+| ⌘ \\ | Toggle the assistant overlay |
+| ⌘ ⇧ R | Start / stop a recording session |
+| ⌘ ↵ | "Assist" — ask the LLM what to say next |
+| ⌘ ⇧ H | Capture the display under the mouse; attach OCR to the next prompt |
+| ⌘ ⌥ T | Toggle the Live Transcript window |
 | ⌘ K | Toggle the command palette |
-| ⌘ ⇧ B | Toggle the top recording-pill widget |
+| ⌘ ⇧ B | Toggle the recording-pill widget |
 
 Hotkeys are fixed for this build.
 
+## Capturing both sides of a call
+
+Soniox transcribes whatever audio device you select. To record both your mic and the audio coming *out* of your Mac, install [BlackHole](https://existential.audio/blackhole/), use **Audio MIDI Setup** to build an aggregate device combining your microphone + BlackHole, then pick that aggregate under **Settings → General → Audio Input**.
+
+The onboarding tour walks you through this.
+
 ## Switching LLM providers
 
-The LLM client is provider-agnostic. Provider configs live in `RTI/Sources/LLM/LLMProvider.swift` (`LLMProviders` registry). To point at a different OpenAI-compatible endpoint (Moonshot Kimi, OpenAI itself, Together, etc.):
+The LLM client is provider-agnostic. Provider configs live in [`RTI/Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift) (`LLMProviders` registry). To point at any other OpenAI-compatible endpoint (Moonshot Kimi, OpenAI, Anthropic via a proxy, Together, a local Ollama, …):
 
 1. Add a new `LLMProviderConfig` entry in `LLMProviders`.
-2. Change `LLMProviders.activeId` (a `UserDefaults` key under the hood) to the new provider id.
-
-The wire format is OpenAI-style streaming chat completions (`POST /chat/completions` + SSE). DeepSeek's `thinking` extension is gated on `LLMProviderConfig.supportsThinking`, so non-DeepSeek providers degrade gracefully.
-
-## Data
-
-- **Mic + system audio**: captured locally, streamed to Soniox over WebSocket. WAV is written to `~/Library/Application Support/RTI/audio/` while a session is recording.
-- **Screenshots**: captured on demand (`⌘ H`), OCR'd on-device via Vision, sent as text only to the LLM, and **never written to disk**.
-- **Transcripts + summaries**: rendered to `~/meetings/<session-id>.md` (configurable). The markdown corpus is canonical; the SQLite index in `~/Library/Application Support/RTI/rti.db` is a derived FTS view that can be rebuilt at any time from Settings → Corpus → Reindex.
-- **Chat messages**: stored in `~/Library/Application Support/RTI/rti.db` (GRDB/SQLite).
-- **Pruning**: completed sessions older than 30 days are pruned automatically on launch.
-- **Crash log**: `~/Library/Application Support/RTI/crash.log`, rotated at 1 MB.
+2. Change `LLMProviders.activeId` to the new provider id.
 
 ## Project layout
 
@@ -79,10 +79,9 @@ RTI/
   project.yml                      # xcodegen source of truth
   Sources/
     RTIApp.swift                   # SwiftUI entry
-    AppDelegate.swift              # status item + hotkeys + window state machine
-    OverlayWindowController.swift / OverlayPanelView.swift
-    GlobalHotkey.swift             # Carbon RegisterEventHotKey
-    Secrets.swift                  # Keychain-backed getters, no literals
+    AppDelegate.swift              # status item + hotkey + window state machine
+    OverlayWindowController.swift  # the invisible panel
+    GlobalHotkey.swift             # Carbon RegisterEventHotKey wrapper
     Audio/                         # AVAudioEngine tap, WAV writer, system audio (SCStream)
     Soniox/                        # WebSocket realtime + offline file transcribe
     LLM/                           # LLMProvider config + LLMClient + LLMController
@@ -93,18 +92,28 @@ RTI/
     Modes/                         # ModeStore
     Summary/                       # SummaryController
     Calendar/                      # CalendarManager (EventKit)
-    Widgets/                       # Top recording pill widget
+    Widgets/                       # Recording-pill widget
     Settings/                      # Tabbed Settings, KeychainStore, LaunchAtLogin, Onboarding, Logs
     Support/                       # AppLog, CrashLog, NotificationNames, formatters
     UI/                            # WindowCoordinator, MenuCoordinator, HotkeyCoordinator, design system, all SwiftUI views
   MCP/                             # rti-mcp standalone JSON-RPC server (bundled into Resources)
   Tests/                           # XCTest unit + integration tests
+  POC*-findings.md                 # historical per-POC validation logs (1–7) — the closest thing to a spec
 ```
+
+## Documents
+
+- [PRIVACY.md](PRIVACY.md) — what leaves your Mac, what stays.
+- [DISTRIBUTING.md](DISTRIBUTING.md) — how to cut a signed, notarized `.dmg` (with what *you* personally need to do, in plain English).
+- [RELEASE.md](RELEASE.md) — the technical release recipe.
+- [`RTI/VERIFY.md`](RTI/VERIFY.md) — manual verification steps for a build.
+- [`docs/adr/`](docs/adr/) — architecture decision records.
+- [`RTI/POC*-findings.md`](RTI/) — per-POC validation logs.
 
 ## Contributing
 
-Not currently accepting contributions — this is a personal project.
+Issues and PRs welcome. Please open an issue first for non-trivial changes — this is a hobby project and design decisions move slowly. There is no spec; the closest thing is the `POC*-findings.md` files plus the current code.
 
 ## License
 
-All rights reserved.
+MIT — see [LICENSE](LICENSE).

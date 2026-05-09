@@ -1,6 +1,16 @@
-# Release process
+# Release process — technical recipe
 
-This is a single-developer manual release. Automation is intentionally light.
+For first-time setup and a plain-English explanation of what notarization,
+hardened runtime, and Developer ID actually mean, read **[DISTRIBUTING.md](DISTRIBUTING.md)** first.
+
+For a one-command path, use:
+
+```bash
+./scripts/release.sh 0.2.0
+```
+
+The rest of this file documents the same flow as a series of commands you can
+run by hand if you want to inspect any individual step.
 
 ## Prerequisites
 

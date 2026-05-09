@@ -3,12 +3,18 @@ import AVFoundation
 import CoreGraphics
 import SwiftUI
 
-/// First-run onboarding sheet. Walks the user through (1) granting Mic +
-/// Screen Recording, (2) pasting Soniox + DeepSeek API keys, (3) a quick tour
-/// of the four global hotkeys and BlackHole guidance. Completion is persisted
-/// so existing users never see it again.
+/// First-run onboarding sheet. Four steps:
+///   0. Welcome — what RTI is + the data-flow honesty (audio → Soniox,
+///      transcripts → LLM provider, everything else local).
+///   1. Permissions — mic + screen recording.
+///   2. API keys — Soniox + LLM provider.
+///   3. Tour — primary hotkeys + system-audio (BlackHole) note.
+///
+/// Hero illustrations live in OnboardingArtwork.swift. Completion is
+/// persisted under the v2 key — bumped from v1 so anyone who saw the old
+/// flow gets the new welcome with the data disclosure once.
 enum OnboardingDefaults {
-    static let completedKey = "rti.onboarding.completed.v1"
+    static let completedKey = "rti.onboarding.completed.v2"
 
     static var hasCompleted: Bool {
         UserDefaults.standard.bool(forKey: completedKey)
@@ -35,7 +41,7 @@ final class OnboardingWindowController {
             return
         }
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -52,16 +58,11 @@ final class OnboardingWindowController {
         window = w
     }
 
-    /// Dismiss without recording completion — user can be guided back via the
-    /// status menu's "Show Welcome…" item or the auto-prompt on next launch
-    /// while keys are still missing.
     private func dismissWithoutCompletion() {
         window?.close()
         window = nil
     }
 
-    /// Final close from the "Get Started" path: persist completion so the
-    /// window doesn't reappear on next launch.
     private func complete() {
         OnboardingDefaults.markCompleted()
         window?.close()
@@ -69,37 +70,45 @@ final class OnboardingWindowController {
     }
 }
 
+// MARK: - Root view
+
 private struct OnboardingView: View {
     var onSkip: () -> Void
     var onComplete: () -> Void
 
     @State private var step: Int = 0
+    private let totalSteps = 4
 
     var body: some View {
         VStack(spacing: 0) {
             stepIndicator
                 .padding(.top, 18)
-                .padding(.bottom, 12)
+                .padding(.bottom, 14)
 
             Group {
                 switch step {
-                case 0: PermissionsStep()
-                case 1: KeysStep()
+                case 0: WelcomeStep()
+                case 1: PermissionsStep()
+                case 2: KeysStep()
                 default: TourStep()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 36)
 
             HStack {
                 Button("Skip") { onSkip() }
                 Spacer()
                 if step > 0 {
-                    Button("Back") { step -= 1 }
+                    Button("Back") {
+                        withAnimation(.easeInOut(duration: 0.2)) { step -= 1 }
+                    }
                 }
-                if step < 2 {
-                    Button("Next") { step += 1 }
-                        .keyboardShortcut(.defaultAction)
+                if step < totalSteps - 1 {
+                    Button("Next") {
+                        withAnimation(.easeInOut(duration: 0.2)) { step += 1 }
+                    }
+                    .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Get Started") { onComplete() }
                         .keyboardShortcut(.defaultAction)
@@ -107,17 +116,67 @@ private struct OnboardingView: View {
             }
             .padding(20)
         }
-        .frame(width: 560, height: 460)
+        .frame(width: 680, height: 560)
     }
 
     private var stepIndicator: some View {
         HStack(spacing: 8) {
-            ForEach(0..<3, id: \.self) { i in
+            ForEach(0..<totalSteps, id: \.self) { i in
                 Capsule()
                     .fill(i == step ? Color.accentColor : Color.secondary.opacity(0.25))
                     .frame(width: i == step ? 24 : 8, height: 6)
                     .animation(.easeInOut(duration: 0.18), value: step)
             }
+        }
+    }
+}
+
+// MARK: - Step 0: Welcome
+
+private struct WelcomeStep: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            WelcomeArtwork()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Real-time meeting intelligence.")
+                    .font(.system(size: 22, weight: .semibold))
+                Text("RTI listens to the conversation, transcribes it as it happens, and answers questions on demand — over an overlay that doesn't show up in other apps' screen captures.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Where your data goes")
+                    .font(.system(size: 12, weight: .semibold))
+                dataRow(icon: "waveform", text: "Microphone audio is streamed to **Soniox** for transcription.")
+                dataRow(icon: "text.bubble", text: "Transcripts and prompts are sent to your **LLM provider** (DeepSeek by default) to generate answers.")
+                dataRow(icon: "lock.laptopcomputer", text: "Recordings, transcripts, chat history, summaries, and your API keys **stay on this Mac**.")
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.secondary.opacity(0.06))
+            )
+
+            Spacer()
+        }
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private func dataRow(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+                .padding(.top, 2)
+            Text(.init(text)) // markdown bold
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -130,6 +189,8 @@ private struct PermissionsStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            PermissionsArtwork(micGranted: micGranted, screenGranted: screenGranted)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Permissions")
                     .font(.system(size: 18, weight: .semibold))
@@ -155,7 +216,7 @@ private struct PermissionsStep: View {
 
             Spacer()
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
     private func permissionRow(title: String, detail: String, granted: Bool, action: @escaping () -> Void) -> some View {
@@ -206,19 +267,28 @@ private struct KeysStep: View {
     @State private var soniox = ""
     @State private var saved = false
 
+    private var sonioxFilled: Bool {
+        !soniox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    private var llmFilled: Bool {
+        !deepseek.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            KeysArtwork(sonioxFilled: sonioxFilled, llmFilled: llmFilled)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("API Keys")
                     .font(.system(size: 18, weight: .semibold))
-                Text("RTI needs two keys to do anything useful. Both stay in your macOS Keychain — RTI never uploads them anywhere except the providers themselves.")
+                Text("RTI needs two keys to do anything useful. They are stored in an owner-only file on this Mac (~/Library/Application Support/RTI/credentials.json, mode 0600) and only ever sent to the providers below.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             field("Soniox API key", "…", $soniox, footnote: "Live transcription. Get one at console.soniox.com.")
-            field("DeepSeek API key", "sk-…", $deepseek, footnote: "LLM for Assist, Q&A, and Summary. Get one at platform.deepseek.com.")
+            field("LLM provider key (DeepSeek)", "sk-…", $deepseek, footnote: "Assist, Q&A, Summary. Default is DeepSeek; the LLM layer is provider-agnostic.")
 
             HStack {
                 if saved {
@@ -228,13 +298,12 @@ private struct KeysStep: View {
                 }
                 Spacer()
                 Button("Save") { save() }
-                    .disabled(deepseek.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-                              soniox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!sonioxFilled && !llmFilled)
             }
 
             Spacer()
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
         .onAppear {
             deepseek = CredentialStore.deepseek ?? ""
             soniox = CredentialStore.soniox ?? ""
@@ -266,10 +335,12 @@ private struct KeysStep: View {
 private struct TourStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            HotkeyCarousel()
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Quick Tour")
                     .font(.system(size: 18, weight: .semibold))
-                Text("Five things to know.")
+                Text("Five hotkeys do most of the work.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -295,7 +366,7 @@ private struct TourStep: View {
 
             Spacer()
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
     private func tourRow(_ key: String, _ label: String) -> some View {

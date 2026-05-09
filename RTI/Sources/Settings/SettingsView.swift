@@ -427,7 +427,7 @@ private struct GeneralTab: View {
 
             Text("Data & Support")
                 .font(.system(size: 13, weight: .medium))
-            Text("All session data — transcripts, audio, chat history, summaries — stays on this Mac. Nothing is uploaded except the prompts you send to DeepSeek and the audio you stream to Soniox.")
+            Text("Audio is streamed to Soniox for transcription. Transcripts and prompts are sent to your configured LLM provider (DeepSeek by default) to generate answers. Everything else — recordings, transcripts, chat history, summaries — stays on this Mac. See PRIVACY.md in the repo for the full picture.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

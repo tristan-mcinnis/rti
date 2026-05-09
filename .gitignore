@@ -25,3 +25,9 @@ xcuserdata/
 .deepseek/
 .deepseek-run/
 .gnhf/
+
+# Release-time secrets (Apple Developer team id, notarization profile name)
+.release.env
+
+# Release artifacts
+dist/

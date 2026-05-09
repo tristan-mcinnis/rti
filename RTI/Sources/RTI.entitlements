@@ -2,7 +2,25 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Not sandboxed: RTI reads/writes ~/meetings/ and ~/Library/Application
+         Support/RTI/, registers global Carbon hotkeys from any frontmost app,
+         and uses ScreenCaptureKit + AVAudioEngine without sandbox brokerage.
+         App Store submission would require sandboxing; we distribute via
+         Developer ID + notarization instead. -->
     <key>com.apple.security.app-sandbox</key>
     <false/>
+
+    <!-- Hardened Runtime entitlements (Release builds enable Hardened Runtime,
+         which is required for notarization). Each key opens exactly the
+         subset of capabilities RTI needs; everything else stays restricted. -->
+
+    <!-- Microphone capture for live transcription. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Outbound HTTPS to Soniox (transcription) and the configured LLM
+         provider (DeepSeek by default). -->
+    <key>com.apple.security.network.client</key>
+    <true/>
 </dict>
 </plist>

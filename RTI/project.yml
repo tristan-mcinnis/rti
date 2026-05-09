@@ -5,18 +5,37 @@ options:
     macOS: "14.0"
   createIntermediateGroups: true
 
+configs:
+  Debug: debug
+  Release: release
+
+# Common settings shared by all configurations. Per-configuration overrides
+# (signing identity, hardened runtime) live under `configs:` below — Debug
+# stays ad-hoc-signed for friction-free local builds; Release expects a real
+# Developer ID identity to be passed in via `xcodebuild` flags or env, which
+# `scripts/release.sh` handles.
 settings:
   base:
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     DEVELOPMENT_TEAM: ""
-    CODE_SIGN_STYLE: Automatic
-    CODE_SIGN_IDENTITY: "-"
-    ENABLE_HARDENED_RUNTIME: NO
     CODE_SIGN_ENTITLEMENTS: Sources/RTI.entitlements
     INFOPLIST_FILE: Sources/Info.plist
     PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti
     GENERATE_INFOPLIST_FILE: NO
+  configs:
+    Debug:
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: "-"
+      ENABLE_HARDENED_RUNTIME: NO
+    Release:
+      # Signing identity is supplied at build time:
+      #   xcodebuild ... DEVELOPMENT_TEAM=$TEAM_ID \
+      #              CODE_SIGN_STYLE=Manual \
+      #              CODE_SIGN_IDENTITY="Developer ID Application"
+      # (see scripts/release.sh). Hardened Runtime is required for
+      # notarization.
+      ENABLE_HARDENED_RUNTIME: YES
 
 packages:
   GRDB:
@@ -67,6 +86,13 @@ targets:
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         PRODUCT_NAME: rti-mcp
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: "-"
+          ENABLE_HARDENED_RUNTIME: NO
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
 
   # Standalone test bundle — no host app, no NSApplication. Each Swift file
   # under test is compiled directly into the bundle (so we can unit-test
@@ -122,3 +148,5 @@ schemes:
       config: Debug
       targets:
         - RTITests
+    archive:
+      config: Release

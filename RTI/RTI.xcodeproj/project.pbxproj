@@ -34,6 +34,7 @@
 		2BC80B64267C234E010ABCEB /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906F7DCF321C17392E3DA594 /* Mode.swift */; };
 		2BF97B594F6B7E1C664F7750 /* MCPSpawnIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109CEE81EB1098437E27DC2C /* MCPSpawnIntegrationTests.swift */; };
 		2C242E5A0B3725CFE29F968A /* CommandRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */; };
+		304AD99717740B3B97C9C019 /* OnboardingArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33644391A0BA4F975D565D04 /* OnboardingArtwork.swift */; };
 		32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */; };
 		36D73C15AB5DE31F14192D31 /* LLMWireShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30401E0708E01C71D5A6759B /* LLMWireShapes.swift */; };
 		379333F978F8334E614E8455 /* SessionsControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36B529563B4EAE6F3281194 /* SessionsControlView.swift */; };
@@ -197,6 +198,7 @@
 		2CF67E26C43E305EB5AA35F8 /* RTIDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIDatabase.swift; sourceTree = "<group>"; };
 		30401E0708E01C71D5A6759B /* LLMWireShapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMWireShapes.swift; sourceTree = "<group>"; };
 		3138E022716317B6DB18B9E2 /* CorpusManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusManager.swift; sourceTree = "<group>"; };
+		33644391A0BA4F975D565D04 /* OnboardingArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingArtwork.swift; sourceTree = "<group>"; };
 		342379F5E45B76ABAB810257 /* CorpusWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusWriter.swift; sourceTree = "<group>"; };
 		36C0B2386DED8C25A82AC662 /* SpeakerTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerTurn.swift; sourceTree = "<group>"; };
 		39B314C441C040CC10C72B28 /* OverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowController.swift; sourceTree = "<group>"; };
@@ -327,6 +329,7 @@
 				C1739AC4265146BE278C238F /* KeychainStore.swift */,
 				475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */,
 				9C48267D7243F07E859FF17B /* LogsView.swift */,
+				33644391A0BA4F975D565D04 /* OnboardingArtwork.swift */,
 				0B3A09E60F6A13E2B21D4E3E /* OnboardingWindowController.swift */,
 				82F3B4333865A3ABDED731A3 /* SettingsView.swift */,
 			);
@@ -733,15 +736,12 @@
 				TargetAttributes = {
 					22DBF3C143F42F8755F2A18A = {
 						DevelopmentTeam = "";
-						ProvisioningStyle = Automatic;
 					};
 					352ADB10DB522064276CBE6A = {
 						DevelopmentTeam = "";
-						ProvisioningStyle = Automatic;
 					};
 					655FABAD90CA42CCD8178DDF = {
 						DevelopmentTeam = "";
-						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -868,6 +868,7 @@
 				5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */,
 				F620ED21C7BA06ED9275285D /* NotificationNames.swift in Sources */,
 				FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */,
+				304AD99717740B3B97C9C019 /* OnboardingArtwork.swift in Sources */,
 				EAD660CCEB4135C933D64193 /* OnboardingWindowController.swift in Sources */,
 				DF9B733225B63D3BEE464B79 /* OverlayInputState.swift in Sources */,
 				13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */,
@@ -1052,12 +1053,10 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_ENTITLEMENTS = Sources/RTI.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
-				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -1099,7 +1098,10 @@
 		6A1DF56C548DED1B59A0BE40 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1115,6 +1117,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
