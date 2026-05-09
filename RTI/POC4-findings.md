@@ -45,7 +45,7 @@ xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug build
 
 ## Known limitations (by design for POC-4)
 
-- The captured screen is the one **under the mouse cursor**, not the focused window. This matches the cluely behavior and avoids picking up a stale display.
+- The captured screen is the one **under the mouse cursor**, not the focused window. This avoids picking up a stale display.
 - OCR is text-only — no layout boxes, no images-of-images understanding. Vision-language LLM is deferred (would need Kimi/multimodal endpoint).
 - "Viewed screen" chip is the only UI signal; there's no preview of the OCR text. Add a peek in POC-7 Settings if useful.
 - 12k-char truncation is silent except for an inline `…[truncated]` marker.

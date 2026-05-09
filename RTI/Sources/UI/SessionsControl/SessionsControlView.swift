@@ -124,8 +124,8 @@ struct SessionsControlView: View {
 
 /// Toolbar-resident search affordance that opens the command palette. Always
 /// visible across every Sessions Control tab so search is never more than
-/// one click (or ⌘K) away. Mirrors the Cluely-style "Search or ask anything"
-/// pill — purely a button; the actual query happens inside the palette.
+/// one click (or ⌘K) away. Renders the "Search or ask anything…" pill —
+/// purely a button; the actual query happens inside the palette.
 @MainActor
 private struct CommandPaletteSearchButton: View {
     @State private var isHovered = false

@@ -49,7 +49,8 @@ On first launch:
 | ⌘ ↵ | "Assist" — ask the LLM what to say next, using recent transcript |
 | ⌘ H | Capture the display under the mouse; attach OCR to the next turn |
 | ⌘ ⌥ T | Show / hide the Live Transcript window |
-| ⌘ ⇧ K | Toggle the command palette |
+| ⌘ K | Toggle the command palette |
+| ⌘ ⇧ B | Toggle the top recording-pill widget |
 
 Hotkeys are fixed for this build.
 
