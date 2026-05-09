@@ -16,6 +16,22 @@ struct SessionHistoryView: View {
         var description: String { rawValue }
     }
 
+    /// Row indents that put list content on the same x-grid as the page
+    /// title and toolbar (`xl = 32`). Without this the rows visibly hug the
+    /// panel's left edge whenever the sidebar is collapsed.
+    private static let rowInsets = EdgeInsets(
+        top: 0,
+        leading: RTIDesign.Spacing.xl,
+        bottom: 0,
+        trailing: RTIDesign.Spacing.xl
+    )
+    private static let headerInsets = EdgeInsets(
+        top: RTIDesign.Spacing.md,
+        leading: RTIDesign.Spacing.xl,
+        bottom: RTIDesign.Spacing.xs,
+        trailing: RTIDesign.Spacing.xl
+    )
+
     private var isCurrentSessionActive: Bool {
         SessionCoordinator.shared.isRunning
     }
@@ -25,7 +41,7 @@ struct SessionHistoryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: RTIDesign.Spacing.md) {
+            VStack(alignment: .leading, spacing: RTIDesign.Spacing.lg) {
                 Text("Session History")
                     .font(RTIDesign.Font.pageTitle)
                     .foregroundStyle(RTIDesign.Color.textPrimary)
@@ -50,6 +66,7 @@ struct SessionHistoryView: View {
                         }
                     }
                     .padding(.horizontal, RTIDesign.Spacing.md)
+                    .frame(maxWidth: 480)
                     .frame(height: RTIDesign.Control.heightMd)
                     .background(
                         RoundedRectangle(cornerRadius: RTIDesign.Radius.md)
@@ -68,6 +85,7 @@ struct SessionHistoryView: View {
             }
             .padding(.horizontal, RTIDesign.Spacing.xl)
             .padding(.top, RTIDesign.Spacing.xl)
+            .padding(.bottom, RTIDesign.Spacing.lg)
 
             if sessions.isEmpty && searchText.isEmpty {
                 sessionListEmptyState
@@ -88,6 +106,7 @@ struct SessionHistoryView: View {
                         } else {
                             ForEach(searchResults) { result in
                                 sessionRow(result.session, snippet: result.snippet)
+                                    .listRowInsets(Self.rowInsets)
                                     .contentShape(Rectangle())
                                     .onTapGesture { openSession(result.session.id) }
                                     .contextMenu { contextMenu(for: result.session) }
@@ -105,6 +124,7 @@ struct SessionHistoryView: View {
                             Section {
                                 ForEach(group.sessions) { session in
                                     sessionRow(session, snippet: nil)
+                                        .listRowInsets(Self.rowInsets)
                                         .contentShape(Rectangle())
                                         .onTapGesture { openSession(session.id) }
                                         .contextMenu { contextMenu(for: session) }
@@ -114,13 +134,13 @@ struct SessionHistoryView: View {
                                     .font(RTIDesign.Font.meta.weight(.semibold))
                                     .foregroundStyle(RTIDesign.Color.textSecondary)
                                     .textCase(nil)
-                                    .padding(.top, RTIDesign.Spacing.sm)
-                                    .padding(.bottom, 4)
+                                    .listRowInsets(Self.headerInsets)
                             }
                         }
                     } else {
                         ForEach(sortedSessions) { session in
                             sessionRow(session, snippet: nil)
+                                .listRowInsets(Self.rowInsets)
                                 .contentShape(Rectangle())
                                 .onTapGesture { openSession(session.id) }
                                 .contextMenu { contextMenu(for: session) }
