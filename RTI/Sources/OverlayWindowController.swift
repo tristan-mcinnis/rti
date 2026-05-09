@@ -32,7 +32,12 @@ final class OverlayWindowController {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
     private var didMoveObserver: NSObjectProtocol?
+    private var didResizeObserver: NSObjectProtocol?
     private var sizeObserver: NSObjectProtocol?
+    /// The top-widget pill, attached as a child window so it tracks the
+    /// overlay's position and visibility. Repositioned on every move/resize
+    /// so it stays glued to the top-right corner.
+    private weak var attachedPill: NSWindow?
 
     init(onOpenSettings: @escaping () -> Void = {}) {
         let initialSize = Self.configuredSize()
@@ -60,7 +65,19 @@ final class OverlayWindowController {
             forName: NSWindow.didMoveNotification,
             object: panel,
             queue: .main
-        ) { [weak self] _ in self?.saveFrame() }
+        ) { [weak self] _ in
+            self?.saveFrame()
+            self?.repositionPill()
+        }
+
+        // Reanchor the pill on resize. addChildWindow keeps the child at a
+        // fixed offset from the parent's origin, but we want it pinned to the
+        // top-right — so we recompute every resize tick.
+        didResizeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in self?.repositionPill() }
 
         // Settings → "Overlay Appearance" sliders post this when width/height
         // change, so the live overlay resizes immediately.
@@ -79,7 +96,36 @@ final class OverlayWindowController {
 
     deinit {
         if let o = didMoveObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = didResizeObserver { NotificationCenter.default.removeObserver(o) }
         if let o = sizeObserver { NotificationCenter.default.removeObserver(o) }
+    }
+
+    // MARK: - Attached pill (top-widget)
+
+    /// Wire the top-widget pill as a child window so it (a) tracks the
+    /// overlay's position automatically, (b) inherits visibility — when the
+    /// overlay is ordered out, the pill is too. Repositioning is still
+    /// manual on resize since AppKit only auto-tracks moves.
+    func attachPill(_ pill: NSWindow) {
+        if let existing = pill.parent {
+            existing.removeChildWindow(pill)
+        }
+        window.addChildWindow(pill, ordered: .above)
+        attachedPill = pill
+        repositionPill()
+    }
+
+    /// Pin the pill to the overlay's top-right, sticking up just above the
+    /// panel like a tab handle. Right edges align so the pill never crosses
+    /// the panel's right border, and it never overlaps the response area.
+    private func repositionPill() {
+        guard let pill = attachedPill else { return }
+        let frame = window.frame
+        let pw = pill.frame.width
+        let gap: CGFloat = 4
+        let x = frame.maxX - pw
+        let y = frame.maxY + gap
+        pill.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     private static func configuredSize() -> NSSize {
@@ -142,19 +188,6 @@ final class OverlayWindowController {
             ctx.duration = 0.18
             window.animator().alphaValue = 1
         }
-    }
-
-    /// Position the overlay anchored below a pill frame (top-right of screen),
-    /// then fade it in. The overlay's right edge aligns with the pill's right edge.
-    func showBelow(pillFrame: NSRect) {
-        let configured = Self.configuredSize()
-        let gap = TopWidgetWindowController.chatGap
-        let origin = NSPoint(
-            x: pillFrame.maxX - configured.width,
-            y: pillFrame.minY - gap - configured.height
-        )
-        window.setFrame(NSRect(origin: origin, size: configured), display: false)
-        show()
     }
 
     func hide() {

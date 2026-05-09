@@ -20,15 +20,25 @@ final class WindowCoordinator {
         sessionsControl = SessionsControlWindowController()
 
         let controller = OverlayWindowController(onOpenSettings: onOpenSettings)
-        controller.show()
         overlayController = controller
 
-        let top = TopWidgetWindowController(
-            onOpenChat: { [weak self] in self?.positionOverlayBelowWidget() },
-            onOpenSessionHome: { [weak self] in self?.showSessionsControl(tab: .sessions) }
+        let actions = TopWidgetWindowController.Actions(
+            onOpenChat: { [weak self] in self?.showOverlay() },
+            onOpenSessionHome: { [weak self] in self?.showSessionsControl(tab: .sessions) },
+            onToggleOverlay: { [weak self] in self?.toggleOverlay() },
+            onCaptureScreen: { ScreenshotManager.shared.captureAndAttach() },
+            onToggleInvisibility: { [weak self] in self?.toggleInvisibility() },
+            onOpenSettings: onOpenSettings,
+            onQuit: { NSApp.terminate(nil) }
         )
-        top.show()
+        let top = TopWidgetWindowController(actions: actions)
         topWidget = top
+
+        // Attach pill as a child of the overlay BEFORE showing the overlay.
+        // Child windows inherit visibility from the parent, so the pill
+        // appears together with the overlay on the first show().
+        controller.attachPill(top.nsWindow)
+        controller.show()
 
         commandPalette = CommandPaletteWindowController()
     }
@@ -38,21 +48,29 @@ final class WindowCoordinator {
         topWidget?.setSharingInvisible(invisible)
     }
 
+    /// Toggle the persisted invisibility flag and apply it to both windows.
+    /// Mirrors AppDelegate.toggleInvisibility so the right-click pill menu
+    /// can drive it without reaching through more layers.
+    private func toggleInvisibility() {
+        let key = "rti.invisible"
+        let current = UserDefaults.standard.object(forKey: key) as? Bool ?? true
+        let next = !current
+        UserDefaults.standard.set(next, forKey: key)
+        setSharingInvisible(next)
+    }
+
     // MARK: - Overlay
 
     func showOverlay() { overlayController?.show() }
     func hideOverlay() { overlayController?.hide() }
     func toggleOverlay() { overlayController?.toggle() }
-    func positionOverlayBelowWidget() {
-        guard let overlay = overlayController, let widget = topWidget else { return }
-        overlay.showBelow(pillFrame: widget.windowFrame)
-    }
 
-    // MARK: - Top Widget
+    // MARK: - Top Widget (now child of overlay; its visibility tracks overlay)
 
-    func showTopWidget() { topWidget?.show() }
-    func hideTopWidget() { topWidget?.hide() }
-    func toggleTopWidget() { topWidget?.toggle() }
+    /// Toggling the pill is now an alias for toggling the overlay, since the
+    /// pill is a child window — it has no independent visibility worth
+    /// exposing. ⌘⇧B remains wired to this for muscle-memory continuity.
+    func toggleTopWidget() { toggleOverlay() }
 
     // MARK: - Sessions Control (unified: Live Transcript, Sessions, Settings, Logs)
 

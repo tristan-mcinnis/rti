@@ -9,11 +9,24 @@ final class TopWidgetWindowController {
     static let pillHeight: CGFloat = 36
     static let chatGap: CGFloat = 6
 
-    init(onOpenChat: @escaping () -> Void, onOpenSessionHome: @escaping () -> Void) {
+    /// Bag of actions the right-click menu fires. Plumbed in from
+    /// `WindowCoordinator` so the view layer doesn't reach into singletons
+    /// for window/screen operations.
+    struct Actions {
+        let onOpenChat: () -> Void
+        let onOpenSessionHome: () -> Void
+        let onToggleOverlay: () -> Void
+        let onCaptureScreen: () -> Void
+        let onToggleInvisibility: () -> Void
+        let onOpenSettings: () -> Void
+        let onQuit: () -> Void
+    }
+
+    init(actions: Actions) {
         // Width is generous enough that the wider idle state ("Record" + Smart
         // badge) fits without truncation. The pill is right-anchored within
         // the panel via a leading Spacer so the visual position stays glued
-        // to the screen edge regardless of state.
+        // to whichever frame edge the parent (or screen) provides.
         let size = NSSize(width: 180, height: Self.pillHeight)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
@@ -32,51 +45,17 @@ final class TopWidgetWindowController {
         panel.isMovable = false
         panel.isMovableByWindowBackground = false
 
-        panel.contentView = NSHostingView(rootView: TopWidgetView(
-            onOpenChat: onOpenChat,
-            onOpenSessionHome: onOpenSessionHome
-        ))
+        panel.contentView = NSHostingView(rootView: TopWidgetView(actions: actions))
 
         self.window = panel
-        positionOnActiveScreen()
     }
+
+    /// The underlying NSWindow — handed to `OverlayWindowController.attachPill`
+    /// so the pill becomes a child window of the overlay (tracks move +
+    /// visibility automatically).
+    var nsWindow: NSWindow { window }
 
     var windowFrame: NSRect { window.frame }
-
-    func positionOnActiveScreen() {
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let origin = NSPoint(
-            x: visible.maxX - window.frame.width - 15,
-            y: visible.maxY - window.frame.height - 12
-        )
-        window.setFrameOrigin(origin)
-    }
-
-    func show() {
-        positionOnActiveScreen()
-        window.alphaValue = 0
-        window.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.18
-            window.animator().alphaValue = 1
-        }
-    }
-
-    func hide() {
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.15
-            window.animator().alphaValue = 0
-        }, completionHandler: { [window] in
-            window.orderOut(nil)
-            window.alphaValue = 1
-        })
-    }
-
-    func toggle() {
-        if window.isVisible { hide() } else { show() }
-    }
 
     var isVisible: Bool { window.isVisible }
 

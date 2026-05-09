@@ -10,8 +10,7 @@ import SwiftUI
 ///   below the widget, or jump into the Sessions Control window.
 /// • Smart Mode shows as a small green capsule next to the pill.
 struct TopWidgetView: View {
-    let onOpenChat: () -> Void
-    let onOpenSessionHome: () -> Void
+    let actions: TopWidgetWindowController.Actions
 
     @ObservedObject private var coordinator = SessionCoordinator.shared
     @ObservedObject private var llm = LLMController.shared
@@ -61,14 +60,7 @@ struct TopWidgetView: View {
         .help(coordinator.isRunning
               ? "Click to stop recording • Right-click for menu"
               : "Click to record • Right-click for menu")
-        .contextMenu {
-            Button(coordinator.isRunning ? "Stop Recording" : "Start Recording") {
-                coordinator.toggleSession()
-            }
-            Divider()
-            Button("Open Chat Panel") { onOpenChat() }
-            Button("Open Session Home") { onOpenSessionHome() }
-        }
+        .contextMenu { menuContents }
     }
 
     @ViewBuilder
@@ -140,6 +132,40 @@ struct TopWidgetView: View {
     private var postRecordingLabel: String? {
         guard let started = coordinator.startedAt, let ended = coordinator.endedAt else { return nil }
         return TimeFormat.elapsed(ended.timeIntervalSince(started))
+    }
+
+    // MARK: - Right-click menu
+
+    /// Right-click menu items. Grouped: recording, panel/screen tools,
+    /// state toggles (smart/invisibility), then Settings + history + quit.
+    @ViewBuilder
+    private var menuContents: some View {
+        Button(coordinator.isRunning ? "Stop Recording" : "Start Recording") {
+            coordinator.toggleSession()
+        }
+        Divider()
+        Button("Toggle Overlay  ⌘\\") { actions.onToggleOverlay() }
+        Button("Capture Screen  ⌘H") { actions.onCaptureScreen() }
+        Divider()
+        Button(llm.smartMode ? "Disable Smart Mode" : "Enable Smart Mode") {
+            llm.smartMode.toggle()
+        }
+        Button(invisibilityIsOn ? "Show on Screen Capture" : "Hide from Screen Capture") {
+            actions.onToggleInvisibility()
+        }
+        Divider()
+        Button("Open Chat Panel") { actions.onOpenChat() }
+        Button("Open Session Home") { actions.onOpenSessionHome() }
+        Button("Settings…") { actions.onOpenSettings() }
+        Divider()
+        Button("Quit RTI") { actions.onQuit() }
+    }
+
+    /// Mirror the same key (`rti.invisible`) AppDelegate uses, defaulting to
+    /// the same `true` so the menu label tracks runtime state without
+    /// reaching back through closures.
+    private var invisibilityIsOn: Bool {
+        UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
     }
 }
 
