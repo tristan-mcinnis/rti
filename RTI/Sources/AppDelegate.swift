@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.onShowSettings = { [weak self] in self?.windows.openSettings() }
         menu.onShowAbout = { [weak self] in self?.windows.showAbout() }
         menu.onShowShortcuts = { [weak self] in self?.windows.showShortcuts() }
+        menu.onShowOnboarding = { [weak self] in self?.windows.showOnboarding() }
         menu.onToggleOverlay = { [weak self] in self?.windows.toggleOverlay() }
         menu.onToggleTopWidget = { [weak self] in self?.windows.toggleTopWidget() }
         menu.onClearChat = { [weak self] in self?.clearChat() }
@@ -144,7 +145,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Emergency shutdown flushes the JSONL writer and audio pipeline.
+        // We can't do unbounded async work here (the OS will kill us), but
+        // we can at least give the synchronous parts a chance to land.
         SessionCoordinator.shared.emergencyShutdown()
+    }
+
+    /// Bring the overlay back when the user clicks the app's Dock icon, the
+    /// running-app indicator, or relaunches while a single instance is
+    /// already alive. Without this, an `LSUIElement` app whose overlay was
+    /// dismissed has no obvious entry point besides the menubar item.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            windows.showOverlay()
+        }
+        return true
     }
 
     private static let invisibleKey = "rti.invisible"

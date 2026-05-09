@@ -74,15 +74,55 @@ enum KeychainStore {
         guard let url = fileURL else { return }
         do {
             let data = try JSONEncoder().encode(dict)
-            try data.write(to: url, options: [.atomic])
-            // Restrict to owner read/write only.
-            try FileManager.default.setAttributes(
-                [.posixPermissions: NSNumber(value: Int16(0o600))],
-                ofItemAtPath: url.path
+            // Avoid the umask race in `Data.write(.atomic)` by creating
+            // the file ourselves with mode 0600. Atomic-via-rename then
+            // happens on the underlying open file, so the owner-only
+            // permission is in place from the first write.
+            try writeAtomicallyOwnerOnly(data: data, to: url)
+            // Tighten the parent directory too; atomic-write copies the
+            // file into the same directory before rename, so a misconfigured
+            // parent could let a co-tenant see the temp.
+            let parent = url.deletingLastPathComponent()
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: NSNumber(value: Int16(0o700))],
+                ofItemAtPath: parent.path
             )
         } catch {
             NSLog("[RTI] KeychainStore save failed: \(error)")
         }
+    }
+
+    /// Write `data` to `url` with mode 0600 from the very first byte — no
+    /// umask-dependent intermediate state. Uses a sibling temp file +
+    /// `rename(2)` to retain crash-safety.
+    private static func writeAtomicallyOwnerOnly(data: Data, to url: URL) throws {
+        let dir = url.deletingLastPathComponent()
+        let temp = dir.appendingPathComponent(".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
+        let fd = open(temp.path, O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0o600)
+        guard fd >= 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        let written = data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> Int in
+            guard let base = buf.baseAddress else { return -1 }
+            return write(fd, base, data.count)
+        }
+        close(fd)
+        guard written == data.count else {
+            try? FileManager.default.removeItem(at: temp)
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno == 0 ? EIO : errno))
+        }
+        do {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
+        } catch {
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
+        // Re-affirm 0600 after the replace, in case replaceItemAt copies
+        // the destination's old attributes.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o600))],
+            ofItemAtPath: url.path
+        )
     }
 }
 

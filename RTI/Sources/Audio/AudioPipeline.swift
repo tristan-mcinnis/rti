@@ -28,6 +28,13 @@ final class AudioPipeline {
     /// capture yet — call `start()` after this returns.
     /// - Returns: the URL of the WAV file being prepared.
     func prepare(sessionId: String) throws -> URL {
+        // Fast-fail before opening a WAV on disk: a missing/empty Soniox
+        // key would otherwise let the user "record" silently for 5 retries
+        // before any error surfaces, leaving an orphan WAV in the corpus.
+        guard !Secrets.sonioxAPIKey.isEmpty else {
+            throw AudioPipelineError.missingSonioxKey
+        }
+
         let wavURL = WAVWriter.defaultURL(for: sessionId)
         try wav.open(at: wavURL)
 
@@ -56,6 +63,12 @@ final class AudioPipeline {
     func start() throws {
         try audio.start()
 
+        // Don't even attempt the system-audio Soniox leg without a key.
+        // The mic leg already enforces this in `prepare`; this guard
+        // mirrors it so we don't silently consume Soniox credits on a
+        // doomed second connection.
+        guard !Secrets.sonioxAPIKey.isEmpty else { return }
+
         Task { @MainActor [weak self] in
             guard let self else { return }
             let sysClient = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
@@ -65,6 +78,15 @@ final class AudioPipeline {
                 let message = failure.userMessage(didOpen: didOpen)
                 NSLog("[RTI] system audio Soniox error: \(message)")
                 RTILog.log("system soniox error — \(message)", category: "soniox")
+                // System-audio failure is non-fatal for the session (mic
+                // continues). Surface it once via the same `onError`
+                // callback the mic leg uses, with `isAuth=false` so the
+                // UI banner is informational rather than recommending
+                // Settings (the mic side already would have for an auth
+                // error).
+                if failure.isAuth {
+                    self.onError?("System audio: \(message)", false)
+                }
             }
             sysClient.connect()
             self.systemSoniox = sysClient
@@ -116,5 +138,16 @@ final class AudioPipeline {
         systemSoniox?.disconnect()
         systemSoniox = nil
         wav.close()
+    }
+}
+
+enum AudioPipelineError: LocalizedError {
+    case missingSonioxKey
+
+    var errorDescription: String? {
+        switch self {
+        case .missingSonioxKey:
+            return "No Soniox API key set. Open Settings to paste a key, then start the session again."
+        }
     }
 }

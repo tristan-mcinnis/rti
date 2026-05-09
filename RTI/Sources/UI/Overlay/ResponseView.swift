@@ -27,35 +27,7 @@ struct ResponseView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if entries.isEmpty && !streaming && error == nil {
-                        VStack(alignment: .leading, spacing: 16) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Ready when you are")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.65))
-                                Text("Type a question below or use a shortcut:")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.white.opacity(0.4))
-                                HStack(spacing: 20) {
-                                    Text("\u{2318}\u{21A9}  Assist")
-                                    Text("\u{2318}H  OCR screen")
-                                }
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.45))
-                            }
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Try asking:")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.35))
-                                ForEach(["Summarize the last few minutes",
-                                         "What did they decide?",
-                                         "Help me reply"], id: \.self) { example in
-                                    Text("• " + example)
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(.white.opacity(0.4))
-                                }
-                            }
-                        }
+                        emptyStateBody
                     }
 
                     ForEach(entries) { entry in
@@ -94,6 +66,61 @@ struct ResponseView: View {
                 guard let lastId = entries.last?.id else { return }
                 DispatchQueue.main.async {
                     proxy.scrollTo(lastId, anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyStateBody: some View {
+        if CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
+            missingKeysBody
+        } else {
+            readyBody
+        }
+    }
+
+    private var missingKeysBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Add API keys to get started")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+            Text("RTI needs a Soniox key for live transcription and a DeepSeek key for the LLM. Both stay on this Mac.")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Open Settings…", action: onOpenSettings)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        }
+    }
+
+    private var readyBody: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Ready when you are")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.65))
+                Text("Type a question below or use a shortcut:")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.4))
+                HStack(spacing: 20) {
+                    Text("\u{2318}\u{21A9}  Assist")
+                    Text("\u{2318}\u{21E7}H  OCR screen")
+                }
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.45))
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Try asking:")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.35))
+                ForEach(["Summarize the last few minutes",
+                         "What did they decide?",
+                         "Help me reply"], id: \.self) { example in
+                    Text("• " + example)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.4))
                 }
             }
         }

@@ -558,21 +558,13 @@ struct SessionDetailView: View {
     }
 
     private func timestampLink(ms: Int) -> some View {
-        // Wired as a button so future audio-scrub can land here without
-        // restyling. For now, click logs and is otherwise a no-op.
-        Button(action: {
-            RTILog.log("[SessionDetail] timestamp tapped: \(ms)ms", category: "UI")
-        }) {
-            Text(timeLabel(ms: ms))
-                .font(RTIDesign.Font.meta)
-                .monospacedDigit()
-                .foregroundStyle(RTIDesign.Color.textTertiary)
-                .underline()
-        }
-        .buttonStyle(.plain)
-        .onHover { inside in
-            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-        }
+        // Renders as plain text — audio scrub-on-click isn't wired yet, so
+        // do not show underline / pointer hand UI that would imply a
+        // working link to the user.
+        Text(timeLabel(ms: ms))
+            .font(RTIDesign.Font.meta)
+            .monospacedDigit()
+            .foregroundStyle(RTIDesign.Color.textTertiary)
     }
 
     // MARK: - Q&A Body

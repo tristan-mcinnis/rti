@@ -18,6 +18,11 @@ final class LiveJSONLWriter {
     private let url: URL
     private let queue = DispatchQueue(label: "rti.live.jsonl", qos: .utility)
     private var handle: FileHandle?
+    /// Once `close()` runs, late-arriving `append()` calls (queued before
+    /// shutdown but executed after) must not silently reopen the file —
+    /// otherwise events written past the point the renderer already read
+    /// vanish from the markdown corpus.
+    private var closed: Bool = false
     private var pendingFlush: DispatchWorkItem?
     private let flushInterval: TimeInterval = 0.25
     private let encoder: JSONEncoder = {
@@ -52,6 +57,13 @@ final class LiveJSONLWriter {
     func append(_ event: Event) {
         queue.async { [weak self] in
             guard let self else { return }
+            // Drop late events that race past close(): silently re-opening
+            // the file would write past the cursor the corpus renderer
+            // already read, losing those events from the markdown.
+            if self.closed {
+                NSLog("[RTI] LiveJSONLWriter append after close — dropping event")
+                return
+            }
             do {
                 if self.handle == nil {
                     try self._open()
@@ -75,6 +87,7 @@ final class LiveJSONLWriter {
             handle = nil
             pendingFlush?.cancel()
             pendingFlush = nil
+            closed = true
         }
     }
 

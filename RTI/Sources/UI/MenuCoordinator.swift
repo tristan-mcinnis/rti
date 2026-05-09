@@ -18,6 +18,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     var onShowSettings: (() -> Void)?
     var onShowAbout: (() -> Void)?
     var onShowShortcuts: (() -> Void)?
+    var onShowOnboarding: (() -> Void)?
     var onToggleOverlay: (() -> Void)?
     var onToggleTopWidget: (() -> Void)?
     var onClearChat: (() -> Void)?
@@ -77,6 +78,10 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         let shortcutsItem = NSMenuItem(title: "Keyboard Shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
         shortcutsItem.target = self
         menu.addItem(shortcutsItem)
+
+        let welcomeItem = NSMenuItem(title: "Show Welcome…", action: #selector(showOnboarding), keyEquivalent: "")
+        welcomeItem.target = self
+        menu.addItem(welcomeItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -172,6 +177,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     @objc private func showSettings() { onShowSettings?() }
     @objc private func showAbout() { onShowAbout?() }
     @objc private func showShortcuts() { onShowShortcuts?() }
+    @objc private func showOnboarding() { onShowOnboarding?() }
     @objc private func toggleOverlay() { onToggleOverlay?() }
     @objc private func toggleTopWidget() { onToggleTopWidget?() }
     @objc private func clearChat() { onClearChat?() }

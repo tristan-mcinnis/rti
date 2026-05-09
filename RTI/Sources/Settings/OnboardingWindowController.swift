@@ -41,7 +41,10 @@ final class OnboardingWindowController {
             defer: false
         )
         w.title = "Welcome to RTI"
-        w.contentView = NSHostingView(rootView: OnboardingView(onClose: { [weak self] in self?.close() }))
+        w.contentView = NSHostingView(rootView: OnboardingView(
+            onSkip: { [weak self] in self?.dismissWithoutCompletion() },
+            onComplete: { [weak self] in self?.complete() }
+        ))
         w.center()
         w.isReleasedWhenClosed = false
         w.makeKeyAndOrderFront(nil)
@@ -49,7 +52,17 @@ final class OnboardingWindowController {
         window = w
     }
 
-    func close() {
+    /// Dismiss without recording completion — user can be guided back via the
+    /// status menu's "Show Welcome…" item or the auto-prompt on next launch
+    /// while keys are still missing.
+    private func dismissWithoutCompletion() {
+        window?.close()
+        window = nil
+    }
+
+    /// Final close from the "Get Started" path: persist completion so the
+    /// window doesn't reappear on next launch.
+    private func complete() {
         OnboardingDefaults.markCompleted()
         window?.close()
         window = nil
@@ -57,7 +70,8 @@ final class OnboardingWindowController {
 }
 
 private struct OnboardingView: View {
-    var onClose: () -> Void
+    var onSkip: () -> Void
+    var onComplete: () -> Void
 
     @State private var step: Int = 0
 
@@ -78,7 +92,7 @@ private struct OnboardingView: View {
             .padding(.horizontal, 28)
 
             HStack {
-                Button("Skip") { onClose() }
+                Button("Skip") { onSkip() }
                 Spacer()
                 if step > 0 {
                     Button("Back") { step -= 1 }
@@ -87,7 +101,7 @@ private struct OnboardingView: View {
                     Button("Next") { step += 1 }
                         .keyboardShortcut(.defaultAction)
                 } else {
-                    Button("Get Started") { onClose() }
+                    Button("Get Started") { onComplete() }
                         .keyboardShortcut(.defaultAction)
                 }
             }
@@ -134,7 +148,7 @@ private struct PermissionsStep: View {
 
             permissionRow(
                 title: "Screen Recording",
-                detail: "Used by ⌘H to attach the active screen as image + OCR text to your next prompt.",
+                detail: "Used by ⌘⇧H to attach the active screen as image + OCR text to your next prompt.",
                 granted: screenGranted,
                 action: requestScreen
             )
@@ -264,7 +278,7 @@ private struct TourStep: View {
                 tourRow("⌘ \\", "Show / hide the assistant overlay")
                 tourRow("⌘ ⇧ R", "Start / stop a recording session")
                 tourRow("⌘ ↵", "Assist — answer based on what's been said")
-                tourRow("⌘ H", "Attach the screen as image + OCR to your next message")
+                tourRow("⌘ ⇧ H", "Attach the screen as image + OCR to your next message")
                 tourRow("⌘ ⌥ T", "Show / hide the live transcript window")
             }
 

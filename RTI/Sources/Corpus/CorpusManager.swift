@@ -161,9 +161,10 @@ final class CorpusManager {
         for url in orphans {
             NSLog("[RTI] CorpusManager: orphaned live JSONL at \(url.path)")
         }
-        if !orphans.isEmpty {
-            NotificationCenter.default.post(name: .rtiOrphansDetected, object: orphans)
-        }
+        // Orphans are recovered as part of the next session-end render via
+        // CorpusFTSReindexer + recovery handling elsewhere. No UI surface
+        // wires `.rtiOrphansDetected` today, so we don't post it — a future
+        // banner can subscribe and we'll re-introduce the post then.
     }
 
 

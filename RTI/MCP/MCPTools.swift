@@ -25,7 +25,12 @@ struct MCPTools {
         self.corpusDirectory = corpusDirectory
         self.liveDirectory = liveDirectory
         self.dbPath = dbPath
-        self.dbWriter = try? DatabasePool(path: dbPath.path)
+        // Read-only: rti-mcp must never compete with the host app for the
+        // single-writer SQLite lock, must never trigger schema migrations,
+        // and must never corrupt the WAL on a crash.
+        var config = Configuration()
+        config.readonly = true
+        self.dbWriter = try? DatabaseQueue(path: dbPath.path, configuration: config)
     }
 
     // MARK: - tool surface
@@ -152,9 +157,20 @@ struct MCPTools {
                   let slug = arguments["slug"] as? String,
                   parseISO(dateStr) != nil {
             let dateOnly = String(dateStr.prefix(10))
+            // Reject slugs that contain path separators or `..` segments
+            // before they reach `appendingPathComponent`.
+            guard isSafeSlug(slug) else {
+                return ToolCallResult(text: "Invalid slug.", isError: true)
+            }
             url = corpusDirectory.appendingPathComponent("\(dateOnly)-\(slug).md")
         } else {
             return ToolCallResult(text: "Provide either `path` or both `date` and `slug`.", isError: true)
+        }
+        // Containment: every read must resolve under the corpus root. Without
+        // this, an external agent could request `~/.ssh/id_rsa` or
+        // `../../etc/passwd` via the `path` argument.
+        guard isWithinCorpus(url) else {
+            return ToolCallResult(text: "Path is outside the configured corpus directory.", isError: true)
         }
         do {
             let entry = try CorpusReader.read(url)
@@ -167,6 +183,24 @@ struct MCPTools {
         } catch {
             return ToolCallResult(text: "Could not read meeting: \(error)", isError: true)
         }
+    }
+
+    /// True iff `url` resolves inside `corpusDirectory` after symlink/`..`
+    /// normalisation. Anchors the prefix on a trailing `/` so that
+    /// `~/meetings-other/foo.md` cannot satisfy a `~/meetings/` containment
+    /// check by string-prefix coincidence.
+    private func isWithinCorpus(_ url: URL) -> Bool {
+        let resolved = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let root = corpusDirectory.standardizedFileURL.resolvingSymlinksInPath().path
+        let rootWithSlash = root.hasSuffix("/") ? root : root + "/"
+        return resolved == root || resolved.hasPrefix(rootWithSlash)
+    }
+
+    private func isSafeSlug(_ slug: String) -> Bool {
+        guard !slug.isEmpty, !slug.contains("/"), !slug.contains("\\"), slug != "..", !slug.contains("..") else {
+            return false
+        }
+        return true
     }
 
     // MARK: - list_meetings

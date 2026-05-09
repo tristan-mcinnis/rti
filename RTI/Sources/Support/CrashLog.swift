@@ -37,6 +37,13 @@ enum CrashLog {
             } else {
                 try? data.write(to: url)
             }
+            // Crash logs may contain stack-frame strings — restrict to
+            // owner read/write so the file isn't world-readable on
+            // shared machines.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: NSNumber(value: Int16(0o600))],
+                ofItemAtPath: url.path
+            )
         }
     }
 

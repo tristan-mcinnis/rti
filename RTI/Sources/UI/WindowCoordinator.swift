@@ -108,6 +108,16 @@ final class WindowCoordinator {
         return true
     }
 
+    /// Reopen the onboarding window unconditionally — wired to the menubar
+    /// "Show Welcome…" item so a user who skipped, or who needs to revisit
+    /// permissions/keys, can always come back.
+    func showOnboarding() {
+        if onboarding == nil {
+            onboarding = OnboardingWindowController()
+        }
+        onboarding?.show()
+    }
+
     // MARK: - About
 
     func showAbout() {

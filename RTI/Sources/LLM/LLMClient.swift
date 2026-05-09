@@ -70,6 +70,11 @@ final class LLMClient {
                         messages: messages,
                         stream: true,
                         temperature: temperature,
+                        // Cost guardrail. Without this, a long meeting
+                        // transcript fed every turn could rack up bills
+                        // unbounded. 1024 fits all four prompt shapes
+                        // (Assist/Say/Followups/Recap) plus typical chat.
+                        max_tokens: 1024,
                         thinking: thinking
                     )
                     var request = URLRequest(url: provider.baseURL.appendingPathComponent("chat/completions"))
@@ -153,14 +158,23 @@ final class LLMClient {
         let providerName = provider.displayName
         var lineCount = 0
         var deltaCount = 0
-        for try await line in bytes.lines {
+        for try await rawLine in bytes.lines {
             try Task.checkCancellation()
             lineCount += 1
+            // Strip CRLF and surrounding whitespace per the SSE spec; some
+            // proxies emit `\r\n` and providers vary on the space after
+            // `data:`. The first 200 chars are still logged but redacted
+            // (no raw response bodies — they can leak auth headers or
+            // upstream errors that include keys).
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             if lineCount <= 3 {
-                NSLog("[RTI] LLMClient[\(providerName)] line[\(lineCount)]: %@", line.prefix(200) as NSString)
+                let preview = line.hasPrefix("data:") ? "data: …" : line.prefix(60)
+                NSLog("[RTI] LLMClient[\(providerName)] line[\(lineCount)]: %@", String(preview) as NSString)
             }
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst(6))
+            // Comments per SSE spec start with a colon.
+            if line.hasPrefix(":") { continue }
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
             if payload == "[DONE]" {
                 NSLog("[RTI] LLMClient[\(providerName)]: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
                 RTILog.log("done — lines=\(lineCount) deltas=\(deltaCount)", category: "llm")
@@ -168,6 +182,9 @@ final class LLMClient {
                 return
             }
             guard let data = payload.data(using: .utf8) else { continue }
+            // After trimming, the local `payload` is a `Substring`; downstream
+            // JSON paths still work on `data`.
+            let payloadString = String(payload)
             // Some servers send {"error": {...}} mid-stream instead of
             // [DONE]. Surface that to the caller instead of silently
             // swallowing it.
@@ -192,7 +209,7 @@ final class LLMClient {
                     continuation.yield(delta)
                 }
             } catch {
-                NSLog("[RTI] LLMClient[\(providerName)] chunk decode failed: \(error) payload=\(payload.prefix(200))")
+                NSLog("[RTI] LLMClient[\(providerName)] chunk decode failed: \(error) payload=\(payloadString.prefix(200))")
             }
         }
         continuation.finish()

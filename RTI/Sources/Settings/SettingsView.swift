@@ -34,6 +34,12 @@ private struct KeysTab: View {
     @State private var deepseek = ""
     @State private var soniox = ""
     @State private var saved = false
+    @State private var saveError: String?
+
+    private var hasMissingKey: Bool {
+        deepseek.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        soniox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var isFirstRun: Bool {
         deepseek.isEmpty && soniox.isEmpty
@@ -61,6 +67,17 @@ private struct KeysTab: View {
             field("DeepSeek API key", "sk-…", $deepseek)
             field("Soniox API key", "…", $soniox)
 
+            if hasMissingKey {
+                Text("Both keys are required for RTI to work.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+            }
+            if let saveError {
+                Text(saveError)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+            }
+
             HStack {
                 if saved {
                     Label("Saved", systemImage: "checkmark.circle.fill")
@@ -70,8 +87,7 @@ private struct KeysTab: View {
                 Spacer()
                 Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(deepseek.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-                              soniox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(hasMissingKey)
             }
             Spacer()
         }
@@ -93,8 +109,23 @@ private struct KeysTab: View {
     private func save() {
         let k = deepseek.trimmingCharacters(in: .whitespacesAndNewlines)
         let s = soniox.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Belt-and-braces: the button is disabled when either is empty,
+        // but if a hotkey-driven Save bypasses the disabled state we
+        // should still refuse rather than wipe a key.
+        guard !k.isEmpty, !s.isEmpty else {
+            saveError = "Both keys must be filled in."
+            return
+        }
+        saveError = nil
         CredentialStore.setDeepSeek(k)
         CredentialStore.setSoniox(s)
+        // Verify the write actually landed in the keychain store. If
+        // CredentialStore returns nil after set, surface a real error
+        // instead of flashing a misleading green check.
+        if CredentialStore.deepseek != k || CredentialStore.soniox != s {
+            saveError = "Could not save keys to disk. Check that ~/Library/Application Support/RTI is writable."
+            return
+        }
         saved = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
     }
@@ -112,17 +143,48 @@ private struct ModesTab: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            List(selection: $selection) {
-                ForEach(store.modes) { mode in
-                    HStack {
-                        Text(mode.name)
-                        if mode.id == store.activeModeId {
-                            Spacer()
-                            Text("Active").font(.system(size: 10)).foregroundStyle(.blue)
+            VStack(spacing: 4) {
+                List(selection: $selection) {
+                    ForEach(store.modes) { mode in
+                        HStack {
+                            Text(mode.name)
+                            if mode.id == store.activeModeId {
+                                Spacer()
+                                Text("Active").font(.system(size: 10)).foregroundStyle(.blue)
+                            }
                         }
+                        .tag(Optional(mode.id))
                     }
-                    .tag(Optional(mode.id))
                 }
+                HStack(spacing: 4) {
+                    Button {
+                        if let newId = store.addMode(
+                            name: "New Mode",
+                            systemPrompt: "You are RTI, a real-time intelligence assistant. Keep responses short and actionable."
+                        ) {
+                            selection = newId
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .help("New mode")
+
+                    Button {
+                        guard let id = selection,
+                              let mode = store.modes.first(where: { $0.id == id }),
+                              !mode.isBuiltin else { return }
+                        store.deleteMode(id: id)
+                        selection = store.activeModeId ?? store.modes.first?.id
+                    } label: {
+                        Image(systemName: "minus")
+                    }
+                    .disabled(selection.flatMap { id in store.modes.first { $0.id == id } }?.isBuiltin ?? true)
+                    .help("Delete mode (built-in modes cannot be deleted)")
+                    Spacer()
+                }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
             }
             .frame(width: 160)
 
@@ -184,7 +246,9 @@ private struct ModesTab: View {
 
     private func save() {
         guard let id = selection else { return }
-        store.update(id: id, name: name, systemPrompt: prompt, referenceText: reference)
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        store.update(id: id, name: trimmedName, systemPrompt: prompt, referenceText: reference)
         saved = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
     }
@@ -349,7 +413,7 @@ private struct GeneralTab: View {
                 hotkeyRow("Toggle overlay", "⌘ \\")
                 hotkeyRow("Start / stop session", "⌘ ⇧ R")
                 hotkeyRow("Assist (from any app)", "⌘ ↵")
-                hotkeyRow("Attach screenshot", "⌘ H")
+                hotkeyRow("Attach screenshot", "⌘ ⇧ H")
                 hotkeyRow("Show / hide live transcript", "⌘ ⌥ T")
             }
             .font(.system(size: 12))

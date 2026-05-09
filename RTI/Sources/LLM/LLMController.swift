@@ -222,8 +222,18 @@ final class LLMController: ObservableObject {
                 self?.appendToStreamingEntry(delta)
             },
             onError: { [weak self] errorMessage, isAuth in
-                self?.lastError = errorMessage
-                self?.lastErrorIsAuth = isAuth
+                guard let self else { return }
+                // If the user already started a fresh request, this error
+                // belongs to the prior cancelled stream — don't clobber
+                // the new request's UI state.
+                guard self.streamingEntryID == thisEntryID else { return }
+                self.lastError = errorMessage
+                self.lastErrorIsAuth = isAuth
+                self.streaming = false
+                self.reasoning = false
+                // Drop the empty placeholder bubble so the user doesn't see
+                // a hanging "..." with no text.
+                self.pruneTrailingEmptyAssistant()
                 NSLog("[RTI] LLM stream error: \(errorMessage)")
                 RTILog.log("stream error: \(errorMessage)", category: "deepseek")
             },

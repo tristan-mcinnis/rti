@@ -14,7 +14,7 @@ struct ShortcutsView: View {
                 ShortcutRow(key: "\u{2318}\u{21E7}R", desc: "Start / Stop recording")
                 ShortcutRow(key: "\u{2318}\u{21E7}B", desc: "Show / hide top widget")
                 ShortcutRow(key: "\u{2318}\u{21A9}", desc: "Send Assist")
-                ShortcutRow(key: "\u{2318}H", desc: "Capture screen & OCR")
+                ShortcutRow(key: "\u{2318}\u{21E7}H", desc: "Capture screen & OCR")
                 ShortcutRow(key: "\u{2318}\u{2325}T", desc: "Show live transcript")
             }
         }

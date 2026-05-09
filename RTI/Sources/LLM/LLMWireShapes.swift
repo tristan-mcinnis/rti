@@ -14,6 +14,7 @@ struct LLMWireRequest: Codable {
     let messages: [LLMMessage]
     let stream: Bool
     let temperature: Double?
+    let max_tokens: Int?
     let thinking: Thinking?
 
     /// DeepSeek-style reasoning toggle. Only sent when the active

@@ -24,7 +24,9 @@ final class HotkeyCoordinator {
         hk.register(keyCode: UInt32(kVK_Return), modifiers: UInt32(cmdKey)) { [weak self] in
             self?.onSendAssist?()
         }
-        hk.register(keyCode: UInt32(kVK_ANSI_H), modifiers: UInt32(cmdKey)) { [weak self] in
+        // ⌘⇧H rather than ⌘H — ⌘H is the system-wide "Hide app" shortcut; a
+        // global Carbon hotkey would silently break it in every app.
+        hk.register(keyCode: UInt32(kVK_ANSI_H), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
             self?.onCaptureScreen?()
         }
         hk.register(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(cmdKey | optionKey)) { [weak self] in

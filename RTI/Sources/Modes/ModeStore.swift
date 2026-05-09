@@ -57,6 +57,46 @@ final class ModeStore: ObservableObject {
         }
     }
 
+    /// Insert a new user-defined mode. Returns the new id, or nil if the
+    /// write failed.
+    @discardableResult
+    func addMode(name: String, systemPrompt: String) -> String? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return nil }
+        let m = Mode(
+            id: "user.\(UUID().uuidString)",
+            name: trimmedName,
+            systemPrompt: systemPrompt,
+            isBuiltin: false,
+            createdAt: Date(),
+            referenceText: nil
+        )
+        do {
+            try RTIDatabase.shared.pool.write { db in try m.insert(db) }
+            reload()
+            return m.id
+        } catch {
+            NSLog("[RTI] ModeStore add failed: \(error)")
+            return nil
+        }
+    }
+
+    /// Delete a non-builtin mode. Built-in modes are protected to keep the
+    /// seed set always available. If the deleted mode was active, fall
+    /// back to the meeting builtin.
+    func deleteMode(id: String) {
+        guard let mode = modes.first(where: { $0.id == id }), !mode.isBuiltin else { return }
+        do {
+            _ = try RTIDatabase.shared.pool.write { db in
+                try Mode.deleteOne(db, key: id)
+            }
+            if activeModeId == id { activeModeId = "builtin.meeting" }
+            reload()
+        } catch {
+            NSLog("[RTI] ModeStore delete failed: \(error)")
+        }
+    }
+
     private func seedBuiltinsIfNeeded() {
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: Self.seedFlag) { return }

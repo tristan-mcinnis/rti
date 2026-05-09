@@ -31,7 +31,8 @@ enum CorpusReader {
 
     /// Read and parse a single file. Throws on missing or malformed.
     static func read(_ url: URL) throws -> CorpusEntry {
-        let raw = try String(contentsOf: url, encoding: .utf8)
+        var raw = try String(contentsOf: url, encoding: .utf8)
+        if raw.hasPrefix("\u{FEFF}") { raw.removeFirst() }
         return try CorpusEntry.parse(raw)
     }
 
@@ -39,7 +40,11 @@ enum CorpusReader {
     /// loading the body for list views. About 10× faster on large
     /// transcripts.
     static func readFrontmatter(_ url: URL) throws -> CorpusEntry.Frontmatter {
-        let raw = try String(contentsOf: url, encoding: .utf8)
+        var raw = try String(contentsOf: url, encoding: .utf8)
+        // Strip a UTF-8 BOM if a markdown round-trip through Excel /
+        // Notepad introduced one. Without this, the very first frontmatter
+        // delimiter `---` becomes `﻿---` and parsing throws.
+        if raw.hasPrefix("\u{FEFF}") { raw.removeFirst() }
         // Slice to the closing delimiter rather than parse the whole file.
         let lines = raw.components(separatedBy: "\n")
         guard lines.first == "---" else {

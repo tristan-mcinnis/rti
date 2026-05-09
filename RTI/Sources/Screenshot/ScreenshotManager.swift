@@ -49,7 +49,7 @@ final class ScreenshotManager {
     private func promptForScreenRecordingAccess() {
         let alert = NSAlert()
         alert.messageText = "Screen Recording access required"
-        alert.informativeText = "RTI needs Screen Recording access to capture and read your screen. Open System Settings to grant access, then try ⌘H again."
+        alert.informativeText = "RTI needs Screen Recording access to capture and read your screen. Open System Settings to grant access, then try ⌘⇧H again."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")

@@ -145,7 +145,7 @@ struct TopWidgetView: View {
         }
         Divider()
         Button("Toggle Overlay  ⌘\\") { actions.onToggleOverlay() }
-        Button("Capture Screen  ⌘H") { actions.onCaptureScreen() }
+        Button("Capture Screen  ⌘⇧H") { actions.onCaptureScreen() }
         Divider()
         Button(llm.smartMode ? "Disable Smart Mode" : "Enable Smart Mode") {
             llm.smartMode.toggle()
