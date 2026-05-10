@@ -15,7 +15,7 @@ final class WindowCoordinator {
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
 
-    func install(onOpenSettings: @escaping () -> Void) {
+    func install(onOpenSettings: @Sendable @escaping () -> Void) {
         shortcutsController = ShortcutsWindowController()
         sessionsControl = SessionsControlWindowController()
 

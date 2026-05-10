@@ -217,41 +217,40 @@ final class LLMController: ObservableObject {
             messages: apiMessages,
             smart: smartMode,
             onDelta: { [weak self] delta in
-                // First content delta means reasoning is over.
-                if self?.reasoning == true { self?.reasoning = false }
-                self?.appendToStreamingEntry(delta)
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if self.reasoning { self.reasoning = false }
+                    self.appendToStreamingEntry(delta)
+                }
             },
             onError: { [weak self] errorMessage, isAuth in
-                guard let self else { return }
-                // If the user already started a fresh request, this error
-                // belongs to the prior cancelled stream — don't clobber
-                // the new request's UI state.
-                guard self.streamingEntryID == thisEntryID else { return }
-                self.lastError = errorMessage
-                self.lastErrorIsAuth = isAuth
-                self.streaming = false
-                self.reasoning = false
-                // Drop the empty placeholder bubble so the user doesn't see
-                // a hanging "..." with no text.
-                self.pruneTrailingEmptyAssistant()
-                NSLog("[RTI] LLM stream error: \(errorMessage)")
-                RTILog.log("stream error: \(errorMessage)", category: "deepseek")
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    guard self.streamingEntryID == thisEntryID else { return }
+                    self.lastError = errorMessage
+                    self.lastErrorIsAuth = isAuth
+                    self.streaming = false
+                    self.reasoning = false
+                    self.pruneTrailingEmptyAssistant()
+                    NSLog("[RTI] LLM stream error: \(errorMessage)")
+                    RTILog.log("stream error: \(errorMessage)", category: "deepseek")
+                }
             },
             onComplete: { [weak self] in
-                guard let self else { return }
-                guard self.streamingEntryID == thisEntryID else { return }
-                self.streaming = false
-                self.reasoning = false
-                self.pruneTrailingEmptyAssistant()
-                self.streamingEntryID = nil
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    guard self.streamingEntryID == thisEntryID else { return }
+                    self.streaming = false
+                    self.reasoning = false
+                    self.pruneTrailingEmptyAssistant()
+                    self.streamingEntryID = nil
 
-                // Re-read session ID after stream completes to avoid persisting
-                // the assistant response to a stale session.
-                let finalSessionId = SessionCoordinator.shared.currentSessionId ?? persistSessionId
-                if let finalSessionId,
-                   let finalText = self.entries.last(where: { $0.id == thisEntryID })?.text,
-                   !finalText.isEmpty {
-                    self.persistMessage(sessionId: finalSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
+                    let finalSessionId = SessionCoordinator.shared.currentSessionId ?? persistSessionId
+                    if let finalSessionId,
+                       let finalText = self.entries.last(where: { $0.id == thisEntryID })?.text,
+                       !finalText.isEmpty {
+                        self.persistMessage(sessionId: finalSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
+                    }
                 }
             },
             onReasoning: onReasoning

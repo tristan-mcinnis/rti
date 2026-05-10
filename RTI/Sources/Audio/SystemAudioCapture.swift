@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import ScreenCaptureKit
 
@@ -8,7 +8,7 @@ enum SystemAudioError: Error {
     case alreadyRunning
 }
 
-final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput {
+final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
     static let targetFormat: AVAudioFormat = AudioCaptureManager.targetFormat
 
     var onPCMBuffer: ((AVAudioPCMBuffer) -> Void)?
@@ -138,13 +138,17 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput {
             return
         }
 
-        var consumed = false
+        // Mutable box so the Sendable block can flip the flag. The converter
+        // calls the block synchronously before returning, so no concurrent
+        // access occurs despite the lack of synchronisation.
+        final class MutableBool: @unchecked Sendable { var value: Bool = false }
+        let consumed = MutableBool()
         let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-            if consumed {
+            if consumed.value {
                 outStatus.pointee = .noDataNow
                 return nil
             }
-            consumed = true
+            consumed.value = true
             outStatus.pointee = .haveData
             return inputBuffer
         }

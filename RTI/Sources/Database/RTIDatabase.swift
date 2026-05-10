@@ -6,24 +6,30 @@ enum RTIDatabaseError: Error {
     case unableToResolveSupportDirectory
 }
 
-final class RTIDatabase {
+final class RTIDatabase: @unchecked Sendable {
     static let shared: RTIDatabase = {
         do {
             return try RTIDatabase()
         } catch {
             NSLog("[RTI] RTIDatabase init failed: \(error)")
-            let alert = NSAlert()
-            alert.messageText = "RTI couldn't open its database"
-            alert.informativeText = """
-            \(error)
+            // Show alert on main thread before exiting.
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "RTI couldn't open its database"
+                alert.informativeText = """
+                \(error)
 
-            RTI will quit. If this persists, remove the database file at:
-            ~/Library/Application Support/RTI/rti.db
-            (this will erase your session history).
-            """
-            alert.alertStyle = .critical
-            alert.addButton(withTitle: "Quit")
-            alert.runModal()
+                RTI will quit. If this persists, remove the database file at:
+                ~/Library/Application Support/RTI/rti.db
+                (this will erase your session history).
+                """
+                alert.alertStyle = .critical
+                alert.addButton(withTitle: "Quit")
+                alert.runModal()
+                exit(1)
+            }
+            // Block until the main thread processes the alert.
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 10))
             exit(1)
         }
     }()

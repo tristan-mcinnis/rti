@@ -9,7 +9,7 @@ import GRDB
 ///   - crash-recovery scan on launch
 @MainActor
 final class CorpusManager {
-    static let shared = CorpusManager()
+    nonisolated static let shared = CorpusManager()
 
     nonisolated var corpusDirectory: URL {
         if let custom = UserDefaults.standard.string(forKey: Self.corpusPathKey),
@@ -27,11 +27,11 @@ final class CorpusManager {
         return dir
     }
 
-    static let corpusPathKey = "rti.corpus.path"
+    nonisolated static let corpusPathKey = "rti.corpus.path"
 
     private var writers: [String: LiveJSONLWriter] = [:]
 
-    private init() {}
+    nonisolated private init() {}
 
     // MARK: - Live JSONL
 
@@ -97,18 +97,24 @@ final class CorpusManager {
         }
 
         // Speaker map snapshot from overlays.
-        var speakerMap: [String: CorpusEntry.SpeakerMapEntry] = [:]
         let speakerKeys = Set(turns.map(\.speakerId)).filter { $0 != "note" }
+        let overlays: [String: SpeakerOverlay]
         do {
-            try await RTIDatabase.shared.pool.read { db in
+            overlays = try await RTIDatabase.shared.pool.read { db in
+                var found: [String: SpeakerOverlay] = [:]
                 for key in speakerKeys {
                     if let overlay = try SpeakerOverlay.resolve(speakerKey: key, sessionId: sessionId, in: db) {
-                        speakerMap[key] = .init(name: overlay.displayName, source: overlay.source)
+                        found[key] = overlay
                     }
                 }
+                return found
             }
         } catch {
-            NSLog("[RTI] CorpusManager overlay lookup failed: \(error)")
+            // Non-critical; continue without speaker info.
+            overlays = [:]
+        }
+        let speakerMap: [String: CorpusEntry.SpeakerMapEntry] = overlays.mapValues { overlay in
+            .init(name: overlay.displayName, source: overlay.source)
         }
         let attendees = speakerMap.values.map(\.name).sorted()
 

@@ -1,7 +1,7 @@
 import Foundation
 import Starscream
 
-final class SonioxClient: WebSocketDelegate {
+final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
     static let defaultURL = URL(string: "wss://stt-rt.soniox.com/transcribe-websocket")!
 
     var onWords: (([SonioxWord]) -> Void)?

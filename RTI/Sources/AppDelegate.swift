@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private let windows = WindowCoordinator()
     private let menu = MenuCoordinator()
     private let hotkeys = HotkeyCoordinator()

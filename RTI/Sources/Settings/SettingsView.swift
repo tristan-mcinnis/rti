@@ -640,11 +640,13 @@ private struct CorpusTab: View {
 
     private func reindex() {
         reindexStatus = "Reindexing…"
+        let corpusDir = CorpusManager.shared.corpusDirectory
+        let dbPool = RTIDatabase.shared.pool
         Task.detached {
             do {
                 try CorpusFTSReindexer.reindex(
-                    from: CorpusManager.shared.corpusDirectory,
-                    in: RTIDatabase.shared.pool
+                    from: corpusDir,
+                    in: dbPool
                 )
                 await MainActor.run { reindexStatus = "Done." }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)

@@ -14,7 +14,7 @@ import Foundation
 /// If you set up a stable Developer ID and want Keychain back, swap this
 /// implementation; the public API is the same.
 enum KeychainStore {
-    private static var cached: [String: String]?
+    nonisolated(unsafe) private static var cached: [String: String]?
     private static let queue = DispatchQueue(label: "com.tristan.rti.credentials", attributes: .concurrent)
 
     private static var fileURL: URL? {

@@ -8,7 +8,7 @@ import Foundation
 /// Thread-safe: callers may invoke `append` from any thread; writes are
 /// serialised through a private queue, and the file handle is `fsync`ed
 /// at most once per ~250ms via debounced flush.
-final class LiveJSONLWriter {
+final class LiveJSONLWriter: @unchecked Sendable {
     enum Event: Codable {
         case word(ts: Int, speaker: Int, text: String, isFinal: Bool, confidence: Double, channel: String)
         case note(ts: Int, text: String)

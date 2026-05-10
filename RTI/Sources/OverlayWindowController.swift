@@ -28,7 +28,7 @@ private final class KeyableOverlayPanel: NSPanel {
     }
 }
 
-final class OverlayWindowController {
+final class OverlayWindowController: @unchecked Sendable {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
     private var didMoveObserver: NSObjectProtocol?
@@ -39,7 +39,7 @@ final class OverlayWindowController {
     /// so it stays glued to the top-right corner.
     private weak var attachedPill: NSWindow?
 
-    init(onOpenSettings: @escaping () -> Void = {}) {
+    init(onOpenSettings: @Sendable @escaping () -> Void = {}) {
         let initialSize = Self.configuredSize()
         let panel = KeyableOverlayPanel(
             contentRect: NSRect(x: 0, y: 0, width: initialSize.width, height: initialSize.height),

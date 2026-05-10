@@ -6,9 +6,9 @@ import Foundation
 ///
 /// Controllers that talk to the LLM (Summary, Title, QA, Chat) compose
 /// this instead of duplicating the ~40-line async boilerplate.
-final class LLMRequest {
+final class LLMRequest: @unchecked Sendable {
     private let client: LLMClient
-    private var currentTask: Task<Void, Never>?
+    nonisolated(unsafe) private var currentTask: Task<Void, Never>?
 
     init(client: LLMClient = .shared) {
         self.client = client
@@ -26,8 +26,8 @@ final class LLMRequest {
     func collect(
         messages: [LLMMessage],
         smart: Bool,
-        onResult: @escaping (String) -> Void,
-        onError: @escaping (String, Bool) -> Void
+        onResult: @Sendable @escaping (String) -> Void,
+        onError: @Sendable @escaping (String, Bool) -> Void
     ) {
         guard currentTask == nil else { return }
         currentTask = Task { [weak self] in
@@ -52,22 +52,22 @@ final class LLMRequest {
     /// generators so callers can await the result before rendering.
     func collectAsync(messages: [LLMMessage], smart: Bool) async -> String? {
         currentTask?.cancel()
-        var result: String?
-        let task = Task { [weak self] in
+        let task = Task { [weak self] () -> String? in
             defer { self?.currentTask = nil }
-            guard let client = self?.client else { return }
+            guard let client = self?.client else { return nil }
             do {
-                result = try await client.collectStreamedResponse(messages: messages, smart: smart)
-                if Task.isCancelled { result = nil }
+                let r = try await client.collectStreamedResponse(messages: messages, smart: smart)
+                if Task.isCancelled { return nil }
+                return r
             } catch is CancellationError {
-                result = nil
+                return nil
             } catch {
-                if Task.isCancelled { result = nil }
+                if Task.isCancelled { return nil }
+                return nil
             }
         }
-        currentTask = task
-        await task.value
-        return result
+        currentTask = Task { _ = await task.value }
+        return await task.value
     }
 
     /// Streaming executor: yields deltas as they arrive. Used by
@@ -75,9 +75,9 @@ final class LLMRequest {
     func stream(
         messages: [LLMMessage],
         smart: Bool,
-        onDelta: @escaping (String) -> Void,
-        onError: @escaping (String, Bool) -> Void,
-        onComplete: @escaping () -> Void,
+        onDelta: @Sendable @escaping (String) -> Void,
+        onError: @Sendable @escaping (String, Bool) -> Void,
+        onComplete: @Sendable @escaping () -> Void,
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) {
         guard currentTask == nil else { return }

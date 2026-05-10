@@ -71,7 +71,7 @@ enum JSONRPCID: Codable, Hashable {
     }
 }
 
-struct JSONRPCError: Encodable {
+struct JSONRPCError: Encodable, @unchecked Sendable {
     let code: Int
     let message: String
     let data: AnyCodable?
@@ -112,7 +112,7 @@ struct InitializeResult: Encodable {
 struct ToolListing: Encodable {
     let tools: [ToolDescriptor]
 
-    struct ToolDescriptor: Encodable {
+    struct ToolDescriptor: Encodable, Sendable {
         let name: String
         let description: String
         let inputSchema: AnyCodable
@@ -155,7 +155,7 @@ struct ToolCallResult: Encodable {
 
 /// Erased Codable wrapper. JSON-RPC params and result fields can be any
 /// JSON value; this lets us forward them without modelling every shape.
-struct AnyCodable: Codable {
+struct AnyCodable: Codable, @unchecked Sendable {
     let value: Any?
 
     init(_ value: Any?) { self.value = value }

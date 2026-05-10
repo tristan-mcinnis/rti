@@ -62,18 +62,24 @@ final class SessionQAController: ObservableObject {
             messages: apiMessages,
             smart: false,
             onDelta: { [weak self] delta in
-                if let idx = self?.messages.firstIndex(where: { $0.id == entryId }) {
-                    self?.messages[idx].text += delta
+                Task { @MainActor [weak self] in
+                    if let idx = self?.messages.firstIndex(where: { $0.id == entryId }) {
+                        self?.messages[idx].text += delta
+                    }
                 }
             },
             onError: { [weak self] errorMessage, _ in
-                self?.lastError = errorMessage
-                if let idx = self?.messages.firstIndex(where: { $0.id == entryId }) {
-                    self?.messages.remove(at: idx)
+                Task { @MainActor [weak self] in
+                    self?.lastError = errorMessage
+                    if let idx = self?.messages.firstIndex(where: { $0.id == entryId }) {
+                        self?.messages.remove(at: idx)
+                    }
                 }
             },
             onComplete: { [weak self] in
-                self?.isGenerating = false
+                Task { @MainActor [weak self] in
+                    self?.isGenerating = false
+                }
             }
         )
     }

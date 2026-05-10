@@ -4,7 +4,7 @@ import Foundation
 /// Provider behavior (URL, model, API key, optional `thinking` extension)
 /// is supplied via `LLMProviderConfig`; routing to a different LLM is a
 /// one-line change in `LLMProviders` rather than edits here.
-final class LLMClient {
+final class LLMClient: @unchecked Sendable {
     /// Shared instance bound to the active provider. All four LLM-using
     /// controllers (LLMController, SummaryController, SessionTitleController,
     /// SessionQAController) route through this. `apiKey` is resolved at

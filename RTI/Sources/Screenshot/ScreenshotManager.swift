@@ -1,7 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 @MainActor
 final class ScreenshotManager {
@@ -18,20 +18,33 @@ final class ScreenshotManager {
             guard let self else { return }
             do {
                 let cgImage = try await self.captureActiveDisplay()
-                let text = try await OCRService.recognizeText(in: cgImage)
-                let trimmed = self.truncate(text)
-                if trimmed.isEmpty {
-                    LLMController.shared.setScreenAttachError("No text found on the captured screen.")
+
+                // OCR and VLM run concurrently — VLM may take several seconds
+                // on first call (model load), OCR is sub-second.
+                async let ocrText = OCRService.recognizeText(in: cgImage)
+                async let vlmDescription = VLMManager.shared.describe(cgImage: cgImage)
+
+                let (ocrResult, vlmResult) = try await (ocrText, vlmDescription)
+                let trimmedOCR = self.truncate(ocrResult)
+
+                // Build combined context from both sources.
+                let contextParts: [String] = [
+                    vlmResult.map { "What the user is looking at:\n\($0)" },
+                    !trimmedOCR.isEmpty ? "Text visible on screen:\n\(trimmedOCR)" : nil
+                ].compactMap { $0 }
+
+                guard !contextParts.isEmpty else {
+                    LLMController.shared.setScreenAttachError("No content found on the captured screen.")
                     return
                 }
-                LLMController.shared.attachScreenContext(trimmed)
-                NSLog("[RTI] Screenshot OCR: attached \(trimmed.count) chars of screen context.")
+
+                let combined = contextParts.joined(separator: "\n\n---\n\n")
+                LLMController.shared.attachScreenContext(combined)
+                NSLog("[RTI] Screenshot: VLM=\(vlmResult?.count ?? 0) chars, OCR=\(trimmedOCR.count) chars attached.")
             } catch {
-                NSLog("[RTI] Screenshot capture/OCR failed: \(error)")
+                NSLog("[RTI] Screenshot capture failed: \(error)")
                 let msg = self.errorDescription(for: error)
                 LLMController.shared.setScreenAttachError(msg)
-                // TCC denial: deep-link the user into the right pane instead of
-                // leaving them to find Privacy → Screen Recording manually.
                 if Self.isScreenRecordingDenied(error) {
                     self.promptForScreenRecordingAccess()
                 }

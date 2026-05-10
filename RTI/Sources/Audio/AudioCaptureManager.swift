@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreAudio
 import Foundation
 
@@ -9,7 +9,7 @@ enum AudioCaptureError: Error {
     case deviceSelectionFailed(OSStatus)
 }
 
-final class AudioCaptureManager {
+final class AudioCaptureManager: @unchecked Sendable {
     static let targetFormat: AVAudioFormat = {
         guard let fmt = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
@@ -105,13 +105,14 @@ final class AudioCaptureManager {
             frameCapacity: outputFrameCapacity
         ) else { return }
 
-        var consumed = false
+        final class MutableBool: @unchecked Sendable { var value: Bool = false }
+        let consumed = MutableBool()
         let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-            if consumed {
+            if consumed.value {
                 outStatus.pointee = .noDataNow
                 return nil
             }
-            consumed = true
+            consumed.value = true
             outStatus.pointee = .haveData
             return buffer
         }
