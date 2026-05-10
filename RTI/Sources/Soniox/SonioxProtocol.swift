@@ -61,13 +61,25 @@ struct SonioxConfigMessage: Codable {
     let translation: TranslationConfig?
 
     static func `default`(apiKey: String, translation: TranslationConfig? = nil) -> SonioxConfigMessage {
-        SonioxConfigMessage(
+        var hints = Set(["en"])
+        if let t = translation {
+            switch t.type {
+            case "one_way":
+                if let target = t.target_language { hints.insert(target) }
+            case "two_way":
+                if let a = t.language_a { hints.insert(a) }
+                if let b = t.language_b { hints.insert(b) }
+            default:
+                break
+            }
+        }
+        return SonioxConfigMessage(
             api_key: apiKey,
             model: "stt-rt-v4",
             audio_format: "pcm_s16le",
             sample_rate: 16_000,
             num_channels: 1,
-            language_hints: ["en"],
+            language_hints: Array(hints),
             enable_speaker_diarization: true,
             speaker_diarization_max_speakers: 4,
             translation: translation

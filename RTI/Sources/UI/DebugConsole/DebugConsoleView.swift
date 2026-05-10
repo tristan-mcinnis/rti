@@ -23,6 +23,7 @@ struct DebugConsoleView: View {
             transcriptList
         }
         .onAppear(perform: startClock)
+        .onAppear(perform: syncTranslationConfig)
         .onDisappear(perform: stopClock)
     }
 
@@ -45,10 +46,15 @@ struct DebugConsoleView: View {
         guard translationEnabled else { return nil }
         switch translationMode {
         case "two_way":
+            guard languageA != languageB else { return nil }
             return .twoWay(languageA: languageA, languageB: languageB)
         default:
             return .oneWay(targetLanguage: targetLanguage)
         }
+    }
+
+    private func syncTranslationConfig() {
+        coordinator.translationConfig = effectiveTranslationConfig
     }
 
     private var translationSummary: String {
@@ -124,8 +130,9 @@ struct DebugConsoleView: View {
             Toggle("", isOn: $translationEnabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .onChange(of: translationEnabled) { _, newValue in
-                    coordinator.translationConfig = effectiveTranslationConfig
+                .disabled(coordinator.isRunning)
+                .onChange(of: translationEnabled) { _, _ in
+                    syncTranslationConfig()
                 }
 
             if translationEnabled {
@@ -136,8 +143,9 @@ struct DebugConsoleView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .frame(width: 120)
+                .disabled(coordinator.isRunning)
                 .onChange(of: translationMode) { _, _ in
-                    coordinator.translationConfig = effectiveTranslationConfig
+                    syncTranslationConfig()
                 }
 
                 if translationMode == "one_way" {
@@ -148,8 +156,9 @@ struct DebugConsoleView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
+                    .disabled(coordinator.isRunning)
                     .onChange(of: targetLanguage) { _, _ in
-                        coordinator.translationConfig = effectiveTranslationConfig
+                        syncTranslationConfig()
                     }
                 } else {
                     Picker("A", selection: $languageA) {
@@ -159,8 +168,9 @@ struct DebugConsoleView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
+                    .disabled(coordinator.isRunning)
                     .onChange(of: languageA) { _, _ in
-                        coordinator.translationConfig = effectiveTranslationConfig
+                        syncTranslationConfig()
                     }
                     Text("↔").font(.system(size: 10)).foregroundStyle(.secondary)
                     Picker("B", selection: $languageB) {
@@ -170,10 +180,25 @@ struct DebugConsoleView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
+                    .disabled(coordinator.isRunning)
                     .onChange(of: languageB) { _, _ in
-                        coordinator.translationConfig = effectiveTranslationConfig
+                        syncTranslationConfig()
+                    }
+
+                    if languageA == languageB {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.red)
+                            .help("Choose two different languages for two-way translation")
                     }
                 }
+            }
+
+            if coordinator.isRunning {
+                Text("Next session")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .help("Translation settings apply to the next session")
             }
 
             Spacer()

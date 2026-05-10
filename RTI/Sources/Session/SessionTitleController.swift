@@ -56,13 +56,28 @@ final class SessionTitleController: ObservableObject {
             return nil
         }
 
+        // Pre-seed the cache with a transcript-derived fallback so that even
+        // if the LLM call fails or the task is cancelled mid-flight, the
+        // markdown render still has a meaningful title to embed in
+        // frontmatter.
+        let seed = Self.fallbackTitle(fromTranscript: transcript)
+        cache[sessionId] = seed
+
         let messages = [LLMMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
 
-        guard let response = await request.collectAsync(messages: messages, smart: false) else {
-            isGenerating = false
-            return nil
+        let response = await request.collectAsync(messages: messages, smart: false)
+        let title: String
+        if let response, let parsed = Self.parseFirstTitle(from: response) {
+            title = parsed
+        } else {
+            if response == nil {
+                NSLog("[RTI] SessionTitleController: LLM returned no response for \(sessionId), using fallback")
+                lastError = "Title generation failed; using fallback."
+            } else {
+                NSLog("[RTI] SessionTitleController: parse failed for \(sessionId), using fallback")
+            }
+            title = seed
         }
-        let title = Self.parseFirstTitle(from: response) ?? Self.fallbackTitle
         cache[sessionId] = title
         isGenerating = false
         return title
@@ -86,6 +101,35 @@ final class SessionTitleController: ObservableObject {
         let df = DateFormatter()
         df.dateFormat = "h:mm a"
         return "Meeting at \(df.string(from: Date()))"
+    }
+
+    /// Build a fallback title from the first words of the transcript. Used
+    /// whenever the LLM call fails or returns unparsable output — better
+    /// than a bare timestamp because it carries some signal about content.
+    static func fallbackTitle(fromTranscript transcript: String) -> String {
+        let stripped = transcript
+            .split(separator: "\n")
+            .map { line -> String in
+                // Strip leading speaker tags like "self:" / "[user note]:".
+                if let colon = line.firstIndex(of: ":") {
+                    return String(line[line.index(after: colon)...])
+                }
+                return String(line)
+            }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = stripped
+            .split(whereSeparator: { $0.isWhitespace })
+            .prefix(8)
+            .map(String.init)
+        guard !words.isEmpty else { return fallbackTitle }
+        var title = words.joined(separator: " ")
+        // Trim trailing punctuation for cleaner display.
+        while let last = title.unicodeScalars.last,
+              CharacterSet.punctuationCharacters.contains(last) {
+            title = String(title.unicodeScalars.dropLast())
+        }
+        return title.isEmpty ? fallbackTitle : title
     }
 
     private static let titlePattern1 = try! NSRegularExpression(pattern: "^\\d+\\.\\s+(.+)")

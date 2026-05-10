@@ -3,7 +3,7 @@ import XCTest
 final class SpeakerTurnTests: XCTestCase {
 
     private func word(_ text: String, speaker: Int, start: Int, end: Int, confidence: Double = 1.0) -> SonioxWord {
-        SonioxWord(text: text, startMs: start, endMs: end, speaker: speaker, confidence: confidence, isFinal: true)
+        SonioxWord(text: text, startMs: start, endMs: end, speaker: speaker, confidence: confidence, isFinal: true, translationStatus: "none", language: nil, sourceLanguage: nil)
     }
 
     func test_emptyInput_returnsEmpty() {
