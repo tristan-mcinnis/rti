@@ -60,8 +60,9 @@ final class SummaryController: ObservableObject {
     Transcript:
     """
 
-    func generateSummary(for sessionId: String) {
-        guard !isGenerating else { return }
+    @discardableResult
+    func generateSummary(for sessionId: String) async -> SessionSummary? {
+        guard !isGenerating else { return cache[sessionId] }
         cancel()
         isGenerating = true
         lastError = nil
@@ -70,43 +71,35 @@ final class SummaryController: ObservableObject {
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             lastError = "No transcript content to summarize."
             isGenerating = false
-            return
+            return nil
         }
 
         let fullPrompt = Self.summaryPrompt + "\n" + transcript
         let messages = [LLMMessage(role: "user", content: fullPrompt)]
 
-        request.collect(
-            messages: messages,
-            smart: true,
-            onResult: { [weak self] fullResponse in
-                guard let self else { return }
-                guard !fullResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    self.lastError = "Summary generation returned empty response."
-                    self.isGenerating = false
-                    return
-                }
-                let parsed = Self.parseSections(from: fullResponse)
-                let combinedFollowUps = SummaryFormatting.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"])
-                self.cache[sessionId] = SessionSummary(
-                    id: UUID().uuidString,
-                    sessionId: sessionId,
-                    summaryText: fullResponse,
-                    actionItems: parsed["Action Items"],
-                    keyTopics: parsed["Key Topics"],
-                    decisions: parsed["Decisions Made"],
-                    followUps: combinedFollowUps,
-                    rawResponse: fullResponse,
-                    createdAt: Date(),
-                    regeneratedAt: nil
-                )
-                self.isGenerating = false
-            },
-            onError: { [weak self] errorMessage, _ in
-                self?.lastError = errorMessage
-                self?.isGenerating = false
-            }
+        guard let fullResponse = await request.collectAsync(messages: messages, smart: true),
+              !fullResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            lastError = "Summary generation returned empty response."
+            isGenerating = false
+            return nil
+        }
+        let parsed = Self.parseSections(from: fullResponse)
+        let combinedFollowUps = SummaryFormatting.combineFollowUps(openQuestions: parsed["Open Questions"], nextSteps: parsed["Next Steps"])
+        let summary = SessionSummary(
+            id: UUID().uuidString,
+            sessionId: sessionId,
+            summaryText: fullResponse,
+            actionItems: parsed["Action Items"],
+            keyTopics: parsed["Key Topics"],
+            decisions: parsed["Decisions Made"],
+            followUps: combinedFollowUps,
+            rawResponse: fullResponse,
+            createdAt: Date(),
+            regeneratedAt: nil
         )
+        cache[sessionId] = summary
+        isGenerating = false
+        return summary
     }
 
     /// In-memory cache lookup. Returns the most recently generated

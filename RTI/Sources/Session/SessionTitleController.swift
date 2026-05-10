@@ -43,8 +43,9 @@ final class SessionTitleController: ObservableObject {
         isGenerating = false
     }
 
-    func generateTitle(for sessionId: String) {
-        guard !isGenerating else { return }
+    @discardableResult
+    func generateTitle(for sessionId: String) async -> String? {
+        guard !isGenerating else { return cache[sessionId] }
         cancel()
         isGenerating = true
         lastError = nil
@@ -52,25 +53,19 @@ final class SessionTitleController: ObservableObject {
         let transcript = TranscriptContext.text(forSessionId: sessionId)
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             isGenerating = false
-            return
+            return nil
         }
 
         let messages = [LLMMessage(role: "user", content: Self.titlePrompt + "\n" + transcript)]
 
-        request.collect(
-            messages: messages,
-            smart: false,
-            onResult: { [weak self] fullResponse in
-                guard let self else { return }
-                let title = Self.parseFirstTitle(from: fullResponse) ?? Self.fallbackTitle
-                self.cache[sessionId] = title
-                self.isGenerating = false
-            },
-            onError: { [weak self] errorMessage, _ in
-                self?.lastError = errorMessage
-                self?.isGenerating = false
-            }
-        )
+        guard let response = await request.collectAsync(messages: messages, smart: false) else {
+            isGenerating = false
+            return nil
+        }
+        let title = Self.parseFirstTitle(from: response) ?? Self.fallbackTitle
+        cache[sessionId] = title
+        isGenerating = false
+        return title
     }
 
     /// In-memory lookup used by `CorpusManager` and any UI that wants the

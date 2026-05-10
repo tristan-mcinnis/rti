@@ -356,8 +356,9 @@ final class SessionCoordinator: ObservableObject {
         }
 
         Task { @MainActor in
-            SessionTitleController.shared.generateTitle(for: sessionId)
-            SummaryController.shared.generateSummary(for: sessionId)
+            async let title: String? = SessionTitleController.shared.generateTitle(for: sessionId)
+            async let summary: SessionSummary? = SummaryController.shared.generateSummary(for: sessionId)
+            _ = await (title, summary)
             await CorpusManager.shared.renderSession(
                 sessionId: sessionId,
                 startedAt: renderStartedAt,

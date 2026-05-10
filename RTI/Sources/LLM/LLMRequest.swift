@@ -47,6 +47,29 @@ final class LLMRequest {
         }
     }
 
+    /// Async variant of collect: returns the full response on success,
+    /// nil on error or cancellation. Used by the async title/summary
+    /// generators so callers can await the result before rendering.
+    func collectAsync(messages: [LLMMessage], smart: Bool) async -> String? {
+        currentTask?.cancel()
+        var result: String?
+        let task = Task { [weak self] in
+            defer { self?.currentTask = nil }
+            guard let client = self?.client else { return }
+            do {
+                result = try await client.collectStreamedResponse(messages: messages, smart: smart)
+                if Task.isCancelled { result = nil }
+            } catch is CancellationError {
+                result = nil
+            } catch {
+                if Task.isCancelled { result = nil }
+            }
+        }
+        currentTask = task
+        await task.value
+        return result
+    }
+
     /// Streaming executor: yields deltas as they arrive. Used by
     /// LLMController and SessionQAController.
     func stream(

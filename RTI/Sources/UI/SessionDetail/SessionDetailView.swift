@@ -344,7 +344,7 @@ struct SessionDetailView: View {
                     .font(RTIDesign.Font.bodySmall)
                     .foregroundStyle(RTIDesign.Color.textTertiary)
                 Button("Generate Summary") {
-                    generateSummary()
+                    Task { await generateSummary() }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -963,8 +963,8 @@ struct SessionDetailView: View {
 
     private func regenerateSummary() {
         Task {
-            generateSummary()
-            await MainActor.run { toast.show("Summary regenerated") }
+            await generateSummary()
+            toast.show("Summary regenerated")
         }
     }
 
@@ -977,8 +977,8 @@ struct SessionDetailView: View {
         SessionExport.exportToFile(sessionId: sessionId)
     }
 
-    private func generateSummary() {
-        SummaryController.shared.generateSummary(for: sessionId)
+    private func generateSummary() async {
+        _ = await SummaryController.shared.generateSummary(for: sessionId)
         summary = SummaryController.shared.loadSummary(for: sessionId)
     }
 
