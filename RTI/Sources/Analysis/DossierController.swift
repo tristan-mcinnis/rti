@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 
 @MainActor
 final class DossierController: ObservableObject {
@@ -26,18 +27,49 @@ final class DossierController: ObservableObject {
 
     private init() {}
 
+    /// Load any existing dossiers for the session from the database.
+    /// Called when a session begins (start of recording) and when the user
+    /// switches to a past session in the detail view.
     func reset(for sessionId: String) {
         self.sessionId = sessionId
-        dossiers = []
         lastError = nil
         isGenerating = false
+        dossiers = Self.loadDossiers(forSessionId: sessionId)
     }
 
+    /// Drop the in-memory cursor + cached dossiers without touching the
+    /// database. Use when the active session is unloaded.
     func clear() {
         sessionId = nil
         dossiers = []
         lastError = nil
         isGenerating = false
+    }
+
+    /// Read the persisted dossiers for an arbitrary session, ordered by
+    /// first creation. Used by `reset(for:)` and by tools/views that want
+    /// dossiers without going through the singleton's mutable state.
+    static func loadDossiers(forSessionId sessionId: String) -> [EntityDossier] {
+        do {
+            let rows = try RTIDatabase.shared.pool.read { db in
+                try EntityDossierRow
+                    .filter(Column("session_id") == sessionId)
+                    .order(Column("created_at"))
+                    .fetchAll(db)
+            }
+            return rows.compactMap { row -> EntityDossier? in
+                guard let type = EntityType(rawValue: row.type) else { return nil }
+                return EntityDossier(
+                    id: UUID(uuidString: row.id) ?? UUID(),
+                    name: row.name,
+                    type: type,
+                    description: row.description
+                )
+            }
+        } catch {
+            NSLog("[RTI] loadDossiers failed: \(error)")
+            return []
+        }
     }
 
     /// Generate dossiers from the transcript window starting at `sinceMs`
@@ -76,7 +108,10 @@ final class DossierController: ObservableObject {
         }
 
         let parsed = Self.parseDossiers(from: response)
-        if !parsed.isEmpty { merge(parsed) }
+        if !parsed.isEmpty {
+            merge(parsed)
+            persistAll(sessionId: sessionId)
+        }
 
         // Watermark = end of the window we just processed, so the next
         // cycle picks up only fresh transcript.
@@ -114,6 +149,44 @@ final class DossierController: ObservableObject {
             }
         }
         dossiers = order.compactMap { byKey[$0] }
+    }
+
+    /// Upsert every in-memory dossier into the database for `sessionId`.
+    /// The schema's `(session_id, name_normalized)` unique index makes this
+    /// idempotent: re-running upgrades the description in place. We
+    /// persist the entire current set rather than diffing because the merge
+    /// logic already canonicalised it and the volumes are tiny (dozens
+    /// max).
+    private func persistAll(sessionId: String) {
+        let now = Date()
+        let snapshot = dossiers
+        do {
+            try RTIDatabase.shared.pool.write { db in
+                for d in snapshot {
+                    try db.execute(sql: """
+                        INSERT INTO entity_dossiers
+                          (id, session_id, name, name_normalized, type, description, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(session_id, name_normalized) DO UPDATE SET
+                          name = excluded.name,
+                          type = excluded.type,
+                          description = excluded.description,
+                          updated_at = excluded.updated_at
+                        """, arguments: [
+                            d.id.uuidString,
+                            sessionId,
+                            d.name,
+                            d.normalizedName,
+                            d.type.rawValue,
+                            d.description,
+                            now,
+                            now
+                        ])
+                }
+            }
+        } catch {
+            NSLog("[RTI] persist entity_dossiers failed: \(error)")
+        }
     }
 
     nonisolated static func parseDossiers(from raw: String) -> [EntityDossier] {

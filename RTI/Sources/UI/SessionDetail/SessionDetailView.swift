@@ -13,6 +13,8 @@ struct SessionDetailView: View {
     @State private var transcripts: [TranscriptEntry] = []
     @State private var chatMessages: [ChatMessage] = []
     @State private var session: Session?
+    @State private var notes: [GeneratedNote] = []
+    @State private var dossiers: [EntityDossier] = []
     @State private var selectedTab: Tab = .summary
     @State private var qaInput = ""
     @State private var jumpToBottomToken = UUID()
@@ -37,6 +39,7 @@ struct SessionDetailView: View {
 
     enum Tab: String, CaseIterable, CustomStringConvertible {
         case summary = "Summary"
+        case notes = "Notes"
         case transcript = "Transcript"
         case qa = "Q&A"
         case usage = "Usage"
@@ -72,6 +75,8 @@ struct SessionDetailView: View {
                     switch selectedTab {
                     case .summary:
                         summaryBody
+                    case .notes:
+                        notesAndEntitiesBody
                     case .transcript:
                         transcriptBody
                     case .qa:
@@ -652,6 +657,169 @@ struct SessionDetailView: View {
 
     // MARK: - Usage Body
 
+    private var notesAndEntitiesBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.xl)) {
+                if notes.isEmpty && dossiers.isEmpty {
+                    emptyState(
+                        icon: "note.text",
+                        title: "No notes yet",
+                        subtitle: "Notes and entity dossiers generate every few minutes while a session is recording. Toggle them in Settings → Analysis."
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 240)
+                }
+
+                if !notes.isEmpty {
+                    sectionHeader("Notes", count: notes.count, copyAll: copyAllNotes)
+                    VStack(spacing: density.scaled(RTIDesign.Spacing.md)) {
+                        ForEach(notes) { note in
+                            sessionDetailNoteCard(note)
+                        }
+                    }
+                }
+
+                if !dossiers.isEmpty {
+                    sectionHeader("Entities", count: dossiers.count, copyAll: copyAllDossiers)
+                    VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.md)) {
+                        ForEach(groupedDossiers) { group in
+                            sessionDetailDossierGroup(group)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, RTIDesign.Spacing.xl)
+            .padding(.vertical, RTIDesign.Spacing.lg)
+        }
+    }
+
+    @ViewBuilder
+    private func sectionHeader(_ title: String, count: Int, copyAll: @escaping () -> Void) -> some View {
+        HStack {
+            Text(title)
+                .font(RTIDesign.Font.sectionTitle)
+                .foregroundStyle(RTIDesign.Color.textPrimary)
+            Text("\(count)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Capsule().fill(RTIDesign.Color.cardBackground))
+            Spacer()
+            Button("Copy all", action: copyAll).controlSize(.small)
+        }
+    }
+
+    @ViewBuilder
+    private func sessionDetailNoteCard(_ note: GeneratedNote) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(note.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                Spacer()
+                Button {
+                    NSPasteboard.copyString(note.content)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.plain)
+                .help("Copy this note's markdown")
+            }
+            Text(note.content)
+                .font(.system(size: 13))
+                .foregroundStyle(RTIDesign.Color.textPrimary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(RTIDesign.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(RTIDesign.Color.cardBackground))
+    }
+
+    private struct DetailDossierGroup: Identifiable {
+        let id = UUID()
+        let type: EntityType
+        let dossiers: [EntityDossier]
+    }
+
+    private var groupedDossiers: [DetailDossierGroup] {
+        Dictionary(grouping: dossiers) { $0.type }
+            .map { DetailDossierGroup(type: $0.key, dossiers: $0.value) }
+            .sorted { $0.type.displayName < $1.type.displayName }
+    }
+
+    @ViewBuilder
+    private func sessionDetailDossierGroup(_ group: DetailDossierGroup) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: group.type.icon)
+                    .font(.system(size: 11))
+                Text(group.type.displayName)
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(RTIDesign.Color.textSecondary)
+
+            ForEach(group.dossiers) { d in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(d.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(RTIDesign.Color.textPrimary)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button {
+                            NSPasteboard.copyString("\(d.name) — \(d.description)")
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy this dossier")
+                    }
+                    Text(d.description)
+                        .font(.system(size: 12))
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(RTIDesign.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8).fill(RTIDesign.Color.cardBackground))
+            }
+        }
+    }
+
+    private func emptyState(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 28))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+            Text(title)
+                .font(RTIDesign.Font.sectionTitle)
+                .foregroundStyle(RTIDesign.Color.textPrimary)
+            Text(subtitle)
+                .font(.system(size: 12))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func copyAllNotes() {
+        let parts: [String] = notes.map { n in
+            let when = n.timestamp.formatted(date: .omitted, time: .shortened)
+            return "## \(when)\n\n\(n.content)"
+        }
+        NSPasteboard.copyString(parts.joined(separator: "\n\n---\n\n"))
+    }
+
+    private func copyAllDossiers() {
+        let parts: [String] = groupedDossiers.map { group in
+            let entries: [String] = group.dossiers.map { "**\($0.name)** — \($0.description)" }
+            return "## \(group.type.displayName)\n\n\(entries.joined(separator: "\n\n"))"
+        }
+        NSPasteboard.copyString(parts.joined(separator: "\n\n"))
+    }
+
     private var usageBody: some View {
         ZStack(alignment: .top) {
             ScrollView {
@@ -1017,6 +1185,8 @@ struct SessionDetailView: View {
         } catch {
             NSLog("[RTI] SessionDetail chat load failed: \(error)")
         }
+        notes = NotesGenerationController.loadNotes(forSessionId: sessionId)
+        dossiers = DossierController.loadDossiers(forSessionId: sessionId)
     }
 
     private func timeLabel(ms: Int) -> String {

@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 
 @MainActor
 final class NotesGenerationController: ObservableObject {
@@ -40,18 +41,49 @@ final class NotesGenerationController: ObservableObject {
 
     private init() {}
 
+    /// Load any existing notes for the session from the database. Called
+    /// when a session begins (start of recording) and when the user
+    /// switches to a past session in the detail view.
     func reset(for sessionId: String) {
         self.sessionId = sessionId
-        notes = []
         lastError = nil
         isGenerating = false
+        notes = Self.loadNotes(forSessionId: sessionId)
     }
 
+    /// Drop the in-memory cursor + cached notes without touching the
+    /// database. Use when the active session is unloaded.
     func clear() {
         sessionId = nil
         notes = []
         lastError = nil
         isGenerating = false
+    }
+
+    /// Read the persisted notes for an arbitrary session, ordered oldest
+    /// first. Used by `reset(for:)` and by tooling that doesn't go
+    /// through the singleton's mutable state (e.g. the chat read_notes
+    /// tool, session detail view).
+    static func loadNotes(forSessionId sessionId: String) -> [GeneratedNote] {
+        do {
+            let rows = try RTIDatabase.shared.pool.read { db in
+                try GeneratedNoteRow
+                    .filter(Column("session_id") == sessionId)
+                    .order(Column("created_at"))
+                    .fetchAll(db)
+            }
+            return rows.map { row in
+                GeneratedNote(
+                    timestamp: row.createdAt,
+                    rangeStartMs: row.rangeStartMs,
+                    rangeEndMs: row.rangeEndMs,
+                    content: row.content
+                )
+            }
+        } catch {
+            NSLog("[RTI] loadNotes failed: \(error)")
+            return []
+        }
     }
 
     /// Generate notes for the given transcript window. If `sinceMs` is nil, covers the full transcript.
@@ -88,6 +120,23 @@ final class NotesGenerationController: ObservableObject {
             content: response
         )
         notes.append(note)
+        persist(note: note, sessionId: sessionId)
         return endMs
+    }
+
+    private func persist(note: GeneratedNote, sessionId: String) {
+        let row = GeneratedNoteRow(
+            id: note.id.uuidString,
+            sessionId: sessionId,
+            rangeStartMs: note.rangeStartMs,
+            rangeEndMs: note.rangeEndMs,
+            content: note.content,
+            createdAt: note.timestamp
+        )
+        do {
+            try RTIDatabase.shared.pool.write { db in try row.insert(db) }
+        } catch {
+            NSLog("[RTI] persist generated_note failed: \(error)")
+        }
     }
 }

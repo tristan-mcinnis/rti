@@ -350,8 +350,10 @@ final class SessionCoordinator: ObservableObject {
         transcriptPipeline.reset()
         publishState()
 
-        NotesGenerationController.shared.clear()
-        DossierController.shared.clear()
+        // Don't `clear()` notes/dossiers here — they're persisted now and
+        // the user wants to read them after the recording ends. The next
+        // session's startSession() will call reset(for: newSessionId)
+        // which loads that session's notes from the DB.
 
         triggerSummaryIfNeeded(sessionId: sessionId)
     }

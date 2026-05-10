@@ -341,6 +341,44 @@ final class RTIDatabase: @unchecked Sendable {
             try db.execute(sql: "DROP TABLE IF EXISTS sessions")
             try db.execute(sql: "DROP TABLE IF EXISTS corpus_migration_log")
         }
+        m.registerMigration("v12_analysis_artifacts") { db in
+            // Persistence for generated notes and entity dossiers. Until
+            // this migration both lived only in memory and vanished the
+            // moment a session stopped. No FK to a sessions table — that
+            // was dropped in v11; markdown is the canonical store. The
+            // session_id is a free-form text key matching the markdown
+            // corpus session id.
+            try db.create(table: "generated_notes") { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull()
+                t.column("range_start_ms", .integer).notNull()
+                t.column("range_end_ms", .integer).notNull()
+                t.column("content", .text).notNull()
+                t.column("created_at", .datetime).notNull()
+            }
+            try db.create(
+                index: "idx_generated_notes_session_time",
+                on: "generated_notes",
+                columns: ["session_id", "created_at"]
+            )
+
+            try db.create(table: "entity_dossiers") { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull()
+                t.column("name", .text).notNull()
+                t.column("name_normalized", .text).notNull()
+                t.column("type", .text).notNull()  // person|brand|organization|concept
+                t.column("description", .text).notNull()
+                t.column("created_at", .datetime).notNull()
+                t.column("updated_at", .datetime).notNull()
+                t.uniqueKey(["session_id", "name_normalized"])
+            }
+            try db.create(
+                index: "idx_entity_dossiers_session",
+                on: "entity_dossiers",
+                columns: ["session_id"]
+            )
+        }
         return m
     }
 }
