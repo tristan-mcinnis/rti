@@ -41,7 +41,10 @@ final class TranscriptAggregator {
                     speakerId: SpeakerLabelMapping.rawLabel(speaker: run.speaker, channel: channel),
                     text: run.text,
                     startMs: run.startMs,
-                    confidence: run.confidence
+                    confidence: run.confidence,
+                    translationStatus: run.translationStatus,
+                    language: run.language,
+                    sourceLanguage: run.sourceLanguage
                 )
             }
             for entry in newEntries {

@@ -27,6 +27,8 @@ final class AudioPipeline {
     /// Create the WAV file and the mic Soniox client. Does **not** start
     /// capture yet — call `start()` after this returns.
     /// - Returns: the URL of the WAV file being prepared.
+    var translationConfig: TranslationConfig?
+
     func prepare(sessionId: String) throws -> URL {
         // Fast-fail before opening a WAV on disk: a missing/empty Soniox
         // key would otherwise let the user "record" silently for 5 retries
@@ -38,7 +40,11 @@ final class AudioPipeline {
         let wavURL = WAVWriter.defaultURL(for: sessionId)
         try wav.open(at: wavURL)
 
-        let client = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
+        let client = SonioxClient(
+            apiKey: Secrets.sonioxAPIKey,
+            url: SonioxClient.defaultURL,
+            translationConfig: translationConfig
+        )
         client.onWords = { [weak self] words in self?.onWords?(words) }
         client.onError = { [weak self] failure, didOpen in
             self?.onError?(failure.userMessage(didOpen: didOpen), failure.isAuth)
@@ -71,7 +77,11 @@ final class AudioPipeline {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let sysClient = SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL)
+            let sysClient = SonioxClient(
+                apiKey: Secrets.sonioxAPIKey,
+                url: SonioxClient.defaultURL,
+                translationConfig: translationConfig
+            )
             sysClient.onWords = { [weak self] words in self?.onSystemWords?(words) }
             sysClient.onError = { [weak self] failure, didOpen in
                 guard let self else { return }

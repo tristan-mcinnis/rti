@@ -11,6 +11,9 @@ struct SpeakerTurn {
     let startMs: Int
     let endMs: Int
     let confidence: Double
+    let translationStatus: String
+    let language: String?
+    let sourceLanguage: String?
 }
 
 extension SpeakerTurn {
@@ -20,7 +23,14 @@ extension SpeakerTurn {
         guard !words.isEmpty else { return [] }
         var groups: [[SonioxWord]] = []
         for word in words {
-            if groups.last?.last?.speaker == word.speaker {
+            let last = groups.last?.last
+            // Start a new group on speaker change OR when crossing
+            // original ↔ translation boundaries (they need separate
+            // visual entries).
+            let sameRun = last?.speaker == word.speaker
+                && last?.translationStatus == word.translationStatus
+                && last?.language == word.language
+            if sameRun {
                 groups[groups.count - 1].append(word)
             } else {
                 groups.append([word])
@@ -33,7 +43,10 @@ extension SpeakerTurn {
                 text: group.map(\.text).joined(),
                 startMs: group.first?.startMs ?? 0,
                 endMs: group.last?.endMs ?? 0,
-                confidence: confidenceAvg
+                confidence: confidenceAvg,
+                translationStatus: group[0].translationStatus,
+                language: group[0].language,
+                sourceLanguage: group[0].sourceLanguage
             )
         }
     }

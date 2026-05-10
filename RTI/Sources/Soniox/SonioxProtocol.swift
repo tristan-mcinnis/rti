@@ -7,6 +7,46 @@ struct SonioxWord {
     let speaker: Int
     let confidence: Double
     let isFinal: Bool
+    /// "none" | "original" | "translation"
+    let translationStatus: String
+    /// Language code of the token (e.g. "en", "fr")
+    let language: String?
+    /// Original language for translated tokens
+    let sourceLanguage: String?
+}
+
+struct TranslationConfig: Codable {
+    /// "one_way" or "two_way"
+    let type: String
+    /// Target language for one-way translation (e.g. "fr", "es")
+    let target_language: String?
+    /// Language A for two-way translation
+    let language_a: String?
+    /// Language B for two-way translation
+    let language_b: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case target_language
+        case language_a
+        case language_b
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(type, forKey: .type)
+        try c.encodeIfPresent(target_language, forKey: .target_language)
+        try c.encodeIfPresent(language_a, forKey: .language_a)
+        try c.encodeIfPresent(language_b, forKey: .language_b)
+    }
+
+    static func oneWay(targetLanguage: String) -> TranslationConfig {
+        TranslationConfig(type: "one_way", target_language: targetLanguage, language_a: nil, language_b: nil)
+    }
+
+    static func twoWay(languageA: String, languageB: String) -> TranslationConfig {
+        TranslationConfig(type: "two_way", target_language: nil, language_a: languageA, language_b: languageB)
+    }
 }
 
 struct SonioxConfigMessage: Codable {
@@ -18,8 +58,9 @@ struct SonioxConfigMessage: Codable {
     let language_hints: [String]
     let enable_speaker_diarization: Bool
     let speaker_diarization_max_speakers: Int
+    let translation: TranslationConfig?
 
-    static func `default`(apiKey: String) -> SonioxConfigMessage {
+    static func `default`(apiKey: String, translation: TranslationConfig? = nil) -> SonioxConfigMessage {
         SonioxConfigMessage(
             api_key: apiKey,
             model: "stt-rt-v4",
@@ -28,7 +69,8 @@ struct SonioxConfigMessage: Codable {
             num_channels: 1,
             language_hints: ["en"],
             enable_speaker_diarization: true,
-            speaker_diarization_max_speakers: 4
+            speaker_diarization_max_speakers: 4,
+            translation: translation
         )
     }
 }
@@ -45,6 +87,9 @@ struct SonioxTranscriptMessage: Decodable {
         let speaker: String?
         let confidence: Double?
         let is_final: Bool?
+        let translation_status: String?
+        let language: String?
+        let source_language: String?
 
         func toSonioxWord() -> SonioxWord {
             SonioxWord(
@@ -53,7 +98,10 @@ struct SonioxTranscriptMessage: Decodable {
                 endMs: end_ms ?? 0,
                 speaker: Int(speaker ?? "0") ?? 0,
                 confidence: confidence ?? 1.0,
-                isFinal: is_final ?? false
+                isFinal: is_final ?? false,
+                translationStatus: translation_status ?? "none",
+                language: language,
+                sourceLanguage: source_language
             )
         }
     }

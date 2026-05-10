@@ -10,6 +10,12 @@ struct LiveEntry: Identifiable {
     let text: String
     let startMs: Int
     let confidence: Double
+    /// "none" | "original" | "translation"
+    let translationStatus: String
+    /// Language code (e.g. "en", "fr") — nil for pre-translation tokens
+    let language: String?
+    /// Original language for translation tokens
+    let sourceLanguage: String?
 }
 
 @MainActor
@@ -28,6 +34,12 @@ final class SessionCoordinator: ObservableObject {
     /// affordance on the error banner. Reset whenever `lastError` is
     /// cleared or replaced by a non-auth failure.
     @Published private(set) var lastErrorIsAuth: Bool = false
+    /// When non-nil, Soniox will stream translation tokens alongside
+    /// the regular transcript. Bound to UserDefaults and the live
+    /// transcript toggle.
+    @Published var translationConfig: TranslationConfig? {
+        didSet { audioPipeline.translationConfig = translationConfig }
+    }
 
     private let audioPipeline = AudioPipeline()
     private let transcriptPipeline = TranscriptPipeline()

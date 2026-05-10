@@ -52,7 +52,10 @@ final class TranscriptPipeline {
             speakerId: "note",
             text: trimmed,
             startMs: offsetMs,
-            confidence: 1.0
+            confidence: 1.0,
+            translationStatus: "none",
+            language: nil,
+            sourceLanguage: nil
         )
         noteEntries.append(entry)
         if noteEntries.count > 500 { noteEntries.removeFirst(noteEntries.count - 500) }

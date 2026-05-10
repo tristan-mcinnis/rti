@@ -170,7 +170,10 @@ actor SonioxFileTranscribeClient {
                 endMs: endMs,
                 speaker: speaker,
                 confidence: confidence,
-                isFinal: true
+                isFinal: true,
+                translationStatus: "none",
+                language: nil,
+                sourceLanguage: nil
             )
         }
         return SonioxFileTranscript(words: words)

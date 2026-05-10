@@ -15,10 +15,50 @@ struct DebugConsoleView: View {
                 .padding(.vertical, 10)
                 .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
             Divider()
+            translationBar
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
+            Divider()
             transcriptList
         }
         .onAppear(perform: startClock)
         .onDisappear(perform: stopClock)
+    }
+
+    // MARK: - Translation state
+
+    @AppStorage("rti.translation.enabled") private var translationEnabled = false
+    @AppStorage("rti.translation.mode") private var translationMode = "one_way"
+    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "es"
+    @AppStorage("rti.translation.languageA") private var languageA = "en"
+    @AppStorage("rti.translation.languageB") private var languageB = "es"
+
+    private let supportedLanguages: [(code: String, name: String)] = [
+        ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"),
+        ("it", "Italian"), ("pt", "Portuguese"), ("ja", "Japanese"), ("ko", "Korean"),
+        ("zh", "Chinese"), ("ru", "Russian"), ("ar", "Arabic"), ("hi", "Hindi"),
+        ("nl", "Dutch"), ("pl", "Polish"), ("tr", "Turkish"), ("vi", "Vietnamese"),
+    ]
+
+    private var effectiveTranslationConfig: TranslationConfig? {
+        guard translationEnabled else { return nil }
+        switch translationMode {
+        case "two_way":
+            return .twoWay(languageA: languageA, languageB: languageB)
+        default:
+            return .oneWay(targetLanguage: targetLanguage)
+        }
+    }
+
+    private var translationSummary: String {
+        guard translationEnabled else { return "Off" }
+        switch translationMode {
+        case "two_way":
+            return "\(languageA.uppercased()) ↔ \(languageB.uppercased())"
+        default:
+            return "→ \(targetLanguage.uppercased())"
+        }
     }
 
     private var header: some View {
@@ -69,11 +109,88 @@ struct DebugConsoleView: View {
         }
     }
 
+    // MARK: - Translation bar
+
+    private var translationBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(translationEnabled ? Color.blue : .secondary)
+
+            Text("Translation")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            Toggle("", isOn: $translationEnabled)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .onChange(of: translationEnabled) { _, newValue in
+                    coordinator.translationConfig = effectiveTranslationConfig
+                }
+
+            if translationEnabled {
+                Picker("Mode", selection: $translationMode) {
+                    Text("One-way").tag("one_way")
+                    Text("Two-way").tag("two_way")
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .frame(width: 120)
+                .onChange(of: translationMode) { _, _ in
+                    coordinator.translationConfig = effectiveTranslationConfig
+                }
+
+                if translationMode == "one_way" {
+                    Picker("To", selection: $targetLanguage) {
+                        ForEach(supportedLanguages, id: \.code) { lang in
+                            Text(lang.name).tag(lang.code)
+                        }
+                    }
+                    .controlSize(.small)
+                    .frame(width: 100)
+                    .onChange(of: targetLanguage) { _, _ in
+                        coordinator.translationConfig = effectiveTranslationConfig
+                    }
+                } else {
+                    Picker("A", selection: $languageA) {
+                        ForEach(supportedLanguages, id: \.code) { lang in
+                            Text(lang.name).tag(lang.code)
+                        }
+                    }
+                    .controlSize(.small)
+                    .frame(width: 100)
+                    .onChange(of: languageA) { _, _ in
+                        coordinator.translationConfig = effectiveTranslationConfig
+                    }
+                    Text("↔").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Picker("B", selection: $languageB) {
+                        ForEach(supportedLanguages, id: \.code) { lang in
+                            Text(lang.name).tag(lang.code)
+                        }
+                    }
+                    .controlSize(.small)
+                    .frame(width: 100)
+                    .onChange(of: languageB) { _, _ in
+                        coordinator.translationConfig = effectiveTranslationConfig
+                    }
+                }
+            }
+
+            Spacer()
+
+            Text(translationSummary)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(translationEnabled ? Color.blue : .secondary)
+        }
+    }
+
     private struct LiveParagraph: Identifiable {
         let id: UUID
         let speakerId: String
         let startMs: Int
         let text: String
+        let isTranslation: Bool
+        let language: String?
     }
 
     /// Soniox finalizes in 1–3s windows so the raw stream is dozens of tiny
@@ -82,12 +199,17 @@ struct DebugConsoleView: View {
     private var paragraphs: [LiveParagraph] {
         var out: [LiveParagraph] = []
         for entry in coordinator.liveEntries {
-            if let last = out.last, last.speakerId == entry.speakerId {
+            let isTranslation = entry.translationStatus == "translation"
+            if let last = out.last,
+               last.speakerId == entry.speakerId,
+               last.isTranslation == isTranslation {
                 let merged = LiveParagraph(
                     id: last.id,
                     speakerId: last.speakerId,
                     startMs: last.startMs,
-                    text: last.text + " " + entry.text
+                    text: last.text + " " + entry.text,
+                    isTranslation: last.isTranslation,
+                    language: last.language
                 )
                 out.removeLast()
                 out.append(merged)
@@ -96,7 +218,9 @@ struct DebugConsoleView: View {
                     id: entry.id,
                     speakerId: entry.speakerId,
                     startMs: entry.startMs,
-                    text: entry.text
+                    text: entry.text,
+                    isTranslation: isTranslation,
+                    language: entry.language
                 ))
             }
         }
@@ -144,6 +268,7 @@ struct DebugConsoleView: View {
     @ViewBuilder
     private func paragraphRow(_ p: LiveParagraph) -> some View {
         let isNote = p.speakerId == "note"
+        let isTranslation = p.isTranslation
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 if isNote {
@@ -151,12 +276,19 @@ struct DebugConsoleView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.yellow)
                 }
-                Text(speakerDisplayName(p.speakerId))
+                if isTranslation {
+                    Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.blue)
+                }
+                Text(isTranslation ? translationLabel(p) : speakerDisplayName(p.speakerId))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(isNote ? Color.yellow : .secondary)
-                Text(timeLabel(ms: p.startMs))
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(isNote ? Color.yellow : isTranslation ? Color.blue : .secondary)
+                if !isTranslation {
+                    Text(timeLabel(ms: p.startMs))
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
                 if hoveredId == p.id {
                     Button(action: { copyParagraph(p) }) {
@@ -168,11 +300,6 @@ struct DebugConsoleView: View {
                     .help("Copy this paragraph")
                 }
             }
-            // Note rows get a yellow card; everything else renders as plain
-            // primary-colored text. Branching the modifier chain (instead of
-            // doing an `isNote ? … : nil` ternary inside .background) avoids a
-            // SwiftUI quirk where the optional-View ternary could compile to a
-            // type that silently swallowed the row body.
             if isNote {
                 Text(p.text.trimmingCharacters(in: .whitespaces))
                     .font(.system(size: 14))
@@ -188,6 +315,21 @@ struct DebugConsoleView: View {
                             .fill(Color.yellow.opacity(0.5))
                             .frame(width: 2)
                     }
+            } else if isTranslation {
+                Text(p.text.trimmingCharacters(in: .whitespaces))
+                    .font(.system(size: 14))
+                    .italic()
+                    .lineSpacing(3)
+                    .foregroundStyle(Color.blue.opacity(0.85))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(0.06)))
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.blue.opacity(0.4))
+                            .frame(width: 2)
+                    }
             } else {
                 Text(p.text.trimmingCharacters(in: .whitespaces))
                     .font(.system(size: 14))
@@ -199,6 +341,13 @@ struct DebugConsoleView: View {
         }
         .contentShape(Rectangle())
         .onHover { inside in hoveredId = inside ? p.id : (hoveredId == p.id ? nil : hoveredId) }
+    }
+
+    private func translationLabel(_ p: LiveParagraph) -> String {
+        if let lang = p.language {
+            return "→ \(lang.uppercased())"
+        }
+        return "Translation"
     }
 
     private func timeLabel(ms: Int) -> String {
