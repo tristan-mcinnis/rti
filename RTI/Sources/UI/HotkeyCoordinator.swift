@@ -12,6 +12,8 @@ final class HotkeyCoordinator {
     var onToggleDebugConsole: (() -> Void)?
     var onToggleCommandPalette: (() -> Void)?
     var onToggleTopWidget: (() -> Void)?
+    var onToggleNotesPanel: (() -> Void)?
+    var onToggleDossiersPanel: (() -> Void)?
 
     func registerAll() {
         let hk = GlobalHotkey()
@@ -37,6 +39,12 @@ final class HotkeyCoordinator {
         }
         hk.register(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
             self?.onToggleTopWidget?()
+        }
+        hk.register(keyCode: UInt32(kVK_ANSI_N), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
+            self?.onToggleNotesPanel?()
+        }
+        hk.register(keyCode: UInt32(kVK_ANSI_D), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
+            self?.onToggleDossiersPanel?()
         }
         hotkey = hk
     }

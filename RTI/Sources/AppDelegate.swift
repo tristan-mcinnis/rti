@@ -41,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         menu.onShowOnboarding = { [weak self] in self?.windows.showOnboarding() }
         menu.onToggleOverlay = { [weak self] in self?.windows.toggleOverlay() }
         menu.onToggleTopWidget = { [weak self] in self?.windows.toggleTopWidget() }
+        menu.onToggleNotesPanel = { [weak self] in self?.windows.toggleNotesPanel() }
+        menu.onToggleDossiersPanel = { [weak self] in self?.windows.toggleDossiersPanel() }
         menu.onClearChat = { [weak self] in self?.clearChat() }
         menu.onShowSessionHistory = { [weak self] in self?.windows.showSessionHistory() }
         menu.onRecentSessionSelected = { [weak self] id in self?.windows.openSessionDetail(for: id) }
@@ -57,6 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         hotkeys.onToggleDebugConsole = { [weak self] in self?.windows.toggleDebugConsole() }
         hotkeys.onToggleCommandPalette = { [weak self] in self?.windows.toggleCommandPalette() }
         hotkeys.onToggleTopWidget = { [weak self] in self?.windows.toggleTopWidget() }
+        hotkeys.onToggleNotesPanel = { [weak self] in self?.windows.toggleNotesPanel() }
+        hotkeys.onToggleDossiersPanel = { [weak self] in self?.windows.toggleDossiersPanel() }
         hotkeys.registerAll()
 
         CommandRegistry.shared.replaceAll(

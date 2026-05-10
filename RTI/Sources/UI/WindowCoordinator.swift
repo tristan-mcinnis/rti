@@ -11,9 +11,13 @@ final class WindowCoordinator {
     private var onboarding: OnboardingWindowController?
     private var shortcutsController: ShortcutsWindowController?
     private var commandPalette: CommandPaletteWindowController?
+    private var notesPanel: NotesPanelWindowController?
+    private var dossiersPanel: DossiersPanelWindowController?
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
+    var notesPanelIsVisible: Bool { notesPanel?.isVisible ?? false }
+    var dossiersPanelIsVisible: Bool { dossiersPanel?.isVisible ?? false }
 
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
         shortcutsController = ShortcutsWindowController()
@@ -29,6 +33,19 @@ final class WindowCoordinator {
             onCaptureScreen: { ScreenshotManager.shared.captureAndAttach() },
             onToggleInvisibility: { [weak self] in self?.toggleInvisibility() },
             onOpenSettings: onOpenSettings,
+            onShowLiveTranscript: { [weak self] in self?.showSessionsControl(tab: .liveTranscript) },
+            onShowLogs: { [weak self] in self?.showSessionsControl(tab: .logs) },
+            onShowSessionHistory: { [weak self] in self?.showSessionsControl(tab: .sessions) },
+            onOpenCurrentSessionDetail: { [weak self] in
+                if let id = SessionCoordinator.shared.currentSessionId {
+                    self?.openSessionDetail(for: id)
+                } else {
+                    self?.showSessionsControl(tab: .sessions)
+                }
+            },
+            onClearChat: { NotificationCenter.default.post(name: .rtiClearChat, object: nil) },
+            onShowShortcuts: { [weak self] in self?.showShortcuts() },
+            onShowAbout: { [weak self] in self?.showAbout() },
             onQuit: { NSApp.terminate(nil) }
         )
         let top = TopWidgetWindowController(actions: actions)
@@ -41,11 +58,16 @@ final class WindowCoordinator {
         controller.show()
 
         commandPalette = CommandPaletteWindowController()
+
+        notesPanel = NotesPanelWindowController()
+        dossiersPanel = DossiersPanelWindowController()
     }
 
     func setSharingInvisible(_ invisible: Bool) {
         overlayController?.setSharingInvisible(invisible)
         topWidget?.setSharingInvisible(invisible)
+        notesPanel?.setSharingInvisible(invisible)
+        dossiersPanel?.setSharingInvisible(invisible)
     }
 
     /// Toggle the persisted invisibility flag and apply it to both windows.
@@ -97,6 +119,16 @@ final class WindowCoordinator {
     // MARK: - Command Palette
 
     func toggleCommandPalette() { commandPalette?.toggle() }
+
+    // MARK: - Analysis Panels
+
+    func showNotesPanel() { notesPanel?.show() }
+    func hideNotesPanel() { notesPanel?.hide() }
+    func toggleNotesPanel() { notesPanel?.toggle() }
+
+    func showDossiersPanel() { dossiersPanel?.show() }
+    func hideDossiersPanel() { dossiersPanel?.hide() }
+    func toggleDossiersPanel() { dossiersPanel?.toggle() }
 
     // MARK: - Onboarding
 

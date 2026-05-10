@@ -1,0 +1,172 @@
+import SwiftUI
+
+struct NotesPanelView: View {
+    @ObservedObject private var controller = NotesGenerationController.shared
+    @AppStorage(notesOpacityKey) private var backgroundOpacity: Double = notesDefaultOpacity
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black.opacity(backgroundOpacity))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+
+            VStack(spacing: 0) {
+                header
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                if let error = controller.lastError {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 4)
+                }
+
+                if controller.notes.isEmpty {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(systemName: "note.text")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.secondary)
+                        Text("Waiting for first note…")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                        Text("Notes generate every few minutes while recording.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                } else {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(spacing: 10) {
+                                ForEach(controller.notes) { note in
+                                    NoteCard(note: note)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
+                        }
+                        .onChange(of: controller.notes.count) { _, _ in
+                            if let last = controller.notes.last {
+                                withAnimation {
+                                    proxy.scrollTo(last.id, anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            ResizeHandle()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding([.bottom, .trailing], 6)
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Notes")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+
+            if controller.isGenerating {
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            }
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                OpacitySlider(opacity: $backgroundOpacity)
+                    .frame(width: 80)
+
+                Button(action: {
+                    NotificationCenter.default.post(name: .rtiToggleNotesPanel, object: nil)
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+private struct NoteCard: View {
+    let note: GeneratedNote
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(formattedTime(note.timestamp))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+
+                Spacer()
+            }
+
+            MarkdownText(note.content)
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.9))
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
+        )
+    }
+
+    private func formattedTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: date)
+    }
+}
+
+private struct MarkdownText: View {
+    let markdown: String
+
+    init(_ markdown: String) {
+        self.markdown = markdown
+    }
+
+    var body: some View {
+        if let attributed = try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        ) {
+            Text(attributed)
+        } else {
+            Text(markdown)
+        }
+    }
+}
+
+private struct OpacitySlider: View {
+    @Binding var opacity: Double
+
+    var body: some View {
+        Slider(value: $opacity, in: 0.30...0.95, step: 0.05) {}
+        .tint(.white.opacity(0.4))
+        .frame(height: 12)
+    }
+}

@@ -21,6 +21,8 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     var onShowOnboarding: (() -> Void)?
     var onToggleOverlay: (() -> Void)?
     var onToggleTopWidget: (() -> Void)?
+    var onToggleNotesPanel: (() -> Void)?
+    var onToggleDossiersPanel: (() -> Void)?
     var onClearChat: (() -> Void)?
     var onShowSessionHistory: (() -> Void)?
     var onRecentSessionSelected: ((String) -> Void)?
@@ -92,6 +94,14 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         let widgetItem = NSMenuItem(title: "Toggle Top Widget (⌘⇧B)", action: #selector(toggleTopWidget), keyEquivalent: "")
         widgetItem.target = self
         menu.addItem(widgetItem)
+
+        let notesItem = NSMenuItem(title: "Toggle Notes Panel (⌘⇧N)", action: #selector(toggleNotesPanel), keyEquivalent: "")
+        notesItem.target = self
+        menu.addItem(notesItem)
+
+        let dossiersItem = NSMenuItem(title: "Toggle Dossiers Panel (⌘⇧D)", action: #selector(toggleDossiersPanel), keyEquivalent: "")
+        dossiersItem.target = self
+        menu.addItem(dossiersItem)
 
         let clearItem = NSMenuItem(title: "Clear Current Chat", action: #selector(clearChat), keyEquivalent: "")
         clearItem.target = self
@@ -180,6 +190,8 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     @objc private func showOnboarding() { onShowOnboarding?() }
     @objc private func toggleOverlay() { onToggleOverlay?() }
     @objc private func toggleTopWidget() { onToggleTopWidget?() }
+    @objc private func toggleNotesPanel() { onToggleNotesPanel?() }
+    @objc private func toggleDossiersPanel() { onToggleDossiersPanel?() }
     @objc private func clearChat() { onClearChat?() }
     @objc private func showSessionHistory() { onShowSessionHistory?() }
     @objc private func openSessionDetail(_ sender: NSMenuItem) {

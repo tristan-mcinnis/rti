@@ -315,6 +315,9 @@ private struct GeneralTab: View {
     @AppStorage(OverlayAppearanceDefaults.widthKey) private var overlayWidth: Double = OverlayAppearanceDefaults.defaultWidth
     @AppStorage(OverlayAppearanceDefaults.heightKey) private var overlayHeight: Double = OverlayAppearanceDefaults.defaultHeight
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var overlayOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
+    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = true
+    @AppStorage(AnalysisSettingsDefaults.notesIntervalKey) private var notesInterval: Double = AnalysisSettingsDefaults.defaultInterval
+    @AppStorage(AnalysisSettingsDefaults.dossiersEnabledKey) private var dossiersEnabled: Bool = true
 
     var body: some View {
         ScrollView {
@@ -357,6 +360,33 @@ private struct GeneralTab: View {
                 AudioInputDeviceStore.preferredUID = newValue
             }
             Text("Pick BlackHole (or an aggregate device that combines mic + BlackHole) to capture system audio from calls. The change applies the next time you start a session.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider().padding(.vertical, 8)
+
+            Text("Real-Time Analysis")
+                .font(.system(size: 13, weight: .medium))
+
+            Toggle("Enable notes generation", isOn: $notesEnabled)
+            Toggle("Enable dossier generation", isOn: $dossiersEnabled)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Notes interval")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Text("\(Int(notesInterval / 60)) min")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: $notesInterval, in: AnalysisSettingsDefaults.intervalRange, step: 60) {}
+            }
+            .disabled(!notesEnabled)
+            .opacity(notesEnabled ? 1 : 0.5)
+
+            Text("Notes and dossiers generate automatically while recording. They appear in overlay panels you can open with ⌘⇧N and ⌘⇧D.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -415,6 +445,8 @@ private struct GeneralTab: View {
                 hotkeyRow("Assist (from any app)", "⌘ ↵")
                 hotkeyRow("Attach screenshot", "⌘ ⇧ H")
                 hotkeyRow("Show / hide live transcript", "⌘ ⌥ T")
+                hotkeyRow("Toggle notes panel", "⌘ ⇧ N")
+                hotkeyRow("Toggle dossiers panel", "⌘ ⇧ D")
             }
             .font(.system(size: 12))
             .foregroundStyle(.secondary)

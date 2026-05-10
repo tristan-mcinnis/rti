@@ -50,6 +50,9 @@ final class SessionCoordinator: ObservableObject {
     private var activeWavPath: String?
     private var activeModeId: String?
 
+    private var analysisTimer: Timer?
+    private var lastNoteEndMs: Int = 0
+
     private static let resumeWindowSeconds: TimeInterval = 300
 
     private init() {
@@ -294,11 +297,18 @@ final class SessionCoordinator: ObservableObject {
         transcriptPipeline.reset()
         publishState()
         isRunning = true
+        lastNoteEndMs = 0
+        NotesGenerationController.shared.reset(for: sessionId)
+        DossierController.shared.reset(for: sessionId)
+        startAnalysisTimer()
         LLMController.shared.loadHistoryForCurrentSession()
     }
 
     func stopSession() {
         guard isRunning, let sessionId = currentSessionId else { return }
+
+        analysisTimer?.invalidate()
+        analysisTimer = nil
 
         // Stop audio capture before finalizing Soniox. This ordering
         // ensures the mic/system taps are removed so no new audio enters
@@ -337,6 +347,9 @@ final class SessionCoordinator: ObservableObject {
         // next app launch (via bootstrapChatSession) past the 5-minute window.
         transcriptPipeline.reset()
         publishState()
+
+        NotesGenerationController.shared.clear()
+        DossierController.shared.clear()
 
         triggerSummaryIfNeeded(sessionId: sessionId)
     }
@@ -382,6 +395,44 @@ final class SessionCoordinator: ObservableObject {
             // Active metadata done with — clear it after the render.
             self.activeWavPath = nil
             self.activeModeId = nil
+        }
+    }
+
+    private func startAnalysisTimer() {
+        analysisTimer?.invalidate()
+
+        let notesEnabled = UserDefaults.standard.object(forKey: AnalysisSettingsDefaults.notesEnabledKey) as? Bool ?? true
+        let dossiersEnabled = UserDefaults.standard.object(forKey: AnalysisSettingsDefaults.dossiersEnabledKey) as? Bool ?? true
+        guard notesEnabled || dossiersEnabled else { return }
+
+        let interval = UserDefaults.standard.double(forKey: AnalysisSettingsDefaults.notesIntervalKey)
+        let effectiveInterval = interval > 0 ? interval : AnalysisSettingsDefaults.defaultInterval
+
+        analysisTimer = Timer.scheduledTimer(withTimeInterval: effectiveInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.fireAnalysis()
+            }
+        }
+    }
+
+    private func fireAnalysis() {
+        guard let sessionId = currentSessionId else { return }
+
+        let notesEnabled = UserDefaults.standard.object(forKey: AnalysisSettingsDefaults.notesEnabledKey) as? Bool ?? true
+        let dossiersEnabled = UserDefaults.standard.object(forKey: AnalysisSettingsDefaults.dossiersEnabledKey) as? Bool ?? true
+
+        Task { @MainActor in
+            async let noteResult: Int? = notesEnabled
+                ? NotesGenerationController.shared.generate(sessionId: sessionId, sinceMs: self.lastNoteEndMs > 0 ? self.lastNoteEndMs : nil)
+                : nil
+            async let dossierTask: Void = dossiersEnabled
+                ? DossierController.shared.generate(sessionId: sessionId)
+                : ()
+
+            if let endMs = await noteResult {
+                self.lastNoteEndMs = endMs
+            }
+            await dossierTask
         }
     }
 

@@ -13,6 +13,8 @@ extension Notification.Name {
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
     static let rtiSessionsChanged = Notification.Name("rti.sessionsChanged")
     static let rtiToggleCommandPalette = Notification.Name("rti.toggleCommandPalette")
+    static let rtiToggleNotesPanel = Notification.Name("rti.toggleNotesPanel")
+    static let rtiToggleDossiersPanel = Notification.Name("rti.toggleDossiersPanel")
 }
 
 enum OverlayAppearanceDefaults {
@@ -25,4 +27,12 @@ enum OverlayAppearanceDefaults {
     static let widthRange: ClosedRange<Double> = 320...800
     static let heightRange: ClosedRange<Double> = 400...900
     static let opacityRange: ClosedRange<Double> = 0.30...0.95
+}
+
+enum AnalysisSettingsDefaults {
+    static let notesEnabledKey = "rti.analysis.notesEnabled"
+    static let notesIntervalKey = "rti.analysis.notesIntervalSeconds"
+    static let dossiersEnabledKey = "rti.analysis.dossiersEnabled"
+    static let defaultInterval: Double = 120
+    static let intervalRange: ClosedRange<Double> = 60...600
 }
