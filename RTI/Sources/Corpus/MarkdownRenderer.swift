@@ -25,7 +25,41 @@ enum MarkdownRenderer {
         let speakerMap: [String: CorpusEntry.SpeakerMapEntry]?
         let keyTopics: [String]?
         let summaryMarkdown: String?     // SummaryController.summaryText
+        let notesMarkdown: String?       // Concatenated GeneratedNote bodies
+        let entitiesMarkdown: String?    // Grouped EntityDossier list
         let turns: [TurnLine]
+
+        init(
+            id: String,
+            startedAt: Date,
+            endedAt: Date?,
+            title: String?,
+            modeId: String?,
+            transcriptQuality: String?,
+            wavPath: String?,
+            attendees: [String]?,
+            speakerMap: [String: CorpusEntry.SpeakerMapEntry]?,
+            keyTopics: [String]?,
+            summaryMarkdown: String?,
+            notesMarkdown: String? = nil,
+            entitiesMarkdown: String? = nil,
+            turns: [TurnLine]
+        ) {
+            self.id = id
+            self.startedAt = startedAt
+            self.endedAt = endedAt
+            self.title = title
+            self.modeId = modeId
+            self.transcriptQuality = transcriptQuality
+            self.wavPath = wavPath
+            self.attendees = attendees
+            self.speakerMap = speakerMap
+            self.keyTopics = keyTopics
+            self.summaryMarkdown = summaryMarkdown
+            self.notesMarkdown = notesMarkdown
+            self.entitiesMarkdown = entitiesMarkdown
+            self.turns = turns
+        }
     }
 
     static func make(_ inputs: Inputs) -> CorpusEntry {
@@ -53,6 +87,14 @@ enum MarkdownRenderer {
             } else {
                 bodyParts.append("## Summary\n\(summary)")
             }
+        }
+        if let notes = inputs.notesMarkdown,
+           !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            bodyParts.append("## Notes\n\n\(notes)")
+        }
+        if let entities = inputs.entitiesMarkdown,
+           !entities.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            bodyParts.append("## Entities\n\n\(entities)")
         }
         bodyParts.append("## Transcript")
         bodyParts.append(renderTranscript(inputs.turns))

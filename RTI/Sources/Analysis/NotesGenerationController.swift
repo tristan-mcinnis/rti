@@ -64,7 +64,7 @@ final class NotesGenerationController: ObservableObject {
     /// first. Used by `reset(for:)` and by tooling that doesn't go
     /// through the singleton's mutable state (e.g. the chat read_notes
     /// tool, session detail view).
-    static func loadNotes(forSessionId sessionId: String) -> [GeneratedNote] {
+    nonisolated static func loadNotes(forSessionId sessionId: String) -> [GeneratedNote] {
         do {
             let rows = try RTIDatabase.shared.pool.read { db in
                 try GeneratedNoteRow

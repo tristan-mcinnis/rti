@@ -49,7 +49,7 @@ final class DossierController: ObservableObject {
     /// Read the persisted dossiers for an arbitrary session, ordered by
     /// first creation. Used by `reset(for:)` and by tools/views that want
     /// dossiers without going through the singleton's mutable state.
-    static func loadDossiers(forSessionId sessionId: String) -> [EntityDossier] {
+    nonisolated static func loadDossiers(forSessionId sessionId: String) -> [EntityDossier] {
         do {
             let rows = try RTIDatabase.shared.pool.read { db in
                 try EntityDossierRow

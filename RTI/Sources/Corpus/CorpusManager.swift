@@ -118,6 +118,13 @@ final class CorpusManager {
         }
         let attendees = speakerMap.values.map(\.name).sorted()
 
+        // Pull persisted notes + dossiers (v12 tables) so they land in the
+        // canonical markdown alongside the transcript and summary. Until
+        // this they only existed in the live panels and the per-session
+        // detail view.
+        let notesMarkdown = Self.notesMarkdown(forSessionId: sessionId)
+        let entitiesMarkdown = Self.entitiesMarkdown(forSessionId: sessionId)
+
         let inputs = MarkdownRenderer.Inputs(
             id: sessionId,
             startedAt: startedAt,
@@ -130,6 +137,8 @@ final class CorpusManager {
             speakerMap: speakerMap.isEmpty ? nil : speakerMap,
             keyTopics: nil,
             summaryMarkdown: summaryText,
+            notesMarkdown: notesMarkdown,
+            entitiesMarkdown: entitiesMarkdown,
             turns: turns
         )
         let entry = MarkdownRenderer.make(inputs)
@@ -173,5 +182,32 @@ final class CorpusManager {
         // banner can subscribe and we'll re-introduce the post then.
     }
 
+    // MARK: - Analysis sections
 
+    /// Build the `## Notes` body from persisted GeneratedNote rows for
+    /// `sessionId`. Returns nil when there are none, so the renderer can
+    /// skip the section header entirely.
+    private static func notesMarkdown(forSessionId sessionId: String) -> String? {
+        let notes = NotesGenerationController.loadNotes(forSessionId: sessionId)
+        guard !notes.isEmpty else { return nil }
+        let parts: [String] = notes.map { n in
+            let when = n.timestamp.formatted(date: .omitted, time: .shortened)
+            return "### \(when)\n\n\(n.content)"
+        }
+        return parts.joined(separator: "\n\n")
+    }
+
+    /// Build the `## Entities` body from persisted EntityDossier rows for
+    /// `sessionId`, grouped by entity type. Returns nil when empty.
+    private static func entitiesMarkdown(forSessionId sessionId: String) -> String? {
+        let dossiers = DossierController.loadDossiers(forSessionId: sessionId)
+        guard !dossiers.isEmpty else { return nil }
+        let grouped = Dictionary(grouping: dossiers) { $0.type }
+            .sorted { $0.key.displayName < $1.key.displayName }
+        let sections: [String] = grouped.map { (type, items) in
+            let body: [String] = items.map { "- **\($0.name)** — \($0.description)" }
+            return "### \(type.displayName)\n\n\(body.joined(separator: "\n"))"
+        }
+        return sections.joined(separator: "\n\n")
+    }
 }
