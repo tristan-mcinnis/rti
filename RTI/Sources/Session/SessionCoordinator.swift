@@ -52,6 +52,7 @@ final class SessionCoordinator: ObservableObject {
 
     private var analysisTimer: Timer?
     private var lastNoteEndMs: Int = 0
+    private var lastDossierEndMs: Int = 0
 
     private static let resumeWindowSeconds: TimeInterval = 300
 
@@ -298,6 +299,7 @@ final class SessionCoordinator: ObservableObject {
         publishState()
         isRunning = true
         lastNoteEndMs = 0
+        lastDossierEndMs = 0
         NotesGenerationController.shared.reset(for: sessionId)
         DossierController.shared.reset(for: sessionId)
         startAnalysisTimer()
@@ -425,14 +427,12 @@ final class SessionCoordinator: ObservableObject {
             async let noteResult: Int? = notesEnabled
                 ? NotesGenerationController.shared.generate(sessionId: sessionId, sinceMs: self.lastNoteEndMs > 0 ? self.lastNoteEndMs : nil)
                 : nil
-            async let dossierTask: Void = dossiersEnabled
-                ? DossierController.shared.generate(sessionId: sessionId)
-                : ()
+            async let dossierResult: Int? = dossiersEnabled
+                ? DossierController.shared.generate(sessionId: sessionId, sinceMs: self.lastDossierEndMs > 0 ? self.lastDossierEndMs : nil)
+                : nil
 
-            if let endMs = await noteResult {
-                self.lastNoteEndMs = endMs
-            }
-            await dossierTask
+            if let endMs = await noteResult { self.lastNoteEndMs = endMs }
+            if let endMs = await dossierResult { self.lastDossierEndMs = endMs }
         }
     }
 

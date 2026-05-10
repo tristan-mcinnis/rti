@@ -40,33 +40,49 @@ final class DossierController: ObservableObject {
         isGenerating = false
     }
 
-    func generate(sessionId: String) async {
-        guard !isGenerating else { return }
+    /// Generate dossiers from the transcript window starting at `sinceMs`
+    /// (or from the start of the session when nil). Returns the `endMs`
+    /// watermark of the processed window so the caller can advance and avoid
+    /// re-sending the entire growing transcript on every cycle. Without
+    /// windowing, a long meeting re-sends an ever-larger transcript every
+    /// 2 minutes and the token cost grows quadratically.
+    func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
+        guard !isGenerating else { return nil }
 
-        let transcript = TranscriptContext.text(forSessionId: sessionId)
+        let transcript = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return nil }
 
         isGenerating = true
         lastError = nil
         defer { isGenerating = false }
 
-        let fullPrompt = Self.dossierPrompt + "\n" + trimmed
+        // The model needs to know about the entities we already track so it
+        // can return strictly NEW or significantly-updated ones — without
+        // this hint it tends to repeat the existing list verbatim.
+        let knownClause: String = {
+            guard !dossiers.isEmpty else { return "" }
+            let existing = dossiers.map { "- \($0.name) (\($0.type.rawValue))" }.joined(separator: "\n")
+            return "\nEntities already tracked (only return NEW ones, or ones whose description should be expanded):\n\(existing)\n"
+        }()
+
+        let fullPrompt = Self.dossierPrompt + knownClause + "\nNew transcript window:\n" + trimmed
         let messages = [LLMMessage(role: "user", content: fullPrompt)]
 
         guard let response = await request.collectAsync(messages: messages, smart: true),
               !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             lastError = "Dossier generation returned empty response."
-            return
+            return nil
         }
 
         let parsed = Self.parseDossiers(from: response)
-        guard !parsed.isEmpty else {
-            lastError = "Could not parse dossier response."
-            return
-        }
+        if !parsed.isEmpty { merge(parsed) }
 
-        merge(parsed)
+        // Watermark = end of the window we just processed, so the next
+        // cycle picks up only fresh transcript.
+        let entries = CorpusBackedStore.transcripts(forSessionId: sessionId)
+        let filtered = sinceMs.map { s in entries.filter { $0.startMs >= s } } ?? entries
+        return filtered.last?.startMs ?? entries.last?.startMs ?? 0
     }
 
     /// Merges a fresh batch into the running dossier list. Existing entries
