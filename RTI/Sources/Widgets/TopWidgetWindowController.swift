@@ -19,6 +19,13 @@ final class TopWidgetWindowController {
         let onCaptureScreen: () -> Void
         let onToggleInvisibility: () -> Void
         let onOpenSettings: () -> Void
+        let onShowLiveTranscript: () -> Void
+        let onShowLogs: () -> Void
+        let onShowSessionHistory: () -> Void
+        let onOpenCurrentSessionDetail: () -> Void
+        let onClearChat: () -> Void
+        let onShowShortcuts: () -> Void
+        let onShowAbout: () -> Void
         let onQuit: () -> Void
     }
 

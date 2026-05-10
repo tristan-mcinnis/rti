@@ -124,6 +124,164 @@ final class LLMClient: @unchecked Sendable {
         }
     }
 
+    /// Result of a single tool-aware streaming turn.
+    /// - `toolCalls` is non-empty when the model wants the host to run
+    ///   functions (finish_reason = tool_calls). The caller executes them
+    ///   and re-streams with the results appended as `tool` messages.
+    /// - `finishReason` is the raw provider reason (e.g. "stop", "tool_calls",
+    ///   "length"). Surfaced for diagnostics.
+    struct ToolAwareStreamResult {
+        let toolCalls: [LLMToolCall]
+        let finishReason: String?
+    }
+
+    /// Streaming chat with OpenAI-style tool support. Yields content deltas
+    /// + reasoning via callbacks (so the UI can paint as tokens arrive),
+    /// accumulates any tool_calls fragments, and returns the assembled
+    /// tool-call list when the stream finishes. The caller drives the
+    /// tool-call loop (execute → append tool messages → re-call).
+    ///
+    /// `tools` is a pre-built JSON array (see `LLMToolRegistry.wireFormat()`).
+    /// Pass an empty array to disable tools for this turn.
+    func streamChatWithTools(
+        messages: [LLMMessage],
+        toolsJSON: Data?,
+        smart: Bool,
+        onContent: @Sendable @escaping (String) -> Void,
+        onReasoning: (@Sendable (String) -> Void)? = nil
+    ) async throws -> ToolAwareStreamResult {
+        let model = provider.model
+        let temperature: Double? = smart ? nil : 0.6
+        let streamTimeoutSeconds: Double = smart ? 120 : 60
+        guard !apiKey.isEmpty else { throw LLMError.missingAPIKey }
+        let providerName = provider.displayName
+
+        var bodyDict: [String: Any] = [
+            "model": model,
+            "messages": try encodeMessages(messages),
+            "stream": true,
+            "max_tokens": 1024
+        ]
+        if let temperature { bodyDict["temperature"] = temperature }
+        if provider.supportsThinking {
+            bodyDict["thinking"] = ["type": smart ? "enabled" : "disabled"]
+        }
+        if let toolsJSON,
+           let toolsArr = try? JSONSerialization.jsonObject(with: toolsJSON) as? [[String: Any]],
+           !toolsArr.isEmpty {
+            bodyDict["tools"] = toolsArr
+            bodyDict["tool_choice"] = "auto"
+        }
+
+        var request = URLRequest(url: provider.baseURL.appendingPathComponent("chat/completions"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONSerialization.data(withJSONObject: bodyDict, options: [])
+
+        let toolCountForLog = (bodyDict["tools"] as? [Any])?.count ?? 0
+        NSLog("[RTI] LLMClient[\(providerName)]: POST tools=\(toolCountForLog) messages=\(messages.count)")
+        RTILog.log("POST tools=\(toolCountForLog) messages=\(messages.count) smart=\(smart)", category: "llm")
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else { throw LLMError.badResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            let errText = try await readAll(bytes)
+            if http.statusCode == 401 { throw LLMError.unauthorized }
+            throw LLMError.httpError(http.statusCode, errText)
+        }
+
+        return try await withThrowingTaskGroup(of: ToolAwareStreamResult.self) { group in
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(streamTimeoutSeconds * 1_000_000_000))
+                throw LLMError.streamError("Stream timed out after \(Int(streamTimeoutSeconds))s")
+            }
+            group.addTask { [weak self] in
+                guard let self else { return ToolAwareStreamResult(toolCalls: [], finishReason: nil) }
+                return try await self.processToolStream(bytes, onContent: onContent, onReasoning: onReasoning)
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
+    /// Encodes `[LLMMessage]` into the JSON-friendly form used by
+    /// `JSONSerialization`. Drops nil fields so the wire body matches
+    /// OpenAI's expectations (e.g. tool messages omit `tool_calls`).
+    private func encodeMessages(_ messages: [LLMMessage]) throws -> [[String: Any]] {
+        let data = try JSONEncoder().encode(messages)
+        guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw LLMError.badResponse
+        }
+        return arr
+    }
+
+    private func processToolStream(
+        _ bytes: URLSession.AsyncBytes,
+        onContent: @Sendable @escaping (String) -> Void,
+        onReasoning: (@Sendable (String) -> Void)?
+    ) async throws -> ToolAwareStreamResult {
+        let decoder = JSONDecoder()
+        // Keyed by stream-chunk `index`. Tool-call fragments arrive in
+        // sequence: id+name in the first chunk for an index, then
+        // `arguments` deltas concatenated until finish_reason fires.
+        var toolBuffer: [Int: (id: String, name: String, args: String)] = [:]
+        var finishReason: String?
+
+        for try await rawLine in bytes.lines {
+            try Task.checkCancellation()
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.hasPrefix(":") { continue }
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using: .utf8) else { continue }
+
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let err = obj["error"] {
+                let detail: String = {
+                    if let msg = err as? [String: Any], let text = msg["message"] as? String { return text }
+                    return "\(err)"
+                }()
+                throw LLMError.streamError(detail)
+            }
+
+            do {
+                let chunk = try decoder.decode(LLMStreamChunk.self, from: data)
+                guard let choice = chunk.choices.first else { continue }
+                if let reason = choice.finish_reason { finishReason = reason }
+                if let reasoning = choice.delta?.reasoning_content, !reasoning.isEmpty,
+                   let onReasoning {
+                    DispatchQueue.main.async { onReasoning(reasoning) }
+                }
+                if let content = choice.delta?.content, !content.isEmpty {
+                    DispatchQueue.main.async { onContent(content) }
+                }
+                if let tcs = choice.delta?.tool_calls {
+                    for tc in tcs {
+                        var entry = toolBuffer[tc.index] ?? (id: "", name: "", args: "")
+                        if let id = tc.id, !id.isEmpty { entry.id = id }
+                        if let name = tc.function?.name, !name.isEmpty { entry.name = name }
+                        if let args = tc.function?.arguments { entry.args += args }
+                        toolBuffer[tc.index] = entry
+                    }
+                }
+            } catch {
+                NSLog("[RTI] LLMClient tool-stream chunk decode failed: \(error)")
+            }
+        }
+
+        let toolCalls = toolBuffer
+            .sorted { $0.key < $1.key }
+            .compactMap { (_, v) -> LLMToolCall? in
+                guard !v.id.isEmpty, !v.name.isEmpty else { return nil }
+                return LLMToolCall(id: v.id, type: "function",
+                                   function: .init(name: v.name, arguments: v.args))
+            }
+        return ToolAwareStreamResult(toolCalls: toolCalls, finishReason: finishReason)
+    }
+
     /// Drains a `streamChat` AsyncThrowingStream into a single String,
     /// honoring task cancellation between deltas. Used by the one-shot
     /// generators (Summary, Title) that need the full response before

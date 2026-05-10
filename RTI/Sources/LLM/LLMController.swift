@@ -20,6 +20,10 @@ final class LLMController: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var lastErrorIsAuth: Bool = false
     @Published private(set) var pendingScreenContext: String?
+    /// Human-readable status shown beneath the streaming assistant entry
+    /// while a tool is running (e.g. "📷 Looking at your screen…"). Nil
+    /// when idle or when only content tokens are streaming.
+    @Published private(set) var toolStatus: String?
     @Published var smartMode: Bool {
         didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
     }
@@ -84,6 +88,7 @@ final class LLMController: ObservableObject {
         request.cancel()
         streaming = false
         reasoning = false
+        toolStatus = nil
         pruneTrailingEmptyAssistant()
         streamingEntryID = nil
     }
@@ -151,6 +156,7 @@ final class LLMController: ObservableObject {
         request.cancel()
         lastError = nil
         lastErrorIsAuth = false
+        toolStatus = nil
 
         let transcript = recentTranscriptText()
         let contextUsed = !transcript.isEmpty
@@ -158,15 +164,15 @@ final class LLMController: ObservableObject {
             ? "Recent conversation (last 6 minutes, diarized):\n\(transcript)\n\nUser question: \(userInput)"
             : userInput
 
-        let screenContext = pendingScreenContext
+        let manualScreenContext = pendingScreenContext
         pendingScreenContext = nil
-        let screenContextUsed = screenContext != nil
+        let manualScreenUsed = manualScreenContext != nil
 
-        entries.append(ChatEntry(role: "user", text: userInput, action: action, contextUsed: contextUsed, screenContextUsed: screenContextUsed))
+        entries.append(ChatEntry(role: "user", text: userInput, action: action, contextUsed: contextUsed, screenContextUsed: manualScreenUsed))
 
         let persistSessionId = SessionCoordinator.shared.currentSessionId
         if let persistSessionId {
-            persistMessage(sessionId: persistSessionId, role: "user", action: action, content: userInput, hadTranscript: contextUsed, hadScreen: screenContextUsed)
+            persistMessage(sessionId: persistSessionId, role: "user", action: action, content: userInput, hadTranscript: contextUsed, hadScreen: manualScreenUsed)
         }
 
         let activeMode = ModeStore.shared.activeMode
@@ -187,10 +193,10 @@ final class LLMController: ObservableObject {
                 content: "Reference material attached to the active mode '\(modeName)'. Use it when relevant.\n---\n\(capped)\n---"
             ))
         }
-        if let screenContext {
+        if let manualScreenContext {
             apiMessages.append(LLMMessage(
                 role: "system",
-                content: "User attached a screenshot. OCR text from the screen follows. Treat it as what the user is looking at.\n---\n\(screenContext)\n---"
+                content: "User attached a screenshot. OCR text from the screen follows. Treat it as what the user is looking at.\n---\n\(manualScreenContext)\n---"
             ))
         }
         for (idx, entry) in entries.enumerated() {
@@ -209,52 +215,132 @@ final class LLMController: ObservableObject {
         streaming = true
         reasoning = false
         let thisEntryID = assistantEntry.id
+
+        Task { [weak self] in
+            await self?.runToolLoop(initialMessages: apiMessages, streamingEntryID: thisEntryID, persistSessionId: persistSessionId)
+        }
+    }
+
+    /// Runs the streaming chat → execute tools → re-stream loop until the
+    /// model produces a stop (or an error / cancel). The streaming
+    /// assistant entry's text is appended in-place across iterations so the
+    /// user sees one assistant turn even if multiple tools were called.
+    private func runToolLoop(initialMessages: [LLMMessage], streamingEntryID thisEntryID: UUID, persistSessionId: String?) async {
+        var conversation = initialMessages
+        let toolsJSON = LLMToolRegistry.wireFormatData()
         let onReasoning: @Sendable (String) -> Void = { [weak self] _ in
             Task { @MainActor in self?.reasoning = true }
         }
 
-        request.stream(
-            messages: apiMessages,
-            smart: smartMode,
-            onDelta: { [weak self] delta in
+        // Hard cap so a misbehaving model can't loop on tool calls forever.
+        let maxIterations = 4
+        for _ in 0..<maxIterations {
+            // Track this turn's content so we can append it to the wire
+            // history if the model also emits tool_calls (assistant message
+            // with both content + tool_calls is permitted).
+            let turnContent = TurnContentBuffer()
+
+            let onContent: @Sendable (String) -> Void = { [weak self] delta in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     if self.reasoning { self.reasoning = false }
+                    if self.streamingEntryID != thisEntryID { return }
                     self.appendToStreamingEntry(delta)
+                    turnContent.append(delta)
                 }
-            },
-            onError: { [weak self] errorMessage, isAuth in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    guard self.streamingEntryID == thisEntryID else { return }
-                    self.lastError = errorMessage
-                    self.lastErrorIsAuth = isAuth
-                    self.streaming = false
-                    self.reasoning = false
-                    self.pruneTrailingEmptyAssistant()
-                    NSLog("[RTI] LLM stream error: \(errorMessage)")
-                    RTILog.log("stream error: \(errorMessage)", category: "deepseek")
-                }
-            },
-            onComplete: { [weak self] in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    guard self.streamingEntryID == thisEntryID else { return }
-                    self.streaming = false
-                    self.reasoning = false
-                    self.pruneTrailingEmptyAssistant()
-                    self.streamingEntryID = nil
+            }
 
-                    let finalSessionId = SessionCoordinator.shared.currentSessionId ?? persistSessionId
-                    if let finalSessionId,
-                       let finalText = self.entries.last(where: { $0.id == thisEntryID })?.text,
-                       !finalText.isEmpty {
-                        self.persistMessage(sessionId: finalSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
-                    }
-                }
-            },
-            onReasoning: onReasoning
-        )
+            let result: LLMClient.ToolAwareStreamResult
+            do {
+                result = try await request.streamWithTools(
+                    messages: conversation,
+                    toolsJSON: toolsJSON,
+                    smart: smartMode,
+                    onContent: onContent,
+                    onReasoning: onReasoning
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                guard streamingEntryID == thisEntryID else { return }
+                let llmError = error as? LLMError
+                lastError = llmError?.userMessage ?? "\(error)"
+                lastErrorIsAuth = llmError?.isAuth ?? false
+                streaming = false
+                reasoning = false
+                toolStatus = nil
+                pruneTrailingEmptyAssistant()
+                streamingEntryID = nil
+                NSLog("[RTI] LLM stream error: \(lastError ?? "unknown")")
+                RTILog.log("stream error: \(lastError ?? "unknown")", category: "llm")
+                return
+            }
+
+            // No tools requested → this is the terminal turn. Persist + done.
+            guard !result.toolCalls.isEmpty else {
+                finalizeAssistantTurn(streamingEntryID: thisEntryID, persistSessionId: persistSessionId)
+                return
+            }
+
+            // Append the assistant's tool_call message to the wire history,
+            // then run each tool and append a `tool` message with its result.
+            conversation.append(LLMMessage(
+                role: "assistant",
+                content: turnContent.snapshot().nilIfEmpty,
+                tool_calls: result.toolCalls
+            ))
+
+            for call in result.toolCalls {
+                let resultText = await executeTool(call)
+                conversation.append(LLMMessage(
+                    role: "tool",
+                    content: resultText,
+                    tool_call_id: call.id,
+                    name: call.function.name
+                ))
+            }
+            // Loop back: model now sees its tool results and continues.
+        }
+
+        // Hit the iteration cap — finalize what we have so the user isn't
+        // left with a half-streamed bubble.
+        finalizeAssistantTurn(streamingEntryID: thisEntryID, persistSessionId: persistSessionId)
+    }
+
+    /// Locates the requested tool, runs it, and returns either its output
+    /// or an error string the model can read. Updates `toolStatus` so the
+    /// UI can show what's happening while the tool is running.
+    private func executeTool(_ call: LLMToolCall) async -> String {
+        guard let tool = LLMToolRegistry.tool(named: call.function.name) else {
+            return "Tool '\(call.function.name)' is not available."
+        }
+        toolStatus = tool.runningStatus ?? "Running \(tool.name)…"
+        defer { toolStatus = nil }
+        do {
+            let output = try await tool.execute(call.function.arguments)
+            NSLog("[RTI] Tool '\(tool.name)' produced \(output.count) chars")
+            return output
+        } catch {
+            let msg = "Tool '\(tool.name)' failed: \(error.localizedDescription)"
+            NSLog("[RTI] \(msg)")
+            return msg
+        }
+    }
+
+    private func finalizeAssistantTurn(streamingEntryID thisEntryID: UUID, persistSessionId: String?) {
+        guard streamingEntryID == thisEntryID else { return }
+        streaming = false
+        reasoning = false
+        toolStatus = nil
+        pruneTrailingEmptyAssistant()
+        streamingEntryID = nil
+
+        let finalSessionId = SessionCoordinator.shared.currentSessionId ?? persistSessionId
+        if let finalSessionId,
+           let finalText = entries.last(where: { $0.id == thisEntryID })?.text,
+           !finalText.isEmpty {
+            persistMessage(sessionId: finalSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
+        }
     }
 
     private func pruneTrailingEmptyAssistant() {
@@ -279,4 +365,19 @@ final class LLMController: ObservableObject {
         let threshold = max(0, elapsedMs - windowMs)
         return TranscriptContext.text(forSessionId: sessionId, sinceMs: threshold)
     }
+}
+
+/// Tiny actor-isolated string buffer used by the tool loop to capture this
+/// turn's emitted content (so we can re-attach it to the wire history if the
+/// model also requested a tool call). Kept as a class rather than a value
+/// type so the @Sendable onContent closure can mutate shared state safely.
+private final class TurnContentBuffer: @unchecked Sendable {
+    private var text: String = ""
+    private let lock = NSLock()
+    func append(_ s: String) { lock.lock(); text += s; lock.unlock() }
+    func snapshot() -> String { lock.lock(); defer { lock.unlock() }; return text }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

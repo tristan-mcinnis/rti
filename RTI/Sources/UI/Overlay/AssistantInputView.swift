@@ -214,7 +214,7 @@ struct AssistantInputView: View {
         if inputState.isNoteMode {
             return "Type a note — Enter inserts inline into the transcript"
         }
-        return "Ask about your screen or conversation, or ⌘↵ for Assist"
+        return "Ask about your screen or conversation — ⌘↵ for Assist"
     }
 
     private func submit() {

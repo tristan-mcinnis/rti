@@ -70,6 +70,31 @@ final class LLMRequest: @unchecked Sendable {
         return await task.value
     }
 
+    /// Tool-aware streaming turn. Yields content/reasoning via callbacks
+    /// and returns the assembled tool calls so the caller can execute and
+    /// loop. The single in-flight task slot is reused across loop iterations.
+    func streamWithTools(
+        messages: [LLMMessage],
+        toolsJSON: Data?,
+        smart: Bool,
+        onContent: @Sendable @escaping (String) -> Void,
+        onReasoning: (@Sendable (String) -> Void)? = nil
+    ) async throws -> LLMClient.ToolAwareStreamResult {
+        currentTask?.cancel()
+        let task = Task { [client] () throws -> LLMClient.ToolAwareStreamResult in
+            try await client.streamChatWithTools(
+                messages: messages,
+                toolsJSON: toolsJSON,
+                smart: smart,
+                onContent: onContent,
+                onReasoning: onReasoning
+            )
+        }
+        currentTask = Task { _ = try? await task.value }
+        defer { currentTask = nil }
+        return try await task.value
+    }
+
     /// Streaming executor: yields deltas as they arrive. Used by
     /// LLMController and SessionQAController.
     func stream(

@@ -17,30 +17,10 @@ final class ScreenshotManager {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let cgImage = try await self.captureActiveDisplay()
-
-                // OCR and VLM run concurrently — VLM may take several seconds
-                // on first call (model load), OCR is sub-second.
-                async let ocrText = OCRService.recognizeText(in: cgImage)
-                async let vlmDescription = VLMManager.shared.describe(cgImage: cgImage)
-
-                let (ocrResult, vlmResult) = try await (ocrText, vlmDescription)
-                let trimmedOCR = self.truncate(ocrResult)
-
-                // Build combined context from both sources.
-                let contextParts: [String] = [
-                    vlmResult.map { "What the user is looking at:\n\($0)" },
-                    !trimmedOCR.isEmpty ? "Text visible on screen:\n\(trimmedOCR)" : nil
-                ].compactMap { $0 }
-
-                guard !contextParts.isEmpty else {
-                    LLMController.shared.setScreenAttachError("No content found on the captured screen.")
-                    return
-                }
-
-                let combined = contextParts.joined(separator: "\n\n---\n\n")
+                let combined = try await self.captureAndDescribe()
                 LLMController.shared.attachScreenContext(combined)
-                NSLog("[RTI] Screenshot: VLM=\(vlmResult?.count ?? 0) chars, OCR=\(trimmedOCR.count) chars attached.")
+            } catch ScreenshotError.empty {
+                LLMController.shared.setScreenAttachError("No content found on the captured screen.")
             } catch {
                 NSLog("[RTI] Screenshot capture failed: \(error)")
                 let msg = self.errorDescription(for: error)
@@ -50,6 +30,35 @@ final class ScreenshotManager {
                 }
             }
         }
+    }
+
+    /// Capture + OCR + VLM and return the combined description string.
+    /// Throws `ScreenshotError.empty` if neither source produced text.
+    /// Used by the LLM `capture_screen` tool so the result flows directly
+    /// back into the model rather than into pending-context state.
+    func captureAndDescribe() async throws -> String {
+        let cgImage = try await captureActiveDisplay()
+
+        // OCR and VLM run concurrently — VLM may take several seconds
+        // on first call (model load), OCR is sub-second.
+        async let ocrText = OCRService.recognizeText(in: cgImage)
+        async let vlmDescription = VLMManager.shared.describe(cgImage: cgImage)
+
+        let (ocrResult, vlmResult) = try await (ocrText, vlmDescription)
+        let trimmedOCR = truncate(ocrResult)
+
+        let contextParts: [String] = [
+            vlmResult.map { "What the user is looking at:\n\($0)" },
+            !trimmedOCR.isEmpty ? "Text visible on screen:\n\(trimmedOCR)" : nil
+        ].compactMap { $0 }
+
+        guard !contextParts.isEmpty else {
+            throw ScreenshotError.empty
+        }
+
+        let combined = contextParts.joined(separator: "\n\n---\n\n")
+        NSLog("[RTI] Screenshot: VLM=\(vlmResult?.count ?? 0) chars, OCR=\(trimmedOCR.count) chars.")
+        return combined
     }
 
     private static func isScreenRecordingDenied(_ error: Error) -> Bool {
@@ -121,4 +130,5 @@ final class ScreenshotManager {
 
 enum ScreenshotError: Error {
     case noDisplay
+    case empty
 }

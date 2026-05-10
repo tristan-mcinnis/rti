@@ -11,6 +11,7 @@ struct ResponseView: View {
     @ObservedObject private var sessionCoord = SessionCoordinator.shared
 
     private var streamingPlaceholderLabel: String {
+        if let toolStatus = llm.toolStatus, !toolStatus.isEmpty { return toolStatus }
         if llm.reasoning { return "reasoning…" }
         if llm.smartMode { return "thinking…" }
         return "responding…"
@@ -204,15 +205,31 @@ struct ResponseView: View {
                     .foregroundStyle(.white.opacity(0.55))
             }
         } else {
-            let display = entry.text + (isStreamingThis ? " ▍" : "")
-            let attributed = (try? AttributedString(markdown: display,
-                                                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                ?? AttributedString(display)
-            Text(attributed)
-                .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(0.92))
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                let display = entry.text + (isStreamingThis ? " ▍" : "")
+                let attributed = (try? AttributedString(markdown: display,
+                                                        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                    ?? AttributedString(display)
+                Text(attributed)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Show the tool status under the assistant text when a tool
+                // is mid-execution after the model has already streamed some
+                // prose. (Empty-text case is handled by the branch above.)
+                if isStreamingThis, let toolStatus = llm.toolStatus, !toolStatus.isEmpty {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.6)
+                        Text(toolStatus)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.55))
+                    }
+                }
+            }
         }
     }
 }

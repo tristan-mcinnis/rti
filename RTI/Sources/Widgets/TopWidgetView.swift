@@ -14,6 +14,7 @@ struct TopWidgetView: View {
 
     @ObservedObject private var coordinator = SessionCoordinator.shared
     @ObservedObject private var llm = LLMController.shared
+    @ObservedObject private var modes = ModeStore.shared
 
     @State private var now = Date()
     @State private var hovering = false
@@ -136,29 +137,101 @@ struct TopWidgetView: View {
 
     // MARK: - Right-click menu
 
-    /// Right-click menu items. Grouped: recording, panel/screen tools,
-    /// state toggles (smart/invisibility), then Settings + history + quit.
+    /// Right-click menu items. Mirrors the menubar so the widget is a
+    /// one-stop entry point: session controls, navigation, modes, recents,
+    /// state toggles, then settings/help/quit.
     @ViewBuilder
     private var menuContents: some View {
         Button(coordinator.isRunning ? "Stop Recording" : "Start Recording") {
             coordinator.toggleSession()
         }
+        Button(coordinator.isRunning || coordinator.endedAt != nil
+               ? "View Session Detail"
+               : "View Session Detail (no active session)") {
+            actions.onOpenCurrentSessionDetail()
+        }
+        .disabled(coordinator.currentSessionId == nil && coordinator.endedAt == nil)
+
         Divider()
-        Button("Toggle Overlay  ⌘\\") { actions.onToggleOverlay() }
+
+        Button("Show Chat Panel  ⌘\\") { actions.onToggleOverlay() }
+        Button("Live Transcript  ⌘⌥T") { actions.onShowLiveTranscript() }
+        Button("Sessions…") { actions.onShowSessionHistory() }
+        Button("Logs") { actions.onShowLogs() }
+
+        recentSessionsMenu
+
+        Divider()
+
         Button("Capture Screen  ⌘⇧H") { actions.onCaptureScreen() }
+        Button("Clear Current Chat") { actions.onClearChat() }
+
         Divider()
+
         Button(llm.smartMode ? "Disable Smart Mode" : "Enable Smart Mode") {
             llm.smartMode.toggle()
         }
         Button(invisibilityIsOn ? "Show on Screen Capture" : "Hide from Screen Capture") {
             actions.onToggleInvisibility()
         }
+
+        modesMenu
+
         Divider()
-        Button("Open Chat Panel") { actions.onOpenChat() }
-        Button("Open Session Home") { actions.onOpenSessionHome() }
-        Button("Settings…") { actions.onOpenSettings() }
+
+        Button("Settings…  ⌘,") { actions.onOpenSettings() }
+        Button("Keyboard Shortcuts…") { actions.onShowShortcuts() }
+        Button("About RTI") { actions.onShowAbout() }
+
         Divider()
+
         Button("Quit RTI") { actions.onQuit() }
+    }
+
+    /// Modes submenu — mirrors the menubar's mode picker. Active mode is
+    /// checkmarked; tap any other to switch immediately.
+    @ViewBuilder
+    private var modesMenu: some View {
+        Menu("Modes") {
+            ForEach(modes.modes) { mode in
+                Button {
+                    modes.activeModeId = mode.id
+                } label: {
+                    if mode.id == modes.activeModeId {
+                        Label(mode.name, systemImage: "checkmark")
+                    } else {
+                        Text(mode.name)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Recent sessions submenu. Lazy-loads the last 10 the first time the
+    /// user opens the context menu (and on subsequent opens; SwiftUI rebuilds
+    /// the menu each time, so this is cheap).
+    @ViewBuilder
+    private var recentSessionsMenu: some View {
+        Menu("Recent Sessions") {
+            let sessions = SessionCoordinator.shared.recentSessions(limit: 10)
+            if sessions.isEmpty {
+                Button("No sessions yet") {}.disabled(true)
+            } else {
+                let currentId = coordinator.currentSessionId
+                let fmt: DateFormatter = {
+                    let f = DateFormatter()
+                    f.dateStyle = .short
+                    f.timeStyle = .short
+                    return f
+                }()
+                ForEach(sessions, id: \.id) { s in
+                    let label = "\(fmt.string(from: s.startedAt))\(s.id == currentId ? "  •" : "")"
+                    Button(label) {
+                        NotificationCenter.default.post(name: .openSessionDetail, object: s.id)
+                    }
+                }
+            }
+        }
     }
 
     /// Mirror the same key (`rti.invisible`) AppDelegate uses, defaulting to
