@@ -121,6 +121,7 @@ private struct NoteCard: View {
             MarkdownText(note.content)
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.9))
+                .textSelection(.enabled)
         }
         .padding(12)
         .background(
@@ -140,24 +141,79 @@ private struct NoteCard: View {
     }
 }
 
+/// Renders multi-line LLM-produced markdown including block syntax
+/// (headings, bullet lists, task checkboxes). SwiftUI's `Text(AttributedString)`
+/// only handles inline syntax, so we hand-render line-by-line: headings get
+/// weighted/sized, list items get a bullet/checkbox prefix, and inline
+/// emphasis/code/links inside each line stay attributed.
 private struct MarkdownText: View {
     let markdown: String
 
-    init(_ markdown: String) {
-        self.markdown = markdown
-    }
+    init(_ markdown: String) { self.markdown = markdown }
 
     var body: some View {
-        if let attributed = try? AttributedString(
-            markdown: markdown,
-            options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace
-            )
-        ) {
-            Text(attributed)
-        } else {
-            Text(markdown)
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                renderLine(line)
+            }
         }
+    }
+
+    private var lines: [String] {
+        markdown.components(separatedBy: "\n")
+    }
+
+    @ViewBuilder
+    private func renderLine(_ raw: String) -> some View {
+        let line = raw
+        if line.trimmingCharacters(in: .whitespaces).isEmpty {
+            Spacer().frame(height: 4)
+        } else if let stripped = line.stripPrefix("### ") {
+            inline(stripped).font(.system(size: 12, weight: .semibold))
+        } else if let stripped = line.stripPrefix("## ") {
+            inline(stripped).font(.system(size: 13, weight: .bold))
+                .padding(.top, 4)
+        } else if let stripped = line.stripPrefix("# ") {
+            inline(stripped).font(.system(size: 14, weight: .bold))
+                .padding(.top, 4)
+        } else if let stripped = line.stripPrefix("- [ ] ") ?? line.stripPrefix("* [ ] ") {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "square").font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.6))
+                inline(stripped)
+            }
+        } else if let stripped = line.stripPrefix("- [x] ") ?? line.stripPrefix("* [x] ")
+                    ?? line.stripPrefix("- [X] ") ?? line.stripPrefix("* [X] ") {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "checkmark.square.fill").font(.system(size: 11))
+                    .foregroundStyle(.green.opacity(0.8))
+                inline(stripped)
+            }
+        } else if let stripped = line.stripPrefix("- ") ?? line.stripPrefix("* ") {
+            HStack(alignment: .top, spacing: 6) {
+                Text("•").foregroundStyle(.white.opacity(0.5))
+                inline(stripped)
+            }
+        } else {
+            inline(line)
+        }
+    }
+
+    private func inline(_ text: String) -> Text {
+        if let attributed = try? AttributedString(markdown: text,
+                                                  options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return Text(attributed)
+        }
+        return Text(text)
+    }
+}
+
+private extension String {
+    /// Returns the substring after `prefix` if present, else nil. Used by
+    /// the per-line markdown renderer to detect heading / list / task syntax.
+    func stripPrefix(_ prefix: String) -> String? {
+        guard hasPrefix(prefix) else { return nil }
+        return String(dropFirst(prefix.count))
     }
 }
 

@@ -94,6 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             (.rtiToggleOverlay, #selector(toggleOverlay)),
             (.rtiClearChat, #selector(clearChat)),
             (.rtiToggleCommandPalette, #selector(toggleCommandPalette)),
+            (.rtiToggleNotesPanel, #selector(toggleNotesPanel)),
+            (.rtiToggleDossiersPanel, #selector(toggleDossiersPanel)),
         ]
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
@@ -110,6 +112,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     @objc private func toggleOverlay() { windows.toggleOverlay() }
     @objc private func clearChat() { Self.confirmThenClearChat() }
     @objc private func toggleCommandPalette() { windows.toggleCommandPalette() }
+    @objc private func toggleNotesPanel() { windows.toggleNotesPanel() }
+    @objc private func toggleDossiersPanel() { windows.toggleDossiersPanel() }
 
     /// Shows a destructive-confirmation alert; on confirm, clears the
     /// current session's chat messages. Static so `CommandPaletteFactory`

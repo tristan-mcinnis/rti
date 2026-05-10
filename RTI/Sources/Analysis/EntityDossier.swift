@@ -30,8 +30,6 @@ struct EntityDossier: Identifiable, Equatable {
     let name: String
     let type: EntityType
     let description: String
-    var mentions: Int
-    let firstMentionedMs: Int
 
     var normalizedName: String {
         name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)

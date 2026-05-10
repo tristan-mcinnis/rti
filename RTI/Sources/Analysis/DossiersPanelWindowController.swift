@@ -15,11 +15,12 @@ private final class DossiersKeyablePanel: NSPanel {
     }
 }
 
-final class DossiersPanelWindowController: @unchecked Sendable {
+@MainActor
+final class DossiersPanelWindowController {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
-    private var didMoveObserver: NSObjectProtocol?
-    private var didResizeObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var didMoveObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var didResizeObserver: NSObjectProtocol?
 
     init() {
         let panel = DossiersKeyablePanel(
@@ -47,7 +48,7 @@ final class DossiersPanelWindowController: @unchecked Sendable {
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            self?.saveFrame()
+            MainActor.assumeIsolated { self?.saveFrame() }
         }
 
         didResizeObserver = NotificationCenter.default.addObserver(
@@ -55,7 +56,7 @@ final class DossiersPanelWindowController: @unchecked Sendable {
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            self?.saveFrame()
+            MainActor.assumeIsolated { self?.saveFrame() }
         }
 
         if let saved = Self.loadSavedFrame() {

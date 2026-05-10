@@ -137,27 +137,16 @@ private struct DossierCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(dossier.name)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-
-                Spacer()
-
-                if dossier.mentions > 1 {
-                    Text("\(dossier.mentions)×")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.white.opacity(0.12)))
-                }
-            }
+            Text(dossier.name)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .textSelection(.enabled)
 
             Text(dossier.description)
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.7))
-                .lineLimit(3)
+                .foregroundStyle(.white.opacity(0.78))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
         .background(

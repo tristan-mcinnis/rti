@@ -15,11 +15,14 @@ private final class NotesKeyablePanel: NSPanel {
     }
 }
 
-final class NotesPanelWindowController: @unchecked Sendable {
+@MainActor
+final class NotesPanelWindowController {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
-    private var didMoveObserver: NSObjectProtocol?
-    private var didResizeObserver: NSObjectProtocol?
+    // Held without Sendable annotations so the nonisolated deinit can read
+    // them. They're set during init (main-actor) and only read again here.
+    nonisolated(unsafe) private var didMoveObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var didResizeObserver: NSObjectProtocol?
 
     init() {
         let panel = NotesKeyablePanel(
@@ -47,7 +50,9 @@ final class NotesPanelWindowController: @unchecked Sendable {
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            self?.saveFrame()
+            // queue: .main guarantees the main thread; assumeIsolated makes
+            // that promise visible to Swift concurrency.
+            MainActor.assumeIsolated { self?.saveFrame() }
         }
 
         didResizeObserver = NotificationCenter.default.addObserver(
@@ -55,7 +60,9 @@ final class NotesPanelWindowController: @unchecked Sendable {
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            self?.saveFrame()
+            // queue: .main guarantees the main thread; assumeIsolated makes
+            // that promise visible to Swift concurrency.
+            MainActor.assumeIsolated { self?.saveFrame() }
         }
 
         if let saved = Self.loadSavedFrame() {

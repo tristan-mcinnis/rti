@@ -69,48 +69,35 @@ final class DossierController: ObservableObject {
         merge(parsed)
     }
 
+    /// Merges a fresh batch into the running dossier list. Existing entries
+    /// are preserved (with their stable id and ordering); newcomers are
+    /// appended. When the same entity reappears with a longer description,
+    /// the description is upgraded — but the id and position never move so
+    /// downstream persistence (rowid-keyed) stays stable.
     private func merge(_ incoming: [EntityDossier]) {
-        var existingByName: [String: EntityDossier] = [:]
+        var byKey: [String: EntityDossier] = [:]
+        var order: [String] = []
         for d in dossiers {
-            existingByName[d.normalizedName] = d
+            byKey[d.normalizedName] = d
+            order.append(d.normalizedName)
         }
-
-        var updated: [EntityDossier] = []
-        for incomingDossier in incoming {
-            let key = incomingDossier.normalizedName
-            if var existing = existingByName[key] {
-                existing.mentions += 1
-                // Keep the newer description if it's longer/more detailed.
-                if incomingDossier.description.count > existing.description.count {
-                    existing = EntityDossier(
+        for fresh in incoming {
+            let key = fresh.normalizedName
+            if let existing = byKey[key] {
+                if fresh.description.count > existing.description.count {
+                    byKey[key] = EntityDossier(
                         id: existing.id,
                         name: existing.name,
-                        type: incomingDossier.type,
-                        description: incomingDossier.description,
-                        mentions: existing.mentions,
-                        firstMentionedMs: existing.firstMentionedMs
+                        type: existing.type,
+                        description: fresh.description
                     )
                 }
-                existingByName[key] = existing
             } else {
-                existingByName[key] = incomingDossier
+                byKey[key] = fresh
+                order.append(key)
             }
         }
-
-        // Preserve stable ordering: existing first, then new ones appended.
-        var seen: Set<String> = []
-        for d in dossiers {
-            if let updatedD = existingByName[d.normalizedName], !seen.contains(d.normalizedName) {
-                updated.append(updatedD)
-                seen.insert(d.normalizedName)
-            }
-        }
-        for d in incoming where !seen.contains(d.normalizedName) {
-            updated.append(d)
-            seen.insert(d.normalizedName)
-        }
-
-        dossiers = updated
+        dossiers = order.compactMap { byKey[$0] }
     }
 
     nonisolated static func parseDossiers(from raw: String) -> [EntityDossier] {
@@ -143,9 +130,7 @@ final class DossierController: ObservableObject {
                     id: UUID(),
                     name: r.name,
                     type: type,
-                    description: r.description,
-                    mentions: 1,
-                    firstMentionedMs: 0
+                    description: r.description
                 )
             }
         } catch {
