@@ -27,7 +27,7 @@ enum LLMToolRegistry {
     /// All tools the chat-overlay LLM can call. Keep this small: too many
     /// tools dilutes the model's tool-choice signal.
     static var all: [LLMToolDefinition] {
-        [captureScreen]
+        [captureScreen, readNotes, readDossiers]
     }
 
     static func tool(named name: String) -> LLMToolDefinition? {
@@ -74,5 +74,72 @@ enum LLMToolRegistry {
             try await ScreenshotManager.shared.captureAndDescribe()
         },
         runningStatus: "📷 Looking at your screen…"
+    )
+
+    private static let readNotes = LLMToolDefinition(
+        name: "read_notes",
+        description: """
+        Read the auto-generated meeting notes for the current session. \
+        Use this when the user asks about "the notes", "what we noted", \
+        "key points", "action items", "decisions", "open questions", or \
+        anything that the running notes summariser would have captured. \
+        Returns the most recent notes first, each with a timestamp and \
+        markdown-formatted body covering Key Points, Decisions Made, \
+        Action Items, and Open Questions.
+        """,
+        parameters: [
+            "type": "object",
+            "properties": [:] as [String: Any],
+            "additionalProperties": false
+        ],
+        execute: { _ in
+            guard let sessionId = SessionCoordinator.shared.currentSessionId else {
+                return "No active session — there are no notes to read yet."
+            }
+            let notes = NotesGenerationController.loadNotes(forSessionId: sessionId)
+            guard !notes.isEmpty else {
+                return "No notes have been generated for the current session yet."
+            }
+            let parts = notes.reversed().map { n -> String in
+                let when = n.timestamp.formatted(date: .omitted, time: .shortened)
+                return "## Note from \(when)\n\n\(n.content)"
+            }
+            return parts.joined(separator: "\n\n---\n\n")
+        },
+        runningStatus: "📒 Reading notes…"
+    )
+
+    private static let readDossiers = LLMToolDefinition(
+        name: "read_dossiers",
+        description: """
+        Read the entity dossiers (people, brands, organizations, concepts) \
+        the analysis pass has tracked across the current session. Use this \
+        when the user asks who someone is, who/what was mentioned, what \
+        the entities are, or asks about a specific name they remember from \
+        the conversation. Returns each entity with its type and a brief \
+        description.
+        """,
+        parameters: [
+            "type": "object",
+            "properties": [:] as [String: Any],
+            "additionalProperties": false
+        ],
+        execute: { _ in
+            guard let sessionId = SessionCoordinator.shared.currentSessionId else {
+                return "No active session — there are no dossiers to read yet."
+            }
+            let dossiers = DossierController.loadDossiers(forSessionId: sessionId)
+            guard !dossiers.isEmpty else {
+                return "No dossiers have been generated for the current session yet."
+            }
+            let grouped = Dictionary(grouping: dossiers) { $0.type }
+                .sorted { $0.key.displayName < $1.key.displayName }
+            let sections: [String] = grouped.map { (type, items) in
+                let body: [String] = items.map { "- **\($0.name)** — \($0.description)" }
+                return "## \(type.displayName)\n\(body.joined(separator: "\n"))"
+            }
+            return sections.joined(separator: "\n\n")
+        },
+        runningStatus: "🗂️ Reading dossiers…"
     )
 }
