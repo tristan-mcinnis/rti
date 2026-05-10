@@ -84,6 +84,23 @@ struct NotesPanelView: View {
             Spacer()
 
             HStack(spacing: 8) {
+                if !controller.notes.isEmpty {
+                    Menu {
+                        Button("Copy all", action: copyAll)
+                        Button("Export as .md…", action: exportToFile)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(Color.white.opacity(0.12)))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .frame(width: 22, height: 22)
+                    .help("Copy or export notes")
+                }
+
                 OpacitySlider(opacity: $backgroundOpacity)
                     .frame(width: 80)
 
@@ -99,6 +116,26 @@ struct NotesPanelView: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private func combinedMarkdown() -> String {
+        let parts: [String] = controller.notes.map { n in
+            let when = n.timestamp.formatted(date: .abbreviated, time: .shortened)
+            return "## Notes — \(when)\n\n\(n.content)"
+        }
+        return parts.joined(separator: "\n\n---\n\n")
+    }
+
+    private func copyAll() {
+        NSPasteboard.copyString(combinedMarkdown())
+    }
+
+    private func exportToFile() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "rti-notes-\(Date().formatted(.iso8601.year().month().day())).md"
+        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? combinedMarkdown().write(to: url, atomically: true, encoding: .utf8)
     }
 }
 
@@ -116,6 +153,17 @@ private struct NoteCard: View {
                     .background(Capsule().fill(Color.white.opacity(0.12)))
 
                 Spacer()
+
+                Button {
+                    NSPasteboard.copyString(note.content)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("Copy this note's markdown")
             }
 
             MarkdownText(note.content)
