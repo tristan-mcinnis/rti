@@ -156,7 +156,7 @@ struct TopWidgetView: View {
 
         Button("Show Chat Panel  ⌘\\") { actions.onToggleOverlay() }
         Button("Live Transcript  ⌘⌥T") { actions.onShowLiveTranscript() }
-        Button("Sessions…") { actions.onShowSessionHistory() }
+        Button("Sessions…  ⌘⇧S") { actions.onShowSessionHistory() }
         Button("Logs") { actions.onShowLogs() }
 
         recentSessionsMenu

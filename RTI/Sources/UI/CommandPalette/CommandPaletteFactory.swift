@@ -115,8 +115,9 @@ enum CommandPaletteFactory {
             ),
             RTICommand(
                 id: "view.history",
-                title: "Session History…",
-                keywords: ["past", "old", "meetings"],
+                title: "Sessions…",
+                subtitle: "⌘⇧S",
+                keywords: ["past", "old", "meetings", "history", "home"],
                 perform: { [weak windows] in windows?.showSessionHistory() }
             ),
             RTICommand(

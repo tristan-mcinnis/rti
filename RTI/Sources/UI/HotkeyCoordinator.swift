@@ -14,6 +14,7 @@ final class HotkeyCoordinator {
     var onToggleTopWidget: (() -> Void)?
     var onToggleNotesPanel: (() -> Void)?
     var onToggleDossiersPanel: (() -> Void)?
+    var onShowSessions: (() -> Void)?
 
     func registerAll() {
         let hk = GlobalHotkey()
@@ -45,6 +46,9 @@ final class HotkeyCoordinator {
         }
         hk.register(keyCode: UInt32(kVK_ANSI_D), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
             self?.onToggleDossiersPanel?()
+        }
+        hk.register(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
+            self?.onShowSessions?()
         }
         hotkey = hk
     }

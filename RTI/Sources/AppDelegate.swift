@@ -45,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         menu.onToggleDossiersPanel = { [weak self] in self?.windows.toggleDossiersPanel() }
         menu.onClearChat = { [weak self] in self?.clearChat() }
         menu.onShowSessionHistory = { [weak self] in self?.windows.showSessionHistory() }
+        menu.onCaptureScreen = { ScreenshotManager.shared.captureAndAttach() }
+        menu.onShowLogs = { [weak self] in self?.windows.showSessionsControl(tab: .logs) }
         menu.onRecentSessionSelected = { [weak self] id in self?.windows.openSessionDetail(for: id) }
         menu.recentSessionsProvider = { SessionCoordinator.shared.recentSessions(limit: 10) }
         menu.currentSessionIdProvider = { SessionCoordinator.shared.currentSessionId }
@@ -61,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         hotkeys.onToggleTopWidget = { [weak self] in self?.windows.toggleTopWidget() }
         hotkeys.onToggleNotesPanel = { [weak self] in self?.windows.toggleNotesPanel() }
         hotkeys.onToggleDossiersPanel = { [weak self] in self?.windows.toggleDossiersPanel() }
+        hotkeys.onShowSessions = { [weak self] in self?.windows.showSessionHistory() }
         hotkeys.registerAll()
 
         CommandRegistry.shared.replaceAll(

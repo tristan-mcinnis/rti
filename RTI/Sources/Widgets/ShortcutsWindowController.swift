@@ -16,6 +16,9 @@ struct ShortcutsView: View {
                 ShortcutRow(key: "\u{2318}\u{21A9}", desc: "Send Assist")
                 ShortcutRow(key: "\u{2318}\u{21E7}H", desc: "Capture screen & OCR")
                 ShortcutRow(key: "\u{2318}\u{2325}T", desc: "Show live transcript")
+                ShortcutRow(key: "\u{2318}\u{21E7}S", desc: "Open sessions")
+                ShortcutRow(key: "\u{2318}\u{21E7}N", desc: "Toggle notes panel")
+                ShortcutRow(key: "\u{2318}\u{21E7}D", desc: "Toggle dossiers panel")
             }
         }
         .padding(20)
@@ -46,7 +49,7 @@ final class ShortcutsWindowController {
 
     init() {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 280, height: 210),
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 290),
             styleMask: [.titled, .closable, .nonactivatingPanel],
             backing: .buffered,
             defer: false

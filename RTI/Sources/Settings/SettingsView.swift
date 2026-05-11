@@ -445,6 +445,7 @@ private struct GeneralTab: View {
                 hotkeyRow("Assist (from any app)", "⌘ ↵")
                 hotkeyRow("Attach screenshot", "⌘ ⇧ H")
                 hotkeyRow("Show / hide live transcript", "⌘ ⌥ T")
+                hotkeyRow("Open sessions", "⌘ ⇧ S")
                 hotkeyRow("Toggle notes panel", "⌘ ⇧ N")
                 hotkeyRow("Toggle dossiers panel", "⌘ ⇧ D")
             }
