@@ -1,5 +1,6 @@
 import GRDB
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SessionHistoryView: View {
     @State private var searchText = ""
@@ -8,6 +9,8 @@ struct SessionHistoryView: View {
     @State private var isSearching = false
     @State private var sortOrder: SortOrder = .newest
     @State private var searchDebounceItem: DispatchWorkItem?
+    @State private var isDropTargeted = false
+    @StateObject private var importer = SessionImporter.shared
 
     enum SortOrder: String, CaseIterable, CustomStringConvertible {
         case newest = "Newest"
@@ -40,6 +43,16 @@ struct SessionHistoryView: View {
     }
 
     var body: some View {
+        bodyContent
+            .overlay { dropOverlay }
+            .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                handleDrop(providers: providers)
+            }
+            .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+    }
+
+    @ViewBuilder
+    private var bodyContent: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: RTIDesign.Spacing.lg) {
                 Text("Session History")
@@ -80,7 +93,11 @@ struct SessionHistoryView: View {
                     Spacer()
 
                     RTISegmentedPicker(selection: $sortOrder, items: SortOrder.allCases)
-                        .frame(width: 320)
+                        .frame(width: 220)
+                }
+
+                if importer.activeFilename != nil || importer.lastError != nil {
+                    importBanner
                 }
             }
             .padding(.horizontal, RTIDesign.Spacing.xl)
@@ -352,6 +369,9 @@ struct SessionHistoryView: View {
             Text("Start recording with ⌘\\ to create your first session.")
                 .font(RTIDesign.Font.bodySmall)
                 .foregroundStyle(RTIDesign.Color.textTertiary)
+            Text("Or drag an audio or video file here to transcribe it.")
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -384,6 +404,122 @@ struct SessionHistoryView: View {
             SessionCoordinator.shared.deleteSession(id: session.id)
             loadSessions()
         }
+    }
+
+    // MARK: - Drop / import
+
+    @ViewBuilder
+    private var dropOverlay: some View {
+        if isDropTargeted {
+            ZStack {
+                RTIDesign.Color.panelBackground.opacity(0.85)
+                VStack(spacing: RTIDesign.Spacing.md) {
+                    Image(systemName: "waveform.badge.plus")
+                        .font(.system(size: 56, weight: .light))
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
+                    Text("Drop audio, video, or a folder to transcribe")
+                        .font(RTIDesign.Font.heading)
+                        .foregroundStyle(RTIDesign.Color.textPrimary)
+                    Text("Each file becomes its own session. Folders are scanned recursively.")
+                        .font(RTIDesign.Font.bodySmall)
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
+                }
+            }
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var importBanner: some View {
+        HStack(spacing: RTIDesign.Spacing.sm) {
+            if let filename = importer.activeFilename {
+                ProgressView().scaleEffect(0.6)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(filename)
+                            .font(RTIDesign.Font.bodySmall.weight(.medium))
+                            .foregroundStyle(RTIDesign.Color.textPrimary)
+                            .lineLimit(1)
+                        if importer.batchTotal > 1 {
+                            Text("(\(importer.batchCompleted + 1) of \(importer.batchTotal))")
+                                .font(RTIDesign.Font.caption)
+                                .foregroundStyle(RTIDesign.Color.textTertiary)
+                        }
+                    }
+                    if let msg = importer.progressMessage {
+                        Text(importer.queueCount > 0
+                             ? "\(msg)  ·  \(importer.queueCount) queued"
+                             : msg)
+                            .font(RTIDesign.Font.caption)
+                            .foregroundStyle(RTIDesign.Color.textSecondary)
+                    }
+                }
+                Spacer()
+                Button(importer.batchTotal > 1 ? "Cancel all" : "Cancel") {
+                    importer.cancel()
+                }
+                .buttonStyle(.plain)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+            } else if let error = importer.lastError {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(error)
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                    .lineLimit(2)
+                Spacer()
+                Button {
+                    importer.clearError()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(RTIDesign.Color.textTertiary)
+            }
+        }
+        .padding(.horizontal, RTIDesign.Spacing.md)
+        .padding(.vertical, RTIDesign.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.md)
+                .fill(RTIDesign.Color.inputBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.md)
+                        .stroke(RTIDesign.Color.border, lineWidth: 1)
+                )
+        )
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        guard !providers.isEmpty else { return false }
+        // Fan out: each provider resolves async to a URL; once all have
+        // resolved we hand the full list (which may include directories)
+        // to the importer, which expands directories and queues serially.
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var urls: [URL] = []
+        for provider in providers {
+            group.enter()
+            _ = provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
+                var url: URL?
+                if let data = item as? Data {
+                    url = URL(dataRepresentation: data, relativeTo: nil)
+                } else if let u = item as? URL {
+                    url = u
+                }
+                if let url {
+                    lock.lock(); urls.append(url); lock.unlock()
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            guard !urls.isEmpty else { return }
+            importer.importFiles(urls)
+        }
+        return true
     }
 
     private func performSearch() {

@@ -134,6 +134,18 @@ Global hotkeys use Carbon `RegisterEventHotKey` so they fire from any frontmost 
 - **App entry / status item** → `RTI/Sources/RTIApp.swift` + `RTI/Sources/AppDelegate.swift`
 - **Soniox wire shapes** → `RTI/Sources/Soniox/SonioxProtocol.swift`
 - **LLM wire shapes** → `RTI/Sources/LLM/LLMWireShapes.swift`
+- **Per-session Q&A** → `RTI/Sources/Session/SessionQAController.swift` (scoped to one session's transcript + summary)
+- **Cross-corpus Q&A ("Ask Your Corpus")** → `RTI/Sources/Session/AskCorpusController.swift` + `RTI/Sources/UI/SessionsControl/AskCorpusView.swift`
+- **Chat history persistence** → `RTI/Sources/Session/AskCorpusHistoryStore.swift` (JSON files under `~/Library/Application Support/RTI/ask-corpus/`)
+- **Drag-to-import (audio / video / folder)** → `RTI/Sources/Session/SessionImporter.swift` (queueing + AVAssetReader transcode + Soniox file-mode + corpus write)
+- **Live transcript-driven panels** → `RTI/Sources/Panels/PanelSpawner.swift` + `PanelKind.swift` (chat tool routes here)
+- **Lexical search across corpus** → `RTI/Sources/Session/SessionSearch.swift` (SQLite FTS5, BM25-ranked, prefix tokens AND-ed)
 - **Manual verification steps** → `RTI/VERIFY.md`
 - **Why a feature looks the way it does** → the matching `RTI/POC*-findings.md`
 - **Regenerate the Xcode project after editing `project.yml`** → `cd RTI && xcodegen generate`
+
+## Notes on the corpus Q&A pipeline (post-POC additions)
+
+Ask Your Corpus is retrieval-augmented generation **without embeddings**. The retriever is `SessionSearch.search` (SQLite FTS5, lexical, BM25). `AskCorpusController.retrieve` takes the top 6 FTS hits + the 4 most-recent sessions, dedupes, caps at 8 sessions. Each session contributes title + date + summary (≤1500 chars) + FTS snippet. One LLM streaming call with prior-turn memory (last 6 turns) and citation-aware system prompt produces the answer; the controller then parses `[Session Title]` from the response to surface only actually-cited sessions as clickable chips. Conversations auto-persist to `~/Library/Application Support/RTI/ask-corpus/` after each completed turn.
+
+Known limitations of the lexical-only approach: `"luxury cars"` won't match `"Maserati"`; strict AND on all tokens hurts recall for long natural questions (stopword stripping + OR-with-min-should-match would be the cheap first upgrade before reaching for embeddings).

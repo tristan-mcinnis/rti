@@ -42,7 +42,7 @@ struct SessionDetailView: View {
         case notes = "Notes"
         case transcript = "Transcript"
         case qa = "Q&A"
-        case usage = "Usage"
+        case usage = "Details"
         var description: String { rawValue }
     }
 
@@ -291,7 +291,7 @@ struct SessionDetailView: View {
                     VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.xxxl)) {
                         let summaryParagraph = extractSummarySection(summary.rawResponse ?? summary.summaryText)
                         if !summaryParagraph.isEmpty {
-                            sectionBlock(title: "Summary", content: summaryParagraph, isFirst: true)
+                            sectionBody(summaryParagraph)
                         }
                         sectionBlockOptional(title: "Key Topics", content: summary.keyTopics)
                         sectionBlockOptional(title: "Decisions Made", content: summary.decisions)
@@ -488,7 +488,8 @@ struct SessionDetailView: View {
         let isNote = SpeakerLabels.isNote(group.speakerId)
         let groupPad = density.scaled(10)
         let trimmed = group.text.trimmingCharacters(in: .whitespaces)
-        let attr = TranscriptHighlight.attributed(trimmed, query: highlightQuery)
+        let paragraphed = isNote ? trimmed : Self.paragraphSplit(trimmed)
+        let attr = TranscriptHighlight.attributed(paragraphed, query: highlightQuery)
         return VStack(alignment: .leading, spacing: RTIDesign.Spacing.xs) {
             HStack(spacing: RTIDesign.Spacing.sm) {
                 SpeakerChip(raw: group.speakerId)
@@ -874,7 +875,7 @@ struct SessionDetailView: View {
                 .padding(.bottom, RTIDesign.Spacing.lg)
             }
 
-            StickySubheader(title: "Usage", count: nil) {
+            StickySubheader(title: "Details", count: nil) {
                 densityToggleButton
             }
         }
@@ -1201,5 +1202,46 @@ struct SessionDetailView: View {
 
     private func formatDuration(_ interval: TimeInterval) -> String {
         TimeFormat.duration(interval)
+    }
+
+    /// Insert paragraph breaks every ~3 sentences so a long monologue
+    /// renders as readable paragraphs instead of one dense wall of text.
+    /// Sentence boundaries are detected on `.`, `?`, `!` followed by a
+    /// space and a capital/digit. Short text (< ~3 sentences) is left
+    /// unchanged.
+    static func paragraphSplit(_ text: String, sentencesPerParagraph: Int = 3) -> String {
+        guard text.count > 240 else { return text }
+        var sentences: [String] = []
+        var current = ""
+        let chars = Array(text)
+        var i = 0
+        while i < chars.count {
+            let c = chars[i]
+            current.append(c)
+            if (c == "." || c == "?" || c == "!"),
+               i + 2 < chars.count,
+               chars[i + 1] == " ",
+               chars[i + 2].isLetter || chars[i + 2].isNumber {
+                sentences.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+                i += 2
+                continue
+            }
+            i += 1
+        }
+        let tail = current.trimmingCharacters(in: .whitespaces)
+        if !tail.isEmpty { sentences.append(tail) }
+        guard sentences.count > sentencesPerParagraph else { return text }
+        var paragraphs: [String] = []
+        var buf: [String] = []
+        for s in sentences {
+            buf.append(s)
+            if buf.count >= sentencesPerParagraph {
+                paragraphs.append(buf.joined(separator: " "))
+                buf = []
+            }
+        }
+        if !buf.isEmpty { paragraphs.append(buf.joined(separator: " ")) }
+        return paragraphs.joined(separator: "\n\n")
     }
 }

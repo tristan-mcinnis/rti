@@ -11,6 +11,9 @@ A menubar-only macOS assistant that listens to your meetings, transcribes in rea
 - **Invisible overlay.** Borderless `NSPanel` with `sharingType = .none` — excluded from QuickTime, Zoom local recording, and `screencapture`. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
 - **Smart Screenshot.** ⌘⇧H captures the display under the mouse, runs Vision OCR on-device, attaches the text to your next prompt. The image is discarded.
 - **Sessions + history.** Every session persists as a markdown file in `~/meetings/` (canonical) plus an FTS-indexed SQLite database (rebuildable from corpus at any time).
+- **Ask Your Corpus.** A first-class cross-session Q&A surface inside the Sessions Control window. Retrieval-augmented (SQLite FTS5 top-6 + the 4 most-recent sessions, capped at 8) → single streaming LLM call with `[Session Title]` citations that jump to the source session. Multi-turn memory, copy / export to markdown, persistent chat history.
+- **Drag-to-import.** Drop one or many audio / video files — or a folder — onto the Session History view and RTI transcribes each via Soniox file-mode and creates a session.
+- **Live panels (chat-spawned).** Ask the overlay LLM to *"count every time someone says 'Maserati'"* or *"every 2 minutes, summarize the decisions"* and a floating counter or periodic-card window appears (see `RTI/Sources/Panels/`).
 - **Modes.** Four built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text — paste a resume, agenda, or code-style guide.
 - **MCP server.** A bundled `rti-mcp` JSON-RPC binary exposes the markdown corpus to Claude Desktop / Codex / Gemini CLI / OpenCode.
 

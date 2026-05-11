@@ -182,19 +182,20 @@ struct AssistantInputView: View {
     }
 
     private var sendButton: some View {
-        Button(action: submit) {
+        let isEmpty = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return Button(action: submit) {
             Image(systemName: "paperplane.fill")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(isEmpty ? 0.35 : 1.0))
                 .frame(width: 34, height: 30)
                 .background(
-                    Capsule().fill(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                   ? Color.blue.opacity(0.45)
+                    Capsule().fill(isEmpty
+                                   ? Color.white.opacity(0.08)
                                    : Color.blue)
                 )
         }
         .buttonStyle(.plain)
-        .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || llm.streaming)
+        .disabled(isEmpty || llm.streaming)
         .help("Send message (return)")
     }
 
