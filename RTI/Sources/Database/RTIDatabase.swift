@@ -379,6 +379,31 @@ final class RTIDatabase: @unchecked Sendable {
                 columns: ["session_id"]
             )
         }
+        m.registerMigration("v13_user_panels") { db in
+            // User-spawned analysis panels. `config_json` carries the
+            // widget-specific payload so adding new kinds doesn't need a
+            // per-field migration. Panels are global by default (live
+            // across every session); per-session derived state goes in
+            // `user_panel_cards` keyed by (panel_id, session_id).
+            try db.create(table: "user_panels") { t in
+                t.column("id", .text).primaryKey()
+                t.column("kind", .text).notNull()
+                t.column("config_json", .text).notNull()
+                t.column("created_at", .datetime).notNull()
+            }
+            try db.create(table: "user_panel_cards") { t in
+                t.column("id", .text).primaryKey()
+                t.column("panel_id", .text).notNull()
+                t.column("session_id", .text).notNull()
+                t.column("content", .text).notNull()
+                t.column("created_at", .datetime).notNull()
+            }
+            try db.create(
+                index: "idx_user_panel_cards_panel_session",
+                on: "user_panel_cards",
+                columns: ["panel_id", "session_id", "created_at"]
+            )
+        }
         return m
     }
 }

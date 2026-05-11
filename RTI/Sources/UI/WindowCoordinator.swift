@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Owns every window in the app. Centralises presentation policy so
@@ -13,6 +14,11 @@ final class WindowCoordinator {
     private var commandPalette: CommandPaletteWindowController?
     private var notesPanel: NotesPanelWindowController?
     private var dossiersPanel: DossiersPanelWindowController?
+    /// User-spawned analysis panels keyed by their panel id. Lifecycle is
+    /// driven by `UserPanelStore.panels`: additions spawn an NSPanel,
+    /// removals tear it down. We subscribe in `install`.
+    private var userPanels: [String: UserPanelWindowController] = [:]
+    private var userPanelsCancellable: AnyCancellable?
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
@@ -61,6 +67,37 @@ final class WindowCoordinator {
 
         notesPanel = NotesPanelWindowController()
         dossiersPanel = DossiersPanelWindowController()
+
+        // Spawn windows for every panel that was already configured the
+        // last time the app ran, then keep them in sync going forward.
+        // `assign(to:)` would be tempting but we need to diff add/remove,
+        // not replace the whole map.
+        reconcileUserPanels(against: UserPanelStore.shared.panels)
+        userPanelsCancellable = UserPanelStore.shared.$panels
+            .receive(on: RunLoop.main)
+            .sink { [weak self] panels in
+                self?.reconcileUserPanels(against: panels)
+            }
+    }
+
+    /// Diff the current set of spawned `UserPanel`s against existing
+    /// window controllers — spawn windows for newcomers, tear down
+    /// windows whose panel was removed.
+    private func reconcileUserPanels(against panels: [UserPanel]) {
+        let ids = Set(panels.map(\.id))
+        // Remove windows for panels that no longer exist.
+        for (id, controller) in userPanels where !ids.contains(id) {
+            controller.close()
+            userPanels.removeValue(forKey: id)
+        }
+        // Spawn windows for new panels.
+        for panel in panels where userPanels[panel.id] == nil {
+            let controller = UserPanelWindowController(panel: panel)
+            let invisible = UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
+            controller.setSharingInvisible(invisible)
+            controller.show()
+            userPanels[panel.id] = controller
+        }
     }
 
     func setSharingInvisible(_ invisible: Bool) {
@@ -68,6 +105,9 @@ final class WindowCoordinator {
         topWidget?.setSharingInvisible(invisible)
         notesPanel?.setSharingInvisible(invisible)
         dossiersPanel?.setSharingInvisible(invisible)
+        for controller in userPanels.values {
+            controller.setSharingInvisible(invisible)
+        }
     }
 
     /// Toggle the persisted invisibility flag and apply it to both windows.

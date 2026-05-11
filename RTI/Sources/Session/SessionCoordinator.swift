@@ -302,6 +302,7 @@ final class SessionCoordinator: ObservableObject {
         lastDossierEndMs = 0
         NotesGenerationController.shared.reset(for: sessionId)
         DossierController.shared.reset(for: sessionId)
+        PeriodicCardsController.shared.resetForSession(sessionId)
         startAnalysisTimer()
         LLMController.shared.loadHistoryForCurrentSession()
     }
