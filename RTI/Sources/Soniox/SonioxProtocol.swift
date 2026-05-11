@@ -81,7 +81,7 @@ struct SonioxConfigMessage: Codable {
             num_channels: 1,
             language_hints: Array(hints),
             enable_speaker_diarization: true,
-            speaker_diarization_max_speakers: 4,
+            speaker_diarization_max_speakers: 8,
             translation: translation
         )
     }

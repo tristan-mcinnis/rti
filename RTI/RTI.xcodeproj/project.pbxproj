@@ -44,6 +44,7 @@
 		313D0F1E1C06B108E71D1431 /* DossiersPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5265C657B03C15FB6048DAA5 /* DossiersPanelView.swift */; };
 		32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */; };
 		36D73C15AB5DE31F14192D31 /* LLMWireShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30401E0708E01C71D5A6759B /* LLMWireShapes.swift */; };
+		370C3178C7B6C514677C0600 /* PanelSpawner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371316457C5E6DA973A617D7 /* PanelSpawner.swift */; };
 		379333F978F8334E614E8455 /* SessionsControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36B529563B4EAE6F3281194 /* SessionsControlView.swift */; };
 		387627B359E82DEBA3599F97 /* CorpusBackedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72FB57724E1724B61D16734 /* CorpusBackedStore.swift */; };
 		3C34F7F68A114A5C28BE2BF3 /* CalendarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C107488F2C804B55D899C495 /* CalendarManager.swift */; };
@@ -65,6 +66,7 @@
 		506FA1EED04872D658BE8E4E /* SessionTitleController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C6B19B466BE378C1C09EAFD /* SessionTitleController.swift */; };
 		53C5537B5695EAF1625AA27A /* PeriodicCardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B7BA429C692DD76832C361 /* PeriodicCardsView.swift */; };
 		57346D2EB677C793CE82ABE7 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C5E72582098B8BF3192383E /* AudioPipeline.swift */; };
+		58E96549ED84DD54336096A8 /* MarkdownRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC9B66DB5C8A2C473FD51AC1 /* MarkdownRender.swift */; };
 		5AB668F82A897EDCC28B10B5 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = FC11DC81A44D4DB54283E446 /* MLXLMCommon */; };
 		5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */; };
 		5D53AB334A181274357817CD /* TopWidgetWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */; };
@@ -171,6 +173,7 @@
 		F66899E9870289305445DEB1 /* CorpusEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0685C3FDC77550D1247A872 /* CorpusEntry.swift */; };
 		F681F197B10FF96085265B05 /* LLMTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B49123DC265A6BEA2C6671 /* LLMTools.swift */; };
 		FBE7C2BC5A01C0927CE254E1 /* UserPanelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76CF21F862271CD794E12945 /* UserPanelStore.swift */; };
+		FD505366B25E1B611CC8269D /* AnalysisScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9CD22BA63BCD171E6C20BD /* AnalysisScheduler.swift */; };
 		FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F657FFCA8180572D204BFC /* OCRService.swift */; };
 		FE75685A7A9FE7649EA0C7AB /* CrashLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0232A6827F5D8C0C5056320 /* CrashLog.swift */; };
 		FFD5B192F9BB067609DF60FD /* LLMController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD2D289259AD477B911940D /* LLMController.swift */; };
@@ -232,6 +235,7 @@
 		34B7BA429C692DD76832C361 /* PeriodicCardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeriodicCardsView.swift; sourceTree = "<group>"; };
 		3646E804694D758FF1840EAA /* NotesPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesPanelView.swift; sourceTree = "<group>"; };
 		36C0B2386DED8C25A82AC662 /* SpeakerTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerTurn.swift; sourceTree = "<group>"; };
+		371316457C5E6DA973A617D7 /* PanelSpawner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelSpawner.swift; sourceTree = "<group>"; };
 		39B314C441C040CC10C72B28 /* OverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowController.swift; sourceTree = "<group>"; };
 		3BA7C507CA6561BA0BC4FE8D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		411EDD7A2C3166286A52B232 /* SonioxFailureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxFailureTests.swift; sourceTree = "<group>"; };
@@ -321,9 +325,11 @@
 		DCE9839BBDA43C2E5038E526 /* LLMRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMRequest.swift; sourceTree = "<group>"; };
 		DEC28BC83C424B25E884D37F /* LLMErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMErrorTests.swift; sourceTree = "<group>"; };
 		DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxClient.swift; sourceTree = "<group>"; };
+		DF9CD22BA63BCD171E6C20BD /* AnalysisScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisScheduler.swift; sourceTree = "<group>"; };
 		E2432617E88D426F44946AAB /* CorpusFTSReindexerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusFTSReindexerTests.swift; sourceTree = "<group>"; };
 		E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandRegistry.swift; sourceTree = "<group>"; };
 		E72FB57724E1724B61D16734 /* CorpusBackedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusBackedStore.swift; sourceTree = "<group>"; };
+		EC9B66DB5C8A2C473FD51AC1 /* MarkdownRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRender.swift; sourceTree = "<group>"; };
 		F0232A6827F5D8C0C5056320 /* CrashLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashLog.swift; sourceTree = "<group>"; };
 		F0685C3FDC77550D1247A872 /* CorpusEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusEntry.swift; sourceTree = "<group>"; };
 		F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStore.swift; sourceTree = "<group>"; };
@@ -480,6 +486,7 @@
 			children = (
 				A71D9B4C5BD55387B4D4BA8C /* CounterPanelView.swift */,
 				CE20418A0E3A6E3722FB9293 /* PanelKind.swift */,
+				371316457C5E6DA973A617D7 /* PanelSpawner.swift */,
 				F4243A077E697B1F76B1ED1A /* PeriodicCardsController.swift */,
 				34B7BA429C692DD76832C361 /* PeriodicCardsView.swift */,
 				D470FFAB6B25C69D85404D3D /* UserPanel.swift */,
@@ -566,6 +573,7 @@
 			children = (
 				8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */,
 				F0232A6827F5D8C0C5056320 /* CrashLog.swift */,
+				EC9B66DB5C8A2C473FD51AC1 /* MarkdownRender.swift */,
 				567774DB8B379938045D78B3 /* NotificationNames.swift */,
 				18F9E23AC8C6C42DF807253D /* PasteboardHelpers.swift */,
 				74DAC4DF2B82C9FBED0DA5EC /* SpeakerLabelMapping.swift */,
@@ -579,6 +587,7 @@
 			isa = PBXGroup;
 			children = (
 				CF5136A094B058C934502D73 /* ActiveSessionProjection.swift */,
+				DF9CD22BA63BCD171E6C20BD /* AnalysisScheduler.swift */,
 				49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */,
 				4DED40E2036B38F0362B81D5 /* SessionExport.swift */,
 				B5A65E39B5589BEA9AE341B2 /* SessionQAController.swift */,
@@ -935,6 +944,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				876EC6CA24660A8425315067 /* ActiveSessionProjection.swift in Sources */,
+				FD505366B25E1B611CC8269D /* AnalysisScheduler.swift in Sources */,
 				F501C2DB4B95AC2E17320050 /* AppDelegate.swift in Sources */,
 				E2687F74F0EF7AABB539A434 /* AppLog.swift in Sources */,
 				AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */,
@@ -977,6 +987,7 @@
 				3CF7BA318F9E008AB26485A5 /* LaunchAtLogin.swift in Sources */,
 				CDB5B9EA30B4CC706FAFB451 /* LiveJSONLWriter.swift in Sources */,
 				DD002A1A86822A2E66AAC847 /* LogsView.swift in Sources */,
+				58E96549ED84DD54336096A8 /* MarkdownRender.swift in Sources */,
 				B87700410AF304B76C00B5EB /* MarkdownRenderer.swift in Sources */,
 				C4A19E69783DCFE4951BDAC2 /* MenuCoordinator.swift in Sources */,
 				2BC80B64267C234E010ABCEB /* Mode.swift in Sources */,
@@ -993,6 +1004,7 @@
 				69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */,
 				82B2EA95B5FF31213A4AF102 /* PaletteSearch.swift in Sources */,
 				4D729115DC371C02602C5704 /* PanelKind.swift in Sources */,
+				370C3178C7B6C514677C0600 /* PanelSpawner.swift in Sources */,
 				EC5E34E0DC8EA2C464250FF2 /* PasteboardHelpers.swift in Sources */,
 				0808A741FD045389EAAE00A6 /* PeriodicCardsController.swift in Sources */,
 				53C5537B5695EAF1625AA27A /* PeriodicCardsView.swift in Sources */,

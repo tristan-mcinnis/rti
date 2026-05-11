@@ -139,6 +139,48 @@ final class AudioPipeline {
         wav.close()
     }
 
+    /// Swap the Soniox transcription clients to apply a new translation
+    /// config mid-session, without interrupting audio capture or losing the
+    /// WAV file. Old clients are disconnected; new ones are created with
+    /// the current `translationConfig` and immediately receive incoming
+    /// PCM buffers via the existing `onPCMBuffer` closures.
+    func reconfigureTranslation() {
+        guard !Secrets.sonioxAPIKey.isEmpty else { return }
+
+        // Mic leg.
+        soniox?.disconnect()
+        let mic = SonioxClient(
+            apiKey: Secrets.sonioxAPIKey,
+            url: SonioxClient.defaultURL,
+            translationConfig: translationConfig
+        )
+        mic.onWords = { [weak self] words in self?.onWords?(words) }
+        mic.onError = { [weak self] failure, didOpen in
+            self?.onError?(failure.userMessage(didOpen: didOpen), failure.isAuth)
+        }
+        mic.connect()
+        self.soniox = mic
+
+        // System leg (if active).
+        if systemSoniox != nil {
+            systemSoniox?.disconnect()
+            let sys = SonioxClient(
+                apiKey: Secrets.sonioxAPIKey,
+                url: SonioxClient.defaultURL,
+                translationConfig: translationConfig
+            )
+            sys.onWords = { [weak self] words in self?.onSystemWords?(words) }
+            sys.onError = { [weak self] failure, didOpen in
+                guard let self else { return }
+                if failure.isAuth {
+                    self.onError?("System audio: \(failure.userMessage(didOpen: didOpen))", false)
+                }
+            }
+            sys.connect()
+            self.systemSoniox = sys
+        }
+    }
+
     /// Immediate teardown for failures and app termination.
     func abort() {
         audio.stop()

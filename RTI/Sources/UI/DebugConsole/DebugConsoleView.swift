@@ -3,6 +3,7 @@ import SwiftUI
 
 struct DebugConsoleView: View {
     @EnvironmentObject var coordinator: SessionCoordinator
+    @ObservedObject private var modes = ModeStore.shared
     @State private var elapsed: TimeInterval = 0
     @State private var timer: Timer?
     @State private var copiedFlash: String?
@@ -13,6 +14,11 @@ struct DebugConsoleView: View {
             header
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
+                .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
+            Divider()
+            modeBar
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
                 .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
             Divider()
             translationBar
@@ -115,6 +121,39 @@ struct DebugConsoleView: View {
         }
     }
 
+    // MARK: - Mode bar
+
+    /// Lets the user switch the active mode (system prompt + reference) at
+    /// any time, including mid-session. Mode applies to the next LLM turn —
+    /// no restart needed since prompts are evaluated per-request.
+    private var modeBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text("Mode")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+            Picker("", selection: Binding(
+                get: { modes.activeModeId ?? "" },
+                set: { modes.activeModeId = $0.isEmpty ? nil : $0 }
+            )) {
+                ForEach(modes.modes) { mode in
+                    Text(mode.name).tag(mode.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .frame(maxWidth: 220)
+            Spacer()
+            if let active = modes.activeMode {
+                Text(active.name)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     // MARK: - Translation bar
 
     private var translationBar: some View {
@@ -130,7 +169,6 @@ struct DebugConsoleView: View {
             Toggle("", isOn: $translationEnabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .disabled(coordinator.isRunning)
                 .onChange(of: translationEnabled) { _, _ in
                     syncTranslationConfig()
                 }
@@ -143,7 +181,6 @@ struct DebugConsoleView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .frame(width: 120)
-                .disabled(coordinator.isRunning)
                 .onChange(of: translationMode) { _, _ in
                     syncTranslationConfig()
                 }
@@ -156,8 +193,7 @@ struct DebugConsoleView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
-                    .disabled(coordinator.isRunning)
-                    .onChange(of: targetLanguage) { _, _ in
+                        .onChange(of: targetLanguage) { _, _ in
                         syncTranslationConfig()
                     }
                 } else {
@@ -168,8 +204,7 @@ struct DebugConsoleView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
-                    .disabled(coordinator.isRunning)
-                    .onChange(of: languageA) { _, _ in
+                        .onChange(of: languageA) { _, _ in
                         syncTranslationConfig()
                     }
                     Text("↔").font(.system(size: 10)).foregroundStyle(.secondary)
@@ -180,8 +215,7 @@ struct DebugConsoleView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
-                    .disabled(coordinator.isRunning)
-                    .onChange(of: languageB) { _, _ in
+                        .onChange(of: languageB) { _, _ in
                         syncTranslationConfig()
                     }
 
@@ -195,10 +229,10 @@ struct DebugConsoleView: View {
             }
 
             if coordinator.isRunning {
-                Text("Next session")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .help("Translation settings apply to the next session")
+                Text("Live")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .help("Translation changes reconnect the transcription stream — expect a 1–2s gap.")
             }
 
             Spacer()

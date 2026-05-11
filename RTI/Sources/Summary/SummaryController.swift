@@ -30,6 +30,10 @@ final class SummaryController: ObservableObject {
     private static let summaryPrompt = """
     You are an AI meeting assistant. Below is the full transcript of a meeting conversation.
 
+    If the transcript begins with a "## User notes" block, those are authoritative corrections
+    from the user (e.g. correcting names or facts). Apply them throughout the summary — don't
+    repeat the uncorrected forms.
+
     Produce a structured meeting summary using this exact format. Be thorough but concise.
 
     ## Summary

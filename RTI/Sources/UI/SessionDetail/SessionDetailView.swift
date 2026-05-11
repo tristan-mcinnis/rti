@@ -717,18 +717,18 @@ struct SessionDetailView: View {
                     .foregroundStyle(RTIDesign.Color.textSecondary)
                 Spacer()
                 Button {
-                    NSPasteboard.copyString(note.content)
+                    NSPasteboard.copyMarkdownRich(note.content)
                 } label: {
                     Image(systemName: "doc.on.doc")
                 }
                 .buttonStyle(.plain)
-                .help("Copy this note's markdown")
+                .help("Copy this note (formatted for Word/Outlook)")
             }
-            Text(note.content)
+            MarkdownView(note.content)
                 .font(.system(size: 13))
                 .foregroundStyle(RTIDesign.Color.textPrimary)
                 .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(RTIDesign.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -809,7 +809,7 @@ struct SessionDetailView: View {
             let when = n.timestamp.formatted(date: .omitted, time: .shortened)
             return "## \(when)\n\n\(n.content)"
         }
-        NSPasteboard.copyString(parts.joined(separator: "\n\n---\n\n"))
+        NSPasteboard.copyMarkdownRich(parts.joined(separator: "\n\n---\n\n"))
     }
 
     private func copyAllDossiers() {
@@ -817,7 +817,7 @@ struct SessionDetailView: View {
             let entries: [String] = group.dossiers.map { "**\($0.name)** — \($0.description)" }
             return "## \(group.type.displayName)\n\n\(entries.joined(separator: "\n\n"))"
         }
-        NSPasteboard.copyString(parts.joined(separator: "\n\n"))
+        NSPasteboard.copyMarkdownRich(parts.joined(separator: "\n\n"))
     }
 
     private var usageBody: some View {
@@ -1103,10 +1103,17 @@ struct SessionDetailView: View {
 
     private func extractSummarySection(_ text: String) -> String {
         let lines = text.components(separatedBy: "\n")
-        guard let start = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "## Summary" }) else {
-            return text
+        // Locate the start: skip past an optional "## Summary" opener.
+        let contentStart: Int
+        if let i = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "## Summary" }) {
+            contentStart = i + 1
+        } else {
+            contentStart = 0
         }
-        let contentStart = start + 1
+        // Always cut at the next "## " heading so the lead paragraph
+        // never contains raw markdown for the structured sections
+        // (those render in their own blocks below).
+        guard contentStart < lines.count else { return "" }
         guard let end = lines[contentStart...].firstIndex(where: { $0.hasPrefix("## ") }) else {
             return lines[contentStart...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -1117,8 +1124,7 @@ struct SessionDetailView: View {
 
     private func copySummary() {
         guard let text = summary?.summaryText else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.copyMarkdownRich(text)
         toast.show("Summary copied")
     }
 

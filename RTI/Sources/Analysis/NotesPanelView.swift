@@ -127,7 +127,7 @@ struct NotesPanelView: View {
     }
 
     private func copyAll() {
-        NSPasteboard.copyString(combinedMarkdown())
+        NSPasteboard.copyMarkdownRich(combinedMarkdown())
     }
 
     private func exportToFile() {
@@ -155,7 +155,7 @@ private struct NoteCard: View {
                 Spacer()
 
                 Button {
-                    NSPasteboard.copyString(note.content)
+                    NSPasteboard.copyMarkdownRich(note.content)
                 } label: {
                     Image(systemName: "doc.on.doc")
                         .font(.system(size: 10))

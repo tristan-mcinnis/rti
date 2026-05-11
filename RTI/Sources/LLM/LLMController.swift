@@ -37,6 +37,10 @@ final class LLMController: ObservableObject {
     You are RTI, a real-time meeting assistant. The user is in an active conversation.
     Keep responses short (under 120 words), direct, and actionable. Use simple markdown
     where it helps (bullets, **bold** for key terms). If you don't know something, say so briefly.
+
+    If the transcript context starts with a "## User notes" block, treat those notes as
+    authoritative corrections from the user (e.g. name spellings, identity clarifications).
+    Prefer them over what appears in the raw transcript.
     """
 
     private static let assistPrompt = "Based on the recent conversation, suggest what I should say or ask next. Be concise — max 3 short lines."

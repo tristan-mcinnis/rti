@@ -108,10 +108,7 @@ final class NotesGenerationController: ObservableObject {
             return nil
         }
 
-        // Compute the endMs watermark from the transcript entries.
-        let entries = CorpusBackedStore.transcripts(forSessionId: sessionId)
-        let filtered = sinceMs.map { s in entries.filter { $0.startMs >= s } } ?? entries
-        let endMs = filtered.last?.startMs ?? entries.last?.startMs ?? 0
+        let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
 
         let note = GeneratedNote(
             timestamp: Date(),

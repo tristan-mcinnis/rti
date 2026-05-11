@@ -115,9 +115,7 @@ final class DossierController: ObservableObject {
 
         // Watermark = end of the window we just processed, so the next
         // cycle picks up only fresh transcript.
-        let entries = CorpusBackedStore.transcripts(forSessionId: sessionId)
-        let filtered = sinceMs.map { s in entries.filter { $0.startMs >= s } } ?? entries
-        return filtered.last?.startMs ?? entries.last?.startMs ?? 0
+        return TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
     }
 
     /// Merges a fresh batch into the running dossier list. Existing entries
