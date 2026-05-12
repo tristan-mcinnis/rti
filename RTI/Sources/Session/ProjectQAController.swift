@@ -57,6 +57,7 @@ final class ProjectQAController: ObservableObject {
         lastError = nil
         conversationId = conversation.id
         conversationTitle = conversation.title
+        RTILog.log("load chat — id=\(conversation.id.suffix(8)) turns=\(conversation.messages.count)", category: "projects")
         messages = conversation.messages.map { stored in
             Entry(
                 role: stored.role,
@@ -74,12 +75,16 @@ final class ProjectQAController: ObservableObject {
         guard !trimmed.isEmpty else { return }
 
         let memberIds = ProjectStore.shared.sessionIds(forProject: projectId)
+        let project = ProjectStore.shared.projects.first { $0.id == projectId }
+        let projectName = project?.name ?? "(unknown)"
         guard !memberIds.isEmpty else {
             lastError = "Add sessions to the project before asking questions."
+            RTILog.log("ask blocked — project=\"\(projectName)\" has no member sessions", category: "projects")
             return
         }
-        let project = ProjectStore.shared.projects.first { $0.id == projectId }
         let instructions = project?.instructions.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        RTILog.log("ask — project=\"\(projectName)\" members=\(memberIds.count) instr=\(instructions.count) q=\"\(trimmed.prefix(80))\"", category: "projects")
 
         isGenerating = true
         lastError = nil
@@ -88,6 +93,7 @@ final class ProjectQAController: ObservableObject {
         let candidates = retrieve(forQuestion: trimmed, memberIds: Set(memberIds))
         guard !candidates.isEmpty else {
             lastError = "Could not load any of this project's sessions. Try removing and re-adding them."
+            RTILog.log("ask aborted — no candidates resolved despite \(memberIds.count) member ids", category: "projects")
             isGenerating = false
             messages.removeLast()
             return
@@ -139,6 +145,7 @@ final class ProjectQAController: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.lastError = errorMessage
+                    RTILog.log("stream error — \(errorMessage)", category: "projects")
                     if let idx = self.messages.firstIndex(where: { $0.id == entryId }) {
                         self.messages.remove(at: idx)
                     }
@@ -154,6 +161,7 @@ final class ProjectQAController: ObservableObject {
                         let cited = Self.actualCitations(from: body, candidates: candidateCitations)
                         self.messages[idx].citations = cited
                         self.citationsForLast = cited
+                        RTILog.log("done — chars=\(body.count) candidates=\(candidateCitations.count) cited=\(cited.count)", category: "projects")
                     }
                     self.persistToHistory()
                 }
@@ -231,11 +239,22 @@ final class ProjectQAController: ObservableObject {
     /// Project-scoped retrieval. FTS hits are filtered down to the project's
     /// member set; anything left over comes from the member set itself
     /// (so questions about less-textual sessions still hit context).
+    /// Hard upper bound on candidates fed to the LLM. Each candidate
+    /// contributes a summary (≤1500 chars) plus an FTS snippet, so 12 keeps
+    /// us well under provider context budgets while widening recall vs the
+    /// original cap of 8. Member count beyond this falls back to a recency
+    /// slice — the alternative (summary-of-summaries) is a follow-up.
+    private static let candidateCap = 12
+
     private func retrieve(forQuestion question: String, memberIds: Set<String>) -> [Candidate] {
         var seen = Set<String>()
         var out: [Candidate] = []
 
-        for hit in SessionSearch.search(query: question, limit: 12) where memberIds.contains(hit.session.id) {
+        // 1) FTS hits scoped to this project's members — these win first
+        //    because BM25 already ranked them by relevance.
+        for hit in SessionSearch.search(query: question, limit: Self.candidateCap * 2)
+            where memberIds.contains(hit.session.id)
+        {
             guard !seen.contains(hit.session.id) else { continue }
             seen.insert(hit.session.id)
             out.append(Candidate(
@@ -245,7 +264,11 @@ final class ProjectQAController: ObservableObject {
                 summary: CorpusBackedStore.summary(forSessionId: hit.session.id)?.summaryText
             ))
         }
+        let ftsHits = out.count
 
+        // 2) Fill remaining slots with the most recent member sessions that
+        //    FTS missed. Recency biases toward "what did we just discuss" —
+        //    the typical project-chat use case.
         let allMembers = CorpusBackedStore.allMarkdownSessions()
             .filter { memberIds.contains($0.id) }
             .sorted { $0.startedAt > $1.startedAt }
@@ -259,7 +282,13 @@ final class ProjectQAController: ObservableObject {
             ))
         }
 
-        return Array(out.prefix(8))
+        let final = Array(out.prefix(Self.candidateCap))
+        let dropped = max(0, out.count - Self.candidateCap)
+        RTILog.log(
+            "retrieve — fts=\(ftsHits) fallback=\(out.count - ftsHits) used=\(final.count)\(dropped > 0 ? " dropped=\(dropped)" : "")",
+            category: "projects"
+        )
+        return final
     }
 
     private func displayTitle(_ session: Session) -> String {

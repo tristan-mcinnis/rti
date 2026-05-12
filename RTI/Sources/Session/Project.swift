@@ -68,8 +68,9 @@ final class ProjectStore: ObservableObject {
                     .fetchAll(db)
             }
             projects = rows.map { $0.toProject() }
+            RTILog.log("reload — \(projects.count) project\(projects.count == 1 ? "" : "s")", category: "projects")
         } catch {
-            NSLog("[RTI] ProjectStore reload failed: \(error)")
+            RTILog.log("reload failed: \(error)", category: "projects")
         }
     }
 
@@ -93,10 +94,11 @@ final class ProjectStore: ObservableObject {
         )
         do {
             try RTIDatabase.shared.pool.write { db in try row.insert(db) }
+            RTILog.log("created — id=\(project.id.suffix(8)) name=\"\(project.name)\"", category: "projects")
             reload()
             return project
         } catch {
-            NSLog("[RTI] ProjectStore create failed: \(error)")
+            RTILog.log("create failed: \(error)", category: "projects")
             return nil
         }
     }
@@ -109,9 +111,15 @@ final class ProjectStore: ObservableObject {
                 if let instructions { row.instructions = instructions }
                 try row.update(db)
             }
+            if let name {
+                RTILog.log("rename — id=\(id.suffix(8)) → \"\(name)\"", category: "projects")
+            }
+            if let instructions {
+                RTILog.log("instructions updated — id=\(id.suffix(8)) chars=\(instructions.count)", category: "projects")
+            }
             reload()
         } catch {
-            NSLog("[RTI] ProjectStore update failed: \(error)")
+            RTILog.log("update failed: \(error)", category: "projects")
         }
     }
 
@@ -125,9 +133,10 @@ final class ProjectStore: ObservableObject {
                 row.archivedAt = Date()
                 try row.update(db)
             }
+            RTILog.log("archived — id=\(id.suffix(8))", category: "projects")
             reload()
         } catch {
-            NSLog("[RTI] ProjectStore archive failed: \(error)")
+            RTILog.log("archive failed: \(error)", category: "projects")
         }
     }
 
@@ -143,7 +152,7 @@ final class ProjectStore: ObservableObject {
                     .map(\.sessionId)
             }
         } catch {
-            NSLog("[RTI] ProjectStore sessionIds failed: \(error)")
+            RTILog.log("sessionIds failed: \(error)", category: "projects")
             return []
         }
     }
@@ -159,9 +168,10 @@ final class ProjectStore: ObservableObject {
                     .deleteAll(db)
                 try row.insert(db)
             }
+            RTILog.log("add session — project=\(projectId.suffix(8)) session=\(sessionId.suffix(8))", category: "projects")
             objectWillChange.send()
         } catch {
-            NSLog("[RTI] ProjectStore addSession failed: \(error)")
+            RTILog.log("addSession failed: \(error)", category: "projects")
         }
     }
 
@@ -173,9 +183,10 @@ final class ProjectStore: ObservableObject {
                     .filter(Column("session_id") == sessionId)
                     .deleteAll(db)
             }
+            RTILog.log("remove session — project=\(projectId.suffix(8)) session=\(sessionId.suffix(8))", category: "projects")
             objectWillChange.send()
         } catch {
-            NSLog("[RTI] ProjectStore removeSession failed: \(error)")
+            RTILog.log("removeSession failed: \(error)", category: "projects")
         }
     }
 }

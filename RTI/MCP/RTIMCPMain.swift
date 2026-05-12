@@ -143,6 +143,9 @@ enum RTIMCPMain {
         case "read_meeting": result = tools.readMeeting(arguments: arguments)
         case "list_meetings": result = tools.listMeetings(arguments: arguments)
         case "read_live_transcript": result = tools.readLiveTranscript(arguments: arguments)
+        case "list_projects": result = tools.listProjects(arguments: arguments)
+        case "read_project": result = tools.readProject(arguments: arguments)
+        case "search_project": result = tools.searchProject(arguments: arguments)
         default:
             return .failure(.init(code: -32601, message: "Unknown tool: \(name)"))
         }

@@ -83,6 +83,38 @@ struct MCPTools {
                     "since_line": ["type": "integer", "default": 0]
                 ]
             ])
+        ),
+        .init(
+            name: "list_projects",
+            description: "List the user's active (non-archived) projects with member counts and instructions.",
+            inputSchema: AnyCodable([
+                "type": "object",
+                "properties": [:] as [String: Any]
+            ])
+        ),
+        .init(
+            name: "read_project",
+            description: "Read a project by id: its instructions and the full list of member sessions (paths, dates, titles).",
+            inputSchema: AnyCodable([
+                "type": "object",
+                "properties": [
+                    "project_id": ["type": "string"]
+                ],
+                "required": ["project_id"]
+            ])
+        ),
+        .init(
+            name: "search_project",
+            description: "Full-text search across a single project's member sessions only. Same semantics as search_corpus but scoped.",
+            inputSchema: AnyCodable([
+                "type": "object",
+                "properties": [
+                    "project_id": ["type": "string"],
+                    "query": ["type": "string"],
+                    "limit": ["type": "integer", "default": 10]
+                ],
+                "required": ["project_id", "query"]
+            ])
         )
     ]
 
@@ -254,6 +286,163 @@ struct MCPTools {
             return jsonResult(payload)
         } catch {
             return ToolCallResult(text: "Could not read live transcript: \(error)", isError: true)
+        }
+    }
+
+    // MARK: - list_projects
+
+    func listProjects(arguments: [String: Any]) -> ToolCallResult {
+        guard let db = dbWriter else {
+            return ToolCallResult(text: "Could not open RTI database at \(dbPath.path)", isError: true)
+        }
+        do {
+            let projects = try db.read { db -> [[String: Any]] in
+                let rows = try Row.fetchAll(db, sql: """
+                    SELECT id, name, instructions, created_at,
+                           (SELECT COUNT(*) FROM project_sessions WHERE project_id = projects.id) AS member_count
+                    FROM projects
+                    WHERE archived_at IS NULL
+                    ORDER BY created_at DESC
+                """)
+                return rows.map { row in
+                    [
+                        "id": row["id"] as String,
+                        "name": row["name"] as String,
+                        "instructions": row["instructions"] as String,
+                        "created_at": (row["created_at"] as? String) ?? "",
+                        "member_count": row["member_count"] as Int
+                    ]
+                }
+            }
+            return jsonResult(["projects": projects])
+        } catch {
+            return ToolCallResult(text: "Could not list projects: \(error)", isError: true)
+        }
+    }
+
+    // MARK: - read_project
+
+    func readProject(arguments: [String: Any]) -> ToolCallResult {
+        guard let projectId = arguments["project_id"] as? String, !projectId.isEmpty else {
+            return ToolCallResult(text: "Missing required `project_id` argument.", isError: true)
+        }
+        guard let db = dbWriter else {
+            return ToolCallResult(text: "Could not open RTI database at \(dbPath.path)", isError: true)
+        }
+        do {
+            let payload: [String: Any]? = try db.read { db -> [String: Any]? in
+                guard let row = try Row.fetchOne(
+                    db,
+                    sql: "SELECT id, name, instructions, created_at FROM projects WHERE id = ? AND archived_at IS NULL",
+                    arguments: [projectId]
+                ) else { return nil }
+                let memberIds = try Row.fetchAll(
+                    db,
+                    sql: "SELECT session_id FROM project_sessions WHERE project_id = ? ORDER BY added_at DESC",
+                    arguments: [projectId]
+                ).map { $0["session_id"] as String }
+                return [
+                    "id": row["id"] as String,
+                    "name": row["name"] as String,
+                    "instructions": row["instructions"] as String,
+                    "created_at": (row["created_at"] as? String) ?? "",
+                    "member_session_ids": memberIds
+                ]
+            }
+            guard var dict = payload else {
+                return ToolCallResult(text: "Project not found: \(projectId)", isError: true)
+            }
+            // Resolve session ids to corpus paths + frontmatter for agent
+            // convenience (saves a round-trip to read_meeting/list_meetings).
+            let urls = (try? CorpusReader.listMarkdownFiles(in: corpusDirectory)) ?? []
+            let byId: [String: (URL, CorpusEntry.Frontmatter)] = urls.reduce(into: [:]) { acc, url in
+                if let fm = try? CorpusReader.readFrontmatter(url) {
+                    acc[fm.id] = (url, fm)
+                }
+            }
+            let memberIds = (dict["member_session_ids"] as? [String]) ?? []
+            var sessions: [[String: Any]] = []
+            for id in memberIds {
+                guard let (url, fm) = byId[id] else { continue }
+                sessions.append([
+                    "id": id,
+                    "path": url.path,
+                    "date": isoString(fm.date),
+                    "title": fm.title ?? ""
+                ])
+            }
+            dict["sessions"] = sessions
+            return jsonResult(dict)
+        } catch {
+            return ToolCallResult(text: "Could not read project: \(error)", isError: true)
+        }
+    }
+
+    // MARK: - search_project
+
+    func searchProject(arguments: [String: Any]) -> ToolCallResult {
+        guard let projectId = arguments["project_id"] as? String, !projectId.isEmpty else {
+            return ToolCallResult(text: "Missing required `project_id` argument.", isError: true)
+        }
+        guard let query = arguments["query"] as? String, !query.isEmpty else {
+            return ToolCallResult(text: "Missing required `query` argument.", isError: true)
+        }
+        let limit = (arguments["limit"] as? Int) ?? 10
+        guard let db = dbWriter else {
+            return ToolCallResult(text: "Could not open RTI database at \(dbPath.path)", isError: true)
+        }
+        do {
+            // Pull all member ids, then filter FTS hits to that set. SQLite's
+            // FTS5 doesn't support filtering on a JOIN cheaply in read-only
+            // mode without a temp table, so we filter post-hoc.
+            let memberIds: Set<String> = try db.read { db in
+                Set(try Row.fetchAll(
+                    db,
+                    sql: "SELECT session_id FROM project_sessions WHERE project_id = ?",
+                    arguments: [projectId]
+                ).map { $0["session_id"] as String })
+            }
+            guard !memberIds.isEmpty else {
+                return jsonResult(["project_id": projectId, "results": [] as [[String: Any]]])
+            }
+            let hits = try db.read { db -> [(sessionId: String, snippet: String)] in
+                let rows = try Row.fetchAll(db, sql: """
+                    SELECT session_id, snippet(session_search, -1, '<<', '>>', '…', 12) AS snip,
+                           bm25(session_search) AS score
+                    FROM session_search
+                    WHERE session_search MATCH ?
+                    ORDER BY score
+                    LIMIT ?
+                """, arguments: [query, limit * 4])
+                return rows.map { (
+                    sessionId: $0["session_id"] as String,
+                    snippet: $0["snip"] as String
+                ) }
+            }
+            let urls = (try? CorpusReader.listMarkdownFiles(in: corpusDirectory)) ?? []
+            let byId: [String: (URL, CorpusEntry.Frontmatter)] = urls.reduce(into: [:]) { acc, url in
+                if let fm = try? CorpusReader.readFrontmatter(url) {
+                    acc[fm.id] = (url, fm)
+                }
+            }
+            var results: [[String: Any]] = []
+            var seen = Set<String>()
+            for hit in hits where memberIds.contains(hit.sessionId) {
+                guard !seen.contains(hit.sessionId) else { continue }
+                seen.insert(hit.sessionId)
+                guard let (url, fm) = byId[hit.sessionId] else { continue }
+                results.append([
+                    "path": url.path,
+                    "id": fm.id,
+                    "date": isoString(fm.date),
+                    "title": fm.title ?? "",
+                    "snippet": hit.snippet
+                ])
+                if results.count >= limit { break }
+            }
+            return jsonResult(["project_id": projectId, "results": results])
+        } catch {
+            return ToolCallResult(text: "Project search failed: \(error)", isError: true)
         }
     }
 

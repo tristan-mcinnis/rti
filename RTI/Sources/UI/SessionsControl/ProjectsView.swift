@@ -8,17 +8,34 @@ struct ProjectsView: View {
     @ObservedObject private var store = ProjectStore.shared
     @State private var selectedProjectId: String?
     @State private var newProjectName: String = ""
+    @State private var pendingArchiveId: String?
+
+    private var archiveDialogBinding: Binding<Bool> {
+        Binding(
+            get: { pendingArchiveId != nil },
+            set: { if !$0 { pendingArchiveId = nil } }
+        )
+    }
+
+    private var archiveDialogTitle: String {
+        guard let id = pendingArchiveId,
+              let name = store.projects.first(where: { $0.id == id })?.name
+        else { return "Archive project?" }
+        return "Archive \"\(name)\"?"
+    }
 
     var body: some View {
         HSplitView {
             sidebar
-                .frame(minWidth: 220, idealWidth: 240)
+                .frame(minWidth: 220, idealWidth: 240, maxWidth: 320)
 
             if let id = selectedProjectId, let project = store.projects.first(where: { $0.id == id }) {
                 ProjectDetailView(project: project)
                     .id(project.id) // force-recreate controller when switching
+                    .frame(minWidth: 560)
             } else {
                 emptyDetail
+                    .frame(minWidth: 560)
             }
         }
         .onAppear {
@@ -73,12 +90,25 @@ struct ProjectsView: View {
                             .tag(Optional(project.id))
                             .contextMenu {
                                 Button("Archive", role: .destructive) {
-                                    store.archive(id: project.id)
+                                    pendingArchiveId = project.id
                                 }
                             }
                     }
                 }
                 .listStyle(.sidebar)
+                .confirmationDialog(
+                    archiveDialogTitle,
+                    isPresented: archiveDialogBinding,
+                    titleVisibility: .visible
+                ) {
+                    Button("Archive", role: .destructive) {
+                        if let id = pendingArchiveId { store.archive(id: id) }
+                        pendingArchiveId = nil
+                    }
+                    Button("Cancel", role: .cancel) { pendingArchiveId = nil }
+                } message: {
+                    Text("The project's session memberships and chat history are preserved on disk. Archiving only hides it from the list.")
+                }
             }
         }
     }
@@ -136,6 +166,7 @@ private struct ProjectDetailView: View {
     @State private var draftInstructions: String
     @State private var instructionsExpanded: Bool = false
     @State private var addSessionSheet: Bool = false
+    @FocusState private var nameFieldFocused: Bool
 
     init(project: Project) {
         self.project = project
@@ -164,8 +195,14 @@ private struct ProjectDetailView: View {
             TextField("Project name", text: $draftName)
                 .textFieldStyle(.plain)
                 .font(.system(size: 16, weight: .semibold))
+                .focused($nameFieldFocused)
                 .onSubmit(persistName)
                 .onChange(of: project.id) { _, _ in draftName = project.name }
+                .onChange(of: nameFieldFocused) { _, isFocused in
+                    // Persist on focus loss so click-away saves the rename
+                    // without requiring an explicit return-key press.
+                    if !isFocused { persistName() }
+                }
             Spacer()
             Button(action: { instructionsExpanded.toggle() }) {
                 Label(instructionsExpanded ? "Hide instructions" : "Instructions",
@@ -319,6 +356,7 @@ private struct ProjectMembersList: View {
     let projectId: String
     @ObservedObject private var store = ProjectStore.shared
     @State private var members: [Session] = []
+    @State private var lastMemberIds: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -363,6 +401,14 @@ private struct ProjectMembersList: View {
 
     private func reload() {
         let ids = store.sessionIds(forProject: projectId)
+        // Skip the disk scan when this project's membership hasn't changed —
+        // ProjectStore.objectWillChange fires for every project mutation
+        // (including renames of other projects), and the corpus scan is the
+        // expensive part of this reload.
+        if ids == lastMemberIds, !members.isEmpty || ids.isEmpty {
+            return
+        }
+        lastMemberIds = ids
         let all = CorpusBackedStore.allMarkdownSessions()
         let map = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
         members = ids.compactMap { map[$0] }
@@ -421,6 +467,7 @@ private struct AddSessionSheet: View {
     let projectId: String
     let onDone: () -> Void
     @ObservedObject private var store = ProjectStore.shared
+    @ObservedObject private var importer = SessionImporter.shared
     @State private var allSessions: [Session] = []
     @State private var query: String = ""
 
@@ -459,7 +506,17 @@ private struct AddSessionSheet: View {
             }
         }
         .frame(width: 480, height: 460)
-        .onAppear { allSessions = CorpusBackedStore.allMarkdownSessions().sorted { $0.startedAt > $1.startedAt } }
+        .onAppear(perform: reloadSessions)
+        // Refresh the picker when a drag-to-import finishes mid-sheet, so a
+        // freshly-transcribed session is immediately addable without closing
+        // and reopening the sheet.
+        .onReceive(importer.objectWillChange) { _ in
+            DispatchQueue.main.async(execute: reloadSessions)
+        }
+    }
+
+    private func reloadSessions() {
+        allSessions = CorpusBackedStore.allMarkdownSessions().sorted { $0.startedAt > $1.startedAt }
     }
 
     private var filtered: [Session] {
