@@ -9,19 +9,19 @@ struct SessionDetailView: View {
     /// matching paragraph into view.
     let highlightQuery: String?
 
-    @State private var summary: SessionSummary?
-    @State private var transcripts: [TranscriptEntry] = []
-    @State private var chatMessages: [ChatMessage] = []
-    @State private var session: Session?
-    @State private var notes: [GeneratedNote] = []
-    @State private var dossiers: [EntityDossier] = []
-    @State private var cachedGroupedTranscripts: [TranscriptGroup] = []
-    @State private var cachedGroupedDossiers: [DetailDossierGroup] = []
-    @State private var selectedTab: Tab = .summary
-    @State private var qaInput = ""
-    @State private var jumpToBottomToken = UUID()
-    @State private var pendingHighlightScroll: Bool = false
-    @AppStorage(RTIDesign.Density.storageKey) private var densityRaw: String = RTIDesign.Density.comfortable.rawValue
+    @State var summary: SessionSummary?
+    @State var transcripts: [TranscriptEntry] = []
+    @State var chatMessages: [ChatMessage] = []
+    @State var session: Session?
+    @State var notes: [GeneratedNote] = []
+    @State var dossiers: [EntityDossier] = []
+    @State var cachedGroupedTranscripts: [TranscriptGroup] = []
+    @State var cachedGroupedDossiers: [DetailDossierGroup] = []
+    @State var selectedTab: Tab = .summary
+    @State var qaInput = ""
+    @State var jumpToBottomToken = UUID()
+    @State var pendingHighlightScroll: Bool = false
+    @AppStorage(RTIDesign.Density.storageKey) var densityRaw: String = RTIDesign.Density.comfortable.rawValue
 
     init(sessionId: String, highlightQuery: String? = nil) {
         self.sessionId = sessionId
@@ -34,10 +34,10 @@ struct SessionDetailView: View {
         _pendingHighlightScroll = State(initialValue: trimmed?.isEmpty == false)
     }
 
-    private let qaController = SessionQAController.shared
-    private let summaryController = SummaryController.shared
-    private let regenerator = TranscriptRegenerator.shared
-    @State private var toast = ToastPresenter()
+    let qaController = SessionQAController.shared
+    let summaryController = SummaryController.shared
+    let regenerator = TranscriptRegenerator.shared
+    @State var toast = ToastPresenter()
 
     enum Tab: String, CaseIterable, CustomStringConvertible {
         case summary = "Summary"
@@ -48,7 +48,7 @@ struct SessionDetailView: View {
         var description: String { rawValue }
     }
 
-    private var density: RTIDesign.Density {
+    var density: RTIDesign.Density {
         RTIDesign.Density(rawValue: densityRaw) ?? .comfortable
     }
 
@@ -375,7 +375,7 @@ struct SessionDetailView: View {
 
     // MARK: - Transcript Body
 
-    private struct TranscriptGroup: Identifiable {
+    struct TranscriptGroup: Identifiable {
         let id: String
         let speakerId: String
         let startMs: Int
@@ -751,7 +751,7 @@ struct SessionDetailView: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(RTIDesign.Color.cardBackground))
     }
 
-    private struct DetailDossierGroup: Identifiable {
+    struct DetailDossierGroup: Identifiable {
         let id = UUID()
         let type: EntityType
         let dossiers: [EntityDossier]
@@ -1017,251 +1017,4 @@ struct SessionDetailView: View {
         .padding(.vertical, RTIDesign.Spacing.sm)
     }
 
-    // MARK: - Section rendering
-
-    /// Single rendering path for "title + markdown body" used by all summary
-    /// sections. Pre-parses bullet lines so they show as proper bullets with
-    /// hanging indent rather than literal `-` characters.
-    private func sectionBlock(title: String, content: String, isFirst: Bool) -> some View {
-        VStack(alignment: .leading, spacing: RTIDesign.Spacing.md) {
-            SectionHeader(title)
-            sectionBody(content)
-        }
-    }
-
-    private func sectionBlockOptional(title: String, content: String?) -> some View {
-        Group {
-            if let raw = content, !isContentEmpty(raw) {
-                sectionBlock(title: title, content: raw, isFirst: false)
-            }
-        }
-    }
-
-    private func isContentEmpty(_ raw: String) -> Bool {
-        let normalized = raw
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "*", with: "")
-            .replacingOccurrences(of: "(", with: "")
-            .replacingOccurrences(of: ")", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        return normalized.isEmpty || normalized == "none" || normalized == "none."
-    }
-
-    /// Render markdown body as either a bulleted list (when most lines start
-    /// with `-` or `*`) or a flowing paragraph (with inline markdown).
-    @ViewBuilder
-    private func sectionBody(_ raw: String) -> some View {
-        let lines = raw.components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        let bulletLines = lines.filter { $0.hasPrefix("- ") || $0.hasPrefix("* ") }
-        let isList = !lines.isEmpty && bulletLines.count >= max(1, lines.count - 1)
-
-        if isList {
-            VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.xs)) {
-                ForEach(Array(bulletLines.enumerated()), id: \.offset) { _, line in
-                    let stripped = String(line.dropFirst(2))
-                    HStack(alignment: .top, spacing: RTIDesign.Spacing.sm) {
-                        Text("•")
-                            .font(RTIDesign.Font.body)
-                            .foregroundStyle(RTIDesign.Color.accentText)
-                            .frame(width: 12, alignment: .leading)
-                        Text(attributed(stripped))
-                            .font(RTIDesign.Font.body)
-                            .foregroundStyle(RTIDesign.Color.textPrimary)
-                            .lineSpacing(density.scaled(4))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }
-        } else {
-            Text(attributed(raw))
-                .font(RTIDesign.Font.body)
-                .foregroundStyle(RTIDesign.Color.textPrimary)
-                .lineSpacing(density.scaled(4))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func attributed(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
-    }
-
-    private struct FollowUpSection: Identifiable {
-        let id = UUID()
-        let title: String
-        let body: String
-    }
-
-    private func splitFollowUps(_ raw: String) -> [FollowUpSection] {
-        let lines = raw.components(separatedBy: "\n")
-        var sections: [FollowUpSection] = []
-        var currentTitle: String?
-        var currentBody: [String] = []
-        func flush() {
-            if let title = currentTitle {
-                let body = currentBody.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                sections.append(FollowUpSection(title: title, body: body))
-            }
-            currentTitle = nil
-            currentBody = []
-        }
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("## ") {
-                flush()
-                currentTitle = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-            } else if currentTitle != nil {
-                currentBody.append(line)
-            }
-        }
-        flush()
-        return sections
-    }
-
-    private func extractSummarySection(_ text: String) -> String {
-        let lines = text.components(separatedBy: "\n")
-        // Locate the start: skip past an optional "## Summary" opener.
-        let contentStart: Int
-        if let i = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "## Summary" }) {
-            contentStart = i + 1
-        } else {
-            contentStart = 0
-        }
-        // Always cut at the next "## " heading so the lead paragraph
-        // never contains raw markdown for the structured sections
-        // (those render in their own blocks below).
-        guard contentStart < lines.count else { return "" }
-        guard let end = lines[contentStart...].firstIndex(where: { $0.hasPrefix("## ") }) else {
-            return lines[contentStart...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return lines[contentStart..<end].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // MARK: - Actions
-
-    private func copySummary() {
-        guard let text = summary?.summaryText else { return }
-        NSPasteboard.copyMarkdownRich(text)
-        toast.show("Summary copied")
-    }
-
-    private func copyTranscript() {
-        let text = transcripts.map { "\(SpeakerLabels.displayName(for: $0.speakerId)): \($0.text)" }.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        toast.show("Transcript copied")
-    }
-
-    private func regenerateSummary() {
-        Task {
-            await generateSummary()
-            toast.show("Summary regenerated")
-        }
-    }
-
-    private func regenerateTranscript() {
-        regenerator.regenerate(sessionId: sessionId)
-        // Completion toast fires from the regenerator state observer above.
-    }
-
-    private func exportSession() {
-        SessionExport.exportToFile(sessionId: sessionId)
-    }
-
-    private func generateSummary() async {
-        _ = await SummaryController.shared.generateSummary(for: sessionId)
-        summary = SummaryController.shared.loadSummary(for: sessionId)
-    }
-
-    private func submitQA() {
-        let question = qaInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty else { return }
-        let capped = question.count > 4000 ? String(question.prefix(4000)) : question
-        qaInput = ""
-        if selectedTab != .qa {
-            withAnimation(.easeInOut(duration: 0.18)) { selectedTab = .qa }
-        }
-        Task {
-            qaController.ask(question: capped, sessionId: sessionId)
-        }
-    }
-
-    private func resumeSession() {
-        SessionCoordinator.shared.resumeSession(id: sessionId)
-    }
-
-    private func loadData() {
-        // Corpus-backed reads: session metadata + transcript come from
-        // markdown (or live JSONL for an in-flight session); chat history
-        // remains in SQLite as the interaction log.
-        session = CorpusBackedStore.session(id: sessionId)
-        transcripts = CorpusBackedStore.transcripts(forSessionId: sessionId)
-        summary = CorpusBackedStore.summary(forSessionId: sessionId)
-            ?? SummaryController.shared.loadSummary(for: sessionId)
-        do {
-            chatMessages = try RTIDatabase.shared.pool.read { db in
-                try ChatMessage
-                    .filter(Column("session_id") == sessionId)
-                    .order(Column("created_at"))
-                    .fetchAll(db)
-            }
-        } catch {
-            NSLog("[RTI] SessionDetail chat load failed: \(error)")
-        }
-        notes = NotesGenerationController.loadNotes(forSessionId: sessionId)
-        dossiers = DossierController.loadDossiers(forSessionId: sessionId)
-    }
-
-    private func timeLabel(ms: Int) -> String {
-        TimeFormat.stampMs(ms)
-    }
-
-    private func formatDuration(_ interval: TimeInterval) -> String {
-        TimeFormat.duration(interval)
-    }
-
-    /// Insert paragraph breaks every ~3 sentences so a long monologue
-    /// renders as readable paragraphs instead of one dense wall of text.
-    /// Sentence boundaries are detected on `.`, `?`, `!` followed by a
-    /// space and a capital/digit. Short text (< ~3 sentences) is left
-    /// unchanged.
-    static func paragraphSplit(_ text: String, sentencesPerParagraph: Int = 3) -> String {
-        guard text.count > 240 else { return text }
-        var sentences: [String] = []
-        var current = ""
-        let chars = Array(text)
-        var i = 0
-        while i < chars.count {
-            let c = chars[i]
-            current.append(c)
-            if (c == "." || c == "?" || c == "!"),
-               i + 2 < chars.count,
-               chars[i + 1] == " ",
-               chars[i + 2].isLetter || chars[i + 2].isNumber {
-                sentences.append(current.trimmingCharacters(in: .whitespaces))
-                current = ""
-                i += 2
-                continue
-            }
-            i += 1
-        }
-        let tail = current.trimmingCharacters(in: .whitespaces)
-        if !tail.isEmpty { sentences.append(tail) }
-        guard sentences.count > sentencesPerParagraph else { return text }
-        var paragraphs: [String] = []
-        var buf: [String] = []
-        for s in sentences {
-            buf.append(s)
-            if buf.count >= sentencesPerParagraph {
-                paragraphs.append(buf.joined(separator: " "))
-                buf = []
-            }
-        }
-        if !buf.isEmpty { paragraphs.append(buf.joined(separator: " ")) }
-        return paragraphs.joined(separator: "\n\n")
-    }
 }

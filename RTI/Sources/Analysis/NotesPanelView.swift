@@ -8,7 +8,7 @@ struct NotesPanelView: View {
             title: "Notes",
             opacityKey: notesOpacityKey,
             defaultOpacity: notesDefaultOpacity,
-            closeNotification: .rtiToggleNotesPanel,
+            panelID: .notes,
             titleAccessory: {
                 if controller.isGenerating {
                     ProgressView()
@@ -17,7 +17,7 @@ struct NotesPanelView: View {
                 }
             },
             headerActions: {
-                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleNotesPanel) {
+                PanelHeaderEllipsisMenu(panelID: .notes) {
                     Button("Copy all", action: copyAll)
                         .disabled(controller.notes.isEmpty)
                     Button("Export as .md…", action: exportToFile)

@@ -17,20 +17,18 @@ final class AnalysisPanelStore {
     struct Descriptor: Identifiable {
         let id: FloatingPanelID
         let title: String
-        let notificationName: Notification.Name
     }
 
     /// Every built-in analysis panel, in display order.
     let all: [Descriptor] = [
-        Descriptor(id: .notes, title: "Notes", notificationName: .rtiToggleNotesPanel),
-        Descriptor(id: .dossiers, title: "Dossiers", notificationName: .rtiToggleDossiersPanel),
-        Descriptor(id: .themes, title: "Themes", notificationName: .rtiToggleThemesPanel),
-        Descriptor(id: .discussionGuide, title: "Discussion Guide", notificationName: .rtiToggleGuidePanel),
-        Descriptor(id: .translation, title: "Translation", notificationName: .rtiToggleTranslationPanel),
+        Descriptor(id: .notes, title: "Notes"),
+        Descriptor(id: .dossiers, title: "Dossiers"),
+        Descriptor(id: .themes, title: "Themes"),
+        Descriptor(id: .discussionGuide, title: "Discussion Guide"),
+        Descriptor(id: .translation, title: "Translation"),
     ]
 
-    /// Which built-in panels are currently visible. Updated by `toggle(_:)`
-    /// and kept in sync with `WindowCoordinator` via notification.
+    /// Which built-in panels are currently visible. Updated by `toggle(_:)`.
     var activePanels: Set<FloatingPanelID> = []
 
     /// Return the subset of `panelIDs` that are registered in `all`.
@@ -42,15 +40,14 @@ final class AnalysisPanelStore {
         activePanels.contains(id)
     }
 
-    /// Toggle visibility and post the per-panel notification so
-    /// `WindowCoordinator` can show/hide the actual `NSPanel`.
+    /// Toggle visibility — flips the active set and asks
+    /// `WindowCoordinator` to show/hide the actual `NSPanel`.
     func toggle(_ id: FloatingPanelID) {
         if activePanels.contains(id) {
             activePanels.remove(id)
         } else {
             activePanels.insert(id)
         }
-        guard let descriptor = all.first(where: { $0.id == id }) else { return }
-        NotificationCenter.default.post(name: descriptor.notificationName, object: nil)
+        WindowCoordinator.shared.toggle(id)
     }
 }

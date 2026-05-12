@@ -8,7 +8,7 @@ struct DossiersPanelView: View {
             title: "Dossiers",
             opacityKey: dossiersOpacityKey,
             defaultOpacity: dossiersDefaultOpacity,
-            closeNotification: .rtiToggleDossiersPanel,
+            panelID: .dossiers,
             titleAccessory: {
                 if controller.isGenerating {
                     ProgressView()
@@ -17,7 +17,7 @@ struct DossiersPanelView: View {
                 }
             },
             headerActions: {
-                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleDossiersPanel) {
+                PanelHeaderEllipsisMenu(panelID: .dossiers) {
                     Button("Copy all", action: copyAll)
                         .disabled(controller.dossiers.isEmpty)
                     Button("Export as .md…", action: exportToFile)

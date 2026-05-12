@@ -39,10 +39,10 @@ struct FloatingPanelSpec {
     let opacityKey: String
     let opacityDefault: Double
     let defaultSize: NSSize
-    /// Posted when the user hits Escape while the panel is key. The
-    /// app-level handler decides whether to toggle the panel or do
-    /// something else. `nil` falls back to NSPanel's default behavior.
-    let escapeNotification: Notification.Name?
+    /// Panel identity — used by the Esc handler to ask the
+    /// `WindowCoordinator` to toggle this panel. `nil` falls back to
+    /// NSPanel's default cancel behavior.
+    let panelID: FloatingPanelID?
     /// Computes the origin used when no saved frame exists. Receives the
     /// active screen's `visibleFrame` and the clamped panel size.
     let initialOrigin: (_ visibleFrame: NSRect, _ size: NSSize) -> NSPoint
@@ -57,7 +57,7 @@ extension FloatingPanelSpec {
         opacityKey: notesOpacityKey,
         opacityDefault: notesDefaultOpacity,
         defaultSize: NSSize(width: 380, height: 500),
-        escapeNotification: .rtiToggleNotesPanel,
+        panelID: .notes,
         initialOrigin: { visible, size in
             NSPoint(x: visible.minX + 16, y: visible.maxY - size.height - 16 - 80)
         },
@@ -69,7 +69,7 @@ extension FloatingPanelSpec {
         opacityKey: dossiersOpacityKey,
         opacityDefault: dossiersDefaultOpacity,
         defaultSize: NSSize(width: 420, height: 500),
-        escapeNotification: .rtiToggleDossiersPanel,
+        panelID: .dossiers,
         initialOrigin: { visible, size in
             NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 16 - 80)
         },
@@ -81,7 +81,7 @@ extension FloatingPanelSpec {
         opacityKey: themesOpacityKey,
         opacityDefault: themesDefaultOpacity,
         defaultSize: NSSize(width: 420, height: 560),
-        escapeNotification: .rtiToggleThemesPanel,
+        panelID: .themes,
         initialOrigin: { visible, size in
             NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 16 - 80)
         },
@@ -93,7 +93,7 @@ extension FloatingPanelSpec {
         opacityKey: guideOpacityKey,
         opacityDefault: guideDefaultOpacity,
         defaultSize: NSSize(width: 440, height: 580),
-        escapeNotification: .rtiToggleGuidePanel,
+        panelID: .discussionGuide,
         initialOrigin: { visible, size in
             NSPoint(x: visible.minX + 16, y: visible.maxY - size.height - 16 - 220)
         },
@@ -105,7 +105,7 @@ extension FloatingPanelSpec {
         opacityKey: translationOpacityKey,
         opacityDefault: translationDefaultOpacity,
         defaultSize: NSSize(width: 460, height: 540),
-        escapeNotification: .rtiToggleTranslationPanel,
+        panelID: .translation,
         initialOrigin: { visible, size in
             NSPoint(x: visible.midX - size.width / 2, y: visible.maxY - size.height - 16 - 60)
         },
@@ -136,14 +136,14 @@ let translationDefaultOpacity: Double = 0.88
 // MARK: - Controller
 
 private final class EscapeAwareNSPanel: NSPanel {
-    var escapeNotification: Notification.Name?
+    var panelID: FloatingPanelID?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
     override func cancelOperation(_ sender: Any?) {
-        if let name = escapeNotification {
-            NotificationCenter.default.post(name: name, object: nil)
+        if let id = panelID {
+            MainActor.assumeIsolated { WindowCoordinator.shared.toggle(id) }
         } else {
             super.cancelOperation(sender)
         }
@@ -169,17 +169,8 @@ final class FloatingPanelWindowController: PanelWindowControlling {
             backing: .buffered,
             defer: false
         )
-        panel.escapeNotification = spec.escapeNotification
-        panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = false
-        panel.sharingType = .none
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
-        panel.contentView = NSHostingView(rootView: spec.makeRootView())
+        panel.panelID = spec.panelID
+        RTIPanelDefaults.apply(to: panel, rootView: spec.makeRootView())
 
         self.window = panel
 
@@ -208,24 +199,9 @@ final class FloatingPanelWindowController: PanelWindowControlling {
 
     var isVisible: Bool { window.isVisible }
 
-    func show() {
-        window.alphaValue = 0
-        window.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.18
-            window.animator().alphaValue = 1
-        }
-    }
+    func show() { RTIPanelDefaults.fadeIn(window) }
 
-    func hide() {
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.15
-            window.animator().alphaValue = 0
-        }, completionHandler: { [window] in
-            window.orderOut(nil)
-            window.alphaValue = 1
-        })
-    }
+    func hide() { RTIPanelDefaults.fadeOut(window) }
 
     func setSharingInvisible(_ invisible: Bool) {
         window.sharingType = invisible ? .none : .readOnly
@@ -247,19 +223,13 @@ final class FloatingPanelWindowController: PanelWindowControlling {
         let key = spec.savedFrameKey
         let item = DispatchWorkItem { [weak self] in
             guard let self, self.window.isVisible else { return }
-            let frame = self.window.frame
-            let dict: [String: CGFloat] = ["x": frame.origin.x, "y": frame.origin.y, "w": frame.width, "h": frame.height]
-            UserDefaults.standard.set(dict, forKey: key)
+            RTIPanelDefaults.saveFrame(self.window.frame, key: key)
         }
         frameSaveWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)
     }
 
     private func loadSavedFrame() -> NSRect? {
-        guard let dict = UserDefaults.standard.dictionary(forKey: spec.savedFrameKey) as? [String: CGFloat],
-              let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"] else { return nil }
-        let frame = NSRect(x: x, y: y, width: w, height: h)
-        guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) else { return nil }
-        return frame
+        RTIPanelDefaults.loadFrame(key: spec.savedFrameKey)
     }
 }

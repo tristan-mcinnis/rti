@@ -13,11 +13,6 @@ extension Notification.Name {
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
     static let rtiSessionsChanged = Notification.Name("rti.sessionsChanged")
     static let rtiToggleCommandPalette = Notification.Name("rti.toggleCommandPalette")
-    static let rtiToggleNotesPanel = Notification.Name("rti.toggleNotesPanel")
-    static let rtiToggleDossiersPanel = Notification.Name("rti.toggleDossiersPanel")
-    static let rtiToggleThemesPanel = Notification.Name("rti.toggleThemesPanel")
-    static let rtiToggleGuidePanel = Notification.Name("rti.toggleGuidePanel")
-    static let rtiToggleTranslationPanel = Notification.Name("rti.toggleTranslationPanel")
     /// Posted after a "Clear Current Chat" action so any open auxiliary
     /// panel windows (notes, dossiers, user-spawned) dismiss themselves.
     static let rtiHideAuxiliaryPanels = Notification.Name("rti.hideAuxiliaryPanels")

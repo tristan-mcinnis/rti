@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
-    private let windows = WindowCoordinator()
+    private let windows = WindowCoordinator.shared
     private let menu = MenuCoordinator()
     private let hotkeys = HotkeyCoordinator()
     private var sessionObservationTask: Task<Void, Never>?
@@ -84,10 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         }
     }
 
-    /// Notification-center observers registered at launch in one call site
-    /// so the wiring is visible in a single glance. Non-panel observers use
-    /// selector dispatch; analysis panel toggles are data-driven from
-    /// `AnalysisPanelStore` so adding a new panel only touches its spec.
+    /// Notification-center observers registered at launch in one call site.
+    /// Panel toggles route through `WindowCoordinator.shared` directly —
+    /// no notification middleman.
     private func registerNotificationObservers() {
         let observers: [(NSNotification.Name, Selector)] = [
             (.rtiToggleOverlay, #selector(toggleOverlay)),
@@ -96,19 +95,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         ]
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
-        }
-
-        // Analysis panel toggles — one block per panel, keyed from the store.
-        for descriptor in AnalysisPanelStore.shared.all {
-            NotificationCenter.default.addObserver(
-                forName: descriptor.notificationName,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    self?.windows.toggle(descriptor.id)
-                }
-            }
         }
     }
 

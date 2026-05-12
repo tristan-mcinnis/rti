@@ -10,7 +10,7 @@ import SwiftUI
 /// and body content.
 struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: View>: View {
     let title: String
-    let closeNotification: Notification.Name
+    let panelID: FloatingPanelID
     @AppStorage private var backgroundOpacity: Double
     let titleAccessory: () -> TitleAccessory
     let headerActions: () -> HeaderActions
@@ -20,13 +20,13 @@ struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: V
         title: String,
         opacityKey: String,
         defaultOpacity: Double,
-        closeNotification: Notification.Name,
+        panelID: FloatingPanelID,
         @ViewBuilder titleAccessory: @escaping () -> TitleAccessory = { EmptyView() },
         @ViewBuilder headerActions: @escaping () -> HeaderActions = { EmptyView() },
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
-        self.closeNotification = closeNotification
+        self.panelID = panelID
         self._backgroundOpacity = AppStorage(wrappedValue: defaultOpacity, opacityKey)
         self.titleAccessory = titleAccessory
         self.headerActions = headerActions
@@ -74,7 +74,7 @@ struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: V
 
     private var closeButton: some View {
         Button(action: {
-            NotificationCenter.default.post(name: closeNotification, object: nil)
+            WindowCoordinator.shared.toggle(panelID)
         }) {
             Image(systemName: "xmark")
                 .font(.system(size: 11, weight: .bold))
@@ -92,7 +92,7 @@ struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: V
 /// bottom so the close affordance is reachable from one consistent place
 /// across panels (in addition to the explicit `×` button).
 struct PanelHeaderEllipsisMenu<Content: View>: View {
-    let hideNotification: Notification.Name
+    let panelID: FloatingPanelID
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -100,7 +100,7 @@ struct PanelHeaderEllipsisMenu<Content: View>: View {
             content()
             Divider()
             Button("Hide panel") {
-                NotificationCenter.default.post(name: hideNotification, object: nil)
+                WindowCoordinator.shared.toggle(panelID)
             }
         } label: {
             Image(systemName: "ellipsis")

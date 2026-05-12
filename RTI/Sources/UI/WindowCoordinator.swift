@@ -5,6 +5,11 @@ import SwiftUI
 /// AppDelegate doesn't need to know about `NSWindow` or `NSHostingView`.
 @MainActor
 final class WindowCoordinator {
+    /// App-wide singleton so panel views, hotkeys, and stores can drive
+    /// window state without threading a coordinator reference through every
+    /// init. AppDelegate still calls `install` once at launch.
+    static let shared = WindowCoordinator()
+
     private var overlayController: OverlayWindowController?
     private var topWidget: TopWidgetWindowController?
     private var sessionsControl: SessionsControlWindowController?

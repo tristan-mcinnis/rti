@@ -8,7 +8,7 @@ struct ThemesPanelView: View {
             title: "Themes",
             opacityKey: themesOpacityKey,
             defaultOpacity: themesDefaultOpacity,
-            closeNotification: .rtiToggleThemesPanel,
+            panelID: .themes,
             titleAccessory: {
                 if controller.isHiFi {
                     Text("Final")
@@ -25,7 +25,7 @@ struct ThemesPanelView: View {
                 }
             },
             headerActions: {
-                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleThemesPanel) {
+                PanelHeaderEllipsisMenu(panelID: .themes) {
                     Button("Copy all", action: copyAll)
                         .disabled(controller.payload.themes.isEmpty)
                     Button("Export as .md…", action: exportToFile)

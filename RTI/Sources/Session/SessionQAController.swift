@@ -1,48 +1,58 @@
 import Foundation
 import Observation
 
-@Observable @MainActor
-final class SessionQAController {
+/// Per-session Q&A — answers questions about a single session's
+/// transcript + summary. Subclasses `CorpusChatController` so the
+/// streaming lifecycle, citation handling, prior-turn windowing, and
+/// message state live in one place across all three Q&A surfaces (this,
+/// `AskCorpusController`, `ProjectQAController`).
+///
+/// Retrieval here returns a single candidate — the session itself — so
+/// `[Session Title]` citations still work if the user asks the model to
+/// quote. The system prompt injects the full transcript + summary
+/// directly (rather than the base truncated-summary context) because at
+/// single-session scope we want the model to see every word.
+@MainActor
+final class SessionQAController: CorpusChatController {
     static let shared = SessionQAController()
 
-    private(set) var isGenerating = false
-    private(set) var lastError: String?
-    private(set) var messages: [QAEntry] = []
+    private var currentSessionId: String?
 
-    private let request: LLMRequest
-
-    init(request: LLMRequest = LLMRequest()) {
-        self.request = request
-    }
-
-    struct QAEntry: Identifiable {
-        let id = UUID()
-        let role: String // "user" | "assistant"
-        var text: String
-        let createdAt: Date = Date()
-    }
-
-    func clear() {
-        messages = []
-        lastError = nil
-        isGenerating = false
-    }
-
+    /// Compatibility alias for the prior API. Sets the active session and
+    /// kicks off `ask(question:)` on the base controller.
     func ask(question: String, sessionId: String) {
-        guard !isGenerating else { return }
-        isGenerating = true
-        lastError = nil
+        currentSessionId = sessionId
+        ask(question: question)
+    }
 
-        let context = buildContext(sessionId: sessionId)
-        guard !context.isEmpty else {
-            lastError = "No transcript or summary available for this session."
-            isGenerating = false
-            return
+    /// Kept for parity with the prior surface — callers used `clear()` to
+    /// reset chat state. Maps onto `newChat()` in the base.
+    func clear() { newChat() }
+
+    // MARK: - Strategy
+
+    override func retrieve(forQuestion question: String) throws -> [CorpusChatCandidate] {
+        guard let id = currentSessionId,
+              let session = CorpusBackedStore.session(id: id) else {
+            throw CorpusChatError(message: "No transcript or summary available for this session.")
         }
+        let transcript = TranscriptContext.text(forSessionId: id)
+        let summary = CorpusBackedStore.summary(forSessionId: id)?.summaryText
+        if transcript.isEmpty && (summary?.isEmpty ?? true) {
+            throw CorpusChatError(message: "No transcript or summary available for this session.")
+        }
+        return [CorpusChatCandidate(
+            session: session,
+            title: Self.displayTitle(for: session),
+            snippet: nil,
+            summary: nil
+        )]
+    }
 
-        messages.append(QAEntry(role: "user", text: question))
-
-        let systemPrompt = """
+    override func makeSystemPrompt(context: String) -> String {
+        let id = currentSessionId ?? ""
+        let body = buildSessionContext(sessionId: id)
+        return """
         You are RTI, the user's meeting assistant. Answer questions based ONLY on the provided session transcript and summary below.
         If the answer isn't in the transcript, say so briefly. Be concise and helpful.
 
@@ -51,46 +61,11 @@ final class SessionQAController {
         anything in the raw transcript.
 
         Session context:
-        \(context)
+        \(body)
         """
-
-        var apiMessages: [LLMMessage] = [LLMMessage(role: "system", content: systemPrompt)]
-        if let glossary = GlossaryStore.shared.systemPromptFragment {
-            apiMessages.append(LLMMessage(role: "system", content: glossary))
-        }
-        apiMessages.append(LLMMessage(role: "user", content: question))
-
-        let assistantEntry = QAEntry(role: "assistant", text: "")
-        messages.append(assistantEntry)
-        let entryId = assistantEntry.id
-
-        request.stream(
-            messages: apiMessages,
-            smart: false,
-            onDelta: { [weak self] delta in
-                Task { @MainActor [weak self] in
-                    if let idx = self?.messages.firstIndex(where: { $0.id == entryId }) {
-                        self?.messages[idx].text += delta
-                    }
-                }
-            },
-            onError: { [weak self] errorMessage, _ in
-                Task { @MainActor [weak self] in
-                    self?.lastError = errorMessage
-                    if let idx = self?.messages.firstIndex(where: { $0.id == entryId }) {
-                        self?.messages.remove(at: idx)
-                    }
-                }
-            },
-            onComplete: { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.isGenerating = false
-                }
-            }
-        )
     }
 
-    private func buildContext(sessionId: String) -> String {
+    private func buildSessionContext(sessionId: String) -> String {
         var parts: [String] = []
         if let summary = CorpusBackedStore.summary(forSessionId: sessionId) {
             parts.append("## Meeting Summary")

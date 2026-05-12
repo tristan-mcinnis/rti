@@ -21,17 +21,7 @@ final class UserPanelWindowController: PanelWindowControlling {
             backing: .buffered,
             defer: false
         )
-        p.isFloatingPanel = true
-        p.level = .floating
-        p.backgroundColor = .clear
-        p.isOpaque = false
-        p.hasShadow = false
-        p.sharingType = .none
-        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        p.hidesOnDeactivate = false
-        p.isMovableByWindowBackground = true
-
-        p.contentView = NSHostingView(rootView: AnyView(Self.rootView(for: panel)))
+        RTIPanelDefaults.apply(to: p, rootView: AnyView(Self.rootView(for: panel)))
         self.window = p
 
         if let saved = Self.loadSavedFrame(panelId: panel.id) {
@@ -55,24 +45,9 @@ final class UserPanelWindowController: PanelWindowControlling {
 
     var isVisible: Bool { window.isVisible }
 
-    func show() {
-        window.alphaValue = 0
-        window.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.18
-            window.animator().alphaValue = 1
-        }
-    }
+    func show() { RTIPanelDefaults.fadeIn(window) }
 
-    func hide() {
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.12
-            window.animator().alphaValue = 0
-        }, completionHandler: { [window] in
-            window.orderOut(nil)
-            window.alphaValue = 1
-        })
-    }
+    func hide() { RTIPanelDefaults.fadeOut(window, duration: 0.12) }
 
     func setSharingInvisible(_ invisible: Bool) {
         window.sharingType = invisible ? .none : .readOnly
@@ -123,16 +98,10 @@ final class UserPanelWindowController: PanelWindowControlling {
     private static func frameKey(panelId: String) -> String { "rti.userPanel.frame.\(panelId)" }
 
     private func saveFrame() {
-        let frame = window.frame
-        let dict: [String: CGFloat] = ["x": frame.origin.x, "y": frame.origin.y, "w": frame.width, "h": frame.height]
-        UserDefaults.standard.set(dict, forKey: Self.frameKey(panelId: panelId))
+        RTIPanelDefaults.saveFrame(window.frame, key: Self.frameKey(panelId: panelId))
     }
 
     private static func loadSavedFrame(panelId: String) -> NSRect? {
-        guard let dict = UserDefaults.standard.dictionary(forKey: frameKey(panelId: panelId)) as? [String: CGFloat],
-              let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"] else { return nil }
-        let frame = NSRect(x: x, y: y, width: w, height: h)
-        guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) else { return nil }
-        return frame
+        RTIPanelDefaults.loadFrame(key: frameKey(panelId: panelId))
     }
 }

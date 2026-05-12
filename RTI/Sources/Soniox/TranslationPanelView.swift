@@ -39,7 +39,7 @@ struct TranslationPanelView: View {
             title: "Translation",
             opacityKey: translationOpacityKey,
             defaultOpacity: translationDefaultOpacity,
-            closeNotification: .rtiToggleTranslationPanel,
+            panelID: .translation,
             titleAccessory: {
                 if translationEnabled, coordinator.isRunning {
                     Circle()
@@ -54,7 +54,7 @@ struct TranslationPanelView: View {
                     .help(translationEnabled ? "Translation on" : "Turn translation on")
             },
             headerActions: {
-                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleTranslationPanel) {
+                PanelHeaderEllipsisMenu(panelID: .translation) {
                     Toggle("Show original", isOn: $showOriginal)
                 }
             }

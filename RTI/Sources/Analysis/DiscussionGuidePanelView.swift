@@ -9,7 +9,7 @@ struct DiscussionGuidePanelView: View {
             title: "Discussion guide",
             opacityKey: guideOpacityKey,
             defaultOpacity: guideDefaultOpacity,
-            closeNotification: .rtiToggleGuidePanel,
+            panelID: .discussionGuide,
             titleAccessory: {
                 if controller.isImporting || controller.isMatching {
                     ProgressView()
@@ -18,7 +18,7 @@ struct DiscussionGuidePanelView: View {
                 }
             },
             headerActions: {
-                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleGuidePanel) {
+                PanelHeaderEllipsisMenu(panelID: .discussionGuide) {
                     Button("Import guide…", action: importGuide)
                     if controller.guide != nil {
                         Divider()
