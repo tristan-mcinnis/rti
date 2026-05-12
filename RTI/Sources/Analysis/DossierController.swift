@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 @MainActor
-final class DossierController: ObservableObject {
+final class DossierController: ObservableObject, AnalysisController {
     static let shared = DossierController()
 
     @Published private(set) var dossiers: [EntityDossier] = []

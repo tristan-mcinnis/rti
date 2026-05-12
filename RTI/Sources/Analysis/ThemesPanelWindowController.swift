@@ -16,7 +16,7 @@ private final class ThemesKeyablePanel: NSPanel {
 }
 
 @MainActor
-final class ThemesPanelWindowController {
+final class ThemesPanelWindowController: PanelWindowControlling {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
     nonisolated(unsafe) private var didMoveObserver: NSObjectProtocol?
@@ -90,10 +90,6 @@ final class ThemesPanelWindowController {
             window.orderOut(nil)
             window.alphaValue = 1
         })
-    }
-
-    func toggle() {
-        if window.isVisible { hide() } else { show() }
     }
 
     func setSharingInvisible(_ invisible: Bool) {

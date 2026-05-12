@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 @MainActor
-final class NotesGenerationController: ObservableObject {
+final class NotesGenerationController: ObservableObject, AnalysisController {
     static let shared = NotesGenerationController()
 
     @Published private(set) var notes: [GeneratedNote] = []

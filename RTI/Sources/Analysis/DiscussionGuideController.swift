@@ -5,7 +5,7 @@ import GRDB
 /// document into structure, persists it, and periodically asks the LLM
 /// to pair unanswered questions with new transcript material.
 @MainActor
-final class DiscussionGuideController: ObservableObject {
+final class DiscussionGuideController: ObservableObject, AnalysisController {
     static let shared = DiscussionGuideController()
 
     @Published private(set) var guide: DiscussionGuide?
@@ -179,6 +179,14 @@ final class DiscussionGuideController: ObservableObject {
         )
         Self.persistMatched(row: row)
         return TranscriptContext.watermarkEndMs(forSessionId: sessionId)
+    }
+
+    /// Satisfies `AnalysisController`. Delegates to `match` so the
+    /// scheduler can drive this controller the same way it drives Notes,
+    /// Dossiers, and Themes.
+    @discardableResult
+    func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
+        await match(sessionId: sessionId, sinceMs: sinceMs)
     }
 
     /// Drop the guide for the active session.

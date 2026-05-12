@@ -12,7 +12,7 @@ import GRDB
 /// runs against the full transcript and overwrites once more with
 /// `is_hi_fi = 1` set on the row.
 @MainActor
-final class ThemesController: ObservableObject {
+final class ThemesController: ObservableObject, AnalysisController {
     static let shared = ThemesController()
 
     @Published private(set) var payload: ThemesPayload = .empty

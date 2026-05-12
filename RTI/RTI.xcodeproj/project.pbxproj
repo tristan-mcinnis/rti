@@ -46,6 +46,7 @@
 		2BF97B594F6B7E1C664F7750 /* MCPSpawnIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109CEE81EB1098437E27DC2C /* MCPSpawnIntegrationTests.swift */; };
 		2C242E5A0B3725CFE29F968A /* CommandRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */; };
 		2F24BC159FBFE197FC48AF3E /* ThemesController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 871369085C6F14D0784EE987 /* ThemesController.swift */; };
+		3037E3025CFFF05B9BAB2202 /* PanelWindowControlling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180E39BBB0AF568A9DB9FE4F /* PanelWindowControlling.swift */; };
 		304AD99717740B3B97C9C019 /* OnboardingArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33644391A0BA4F975D565D04 /* OnboardingArtwork.swift */; };
 		30B4A6E7303CD82F611660D1 /* EntityDossierRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E466CCDDFEEF126A2F39BE5 /* EntityDossierRow.swift */; };
 		313D0F1E1C06B108E71D1431 /* DossiersPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5265C657B03C15FB6048DAA5 /* DossiersPanelView.swift */; };
@@ -168,6 +169,7 @@
 		D8D888B2BFAD627972A3C6AD /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825F37E20D755398F3F17F96 /* ProjectsView.swift */; };
 		D93AB7F171F8F8AD6D7D6DB2 /* SessionSearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30B99FF79FBA673C096A7F6 /* SessionSearchResult.swift */; };
 		DBCAA5D4FD382ACD913D4980 /* SonioxFailureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 411EDD7A2C3166286A52B232 /* SonioxFailureTests.swift */; };
+		DBF1EA7B7791C6046880934B /* AnalysisController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649035E229EF2DC415F6B81E /* AnalysisController.swift */; };
 		DC6634EB99126FE2DB29DC33 /* DossierController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1C3402FA8BFBD520CAF73D /* DossierController.swift */; };
 		DD002A1A86822A2E66AAC847 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C48267D7243F07E859FF17B /* LogsView.swift */; };
 		DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
@@ -236,6 +238,7 @@
 		129EFBF37863B78243BEE1AE /* CommandPaletteWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteWindowController.swift; sourceTree = "<group>"; };
 		1456E03914BAD3E5A701143B /* DiscussionGuideController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuideController.swift; sourceTree = "<group>"; };
 		166C8635ECAD7923D5605360 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		180E39BBB0AF568A9DB9FE4F /* PanelWindowControlling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelWindowControlling.swift; sourceTree = "<group>"; };
 		18F9E23AC8C6C42DF807253D /* PasteboardHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteboardHelpers.swift; sourceTree = "<group>"; };
 		1A0241ED6660F0603C054FC5 /* GeneratedNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedNote.swift; sourceTree = "<group>"; };
 		1A12CCA6174FEC4E6F7897A4 /* TimeFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeFormat.swift; sourceTree = "<group>"; };
@@ -281,6 +284,7 @@
 		5D1C3402FA8BFBD520CAF73D /* DossierController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DossierController.swift; sourceTree = "<group>"; };
 		60E9F2B96FC6ED7A0953E3CE /* SummaryFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryFormatting.swift; sourceTree = "<group>"; };
 		6281C5C4478788699F815620 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
+		649035E229EF2DC415F6B81E /* AnalysisController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisController.swift; sourceTree = "<group>"; };
 		64E9FF127012B15A479CD070 /* TranscriptRegenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRegenerator.swift; sourceTree = "<group>"; };
 		655CF79D73E8D7162F3E4143 /* DiscussionGuidePanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuidePanelWindowController.swift; sourceTree = "<group>"; };
 		6820EA81EE3A97F7E8DB34B1 /* TranscriptContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptContext.swift; sourceTree = "<group>"; };
@@ -752,6 +756,7 @@
 			children = (
 				C94121B6360402223C2126D9 /* HotkeyCoordinator.swift */,
 				74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */,
+				180E39BBB0AF568A9DB9FE4F /* PanelWindowControlling.swift */,
 				73922AAADA102ECEF611A7B6 /* RTIDesign.swift */,
 				F88EA5A5405F40A4AF56C7C5 /* SpeakerLabels.swift */,
 				FAA4C9DA72BD19BF5E5E060C /* WindowCoordinator.swift */,
@@ -797,6 +802,7 @@
 		E9F118308854BE1E71C43BF8 /* Analysis */ = {
 			isa = PBXGroup;
 			children = (
+				649035E229EF2DC415F6B81E /* AnalysisController.swift */,
 				8D8B3F3ACDF0563BA140B344 /* DiscussionGuide.swift */,
 				1456E03914BAD3E5A701143B /* DiscussionGuideController.swift */,
 				4F7F28771DC943B788E73DC7 /* DiscussionGuidePanelView.swift */,
@@ -998,6 +1004,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				876EC6CA24660A8425315067 /* ActiveSessionProjection.swift in Sources */,
+				DBF1EA7B7791C6046880934B /* AnalysisController.swift in Sources */,
 				FD505366B25E1B611CC8269D /* AnalysisScheduler.swift in Sources */,
 				F501C2DB4B95AC2E17320050 /* AppDelegate.swift in Sources */,
 				E2687F74F0EF7AABB539A434 /* AppLog.swift in Sources */,
@@ -1066,6 +1073,7 @@
 				82B2EA95B5FF31213A4AF102 /* PaletteSearch.swift in Sources */,
 				4D729115DC371C02602C5704 /* PanelKind.swift in Sources */,
 				370C3178C7B6C514677C0600 /* PanelSpawner.swift in Sources */,
+				3037E3025CFFF05B9BAB2202 /* PanelWindowControlling.swift in Sources */,
 				EC5E34E0DC8EA2C464250FF2 /* PasteboardHelpers.swift in Sources */,
 				0808A741FD045389EAAE00A6 /* PeriodicCardsController.swift in Sources */,
 				53C5537B5695EAF1625AA27A /* PeriodicCardsView.swift in Sources */,

@@ -16,7 +16,7 @@ private final class NotesKeyablePanel: NSPanel {
 }
 
 @MainActor
-final class NotesPanelWindowController {
+final class NotesPanelWindowController: PanelWindowControlling {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
     // Held without Sendable annotations so the nonisolated deinit can read
@@ -96,14 +96,6 @@ final class NotesPanelWindowController {
             window.orderOut(nil)
             window.alphaValue = 1
         })
-    }
-
-    func toggle() {
-        if window.isVisible {
-            hide()
-        } else {
-            show()
-        }
     }
 
     func setSharingInvisible(_ invisible: Bool) {

@@ -6,7 +6,7 @@ import SwiftUI
 /// survive relaunches. Sharing type is set from the global invisibility
 /// flag like the other RTI windows.
 @MainActor
-final class UserPanelWindowController {
+final class UserPanelWindowController: PanelWindowControlling {
     private let panelId: String
     private let window: NSPanel
     nonisolated(unsafe) private var didMoveObserver: NSObjectProtocol?

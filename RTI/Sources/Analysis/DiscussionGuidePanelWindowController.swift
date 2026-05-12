@@ -15,7 +15,7 @@ private final class GuideKeyablePanel: NSPanel {
 }
 
 @MainActor
-final class DiscussionGuidePanelWindowController {
+final class DiscussionGuidePanelWindowController: PanelWindowControlling {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
     nonisolated(unsafe) private var didMoveObserver: NSObjectProtocol?
@@ -89,10 +89,6 @@ final class DiscussionGuidePanelWindowController {
             window.orderOut(nil)
             window.alphaValue = 1
         })
-    }
-
-    func toggle() {
-        if window.isVisible { hide() } else { show() }
     }
 
     func setSharingInvisible(_ invisible: Bool) {

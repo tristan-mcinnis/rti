@@ -16,7 +16,7 @@ private final class DossiersKeyablePanel: NSPanel {
 }
 
 @MainActor
-final class DossiersPanelWindowController {
+final class DossiersPanelWindowController: PanelWindowControlling {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
     nonisolated(unsafe) private var didMoveObserver: NSObjectProtocol?
@@ -90,14 +90,6 @@ final class DossiersPanelWindowController {
             window.orderOut(nil)
             window.alphaValue = 1
         })
-    }
-
-    func toggle() {
-        if window.isVisible {
-            hide()
-        } else {
-            show()
-        }
     }
 
     func setSharingInvisible(_ invisible: Bool) {

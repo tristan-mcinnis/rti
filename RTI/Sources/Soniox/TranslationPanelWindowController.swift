@@ -15,7 +15,7 @@ private final class TranslationKeyablePanel: NSPanel {
 }
 
 @MainActor
-final class TranslationPanelWindowController {
+final class TranslationPanelWindowController: PanelWindowControlling {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
     nonisolated(unsafe) private var didMoveObserver: NSObjectProtocol?
@@ -89,10 +89,6 @@ final class TranslationPanelWindowController {
             window.orderOut(nil)
             window.alphaValue = 1
         })
-    }
-
-    func toggle() {
-        if window.isVisible { hide() } else { show() }
     }
 
     func setSharingInvisible(_ invisible: Bool) {
