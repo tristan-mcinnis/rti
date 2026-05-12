@@ -14,6 +14,11 @@ struct Session: Identifiable, Hashable {
     var calendarEventId: String? = nil
     var calendarTitle: String? = nil
     var transcriptQuality: String? = nil
+    /// Snapshot of the project (id + readable name) at session-render time.
+    /// Mirrored into markdown frontmatter; canonical membership lives in
+    /// `project_sessions`.
+    var projectId: String? = nil
+    var projectName: String? = nil
 }
 
 extension Session {
@@ -30,5 +35,7 @@ extension Session {
         self.calendarEventId = nil
         self.calendarTitle = nil
         self.transcriptQuality = frontmatter.transcriptQuality
+        self.projectId = frontmatter.projectId
+        self.projectName = frontmatter.project
     }
 }

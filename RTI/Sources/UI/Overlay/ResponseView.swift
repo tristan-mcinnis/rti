@@ -195,6 +195,22 @@ struct ResponseView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
+                if let projectName = entry.appliedProjectName, !projectName.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 9))
+                        Text("Project: \(projectName)")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
+                    .help("This response was generated with the \"\(projectName)\" project instructions in scope.")
+                }
                 let display = entry.text + (isStreamingThis ? " ▍" : "")
                 let attributed = (try? AttributedString(markdown: display,
                                                         options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))

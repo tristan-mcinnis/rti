@@ -505,6 +505,8 @@ struct MCPTools {
         if let v = fm.keyTopics { d["key_topics"] = v }
         if let v = fm.transcriptQuality { d["transcript_quality"] = v }
         if let v = fm.wavPath { d["wav_path"] = v }
+        if let v = fm.project { d["project"] = v }
+        if let v = fm.projectId { d["project_id"] = v }
         if let map = fm.speakerMap {
             d["speaker_map"] = map.mapValues { entry -> [String: String] in
                 ["name": entry.name, "source": entry.source]

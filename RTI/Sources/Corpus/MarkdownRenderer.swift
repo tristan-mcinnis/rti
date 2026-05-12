@@ -28,6 +28,8 @@ enum MarkdownRenderer {
         let notesMarkdown: String?       // Concatenated GeneratedNote bodies
         let entitiesMarkdown: String?    // Grouped EntityDossier list
         let turns: [TurnLine]
+        let projectId: String?
+        let projectName: String?
 
         init(
             id: String,
@@ -43,7 +45,9 @@ enum MarkdownRenderer {
             summaryMarkdown: String?,
             notesMarkdown: String? = nil,
             entitiesMarkdown: String? = nil,
-            turns: [TurnLine]
+            turns: [TurnLine],
+            projectId: String? = nil,
+            projectName: String? = nil
         ) {
             self.id = id
             self.startedAt = startedAt
@@ -59,6 +63,8 @@ enum MarkdownRenderer {
             self.notesMarkdown = notesMarkdown
             self.entitiesMarkdown = entitiesMarkdown
             self.turns = turns
+            self.projectId = projectId
+            self.projectName = projectName
         }
     }
 
@@ -74,7 +80,9 @@ enum MarkdownRenderer {
             speakerMap: inputs.speakerMap,
             keyTopics: inputs.keyTopics,
             transcriptQuality: inputs.transcriptQuality,
-            wavPath: inputs.wavPath
+            wavPath: inputs.wavPath,
+            project: inputs.projectName,
+            projectId: inputs.projectId
         )
         var bodyParts: [String] = []
         if let summary = inputs.summaryMarkdown,

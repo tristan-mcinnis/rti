@@ -25,6 +25,13 @@ struct CorpusEntry: Equatable {
         var keyTopics: [String]?
         var transcriptQuality: String?
         var wavPath: String?
+        /// Human-readable project name this session was associated with at
+        /// render time (e.g. "Q4 launch planning"). Audit field — the
+        /// canonical membership lives in the `project_sessions` table.
+        var project: String?
+        /// Stable id of the project (e.g. "proj.ABC123…") so renames don't
+        /// break linkage from the markdown record back to the project row.
+        var projectId: String?
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -38,6 +45,8 @@ struct CorpusEntry: Equatable {
             case keyTopics = "key_topics"
             case transcriptQuality = "transcript_quality"
             case wavPath = "wav_path"
+            case project
+            case projectId = "project_id"
         }
     }
 

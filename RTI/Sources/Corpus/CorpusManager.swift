@@ -125,6 +125,19 @@ final class CorpusManager {
         let notesMarkdown = Self.notesMarkdown(forSessionId: sessionId)
         let entitiesMarkdown = Self.entitiesMarkdown(forSessionId: sessionId)
 
+        // Snapshot project membership at render time. The `project_sessions`
+        // table is the canonical record; the markdown frontmatter stores
+        // both id (durable) and name (human-readable for `cat foo.md`).
+        let projectId = await MainActor.run { () -> String? in
+            ProjectStore.shared.projects.first(where: {
+                ProjectStore.shared.sessionIds(forProject: $0.id).contains(sessionId)
+            })?.id
+        }
+        let projectName = await MainActor.run { () -> String? in
+            guard let projectId else { return nil }
+            return ProjectStore.shared.projects.first { $0.id == projectId }?.name
+        }
+
         let inputs = MarkdownRenderer.Inputs(
             id: sessionId,
             startedAt: startedAt,
@@ -139,7 +152,9 @@ final class CorpusManager {
             summaryMarkdown: summaryText,
             notesMarkdown: notesMarkdown,
             entitiesMarkdown: entitiesMarkdown,
-            turns: turns
+            turns: turns,
+            projectId: projectId,
+            projectName: projectName
         )
         let entry = MarkdownRenderer.make(inputs)
         let slug = CorpusWriter.slug(forTitle: title, date: startedAt)

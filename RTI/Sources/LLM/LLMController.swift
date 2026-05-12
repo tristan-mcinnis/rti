@@ -8,6 +8,10 @@ struct ChatEntry: Identifiable, Equatable {
     let action: String?        // "Ask" | "Assist" — user entries only
     let contextUsed: Bool      // user entries only — transcript attached
     let screenContextUsed: Bool // user entries only — OCR screen attached
+    /// Name of the project whose instructions were prepended for this turn.
+    /// Surfaced as a small "Project: X" tag in the response bubble so the
+    /// user can see when project-specific guidance is in play.
+    var appliedProjectName: String? = nil
 }
 
 @MainActor
@@ -191,6 +195,26 @@ final class LLMController: ObservableObject {
         if let glossary = GlossaryStore.shared.systemPromptFragment {
             apiMessages.append(LLMMessage(role: "system", content: glossary))
         }
+        // Prepend the active project's curated instructions (if any). The
+        // project picker in the live transcript header drives this — when
+        // a project is selected, every turn this session produces inherits
+        // its guidance.
+        var appliedProjectName: String? = nil
+        if let pid = SessionCoordinator.shared.activeProjectId,
+           let project = ProjectStore.shared.projects.first(where: { $0.id == pid })
+        {
+            let instructions = project.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !instructions.isEmpty {
+                apiMessages.append(LLMMessage(
+                    role: "system",
+                    content: "This session belongs to the user's project \"\(project.name)\". Project instructions follow — follow these alongside the rules above:\n---\n\(instructions)\n---"
+                ))
+                appliedProjectName = project.name
+                RTILog.log("turn — applying project=\"\(project.name)\" instructions (\(instructions.count) chars)", category: "projects")
+            } else {
+                appliedProjectName = project.name
+            }
+        }
         if let reference = activeMode?.referenceText, !reference.isEmpty {
             let capped = reference.count > 8000 ? String(reference.prefix(8000)) + "\n…[truncated]" : reference
             let modeName = activeMode?.name ?? "active mode"
@@ -212,7 +236,7 @@ final class LLMController: ObservableObject {
             apiMessages.append(LLMMessage(role: entry.role, content: content))
         }
 
-        let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false)
+        let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false, appliedProjectName: appliedProjectName)
         streamingEntryID = assistantEntry.id
         entries.append(assistantEntry)
 

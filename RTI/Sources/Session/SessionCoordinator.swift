@@ -26,6 +26,12 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var currentSessionId: String?
     @Published private(set) var startedAt: Date?
     @Published private(set) var endedAt: Date?
+    /// Project this session is associated with (if any). Drives whether the
+    /// live assistant prepends the project's curated instructions and is
+    /// snapshotted into the session's markdown frontmatter at render time.
+    /// Backed by `project_sessions` in SQLite for durability + UserDefaults
+    /// for cross-launch stickiness.
+    @Published private(set) var activeProjectId: String?
     @Published private(set) var liveEntries: [LiveEntry] = []
     @Published private(set) var interimLine: String?
     @Published private(set) var lastError: String?
@@ -59,8 +65,19 @@ final class SessionCoordinator: ObservableObject {
     private var activeModeId: String?
 
     private static let resumeWindowSeconds: TimeInterval = 300
+    private static let activeProjectKey = "rti.session.activeProjectId"
 
     private init() {
+        // Sticky project across launches — picker reflects last selection.
+        // Overridden later by `resumeSession` / `bootstrapChatSession` when
+        // the resumed session already has a recorded project membership.
+        let stored = UserDefaults.standard.string(forKey: Self.activeProjectKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.activeProjectId = (stored?.isEmpty == false) ? stored : nil
+        commonInit()
+    }
+
+    private func commonInit() {
         audioPipeline.onWords = { [weak self] words in
             self?.handleWords(words)
         }
@@ -138,11 +155,18 @@ final class SessionCoordinator: ObservableObject {
                 startedAt = recent.startedAt
                 activeModeId = recent.modeId
                 activeWavPath = recent.wavPath
+                refreshActiveProjectFromMembership(for: recent.id)
                 return
             }
         }
-        currentSessionId = UUID().uuidString
+        let newId = UUID().uuidString
+        currentSessionId = newId
         startedAt = now
+        // Carry the sticky project over to the fresh chat session so any
+        // pre-recording Q&A already inherits the project's instructions.
+        if let pid = activeProjectId {
+            ProjectStore.shared.addSession(newId, toProject: pid)
+        }
     }
 
     func switchToSession(id: String) {
@@ -152,8 +176,68 @@ final class SessionCoordinator: ObservableObject {
         startedAt = session.startedAt
         activeWavPath = session.wavPath
         activeModeId = session.modeId
+        refreshActiveProjectFromMembership(for: session.id)
         transcriptPipeline.reset()
         publishState()
+    }
+
+    /// Set (or clear) the project this session is associated with. Writes
+    /// the new membership to `project_sessions`, removes any prior
+    /// membership for this session, and persists the selection to
+    /// UserDefaults so the picker remembers it across launches.
+    func setActiveProject(_ projectId: String?) {
+        let normalized = projectId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newValue: String? = (normalized?.isEmpty == false) ? normalized : nil
+        guard newValue != activeProjectId else { return }
+
+        if let sessionId = currentSessionId {
+            // Drop any existing membership for this session before adding
+            // the new one. A session belongs to at most one "active" project
+            // from the live-assistant's perspective.
+            for project in ProjectStore.shared.projects {
+                if project.id != newValue {
+                    ProjectStore.shared.removeSession(sessionId, fromProject: project.id)
+                }
+            }
+            if let newValue {
+                ProjectStore.shared.addSession(sessionId, toProject: newValue)
+            }
+        }
+
+        activeProjectId = newValue
+        if let newValue {
+            UserDefaults.standard.set(newValue, forKey: Self.activeProjectKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.activeProjectKey)
+        }
+
+        let name = newValue.flatMap { id in
+            ProjectStore.shared.projects.first { $0.id == id }?.name
+        } ?? "(none)"
+        RTILog.log("active project → \(name)", category: "projects")
+    }
+
+    /// Query `project_sessions` for the given session id and update
+    /// `activeProjectId` to match. Used after resume / switch so the live
+    /// picker reflects what the saved session already belongs to.
+    private func refreshActiveProjectFromMembership(for sessionId: String) {
+        // First project this session is a member of — sessions normally
+        // have at most one association from the live picker, but if the
+        // user manually added the session to multiple projects via the
+        // Projects view, we just pick the most recent association.
+        let projects = ProjectStore.shared.projects
+        for project in projects {
+            if ProjectStore.shared.sessionIds(forProject: project.id).contains(sessionId) {
+                if activeProjectId != project.id {
+                    activeProjectId = project.id
+                    UserDefaults.standard.set(project.id, forKey: Self.activeProjectKey)
+                }
+                return
+            }
+        }
+        // No association recorded for this session — leave the sticky
+        // value alone so the picker doesn't reset every time the user
+        // navigates to an old session.
     }
 
     /// Insert a user-authored note into the current session's transcript at the
@@ -299,6 +383,7 @@ final class SessionCoordinator: ObservableObject {
         endedAt = nil
         activeWavPath = session.wavPath
         activeModeId = modeId
+        refreshActiveProjectFromMembership(for: session.id)
         transcriptPipeline.reset()
         publishState()
         LLMController.shared.loadHistoryForCurrentSession()
@@ -323,6 +408,15 @@ final class SessionCoordinator: ObservableObject {
         currentSessionId = sessionId
         startedAt = now
         endedAt = nil
+
+        // If the user has a sticky project selected, make sure the new
+        // sessionId is registered in `project_sessions` — this is how the
+        // live LLM controller looks up "what project is this session a
+        // member of" each turn, and how renderSession captures the project
+        // name into the markdown frontmatter when the session ends.
+        if let pid = activeProjectId {
+            ProjectStore.shared.addSession(sessionId, toProject: pid)
+        }
 
         do {
             _ = try audioPipeline.prepare(sessionId: sessionId)
