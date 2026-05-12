@@ -24,13 +24,7 @@ final class WindowCoordinator {
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
-    var notesPanelIsVisible: Bool { isVisible(.notes) }
-    var dossiersPanelIsVisible: Bool { isVisible(.dossiers) }
-    var themesPanelIsVisible: Bool { isVisible(.themes) }
-    var guidePanelIsVisible: Bool { isVisible(.discussionGuide) }
-    var translationPanelIsVisible: Bool { isVisible(.translation) }
-
-    private func isVisible(_ id: FloatingPanelID) -> Bool {
+    func isPanelVisible(_ id: FloatingPanelID) -> Bool {
         floatingPanels[id]?.isVisible ?? false
     }
 
@@ -183,24 +177,6 @@ final class WindowCoordinator {
     func show(_ id: FloatingPanelID) { floatingPanels[id]?.show() }
     func hide(_ id: FloatingPanelID) { floatingPanels[id]?.hide() }
     func toggle(_ id: FloatingPanelID) { floatingPanels[id]?.toggle() }
-
-    // Named convenience wrappers — kept so existing callers (menus,
-    // AppDelegate, notifications) compile unchanged.
-    func showNotesPanel() { show(.notes) }
-    func hideNotesPanel() { hide(.notes) }
-    func toggleNotesPanel() { toggle(.notes) }
-    func showDossiersPanel() { show(.dossiers) }
-    func hideDossiersPanel() { hide(.dossiers) }
-    func toggleDossiersPanel() { toggle(.dossiers) }
-    func showThemesPanel() { show(.themes) }
-    func hideThemesPanel() { hide(.themes) }
-    func toggleThemesPanel() { toggle(.themes) }
-    func showGuidePanel() { show(.discussionGuide) }
-    func hideGuidePanel() { hide(.discussionGuide) }
-    func toggleGuidePanel() { toggle(.discussionGuide) }
-    func showTranslationPanel() { show(.translation) }
-    func hideTranslationPanel() { hide(.translation) }
-    func toggleTranslationPanel() { toggle(.translation) }
 
     // MARK: - Onboarding
 

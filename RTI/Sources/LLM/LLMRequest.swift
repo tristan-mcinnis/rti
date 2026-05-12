@@ -21,53 +21,35 @@ final class LLMRequest: @unchecked Sendable {
         currentTask = nil
     }
 
-    /// One-shot collector: waits for the full response then fires the
-    /// callback. Used by SummaryController and SessionTitleController.
-    func collect(
-        messages: [LLMMessage],
-        smart: Bool,
-        onResult: @Sendable @escaping (String) -> Void,
-        onError: @Sendable @escaping (String, Bool) -> Void
-    ) {
-        guard currentTask == nil else { return }
-        currentTask = Task { [weak self] in
-            defer { self?.currentTask = nil }
-            guard let client = self?.client else { return }
-            do {
-                let result = try await client.collectStreamedResponse(messages: messages, smart: smart)
-                if Task.isCancelled { return }
-                onResult(result)
-            } catch is CancellationError {
-                return
-            } catch {
-                if Task.isCancelled { return }
-                let llmError = error as? LLMError
-                onError(llmError?.userMessage ?? "\(error)", llmError?.isAuth ?? false)
-            }
-        }
-    }
+    // MARK: - Single-flight task primitive
 
-    /// Async variant of collect: returns the full response on success,
-    /// nil on error or cancellation. Used by the async title/summary
-    /// generators so callers can await the result before rendering.
-    func collectAsync(messages: [LLMMessage], smart: Bool) async -> String? {
+    /// Cancel any in-flight task, then run `work` on the client. Returns nil
+    /// on cancellation or if ownership was lost (weak self nil'd). The caller
+    /// handles LLMError translation — the primitive only manages task lifecycle.
+    private func withSingleFlight<T: Sendable>(
+        _ work: @Sendable @escaping (LLMClient) async throws -> T
+    ) async -> T? {
         currentTask?.cancel()
-        let task = Task { [weak self] () -> String? in
+        let task = Task { [weak self] () -> T? in
             defer { self?.currentTask = nil }
             guard let client = self?.client else { return nil }
-            do {
-                let r = try await client.collectStreamedResponse(messages: messages, smart: smart)
-                if Task.isCancelled { return nil }
-                return r
-            } catch is CancellationError {
-                return nil
-            } catch {
-                if Task.isCancelled { return nil }
-                return nil
-            }
+            guard let r = try? await work(client) else { return nil }
+            if Task.isCancelled { return nil }
+            return r
         }
         currentTask = Task { _ = await task.value }
         return await task.value
+    }
+
+    // MARK: - Async execution (one-shot collect, tool-aware streaming)
+
+    /// Collect the full streaming response. Returns nil on cancellation, error, or
+    /// empty result. Used by title/summary/analysis generators so callers can
+    /// await the result before rendering.
+    func collectAsync(messages: [LLMMessage], smart: Bool) async -> String? {
+        return await withSingleFlight { client in
+            try await client.collectStreamedResponse(messages: messages, smart: smart)
+        }
     }
 
     /// Tool-aware streaming turn. Yields content/reasoning via callbacks
@@ -81,6 +63,9 @@ final class LLMRequest: @unchecked Sendable {
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) async throws -> LLMClient.ToolAwareStreamResult {
         currentTask?.cancel()
+        // streamWithTools must not use withSingleFlight for the inner task —
+        // the caller (ToolLoop) manages the outer task slot. We only gate
+        // and capture the client here.
         let task = Task { [client] () throws -> LLMClient.ToolAwareStreamResult in
             try await client.streamChatWithTools(
                 messages: messages,
@@ -95,8 +80,10 @@ final class LLMRequest: @unchecked Sendable {
         return try await task.value
     }
 
-    /// Streaming executor: yields deltas as they arrive. Used by
-    /// LLMController and SessionQAController.
+    // MARK: - Callback-based streaming
+
+    /// Streaming executor: yields deltas as they arrive. Fire-and-forget —
+    /// callbacks deliver results to the caller. Used by SessionQA and CorpusChat.
     func stream(
         messages: [LLMMessage],
         smart: Bool,

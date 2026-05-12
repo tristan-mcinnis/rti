@@ -167,7 +167,7 @@ enum CommandPaletteFactory {
                 id: "panel.notes.toggle",
                 title: "Toggle Notes Panel  ⌘⇧N",
                 keywords: ["notes"],
-                perform: { [weak windows] in windows?.toggleNotesPanel() },
+                perform: { [weak windows] in windows?.toggle(.notes) },
                 menuSection: .panels,
                 hotkeyKeyCode: UInt32(kVK_ANSI_N),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
@@ -176,7 +176,7 @@ enum CommandPaletteFactory {
                 id: "panel.dossiers.toggle",
                 title: "Toggle Dossiers Panel  ⌘⇧D",
                 keywords: ["dossiers", "entities"],
-                perform: { [weak windows] in windows?.toggleDossiersPanel() },
+                perform: { [weak windows] in windows?.toggle(.dossiers) },
                 menuSection: .panels,
                 hotkeyKeyCode: UInt32(kVK_ANSI_D),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
@@ -185,21 +185,21 @@ enum CommandPaletteFactory {
                 id: "panel.themes.toggle",
                 title: "Toggle Themes Panel",
                 keywords: ["themes"],
-                perform: { [weak windows] in windows?.toggleThemesPanel() },
+                perform: { [weak windows] in windows?.toggle(.themes) },
                 menuSection: .panels
             ),
             RTICommand(
                 id: "panel.guide.toggle",
                 title: "Toggle Discussion Guide",
                 keywords: ["guide", "discussion"],
-                perform: { [weak windows] in windows?.toggleGuidePanel() },
+                perform: { [weak windows] in windows?.toggle(.discussionGuide) },
                 menuSection: .panels
             ),
             RTICommand(
                 id: "panel.translation.toggle",
                 title: "Toggle Translation Panel",
                 keywords: ["translation", "translate"],
-                perform: { [weak windows] in windows?.toggleTranslationPanel() },
+                perform: { [weak windows] in windows?.toggle(.translation) },
                 menuSection: .panels
             ),
 

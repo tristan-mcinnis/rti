@@ -309,7 +309,7 @@ final class SessionCoordinator: ObservableObject {
             NSLog("[RTI] deleteSession FTS reindex failed: \(error)")
         }
         // Drop any orphaned live JSONL.
-        CorpusManager.shared.deleteLive(sessionId: id)
+        LiveSessionStore.shared.deleteLive(sessionId: id)
         NotificationCenter.default.post(name: .rtiSessionsChanged, object: nil)
         if currentSessionId == id {
             currentSessionId = nil
@@ -429,7 +429,7 @@ final class SessionCoordinator: ObservableObject {
 
         // Phase 3 dual-write: open a JSONL stream for this session so live
         // events land in the on-disk record as well as in SQLite.
-        CorpusManager.shared.openLive(sessionId: sessionId)
+        LiveSessionStore.shared.openLive(sessionId: sessionId)
 
         do {
             try audioPipeline.start()
@@ -507,7 +507,7 @@ final class SessionCoordinator: ObservableObject {
 
     private func triggerSummaryIfNeeded(sessionId: String) {
         // Whether we have any transcript content lives in JSONL now.
-        let liveURL = CorpusManager.shared.liveDirectory.appendingPathComponent("\(sessionId).jsonl")
+        let liveURL = LiveSessionStore.shared.liveDirectory.appendingPathComponent("\(sessionId).jsonl")
         let hasContent: Bool = {
             guard FileManager.default.fileExists(atPath: liveURL.path) else { return false }
             guard let events = try? LiveJSONLReader.readAll(liveURL) else { return false }
@@ -567,7 +567,7 @@ final class SessionCoordinator: ObservableObject {
         if let sid = currentSessionId {
             // Best-effort: flush JSONL so on next launch the orphan
             // recovery path can present this session for re-render.
-            CorpusManager.shared.closeLive(sessionId: sid)
+            LiveSessionStore.shared.closeLive(sessionId: sid)
         }
         isRunning = false
     }

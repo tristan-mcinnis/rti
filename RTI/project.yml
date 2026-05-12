@@ -150,6 +150,7 @@ targets:
       - path: Sources/Corpus/LiveJSONLWriter.swift
       - path: Sources/Corpus/TranscriptRender.swift
       - path: Sources/Corpus/CorpusFTSReindexer.swift
+      - path: Sources/Corpus/ChunkPolicy.swift
       - path: Sources/Support/SpeakerLabelMapping.swift
       - path: Sources/Support/TimeFormat.swift
       - path: Sources/Support/SummaryFormatting.swift

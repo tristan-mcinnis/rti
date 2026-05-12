@@ -45,8 +45,8 @@ final class TranscriptPipeline {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         let offsetMs = Int(max(0, Date().timeIntervalSince(startedAt) * 1000))
-        let writer = CorpusManager.shared.liveWriter(sessionId: sessionId)
-            ?? CorpusManager.shared.openLive(sessionId: sessionId)
+        let writer = LiveSessionStore.shared.liveWriter(sessionId: sessionId)
+            ?? LiveSessionStore.shared.openLive(sessionId: sessionId)
         writer.append(.note(ts: offsetMs, text: trimmed))
         let entry = LiveEntry(
             speakerId: "note",
@@ -70,7 +70,7 @@ final class TranscriptPipeline {
 
     private func writeJSONL(_ turns: [SpeakerTurn], channel: String) {
         guard let sessionId = SessionCoordinator.shared.currentSessionId,
-              let writer = CorpusManager.shared.liveWriter(sessionId: sessionId) else { return }
+              let writer = LiveSessionStore.shared.liveWriter(sessionId: sessionId) else { return }
         for turn in turns {
             writer.append(.word(
                 ts: turn.startMs,

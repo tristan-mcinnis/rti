@@ -89,11 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     @objc private func toggleOverlay() { windows.toggleOverlay() }
     @objc private func clearChat() { Self.confirmThenClearChat() }
     @objc private func toggleCommandPalette() { windows.toggleCommandPalette() }
-    @objc private func toggleNotesPanel() { windows.toggleNotesPanel() }
-    @objc private func toggleDossiersPanel() { windows.toggleDossiersPanel() }
-    @objc private func toggleThemesPanel() { windows.toggleThemesPanel() }
-    @objc private func toggleGuidePanel() { windows.toggleGuidePanel() }
-    @objc private func toggleTranslationPanel() { windows.toggleTranslationPanel() }
+    @objc private func toggleNotesPanel() { windows.toggle(.notes) }
+    @objc private func toggleDossiersPanel() { windows.toggle(.dossiers) }
+    @objc private func toggleThemesPanel() { windows.toggle(.themes) }
+    @objc private func toggleGuidePanel() { windows.toggle(.discussionGuide) }
+    @objc private func toggleTranslationPanel() { windows.toggle(.translation) }
 
     /// Shows a destructive-confirmation alert; on confirm, clears the
     /// current session's chat messages. Static so `CommandPaletteFactory`

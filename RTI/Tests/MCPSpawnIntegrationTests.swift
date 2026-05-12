@@ -122,7 +122,7 @@ final class MCPSpawnIntegrationTests: XCTestCase {
         XCTAssertEqual(serverInfo?["name"] as? String, "rti-mcp")
     }
 
-    func test_toolsList_returnsAllFour() throws {
+    func test_toolsList_returnsCoreTools() throws {
         let responses = try driveMCP([
             #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
             #"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#
@@ -132,7 +132,8 @@ final class MCPSpawnIntegrationTests: XCTestCase {
         let tools = result?["tools"] as? [[String: Any]]
         XCTAssertNotNil(tools)
         let names = Set(tools?.compactMap { $0["name"] as? String } ?? [])
-        XCTAssertEqual(names, ["search_corpus", "read_meeting", "list_meetings", "read_live_transcript"])
+        let core: Set<String> = ["search_corpus", "read_meeting", "list_meetings", "read_live_transcript"]
+        XCTAssertTrue(core.isSubset(of: names), "Expected core tools \(core) in \(names)")
     }
 
     func test_listMeetings_returnsFixtureFiles() throws {

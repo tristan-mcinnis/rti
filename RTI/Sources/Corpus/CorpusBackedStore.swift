@@ -71,7 +71,7 @@ enum CorpusBackedStore {
             return TranscriptRender.entries(from: entry.body, sessionId: id, createdAt: entry.frontmatter.date)
         }
         // Active session — read JSONL.
-        let liveURL = CorpusManager.shared.liveDirectory.appendingPathComponent("\(id).jsonl")
+        let liveURL = LiveSessionStore.shared.liveDirectory.appendingPathComponent("\(id).jsonl")
         guard FileManager.default.fileExists(atPath: liveURL.path),
               let events = try? LiveJSONLReader.readAll(liveURL) else {
             return []
@@ -118,12 +118,16 @@ enum CorpusBackedStore {
         return nil
     }
 
-    private nonisolated static let corpusDir: URL = {
+    /// Re-resolved on every read so that changing the corpus path in
+    /// Settings takes effect without an app restart. Was previously a
+    /// `static let` that captured the value at first access — that bug
+    /// is why "change corpus dir → reindex" silently used the old path.
+    private nonisolated static var corpusDir: URL {
         if let custom = UserDefaults.standard.string(forKey: "rti.corpus.path"), !custom.isEmpty {
             return URL(fileURLWithPath: (custom as NSString).expandingTildeInPath)
         }
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("meetings", isDirectory: true)
-    }()
+    }
 
     // MARK: - Parsing
 
