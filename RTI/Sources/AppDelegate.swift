@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private let menu = MenuCoordinator()
     private let hotkeys = HotkeyCoordinator()
     private var sessionObservationTask: Task<Void, Never>?
+    private var corpusWatcher: CorpusWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard ensureSingleInstance() else { return }
@@ -24,6 +25,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             from: CorpusManager.shared.corpusDirectory,
             in: RTIDatabase.shared.pool
         )
+
+        // Keep the FTS + dense indexes in sync with on-disk markdown when
+        // anything outside the host writes to the corpus directory — chiefly
+        // `rti-mcp append_to_session`, but also manual edits.
+        let watcher = CorpusWatcher(
+            directory: CorpusManager.shared.corpusDirectory,
+            dbPool: RTIDatabase.shared.pool
+        )
+        watcher.start()
+        corpusWatcher = watcher
 
         windows.install(onOpenSettings: { [weak self] in self?.windows.openSettings() })
 

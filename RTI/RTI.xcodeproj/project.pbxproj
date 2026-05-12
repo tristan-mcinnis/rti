@@ -141,6 +141,7 @@
 		AA632F7F7DC4BBFC918D6941 /* SessionSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67B7ED9699397B8D95DD0B0 /* SessionSearch.swift */; };
 		AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC5292C23D09D793067E231 /* AssistantInputView.swift */; };
 		ABFE3A689B67646CFB043FF3 /* SummaryFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E9F2B96FC6ED7A0953E3CE /* SummaryFormatting.swift */; };
+		AF6776842F8B9EA05B1D7FF2 /* CorpusWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D04C14B63A9528ADCA8767F /* CorpusWatcher.swift */; };
 		B2B8CFCC8FAF6A03CA0D83BE /* PaletteSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC85C74A2870D6756905F029 /* PaletteSearchTests.swift */; };
 		B2C0982C19BB0295D634F742 /* CorpusIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A879738A24A2BB5BE5E801 /* CorpusIndexer.swift */; };
 		B2D6B384774E4636F7583420 /* PaletteSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82C3639F126C2E773A30F98A /* PaletteSearch.swift */; };
@@ -335,6 +336,7 @@
 		8A6FCA69E1044D21B323DB79 /* SessionProjectBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionProjectBinding.swift; sourceTree = "<group>"; };
 		8B3B1B204953A066A5663F35 /* AskCorpusController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskCorpusController.swift; sourceTree = "<group>"; };
 		8C6B19B466BE378C1C09EAFD /* SessionTitleController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTitleController.swift; sourceTree = "<group>"; };
+		8D04C14B63A9528ADCA8767F /* CorpusWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusWatcher.swift; sourceTree = "<group>"; };
 		8D8B3F3ACDF0563BA140B344 /* DiscussionGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuide.swift; sourceTree = "<group>"; };
 		8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		906F7DCF321C17392E3DA594 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
@@ -758,6 +760,7 @@
 				58A879738A24A2BB5BE5E801 /* CorpusIndexer.swift */,
 				3138E022716317B6DB18B9E2 /* CorpusManager.swift */,
 				4810F8A917CBF2AFAC98759B /* CorpusReader.swift */,
+				8D04C14B63A9528ADCA8767F /* CorpusWatcher.swift */,
 				342379F5E45B76ABAB810257 /* CorpusWriter.swift */,
 				7D518F760B156F2AC502BAC0 /* Embedder.swift */,
 				6DF140B0767CF8B3512369C9 /* HybridRetriever.swift */,
@@ -1079,6 +1082,7 @@
 				B2C0982C19BB0295D634F742 /* CorpusIndexer.swift in Sources */,
 				0ABEC3C6A17E293DE6AC1CCC /* CorpusManager.swift in Sources */,
 				BF4EE9BF940A75A8915864A5 /* CorpusReader.swift in Sources */,
+				AF6776842F8B9EA05B1D7FF2 /* CorpusWatcher.swift in Sources */,
 				8B691267535E0798EA8B6241 /* CorpusWriter.swift in Sources */,
 				F375BF4B7B14792C422AE1D1 /* CounterPanelView.swift in Sources */,
 				FE75685A7A9FE7649EA0C7AB /* CrashLog.swift in Sources */,
