@@ -104,9 +104,11 @@ struct CommandPaletteView: View {
         }
     }
 
-    /// Emit a "Sessions" / "Actions" header before the first result of each
-    /// kind. Avoids a separate `Section` view so keyboard navigation stays
-    /// on the flat result indices.
+    /// Emit a section header before the first result of each kind. With a
+    /// query: "Actions" / "Sessions". Without a query: "Recent" for any
+    /// commands the user has run before, then "All actions" for the rest —
+    /// makes the empty-state list self-explanatory instead of an unlabelled
+    /// dump.
     @ViewBuilder
     private func sectionHeaderIfNeeded(at idx: Int) -> some View {
         let result = results[idx]
@@ -115,15 +117,36 @@ struct CommandPaletteView: View {
             let prev = results[idx - 1]
             return prev.isCommand != result.isCommand
         }()
-        if isFirstOfKind, hasQuery {
-            Text(result.isCommand ? "Actions" : "Sessions")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 4)
+
+        if hasQuery {
+            if isFirstOfKind {
+                sectionLabel(result.isCommand ? "Actions" : "Sessions")
+            }
+        } else {
+            // Empty-query mode: only commands appear (sessions need a query
+            // to materialise). Split into "Recent" vs "All actions".
+            let recentIds = Set(CommandRegistry.shared.recents().map(\.id))
+            if case .command(let cmd) = result {
+                let isRecent = recentIds.contains(cmd.id)
+                let prevIsRecent: Bool? = {
+                    guard idx > 0, case .command(let prev) = results[idx - 1] else { return nil }
+                    return recentIds.contains(prev.id)
+                }()
+                if prevIsRecent != isRecent {
+                    sectionLabel(isRecent ? "Recent" : "All actions")
+                }
+            }
         }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .textCase(.uppercase)
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
     }
 
     private var emptyStateText: String {

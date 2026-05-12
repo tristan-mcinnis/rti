@@ -5,6 +5,7 @@ struct AssistantInputView: View {
 
     @State private var input: String = ""
     @FocusState private var isInputFocused: Bool
+    @AppStorage("rti.invisible") private var isHiddenFromCapture: Bool = true
     private let llm = LLMController.shared
     private let modes = ModeStore.shared
     private let session = SessionCoordinator.shared
@@ -143,6 +144,16 @@ struct AssistantInputView: View {
 
             Divider()
 
+            Button(action: toggleHiddenFromCapture) {
+                if isHiddenFromCapture {
+                    Label("Hidden from Screen Capture", systemImage: "checkmark")
+                } else {
+                    Text("Hidden from Screen Capture")
+                }
+            }
+
+            Divider()
+
             Button(action: onOpenSettings) {
                 Label("Settings…", systemImage: "gearshape")
             }
@@ -223,6 +234,13 @@ struct AssistantInputView: View {
             return "Type a note — Enter inserts inline into the transcript"
         }
         return "Ask about your screen or conversation — ⌘↵ for Assist"
+    }
+
+    /// Route through the registered command so the menubar item, command
+    /// palette, and pill menu all share one toggle path that both persists
+    /// the flag and applies sharingType to every panel.
+    private func toggleHiddenFromCapture() {
+        CommandRegistry.shared.commands.first { $0.id == "invisibility.toggle" }?.perform()
     }
 
     private func submit() {
