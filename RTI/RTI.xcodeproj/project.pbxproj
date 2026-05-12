@@ -22,7 +22,6 @@
 		1553EA36199944A44D017067 /* TranslationPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4246C29C2263B8291AC810EB /* TranslationPanelView.swift */; };
 		15E2826D80CB74AC7A21C69E /* EntityDossier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94A13A1CB26ACBF57A7CD627 /* EntityDossier.swift */; };
 		169F8B2909216CC79B83DEDA /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F82DA748662ECAE4C0101F /* LLMProvider.swift */; };
-		16FD5868B82FADF9E00188CF /* NotesPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CD3AE1A12E3FA34AD1D04A0 /* NotesPanelWindowController.swift */; };
 		1A6EBD692D3F6B1A66FEFBF1 /* AskCorpusHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E886244B65C228EF9BE4AA /* AskCorpusHistoryStore.swift */; };
 		1B82BC140E1AF1EE59B9A9FD /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 193C6721989EBF7E550F424A /* Yams */; };
 		1EE82B486EBF9D4F47D62BCB /* MCPTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583047121E9E536DA823376A /* MCPTools.swift */; };
@@ -33,7 +32,6 @@
 		20FACD1842C77592BC60231B /* SessionSearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30B99FF79FBA673C096A7F6 /* SessionSearchResult.swift */; };
 		217A70742CDAB0DB3D538B89 /* RTIDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF67E26C43E305EB5AA35F8 /* RTIDatabase.swift */; };
 		220D798013E40D1826B23127 /* SpeakerTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C0B2386DED8C25A82AC662 /* SpeakerTurn.swift */; };
-		228E4DB961EF2449DF2FCB1D /* ThemesPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE62EA665A102C200CDF8FB4 /* ThemesPanelWindowController.swift */; };
 		23991DEEA239F0B185B18D13 /* LLMError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D135438CFFDC7140E0AD997 /* LLMError.swift */; };
 		26A68471342CC1C1E2B26F5B /* ToolLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */; };
 		272977CAC3B308B67685E4C9 /* SessionDetailRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */; };
@@ -50,8 +48,8 @@
 		304AD99717740B3B97C9C019 /* OnboardingArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33644391A0BA4F975D565D04 /* OnboardingArtwork.swift */; };
 		30B4A6E7303CD82F611660D1 /* EntityDossierRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E466CCDDFEEF126A2F39BE5 /* EntityDossierRow.swift */; };
 		313D0F1E1C06B108E71D1431 /* DossiersPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5265C657B03C15FB6048DAA5 /* DossiersPanelView.swift */; };
-		328731E1CBEB78633A424824 /* DiscussionGuidePanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 655CF79D73E8D7162F3E4143 /* DiscussionGuidePanelWindowController.swift */; };
 		32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */; };
+		35468630800DADBEBC3362A7 /* CorpusChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47EE32CA67E9EE87C8AFD18E /* CorpusChat.swift */; };
 		36D73C15AB5DE31F14192D31 /* LLMWireShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30401E0708E01C71D5A6759B /* LLMWireShapes.swift */; };
 		370C3178C7B6C514677C0600 /* PanelSpawner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371316457C5E6DA973A617D7 /* PanelSpawner.swift */; };
 		379333F978F8334E614E8455 /* SessionsControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36B529563B4EAE6F3281194 /* SessionsControlView.swift */; };
@@ -96,6 +94,7 @@
 		7199883BA0F8548E3493E970 /* SessionDetailComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25D83111DF0AFC983EEE83BF /* SessionDetailComponents.swift */; };
 		71F2EC60961BBBFFB1B0DD32 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166C8635ECAD7923D5605360 /* Session.swift */; };
 		74C468CDEFAC049BEDE3093A /* SonioxProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B43315BBB57BE38A913848E /* SonioxProtocol.swift */; };
+		78E4899C67D71F980859F6B3 /* FloatingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F71367C5B955DF6CF913A6C3 /* FloatingPanel.swift */; };
 		7B41507509C47C6176A46C90 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = BD8327CDA200688016F4811C /* GRDB */; };
 		7D236AFF0B01AD4B75E33FB1 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 93E9748C0E16CAF6E308BE13 /* Tokenizers */; };
 		7EF2AECA505820507FF3CE29 /* CommandPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 069398722426CD8117723515 /* CommandPaletteView.swift */; };
@@ -123,7 +122,6 @@
 		9ED665B1E48A7DE41ED06E74 /* TimeFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A12CCA6174FEC4E6F7897A4 /* TimeFormat.swift */; };
 		9F89E22932AA0A661DB33D88 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263A886E22FF815C73AD3DD6 /* SystemAudioCapture.swift */; };
 		A21F64C0CA36C2F7849133FE /* SpeakerLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F88EA5A5405F40A4AF56C7C5 /* SpeakerLabels.swift */; };
-		A30C98D17DA9D60831A192F6 /* DossiersPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4E07AAD00FE0162D945E51 /* DossiersPanelWindowController.swift */; };
 		A3127A4220C41C2413B23249 /* SonioxFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4712172E5C5043CBD4E5123 /* SonioxFailure.swift */; };
 		A705731058FCB69801E9AAA6 /* TranscriptHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 506B0C7EF87C71D6BBBD9E83 /* TranscriptHighlight.swift */; };
 		A9E5A4F3E878C5FF3DC90168 /* TranscriptEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */; };
@@ -132,7 +130,6 @@
 		ABFE3A689B67646CFB043FF3 /* SummaryFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E9F2B96FC6ED7A0953E3CE /* SummaryFormatting.swift */; };
 		B2B8CFCC8FAF6A03CA0D83BE /* PaletteSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC85C74A2870D6756905F029 /* PaletteSearchTests.swift */; };
 		B2D6B384774E4636F7583420 /* PaletteSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82C3639F126C2E773A30F98A /* PaletteSearch.swift */; };
-		B37A90FD1922BF3F6D2E78B8 /* TranslationPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80B455741C93B546581B8345 /* TranslationPanelWindowController.swift */; };
 		B5ED433C5A1A3265AC36D542 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 9F18FBF3A7CCD54AD715459F /* GRDB */; };
 		B663D6649CAA3652F9127771 /* SessionThemes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8584B19A636ED735632197B7 /* SessionThemes.swift */; };
 		B6CCFD3805F92C062B39E669 /* CorpusReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4810F8A917CBF2AFAC98759B /* CorpusReader.swift */; };
@@ -267,6 +264,7 @@
 		4634C6DE458122FE8AD24FBE /* TranscriptAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptAggregator.swift; sourceTree = "<group>"; };
 		4712E45AE69438604DE0B43D /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
+		47EE32CA67E9EE87C8AFD18E /* CorpusChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusChat.swift; sourceTree = "<group>"; };
 		4810F8A917CBF2AFAC98759B /* CorpusReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusReader.swift; sourceTree = "<group>"; };
 		49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinator.swift; sourceTree = "<group>"; };
 		4DED40E2036B38F0362B81D5 /* SessionExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionExport.swift; sourceTree = "<group>"; };
@@ -286,7 +284,6 @@
 		6281C5C4478788699F815620 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		649035E229EF2DC415F6B81E /* AnalysisController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisController.swift; sourceTree = "<group>"; };
 		64E9FF127012B15A479CD070 /* TranscriptRegenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRegenerator.swift; sourceTree = "<group>"; };
-		655CF79D73E8D7162F3E4143 /* DiscussionGuidePanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuidePanelWindowController.swift; sourceTree = "<group>"; };
 		6820EA81EE3A97F7E8DB34B1 /* TranscriptContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptContext.swift; sourceTree = "<group>"; };
 		68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailRequest.swift; sourceTree = "<group>"; };
 		69927632A013AE7261CF5105 /* UserPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPanelWindowController.swift; sourceTree = "<group>"; };
@@ -301,17 +298,14 @@
 		7B29D84DC8C16CB9AF6512C9 /* GlossaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryStore.swift; sourceTree = "<group>"; };
 		7C5E72582098B8BF3192383E /* AudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPipeline.swift; sourceTree = "<group>"; };
 		7F2A1FE41C0F8B56041C82F0 /* last-tool-error.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "last-tool-error.json"; sourceTree = "<group>"; };
-		80B455741C93B546581B8345 /* TranslationPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationPanelWindowController.swift; sourceTree = "<group>"; };
 		825F37E20D755398F3F17F96 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		82C3639F126C2E773A30F98A /* PaletteSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaletteSearch.swift; sourceTree = "<group>"; };
 		82F3B4333865A3ABDED731A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		857295A827688BF13CBC8A7E /* WAVWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVWriter.swift; sourceTree = "<group>"; };
 		8584B19A636ED735632197B7 /* SessionThemes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionThemes.swift; sourceTree = "<group>"; };
 		871369085C6F14D0784EE987 /* ThemesController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemesController.swift; sourceTree = "<group>"; };
-		8A4E07AAD00FE0162D945E51 /* DossiersPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DossiersPanelWindowController.swift; sourceTree = "<group>"; };
 		8B3B1B204953A066A5663F35 /* AskCorpusController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskCorpusController.swift; sourceTree = "<group>"; };
 		8C6B19B466BE378C1C09EAFD /* SessionTitleController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTitleController.swift; sourceTree = "<group>"; };
-		8CD3AE1A12E3FA34AD1D04A0 /* NotesPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesPanelWindowController.swift; sourceTree = "<group>"; };
 		8D8B3F3ACDF0563BA140B344 /* DiscussionGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuide.swift; sourceTree = "<group>"; };
 		8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		906F7DCF321C17392E3DA594 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
@@ -361,7 +355,6 @@
 		D67B7ED9699397B8D95DD0B0 /* SessionSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSearch.swift; sourceTree = "<group>"; };
 		DBD17CBC45561362C2BB8EA7 /* VLMManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLMManager.swift; sourceTree = "<group>"; };
 		DCE9839BBDA43C2E5038E526 /* LLMRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMRequest.swift; sourceTree = "<group>"; };
-		DE62EA665A102C200CDF8FB4 /* ThemesPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemesPanelWindowController.swift; sourceTree = "<group>"; };
 		DEC28BC83C424B25E884D37F /* LLMErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMErrorTests.swift; sourceTree = "<group>"; };
 		DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxClient.swift; sourceTree = "<group>"; };
 		DF9CD22BA63BCD171E6C20BD /* AnalysisScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisScheduler.swift; sourceTree = "<group>"; };
@@ -376,6 +369,7 @@
 		F36B529563B4EAE6F3281194 /* SessionsControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsControlView.swift; sourceTree = "<group>"; };
 		F4243A077E697B1F76B1ED1A /* PeriodicCardsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeriodicCardsController.swift; sourceTree = "<group>"; };
 		F6E5772D8A702FF99B90817D /* SessionImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionImporter.swift; sourceTree = "<group>"; };
+		F71367C5B955DF6CF913A6C3 /* FloatingPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPanel.swift; sourceTree = "<group>"; };
 		F88EA5A5405F40A4AF56C7C5 /* SpeakerLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabels.swift; sourceTree = "<group>"; };
 		F9D0C3A5F03649E65C27FC95 /* WritePathIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritePathIntegrationTests.swift; sourceTree = "<group>"; };
 		FA159B350466B311F95C6E82 /* RTIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIApp.swift; sourceTree = "<group>"; };
@@ -632,6 +626,7 @@
 				DF9CD22BA63BCD171E6C20BD /* AnalysisScheduler.swift */,
 				8B3B1B204953A066A5663F35 /* AskCorpusController.swift */,
 				20E886244B65C228EF9BE4AA /* AskCorpusHistoryStore.swift */,
+				47EE32CA67E9EE87C8AFD18E /* CorpusChat.swift */,
 				0C6FAE860260A97CB289ED21 /* Project.swift */,
 				C56D1B894E49CE62CA65ECBA /* ProjectQAController.swift */,
 				49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */,
@@ -746,7 +741,6 @@
 				20AD61A44FEAD5477D412A8E /* SonioxFileTranscribeClient.swift */,
 				9B43315BBB57BE38A913848E /* SonioxProtocol.swift */,
 				4246C29C2263B8291AC810EB /* TranslationPanelView.swift */,
-				80B455741C93B546581B8345 /* TranslationPanelWindowController.swift */,
 			);
 			path = Soniox;
 			sourceTree = "<group>";
@@ -754,6 +748,7 @@
 		D22562E9A8C896A2CCAAB90B /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				F71367C5B955DF6CF913A6C3 /* FloatingPanel.swift */,
 				C94121B6360402223C2126D9 /* HotkeyCoordinator.swift */,
 				74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */,
 				180E39BBB0AF568A9DB9FE4F /* PanelWindowControlling.swift */,
@@ -806,19 +801,15 @@
 				8D8B3F3ACDF0563BA140B344 /* DiscussionGuide.swift */,
 				1456E03914BAD3E5A701143B /* DiscussionGuideController.swift */,
 				4F7F28771DC943B788E73DC7 /* DiscussionGuidePanelView.swift */,
-				655CF79D73E8D7162F3E4143 /* DiscussionGuidePanelWindowController.swift */,
 				5D1C3402FA8BFBD520CAF73D /* DossierController.swift */,
 				5265C657B03C15FB6048DAA5 /* DossiersPanelView.swift */,
-				8A4E07AAD00FE0162D945E51 /* DossiersPanelWindowController.swift */,
 				94A13A1CB26ACBF57A7CD627 /* EntityDossier.swift */,
 				1A0241ED6660F0603C054FC5 /* GeneratedNote.swift */,
 				6E938720C8D72A2A78950C66 /* NotesGenerationController.swift */,
 				3646E804694D758FF1840EAA /* NotesPanelView.swift */,
-				8CD3AE1A12E3FA34AD1D04A0 /* NotesPanelWindowController.swift */,
 				8584B19A636ED735632197B7 /* SessionThemes.swift */,
 				871369085C6F14D0784EE987 /* ThemesController.swift */,
 				96260DF52B6B20FBEA17837F /* ThemesPanelView.swift */,
-				DE62EA665A102C200CDF8FB4 /* ThemesPanelWindowController.swift */,
 			);
 			path = Analysis;
 			sourceTree = "<group>";
@@ -1022,6 +1013,7 @@
 				CA226F89770F830DE007782A /* CommandPaletteWindowController.swift in Sources */,
 				2C242E5A0B3725CFE29F968A /* CommandRegistry.swift in Sources */,
 				387627B359E82DEBA3599F97 /* CorpusBackedStore.swift in Sources */,
+				35468630800DADBEBC3362A7 /* CorpusChat.swift in Sources */,
 				C89FA8D64E22A1A17836E07C /* CorpusEntry.swift in Sources */,
 				E7A78919E326DC8E80FBC4B5 /* CorpusFTSReindexer.swift in Sources */,
 				0ABEC3C6A17E293DE6AC1CCC /* CorpusManager.swift in Sources */,
@@ -1033,12 +1025,11 @@
 				09CF78AEEA87300A3459F21B /* DiscussionGuide.swift in Sources */,
 				C9B5D4C1DCC3635A79EDCB66 /* DiscussionGuideController.swift in Sources */,
 				08A13442ABECFB8F79AC0581 /* DiscussionGuidePanelView.swift in Sources */,
-				328731E1CBEB78633A424824 /* DiscussionGuidePanelWindowController.swift in Sources */,
 				DC6634EB99126FE2DB29DC33 /* DossierController.swift in Sources */,
 				313D0F1E1C06B108E71D1431 /* DossiersPanelView.swift in Sources */,
-				A30C98D17DA9D60831A192F6 /* DossiersPanelWindowController.swift in Sources */,
 				15E2826D80CB74AC7A21C69E /* EntityDossier.swift in Sources */,
 				30B4A6E7303CD82F611660D1 /* EntityDossierRow.swift in Sources */,
+				78E4899C67D71F980859F6B3 /* FloatingPanel.swift in Sources */,
 				D253A7FFD3604561DFC4AA62 /* GeneratedNote.swift in Sources */,
 				1F8370452A2F92269E5CA90E /* GeneratedNoteRow.swift in Sources */,
 				10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */,
@@ -1062,7 +1053,6 @@
 				5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */,
 				E5385D0176DDD268C1AF9A1A /* NotesGenerationController.swift in Sources */,
 				4677F7DE812D9463007623AD /* NotesPanelView.swift in Sources */,
-				16FD5868B82FADF9E00188CF /* NotesPanelWindowController.swift in Sources */,
 				F620ED21C7BA06ED9275285D /* NotificationNames.swift in Sources */,
 				FE494F2BEC4A19321FE608BC /* OCRService.swift in Sources */,
 				304AD99717740B3B97C9C019 /* OnboardingArtwork.swift in Sources */,
@@ -1119,7 +1109,6 @@
 				9F89E22932AA0A661DB33D88 /* SystemAudioCapture.swift in Sources */,
 				2F24BC159FBFE197FC48AF3E /* ThemesController.swift in Sources */,
 				8BB85D189B87C2D3E638C155 /* ThemesPanelView.swift in Sources */,
-				228E4DB961EF2449DF2FCB1D /* ThemesPanelWindowController.swift in Sources */,
 				9ED665B1E48A7DE41ED06E74 /* TimeFormat.swift in Sources */,
 				26A68471342CC1C1E2B26F5B /* ToolLoop.swift in Sources */,
 				6D619EF785EABFE337BBBB56 /* TopWidgetView.swift in Sources */,
@@ -1132,7 +1121,6 @@
 				621F07BC2133EEAE0B400E30 /* TranscriptRegenerator.swift in Sources */,
 				CBB5E91F6C87F4592E74503D /* TranscriptRender.swift in Sources */,
 				1553EA36199944A44D017067 /* TranslationPanelView.swift in Sources */,
-				B37A90FD1922BF3F6D2E78B8 /* TranslationPanelWindowController.swift in Sources */,
 				128E9C15BCA423BACDC8F34E /* UserPanel.swift in Sources */,
 				FBE7C2BC5A01C0927CE254E1 /* UserPanelStore.swift in Sources */,
 				5FB9FA6EA30B68CD170888C3 /* UserPanelWindowController.swift in Sources */,

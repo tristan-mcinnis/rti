@@ -11,6 +11,7 @@ import Foundation
 ///    every analysis module.
 ///  - A guarantee that the scheduler (`AnalysisScheduler`) can drive any
 ///    conformer without knowing its specific type.
+@MainActor
 protocol AnalysisController: AnyObject {
     /// Bind the controller to a session. Loads any persisted state for that
     /// session so the UI reflects prior analysis results immediately.

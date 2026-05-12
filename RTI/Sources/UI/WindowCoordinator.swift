@@ -12,11 +12,10 @@ final class WindowCoordinator {
     private var onboarding: OnboardingWindowController?
     private var shortcutsController: ShortcutsWindowController?
     private var commandPalette: CommandPaletteWindowController?
-    private var notesPanel: NotesPanelWindowController?
-    private var dossiersPanel: DossiersPanelWindowController?
-    private var themesPanel: ThemesPanelWindowController?
-    private var guidePanel: DiscussionGuidePanelWindowController?
-    private var translationPanel: TranslationPanelWindowController?
+    /// Singleton floating panels. One entry per `FloatingPanelID` once
+    /// `install(_:)` has run; adding a new panel kind is just a new enum
+    /// case + spec rather than another stored property here.
+    private var floatingPanels: [FloatingPanelID: FloatingPanelWindowController] = [:]
     /// User-spawned analysis panels keyed by their panel id. Lifecycle is
     /// driven by `UserPanelStore.panels`: additions spawn an NSPanel,
     /// removals tear it down. We subscribe in `install`.
@@ -25,11 +24,15 @@ final class WindowCoordinator {
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
-    var notesPanelIsVisible: Bool { notesPanel?.isVisible ?? false }
-    var dossiersPanelIsVisible: Bool { dossiersPanel?.isVisible ?? false }
-    var themesPanelIsVisible: Bool { themesPanel?.isVisible ?? false }
-    var guidePanelIsVisible: Bool { guidePanel?.isVisible ?? false }
-    var translationPanelIsVisible: Bool { translationPanel?.isVisible ?? false }
+    var notesPanelIsVisible: Bool { isVisible(.notes) }
+    var dossiersPanelIsVisible: Bool { isVisible(.dossiers) }
+    var themesPanelIsVisible: Bool { isVisible(.themes) }
+    var guidePanelIsVisible: Bool { isVisible(.discussionGuide) }
+    var translationPanelIsVisible: Bool { isVisible(.translation) }
+
+    private func isVisible(_ id: FloatingPanelID) -> Bool {
+        floatingPanels[id]?.isVisible ?? false
+    }
 
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
         shortcutsController = ShortcutsWindowController()
@@ -71,11 +74,9 @@ final class WindowCoordinator {
 
         commandPalette = CommandPaletteWindowController()
 
-        notesPanel = NotesPanelWindowController()
-        dossiersPanel = DossiersPanelWindowController()
-        themesPanel = ThemesPanelWindowController()
-        guidePanel = DiscussionGuidePanelWindowController()
-        translationPanel = TranslationPanelWindowController()
+        for id in FloatingPanelID.allCases {
+            floatingPanels[id] = FloatingPanelWindowController(spec: id.spec)
+        }
 
         // Spawn windows for every panel that was already configured the
         // last time the app ran, then keep them in sync going forward.
@@ -93,11 +94,10 @@ final class WindowCoordinator {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.hideNotesPanel()
-            self?.hideDossiersPanel()
-            self?.hideThemesPanel()
-            self?.hideGuidePanel()
-            self?.hideTranslationPanel()
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                for controller in self.floatingPanels.values { controller.hide() }
+            }
         }
     }
 
@@ -124,14 +124,8 @@ final class WindowCoordinator {
     func setSharingInvisible(_ invisible: Bool) {
         overlayController?.setSharingInvisible(invisible)
         topWidget?.setSharingInvisible(invisible)
-        notesPanel?.setSharingInvisible(invisible)
-        dossiersPanel?.setSharingInvisible(invisible)
-        themesPanel?.setSharingInvisible(invisible)
-        guidePanel?.setSharingInvisible(invisible)
-        translationPanel?.setSharingInvisible(invisible)
-        for controller in userPanels.values {
-            controller.setSharingInvisible(invisible)
-        }
+        for controller in floatingPanels.values { controller.setSharingInvisible(invisible) }
+        for controller in userPanels.values { controller.setSharingInvisible(invisible) }
     }
 
     /// Toggle the persisted invisibility flag and apply it to both windows.
@@ -184,27 +178,29 @@ final class WindowCoordinator {
 
     func toggleCommandPalette() { commandPalette?.toggle() }
 
-    // MARK: - Analysis Panels
+    // MARK: - Floating panels
 
-    func showNotesPanel() { notesPanel?.show() }
-    func hideNotesPanel() { notesPanel?.hide() }
-    func toggleNotesPanel() { notesPanel?.toggle() }
+    func show(_ id: FloatingPanelID) { floatingPanels[id]?.show() }
+    func hide(_ id: FloatingPanelID) { floatingPanels[id]?.hide() }
+    func toggle(_ id: FloatingPanelID) { floatingPanels[id]?.toggle() }
 
-    func showDossiersPanel() { dossiersPanel?.show() }
-    func hideDossiersPanel() { dossiersPanel?.hide() }
-    func toggleDossiersPanel() { dossiersPanel?.toggle() }
-
-    func showThemesPanel() { themesPanel?.show() }
-    func hideThemesPanel() { themesPanel?.hide() }
-    func toggleThemesPanel() { themesPanel?.toggle() }
-
-    func showGuidePanel() { guidePanel?.show() }
-    func hideGuidePanel() { guidePanel?.hide() }
-    func toggleGuidePanel() { guidePanel?.toggle() }
-
-    func showTranslationPanel() { translationPanel?.show() }
-    func hideTranslationPanel() { translationPanel?.hide() }
-    func toggleTranslationPanel() { translationPanel?.toggle() }
+    // Named convenience wrappers — kept so existing callers (menus,
+    // AppDelegate, notifications) compile unchanged.
+    func showNotesPanel() { show(.notes) }
+    func hideNotesPanel() { hide(.notes) }
+    func toggleNotesPanel() { toggle(.notes) }
+    func showDossiersPanel() { show(.dossiers) }
+    func hideDossiersPanel() { hide(.dossiers) }
+    func toggleDossiersPanel() { toggle(.dossiers) }
+    func showThemesPanel() { show(.themes) }
+    func hideThemesPanel() { hide(.themes) }
+    func toggleThemesPanel() { toggle(.themes) }
+    func showGuidePanel() { show(.discussionGuide) }
+    func hideGuidePanel() { hide(.discussionGuide) }
+    func toggleGuidePanel() { toggle(.discussionGuide) }
+    func showTranslationPanel() { show(.translation) }
+    func hideTranslationPanel() { hide(.translation) }
+    func toggleTranslationPanel() { toggle(.translation) }
 
     // MARK: - Onboarding
 
