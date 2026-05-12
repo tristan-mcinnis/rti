@@ -41,12 +41,12 @@ struct TopWidgetView: View {
 
     private var pillButton: some View {
         Button(action: { coordinator.toggleSession() }) {
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 indicatorDot
                 primaryLabel
             }
-            .padding(.horizontal, 11)
-            .frame(height: 28)
+            .padding(.horizontal, 9)
+            .frame(height: 22)
             .background(pillBackground)
             .overlay(
                 Capsule(style: .continuous)
@@ -71,7 +71,7 @@ struct TopWidgetView: View {
         } else {
             Circle()
                 .fill(Color.white.opacity(coordinator.endedAt != nil ? 0.30 : 0.50))
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
         }
     }
 
@@ -79,21 +79,21 @@ struct TopWidgetView: View {
     private var primaryLabel: some View {
         if coordinator.isRunning {
             DotMatrixText(text: elapsedLabel,
-                          dot: 1.4,
-                          spacing: 0.6,
-                          gap: 1.4,
+                          dot: 1.2,
+                          spacing: 0.5,
+                          gap: 1.2,
                           color: .white,
                           dim: Color.white.opacity(0.08))
         } else if let frozen = postRecordingLabel {
             DotMatrixText(text: frozen,
-                          dot: 1.4,
-                          spacing: 0.6,
-                          gap: 1.4,
+                          dot: 1.2,
+                          spacing: 0.5,
+                          gap: 1.2,
                           color: Color.white.opacity(0.55),
                           dim: Color.white.opacity(0.06))
         } else {
             Text("Record")
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.70))
                 .kerning(0.2)
         }
@@ -140,54 +140,26 @@ struct TopWidgetView: View {
 
     // MARK: - Right-click menu
 
-    /// Right-click menu items. Mirrors the menubar so the widget is a
-    /// one-stop entry point: session controls, navigation, modes, recents,
-    /// state toggles, then settings/help/quit.
+    /// Right-click menu items. Derived from `CommandRegistry` so it never
+    /// drifts from the menubar — adding a command in
+    /// `CommandPaletteFactory` registers it here, in the menubar, the
+    /// palette, and global hotkeys all at once. Only the dynamic
+    /// "Recent Sessions" and "Modes" submenus plus the always-on-bottom
+    /// Quit are hand-wired.
     @ViewBuilder
     private var menuContents: some View {
-        Button(coordinator.isRunning ? "Stop Recording" : "Start Recording") {
-            coordinator.toggleSession()
-        }
-        Button(coordinator.isRunning || coordinator.endedAt != nil
-               ? "View Session Detail"
-               : "View Session Detail (no active session)") {
-            actions.onOpenCurrentSessionDetail()
-        }
-        .disabled(coordinator.currentSessionId == nil && coordinator.endedAt == nil)
-
+        RegistryMenuSection(section: .session)
         Divider()
-
-        Button("Show Chat Panel  ⌘\\") { actions.onToggleOverlay() }
-        Button("Live Transcript  ⌘⌥T") { actions.onShowLiveTranscript() }
-        Button("Sessions…  ⌘⇧S") { actions.onShowSessionHistory() }
-        Button("Logs") { actions.onShowLogs() }
-
+        RegistryMenuSection(section: .navigation)
         recentSessionsMenu
-
         Divider()
-
-        Button("Capture Screen  ⌘⇧H") { actions.onCaptureScreen() }
-        Button("Clear Current Chat") { actions.onClearChat() }
-
+        RegistryMenuSection(section: .actions)
         Divider()
-
-        Button(llm.smartMode ? "Disable Smart Mode" : "Enable Smart Mode") {
-            llm.smartMode.toggle()
-        }
-        Button(invisibilityIsOn ? "Show on Screen Capture" : "Hide from Screen Capture") {
-            actions.onToggleInvisibility()
-        }
-
+        RegistryMenuSection(section: .panels)
         modesMenu
-
         Divider()
-
-        Button("Settings…  ⌘,") { actions.onOpenSettings() }
-        Button("Keyboard Shortcuts…") { actions.onShowShortcuts() }
-        Button("About RTI") { actions.onShowAbout() }
-
+        RegistryMenuSection(section: .app)
         Divider()
-
         Button("Quit RTI") { actions.onQuit() }
     }
 
@@ -254,7 +226,7 @@ private struct PulsingRedDot: View {
     var body: some View {
         Circle()
             .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
-            .frame(width: 8, height: 8)
+            .frame(width: 7, height: 7)
             .shadow(color: Color(red: 1.0, green: 0.27, blue: 0.27).opacity(on ? 0.85 : 0.20),
                     radius: on ? 4 : 1)
             .scaleEffect(on ? 1.0 : 0.65)

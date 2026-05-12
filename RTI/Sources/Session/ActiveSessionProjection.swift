@@ -8,7 +8,8 @@ enum ActiveSessionProjection {
 
     static func currentSession() -> Session? {
         guard let id = SessionCoordinator.shared.currentSessionId,
-              let startedAt = SessionCoordinator.shared.startedAt else {
+              let startedAt = SessionCoordinator.shared.startedAt,
+              SessionCoordinator.shared.isRunning else {
             return nil
         }
         return Session(

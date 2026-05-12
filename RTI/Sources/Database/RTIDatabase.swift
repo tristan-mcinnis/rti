@@ -453,6 +453,26 @@ final class RTIDatabase: @unchecked Sendable {
                 t.column("updated_at", .datetime).notNull()
             }
         }
+        m.registerMigration("v17_corpus_embeddings") { db in
+            // Dense vector index over corpus chunks for hybrid retrieval.
+            // One row per chunk; brute-force cosine scan at query time
+            // (no ANN structure — at our scale, <50k chunks, plain SQL
+            // returns in <10 ms on Apple Silicon). Vectors live as raw
+            // BLOBs of little-endian Float32 components.
+            try db.create(table: "corpus_embeddings") { t in
+                t.column("session_id", .text).notNull()
+                t.column("chunk_idx", .integer).notNull()
+                t.column("text", .text).notNull()
+                t.column("vector", .blob).notNull()
+                t.column("indexed_at", .datetime).notNull()
+                t.primaryKey(["session_id", "chunk_idx"])
+            }
+            try db.create(
+                index: "corpus_embeddings_session",
+                on: "corpus_embeddings",
+                columns: ["session_id"]
+            )
+        }
         return m
     }
 }

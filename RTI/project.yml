@@ -59,6 +59,9 @@ packages:
   SwiftHuggingFace:
     url: https://github.com/huggingface/swift-huggingface
     from: "0.9.0"
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: "2.4.0"
 
 targets:
   RTI:
@@ -86,6 +89,8 @@ targets:
         product: Tokenizers
       - package: SwiftHuggingFace
         product: HuggingFace
+      - package: MarkdownUI
+        product: MarkdownUI
       - target: RTIMCP
         copy:
           destination: resources

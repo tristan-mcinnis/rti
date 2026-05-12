@@ -166,7 +166,10 @@ private struct ProjectDetailView: View {
     @State private var draftInstructions: String
     @State private var instructionsExpanded: Bool = false
     @State private var addSessionSheet: Bool = false
+    @State private var copyConfirmId: UUID?
+    @State private var copyAllConfirm: Bool = false
     @FocusState private var nameFieldFocused: Bool
+    @FocusState private var inputFocused: Bool
 
     init(project: Project) {
         self.project = project
@@ -191,25 +194,85 @@ private struct ProjectDetailView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            TextField("Project name", text: $draftName)
-                .textFieldStyle(.plain)
-                .font(.system(size: 16, weight: .semibold))
-                .focused($nameFieldFocused)
-                .onSubmit(persistName)
-                .onChange(of: project.id) { _, _ in draftName = project.name }
-                .onChange(of: nameFieldFocused) { _, isFocused in
-                    // Persist on focus loss so click-away saves the rename
-                    // without requiring an explicit return-key press.
-                    if !isFocused { persistName() }
-                }
+        HStack(alignment: .center, spacing: RTIDesign.Spacing.sm) {
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("Project name", text: $draftName)
+                    .textFieldStyle(.plain)
+                    .font(RTIDesign.Font.sectionTitle)
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
+                    .focused($nameFieldFocused)
+                    .onSubmit(persistName)
+                    .onChange(of: project.id) { _, _ in draftName = project.name }
+                    .onChange(of: nameFieldFocused) { _, isFocused in
+                        if !isFocused { persistName() }
+                    }
+                Text(controller.messages.isEmpty
+                     ? "Chat with this project's sessions"
+                     : "Project chat")
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
+            }
             Spacer()
+            headerActions
+        }
+    }
+
+    private var headerActions: some View {
+        HStack(spacing: RTIDesign.Spacing.sm) {
+            iconAction(systemName: "square.and.pencil", help: "New chat") {
+                controller.newChat()
+            }
+            if !controller.messages.isEmpty {
+                iconAction(systemName: copyAllConfirm ? "checkmark" : "doc.on.doc",
+                           help: "Copy conversation") {
+                    copyConversation()
+                }
+                iconAction(systemName: "square.and.arrow.up",
+                           help: "Export as markdown") {
+                    exportConversation()
+                }
+            }
+            Divider().frame(height: 14)
             Button(action: { instructionsExpanded.toggle() }) {
                 Label(instructionsExpanded ? "Hide instructions" : "Instructions",
                       systemImage: "text.alignleft")
+                    .font(RTIDesign.Font.button)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+        }
+    }
+
+    private func iconAction(systemName: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private func copyConversation() {
+        let md = controller.exportMarkdown()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(md, forType: .string)
+        copyAllConfirm = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copyAllConfirm = false }
+    }
+
+    private func exportConversation() {
+        let md = controller.exportMarkdown()
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
+        let safe = (controller.conversationTitle ?? project.name)
+            .replacingOccurrences(of: "/", with: "-")
+        panel.nameFieldStringValue = "\(safe).md"
+        panel.canCreateDirectories = true
+        if panel.runModal() == .OK, let url = panel.url {
+            try? md.write(to: url, atomically: true, encoding: .utf8)
         }
     }
 
@@ -217,69 +280,213 @@ private struct ProjectDetailView: View {
         VStack(spacing: 0) {
             if instructionsExpanded {
                 instructionsEditor
-                    .padding(12)
-                    .background(Color.secondary.opacity(0.06))
+                    .padding(RTIDesign.Spacing.md)
+                    .background(RTIDesign.Color.trackBackground)
             }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        if controller.messages.isEmpty {
-                            emptyChatHint
-                                .padding(.top, 40)
-                        }
-                        ForEach(controller.messages) { msg in
-                            ChatBubble(message: msg)
-                                .id(msg.id)
-                        }
-                    }
-                    .padding(12)
-                }
-                .onChange(of: controller.messages.count) { _, _ in
-                    if let last = controller.messages.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
-                }
+            if controller.messages.isEmpty {
+                emptyChatHint
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                conversation
             }
             if let err = controller.lastError {
                 Text(err)
-                    .font(.caption)
+                    .font(RTIDesign.Font.caption)
                     .foregroundStyle(.red)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, RTIDesign.Spacing.xl)
                     .padding(.bottom, 4)
             }
             inputBar
         }
+        .background(RTIDesign.Color.panelBackground)
     }
 
     private var emptyChatHint: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(spacing: RTIDesign.Spacing.lg) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(RTIDesign.Color.textTertiary)
             Text("Chat with this project")
-                .font(.headline)
-            Text("Answers are drawn only from the sessions you've added to this project. Project instructions get prepended to every turn.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.heading)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+            Text("Answers come only from the sessions added to this project. Instructions get prepended to every turn.")
+                .font(RTIDesign.Font.bodySmall)
+                .foregroundStyle(RTIDesign.Color.textTertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
             if store.sessionIds(forProject: project.id).isEmpty {
                 Text("Add a session on the right to begin.")
-                    .font(.caption)
+                    .font(RTIDesign.Font.caption)
                     .foregroundStyle(.orange)
-                    .padding(.top, 4)
+            }
+        }
+        .padding(RTIDesign.Spacing.xl)
+    }
+
+    private var conversation: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: RTIDesign.Spacing.lg) {
+                    ForEach(controller.messages) { msg in
+                        messageBubble(msg)
+                            .id(msg.id)
+                    }
+                }
+                .padding(.horizontal, RTIDesign.Spacing.xl)
+                .padding(.vertical, RTIDesign.Spacing.lg)
+                .frame(maxWidth: 880, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .onChange(of: controller.messages.count) { _, _ in
+                if let last = controller.messages.last?.id {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func messageBubble(_ msg: CorpusChatEntry) -> some View {
+        if msg.role == "user" {
+            HStack {
+                Spacer(minLength: 40)
+                Text(msg.text)
+                    .font(RTIDesign.Font.body)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, RTIDesign.Spacing.md)
+                    .padding(.vertical, RTIDesign.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.md)
+                            .fill(Color.blue)
+                    )
+            }
+        } else {
+            VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm) {
+                HStack(alignment: .top, spacing: RTIDesign.Spacing.sm) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(RTIDesign.Color.accentText)
+                        .padding(.top, 4)
+                    Group {
+                        if msg.text.isEmpty && controller.isGenerating {
+                            Text("Thinking…")
+                                .foregroundStyle(RTIDesign.Color.textTertiary)
+                        } else {
+                            RTIMarkdown(msg.text, style: .panel)
+                        }
+                    }
+                    .font(RTIDesign.Font.body)
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if !msg.text.isEmpty {
+                    HStack(spacing: RTIDesign.Spacing.sm) {
+                        if !msg.citations.isEmpty {
+                            citationChips(msg.citations)
+                        }
+                        Spacer()
+                        copyMessageButton(msg)
+                    }
+                    .padding(.leading, 22)
+                }
+            }
+        }
+    }
+
+    private func copyMessageButton(_ msg: CorpusChatEntry) -> some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(msg.text, forType: .string)
+            copyConfirmId = msg.id
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                if copyConfirmId == msg.id { copyConfirmId = nil }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: copyConfirmId == msg.id ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10, weight: .medium))
+                Text(copyConfirmId == msg.id ? "Copied" : "Copy")
+                    .font(RTIDesign.Font.caption)
+            }
+            .foregroundStyle(RTIDesign.Color.textTertiary)
+        }
+        .buttonStyle(.plain)
+        .help("Copy this answer")
+    }
+
+    private func citationChips(_ citations: [CorpusChatCitation]) -> some View {
+        HStack(spacing: RTIDesign.Spacing.xs) {
+            Text("Sources")
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textTertiary)
+            ForEach(citations) { c in
+                Button {
+                    NotificationCenter.default.post(name: .openSessionDetail, object: c.sessionId)
+                } label: {
+                    Text(c.title)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(RTIDesign.Color.accentText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule().fill(RTIDesign.Color.accentText.opacity(0.10))
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Open \(c.title)")
             }
         }
     }
 
     private var inputBar: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: RTIDesign.Spacing.sm) {
             TextField("Ask about this project…", text: $input)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(submit)
-            Button(action: submit) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 22))
+                .textFieldStyle(.plain)
+                .font(RTIDesign.Font.body)
+                .focused($inputFocused)
+                .onSubmit { submit() }
+                .padding(.horizontal, RTIDesign.Spacing.md)
+                .frame(height: RTIDesign.Control.heightMd)
+                .background(
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.md)
+                        .fill(RTIDesign.Color.inputBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: RTIDesign.Radius.md)
+                                .stroke(RTIDesign.Color.border, lineWidth: 1)
+                        )
+                )
+
+            if controller.isGenerating {
+                Button(action: { controller.stop() }) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.red.opacity(0.85)))
+                }
+                .buttonStyle(.plain)
+                .help("Stop generating")
+            } else {
+                Button(action: submit) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            Circle().fill(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                           ? Color.gray.opacity(0.35)
+                                           : Color.blue)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .buttonStyle(.plain)
-            .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty || controller.isGenerating)
         }
-        .padding(10)
+        .padding(.horizontal, RTIDesign.Spacing.xl)
+        .padding(.vertical, RTIDesign.Spacing.md)
+        .background(RTIDesign.Color.panelBackground)
     }
 
     private var instructionsEditor: some View {
@@ -532,40 +739,3 @@ private struct AddSessionSheet: View {
     }
 }
 
-private struct ChatBubble: View {
-    let message: ProjectQAController.Entry
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(message.role == "user" ? "You" : "RTI")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text(.init(message.text))
-                .font(.system(size: 13))
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-            if !message.citations.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(message.citations) { c in
-                        Button(action: {
-                            NotificationCenter.default.post(name: .openSessionDetail, object: c.sessionId)
-                        }) {
-                            Text(c.title)
-                                .font(.system(size: 10))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(Color.accentColor.opacity(0.15)))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.secondary.opacity(message.role == "user" ? 0.08 : 0.04))
-        )
-    }
-}

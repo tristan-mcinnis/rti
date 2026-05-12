@@ -340,14 +340,7 @@ struct AskCorpusView: View {
                 .foregroundStyle(RTIDesign.Color.textTertiary)
         } else {
             let stripped = Self.stripCitationTokens(msg.text)
-            if let attributed = try? AttributedString(
-                markdown: stripped,
-                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-            ) {
-                Text(attributed)
-            } else {
-                Text(stripped)
-            }
+            RTIMarkdown(stripped, style: .panel)
         }
     }
 

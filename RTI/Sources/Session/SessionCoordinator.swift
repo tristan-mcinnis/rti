@@ -304,6 +304,7 @@ final class SessionCoordinator: ObservableObject {
         // Reindex FTS so the deleted file's transcript/summary rows go.
         do {
             try CorpusFTSReindexer.reindex(from: CorpusManager.shared.corpusDirectory, in: RTIDatabase.shared.pool)
+            try CorpusIndexer.reindex(from: CorpusManager.shared.corpusDirectory, in: RTIDatabase.shared.pool)
         } catch {
             NSLog("[RTI] deleteSession FTS reindex failed: \(error)")
         }

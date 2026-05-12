@@ -687,6 +687,7 @@ private struct CorpusTab: View {
                     from: corpusDir,
                     in: dbPool
                 )
+                try CorpusIndexer.reindex(from: corpusDir, in: dbPool)
                 await MainActor.run { reindexStatus = "Done." }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await MainActor.run {

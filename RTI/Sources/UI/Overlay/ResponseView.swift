@@ -212,13 +212,7 @@ struct ResponseView: View {
                     .help("This response was generated with the \"\(projectName)\" project instructions in scope.")
                 }
                 let display = entry.text + (isStreamingThis ? " ▍" : "")
-                let attributed = (try? AttributedString(markdown: display,
-                                                        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                    ?? AttributedString(display)
-                Text(attributed)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .textSelection(.enabled)
+                RTIMarkdown(display, style: .overlay)
                     .fixedSize(horizontal: false, vertical: true)
 
                 // Show the tool status under the assistant text when a tool

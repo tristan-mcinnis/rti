@@ -21,6 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         _ = ModeStore.shared
         LLMController.shared.loadHistoryForCurrentSession()
         CorpusManager.shared.recoverOrphans()
+        CorpusIndexer.backfillIfEmpty(
+            from: CorpusManager.shared.corpusDirectory,
+            in: RTIDatabase.shared.pool
+        )
 
         windows.install(onOpenSettings: { [weak self] in self?.windows.openSettings() })
 

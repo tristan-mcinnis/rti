@@ -75,12 +75,43 @@ final class SessionImporter: ObservableObject {
             lastError = "Soniox API key not set. Add it in Settings → Keys."
             return
         }
-        lastError = nil
+
+        // Skip files whose title already exists in the corpus or is already
+        // queued — re-dropping the same recording shouldn't produce a second
+        // session. Match on the filename stem (case-insensitive).
+        let existingTitles = Set(
+            CorpusBackedStore.allMarkdownSessions().compactMap { $0.title?.lowercased() }
+        )
+        let queuedTitles = Set(
+            queue.map { $0.deletingPathExtension().lastPathComponent.lowercased() }
+        )
+        var skipped: [String] = []
+        var accepted: [URL] = []
+        for url in expanded {
+            let title = url.deletingPathExtension().lastPathComponent
+            let key = title.lowercased()
+            if existingTitles.contains(key) || queuedTitles.contains(key) {
+                skipped.append(title)
+            } else {
+                accepted.append(url)
+            }
+        }
+
+        if accepted.isEmpty {
+            lastError = skipped.count == 1
+                ? "\"\(skipped[0])\" already exists in your sessions."
+                : "All \(skipped.count) files already exist in your sessions."
+            return
+        }
+        lastError = skipped.isEmpty ? nil :
+            (skipped.count == 1
+                ? "Skipped \"\(skipped[0])\" (already imported)."
+                : "Skipped \(skipped.count) files already imported.")
 
         // If a batch is already running, append to its queue.
         let wasIdle = activeFilename == nil && queue.isEmpty
-        queue.append(contentsOf: expanded)
-        batchTotal += expanded.count
+        queue.append(contentsOf: accepted)
+        batchTotal += accepted.count
         queueCount = queue.count
         if wasIdle {
             batchCompleted = 0
@@ -290,6 +321,7 @@ final class SessionImporter: ObservableObject {
         let corpusDir = await MainActor.run { CorpusManager.shared.corpusDirectory }
         _ = try CorpusWriter.write(entry, to: corpusDir, slug: slug)
         try? CorpusFTSReindexer.reindex(from: corpusDir, in: RTIDatabase.shared.pool)
+        try? CorpusIndexer.reindex(from: corpusDir, in: RTIDatabase.shared.pool)
         await MainActor.run {
             NotificationCenter.default.post(name: .rtiSessionsChanged, object: nil)
         }

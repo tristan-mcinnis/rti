@@ -69,6 +69,27 @@ class CorpusChatController: ObservableObject {
         isGenerating = false
     }
 
+    /// Render the conversation as markdown for clipboard / file export.
+    /// Generic over both Ask and Project chats — subclasses can override
+    /// to add metadata (e.g. created-at) but the default is sufficient.
+    func exportMarkdown() -> String {
+        var lines: [String] = []
+        lines.append("# \(conversationTitle ?? "Chat")")
+        lines.append("")
+        for msg in messages {
+            let who = msg.role == "user" ? "**You**" : "**RTI**"
+            lines.append("### \(who)")
+            lines.append(msg.text)
+            if msg.role == "assistant", !msg.citations.isEmpty {
+                let cites = msg.citations.map { "[\($0.title)]" }.joined(separator: ", ")
+                lines.append("")
+                lines.append("_Sources: \(cites)_")
+            }
+            lines.append("")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Subclass-only restoration helpers
 
     /// Subclasses call this from their own `load(_:)` after decoding from

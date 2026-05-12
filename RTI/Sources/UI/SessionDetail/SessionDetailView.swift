@@ -135,7 +135,8 @@ struct SessionDetailView: View {
                 if let endedAt = session.endedAt {
                     Text("·")
                     Text(formatDuration(endedAt.timeIntervalSince(session.startedAt)))
-                } else {
+                } else if SessionCoordinator.shared.isRunning
+                            && SessionCoordinator.shared.currentSessionId == session.id {
                     TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
                         HStack(spacing: 6) {
                             Text("·")
@@ -831,8 +832,11 @@ struct SessionDetailView: View {
                             if let endedAt = session.endedAt {
                                 infoRow("Ended", endedAt.formatted(date: .abbreviated, time: .shortened))
                                 infoRow("Duration", formatDuration(endedAt.timeIntervalSince(session.startedAt)))
-                            } else {
+                            } else if SessionCoordinator.shared.isRunning
+                                        && SessionCoordinator.shared.currentSessionId == session.id {
                                 infoRow("Status", "Active")
+                            } else {
+                                infoRow("Status", "Ended")
                             }
                             infoRow("Transcript entries", "\(transcripts.count)")
                             infoRow("Chat messages", "\(chatMessages.count)")

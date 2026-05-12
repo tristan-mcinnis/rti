@@ -29,6 +29,12 @@ struct RTICommand: Identifiable {
     /// When non-nil, the menu item title is re-evaluated on every menu-open
     /// so commands like "Start / Stop Recording" stay in sync.
     let menuTitleProvider: (() -> String)?
+    /// When non-nil, the command is rendered as a stateful toggle in the
+    /// SwiftUI menu (with a native checkmark) and as an `.on/.off` menu
+    /// item in the NSMenu. Used for ON/OFF commands like Smart Mode and
+    /// Hide-from-Screen-Capture where "current state" matters more than
+    /// "what clicking will do". `nil` → render as a plain Button/MenuItem.
+    let menuStateProvider: (() -> Bool)?
 
     // MARK: - Hotkey integration
 
@@ -46,6 +52,7 @@ struct RTICommand: Identifiable {
         perform: @escaping () -> Void,
         menuSection: MenuSection? = nil,
         menuTitleProvider: (() -> String)? = nil,
+        menuStateProvider: (() -> Bool)? = nil,
         hotkeyKeyCode: UInt32? = nil,
         hotkeyModifiers: UInt32? = nil
     ) {
@@ -57,6 +64,7 @@ struct RTICommand: Identifiable {
         self.perform = perform
         self.menuSection = menuSection
         self.menuTitleProvider = menuTitleProvider
+        self.menuStateProvider = menuStateProvider
         self.hotkeyKeyCode = hotkeyKeyCode
         self.hotkeyModifiers = hotkeyModifiers
     }

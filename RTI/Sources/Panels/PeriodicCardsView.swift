@@ -16,7 +16,7 @@ struct PeriodicCardsView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black.opacity(backgroundOpacity))
+                .fill(Color(white: 0.14).opacity(backgroundOpacity))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(Color.white.opacity(0.10), lineWidth: 1)
@@ -68,6 +68,7 @@ struct PeriodicCardsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .padding([.bottom, .trailing], 6)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var header: some View {

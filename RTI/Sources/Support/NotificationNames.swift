@@ -32,7 +32,7 @@ enum OverlayAppearanceDefaults {
     static let defaultOpacity: Double = 0.90
     static let widthRange: ClosedRange<Double> = 320...800
     static let heightRange: ClosedRange<Double> = 400...900
-    static let opacityRange: ClosedRange<Double> = 0.30...0.95
+    static let opacityRange: ClosedRange<Double> = 0.10...1.00
 }
 
 enum AnalysisSettingsDefaults {

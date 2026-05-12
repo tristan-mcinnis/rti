@@ -8,21 +8,73 @@ struct TranslationPanelView: View {
     @AppStorage(translationOpacityKey) private var backgroundOpacity: Double = translationDefaultOpacity
     @AppStorage("rti.translation.enabled") private var translationEnabled = false
     @AppStorage("rti.translation.showOriginal") private var showOriginal = true
+    @AppStorage("rti.translation.mode") private var translationMode = "one_way"
+    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "es"
+    @AppStorage("rti.translation.languageA") private var languageA = "en"
+    @AppStorage("rti.translation.languageB") private var languageB = "es"
+
+    private static let languageOptions: [(code: String, label: String)] = [
+        ("en", "English"), ("es", "Spanish"), ("zh", "Chinese"), ("fr", "French"),
+        ("de", "German"), ("ja", "Japanese"), ("ko", "Korean"), ("pt", "Portuguese"),
+        ("it", "Italian"), ("ru", "Russian"), ("ar", "Arabic"), ("hi", "Hindi")
+    ]
+
+    private var effectiveTranslationConfig: TranslationConfig? {
+        guard translationEnabled else { return nil }
+        switch translationMode {
+        case "two_way":
+            guard languageA != languageB else { return nil }
+            return .twoWay(languageA: languageA, languageB: languageB)
+        default:
+            return .oneWay(targetLanguage: targetLanguage)
+        }
+    }
+
+    private func syncTranslationConfig() {
+        coordinator.translationConfig = effectiveTranslationConfig
+    }
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black.opacity(backgroundOpacity))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                )
-
+        FloatingPanelChrome(
+            title: "Translation",
+            opacityKey: translationOpacityKey,
+            defaultOpacity: translationDefaultOpacity,
+            closeNotification: .rtiToggleTranslationPanel,
+            titleAccessory: {
+                if translationEnabled, coordinator.isRunning {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 7, height: 7)
+                }
+                Toggle("", isOn: $translationEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .tint(.blue)
+                    .labelsHidden()
+                    .help(translationEnabled ? "Translation on" : "Turn translation on")
+            },
+            headerActions: {
+                Menu {
+                    Toggle("Show original", isOn: $showOriginal)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: 22, height: 22)
+                .help("Display options")
+            }
+        ) {
             VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
+                if translationEnabled {
+                    languageBar
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
 
                 if !translationEnabled {
                     Spacer()
@@ -35,7 +87,7 @@ struct TranslationPanelView: View {
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 10) {
+                            LazyVStack(alignment: .leading, spacing: 4) {
                                 ForEach(paragraphs) { p in
                                     Row(paragraph: p, showOriginal: showOriginal)
                                         .id(p.id)
@@ -47,57 +99,59 @@ struct TranslationPanelView: View {
                         .scrollContentBackground(.hidden)
                         .onChange(of: paragraphs.last?.id) { _, _ in
                             if let last = paragraphs.last {
-                                withAnimation(.easeOut(duration: 0.15)) {
-                                    proxy.scrollTo(last.id, anchor: .bottom)
-                                }
+                                proxy.scrollTo(last.id, anchor: .bottom)
                             }
                         }
                     }
                 }
             }
+        }
+        .onAppear { syncTranslationConfig() }
+        .onChange(of: translationEnabled) { _, _ in syncTranslationConfig() }
+        .onChange(of: translationMode) { _, _ in syncTranslationConfig() }
+        .onChange(of: targetLanguage) { _, _ in syncTranslationConfig() }
+        .onChange(of: languageA) { _, _ in syncTranslationConfig() }
+        .onChange(of: languageB) { _, _ in syncTranslationConfig() }
+    }
 
-            ResizeHandle()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .padding([.bottom, .trailing], 6)
+    private var languageBar: some View {
+        HStack(spacing: 8) {
+            Picker("", selection: $translationMode) {
+                Text("One-way").tag("one_way")
+                Text("Two-way").tag("two_way")
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.mini)
+            .frame(width: 140)
+            .labelsHidden()
+
+            if translationMode == "two_way" {
+                languagePicker("From", selection: $languageA)
+                Text("↔")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.55))
+                languagePicker("To", selection: $languageB)
+            } else {
+                Text("→")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.55))
+                languagePicker("Target", selection: $targetLanguage)
+            }
+            Spacer()
         }
     }
 
-    private var header: some View {
-        HStack {
-            Text("Translation")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-
-            if translationEnabled, coordinator.isRunning {
-                Circle()
-                    .fill(Color.blue)
-                    .frame(width: 7, height: 7)
+    private func languagePicker(_ label: String, selection: Binding<String>) -> some View {
+        Picker(label, selection: selection) {
+            ForEach(Self.languageOptions, id: \.code) { opt in
+                Text(opt.label).tag(opt.code)
             }
-
-            Spacer()
-
-            Toggle(isOn: $showOriginal) {
-                Text("Show original")
-                    .font(.system(size: 11))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .tint(.blue)
-
-            OpacitySlider(opacity: $backgroundOpacity)
-                .frame(width: 60)
-
-            Button(action: {
-                NotificationCenter.default.post(name: .rtiToggleTranslationPanel, object: nil)
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.white.opacity(0.12)))
-            }
-            .buttonStyle(.plain)
         }
+        .pickerStyle(.menu)
+        .controlSize(.mini)
+        .frame(maxWidth: 110)
+        .labelsHidden()
+        .tint(.white.opacity(0.85))
     }
 
     private var disabledHint: some View {
@@ -108,7 +162,7 @@ struct TranslationPanelView: View {
             Text("Translation is off")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
-            Text("Enable translation in Live Transcript → Translation. RTI sends a translation config to Soniox and the translated stream lands here.")
+            Text("Flip the switch above to start translating the live transcript.")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -194,31 +248,31 @@ struct TranslationPanelView: View {
         let showOriginal: Bool
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(speakerLabel(paragraph.speakerId))
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
-                if !paragraph.translation.isEmpty {
-                    Text(paragraph.translation)
-                        .font(.system(size: 14))
-                        .foregroundStyle(.white)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(width: 60, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if !paragraph.translation.isEmpty {
+                        Text(paragraph.translation)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if showOriginal, !paragraph.original.isEmpty {
+                        Text(paragraph.original)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.50))
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                if showOriginal, !paragraph.original.isEmpty {
-                    Text(paragraph.original)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
+            .padding(.vertical, 2)
         }
 
         private func speakerLabel(_ id: String) -> String {
@@ -229,14 +283,5 @@ struct TranslationPanelView: View {
             }
             return id
         }
-    }
-}
-
-private struct OpacitySlider: View {
-    @Binding var opacity: Double
-    var body: some View {
-        Slider(value: $opacity, in: 0.30...0.95, step: 0.05) {}
-            .tint(.white.opacity(0.4))
-            .frame(height: 12)
     }
 }

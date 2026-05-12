@@ -40,13 +40,16 @@ final class AskCorpusController: CorpusChatController {
         var seen = Set<String>()
         var out: [CorpusChatCandidate] = []
 
-        for hit in SessionSearch.search(query: question, limit: 6) {
+        // Hybrid retrieval: BM25 + dense embedding cosine, RRF-merged.
+        // Falls back to FTS-only inside HybridRetriever if the dense
+        // index isn't ready (e.g. fresh install before first backfill).
+        for hit in HybridRetriever.retrieve(query: question, limit: 6) {
             guard !seen.contains(hit.session.id) else { continue }
             seen.insert(hit.session.id)
             out.append(CorpusChatCandidate(
                 session: hit.session,
                 title: Self.displayTitle(for: hit.session),
-                snippet: hit.snippet,
+                snippet: hit.bestSnippet,
                 summary: CorpusBackedStore.summary(forSessionId: hit.session.id)?.summaryText
             ))
         }
@@ -110,7 +113,8 @@ final class AskCorpusController: CorpusChatController {
     // MARK: - Export
 
     /// Render the conversation as markdown for clipboard/file export.
-    func exportMarkdown() -> String {
+    /// Overrides the base to include the conversation's created-at date.
+    override func exportMarkdown() -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short

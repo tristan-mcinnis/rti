@@ -40,9 +40,17 @@ struct SessionsControlView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedTab) {
-                ForEach(Tab.allCases) { tab in
-                    Label(tab.rawValue, systemImage: tab.icon)
-                        .tag(tab)
+                Section("Now") {
+                    sidebarRow(.liveTranscript)
+                }
+                Section("Library") {
+                    sidebarRow(.sessions)
+                    sidebarRow(.projects)
+                    sidebarRow(.askCorpus)
+                }
+                Section("App") {
+                    sidebarRow(.settings)
+                    sidebarRow(.logs)
                 }
             }
             .listStyle(.sidebar)
@@ -79,6 +87,11 @@ struct SessionsControlView: View {
             guard let tab = notif.object as? Tab else { return }
             selectedTab = tab
         }
+    }
+
+    private func sidebarRow(_ tab: Tab) -> some View {
+        Label(tab.rawValue, systemImage: tab.icon)
+            .tag(tab)
     }
 
     @ViewBuilder

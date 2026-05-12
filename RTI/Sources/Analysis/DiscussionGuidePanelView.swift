@@ -3,23 +3,45 @@ import UniformTypeIdentifiers
 
 struct DiscussionGuidePanelView: View {
     @ObservedObject private var controller = DiscussionGuideController.shared
-    @AppStorage(guideOpacityKey) private var backgroundOpacity: Double = guideDefaultOpacity
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black.opacity(backgroundOpacity))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                )
+        FloatingPanelChrome(
+            title: "Discussion guide",
+            opacityKey: guideOpacityKey,
+            defaultOpacity: guideDefaultOpacity,
+            closeNotification: .rtiToggleGuidePanel,
+            titleAccessory: {
+                if controller.isImporting || controller.isMatching {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                }
+            },
+            headerActions: {
+                if controller.guide != nil {
+                    Button(action: removeGuide) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(Color.white.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove guide from this session")
+                }
 
+                Button(action: importGuide) {
+                    Image(systemName: "doc.badge.arrow.up")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .help("Import a guide (.md / .txt)")
+            }
+        ) {
             VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-
                 if let error = controller.lastError {
                     Text(error)
                         .font(.system(size: 11))
@@ -47,64 +69,6 @@ struct DiscussionGuidePanelView: View {
                     emptyState
                     Spacer()
                 }
-            }
-
-            ResizeHandle()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .padding([.bottom, .trailing], 6)
-        }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Discussion guide")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-
-            if controller.isImporting || controller.isMatching {
-                ProgressView()
-                    .scaleEffect(0.7)
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-            }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                if controller.guide != nil {
-                    Button(action: removeGuide) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(Color.white.opacity(0.12)))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Remove guide from this session")
-                }
-
-                Button(action: importGuide) {
-                    Image(systemName: "doc.badge.arrow.up")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.white.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
-                .help("Import a guide (.md / .txt)")
-
-                OpacitySlider(opacity: $backgroundOpacity)
-                    .frame(width: 80)
-
-                Button(action: {
-                    NotificationCenter.default.post(name: .rtiToggleGuidePanel, object: nil)
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.white.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -278,14 +242,5 @@ private struct GuideQuoteView: View {
             }
         }
         .padding(.vertical, 1)
-    }
-}
-
-private struct OpacitySlider: View {
-    @Binding var opacity: Double
-    var body: some View {
-        Slider(value: $opacity, in: 0.30...0.95, step: 0.05) {}
-            .tint(.white.opacity(0.4))
-            .frame(height: 12)
     }
 }

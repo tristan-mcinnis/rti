@@ -60,6 +60,7 @@ final class TranscriptRegenerator: ObservableObject {
                 // Reindex FTS so the upgraded transcript is searchable.
                 if let dir = await MainActor.run(body: { CorpusManager.shared.corpusDirectory }) as URL? {
                     try? CorpusFTSReindexer.reindex(from: dir, in: RTIDatabase.shared.pool)
+                    try? CorpusIndexer.reindex(from: dir, in: RTIDatabase.shared.pool)
                 }
             } catch is CancellationError {
                 // intentional cancel — no error surface

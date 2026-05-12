@@ -13,12 +13,20 @@ struct AssistantInputView: View {
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                TextField(textFieldPrompt, text: $input)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white.opacity(0.95))
-                    .focused($isInputFocused)
-                    .onSubmit(submit)
+                ZStack(alignment: .leading) {
+                    if input.isEmpty {
+                        Text(textFieldPrompt)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.45))
+                            .allowsHitTesting(false)
+                    }
+                    TextField("", text: $input)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .focused($isInputFocused)
+                        .onSubmit(submit)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -184,15 +192,14 @@ struct AssistantInputView: View {
     private var sendButton: some View {
         let isEmpty = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return Button(action: submit) {
-            Image(systemName: "paperplane.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(isEmpty ? 0.35 : 1.0))
+            Image(systemName: "arrow.up")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white.opacity(isEmpty ? 0.45 : 1.0))
                 .frame(width: 34, height: 30)
                 .background(
-                    Capsule().fill(isEmpty
-                                   ? Color.white.opacity(0.08)
-                                   : Color.blue)
+                    Capsule().fill(Color.white.opacity(isEmpty ? 0.06 : 0.10))
                 )
+                .liquidMetalBorder(Capsule(), lineWidth: 1.2, period: 4.0, glow: 5, active: !isEmpty)
         }
         .buttonStyle(.plain)
         .disabled(isEmpty || llm.streaming)

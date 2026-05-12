@@ -2,23 +2,40 @@ import SwiftUI
 
 struct DossiersPanelView: View {
     @ObservedObject private var controller = DossierController.shared
-    @AppStorage(dossiersOpacityKey) private var backgroundOpacity: Double = dossiersDefaultOpacity
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black.opacity(backgroundOpacity))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                )
-
+        FloatingPanelChrome(
+            title: "Dossiers",
+            opacityKey: dossiersOpacityKey,
+            defaultOpacity: dossiersDefaultOpacity,
+            closeNotification: .rtiToggleDossiersPanel,
+            titleAccessory: {
+                if controller.isGenerating {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                }
+            },
+            headerActions: {
+                if !controller.dossiers.isEmpty {
+                    Menu {
+                        Button("Copy all", action: copyAll)
+                        Button("Export as .md…", action: exportToFile)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(Color.white.opacity(0.12)))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .frame(width: 22, height: 22)
+                    .help("Copy or export dossiers")
+                }
+            }
+        ) {
             VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-
                 if let error = controller.lastError {
                     Text(error)
                         .font(.system(size: 11))
@@ -53,59 +70,6 @@ struct DossiersPanelView: View {
                     }
                     .scrollContentBackground(.hidden)
                 }
-            }
-
-            ResizeHandle()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .padding([.bottom, .trailing], 6)
-        }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Dossiers")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-
-            if controller.isGenerating {
-                ProgressView()
-                    .scaleEffect(0.7)
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-            }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                if !controller.dossiers.isEmpty {
-                    Menu {
-                        Button("Copy all", action: copyAll)
-                        Button("Export as .md…", action: exportToFile)
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(Color.white.opacity(0.12)))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .frame(width: 22, height: 22)
-                    .help("Copy or export dossiers")
-                }
-
-                OpacitySlider(opacity: $backgroundOpacity)
-                    .frame(width: 80)
-
-                Button(action: {
-                    NotificationCenter.default.post(name: .rtiToggleDossiersPanel, object: nil)
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.white.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -208,15 +172,5 @@ private struct DossierCard: View {
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
         )
-    }
-}
-
-private struct OpacitySlider: View {
-    @Binding var opacity: Double
-
-    var body: some View {
-        Slider(value: $opacity, in: 0.30...0.95, step: 0.05) {}
-        .tint(.white.opacity(0.4))
-        .frame(height: 12)
     }
 }

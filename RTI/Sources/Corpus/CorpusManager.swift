@@ -162,6 +162,7 @@ final class CorpusManager {
             let url = try CorpusWriter.write(entry, to: corpusDirectory, slug: slug)
             do {
                 try CorpusFTSReindexer.reindex(from: corpusDirectory, in: RTIDatabase.shared.pool)
+                try CorpusIndexer.reindex(from: corpusDirectory, in: RTIDatabase.shared.pool)
             } catch {
                 NSLog("[RTI] CorpusManager FTS reindex failed: \(error)")
             }

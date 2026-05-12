@@ -135,26 +135,23 @@ enum CommandPaletteFactory {
             // MARK: Panels
             RTICommand(
                 id: "smart.toggle",
-                title: "Enable Smart Mode",
-                keywords: ["reasoning", "deep"],
+                title: "Smart Mode",
+                keywords: ["reasoning", "deep", "enable", "disable"],
                 perform: { llm.smartMode.toggle() },
                 menuSection: .panels,
-                menuTitleProvider: {
-                    llm.smartMode ? "Disable Smart Mode" : "Enable Smart Mode"
-                }
+                menuStateProvider: { llm.smartMode }
             ),
             RTICommand(
                 id: "invisibility.toggle",
-                title: "Show on Screen Capture",
-                keywords: ["sharing", "screencap", "hide from screen"],
+                title: "Hidden from Screen Capture",
+                keywords: ["sharing", "screencap", "hide", "show", "stealth"],
                 perform: {
                     let isInvisible = UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
                     UserDefaults.standard.set(!isInvisible, forKey: "rti.invisible")
                 },
                 menuSection: .panels,
-                menuTitleProvider: {
-                    let invisible = UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
-                    return invisible ? "Show on Screen Capture" : "Hide from Screen Capture"
+                menuStateProvider: {
+                    UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
                 }
             ),
             RTICommand(

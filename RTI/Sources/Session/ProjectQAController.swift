@@ -60,9 +60,10 @@ final class ProjectQAController: CorpusChatController {
         var seen = Set<String>()
         var out: [CorpusChatCandidate] = []
 
-        // 1) FTS hits scoped to this project's members — these win first
-        //    because BM25 already ranked them by relevance.
-        for hit in SessionSearch.search(query: question, limit: Self.candidateCap * 2)
+        // 1) Hybrid hits (BM25 + dense, RRF-merged) scoped to this
+        //    project's members. HybridRetriever falls back to FTS-only
+        //    if the dense index isn't ready.
+        for hit in HybridRetriever.retrieve(query: question, limit: Self.candidateCap * 2)
             where members.contains(hit.session.id)
         {
             guard !seen.contains(hit.session.id) else { continue }
@@ -70,11 +71,11 @@ final class ProjectQAController: CorpusChatController {
             out.append(CorpusChatCandidate(
                 session: hit.session,
                 title: Self.displayTitle(for: hit.session),
-                snippet: hit.snippet,
+                snippet: hit.bestSnippet,
                 summary: CorpusBackedStore.summary(forSessionId: hit.session.id)?.summaryText
             ))
         }
-        let ftsHits = out.count
+        let hybridHits = out.count
 
         // 2) Fill remaining slots with the most recent member sessions FTS
         //    missed — recency biases toward "what did we just discuss".
@@ -94,7 +95,7 @@ final class ProjectQAController: CorpusChatController {
         let final = Array(out.prefix(Self.candidateCap))
         let dropped = max(0, out.count - Self.candidateCap)
         RTILog.log(
-            "retrieve — fts=\(ftsHits) fallback=\(out.count - ftsHits) used=\(final.count)\(dropped > 0 ? " dropped=\(dropped)" : "")",
+            "retrieve — hybrid=\(hybridHits) recency=\(out.count - hybridHits) used=\(final.count)\(dropped > 0 ? " dropped=\(dropped)" : "")",
             category: "projects"
         )
         guard !final.isEmpty else {
