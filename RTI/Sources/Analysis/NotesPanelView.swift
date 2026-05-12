@@ -17,21 +17,16 @@ struct NotesPanelView: View {
                 }
             },
             headerActions: {
-                if !controller.notes.isEmpty {
-                    Menu {
-                        Button("Copy all", action: copyAll)
-                        Button("Export as .md…", action: exportToFile)
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(Color.white.opacity(0.12)))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .frame(width: 22, height: 22)
-                    .help("Copy or export notes")
+                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleNotesPanel) {
+                    Button("Copy all", action: copyAll)
+                        .disabled(controller.notes.isEmpty)
+                    Button("Export as .md…", action: exportToFile)
+                        .disabled(controller.notes.isEmpty)
+                    Divider()
+                    Button("Regenerate now", action: regenerate)
+                        .disabled(controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
+                    Button("Clear", role: .destructive) { controller.clear() }
+                        .disabled(controller.notes.isEmpty)
                 }
             }
         ) {
@@ -93,6 +88,11 @@ struct NotesPanelView: View {
 
     private func copyAll() {
         NSPasteboard.copyMarkdownRich(combinedMarkdown())
+    }
+
+    private func regenerate() {
+        guard let sid = SessionCoordinator.shared.currentSessionId else { return }
+        Task { _ = await controller.generate(sessionId: sid) }
     }
 
     private func exportToFile() {

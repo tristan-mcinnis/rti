@@ -18,27 +18,13 @@ struct DiscussionGuidePanelView: View {
                 }
             },
             headerActions: {
-                if controller.guide != nil {
-                    Button(action: removeGuide) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(Color.white.opacity(0.12)))
+                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleGuidePanel) {
+                    Button("Import guide…", action: importGuide)
+                    if controller.guide != nil {
+                        Divider()
+                        Button("Remove guide", role: .destructive, action: removeGuide)
                     }
-                    .buttonStyle(.plain)
-                    .help("Remove guide from this session")
                 }
-
-                Button(action: importGuide) {
-                    Image(systemName: "doc.badge.arrow.up")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.white.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
-                .help("Import a guide (.md / .txt)")
             }
         ) {
             VStack(spacing: 0) {

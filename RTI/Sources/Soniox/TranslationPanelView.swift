@@ -54,19 +54,9 @@ struct TranslationPanelView: View {
                     .help(translationEnabled ? "Translation on" : "Turn translation on")
             },
             headerActions: {
-                Menu {
+                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleTranslationPanel) {
                     Toggle("Show original", isOn: $showOriginal)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.white.opacity(0.12)))
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .frame(width: 22, height: 22)
-                .help("Display options")
             }
         ) {
             VStack(spacing: 0) {

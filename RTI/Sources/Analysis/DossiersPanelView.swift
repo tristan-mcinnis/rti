@@ -17,21 +17,16 @@ struct DossiersPanelView: View {
                 }
             },
             headerActions: {
-                if !controller.dossiers.isEmpty {
-                    Menu {
-                        Button("Copy all", action: copyAll)
-                        Button("Export as .md…", action: exportToFile)
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(Color.white.opacity(0.12)))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .frame(width: 22, height: 22)
-                    .help("Copy or export dossiers")
+                PanelHeaderEllipsisMenu(hideNotification: .rtiToggleDossiersPanel) {
+                    Button("Copy all", action: copyAll)
+                        .disabled(controller.dossiers.isEmpty)
+                    Button("Export as .md…", action: exportToFile)
+                        .disabled(controller.dossiers.isEmpty)
+                    Divider()
+                    Button("Regenerate now", action: regenerate)
+                        .disabled(controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
+                    Button("Clear", role: .destructive) { controller.clear() }
+                        .disabled(controller.dossiers.isEmpty)
                 }
             }
         ) {
@@ -84,6 +79,11 @@ struct DossiersPanelView: View {
 
     private func copyAll() {
         NSPasteboard.copyString(combinedMarkdown())
+    }
+
+    private func regenerate() {
+        guard let sid = SessionCoordinator.shared.currentSessionId else { return }
+        Task { _ = await controller.generate(sessionId: sid) }
     }
 
     private func exportToFile() {

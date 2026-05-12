@@ -87,6 +87,35 @@ struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: V
     }
 }
 
+/// Standard `⋯` quick-actions menu used in every floating panel header.
+/// Each panel passes its own actions; "Hide panel" is appended at the
+/// bottom so the close affordance is reachable from one consistent place
+/// across panels (in addition to the explicit `×` button).
+struct PanelHeaderEllipsisMenu<Content: View>: View {
+    let hideNotification: Notification.Name
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        Menu {
+            content()
+            Divider()
+            Button("Hide panel") {
+                NotificationCenter.default.post(name: hideNotification, object: nil)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Color.white.opacity(0.12)))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: 22, height: 22)
+        .help("Quick actions")
+    }
+}
+
 /// Slim white opacity slider used in every floating panel header. Range
 /// matches `OverlayAppearanceDefaults.opacityRange` (10% → 100%).
 struct FloatingPanelOpacitySlider: View {
