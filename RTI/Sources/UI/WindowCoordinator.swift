@@ -128,10 +128,8 @@ final class WindowCoordinator {
         for controller in userPanels.values { controller.setSharingInvisible(invisible) }
     }
 
-    /// Toggle the persisted invisibility flag and apply it to both windows.
-    /// Mirrors AppDelegate.toggleInvisibility so the right-click pill menu
-    /// can drive it without reaching through more layers.
-    private func toggleInvisibility() {
+    /// Toggle the persisted invisibility flag and apply it to every panel.
+    func toggleInvisibility() {
         let key = "rti.invisible"
         let current = UserDefaults.standard.object(forKey: key) as? Bool ?? true
         let next = !current

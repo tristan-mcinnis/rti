@@ -145,10 +145,7 @@ enum CommandPaletteFactory {
                 id: "invisibility.toggle",
                 title: "Hidden from Screen Capture",
                 keywords: ["sharing", "screencap", "hide", "show", "stealth"],
-                perform: {
-                    let isInvisible = UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
-                    UserDefaults.standard.set(!isInvisible, forKey: "rti.invisible")
-                },
+                perform: { [weak windows] in windows?.toggleInvisibility() },
                 menuSection: .panels,
                 menuStateProvider: {
                     UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
