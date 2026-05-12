@@ -1,8 +1,10 @@
 import Foundation
 import GRDB
 
-/// Implementations of the four read-only MCP tools `rti-mcp` exposes:
-/// `search_corpus`, `read_meeting`, `list_meetings`, `read_live_transcript`.
+/// Implementations of the MCP tools `rti-mcp` exposes: read-only search
+/// and retrieval over the corpus + live transcript, plus a single scoped
+/// write (`append_to_session`) that lets an external agent add notes,
+/// action items, or follow-ups to an existing meeting markdown file.
 ///
 /// Each function takes plain inputs (no JSON-RPC envelope) and returns
 /// plain output, so unit tests can drive them without going through the
@@ -114,6 +116,20 @@ struct MCPTools {
                     "limit": ["type": "integer", "default": 10]
                 ],
                 "required": ["project_id", "query"]
+            ])
+        ),
+        .init(
+            name: "append_to_session",
+            description: "Append markdown text to the body of an existing meeting file (e.g. action items, follow-ups, agent-generated notes). Atomic write. Path must resolve inside the corpus directory. The FTS index refreshes the next time the host app reindexes (launch or manual rebuild).",
+            inputSchema: AnyCodable([
+                "type": "object",
+                "properties": [
+                    "path": ["type": "string"],
+                    "date": ["type": "string"],
+                    "slug": ["type": "string"],
+                    "text": ["type": "string", "description": "Markdown to append. Include your own headings if you want section structure."]
+                ],
+                "required": ["text"]
             ])
         )
     ]
@@ -443,6 +459,56 @@ struct MCPTools {
             return jsonResult(["project_id": projectId, "results": results])
         } catch {
             return ToolCallResult(text: "Project search failed: \(error)", isError: true)
+        }
+    }
+
+    // MARK: - append_to_session
+
+    func appendToSession(arguments: [String: Any]) -> ToolCallResult {
+        guard let text = arguments["text"] as? String, !text.isEmpty else {
+            return ToolCallResult(text: "Missing required `text` argument.", isError: true)
+        }
+        let url: URL
+        if let path = arguments["path"] as? String {
+            url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        } else if let dateStr = arguments["date"] as? String,
+                  let slug = arguments["slug"] as? String,
+                  parseISO(dateStr) != nil {
+            let dateOnly = String(dateStr.prefix(10))
+            guard isSafeSlug(slug) else {
+                return ToolCallResult(text: "Invalid slug.", isError: true)
+            }
+            url = corpusDirectory.appendingPathComponent("\(dateOnly)-\(slug).md")
+        } else {
+            return ToolCallResult(text: "Provide either `path` or both `date` and `slug`.", isError: true)
+        }
+        guard isWithinCorpus(url) else {
+            return ToolCallResult(text: "Path is outside the configured corpus directory.", isError: true)
+        }
+        do {
+            var entry = try CorpusReader.read(url)
+            // Ensure a blank-line gap so the new content reads as its own
+            // block rather than running into the previous paragraph.
+            var newBody = entry.body
+            if !newBody.hasSuffix("\n") { newBody += "\n" }
+            if !newBody.hasSuffix("\n\n") { newBody += "\n" }
+            newBody += text
+            if !newBody.hasSuffix("\n") { newBody += "\n" }
+            entry.body = newBody
+            let rendered = try entry.render()
+            // Atomic write: render to a `.tmp` sibling then rename, matching
+            // CorpusWriter so a crash mid-write leaves either the previous
+            // file or the new one intact — never a partial.
+            let tmp = url.deletingPathExtension().appendingPathExtension("md.tmp")
+            try rendered.write(to: tmp, atomically: true, encoding: .utf8)
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+            return jsonResult([
+                "path": url.path,
+                "appended_chars": text.count,
+                "total_bytes": rendered.utf8.count
+            ])
+        } catch {
+            return ToolCallResult(text: "Could not append to session: \(error)", isError: true)
         }
     }
 

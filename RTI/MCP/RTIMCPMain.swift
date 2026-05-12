@@ -146,6 +146,7 @@ enum RTIMCPMain {
         case "list_projects": result = tools.listProjects(arguments: arguments)
         case "read_project": result = tools.readProject(arguments: arguments)
         case "search_project": result = tools.searchProject(arguments: arguments)
+        case "append_to_session": result = tools.appendToSession(arguments: arguments)
         default:
             return .failure(.init(code: -32601, message: "Unknown tool: \(name)"))
         }
