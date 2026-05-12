@@ -1,25 +1,26 @@
 import AVFoundation
 import Foundation
+import Observation
 
 /// Imports an external audio or video file as a fully-formed session.
 /// Pipeline: transcode source → 16 kHz mono WAV in the recordings dir →
 /// Soniox file-mode transcription → render markdown via `MarkdownRenderer`
 /// → write through `CorpusWriter` → FTS reindex. Mirrors how live sessions
 /// land on disk so imports are indistinguishable from recorded sessions.
-@MainActor
-final class SessionImporter: ObservableObject {
+@Observable @MainActor
+final class SessionImporter {
     static let shared = SessionImporter()
 
-    @Published private(set) var activeFilename: String?
-    @Published private(set) var progressMessage: String?
-    @Published private(set) var lastError: String?
+    private(set) var activeFilename: String?
+    private(set) var progressMessage: String?
+    private(set) var lastError: String?
     /// Files still waiting after the current one. Surfaced as "Queued: N"
     /// in the banner so the user knows a batch is in flight.
-    @Published private(set) var queueCount: Int = 0
+    private(set) var queueCount: Int = 0
     /// Total files in the current batch (queueCount + 1 while one is active),
     /// kept for "Imported X of Y" progress text.
-    @Published private(set) var batchTotal: Int = 0
-    @Published private(set) var batchCompleted: Int = 0
+    private(set) var batchTotal: Int = 0
+    private(set) var batchCompleted: Int = 0
 
     private var currentTask: Task<Void, Never>?
     private var queue: [URL] = []

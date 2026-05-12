@@ -6,7 +6,7 @@ import SwiftUI
 struct PeriodicCardsView: View {
     let panel: UserPanel
 
-    @ObservedObject private var controller = PeriodicCardsController.shared
+    private let controller = PeriodicCardsController.shared
     @AppStorage(notesOpacityKey) private var backgroundOpacity: Double = notesDefaultOpacity
 
     private var cfg: PeriodicCardsConfig? { panel.config.periodicCards }
@@ -57,7 +57,7 @@ struct PeriodicCardsView: View {
                         }
                         .onChange(of: cards.count) { _, _ in
                             if let last = cards.last {
-                                withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
                             }
                         }
                     }
@@ -99,6 +99,7 @@ struct PeriodicCardsView: View {
                 .menuIndicator(.hidden)
                 .frame(width: 20, height: 20)
                 .help("Copy or export cards")
+                .accessibilityLabel("Copy or export cards")
             }
 
             Button {
@@ -112,6 +113,7 @@ struct PeriodicCardsView: View {
             }
             .buttonStyle(.plain)
             .help("Remove panel")
+            .accessibilityLabel("Remove panel")
         }
     }
 
@@ -132,6 +134,7 @@ struct PeriodicCardsView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Copy this card")
+                .accessibilityLabel("Copy this card")
             }
 
             Text(card.content)

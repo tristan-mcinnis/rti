@@ -1,18 +1,19 @@
 import Foundation
+import Observation
 
 /// Lightweight in-app logger. Writes to NSLog (so messages still land in the
 /// system log / Xcode console) AND to an in-memory ring buffer that the
 /// Settings → Logs window observes. Mostly useful when something goes wrong
 /// in the field and the user can't conveniently run `log show` in Terminal.
-@MainActor
-final class AppLog: ObservableObject {
+@Observable @MainActor
+final class AppLog {
     static let shared = AppLog()
 
     /// Tunable; 500 lines is plenty for a single session and keeps the UI
     /// responsive even when the audio path logs aggressively.
     private let maxEntries = 500
 
-    @Published private(set) var entries: [Entry] = []
+    private(set) var entries: [Entry] = []
 
     struct Entry: Identifiable, Equatable {
         let id: UUID = UUID()

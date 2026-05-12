@@ -1,8 +1,8 @@
 import AppKit
 import AVFoundation
-import Combine
 import Foundation
 import GRDB
+import Observation
 
 struct LiveEntry: Identifiable {
     let id = UUID()
@@ -18,14 +18,14 @@ struct LiveEntry: Identifiable {
     let sourceLanguage: String?
 }
 
-@MainActor
-final class SessionCoordinator: ObservableObject {
+@Observable @MainActor
+final class SessionCoordinator {
     static let shared = SessionCoordinator()
 
-    @Published private(set) var isRunning = false
-    @Published private(set) var currentSessionId: String?
-    @Published private(set) var startedAt: Date?
-    @Published private(set) var endedAt: Date?
+    private(set) var isRunning = false
+    private(set) var currentSessionId: String?
+    private(set) var startedAt: Date?
+    private(set) var endedAt: Date?
     /// Project this session is associated with (if any). Drives whether the
     /// live assistant prepends the project's curated instructions and is
     /// snapshotted into the session's markdown frontmatter at render time.
@@ -34,18 +34,18 @@ final class SessionCoordinator: ObservableObject {
     /// Forwarded from `SessionProjectBinding.shared` so existing callers
     /// (`LLMController`, views) see no change.
     var activeProjectId: String? { SessionProjectBinding.shared.activeProjectId }
-    @Published private(set) var liveEntries: [LiveEntry] = []
-    @Published private(set) var interimLine: String?
-    @Published private(set) var lastError: String?
+    private(set) var liveEntries: [LiveEntry] = []
+    private(set) var interimLine: String?
+    private(set) var lastError: String?
     /// True when `lastError` came from a Soniox auth/billing failure
     /// (`SonioxFailure.isAuth`). UI uses this to gate the "Open Settings"
     /// affordance on the error banner. Reset whenever `lastError` is
     /// cleared or replaced by a non-auth failure.
-    @Published private(set) var lastErrorIsAuth: Bool = false
+    private(set) var lastErrorIsAuth: Bool = false
     /// When non-nil, Soniox will stream translation tokens alongside
     /// the regular transcript. Bound to UserDefaults and the live
     /// transcript toggle.
-    @Published var translationConfig: TranslationConfig? {
+    var translationConfig: TranslationConfig? {
         didSet {
             audioPipeline.translationConfig = translationConfig
             // If a session is live, swap the Soniox transcription clients

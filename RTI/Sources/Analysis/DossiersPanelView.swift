@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DossiersPanelView: View {
-    @ObservedObject private var controller = DossierController.shared
+    private let controller = DossierController.shared
 
     var body: some View {
         FloatingPanelChrome(

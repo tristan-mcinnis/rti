@@ -1,13 +1,14 @@
 import Foundation
 import GRDB
+import Observation
 
-@MainActor
-final class NotesGenerationController: ObservableObject, AnalysisController {
+@Observable @MainActor
+final class NotesGenerationController: AnalysisController {
     static let shared = NotesGenerationController()
 
-    @Published private(set) var notes: [GeneratedNote] = []
-    @Published private(set) var isGenerating = false
-    @Published private(set) var lastError: String?
+    private(set) var notes: [GeneratedNote] = []
+    private(set) var isGenerating = false
+    private(set) var lastError: String?
 
     private let request = LLMRequest()
     private var sessionId: String?

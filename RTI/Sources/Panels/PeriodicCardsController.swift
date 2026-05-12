@@ -1,16 +1,16 @@
 import Foundation
-import Combine
+import Observation
 
 /// Drives one periodic-cards panel: holds a timer, runs the configured
 /// LLM prompt against the recent transcript window each tick, and
 /// persists each generated card. One controller per panel id — keyed in
 /// a dictionary on the singleton so multiple panels run independently.
-@MainActor
-final class PeriodicCardsController: ObservableObject {
+@Observable @MainActor
+final class PeriodicCardsController {
     static let shared = PeriodicCardsController()
 
-    @Published private(set) var cardsByPanel: [String: [Card]] = [:]
-    @Published private(set) var generatingPanelIds: Set<String> = []
+    private(set) var cardsByPanel: [String: [Card]] = [:]
+    private(set) var generatingPanelIds: Set<String> = []
 
     struct Card: Identifiable, Equatable {
         let id: String

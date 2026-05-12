@@ -1,16 +1,16 @@
 import Foundation
 import GRDB
-import Combine
+import Observation
 
 /// Singleton catalogue of user-spawned panels. Owns persistence and the
 /// SwiftUI-observable list of panels currently configured. Views observe
 /// `panels` to add/remove their hosting NSPanel windows; the store does
 /// not own the windows themselves — that's `WindowCoordinator`'s job.
-@MainActor
-final class UserPanelStore: ObservableObject {
+@Observable @MainActor
+final class UserPanelStore {
     static let shared = UserPanelStore()
 
-    @Published private(set) var panels: [UserPanel] = []
+    private(set) var panels: [UserPanel] = []
 
     private init() { panels = Self.loadAll() }
 

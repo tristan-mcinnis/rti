@@ -1,11 +1,12 @@
 import Foundation
+import Observation
 
-@MainActor
-final class SessionTitleController: ObservableObject {
+@Observable @MainActor
+final class SessionTitleController {
     static let shared = SessionTitleController()
 
-    @Published private(set) var isGenerating = false
-    @Published private(set) var lastError: String?
+    private(set) var isGenerating = false
+    private(set) var lastError: String?
 
     private let request: LLMRequest
     /// Per-session in-memory cache. `CorpusManager.renderSession` reads

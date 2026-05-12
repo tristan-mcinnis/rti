@@ -28,14 +28,14 @@ final class ProjectQAController: CorpusChatController {
         super.init()
     }
 
-    func load(_ conversation: ProjectChatConversation) {
+    func load(_ conversation: ProjectChatEntry) {
         RTILog.log("load chat — id=\(conversation.id.suffix(8)) turns=\(conversation.messages.count)", category: "projects")
-        let restored = conversation.messages.map { stored in
+        let restored = conversation.messages.map { m in
             CorpusChatEntry(
-                role: stored.role,
-                text: stored.text,
-                citations: stored.citations.map { Citation(sessionId: $0.sessionId, title: $0.title) },
-                createdAt: stored.createdAt
+                role: m.role,
+                text: m.text,
+                citations: m.citations.map { Citation(sessionId: $0.sessionId, title: $0.title) },
+                createdAt: m.createdAt
             )
         }
         adoptRestoredConversation(id: conversation.id, title: conversation.title, messages: restored)
@@ -126,25 +126,27 @@ final class ProjectQAController: CorpusChatController {
 
     override func persistConversation() {
         guard let id = conversationId, !messages.isEmpty else { return }
+        guard let slug = ProjectStore.shared.slug(forProject: projectId) else {
+            RTILog.log("persist skipped — no slug for project \(projectId.suffix(8))", category: "projects")
+            return
+        }
         let now = Date()
-        let conversation = ProjectChatConversation(
+        let entry = ProjectChatEntry(
             id: id,
             projectId: projectId,
             title: conversationTitle ?? "Untitled",
             createdAt: messages.first?.createdAt ?? now,
             updatedAt: now,
-            messages: messages.map { entry in
-                ProjectChatConversation.StoredEntry(
-                    role: entry.role,
-                    text: entry.text,
-                    createdAt: entry.createdAt,
-                    citations: entry.citations.map {
-                        ProjectChatConversation.StoredCitation(sessionId: $0.sessionId, title: $0.title)
-                    }
+            messages: messages.map { m in
+                .init(
+                    role: m.role,
+                    text: m.text,
+                    createdAt: m.createdAt,
+                    citations: m.citations.map { .init(sessionId: $0.sessionId, title: $0.title) }
                 )
             }
         )
-        ProjectChatHistoryStore.save(conversation)
+        ProjectChatFileStore.save(entry, projectSlug: slug)
     }
 
     override func didEncounterStreamError(_ message: String) {
@@ -156,8 +158,12 @@ final class ProjectQAController: CorpusChatController {
     }
 }
 
-// MARK: - Persistence model
+// MARK: - Legacy JSON shape (migrator-only)
 
+/// Decoded shape of the pre-markdown JSON chat files under
+/// `~/Library/Application Support/RTI/projects-chat/`. Read only by
+/// `ProjectMigrator` on the upgrade path. New chats are written through
+/// `ProjectChatFileStore` to markdown.
 struct ProjectChatConversation: Codable, Identifiable {
     let id: String
     let projectId: String
@@ -176,54 +182,5 @@ struct ProjectChatConversation: Codable, Identifiable {
     struct StoredCitation: Codable {
         let sessionId: String
         let title: String
-    }
-}
-
-enum ProjectChatHistoryStore {
-
-    static var rootDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        let dir = base.appendingPathComponent("RTI/projects-chat", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
-
-    private static func directory(for projectId: String) -> URL {
-        let dir = rootDirectory.appendingPathComponent(projectId, isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
-
-    static func list(projectId: String) -> [ProjectChatConversation] {
-        guard let urls = try? FileManager.default.contentsOfDirectory(
-            at: directory(for: projectId),
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        var out: [ProjectChatConversation] = []
-        for url in urls where url.pathExtension == "json" {
-            guard let data = try? Data(contentsOf: url),
-                  let conv = try? decoder.decode(ProjectChatConversation.self, from: data)
-            else { continue }
-            out.append(conv)
-        }
-        return out.sorted { $0.updatedAt > $1.updatedAt }
-    }
-
-    static func save(_ conversation: ProjectChatConversation) {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = .prettyPrinted
-        guard let data = try? encoder.encode(conversation) else { return }
-        let url = directory(for: conversation.projectId).appendingPathComponent("\(conversation.id).json")
-        try? data.write(to: url, options: .atomic)
-    }
-
-    static func delete(projectId: String, conversationId: String) {
-        let url = directory(for: projectId).appendingPathComponent("\(conversationId).json")
-        try? FileManager.default.removeItem(at: url)
     }
 }

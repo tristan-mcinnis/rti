@@ -10,7 +10,7 @@ struct SessionHistoryView: View {
     @State private var sortOrder: SortOrder = .newest
     @State private var searchDebounceItem: DispatchWorkItem?
     @State private var isDropTargeted = false
-    @StateObject private var importer = SessionImporter.shared
+    private let importer = SessionImporter.shared
 
     enum SortOrder: String, CaseIterable, CustomStringConvertible {
         case newest = "Newest"

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ThemesPanelView: View {
-    @ObservedObject private var controller = ThemesController.shared
+    private let controller = ThemesController.shared
 
     var body: some View {
         FloatingPanelChrome(

@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct PromptActionRow: View {
-    @ObservedObject private var inputState = OverlayInputState.shared
-    @ObservedObject private var session = SessionCoordinator.shared
+    private let inputState = OverlayInputState.shared
+    private let session = SessionCoordinator.shared
 
     var body: some View {
         HStack(spacing: 8) {

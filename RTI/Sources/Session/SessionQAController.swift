@@ -1,12 +1,13 @@
 import Foundation
+import Observation
 
-@MainActor
-final class SessionQAController: ObservableObject {
+@Observable @MainActor
+final class SessionQAController {
     static let shared = SessionQAController()
 
-    @Published private(set) var isGenerating = false
-    @Published private(set) var lastError: String?
-    @Published private(set) var messages: [QAEntry] = []
+    private(set) var isGenerating = false
+    private(set) var lastError: String?
+    private(set) var messages: [QAEntry] = []
 
     private let request: LLMRequest
 

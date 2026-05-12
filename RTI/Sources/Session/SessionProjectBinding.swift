@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// Owns the sticky project-selection state and project↔session membership
 /// writes. Extracted from `SessionCoordinator` so the project-binding
@@ -7,11 +8,11 @@ import Foundation
 ///
 /// `SessionCoordinator` forwards `activeProjectId` through this store so
 /// existing callers (`LLMController`, views) see no change.
-@MainActor
-final class SessionProjectBinding: ObservableObject {
+@Observable @MainActor
+final class SessionProjectBinding {
     nonisolated static let shared = SessionProjectBinding()
 
-    @Published private(set) var activeProjectId: String?
+    private(set) var activeProjectId: String?
 
     private nonisolated static let activeProjectKey = "rti.session.activeProjectId"
 

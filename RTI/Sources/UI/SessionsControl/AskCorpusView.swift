@@ -4,11 +4,12 @@ import SwiftUI
 /// entire corpus — questions are answered using retrieved excerpts from
 /// every recorded meeting, with citations back to the source session.
 struct AskCorpusView: View {
-    @StateObject private var controller = AskCorpusController.shared
+    private let controller = AskCorpusController.shared
     @State private var input = ""
     @State private var showingHistory = false
     @State private var historyItems: [AskCorpusConversation] = []
     @State private var copyConfirmId: UUID?
+    @State private var corpusSessionCount: Int = 0
     @FocusState private var inputFocused: Bool
 
     private let starterPrompts = [
@@ -34,9 +35,19 @@ struct AskCorpusView: View {
         }
         .background(RTIDesign.Color.panelBackground)
         .onAppear { inputFocused = true }
+        .task { corpusSessionCount = CorpusBackedStore.allMarkdownSessions().count }
     }
 
     // MARK: - Header
+
+    private var askScopeSubtitle: String {
+        let count = corpusSessionCount
+        let base = "Scope: entire corpus (\(count) session\(count == 1 ? "" : "s"))"
+        if controller.messages.isEmpty {
+            return base + " · ask anything across every meeting you've recorded"
+        }
+        return base
+    }
 
     private var header: some View {
         HStack(alignment: .top) {
@@ -45,9 +56,7 @@ struct AskCorpusView: View {
                     .font(RTIDesign.Font.pageTitle)
                     .foregroundStyle(RTIDesign.Color.textPrimary)
                     .lineLimit(1)
-                Text(controller.messages.isEmpty
-                     ? "Ask anything across every meeting you've recorded."
-                     : "Across every recorded meeting")
+                Text(askScopeSubtitle)
                     .font(RTIDesign.Font.caption)
                     .foregroundStyle(RTIDesign.Color.textSecondary)
             }
@@ -92,6 +101,7 @@ struct AskCorpusView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
     }
 
     private var historyPopover: some View {
@@ -314,9 +324,8 @@ struct AskCorpusView: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(body, forType: .string)
             copyConfirmId = msg.id
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                if copyConfirmId == msg.id { copyConfirmId = nil }
-            }
+            let capturedId = msg.id
+            Task { try? await Task.sleep(for: .seconds(1.4)); await MainActor.run { if copyConfirmId == capturedId { copyConfirmId = nil } } }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: copyConfirmId == msg.id ? "checkmark" : "doc.on.doc")
@@ -331,8 +340,9 @@ struct AskCorpusView: View {
     }
 
     /// Render the assistant body as Markdown. While the LLM is still
-    /// streaming we show "Thinking…" until tokens arrive; after that
-    /// each delta re-parses (cheap for normal-length answers).
+    /// streaming we show "Thinking…" or plain text to avoid re-parsing
+    /// Markdown on every token. Once the message is complete we render
+    /// the full parsed Markdown.
     @ViewBuilder
     private func assistantText(_ msg: AskCorpusController.Entry) -> some View {
         if msg.text.isEmpty && controller.isGenerating {
@@ -340,7 +350,12 @@ struct AskCorpusView: View {
                 .foregroundStyle(RTIDesign.Color.textTertiary)
         } else {
             let stripped = Self.stripCitationTokens(msg.text)
-            RTIMarkdown(stripped, style: .panel)
+            let isStreaming = controller.isGenerating && msg.id == controller.messages.last?.id
+            if isStreaming {
+                Text(stripped)
+            } else {
+                RTIMarkdown(stripped, style: .panel)
+            }
         }
     }
 

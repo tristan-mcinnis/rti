@@ -99,7 +99,7 @@ struct SessionsControlView: View {
         switch selectedTab {
         case .liveTranscript:
             DebugConsoleView()
-                .environmentObject(SessionCoordinator.shared)
+                .environment(SessionCoordinator.shared)
 
         case .sessions:
             if let sessionId = sessionNavId {

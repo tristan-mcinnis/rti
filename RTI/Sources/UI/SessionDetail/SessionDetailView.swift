@@ -15,6 +15,8 @@ struct SessionDetailView: View {
     @State private var session: Session?
     @State private var notes: [GeneratedNote] = []
     @State private var dossiers: [EntityDossier] = []
+    @State private var cachedGroupedTranscripts: [TranscriptGroup] = []
+    @State private var cachedGroupedDossiers: [DetailDossierGroup] = []
     @State private var selectedTab: Tab = .summary
     @State private var qaInput = ""
     @State private var jumpToBottomToken = UUID()
@@ -32,10 +34,10 @@ struct SessionDetailView: View {
         _pendingHighlightScroll = State(initialValue: trimmed?.isEmpty == false)
     }
 
-    @ObservedObject private var qaController = SessionQAController.shared
-    @ObservedObject private var summaryController = SummaryController.shared
-    @ObservedObject private var regenerator = TranscriptRegenerator.shared
-    @StateObject private var toast = ToastPresenter()
+    private let qaController = SessionQAController.shared
+    private let summaryController = SummaryController.shared
+    private let regenerator = TranscriptRegenerator.shared
+    @State private var toast = ToastPresenter()
 
     enum Tab: String, CaseIterable, CustomStringConvertible {
         case summary = "Summary"
@@ -107,6 +109,12 @@ struct SessionDetailView: View {
         }
         .onChange(of: selectedTab) { _, new in
             RTILog.log("[SessionDetail] tab=\(new.rawValue) density=\(density.rawValue)", category: "UI")
+        }
+        .onChange(of: transcripts) { _, _ in cachedGroupedTranscripts = computeGroupedTranscripts() }
+        .onChange(of: dossiers) { _, _ in cachedGroupedDossiers = computeGroupedDossiers() }
+        .onAppear {
+            cachedGroupedTranscripts = computeGroupedTranscripts()
+            cachedGroupedDossiers = computeGroupedDossiers()
         }
     }
 
@@ -183,6 +191,7 @@ struct SessionDetailView: View {
             RoundedRectangle(cornerRadius: 4)
                 .fill((isHifi ? Color.green : Color.orange).opacity(0.12))
         )
+        .accessibilityLabel("Transcript quality: \(isHifi ? "Hi-Fi" : "Realtime")")
     }
 
     private var sessionTitle: String {
@@ -298,7 +307,7 @@ struct SessionDetailView: View {
                         sectionBlockOptional(title: "Decisions Made", content: summary.decisions)
                         sectionBlockOptional(title: "Action Items", content: summary.actionItems)
                         if let followUps = summary.followUps {
-                            ForEach(splitFollowUps(followUps), id: \.title) { section in
+                            ForEach(splitFollowUps(followUps)) { section in
                                 sectionBlock(title: section.title, content: section.body, isFirst: false)
                             }
                         }
@@ -373,7 +382,7 @@ struct SessionDetailView: View {
         let text: String
     }
 
-    private var groupedTranscripts: [TranscriptGroup] {
+    private func computeGroupedTranscripts() -> [TranscriptGroup] {
         var groups: [TranscriptGroup] = []
         var lastMergedEndMs: Int?
         for entry in transcripts {
@@ -415,7 +424,7 @@ struct SessionDetailView: View {
                         if let q = highlightQuery {
                             highlightBanner(query: q)
                         }
-                        ForEach(groupedTranscripts) { group in
+                        ForEach(cachedGroupedTranscripts) { group in
                             transcriptRow(group)
                                 .id(group.id)
                         }
@@ -426,7 +435,7 @@ struct SessionDetailView: View {
                     .readingWidth(880)
                 }
                 .onChange(of: jumpToBottomToken) { _, _ in
-                    if let last = groupedTranscripts.last {
+                    if let last = cachedGroupedTranscripts.last {
                         withAnimation(.easeOut(duration: 0.18)) {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
@@ -440,7 +449,7 @@ struct SessionDetailView: View {
 
             StickySubheader(
                 title: "Transcript",
-                count: "\(transcripts.count) entries · \(groupedTranscripts.count) paragraphs"
+                count: "\(transcripts.count) entries · \(cachedGroupedTranscripts.count) paragraphs"
             ) {
                 HStack(spacing: RTIDesign.Spacing.xs) {
                     densityToggleButton
@@ -448,7 +457,7 @@ struct SessionDetailView: View {
                         .buttonStyle(.plain)
                         .font(RTIDesign.Font.meta.weight(.medium))
                         .foregroundStyle(RTIDesign.Color.accentText)
-                        .disabled(groupedTranscripts.isEmpty)
+                        .disabled(cachedGroupedTranscripts.isEmpty)
                     Button("Copy") { copyTranscript() }
                         .buttonStyle(.plain)
                         .font(RTIDesign.Font.meta.weight(.medium))
@@ -546,15 +555,15 @@ struct SessionDetailView: View {
     private func scrollToFirstHighlightMatch(using proxy: ScrollViewProxy) {
         guard pendingHighlightScroll,
               let q = highlightQuery,
-              !groupedTranscripts.isEmpty else { return }
-        let texts = groupedTranscripts.map(\.text)
+              !cachedGroupedTranscripts.isEmpty else { return }
+        let texts = cachedGroupedTranscripts.map(\.text)
         guard let idx = TranscriptHighlight.firstMatchIndex(in: texts, query: q) else {
             // No transcript match — likely the hit was in summary/chat. Stop
             // trying so we don't keep scrolling on unrelated content updates.
             pendingHighlightScroll = false
             return
         }
-        let target = groupedTranscripts[idx].id
+        let target = cachedGroupedTranscripts[idx].id
         // Defer one runloop tick so the LazyVStack has rendered the row.
         DispatchQueue.main.async {
             withAnimation(.easeOut(duration: 0.20)) {
@@ -598,6 +607,8 @@ struct SessionDetailView: View {
                                     .font(RTIDesign.Font.caption)
                                     .foregroundStyle(RTIDesign.Color.textTertiary)
                             }
+                            .accessibilityLabel("Generating answer")
+                            .accessibilityAddTraits(.updatesFrequently)
                         }
                         if let error = qaController.lastError {
                             Text(error)
@@ -639,6 +650,9 @@ struct SessionDetailView: View {
                     Text("Ask anything about this meeting.")
                         .font(RTIDesign.Font.bodySmall)
                         .foregroundStyle(RTIDesign.Color.textSecondary)
+                    Text("Scope: this session only")
+                        .font(RTIDesign.Font.caption)
+                        .foregroundStyle(RTIDesign.Color.textTertiary)
                 }
                 Spacer()
             }
@@ -683,7 +697,7 @@ struct SessionDetailView: View {
                 if !dossiers.isEmpty {
                     sectionHeader("Entities", count: dossiers.count, copyAll: copyAllDossiers)
                     VStack(alignment: .leading, spacing: density.scaled(RTIDesign.Spacing.md)) {
-                        ForEach(groupedDossiers) { group in
+                        ForEach(cachedGroupedDossiers) { group in
                             sessionDetailDossierGroup(group)
                         }
                     }
@@ -743,7 +757,7 @@ struct SessionDetailView: View {
         let dossiers: [EntityDossier]
     }
 
-    private var groupedDossiers: [DetailDossierGroup] {
+    private func computeGroupedDossiers() -> [DetailDossierGroup] {
         Dictionary(grouping: dossiers) { $0.type }
             .map { DetailDossierGroup(type: $0.key, dossiers: $0.value) }
             .sorted { $0.type.displayName < $1.type.displayName }
@@ -815,7 +829,7 @@ struct SessionDetailView: View {
     }
 
     private func copyAllDossiers() {
-        let parts: [String] = groupedDossiers.map { group in
+        let parts: [String] = cachedGroupedDossiers.map { group in
             let entries: [String] = group.dossiers.map { "**\($0.name)** — \($0.description)" }
             return "## \(group.type.displayName)\n\n\(entries.joined(separator: "\n\n"))"
         }
@@ -985,6 +999,7 @@ struct SessionDetailView: View {
                 .buttonStyle(.plain)
                 .focusable(true)
                 .focusEffectDisabled()
+                .accessibilityLabel("Send question")
                 .padding(.trailing, 6)
                 .disabled(qaInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || qaController.isGenerating)
             }
@@ -1075,7 +1090,8 @@ struct SessionDetailView: View {
         (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
     }
 
-    private struct FollowUpSection {
+    private struct FollowUpSection: Identifiable {
+        let id = UUID()
         let title: String
         let body: String
     }

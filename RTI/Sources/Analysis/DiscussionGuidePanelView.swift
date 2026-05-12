@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct DiscussionGuidePanelView: View {
-    @ObservedObject private var controller = DiscussionGuideController.shared
+    private let controller = DiscussionGuideController.shared
 
     var body: some View {
         FloatingPanelChrome(

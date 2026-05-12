@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NotesPanelView: View {
-    @ObservedObject private var controller = NotesGenerationController.shared
+    private let controller = NotesGenerationController.shared
 
     var body: some View {
         FloatingPanelChrome(

@@ -1,13 +1,13 @@
-import Combine
 import Foundation
 import GRDB
+import Observation
 
-@MainActor
-final class ModeStore: ObservableObject {
+@Observable @MainActor
+final class ModeStore {
     static let shared = ModeStore()
 
-    @Published private(set) var modes: [Mode] = []
-    @Published var activeModeId: String? {
+    private(set) var modes: [Mode] = []
+    var activeModeId: String? {
         didSet {
             if let id = activeModeId {
                 UserDefaults.standard.set(id, forKey: Self.activeKey)

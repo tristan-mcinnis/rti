@@ -1,16 +1,17 @@
 import Foundation
+import Observation
 
 /// Re-runs Soniox file-mode transcription against a session's recorded WAV
 /// to produce a higher-fidelity transcript than the realtime stream
 /// captured live. Replaces the transcript section of the canonical
 /// markdown file in `~/meetings/` and updates `transcript_quality: hifi`
 /// in its frontmatter.
-@MainActor
-final class TranscriptRegenerator: ObservableObject {
+@Observable @MainActor
+final class TranscriptRegenerator {
     static let shared = TranscriptRegenerator()
 
-    @Published private(set) var generatingSessionId: String?
-    @Published private(set) var lastError: String?
+    private(set) var generatingSessionId: String?
+    private(set) var lastError: String?
 
     private var currentTask: Task<Void, Never>?
 

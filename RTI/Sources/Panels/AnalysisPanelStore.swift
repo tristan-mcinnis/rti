@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// Singleton registry of built-in analysis panels. Centralises the mapping
 /// from `FloatingPanelID` to its human-readable title and toggle notification
@@ -9,8 +10,8 @@ import Foundation
 /// The `UserPanelStore` pattern (data-driven, keyed by ID) inspired this
 /// store, but built-in panels are singletons — there's no spawn/teardown
 /// lifecycle, just show/hide.
-@MainActor
-final class AnalysisPanelStore: ObservableObject {
+@Observable @MainActor
+final class AnalysisPanelStore {
     static let shared = AnalysisPanelStore()
 
     struct Descriptor: Identifiable {
@@ -30,7 +31,7 @@ final class AnalysisPanelStore: ObservableObject {
 
     /// Which built-in panels are currently visible. Updated by `toggle(_:)`
     /// and kept in sync with `WindowCoordinator` via notification.
-    @Published var activePanels: Set<FloatingPanelID> = []
+    var activePanels: Set<FloatingPanelID> = []
 
     /// Return the subset of `panelIDs` that are registered in `all`.
     func descriptors(for panelIDs: Set<FloatingPanelID>) -> [Descriptor] {

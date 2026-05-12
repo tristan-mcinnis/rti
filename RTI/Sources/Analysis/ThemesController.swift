@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import Observation
 
 /// Periodically scans the live transcript for emergent topics + their
 /// verbatim, speaker- and timestamp-attributed quotes. Mirrors the shape
@@ -11,15 +12,15 @@ import GRDB
 /// replace, they don't accumulate). On session end, a final hi-fi pass
 /// runs against the full transcript and overwrites once more with
 /// `is_hi_fi = 1` set on the row.
-@MainActor
-final class ThemesController: ObservableObject, AnalysisController {
+@Observable @MainActor
+final class ThemesController: AnalysisController {
     static let shared = ThemesController()
 
-    @Published private(set) var payload: ThemesPayload = .empty
-    @Published private(set) var isGenerating = false
-    @Published private(set) var lastError: String?
-    @Published private(set) var isHiFi = false
-    @Published private(set) var generatedAt: Date?
+    private(set) var payload: ThemesPayload = .empty
+    private(set) var isGenerating = false
+    private(set) var lastError: String?
+    private(set) var isHiFi = false
+    private(set) var generatedAt: Date?
 
     private let request = LLMRequest()
     private var sessionId: String?

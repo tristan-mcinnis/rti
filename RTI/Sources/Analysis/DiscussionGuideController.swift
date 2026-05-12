@@ -1,17 +1,18 @@
 import Foundation
 import GRDB
+import Observation
 
 /// Owns the active session's discussion guide: parses an imported
 /// document into structure, persists it, and periodically asks the LLM
 /// to pair unanswered questions with new transcript material.
-@MainActor
-final class DiscussionGuideController: ObservableObject, AnalysisController {
+@Observable @MainActor
+final class DiscussionGuideController: AnalysisController {
     static let shared = DiscussionGuideController()
 
-    @Published private(set) var guide: DiscussionGuide?
-    @Published private(set) var isImporting = false
-    @Published private(set) var isMatching = false
-    @Published private(set) var lastError: String?
+    private(set) var guide: DiscussionGuide?
+    private(set) var isImporting = false
+    private(set) var isMatching = false
+    private(set) var lastError: String?
 
     private let request = LLMRequest()
     private var sessionId: String?

@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct OverlayPanelView: View {
-    @ObservedObject private var llm = LLMController.shared
-    @ObservedObject private var session = SessionCoordinator.shared
+    private let llm = LLMController.shared
+    private let session = SessionCoordinator.shared
     var onOpenSettings: () -> Void = {}
 
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
@@ -53,6 +53,8 @@ struct OverlayPanelView: View {
                 .controlSize(.mini)
                 .frame(width: 70)
                 .help("Panel opacity")
+                .accessibilityLabel("Background opacity")
+                .accessibilityValue("\(Int(backgroundOpacity * 100)) percent")
                 .padding(.top, 8)
                 .padding(.trailing, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity,

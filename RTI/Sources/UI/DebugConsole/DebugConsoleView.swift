@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 struct DebugConsoleView: View {
-    @EnvironmentObject var coordinator: SessionCoordinator
-    @ObservedObject private var modes = ModeStore.shared
-    @ObservedObject private var projects = ProjectStore.shared
+    @Environment(SessionCoordinator.self) var coordinator: SessionCoordinator
+    private let modes = ModeStore.shared
+    private let projects = ProjectStore.shared
     @State private var elapsed: TimeInterval = 0
     @State private var timer: Timer?
     @State private var copiedFlash: String?

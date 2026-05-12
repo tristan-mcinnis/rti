@@ -1,13 +1,14 @@
 import Foundation
 import GRDB
+import Observation
 
-@MainActor
-final class DossierController: ObservableObject, AnalysisController {
+@Observable @MainActor
+final class DossierController: AnalysisController {
     static let shared = DossierController()
 
-    @Published private(set) var dossiers: [EntityDossier] = []
-    @Published private(set) var isGenerating = false
-    @Published private(set) var lastError: String?
+    private(set) var dossiers: [EntityDossier] = []
+    private(set) var isGenerating = false
+    private(set) var lastError: String?
 
     private let request = LLMRequest()
     private var sessionId: String?

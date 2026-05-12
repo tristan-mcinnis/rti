@@ -2,7 +2,7 @@ import SwiftUI
 
 @MainActor
 struct CommandPaletteView: View {
-    @ObservedObject var registry: CommandRegistry
+    var registry: CommandRegistry
     @State private var query: String = ""
     @State private var sessionMatches: [SessionSearchResult] = []
     @State private var isSearchingSessions: Bool = false

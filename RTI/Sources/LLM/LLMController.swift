@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import Observation
 
 struct ChatEntry: Identifiable, Equatable {
     let id = UUID()
@@ -14,21 +15,21 @@ struct ChatEntry: Identifiable, Equatable {
     var appliedProjectName: String? = nil
 }
 
-@MainActor
-final class LLMController: ObservableObject {
+@Observable @MainActor
+final class LLMController {
     static let shared = LLMController()
 
-    @Published private(set) var entries: [ChatEntry] = []
-    @Published private(set) var streaming = false
-    @Published private(set) var reasoning = false
-    @Published private(set) var lastError: String?
-    @Published private(set) var lastErrorIsAuth: Bool = false
-    @Published private(set) var pendingScreenContext: String?
+    private(set) var entries: [ChatEntry] = []
+    private(set) var streaming = false
+    private(set) var reasoning = false
+    private(set) var lastError: String?
+    private(set) var lastErrorIsAuth: Bool = false
+    private(set) var pendingScreenContext: String?
     /// Human-readable status shown beneath the streaming assistant entry
     /// while a tool is running (e.g. "📷 Looking at your screen…"). Nil
     /// when idle or when only content tokens are streaming.
-    @Published private(set) var toolStatus: String?
-    @Published var smartMode: Bool {
+    private(set) var toolStatus: String?
+    var smartMode: Bool {
         didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
     }
 

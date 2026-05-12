@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LogsView: View {
-    @ObservedObject private var log = AppLog.shared
+    private let log = AppLog.shared
     @State private var crashLogText: String = ""
 
     private static let timeFormatter: DateFormatter = {

@@ -1,11 +1,12 @@
 import Foundation
+import Observation
 
-@MainActor
-final class SummaryController: ObservableObject {
+@Observable @MainActor
+final class SummaryController {
     static let shared = SummaryController()
 
-    @Published private(set) var isGenerating = false
-    @Published private(set) var lastError: String?
+    private(set) var isGenerating = false
+    private(set) var lastError: String?
 
     private let request: LLMRequest
     /// Per-session in-memory cache. Keyed by session id, populated on

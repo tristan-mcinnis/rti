@@ -1,5 +1,5 @@
-import Combine
 import Foundation
+import Observation
 
 /// User-defined glossary of project- or domain-specific terms. Injected
 /// into LLM system prompts so the model uses the user's preferred names,
@@ -8,11 +8,11 @@ import Foundation
 /// Storage is a single UserDefaults blob — one entry per line, in the
 /// shape `Term — meaning` or `Term: meaning`. Blank lines and lines
 /// starting with `#` are ignored.
-@MainActor
-final class GlossaryStore: ObservableObject {
+@Observable @MainActor
+final class GlossaryStore {
     static let shared = GlossaryStore()
 
-    @Published var rawText: String {
+    var rawText: String {
         didSet {
             UserDefaults.standard.set(rawText, forKey: Self.key)
         }

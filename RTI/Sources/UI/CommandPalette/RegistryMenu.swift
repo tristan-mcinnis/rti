@@ -11,7 +11,7 @@ import SwiftUI
 /// Dynamic extras (Recent Sessions submenu, Modes submenu, Quit) are not
 /// registry commands and remain the caller's responsibility to add.
 struct RegistryMenuContents: View {
-    @ObservedObject private var registry = CommandRegistry.shared
+    private let registry = CommandRegistry.shared
 
     var body: some View {
         let bySection = Dictionary(grouping: registry.commands) { $0.menuSection }
@@ -50,7 +50,7 @@ struct RegistryMenuContents: View {
 /// between sections.
 struct RegistryMenuSection: View {
     let section: MenuSection
-    @ObservedObject private var registry = CommandRegistry.shared
+    private let registry = CommandRegistry.shared
 
     var body: some View {
         ForEach(registry.commands.filter { $0.menuSection == section && $0.isAvailable() }) { cmd in

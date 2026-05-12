@@ -5,10 +5,10 @@ struct AssistantInputView: View {
 
     @State private var input: String = ""
     @FocusState private var isInputFocused: Bool
-    @ObservedObject private var llm = LLMController.shared
-    @ObservedObject private var modes = ModeStore.shared
-    @ObservedObject private var session = SessionCoordinator.shared
-    @ObservedObject private var inputState = OverlayInputState.shared
+    private let llm = LLMController.shared
+    private let modes = ModeStore.shared
+    private let session = SessionCoordinator.shared
+    private let inputState = OverlayInputState.shared
 
     var body: some View {
         VStack(spacing: 10) {

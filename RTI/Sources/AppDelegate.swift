@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 @MainActor
@@ -7,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private let windows = WindowCoordinator()
     private let menu = MenuCoordinator()
     private let hotkeys = HotkeyCoordinator()
-    private var cancellables: Set<AnyCancellable> = []
+    private var sessionObservationTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard ensureSingleInstance() else { return }
@@ -53,12 +52,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
         hotkeys.registerAll(commands: commands)
 
-        SessionCoordinator.shared.$isRunning
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                MainActor.assumeIsolated { self?.menu.refreshTitle() }
+        sessionObservationTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    withObservationTracking {
+                        _ = SessionCoordinator.shared.isRunning
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+                self?.menu.refreshTitle()
             }
-            .store(in: &cancellables)
+        }
 
         registerNotificationObservers()
 

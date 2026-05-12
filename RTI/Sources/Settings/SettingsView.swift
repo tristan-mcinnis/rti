@@ -129,14 +129,14 @@ private struct KeysTab: View {
             return
         }
         saved = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
+        Task { try? await Task.sleep(for: .seconds(1.2)); await MainActor.run { saved = false } }
     }
 }
 
 // MARK: - Modes
 
 private struct ModesTab: View {
-    @ObservedObject private var store = ModeStore.shared
+    private let store = ModeStore.shared
     @State private var selection: String?
     @State private var name = ""
     @State private var prompt = ""
@@ -252,14 +252,14 @@ private struct ModesTab: View {
         guard !trimmedName.isEmpty else { return }
         store.update(id: id, name: trimmedName, systemPrompt: prompt, referenceText: reference)
         saved = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
+        Task { try? await Task.sleep(for: .seconds(1.2)); await MainActor.run { saved = false } }
     }
 }
 
 // MARK: - Calendar
 
 private struct CalendarTab: View {
-    @ObservedObject private var calendar = CalendarManager.shared
+    private let calendar = CalendarManager.shared
     @State private var requestInProgress = false
 
     var body: some View {
@@ -269,16 +269,18 @@ private struct CalendarTab: View {
 
             if calendar.isAuthorized {
                 Label("Calendar access granted", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text("RTI will detect active meetings when a session starts and attach the event title to the session.")
+                    .foregroundStyle(Color.green)
+                Text("When you start a session, RTI looks at events happening right now in your default calendar. If it finds one, the event title becomes the session title and the attendees are attached for context. Nothing else is read or written — RTI never modifies your calendar.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Label("Calendar access not granted", systemImage: "xmark.circle.fill")
-                    .foregroundStyle(.orange)
-                Text("Grant access so RTI can detect active meetings from your calendar when recording starts.")
+                    .foregroundStyle(Color.orange)
+                Text("Without access, sessions are titled by date/time only. Granting access lets RTI auto-name sessions from the calendar event in progress when you start recording. Read-only — RTI never modifies your calendar.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Button(action: requestAccess) {
                     if requestInProgress {
@@ -313,6 +315,7 @@ private struct GeneralTab: View {
     @State private var launchError: String?
     @State private var inputDevices: [AudioInputDevice] = []
     @State private var selectedInputUID: String = AudioInputDeviceStore.preferredUID
+    @State private var crashLogAvailable: Bool = false
 
     @AppStorage(OverlayAppearanceDefaults.widthKey) private var overlayWidth: Double = OverlayAppearanceDefaults.defaultWidth
     @AppStorage(OverlayAppearanceDefaults.heightKey) private var overlayHeight: Double = OverlayAppearanceDefaults.defaultHeight
@@ -324,6 +327,7 @@ private struct GeneralTab: View {
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = true
 
     var body: some View {
+        // TODO(perf): extract sections into sub-views to limit redraws
         ScrollView {
         VStack(alignment: .leading, spacing: 14) {
             Text("General")
@@ -347,6 +351,16 @@ private struct GeneralTab: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
             }
+
+            Divider().padding(.vertical, 8)
+
+            Text("Assistant")
+                .font(.system(size: 13, weight: .medium))
+            llmProviderRow
+            Text("Provider is selected in code (`LLMProviders.activeId`). All providers must speak OpenAI-compatible streaming chat. Add your API key in the Keys tab.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Divider().padding(.vertical, 8)
 
@@ -396,6 +410,18 @@ private struct GeneralTab: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button("Reset to Defaults") {
+                    notesEnabled = true
+                    dossiersEnabled = true
+                    themesEnabled = true
+                    guideEnabled = true
+                    notesInterval = AnalysisSettingsDefaults.defaultInterval
+                }
+                .controlSize(.small)
+            }
 
             Divider().padding(.vertical, 8)
 
@@ -474,28 +500,106 @@ private struct GeneralTab: View {
             HStack(spacing: 8) {
                 Button("Show RTI Folder") { revealRTIFolder() }
                 Button("Show Crash Log") { revealCrashLog() }
-                    .disabled(crashLogURL() == nil || !FileManager.default.fileExists(atPath: crashLogURL()?.path ?? ""))
+                    .disabled(!crashLogAvailable)
                 Button("View Logs…") { showLogs() }
             }
 
-            Spacer()
+            Divider().padding(.vertical, 8)
 
-            // Version footer — useful when reporting an issue.
-            Text(versionFooter)
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            diagnosticsSection
+
+            Spacer()
         }
         .padding(.bottom, 4)
         }
-        .onAppear { inputDevices = AudioInputDeviceStore.availableInputDevices() }
+        .onAppear {
+            inputDevices = AudioInputDeviceStore.availableInputDevices()
+            crashLogAvailable = crashLogURL() != nil && FileManager.default.fileExists(atPath: crashLogURL()?.path ?? "")
+        }
     }
 
-    private var versionFooter: String {
+    // MARK: - Assistant section
+
+    @ViewBuilder
+    private var llmProviderRow: some View {
+        let active = LLMProviders.active
+        HStack {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(active.displayName)
+                    .font(.system(size: 12, weight: .medium))
+                Text(active.model)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(active.baseURL.host ?? "")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.06))
+        )
+    }
+
+    // MARK: - Diagnostics
+
+    @ViewBuilder
+    private var diagnosticsSection: some View {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "RTI \(version) (\(build))"
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Diagnostics")
+                .font(.system(size: 13, weight: .medium))
+            diagRow("Version", "RTI \(version) (\(build))")
+            diagRow("Corpus", CorpusManager.shared.corpusDirectory.path)
+            diagRow("Database", databasePath)
+            diagRow("Provider", "\(LLMProviders.active.displayName) · \(LLMProviders.active.model)")
+            HStack {
+                Spacer()
+                Button("Copy diagnostics") { copyDiagnostics() }
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private func diagRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .leading)
+            Text(value)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .lineLimit(2)
+                .truncationMode(.middle)
+            Spacer()
+        }
+    }
+
+    private var databasePath: String {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        return base?.appendingPathComponent("RTI/rti.db").path ?? "(unknown)"
+    }
+
+    private func copyDiagnostics() {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        let provider = LLMProviders.active
+        let lines = [
+            "RTI \(version) (\(build))",
+            "Platform: \(ProcessInfo.processInfo.operatingSystemVersionString)",
+            "Corpus: \(CorpusManager.shared.corpusDirectory.path)",
+            "Database: \(databasePath)",
+            "Provider: \(provider.displayName) · \(provider.model) · \(provider.baseURL.absoluteString)"
+        ]
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
     }
 
     @ViewBuilder
@@ -562,6 +666,7 @@ private struct CorpusTab: View {
     @State private var copyConfirmation: String?
     @State private var reindexStatus: String?
     @State private var migratedCount: Int?
+    @State private var corpusStats: (sessionCount: Int, projectCount: Int, synthesisCount: Int) = (0, 0, 0)
 
     private var resolvedPath: String {
         if corpusPath.isEmpty {
@@ -589,20 +694,34 @@ private struct CorpusTab: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack {
+                HStack(alignment: .top) {
                     Text("Location:")
                     Text(resolvedPath)
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Choose…") { chooseDirectory() }
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Button("Choose…") { chooseDirectory() }
+                        HStack(spacing: 6) {
+                            Button("Reveal") { revealInFinder() }
+                                .controlSize(.small)
+                            Button("Reset") { resetToDefault() }
+                                .controlSize(.small)
+                                .disabled(corpusPath.isEmpty)
+                                .help("Revert to the default location (~/meetings)")
+                        }
+                    }
                 }
+
+                corpusStatsLine
 
                 Divider().padding(.vertical, 8)
 
                 Text("MCP Server")
                     .font(.system(size: 13, weight: .medium))
-                Text("Expose the Corpus to external agents (Claude Desktop, Codex, OpenCode, Gemini CLI). Read-only. Click below to copy a Claude-Desktop-shaped config snippet to your clipboard.")
+                Text("Expose the Corpus to external agents (Claude Desktop, Codex, OpenCode, Gemini CLI). Read-only. Agents can read your session markdown plus every project's PROJECT.md, synthesis.md, and chat history. Click below to copy a Claude-Desktop-shaped config snippet.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -642,7 +761,76 @@ private struct CorpusTab: View {
         }
         .onChange(of: corpusPath) { _, _ in
             NotificationCenter.default.post(name: .rtiSessionsChanged, object: nil)
+            loadCorpusStats()
         }
+        .onAppear { loadCorpusStats() }
+    }
+
+    @ViewBuilder
+    private var corpusStatsLine: some View {
+        HStack(spacing: 16) {
+            Label("\(corpusStats.sessionCount) sessions", systemImage: "doc.text")
+            Label("\(corpusStats.projectCount) projects", systemImage: "folder")
+            if corpusStats.synthesisCount > 0 {
+                Label("\(corpusStats.synthesisCount) synthesis", systemImage: "sparkles")
+            }
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+    }
+
+    private func loadCorpusStats() {
+        let dir = CorpusManager.shared.corpusDirectory
+        let sessionCount = (try? CorpusReader.listMarkdownFiles(in: dir).count) ?? 0
+        let projectCount = ProjectStore.shared.projects.count
+        let projectsDir = dir.appendingPathComponent("projects", isDirectory: true)
+        let synthesisCount: Int = {
+            guard let folders = try? FileManager.default.contentsOfDirectory(
+                at: projectsDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+            ) else { return 0 }
+            return folders.filter {
+                FileManager.default.fileExists(atPath: $0.appendingPathComponent("synthesis.md").path)
+            }.count
+        }()
+        corpusStats = (sessionCount, projectCount, synthesisCount)
+    }
+
+    private func revealInFinder() {
+        let dir = CorpusManager.shared.corpusDirectory
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
+    }
+
+    private func resetToDefault() {
+        // Surface the same confirmation the picker uses — resetting is a
+        // corpus switch like any other, and projects can be orphaned by
+        // it if the default dir doesn't contain the same sessions.
+        let defaultDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("meetings", isDirectory: true)
+        if defaultDir.path == resolvedPath { return }
+
+        let oldDir = URL(fileURLWithPath: resolvedPath)
+        let oldSessionCount = (try? CorpusReader.listMarkdownFiles(in: oldDir).count) ?? 0
+        let newSessionCount = (try? CorpusReader.listMarkdownFiles(in: defaultDir).count) ?? 0
+        let projectCount = ProjectStore.shared.projects.count
+
+        let alert = NSAlert()
+        alert.messageText = "Reset corpus to default?"
+        alert.informativeText = """
+        Current:  \(oldDir.path)
+        \(oldSessionCount) session\(oldSessionCount == 1 ? "" : "s"), \(projectCount) project\(projectCount == 1 ? "" : "s").
+
+        Default:  \(defaultDir.path)
+        \(newSessionCount) session\(newSessionCount == 1 ? "" : "s") found there.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        corpusPath = ""
     }
 
     private func chooseDirectory() {
@@ -652,9 +840,41 @@ private struct CorpusTab: View {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.title = "Choose Corpus directory"
-        if panel.runModal() == .OK, let url = panel.url {
-            corpusPath = url.path
-        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        // Pointing at the same directory is a no-op.
+        let newPath = url.path
+        if newPath == resolvedPath { return }
+
+        // Surface migration consequences before flipping the switch. The
+        // existing corpus has N sessions and M projects; the new dir
+        // either contains them or it doesn't. We can't move files for
+        // the user (their iCloud / sync setup may already cover that),
+        // but we can stop them from silently degrading projects whose
+        // sessions are about to become unreachable.
+        let oldDir = URL(fileURLWithPath: resolvedPath)
+        let newDir = url
+        let oldSessionCount = (try? CorpusReader.listMarkdownFiles(in: oldDir).count) ?? 0
+        let newSessionCount = (try? CorpusReader.listMarkdownFiles(in: newDir).count) ?? 0
+        let projectCount = ProjectStore.shared.projects.count
+
+        let alert = NSAlert()
+        alert.messageText = "Switch corpus directory?"
+        alert.informativeText = """
+        Current:  \(oldDir.path)
+        \(oldSessionCount) session\(oldSessionCount == 1 ? "" : "s"), \(projectCount) project\(projectCount == 1 ? "" : "s").
+
+        New:  \(newDir.path)
+        \(newSessionCount) session\(newSessionCount == 1 ? "" : "s") found there.
+
+        Projects keep their session-id references after the switch. Sessions present in the old corpus but missing from the new one will appear as orphaned members until you point back to the old corpus or copy the files over.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Switch")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        corpusPath = newPath
     }
 
     private func copyMCPConfig() {
@@ -672,9 +892,7 @@ private struct CorpusTab: View {
         pb.clearContents()
         pb.setString(str, forType: .string)
         copyConfirmation = "Copied. Paste into your agent's MCP server config."
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-            self.copyConfirmation = nil
-        }
+        Task { try? await Task.sleep(for: .seconds(4)); await MainActor.run { self.copyConfirmation = nil } }
     }
 
     private func reindex() {
@@ -703,29 +921,54 @@ private struct CorpusTab: View {
 // MARK: - Glossary
 
 private struct GlossaryTab: View {
-    @ObservedObject private var store = GlossaryStore.shared
+    @Bindable private var store = GlossaryStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Glossary")
                 .font(.headline)
-            Text("Terms the assistant should use verbatim. One per line, in the form **Term — meaning** (em-dash, colon, or hyphen). Lines starting with `#` are ignored.")
+            Text("Names, acronyms, and domain terms the assistant should use **exactly as written**. RTI sends these to the model as a system instruction before every chat, summary, and recall call — so the LLM picks up jargon, proper names, and your in-house spellings instead of guessing from context.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            Text("Format: one entry per line — `Term — meaning`. Separator can be em-dash (`—`), colon (`:`), or hyphen (`-`). Lines starting with `#` are ignored (use them as section headers). Caps at 200 entries so the prompt stays bounded.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Examples")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+            Text("""
+            # People
+            Alec — head of design (often misheard as "Alex")
+            Jane — Acme marketing lead
+
+            # Projects
+            NSW — Acme Sportswear zone
+            ICP — Ideal Customer Profile
+            """)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 4).fill(Color.secondary.opacity(0.06))
+                )
+
             TextEditor(text: $store.rawText)
                 .font(.system(.body, design: .monospaced))
-                .frame(minHeight: 240)
+                .frame(minHeight: 200)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.secondary.opacity(0.3))
                 )
 
             let count = store.entries.count
-            Text(count == 0 ? "No entries parsed yet." : "\(count) entr\(count == 1 ? "y" : "ies") parsed.")
+            Text(count == 0 ? "No entries parsed yet — the glossary is not currently sent to the model." : "\(count) entr\(count == 1 ? "y" : "ies") parsed. Sent as a system instruction with every LLM call.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(count == 0 ? Color.secondary : Color.green)
             Spacer(minLength: 0)
         }
         .padding(8)

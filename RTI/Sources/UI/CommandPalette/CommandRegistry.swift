@@ -1,5 +1,5 @@
 import Foundation
-import Combine
+import Observation
 
 /// One entry in the command palette / menubar / hotkey system. The single
 /// source of truth for "what can the user do right now." Menu items and
@@ -80,8 +80,8 @@ enum MenuSection: String, CaseIterable {
     case app
 }
 
-@MainActor
-final class CommandRegistry: ObservableObject {
+@Observable @MainActor
+final class CommandRegistry {
     static let shared = CommandRegistry()
 
     /// All registered commands, in their natural order. Filtered by

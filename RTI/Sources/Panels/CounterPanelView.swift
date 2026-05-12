@@ -7,27 +7,24 @@ import SwiftUI
 struct CounterPanelView: View {
     let panel: UserPanel
 
-    @ObservedObject private var session = SessionCoordinator.shared
+    private let session = SessionCoordinator.shared
     @AppStorage(notesOpacityKey) private var backgroundOpacity: Double = notesDefaultOpacity
 
     private var spec: CounterConfig? { panel.config.counter }
 
-    /// Total matches across every finalised transcript entry for the
-    /// current session. Computed live off `session.liveEntries` — Swift
-    /// recomputes on Published change, but the volume (hundreds of turns
-    /// in a long meeting) is trivial.
-    private var totalCount: Int {
-        guard let spec else { return 0 }
-        return session.liveEntries.reduce(0) { acc, entry in
+    @State private var totalCount: Int = 0
+    @State private var sparkline: [Int] = []
+
+    private func recompute() {
+        guard let spec else {
+            totalCount = 0
+            sparkline = []
+            return
+        }
+        totalCount = session.liveEntries.reduce(0) { acc, entry in
             acc + (spec.match.matches(entry.text) ? 1 : 0)
         }
-    }
-
-    /// 30 buckets × 60-second windows ending at "now-relative-to-session".
-    /// Each value is the count of transcript turns matching the spec
-    /// whose `startMs` falls in that bucket.
-    private var sparkline: [Int] {
-        guard let spec, !session.liveEntries.isEmpty else { return [] }
+        guard !session.liveEntries.isEmpty else { sparkline = []; return }
         let bucketMs = 60_000
         let bucketCount = 30
         let maxMs = session.liveEntries.last?.startMs ?? 0
@@ -39,7 +36,7 @@ struct CounterPanelView: View {
             let idx = min(max(offset, 0), bucketCount - 1)
             buckets[idx] += 1
         }
-        return buckets
+        sparkline = buckets
     }
 
     var body: some View {
@@ -68,6 +65,7 @@ struct CounterPanelView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Remove panel")
+                    .accessibilityLabel("Remove panel")
                 }
 
                 DotMatrixText(text: "\(totalCount)",
@@ -89,6 +87,8 @@ struct CounterPanelView: View {
             }
             .padding(12)
         }
+        .onAppear { recompute() }
+        .onChange(of: session.liveEntries.count) { _, _ in recompute() }
     }
 
     private var matchDescription: String {

@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 /// Owns every window in the app. Centralises presentation policy so
@@ -20,7 +19,7 @@ final class WindowCoordinator {
     /// driven by `UserPanelStore.panels`: additions spawn an NSPanel,
     /// removals tear it down. We subscribe in `install`.
     private var userPanels: [String: UserPanelWindowController] = [:]
-    private var userPanelsCancellable: AnyCancellable?
+    private var userPanelsObservationTask: Task<Void, Never>?
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
@@ -77,11 +76,18 @@ final class WindowCoordinator {
         // `assign(to:)` would be tempting but we need to diff add/remove,
         // not replace the whole map.
         reconcileUserPanels(against: UserPanelStore.shared.panels)
-        userPanelsCancellable = UserPanelStore.shared.$panels
-            .receive(on: RunLoop.main)
-            .sink { [weak self] panels in
-                self?.reconcileUserPanels(against: panels)
+        userPanelsObservationTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    withObservationTracking {
+                        _ = UserPanelStore.shared.panels
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+                self?.reconcileUserPanels(against: UserPanelStore.shared.panels)
             }
+        }
 
         NotificationCenter.default.addObserver(
             forName: .rtiHideAuxiliaryPanels,

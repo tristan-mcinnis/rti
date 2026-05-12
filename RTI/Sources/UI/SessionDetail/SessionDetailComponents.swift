@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import SwiftUI
 
 // MARK: - SectionHeader
@@ -215,9 +216,9 @@ struct QuickPromptChip: View {
 // MARK: - ToastPresenter + Toast view
 
 /// Triggers a transient top-right pill. Coalesces concurrent toasts (latest wins).
-@MainActor
-final class ToastPresenter: ObservableObject {
-    @Published private(set) var message: String?
+@Observable @MainActor
+final class ToastPresenter {
+    private(set) var message: String?
     private var clearTask: Task<Void, Never>?
 
     func show(_ message: String, duration: TimeInterval = 2.5) {
@@ -236,7 +237,7 @@ final class ToastPresenter: ObservableObject {
 }
 
 struct ToastOverlay: View {
-    @ObservedObject var presenter: ToastPresenter
+    var presenter: ToastPresenter
 
     var body: some View {
         VStack {

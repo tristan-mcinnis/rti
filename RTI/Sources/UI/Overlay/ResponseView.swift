@@ -7,8 +7,8 @@ struct ResponseView: View {
     var errorIsAuth: Bool = false
     var onOpenSettings: () -> Void = {}
 
-    @ObservedObject private var llm = LLMController.shared
-    @ObservedObject private var sessionCoord = SessionCoordinator.shared
+    private let llm = LLMController.shared
+    private let sessionCoord = SessionCoordinator.shared
 
     private var streamingPlaceholderLabel: String {
         if let toolStatus = llm.toolStatus, !toolStatus.isEmpty { return toolStatus }

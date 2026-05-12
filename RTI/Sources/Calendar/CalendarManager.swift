@@ -1,11 +1,12 @@
 import EventKit
 import Foundation
+import Observation
 
-@MainActor
-final class CalendarManager: ObservableObject {
+@Observable @MainActor
+final class CalendarManager {
     static let shared = CalendarManager()
 
-    @Published private(set) var authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+    private(set) var authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
     private let store = EKEventStore()
 

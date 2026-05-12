@@ -5,7 +5,7 @@ import SwiftUI
 /// sessions, instructions). A third tier between per-session Q&A and
 /// the full corpus chat.
 struct ProjectsView: View {
-    @ObservedObject private var store = ProjectStore.shared
+    private let store = ProjectStore.shared
     @State private var selectedProjectId: String?
     @State private var newProjectName: String = ""
     @State private var pendingArchiveId: String?
@@ -63,6 +63,7 @@ struct ProjectsView: View {
                 .buttonStyle(.plain)
                 .disabled(newProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
                 .help("Create project")
+                .accessibilityLabel("Create project")
             }
             .padding(10)
 
@@ -158,8 +159,8 @@ private struct ProjectListRow: View {
 
 private struct ProjectDetailView: View {
     let project: Project
-    @StateObject private var controller: ProjectQAController
-    @ObservedObject private var store = ProjectStore.shared
+    @State private var controller: ProjectQAController
+    private let store = ProjectStore.shared
 
     @State private var input: String = ""
     @State private var draftName: String
@@ -168,12 +169,22 @@ private struct ProjectDetailView: View {
     @State private var addSessionSheet: Bool = false
     @State private var copyConfirmId: UUID?
     @State private var copyAllConfirm: Bool = false
+    @State private var insights: ProjectInsightsController
+    @State private var detailTab: DetailTab = .chat
+    @State private var savedSynthesis: ProjectSynthesisArtifact?
     @FocusState private var nameFieldFocused: Bool
     @FocusState private var inputFocused: Bool
 
+    enum DetailTab: String, CaseIterable, Identifiable {
+        case chat = "Chat"
+        case synthesis = "Synthesis"
+        var id: String { rawValue }
+    }
+
     init(project: Project) {
         self.project = project
-        _controller = StateObject(wrappedValue: ProjectQAController(projectId: project.id))
+        _controller = State(initialValue: ProjectQAController(projectId: project.id))
+        _insights = State(initialValue: ProjectInsightsController(projectId: project.id))
         _draftName = State(initialValue: project.name)
         _draftInstructions = State(initialValue: project.instructions)
     }
@@ -184,11 +195,57 @@ private struct ProjectDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 12)
                 .padding(.bottom, 8)
+            HStack(spacing: 8) {
+                Picker("", selection: $detailTab) {
+                    ForEach(DetailTab.allCases) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if insights.isRunning, insights.mode == .synthesize, detailTab != .synthesis {
+                    HStack(spacing: 4) {
+                        ProgressView().controlSize(.small)
+                        Text("Synthesizing…")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 8)
             Divider()
             HSplitView {
-                chatColumn
+                Group {
+                    switch detailTab {
+                    case .chat: chatColumn
+                    case .synthesis: synthesisColumn
+                    }
+                }
                 sidePanel
                     .frame(minWidth: 240, idealWidth: 280)
+            }
+        }
+        .onAppear(perform: reloadSynthesis)
+        .onChange(of: project.id) { _, _ in reloadSynthesis() }
+        .onChange(of: insights.isRunning) { _, running in
+            if !running, insights.mode == .synthesize { reloadSynthesis() }
+        }
+    }
+
+    private func reloadSynthesis() {
+        savedSynthesis = ProjectInsightsController.loadSavedSynthesis(projectId: project.id)
+    }
+
+    @ViewBuilder
+    private var projectScopeSubtitle: some View {
+        let count = store.sessionIds(forProject: project.id).count
+        let hasInstr = !project.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        HStack(spacing: 8) {
+            Text("Scope: \(count) session\(count == 1 ? "" : "s")")
+            if hasInstr {
+                Text("·").foregroundStyle(.tertiary)
+                Label("Instructions on", systemImage: "text.alignleft")
+                    .labelStyle(.titleAndIcon)
             }
         }
     }
@@ -206,9 +263,7 @@ private struct ProjectDetailView: View {
                     .onChange(of: nameFieldFocused) { _, isFocused in
                         if !isFocused { persistName() }
                     }
-                Text(controller.messages.isEmpty
-                     ? "Chat with this project's sessions"
-                     : "Project chat")
+                projectScopeSubtitle
                     .font(RTIDesign.Font.caption)
                     .foregroundStyle(RTIDesign.Color.textSecondary)
             }
@@ -253,6 +308,7 @@ private struct ProjectDetailView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
     }
 
     private func copyConversation() {
@@ -260,7 +316,7 @@ private struct ProjectDetailView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(md, forType: .string)
         copyAllConfirm = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copyAllConfirm = false }
+        Task { try? await Task.sleep(for: .seconds(1.4)); await MainActor.run { copyAllConfirm = false } }
     }
 
     private func exportConversation() {
@@ -274,6 +330,98 @@ private struct ProjectDetailView: View {
         if panel.runModal() == .OK, let url = panel.url {
             try? md.write(to: url, atomically: true, encoding: .utf8)
         }
+    }
+
+    private var synthesisColumn: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: RTIDesign.Spacing.md) {
+                synthesisHeader
+                if let err = insights.lastError, !insights.isRunning {
+                    Text(err)
+                        .font(RTIDesign.Font.caption)
+                        .foregroundStyle(.red)
+                }
+                if insights.isRunning && insights.mode == .synthesize {
+                    if insights.output.isEmpty {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Reading sessions…")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        RTIMarkdown(insights.output, style: .panel)
+                    }
+                } else if let s = savedSynthesis, !s.body.isEmpty {
+                    RTIMarkdown(s.body, style: .panel)
+                } else {
+                    synthesisEmpty
+                }
+            }
+            .padding(RTIDesign.Spacing.xl)
+            .frame(maxWidth: 880, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(RTIDesign.Color.panelBackground)
+    }
+
+    @ViewBuilder
+    private var synthesisHeader: some View {
+        HStack(spacing: RTIDesign.Spacing.sm) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(RTIDesign.Color.accentText)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Synthesis")
+                    .font(RTIDesign.Font.sectionTitle)
+                if let s = savedSynthesis {
+                    Text("Generated \(s.generatedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(RTIDesign.Font.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Cross-session findings → tensions → insights → implications → recommendations")
+                        .font(RTIDesign.Font.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if insights.isRunning, insights.mode == .synthesize {
+                Button("Stop") { insights.stop() }
+                    .controlSize(.small)
+            } else {
+                Button {
+                    insights.reset()
+                    insights.synthesize()
+                } label: {
+                    Label(savedSynthesis == nil ? "Generate" : "Regenerate", systemImage: "sparkles")
+                }
+                .controlSize(.small)
+            }
+            if let s = savedSynthesis, !s.body.isEmpty {
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(s.body, forType: .string)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private var synthesisEmpty: some View {
+        VStack(spacing: RTIDesign.Spacing.lg) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(RTIDesign.Color.textTertiary)
+            Text("No synthesis yet")
+                .font(RTIDesign.Font.heading)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+            Text("Generate a cross-session synthesis once at least two sessions in this project have summaries. The result will live as `synthesis.md` next to the project's sessions.")
+                .font(RTIDesign.Font.bodySmall)
+                .foregroundStyle(RTIDesign.Color.textTertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 480)
+        }
+        .frame(maxWidth: .infinity, minHeight: 280, alignment: .center)
     }
 
     private var chatColumn: some View {
@@ -374,7 +522,12 @@ private struct ProjectDetailView: View {
                             Text("Thinking…")
                                 .foregroundStyle(RTIDesign.Color.textTertiary)
                         } else {
-                            RTIMarkdown(msg.text, style: .panel)
+                            let isStreaming = controller.isGenerating && msg.id == controller.messages.last?.id
+                            if isStreaming {
+                                Text(msg.text)
+                            } else {
+                                RTIMarkdown(msg.text, style: .panel)
+                            }
                         }
                     }
                     .font(RTIDesign.Font.body)
@@ -400,9 +553,8 @@ private struct ProjectDetailView: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(msg.text, forType: .string)
             copyConfirmId = msg.id
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                if copyConfirmId == msg.id { copyConfirmId = nil }
-            }
+            let capturedId = msg.id
+            Task { try? await Task.sleep(for: .seconds(1.4)); await MainActor.run { if copyConfirmId == capturedId { copyConfirmId = nil } } }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: copyConfirmId == msg.id ? "checkmark" : "doc.on.doc")
@@ -512,37 +664,50 @@ private struct ProjectDetailView: View {
     }
 
     private var sidePanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Sessions in this project")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                ProjectStatusCard(
+                    projectId: project.id,
+                    onSynthesize: runSynthesis
+                )
+                Divider().padding(.vertical, 4)
+                HStack {
+                    Text("Sessions in this project")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(action: { addSessionSheet = true }) {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add a session")
+                    .accessibilityLabel("Add a session")
+                }
+                ProjectMembersList(projectId: project.id)
+                Divider().padding(.vertical, 4)
+                Text("Recent project chats")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
-                Spacer()
-                Button(action: { addSessionSheet = true }) {
-                    Image(systemName: "plus.circle")
-                        .font(.system(size: 14))
+                RecentProjectChatsList(projectId: project.id) { conv in
+                    controller.load(conv)
                 }
-                .buttonStyle(.plain)
-                .help("Add a session")
+                Button(action: { controller.newChat() }) {
+                    Label("New chat", systemImage: "square.and.pencil")
+                }
+                .controlSize(.small)
             }
-            ProjectMembersList(projectId: project.id)
-            Divider().padding(.vertical, 4)
-            Text("Recent project chats")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-            RecentProjectChatsList(projectId: project.id) { conv in
-                controller.load(conv)
-            }
-            Spacer()
-            Button(action: { controller.newChat() }) {
-                Label("New chat", systemImage: "square.and.pencil")
-            }
-            .controlSize(.small)
+            .padding(12)
         }
-        .padding(12)
         .sheet(isPresented: $addSessionSheet) {
             AddSessionSheet(projectId: project.id, onDone: { addSessionSheet = false })
         }
+    }
+
+    private func runSynthesis() {
+        insights.reset()
+        detailTab = .synthesis
+        insights.synthesize()
     }
 
     private func persistName() {
@@ -561,12 +726,35 @@ private struct ProjectDetailView: View {
 
 private struct ProjectMembersList: View {
     let projectId: String
-    @ObservedObject private var store = ProjectStore.shared
+    private let store = ProjectStore.shared
     @State private var members: [Session] = []
     @State private var lastMemberIds: [String] = []
+    @State private var orphanIds: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if !orphanIds.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("\(orphanIds.count) member\(orphanIds.count == 1 ? "" : "s") not found in current corpus")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Remove") {
+                        for id in orphanIds { store.removeSession(id, fromProject: projectId) }
+                        reload()
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.blue)
+                }
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.orange.opacity(0.10))
+                )
+            }
             if members.isEmpty {
                 Text("No sessions yet.")
                     .font(.caption)
@@ -590,6 +778,7 @@ private struct ProjectMembersList: View {
                         }
                         .buttonStyle(.plain)
                         .help("Remove from project")
+                        .accessibilityLabel("Remove from project")
                     }
                     .padding(.vertical, 2)
                     .contentShape(Rectangle())
@@ -600,9 +789,9 @@ private struct ProjectMembersList: View {
             }
         }
         .onAppear(perform: reload)
-        .onReceive(store.objectWillChange) { _ in
-            // Membership changes trigger a global publish; reload our slice.
-            DispatchQueue.main.async(execute: reload)
+        .onChange(of: store.projects) {
+            // Membership changes trigger reload; onChange fires on main actor.
+            reload()
         }
     }
 
@@ -619,6 +808,7 @@ private struct ProjectMembersList: View {
         let all = CorpusBackedStore.allMarkdownSessions()
         let map = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
         members = ids.compactMap { map[$0] }
+        orphanIds = ids.filter { map[$0] == nil }
     }
 
     private func remove(_ sessionId: String) {
@@ -634,8 +824,8 @@ private struct ProjectMembersList: View {
 
 private struct RecentProjectChatsList: View {
     let projectId: String
-    let onPick: (ProjectChatConversation) -> Void
-    @State private var items: [ProjectChatConversation] = []
+    let onPick: (ProjectChatEntry) -> Void
+    @State private var items: [ProjectChatEntry] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -644,7 +834,7 @@ private struct RecentProjectChatsList: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
-                ForEach(items) { conv in
+                ForEach(items, id: \.id) { conv in
                     Button(action: { onPick(conv) }) {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(conv.title)
@@ -666,15 +856,19 @@ private struct RecentProjectChatsList: View {
     }
 
     private func reload() {
-        items = ProjectChatHistoryStore.list(projectId: projectId)
+        guard let slug = ProjectStore.shared.slug(forProject: projectId) else {
+            items = []
+            return
+        }
+        items = ProjectChatFileStore.list(projectSlug: slug)
     }
 }
 
 private struct AddSessionSheet: View {
     let projectId: String
     let onDone: () -> Void
-    @ObservedObject private var store = ProjectStore.shared
-    @ObservedObject private var importer = SessionImporter.shared
+    private let store = ProjectStore.shared
+    private let importer = SessionImporter.shared
     @State private var allSessions: [Session] = []
     @State private var query: String = ""
 
@@ -717,8 +911,8 @@ private struct AddSessionSheet: View {
         // Refresh the picker when a drag-to-import finishes mid-sheet, so a
         // freshly-transcribed session is immediately addable without closing
         // and reopening the sheet.
-        .onReceive(importer.objectWillChange) { _ in
-            DispatchQueue.main.async(execute: reloadSessions)
+        .onChange(of: importer.activeFilename) {
+            reloadSessions()
         }
     }
 
@@ -739,3 +933,65 @@ private struct AddSessionSheet: View {
     }
 }
 
+
+/// Compact project status card. Surfaces the one thing that matters
+/// (the suggested next action) plus last-activity, with a single
+/// Synthesize button. The numeric stats and Recall action that lived
+/// here previously were noise — dropped.
+private struct ProjectStatusCard: View {
+    let projectId: String
+    let onSynthesize: () -> Void
+    private let store = ProjectStore.shared
+    @State private var pulse: ProjectPulse?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Status")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            if let p = pulse {
+                Text(p.suggestion.headline)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                if let last = p.lastSessionAt {
+                    Text("Last meeting: \(Self.relative(last))")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+                Button(action: onSynthesize) {
+                    Label("Synthesize", systemImage: "sparkles")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .disabled(p.summarizedCount < 2)
+                .padding(.top, 4)
+                .help(p.summarizedCount < 2
+                      ? "Needs at least two summarized sessions"
+                      : "Cross-session findings, tensions, insights, recommendations")
+            } else {
+                Text("Loading…")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.secondary.opacity(0.06))
+        )
+        .onAppear(perform: reload)
+        .onChange(of: store.projects) {
+            reload()
+        }
+    }
+
+    private func reload() {
+        pulse = ProjectPulse.compute(projectId: projectId)
+    }
+
+    private static func relative(_ date: Date) -> String {
+        let fmt = RelativeDateTimeFormatter()
+        fmt.unitsStyle = .abbreviated
+        return fmt.localizedString(for: date, relativeTo: Date())
+    }
+}

@@ -12,9 +12,9 @@ import SwiftUI
 struct TopWidgetView: View {
     let actions: TopWidgetWindowController.Actions
 
-    @ObservedObject private var coordinator = SessionCoordinator.shared
-    @ObservedObject private var llm = LLMController.shared
-    @ObservedObject private var modes = ModeStore.shared
+    private let coordinator = SessionCoordinator.shared
+    private let llm = LLMController.shared
+    private let modes = ModeStore.shared
 
     @State private var now = Date()
     @State private var hovering = false

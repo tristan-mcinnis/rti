@@ -4,7 +4,7 @@ import SwiftUI
 /// from Soniox so the user can read the conversation in their target
 /// language without having to keep the Live Transcript tab open.
 struct TranslationPanelView: View {
-    @ObservedObject private var coordinator = SessionCoordinator.shared
+    private let coordinator = SessionCoordinator.shared
     @AppStorage(translationOpacityKey) private var backgroundOpacity: Double = translationDefaultOpacity
     @AppStorage("rti.translation.enabled") private var translationEnabled = false
     @AppStorage("rti.translation.showOriginal") private var showOriginal = true

@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// Shared types and lifecycle for corpus-backed chat controllers: a user
 /// asks a question, the controller retrieves relevant sessions, streams
@@ -37,14 +38,14 @@ struct CorpusChatCandidate {
     let summary: String?
 }
 
-@MainActor
-class CorpusChatController: ObservableObject {
-    @Published private(set) var isGenerating = false
-    @Published private(set) var lastError: String?
-    @Published private(set) var messages: [CorpusChatEntry] = []
-    @Published private(set) var citationsForLast: [CorpusChatCitation] = []
-    @Published private(set) var conversationId: String?
-    @Published private(set) var conversationTitle: String?
+@Observable @MainActor
+class CorpusChatController {
+    private(set) var isGenerating = false
+    private(set) var lastError: String?
+    private(set) var messages: [CorpusChatEntry] = []
+    private(set) var citationsForLast: [CorpusChatCitation] = []
+    private(set) var conversationId: String?
+    private(set) var conversationTitle: String?
 
     fileprivate let request: LLMRequest
 
