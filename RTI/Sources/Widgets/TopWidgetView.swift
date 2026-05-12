@@ -78,16 +78,19 @@ struct TopWidgetView: View {
     @ViewBuilder
     private var primaryLabel: some View {
         if coordinator.isRunning {
-            Text(elapsedLabel)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
-                .monospacedDigit()
-                .contentTransition(.numericText())
+            DotMatrixText(text: elapsedLabel,
+                          dot: 1.4,
+                          spacing: 0.6,
+                          gap: 1.4,
+                          color: .white,
+                          dim: Color.white.opacity(0.08))
         } else if let frozen = postRecordingLabel {
-            Text(frozen)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.50))
-                .monospacedDigit()
+            DotMatrixText(text: frozen,
+                          dot: 1.4,
+                          spacing: 0.6,
+                          gap: 1.4,
+                          color: Color.white.opacity(0.55),
+                          dim: Color.white.opacity(0.06))
         } else {
             Text("Record")
                 .font(.system(size: 12, weight: .medium))

@@ -45,7 +45,7 @@ struct CounterPanelView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black.opacity(backgroundOpacity))
+                .fill(Color(white: 0.14).opacity(backgroundOpacity))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(Color.white.opacity(0.10), lineWidth: 1)
@@ -70,11 +70,12 @@ struct CounterPanelView: View {
                     .help("Remove panel")
                 }
 
-                Text("\(totalCount)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+                DotMatrixText(text: "\(totalCount)",
+                              dot: 3.2,
+                              spacing: 1.0,
+                              gap: 3.0,
+                              color: .white,
+                              dim: Color.white.opacity(0.06))
                     .animation(.easeOut(duration: 0.2), value: totalCount)
 
                 Sparkline(values: sparkline)

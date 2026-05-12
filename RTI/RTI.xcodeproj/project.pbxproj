@@ -68,6 +68,7 @@
 		4677F7DE812D9463007623AD /* NotesPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3646E804694D758FF1840EAA /* NotesPanelView.swift */; };
 		46DF816A19FF359179B0E831 /* LiveJSONLWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A73845B79AA1D887596D445A /* LiveJSONLWriter.swift */; };
 		47F96F8A51FC2A77B16910F7 /* last-tool-error.json in Resources */ = {isa = PBXBuildFile; fileRef = 7F2A1FE41C0F8B56041C82F0 /* last-tool-error.json */; };
+		4B993F0BB848A2D8D64CB14F /* LiquidMetalBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B06ABF0FBBC9148937E7A547 /* LiquidMetalBorder.swift */; };
 		4D729115DC371C02602C5704 /* PanelKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE20418A0E3A6E3722FB9293 /* PanelKind.swift */; };
 		4DE65CFB81D76D7F0A0F062E /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 08E319D06810A68709A49060 /* GRDB */; };
 		4FF035DE4019A89D57FF2612 /* LLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6596433646EBB3D1705418D /* LLMClient.swift */; };
@@ -168,6 +169,7 @@
 		DBCAA5D4FD382ACD913D4980 /* SonioxFailureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 411EDD7A2C3166286A52B232 /* SonioxFailureTests.swift */; };
 		DBF1EA7B7791C6046880934B /* AnalysisController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649035E229EF2DC415F6B81E /* AnalysisController.swift */; };
 		DC6634EB99126FE2DB29DC33 /* DossierController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1C3402FA8BFBD520CAF73D /* DossierController.swift */; };
+		DC8D1A3F4FD8172468568658 /* DotMatrixText.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD66419CB55DD2F36238313A /* DotMatrixText.swift */; };
 		DD002A1A86822A2E66AAC847 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C48267D7243F07E859FF17B /* LogsView.swift */; };
 		DE1DCC91D34825F8EF3CF444 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
 		DF9B733225B63D3BEE464B79 /* OverlayInputState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */; };
@@ -330,6 +332,7 @@
 		ABDB87EDDE7A93D1611068A7 /* TopWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopWidgetView.swift; sourceTree = "<group>"; };
 		AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayInputState.swift; sourceTree = "<group>"; };
 		ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptActionRow.swift; sourceTree = "<group>"; };
+		B06ABF0FBBC9148937E7A547 /* LiquidMetalBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidMetalBorder.swift; sourceTree = "<group>"; };
 		B5A65E39B5589BEA9AE341B2 /* SessionQAController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionQAController.swift; sourceTree = "<group>"; };
 		B5BF77DB9113B6E6B8E56C9A /* ResizeHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResizeHandle.swift; sourceTree = "<group>"; };
 		B74C3D26020FEAD142C4777C /* SpeakerOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerOverlay.swift; sourceTree = "<group>"; };
@@ -374,6 +377,7 @@
 		F9D0C3A5F03649E65C27FC95 /* WritePathIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritePathIntegrationTests.swift; sourceTree = "<group>"; };
 		FA159B350466B311F95C6E82 /* RTIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIApp.swift; sourceTree = "<group>"; };
 		FAA4C9DA72BD19BF5E5E060C /* WindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowCoordinator.swift; sourceTree = "<group>"; };
+		FD66419CB55DD2F36238313A /* DotMatrixText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixText.swift; sourceTree = "<group>"; };
 		FDC5292C23D09D793067E231 /* AssistantInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantInputView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -481,6 +485,7 @@
 			isa = PBXGroup;
 			children = (
 				FDC5292C23D09D793067E231 /* AssistantInputView.swift */,
+				B06ABF0FBBC9148937E7A547 /* LiquidMetalBorder.swift */,
 				AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */,
 				ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */,
 				B5BF77DB9113B6E6B8E56C9A /* ResizeHandle.swift */,
@@ -748,6 +753,7 @@
 		D22562E9A8C896A2CCAAB90B /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				FD66419CB55DD2F36238313A /* DotMatrixText.swift */,
 				F71367C5B955DF6CF913A6C3 /* FloatingPanel.swift */,
 				C94121B6360402223C2126D9 /* HotkeyCoordinator.swift */,
 				74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */,
@@ -1027,6 +1033,7 @@
 				08A13442ABECFB8F79AC0581 /* DiscussionGuidePanelView.swift in Sources */,
 				DC6634EB99126FE2DB29DC33 /* DossierController.swift in Sources */,
 				313D0F1E1C06B108E71D1431 /* DossiersPanelView.swift in Sources */,
+				DC8D1A3F4FD8172468568658 /* DotMatrixText.swift in Sources */,
 				15E2826D80CB74AC7A21C69E /* EntityDossier.swift in Sources */,
 				30B4A6E7303CD82F611660D1 /* EntityDossierRow.swift in Sources */,
 				78E4899C67D71F980859F6B3 /* FloatingPanel.swift in Sources */,
@@ -1044,6 +1051,7 @@
 				F681F197B10FF96085265B05 /* LLMTools.swift in Sources */,
 				36D73C15AB5DE31F14192D31 /* LLMWireShapes.swift in Sources */,
 				3CF7BA318F9E008AB26485A5 /* LaunchAtLogin.swift in Sources */,
+				4B993F0BB848A2D8D64CB14F /* LiquidMetalBorder.swift in Sources */,
 				CDB5B9EA30B4CC706FAFB451 /* LiveJSONLWriter.swift in Sources */,
 				DD002A1A86822A2E66AAC847 /* LogsView.swift in Sources */,
 				58E96549ED84DD54336096A8 /* MarkdownRender.swift in Sources */,
