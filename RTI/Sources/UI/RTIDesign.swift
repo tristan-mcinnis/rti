@@ -170,8 +170,10 @@ struct RTISegmentedPicker<T: Hashable & CustomStringConvertible>: View {
                 Button(action: { selection = item }) {
                     Text(item.description)
                         .font(RTIDesign.Font.tab)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(selection == item ? RTIDesign.Color.textPrimary : RTIDesign.Color.textSecondary)
-                        .padding(.horizontal, 22)
+                        .padding(.horizontal, 18)
                         .frame(height: RTIDesign.Control.segItemHeight)
                         .background(
                             RoundedRectangle(cornerRadius: RTIDesign.Radius.lg - 4)

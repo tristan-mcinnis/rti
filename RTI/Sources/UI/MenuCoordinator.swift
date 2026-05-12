@@ -23,6 +23,9 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     var onToggleTopWidget: (() -> Void)?
     var onToggleNotesPanel: (() -> Void)?
     var onToggleDossiersPanel: (() -> Void)?
+    var onToggleThemesPanel: (() -> Void)?
+    var onToggleGuidePanel: (() -> Void)?
+    var onToggleTranslationPanel: (() -> Void)?
     var onClearChat: (() -> Void)?
     var onShowSessionHistory: (() -> Void)?
     var onCaptureScreen: (() -> Void)?
@@ -114,6 +117,18 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         let dossiersItem = NSMenuItem(title: "Toggle Dossiers Panel  ⌘⇧D", action: #selector(toggleDossiersPanel), keyEquivalent: "")
         dossiersItem.target = self
         menu.addItem(dossiersItem)
+
+        let themesItem = NSMenuItem(title: "Toggle Themes Panel", action: #selector(toggleThemesPanel), keyEquivalent: "")
+        themesItem.target = self
+        menu.addItem(themesItem)
+
+        let guideItem = NSMenuItem(title: "Toggle Discussion Guide", action: #selector(toggleGuidePanel), keyEquivalent: "")
+        guideItem.target = self
+        menu.addItem(guideItem)
+
+        let translationItem = NSMenuItem(title: "Toggle Translation Panel", action: #selector(toggleTranslationPanel), keyEquivalent: "")
+        translationItem.target = self
+        menu.addItem(translationItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -212,6 +227,9 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     @objc private func toggleTopWidget() { onToggleTopWidget?() }
     @objc private func toggleNotesPanel() { onToggleNotesPanel?() }
     @objc private func toggleDossiersPanel() { onToggleDossiersPanel?() }
+    @objc private func toggleThemesPanel() { onToggleThemesPanel?() }
+    @objc private func toggleGuidePanel() { onToggleGuidePanel?() }
+    @objc private func toggleTranslationPanel() { onToggleTranslationPanel?() }
     @objc private func clearChat() { onClearChat?() }
     @objc private func showSessionHistory() { onShowSessionHistory?() }
     @objc private func captureScreen() { onCaptureScreen?() }

@@ -19,9 +19,11 @@ final class ModeStore: ObservableObject {
 
     private static let activeKey = "rti.modes.activeId"
     private static let seedFlag = "rti.modes.seededV1"
+    private static let upgradeV2Flag = "rti.modes.upgradedV2"
 
     private init() {
         seedBuiltinsIfNeeded()
+        upgradeBuiltinPromptsIfNeeded()
         self.activeModeId = UserDefaults.standard.string(forKey: Self.activeKey)
         reload()
     }
@@ -104,16 +106,16 @@ final class ModeStore: ObservableObject {
         let now = Date()
         let seeds: [Mode] = [
             Mode(id: "builtin.meeting", name: "Meeting",
-                 systemPrompt: "You are RTI assisting in a live meeting. Keep replies to 2-3 short lines. Focus on action items, decisions, and next steps. Use bullets for lists.",
+                 systemPrompt: Self.meetingPrompt,
                  isBuiltin: true, createdAt: now, referenceText: nil),
             Mode(id: "builtin.interview", name: "Interview",
-                 systemPrompt: "You are RTI helping the user in an interview. Draft tight, confident replies in the user's voice. Prefer concrete examples over generalities. One short paragraph max.",
+                 systemPrompt: Self.interviewPrompt,
                  isBuiltin: true, createdAt: now, referenceText: nil),
             Mode(id: "builtin.coding", name: "Coding",
-                 systemPrompt: "You are RTI helping with code. Answer with code-first responses. Explain only when asked. Use fenced code blocks with language tags.",
+                 systemPrompt: Self.codingPrompt,
                  isBuiltin: true, createdAt: now, referenceText: nil),
             Mode(id: "builtin.custom", name: "Custom",
-                 systemPrompt: "You are RTI, a real-time intelligence assistant. Keep responses short and actionable.",
+                 systemPrompt: Self.customPrompt,
                  isBuiltin: false, createdAt: now, referenceText: nil),
         ]
         do {
@@ -125,6 +127,7 @@ final class ModeStore: ObservableObject {
                 }
             }
             defaults.set(true, forKey: Self.seedFlag)
+            defaults.set(true, forKey: Self.upgradeV2Flag)
             if defaults.string(forKey: Self.activeKey) == nil {
                 defaults.set("builtin.meeting", forKey: Self.activeKey)
             }
@@ -132,4 +135,69 @@ final class ModeStore: ObservableObject {
             NSLog("[RTI] ModeStore seed failed: \(error)")
         }
     }
+
+    /// Rewrite the built-in mode prompts in place on existing installs.
+    /// Runs once per prompt-content revision; user-added modes are untouched.
+    private func upgradeBuiltinPromptsIfNeeded() {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: Self.upgradeV2Flag) { return }
+
+        let upgrades: [(id: String, prompt: String)] = [
+            ("builtin.meeting", Self.meetingPrompt),
+            ("builtin.interview", Self.interviewPrompt),
+            ("builtin.coding", Self.codingPrompt),
+        ]
+        do {
+            try RTIDatabase.shared.pool.write { db in
+                for (id, prompt) in upgrades {
+                    if var m = try Mode.fetchOne(db, key: id), m.isBuiltin {
+                        m.systemPrompt = prompt
+                        try m.update(db)
+                    }
+                }
+            }
+            defaults.set(true, forKey: Self.upgradeV2Flag)
+        } catch {
+            NSLog("[RTI] ModeStore upgradeV2 failed: \(error)")
+        }
+    }
+
+    // MARK: - Built-in prompts
+
+    private static let meetingPrompt = """
+    You are RTI assisting in a live meeting. Keep replies to 2–3 short lines unless asked for more. Use bullets for lists.
+
+    Watch the live transcript for moments where a short prompt back to the user would have outsized value, and surface them when asked:
+
+    - Action items that were committed to without an owner or a date — flag the gap.
+    - Decisions that were implied but never made explicit — name the decision so it can be confirmed.
+    - Scope or commitment changes that drifted past what was originally agreed — flag the drift, not just the new state.
+    - Vague deliverables ("a report", "some thoughts", "a quick look") that will cause misalignment later — push for specifics.
+    - Recurring problems being solved case-by-case where a systematic fix would be cheaper over time.
+    - Contradictions between what's being said now and what was said earlier in the same session.
+
+    When the user asks "what should I say?" draft a tight, confident reply in their voice — one short paragraph max, concrete over abstract.
+    """
+
+    private static let interviewPrompt = """
+    You are RTI helping the user in an interview. Draft tight, confident replies in the user's voice. One short paragraph max unless asked for more.
+
+    Bias toward:
+    - Concrete examples over generalities. Specific projects, numbers, outcomes beat abstract claims.
+    - Anticipating the obvious follow-up and pre-empting it in the same answer when it tightens the response.
+    - Surfacing relevant evidence from the user's reference materials when it strengthens the answer.
+
+    Avoid:
+    - Hedging language ("kind of", "sort of", "I guess") unless the user uses it first.
+    - Padding. Cut every sentence that doesn't earn its place.
+    - Inventing facts the user hasn't given you. If you don't have the detail, ask for it instead of fabricating.
+    """
+
+    private static let codingPrompt = """
+    You are RTI helping with code. Answer with code-first responses. Explain only when asked. Use fenced code blocks with language tags.
+    """
+
+    private static let customPrompt = """
+    You are RTI, a real-time intelligence assistant. Keep responses short and actionable.
+    """
 }

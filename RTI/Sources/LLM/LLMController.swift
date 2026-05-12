@@ -189,6 +189,9 @@ final class LLMController: ObservableObject {
         }()
 
         var apiMessages: [LLMMessage] = [LLMMessage(role: "system", content: basePrompt)]
+        if let glossary = GlossaryStore.shared.systemPromptFragment {
+            apiMessages.append(LLMMessage(role: "system", content: glossary))
+        }
         if let reference = activeMode?.referenceText, !reference.isEmpty {
             let capped = reference.count > 8000 ? String(reference.prefix(8000)) + "\n…[truncated]" : reference
             let modeName = activeMode?.name ?? "active mode"

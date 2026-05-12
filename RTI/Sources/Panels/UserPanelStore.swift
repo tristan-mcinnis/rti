@@ -26,6 +26,21 @@ final class UserPanelStore: ObservableObject {
         }
     }
 
+    /// Wipe every user panel and its cached cards. Used by the
+    /// "Clear Current Chat" action since user panels are products of the
+    /// chat session (spawned via the `spawn_panel` tool).
+    func removeAll() {
+        do {
+            try RTIDatabase.shared.pool.write { db in
+                _ = try UserPanelRow.deleteAll(db)
+                try db.execute(sql: "DELETE FROM user_panel_cards")
+            }
+            panels.removeAll()
+        } catch {
+            NSLog("[RTI] UserPanelStore removeAll failed: \(error)")
+        }
+    }
+
     func remove(id: String) {
         do {
             try RTIDatabase.shared.pool.write { db in

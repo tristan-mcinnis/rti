@@ -14,6 +14,9 @@ final class WindowCoordinator {
     private var commandPalette: CommandPaletteWindowController?
     private var notesPanel: NotesPanelWindowController?
     private var dossiersPanel: DossiersPanelWindowController?
+    private var themesPanel: ThemesPanelWindowController?
+    private var guidePanel: DiscussionGuidePanelWindowController?
+    private var translationPanel: TranslationPanelWindowController?
     /// User-spawned analysis panels keyed by their panel id. Lifecycle is
     /// driven by `UserPanelStore.panels`: additions spawn an NSPanel,
     /// removals tear it down. We subscribe in `install`.
@@ -24,6 +27,9 @@ final class WindowCoordinator {
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
     var notesPanelIsVisible: Bool { notesPanel?.isVisible ?? false }
     var dossiersPanelIsVisible: Bool { dossiersPanel?.isVisible ?? false }
+    var themesPanelIsVisible: Bool { themesPanel?.isVisible ?? false }
+    var guidePanelIsVisible: Bool { guidePanel?.isVisible ?? false }
+    var translationPanelIsVisible: Bool { translationPanel?.isVisible ?? false }
 
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
         shortcutsController = ShortcutsWindowController()
@@ -67,6 +73,9 @@ final class WindowCoordinator {
 
         notesPanel = NotesPanelWindowController()
         dossiersPanel = DossiersPanelWindowController()
+        themesPanel = ThemesPanelWindowController()
+        guidePanel = DiscussionGuidePanelWindowController()
+        translationPanel = TranslationPanelWindowController()
 
         // Spawn windows for every panel that was already configured the
         // last time the app ran, then keep them in sync going forward.
@@ -78,6 +87,18 @@ final class WindowCoordinator {
             .sink { [weak self] panels in
                 self?.reconcileUserPanels(against: panels)
             }
+
+        NotificationCenter.default.addObserver(
+            forName: .rtiHideAuxiliaryPanels,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.hideNotesPanel()
+            self?.hideDossiersPanel()
+            self?.hideThemesPanel()
+            self?.hideGuidePanel()
+            self?.hideTranslationPanel()
+        }
     }
 
     /// Diff the current set of spawned `UserPanel`s against existing
@@ -105,6 +126,9 @@ final class WindowCoordinator {
         topWidget?.setSharingInvisible(invisible)
         notesPanel?.setSharingInvisible(invisible)
         dossiersPanel?.setSharingInvisible(invisible)
+        themesPanel?.setSharingInvisible(invisible)
+        guidePanel?.setSharingInvisible(invisible)
+        translationPanel?.setSharingInvisible(invisible)
         for controller in userPanels.values {
             controller.setSharingInvisible(invisible)
         }
@@ -169,6 +193,18 @@ final class WindowCoordinator {
     func showDossiersPanel() { dossiersPanel?.show() }
     func hideDossiersPanel() { dossiersPanel?.hide() }
     func toggleDossiersPanel() { dossiersPanel?.toggle() }
+
+    func showThemesPanel() { themesPanel?.show() }
+    func hideThemesPanel() { themesPanel?.hide() }
+    func toggleThemesPanel() { themesPanel?.toggle() }
+
+    func showGuidePanel() { guidePanel?.show() }
+    func hideGuidePanel() { guidePanel?.hide() }
+    func toggleGuidePanel() { guidePanel?.toggle() }
+
+    func showTranslationPanel() { translationPanel?.show() }
+    func hideTranslationPanel() { translationPanel?.hide() }
+    func toggleTranslationPanel() { translationPanel?.toggle() }
 
     // MARK: - Onboarding
 

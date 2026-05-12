@@ -1,33 +1,26 @@
 import Foundation
 
-/// Cross-session Q&A: lets the user ask questions that span their entire
-/// meeting corpus. Retrieves the top-K relevant sessions via FTS, plus the
-/// most-recent N sessions for temporal questions, then asks the LLM to
-/// answer with explicit `[Session Title]` citations the UI can hyperlink
-/// back to the source.
+/// Project-scoped Q&A. Mirrors `AskCorpusController` but restricts
+/// retrieval to a single project's member sessions and prepends the
+/// project's instructions to the system prompt. One controller per live
+/// project chat — instantiated by the projects view as the user
+/// navigates between projects.
 @MainActor
-final class AskCorpusController: ObservableObject {
-    static let shared = AskCorpusController()
-
+final class ProjectQAController: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
     @Published private(set) var messages: [Entry] = []
-    /// Sessions referenced in the most recent answer. The view uses this to
-    /// render clickable citation chips below each assistant turn.
     @Published private(set) var citationsForLast: [Citation] = []
-    /// The conversation currently displayed. Nil = unsaved (no messages yet).
     @Published private(set) var conversationId: String?
     @Published private(set) var conversationTitle: String?
 
-    private let request: LLMRequest
+    let projectId: String
 
-    init(request: LLMRequest = LLMRequest()) {
-        self.request = request
-    }
+    private let request = LLMRequest()
 
     struct Entry: Identifiable {
         let id = UUID()
-        let role: String   // "user" | "assistant"
+        let role: String
         var text: String
         var citations: [Citation] = []
         var createdAt: Date = Date()
@@ -39,8 +32,10 @@ final class AskCorpusController: ObservableObject {
         let title: String
     }
 
-    /// Start a fresh, unsaved conversation. Existing chat (if any) is
-    /// already persisted to disk so it shows up in history.
+    init(projectId: String) {
+        self.projectId = projectId
+    }
+
     func newChat() {
         request.cancel()
         messages = []
@@ -51,15 +46,12 @@ final class AskCorpusController: ObservableObject {
         conversationTitle = nil
     }
 
-    /// Cancel an in-flight stream. Leaves the partial assistant message
-    /// in place — the user can re-ask or just continue.
     func stop() {
         request.cancel()
         isGenerating = false
     }
 
-    /// Replace the current conversation with one loaded from disk.
-    func load(_ conversation: AskCorpusConversation) {
+    func load(_ conversation: ProjectChatConversation) {
         request.cancel()
         isGenerating = false
         lastError = nil
@@ -76,50 +68,51 @@ final class AskCorpusController: ObservableObject {
         citationsForLast = messages.last?.citations ?? []
     }
 
-    /// Compatibility shim for existing callers — same as newChat.
-    func clear() { newChat() }
-
     func ask(question: String) {
         guard !isGenerating else { return }
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        let memberIds = ProjectStore.shared.sessionIds(forProject: projectId)
+        guard !memberIds.isEmpty else {
+            lastError = "Add sessions to the project before asking questions."
+            return
+        }
+        let project = ProjectStore.shared.projects.first { $0.id == projectId }
+        let instructions = project?.instructions.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
         isGenerating = true
         lastError = nil
-
         messages.append(Entry(role: "user", text: trimmed))
 
-        let retrieved = retrieve(forQuestion: trimmed)
-        guard !retrieved.candidates.isEmpty else {
-            lastError = "No meetings have been recorded yet. Record a session first."
+        let candidates = retrieve(forQuestion: trimmed, memberIds: Set(memberIds))
+        guard !candidates.isEmpty else {
+            lastError = "Could not load any of this project's sessions. Try removing and re-adding them."
             isGenerating = false
             messages.removeLast()
             return
         }
 
-        let context = buildContext(retrieved)
-        let candidateCitations = retrieved.candidates.map {
-            Citation(sessionId: $0.session.id, title: $0.title)
-        }
-        let systemPrompt = """
-        You are RTI, the user's meeting assistant. The user is asking a question that may span multiple past meetings.
-        Use ONLY the meeting excerpts provided below. If the answer isn't there, say so plainly.
+        let context = buildContext(candidates)
+        let candidateCitations = candidates.map { Citation(sessionId: $0.session.id, title: $0.title) }
+
+        var systemPrompt = """
+        You are RTI, the user's project assistant. The user is asking a question about a specific project ("\(project?.name ?? "Project")") that groups several past meetings.
+        Use ONLY the meeting excerpts provided below — they are scoped to this project. If the answer isn't there, say so plainly.
 
         Cite sources inline using the EXACT bracket notation `[Session Title]` whenever you reference content from a specific meeting. Use the title verbatim from the excerpt headers. Multiple citations OK.
 
         Format with light markdown (bold for emphasis, bullets/numbers for lists). Keep paragraphs short.
-
-        Meeting excerpts:
-        \(context)
         """
+        if !instructions.isEmpty {
+            systemPrompt += "\n\nProject instructions from the user — follow these alongside the rules above:\n\(instructions)"
+        }
+        systemPrompt += "\n\nMeeting excerpts:\n\(context)"
 
-        // Build the API message list with prior conversation context so
-        // follow-up questions ("tell me more", "what about Kline?") keep
-        // working without the user repeating themselves.
         var apiMessages: [LLMMessage] = [LLMMessage(role: "system", content: systemPrompt)]
         if let glossary = GlossaryStore.shared.systemPromptFragment {
             apiMessages.append(LLMMessage(role: "system", content: glossary))
         }
-        // Include the last 6 prior turns (~3 exchanges) before the new question.
         let priorTurns = messages.dropLast().suffix(6)
         for turn in priorTurns {
             apiMessages.append(LLMMessage(role: turn.role, content: turn.text))
@@ -127,8 +120,6 @@ final class AskCorpusController: ObservableObject {
         apiMessages.append(LLMMessage(role: "user", content: trimmed))
 
         var assistantEntry = Entry(role: "assistant", text: "")
-        // Citations are computed on completion (parsed from the answer).
-        // While streaming, no chips show — keeps the UI honest.
         assistantEntry.citations = []
         messages.append(assistantEntry)
         let entryId = assistantEntry.id
@@ -172,9 +163,6 @@ final class AskCorpusController: ObservableObject {
 
     // MARK: - Persistence
 
-    /// Write the current conversation to disk (creates on first turn,
-    /// updates in place on subsequent turns). Title is derived from the
-    /// first user message; falls back to "Untitled" if empty.
     private func persistToHistory() {
         guard !messages.isEmpty else { return }
         let now = Date()
@@ -183,23 +171,24 @@ final class AskCorpusController: ObservableObject {
             conversationTitle = Self.deriveTitle(from: messages)
         }
         guard let id = conversationId else { return }
-        let conversation = AskCorpusConversation(
+        let conversation = ProjectChatConversation(
             id: id,
+            projectId: projectId,
             title: conversationTitle ?? "Untitled",
             createdAt: messages.first?.createdAt ?? now,
             updatedAt: now,
             messages: messages.map { entry in
-                AskCorpusConversation.StoredEntry(
+                ProjectChatConversation.StoredEntry(
                     role: entry.role,
                     text: entry.text,
                     createdAt: entry.createdAt,
                     citations: entry.citations.map {
-                        AskCorpusConversation.StoredCitation(sessionId: $0.sessionId, title: $0.title)
+                        ProjectChatConversation.StoredCitation(sessionId: $0.sessionId, title: $0.title)
                     }
                 )
             }
         )
-        AskCorpusHistoryStore.save(conversation)
+        ProjectChatHistoryStore.save(conversation)
     }
 
     private static func deriveTitle(from messages: [Entry]) -> String {
@@ -209,44 +198,14 @@ final class AskCorpusController: ObservableObject {
         let trimmed = firstUser.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.count <= 60 { return trimmed }
         let cut = trimmed.prefix(60)
-        // Try to end on a word boundary.
         if let lastSpace = cut.lastIndex(of: " ") {
             return String(trimmed[..<lastSpace]) + "…"
         }
         return String(cut) + "…"
     }
 
-    // MARK: - Export
+    // MARK: - Citation parsing
 
-    /// Render the conversation as markdown for clipboard/file export.
-    func exportMarkdown() -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        var lines: [String] = []
-        lines.append("# \(conversationTitle ?? "Ask Corpus")")
-        lines.append("")
-        if let id = conversationId, let conv = AskCorpusHistoryStore.list().first(where: { $0.id == id }) {
-            lines.append("_\(formatter.string(from: conv.createdAt))_")
-            lines.append("")
-        }
-        for msg in messages {
-            let who = msg.role == "user" ? "**You**" : "**RTI**"
-            lines.append("### \(who)")
-            lines.append(msg.text)
-            if msg.role == "assistant", !msg.citations.isEmpty {
-                let cites = msg.citations.map { "[\($0.title)]" }.joined(separator: ", ")
-                lines.append("")
-                lines.append("_Sources: \(cites)_")
-            }
-            lines.append("")
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    /// Parse the answer for `[Session Title]` occurrences and intersect
-    /// with the candidate set. If the model didn't cite anything, fall
-    /// back to the top 3 candidates so the user still gets jump-points.
     private static func actualCitations(from body: String, candidates: [Citation]) -> [Citation] {
         var cited: [Citation] = []
         var seen = Set<String>()
@@ -269,18 +228,14 @@ final class AskCorpusController: ObservableObject {
         let summary: String?
     }
 
-    private struct Retrieved {
-        let candidates: [Candidate]
-    }
-
-    /// Hybrid retrieval: FTS top-K for relevance, plus the most-recent few
-    /// for temporal queries like "what did I work on this week?". Deduped
-    /// by session id, capped at 8 sessions to keep the prompt bounded.
-    private func retrieve(forQuestion question: String) -> Retrieved {
+    /// Project-scoped retrieval. FTS hits are filtered down to the project's
+    /// member set; anything left over comes from the member set itself
+    /// (so questions about less-textual sessions still hit context).
+    private func retrieve(forQuestion question: String, memberIds: Set<String>) -> [Candidate] {
         var seen = Set<String>()
         var out: [Candidate] = []
 
-        for hit in SessionSearch.search(query: question, limit: 6) {
+        for hit in SessionSearch.search(query: question, limit: 12) where memberIds.contains(hit.session.id) {
             guard !seen.contains(hit.session.id) else { continue }
             seen.insert(hit.session.id)
             out.append(Candidate(
@@ -291,11 +246,10 @@ final class AskCorpusController: ObservableObject {
             ))
         }
 
-        let recent = CorpusBackedStore.allMarkdownSessions()
+        let allMembers = CorpusBackedStore.allMarkdownSessions()
+            .filter { memberIds.contains($0.id) }
             .sorted { $0.startedAt > $1.startedAt }
-            .prefix(4)
-        for s in recent {
-            guard !seen.contains(s.id) else { continue }
+        for s in allMembers where !seen.contains(s.id) {
             seen.insert(s.id)
             out.append(Candidate(
                 session: s,
@@ -305,7 +259,7 @@ final class AskCorpusController: ObservableObject {
             ))
         }
 
-        return Retrieved(candidates: Array(out.prefix(8)))
+        return Array(out.prefix(8))
     }
 
     private func displayTitle(_ session: Session) -> String {
@@ -314,9 +268,9 @@ final class AskCorpusController: ObservableObject {
         return "Session \(session.startedAt.formatted(date: .abbreviated, time: .shortened))"
     }
 
-    private func buildContext(_ retrieved: Retrieved) -> String {
+    private func buildContext(_ candidates: [Candidate]) -> String {
         var parts: [String] = []
-        for c in retrieved.candidates {
+        for c in candidates {
             var block = "### [\(c.title)]\n"
             block += "Date: \(c.session.startedAt.formatted(date: .abbreviated, time: .shortened))\n"
             if let summary = c.summary, !summary.isEmpty {
@@ -328,5 +282,77 @@ final class AskCorpusController: ObservableObject {
             parts.append(block)
         }
         return parts.joined(separator: "\n---\n")
+    }
+}
+
+// MARK: - Persistence model
+
+struct ProjectChatConversation: Codable, Identifiable {
+    let id: String
+    let projectId: String
+    var title: String
+    var createdAt: Date
+    var updatedAt: Date
+    var messages: [StoredEntry]
+
+    struct StoredEntry: Codable {
+        let role: String
+        var text: String
+        let createdAt: Date
+        var citations: [StoredCitation]
+    }
+
+    struct StoredCitation: Codable {
+        let sessionId: String
+        let title: String
+    }
+}
+
+enum ProjectChatHistoryStore {
+
+    static var rootDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let dir = base.appendingPathComponent("RTI/projects-chat", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private static func directory(for projectId: String) -> URL {
+        let dir = rootDirectory.appendingPathComponent(projectId, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    static func list(projectId: String) -> [ProjectChatConversation] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory(for: projectId),
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var out: [ProjectChatConversation] = []
+        for url in urls where url.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: url),
+                  let conv = try? decoder.decode(ProjectChatConversation.self, from: data)
+            else { continue }
+            out.append(conv)
+        }
+        return out.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    static func save(_ conversation: ProjectChatConversation) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = .prettyPrinted
+        guard let data = try? encoder.encode(conversation) else { return }
+        let url = directory(for: conversation.projectId).appendingPathComponent("\(conversation.id).json")
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func delete(projectId: String, conversationId: String) {
+        let url = directory(for: projectId).appendingPathComponent("\(conversationId).json")
+        try? FileManager.default.removeItem(at: url)
     }
 }

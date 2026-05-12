@@ -52,6 +52,7 @@ struct NotesPanelView: View {
                             .padding(.horizontal, 16)
                             .padding(.bottom, 12)
                         }
+                        .scrollContentBackground(.hidden)
                         .onChange(of: controller.notes.count) { _, _ in
                             if let last = controller.notes.last {
                                 withAnimation {

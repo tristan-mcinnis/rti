@@ -93,7 +93,6 @@ struct SessionHistoryView: View {
                     Spacer()
 
                     RTISegmentedPicker(selection: $sortOrder, items: SortOrder.allCases)
-                        .frame(width: 220)
                 }
 
                 if importer.activeFilename != nil || importer.lastError != nil {

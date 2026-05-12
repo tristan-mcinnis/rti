@@ -20,7 +20,14 @@ final class DossierController: ObservableObject {
     - type: one of [person, brand, organization, concept]
     - description: 1-2 sentences explaining what this entity is and why it matters in this conversation
 
-    Format your response as a JSON array of objects with keys "name", "type", "description". Only include entities that are genuinely significant to the discussion. Do not wrap the JSON in markdown code blocks — return raw JSON only.
+    Rules:
+    - Only include entities that are genuinely significant to the discussion. Skip throwaway mentions, filler nouns, and generic concepts ("the meeting", "the team").
+    - For bilingual conversations, use a single canonical name per entity in the form "English Name（本地名）", e.g. "Glico（格力高）". Never create separate entities for the same thing in different languages.
+    - If an existing dossier already uses a name, reuse that exact name — don't introduce a variant.
+    - Descriptions should read like something an analyst would copy into a report: specific, factual, anchored to what was said.
+    - Max 8 entities per response.
+
+    Format your response as a JSON array of objects with keys "name", "type", "description". Do not wrap the JSON in markdown code blocks — return raw JSON only.
 
     Transcript:
     """

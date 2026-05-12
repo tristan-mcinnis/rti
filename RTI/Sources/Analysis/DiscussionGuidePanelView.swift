@@ -1,0 +1,291 @@
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct DiscussionGuidePanelView: View {
+    @ObservedObject private var controller = DiscussionGuideController.shared
+    @AppStorage(guideOpacityKey) private var backgroundOpacity: Double = guideDefaultOpacity
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black.opacity(backgroundOpacity))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+
+            VStack(spacing: 0) {
+                header
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                if let error = controller.lastError {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 4)
+                }
+
+                if let guide = controller.guide {
+                    coverageRow(guide: guide)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            ForEach(guide.objectives) { obj in
+                                ObjectiveSection(objective: obj)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                    }
+                    .scrollContentBackground(.hidden)
+                } else {
+                    Spacer()
+                    emptyState
+                    Spacer()
+                }
+            }
+
+            ResizeHandle()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding([.bottom, .trailing], 6)
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Discussion guide")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+
+            if controller.isImporting || controller.isMatching {
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            }
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                if controller.guide != nil {
+                    Button(action: removeGuide) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(Color.white.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove guide from this session")
+                }
+
+                Button(action: importGuide) {
+                    Image(systemName: "doc.badge.arrow.up")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .help("Import a guide (.md / .txt)")
+
+                OpacitySlider(opacity: $backgroundOpacity)
+                    .frame(width: 80)
+
+                Button(action: {
+                    NotificationCenter.default.post(name: .rtiToggleGuidePanel, object: nil)
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "list.bullet.clipboard")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            Text("No guide loaded")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            Text("Import a .md or .txt discussion guide. RTI will parse it and pair questions with the live transcript.")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Button("Import guide…", action: importGuide)
+                .controlSize(.small)
+                .padding(.top, 4)
+        }
+    }
+
+    private func coverageRow(guide: DiscussionGuide) -> some View {
+        let cov = guide.coverage
+        return HStack(spacing: 8) {
+            Text(guide.fileName)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.7))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text("\(cov.answered)/\(cov.total) answered • \(cov.percent)%")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+        }
+    }
+
+    private func importGuide() {
+        guard let sessionId = SessionCoordinator.shared.currentSessionId else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "md") ?? .plainText,
+            .plainText,
+            UTType(filenameExtension: "txt") ?? .plainText,
+        ]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { await controller.importGuide(from: url, sessionId: sessionId) }
+    }
+
+    private func removeGuide() {
+        guard let sessionId = SessionCoordinator.shared.currentSessionId else { return }
+        controller.removeGuide(for: sessionId)
+    }
+}
+
+private struct ObjectiveSection: View {
+    let objective: GuideObjective
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(objective.title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+            if let desc = objective.description, !desc.isEmpty {
+                Text(desc)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+            ForEach(objective.sections) { section in
+                SectionGroup(section: section)
+            }
+        }
+    }
+}
+
+private struct SectionGroup: View {
+    let section: GuideSection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(section.title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.78))
+            ForEach(section.questions) { q in
+                QuestionRow(question: q)
+            }
+        }
+        .padding(.leading, 4)
+    }
+}
+
+private struct QuestionRow: View {
+    let question: GuideQuestion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: iconName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(iconColor)
+                Text(question.text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(question.status == .pending ? 0.7 : 0.95))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let response = question.response {
+                Text(response.summary)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .padding(.leading, 17)
+                if !response.quotes.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(response.quotes) { quote in
+                            GuideQuoteView(quote: quote)
+                        }
+                    }
+                    .padding(.leading, 17)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var iconName: String {
+        switch question.status {
+        case .pending: return "square"
+        case .partial: return "minus.square"
+        case .answered: return "checkmark.square.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch question.status {
+        case .pending: return .white.opacity(0.4)
+        case .partial: return .yellow.opacity(0.8)
+        case .answered: return .green.opacity(0.85)
+        }
+    }
+}
+
+private struct GuideQuoteView: View {
+    let quote: GuideQuote
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Rectangle()
+                .fill(Color.white.opacity(0.25))
+                .frame(width: 2)
+                .frame(maxHeight: .infinity)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    if let speaker = quote.speaker, !speaker.isEmpty {
+                        Text(speaker)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    if !quote.formattedTimestamp.isEmpty {
+                        Text(quote.formattedTimestamp)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                }
+                Text(quote.text)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 1)
+    }
+}
+
+private struct OpacitySlider: View {
+    @Binding var opacity: Double
+    var body: some View {
+        Slider(value: $opacity, in: 0.30...0.95, step: 0.05) {}
+            .tint(.white.opacity(0.4))
+            .frame(height: 12)
+    }
+}

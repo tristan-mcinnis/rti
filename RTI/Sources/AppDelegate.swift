@@ -43,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         menu.onToggleTopWidget = { [weak self] in self?.windows.toggleTopWidget() }
         menu.onToggleNotesPanel = { [weak self] in self?.windows.toggleNotesPanel() }
         menu.onToggleDossiersPanel = { [weak self] in self?.windows.toggleDossiersPanel() }
+        menu.onToggleThemesPanel = { [weak self] in self?.windows.toggleThemesPanel() }
+        menu.onToggleGuidePanel = { [weak self] in self?.windows.toggleGuidePanel() }
+        menu.onToggleTranslationPanel = { [weak self] in self?.windows.toggleTranslationPanel() }
         menu.onClearChat = { [weak self] in self?.clearChat() }
         menu.onShowSessionHistory = { [weak self] in self?.windows.showSessionHistory() }
         menu.onCaptureScreen = { ScreenshotManager.shared.captureAndAttach() }
@@ -99,6 +102,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             (.rtiToggleCommandPalette, #selector(toggleCommandPalette)),
             (.rtiToggleNotesPanel, #selector(toggleNotesPanel)),
             (.rtiToggleDossiersPanel, #selector(toggleDossiersPanel)),
+            (.rtiToggleThemesPanel, #selector(toggleThemesPanel)),
+            (.rtiToggleGuidePanel, #selector(toggleGuidePanel)),
+            (.rtiToggleTranslationPanel, #selector(toggleTranslationPanel)),
         ]
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
@@ -117,6 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     @objc private func toggleCommandPalette() { windows.toggleCommandPalette() }
     @objc private func toggleNotesPanel() { windows.toggleNotesPanel() }
     @objc private func toggleDossiersPanel() { windows.toggleDossiersPanel() }
+    @objc private func toggleThemesPanel() { windows.toggleThemesPanel() }
+    @objc private func toggleGuidePanel() { windows.toggleGuidePanel() }
+    @objc private func toggleTranslationPanel() { windows.toggleTranslationPanel() }
 
     /// Shows a destructive-confirmation alert; on confirm, clears the
     /// current session's chat messages. Static so `CommandPaletteFactory`
@@ -124,12 +133,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     static func confirmThenClearChat() {
         let alert = NSAlert()
         alert.messageText = "Clear current chat?"
-        alert.informativeText = "This deletes the chat messages for the current session from the database. The transcript and audio recording are not affected."
+        alert.informativeText = "This deletes the chat messages for the current session and dismisses any open auxiliary panels (notes, dossiers, spawned counters/cards). The transcript and audio recording are not affected."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Clear")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn {
             LLMController.shared.clear()
+            NotesGenerationController.shared.clear()
+            DossierController.shared.clear()
+            ThemesController.shared.clear()
+            UserPanelStore.shared.removeAll()
+            NotificationCenter.default.post(name: .rtiHideAuxiliaryPanels, object: nil)
         }
     }
 

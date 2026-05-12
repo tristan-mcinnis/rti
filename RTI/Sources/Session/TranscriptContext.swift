@@ -30,6 +30,22 @@ enum TranscriptContext {
         return format(filtered)
     }
 
+    /// Like `text(forSessionId:)` but prefixes each spoken line with a
+    /// `[mm:ss]` timestamp derived from `start_ms`. Used by the themes
+    /// extractor so the LLM can echo timestamps into its quote payloads.
+    /// User notes are left without timestamps (they were typed, not spoken).
+    static func textWithTimestamps(forSessionId sessionId: String) -> String {
+        let entries = CorpusBackedStore.transcripts(forSessionId: sessionId)
+        return entries.map { e in
+            if e.speakerId == "note" {
+                return "[user note]: \(e.text)"
+            }
+            let total = e.startMs / 1000
+            let stamp = String(format: "[%d:%02d]", total / 60, total % 60)
+            return "\(stamp) \(e.speakerId): \(e.text)"
+        }.joined(separator: "\n")
+    }
+
     /// The end-ms of the transcript window for the given session. Used
     /// by periodic analysis controllers to advance their watermarks after
     /// processing a window, so the next cycle picks up only fresh entries.

@@ -53,10 +53,11 @@ final class SessionQAController: ObservableObject {
         \(context)
         """
 
-        let apiMessages = [
-            LLMMessage(role: "system", content: systemPrompt),
-            LLMMessage(role: "user", content: question)
-        ]
+        var apiMessages: [LLMMessage] = [LLMMessage(role: "system", content: systemPrompt)]
+        if let glossary = GlossaryStore.shared.systemPromptFragment {
+            apiMessages.append(LLMMessage(role: "system", content: glossary))
+        }
+        apiMessages.append(LLMMessage(role: "user", content: question))
 
         let assistantEntry = QAEntry(role: "assistant", text: "")
         messages.append(assistantEntry)

@@ -6,6 +6,7 @@ struct SessionsControlView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case liveTranscript = "Live Transcript"
         case sessions = "Sessions"
+        case projects = "Projects"
         case askCorpus = "Ask"
         case settings = "Settings"
         case logs = "Logs"
@@ -16,6 +17,7 @@ struct SessionsControlView: View {
             switch self {
             case .liveTranscript: return "text.bubble.fill"
             case .sessions:      return "list.bullet.rectangle"
+            case .projects:      return "folder.fill"
             case .askCorpus:     return "sparkles"
             case .settings:      return "gearshape.fill"
             case .logs:          return "doc.text.magnifyingglass"
@@ -95,6 +97,9 @@ struct SessionsControlView: View {
             } else {
                 SessionHistoryView()
             }
+
+        case .projects:
+            ProjectsView()
 
         case .askCorpus:
             AskCorpusView()

@@ -15,6 +15,12 @@ extension Notification.Name {
     static let rtiToggleCommandPalette = Notification.Name("rti.toggleCommandPalette")
     static let rtiToggleNotesPanel = Notification.Name("rti.toggleNotesPanel")
     static let rtiToggleDossiersPanel = Notification.Name("rti.toggleDossiersPanel")
+    static let rtiToggleThemesPanel = Notification.Name("rti.toggleThemesPanel")
+    static let rtiToggleGuidePanel = Notification.Name("rti.toggleGuidePanel")
+    static let rtiToggleTranslationPanel = Notification.Name("rti.toggleTranslationPanel")
+    /// Posted after a "Clear Current Chat" action so any open auxiliary
+    /// panel windows (notes, dossiers, user-spawned) dismiss themselves.
+    static let rtiHideAuxiliaryPanels = Notification.Name("rti.hideAuxiliaryPanels")
 }
 
 enum OverlayAppearanceDefaults {
@@ -33,6 +39,8 @@ enum AnalysisSettingsDefaults {
     static let notesEnabledKey = "rti.analysis.notesEnabled"
     static let notesIntervalKey = "rti.analysis.notesIntervalSeconds"
     static let dossiersEnabledKey = "rti.analysis.dossiersEnabled"
+    static let themesEnabledKey = "rti.analysis.themesEnabled"
+    static let guideEnabledKey = "rti.analysis.guideEnabled"
     static let defaultInterval: Double = 120
     static let intervalRange: ClosedRange<Double> = 60...600
 }

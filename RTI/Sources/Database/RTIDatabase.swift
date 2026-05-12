@@ -404,6 +404,55 @@ final class RTIDatabase: @unchecked Sendable {
                 columns: ["panel_id", "session_id", "created_at"]
             )
         }
+        m.registerMigration("v14_session_themes") { db in
+            // Auto-generated topic + quote panel state. One row per
+            // session — the payload JSON carries the whole structure
+            // ({themes:[{title, quotes:[{speaker, ts, text}]}]}). Periodic
+            // regenerations during recording overwrite the row; the hi-fi
+            // post-session pass overwrites once more with `is_hi_fi = 1`.
+            try db.create(table: "session_themes") { t in
+                t.column("session_id", .text).primaryKey()
+                t.column("payload_json", .text).notNull()
+                t.column("generated_at", .datetime).notNull()
+                t.column("is_hi_fi", .boolean).notNull().defaults(to: false)
+            }
+        }
+        m.registerMigration("v15_projects") { db in
+            // Lightweight grouping of sessions into a "project" with
+            // shared instructions. Sessions can belong to multiple
+            // projects. Chat history lives on disk as JSON, matching the
+            // Ask-Your-Corpus pattern, so it isn't repeated here.
+            try db.create(table: "projects") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("instructions", .text).notNull().defaults(to: "")
+                t.column("created_at", .datetime).notNull()
+                t.column("archived_at", .datetime)
+            }
+            try db.create(table: "project_sessions") { t in
+                t.column("project_id", .text).notNull()
+                t.column("session_id", .text).notNull()
+                t.column("added_at", .datetime).notNull()
+                t.primaryKey(["project_id", "session_id"])
+            }
+            try db.create(
+                index: "idx_project_sessions_session",
+                on: "project_sessions",
+                columns: ["session_id"]
+            )
+        }
+        m.registerMigration("v16_discussion_guides") { db in
+            // Per-session discussion guide for moderated interviews.
+            // One row per session; payload JSON carries the parsed
+            // objectives/sections/questions plus accumulated matches.
+            try db.create(table: "discussion_guides") { t in
+                t.column("session_id", .text).primaryKey()
+                t.column("file_name", .text).notNull()
+                t.column("payload_json", .text).notNull()
+                t.column("created_at", .datetime).notNull()
+                t.column("updated_at", .datetime).notNull()
+            }
+        }
         return m
     }
 }

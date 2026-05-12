@@ -91,6 +91,24 @@ final class SessionCoordinator: ObservableObject {
                 )
             }
         ))
+        AnalysisScheduler.shared.register(id: "themes", task: AnalysisScheduler.AnalysisTask(
+            enabledKey: AnalysisSettingsDefaults.themesEnabledKey,
+            execute: { sinceMs in
+                await ThemesController.shared.generate(
+                    sessionId: SessionCoordinator.shared.currentSessionId ?? "",
+                    sinceMs: sinceMs
+                )
+            }
+        ))
+        AnalysisScheduler.shared.register(id: "guide", task: AnalysisScheduler.AnalysisTask(
+            enabledKey: AnalysisSettingsDefaults.guideEnabledKey,
+            execute: { sinceMs in
+                await DiscussionGuideController.shared.match(
+                    sessionId: SessionCoordinator.shared.currentSessionId ?? "",
+                    sinceMs: sinceMs
+                )
+            }
+        ))
     }
 
     /// Ensure there is a chat session available for LLM turns before any audio
@@ -323,6 +341,8 @@ final class SessionCoordinator: ObservableObject {
         isRunning = true
         NotesGenerationController.shared.reset(for: sessionId)
         DossierController.shared.reset(for: sessionId)
+        ThemesController.shared.reset(for: sessionId)
+        DiscussionGuideController.shared.reset(for: sessionId)
         PeriodicCardsController.shared.resetForSession(sessionId)
         AnalysisScheduler.shared.start(
             intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
@@ -411,7 +431,11 @@ final class SessionCoordinator: ObservableObject {
         Task { @MainActor in
             async let title: String? = SessionTitleController.shared.generateTitle(for: sessionId)
             async let summary: SessionSummary? = SummaryController.shared.generateSummary(for: sessionId)
-            _ = await (title, summary)
+            // Hi-fi themes pass runs in parallel with summary/title so the
+            // .md render below can pick up the final payload via the
+            // corpus integration.
+            async let themesDone: Void = ThemesController.shared.generateHiFi(sessionId: sessionId)
+            _ = await (title, summary, themesDone)
             await CorpusManager.shared.renderSession(
                 sessionId: sessionId,
                 startedAt: renderStartedAt,

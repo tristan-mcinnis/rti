@@ -9,6 +9,8 @@ struct SettingsView: View {
                 .tabItem { Label("Keys", systemImage: "key.fill") }
             ModesTab()
                 .tabItem { Label("Modes", systemImage: "square.stack.3d.up") }
+            GlossaryTab()
+                .tabItem { Label("Glossary", systemImage: "character.book.closed") }
             CalendarTab()
                 .tabItem { Label("Calendar", systemImage: "calendar") }
             CorpusTab()
@@ -318,6 +320,8 @@ private struct GeneralTab: View {
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = true
     @AppStorage(AnalysisSettingsDefaults.notesIntervalKey) private var notesInterval: Double = AnalysisSettingsDefaults.defaultInterval
     @AppStorage(AnalysisSettingsDefaults.dossiersEnabledKey) private var dossiersEnabled: Bool = true
+    @AppStorage(AnalysisSettingsDefaults.themesEnabledKey) private var themesEnabled: Bool = true
+    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = true
 
     var body: some View {
         ScrollView {
@@ -371,6 +375,8 @@ private struct GeneralTab: View {
 
             Toggle("Enable notes generation", isOn: $notesEnabled)
             Toggle("Enable dossier generation", isOn: $dossiersEnabled)
+            Toggle("Enable themes & quotes generation", isOn: $themesEnabled)
+            Toggle("Enable discussion guide matching", isOn: $guideEnabled)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -690,5 +696,37 @@ private struct CorpusTab: View {
                 await MainActor.run { reindexStatus = "Failed: \(error)" }
             }
         }
+    }
+}
+
+// MARK: - Glossary
+
+private struct GlossaryTab: View {
+    @ObservedObject private var store = GlossaryStore.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Glossary")
+                .font(.headline)
+            Text("Terms the assistant should use verbatim. One per line, in the form **Term — meaning** (em-dash, colon, or hyphen). Lines starting with `#` are ignored.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextEditor(text: $store.rawText)
+                .font(.system(.body, design: .monospaced))
+                .frame(minHeight: 240)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.3))
+                )
+
+            let count = store.entries.count
+            Text(count == 0 ? "No entries parsed yet." : "\(count) entr\(count == 1 ? "y" : "ies") parsed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(8)
     }
 }
