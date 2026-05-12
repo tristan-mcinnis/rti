@@ -68,32 +68,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         }
     }
 
-    /// All five notification-center observers registered at launch in one
-    /// call site so the wiring is visible in a single glance.
+    /// Notification-center observers registered at launch in one call site
+    /// so the wiring is visible in a single glance. Non-panel observers use
+    /// selector dispatch; analysis panel toggles are data-driven from
+    /// `AnalysisPanelStore` so adding a new panel only touches its spec.
     private func registerNotificationObservers() {
         let observers: [(NSNotification.Name, Selector)] = [
             (.rtiToggleOverlay, #selector(toggleOverlay)),
             (.rtiClearChat, #selector(clearChat)),
             (.rtiToggleCommandPalette, #selector(toggleCommandPalette)),
-            (.rtiToggleNotesPanel, #selector(toggleNotesPanel)),
-            (.rtiToggleDossiersPanel, #selector(toggleDossiersPanel)),
-            (.rtiToggleThemesPanel, #selector(toggleThemesPanel)),
-            (.rtiToggleGuidePanel, #selector(toggleGuidePanel)),
-            (.rtiToggleTranslationPanel, #selector(toggleTranslationPanel)),
         ]
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
+        }
+
+        // Analysis panel toggles — one block per panel, keyed from the store.
+        for descriptor in AnalysisPanelStore.shared.all {
+            NotificationCenter.default.addObserver(
+                forName: descriptor.notificationName,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.windows.toggle(descriptor.id)
+                }
+            }
         }
     }
 
     @objc private func toggleOverlay() { windows.toggleOverlay() }
     @objc private func clearChat() { Self.confirmThenClearChat() }
     @objc private func toggleCommandPalette() { windows.toggleCommandPalette() }
-    @objc private func toggleNotesPanel() { windows.toggle(.notes) }
-    @objc private func toggleDossiersPanel() { windows.toggle(.dossiers) }
-    @objc private func toggleThemesPanel() { windows.toggle(.themes) }
-    @objc private func toggleGuidePanel() { windows.toggle(.discussionGuide) }
-    @objc private func toggleTranslationPanel() { windows.toggle(.translation) }
 
     /// Shows a destructive-confirmation alert; on confirm, clears the
     /// current session's chat messages. Static so `CommandPaletteFactory`

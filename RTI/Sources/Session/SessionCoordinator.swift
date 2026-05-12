@@ -31,7 +31,9 @@ final class SessionCoordinator: ObservableObject {
     /// snapshotted into the session's markdown frontmatter at render time.
     /// Backed by `project_sessions` in SQLite for durability + UserDefaults
     /// for cross-launch stickiness.
-    @Published private(set) var activeProjectId: String?
+    /// Forwarded from `SessionProjectBinding.shared` so existing callers
+    /// (`LLMController`, views) see no change.
+    var activeProjectId: String? { SessionProjectBinding.shared.activeProjectId }
     @Published private(set) var liveEntries: [LiveEntry] = []
     @Published private(set) var interimLine: String?
     @Published private(set) var lastError: String?
@@ -57,6 +59,7 @@ final class SessionCoordinator: ObservableObject {
 
     private let audioPipeline = AudioPipeline()
     private let transcriptPipeline = TranscriptPipeline()
+    private let corpusBridge = SessionCorpusBridge()
     private var delayedCompleteTask: Task<Void, Never>?
     /// Active session metadata held in memory — there's no `sessions` row
     /// to persist them. Set on launch, consumed by `CorpusManager.render-
@@ -65,15 +68,10 @@ final class SessionCoordinator: ObservableObject {
     private var activeModeId: String?
 
     private static let resumeWindowSeconds: TimeInterval = 300
-    private static let activeProjectKey = "rti.session.activeProjectId"
 
     private init() {
-        // Sticky project across launches — picker reflects last selection.
-        // Overridden later by `resumeSession` / `bootstrapChatSession` when
-        // the resumed session already has a recorded project membership.
-        let stored = UserDefaults.standard.string(forKey: Self.activeProjectKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        self.activeProjectId = (stored?.isEmpty == false) ? stored : nil
+        // SessionProjectBinding reads the sticky project from UserDefaults;
+        // activeProjectId forwards to it.
         commonInit()
     }
 
@@ -155,7 +153,7 @@ final class SessionCoordinator: ObservableObject {
                 startedAt = recent.startedAt
                 activeModeId = recent.modeId
                 activeWavPath = recent.wavPath
-                refreshActiveProjectFromMembership(for: recent.id)
+                SessionProjectBinding.shared.refreshMembership(for: recent.id)
                 return
             }
         }
@@ -164,9 +162,7 @@ final class SessionCoordinator: ObservableObject {
         startedAt = now
         // Carry the sticky project over to the fresh chat session so any
         // pre-recording Q&A already inherits the project's instructions.
-        if let pid = activeProjectId {
-            ProjectStore.shared.addSession(newId, toProject: pid)
-        }
+        SessionProjectBinding.shared.carryOverToNewSession(newId)
     }
 
     func switchToSession(id: String) {
@@ -176,7 +172,7 @@ final class SessionCoordinator: ObservableObject {
         startedAt = session.startedAt
         activeWavPath = session.wavPath
         activeModeId = session.modeId
-        refreshActiveProjectFromMembership(for: session.id)
+        SessionProjectBinding.shared.refreshMembership(for: session.id)
         transcriptPipeline.reset()
         publishState()
     }
@@ -186,58 +182,7 @@ final class SessionCoordinator: ObservableObject {
     /// membership for this session, and persists the selection to
     /// UserDefaults so the picker remembers it across launches.
     func setActiveProject(_ projectId: String?) {
-        let normalized = projectId?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let newValue: String? = (normalized?.isEmpty == false) ? normalized : nil
-        guard newValue != activeProjectId else { return }
-
-        if let sessionId = currentSessionId {
-            // Drop any existing membership for this session before adding
-            // the new one. A session belongs to at most one "active" project
-            // from the live-assistant's perspective.
-            for project in ProjectStore.shared.projects {
-                if project.id != newValue {
-                    ProjectStore.shared.removeSession(sessionId, fromProject: project.id)
-                }
-            }
-            if let newValue {
-                ProjectStore.shared.addSession(sessionId, toProject: newValue)
-            }
-        }
-
-        activeProjectId = newValue
-        if let newValue {
-            UserDefaults.standard.set(newValue, forKey: Self.activeProjectKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: Self.activeProjectKey)
-        }
-
-        let name = newValue.flatMap { id in
-            ProjectStore.shared.projects.first { $0.id == id }?.name
-        } ?? "(none)"
-        RTILog.log("active project → \(name)", category: "projects")
-    }
-
-    /// Query `project_sessions` for the given session id and update
-    /// `activeProjectId` to match. Used after resume / switch so the live
-    /// picker reflects what the saved session already belongs to.
-    private func refreshActiveProjectFromMembership(for sessionId: String) {
-        // First project this session is a member of — sessions normally
-        // have at most one association from the live picker, but if the
-        // user manually added the session to multiple projects via the
-        // Projects view, we just pick the most recent association.
-        let projects = ProjectStore.shared.projects
-        for project in projects {
-            if ProjectStore.shared.sessionIds(forProject: project.id).contains(sessionId) {
-                if activeProjectId != project.id {
-                    activeProjectId = project.id
-                    UserDefaults.standard.set(project.id, forKey: Self.activeProjectKey)
-                }
-                return
-            }
-        }
-        // No association recorded for this session — leave the sticky
-        // value alone so the picker doesn't reset every time the user
-        // navigates to an old session.
+        SessionProjectBinding.shared.setActiveProject(projectId, forSessionId: currentSessionId)
     }
 
     /// Insert a user-authored note into the current session's transcript at the
@@ -384,7 +329,7 @@ final class SessionCoordinator: ObservableObject {
         endedAt = nil
         activeWavPath = session.wavPath
         activeModeId = modeId
-        refreshActiveProjectFromMembership(for: session.id)
+        SessionProjectBinding.shared.refreshMembership(for: session.id)
         transcriptPipeline.reset()
         publishState()
         LLMController.shared.loadHistoryForCurrentSession()
@@ -415,9 +360,7 @@ final class SessionCoordinator: ObservableObject {
         // live LLM controller looks up "what project is this session a
         // member of" each turn, and how renderSession captures the project
         // name into the markdown frontmatter when the session ends.
-        if let pid = activeProjectId {
-            ProjectStore.shared.addSession(sessionId, toProject: pid)
-        }
+        SessionProjectBinding.shared.carryOverToNewSession(sessionId)
 
         do {
             _ = try audioPipeline.prepare(sessionId: sessionId)
@@ -429,7 +372,7 @@ final class SessionCoordinator: ObservableObject {
 
         // Phase 3 dual-write: open a JSONL stream for this session so live
         // events land in the on-disk record as well as in SQLite.
-        LiveSessionStore.shared.openLive(sessionId: sessionId)
+        corpusBridge.openLive(sessionId: sessionId)
 
         do {
             try audioPipeline.start()
@@ -502,55 +445,15 @@ final class SessionCoordinator: ObservableObject {
         // session's startSession() will call reset(for: newSessionId)
         // which loads that session's notes from the DB.
 
-        triggerSummaryIfNeeded(sessionId: sessionId)
-    }
-
-    private func triggerSummaryIfNeeded(sessionId: String) {
-        // Whether we have any transcript content lives in JSONL now.
-        let liveURL = LiveSessionStore.shared.liveDirectory.appendingPathComponent("\(sessionId).jsonl")
-        let hasContent: Bool = {
-            guard FileManager.default.fileExists(atPath: liveURL.path) else { return false }
-            guard let events = try? LiveJSONLReader.readAll(liveURL) else { return false }
-            return events.contains(where: {
-                if case .word(_, _, _, true, _, _) = $0 { return true }
-                if case .note = $0 { return true }
-                return false
-            })
-        }()
-
-        let renderStartedAt = startedAt ?? Date()
-        let renderEndedAt = endedAt
-        let renderWavPath = activeWavPath
-        let renderModeId = activeModeId
-
-        if !hasContent {
-            // Empty session — no markdown render. Drop in-memory active
-            // metadata so the next session starts clean.
-            activeWavPath = nil
-            activeModeId = nil
-            return
-        }
-
-        Task { @MainActor in
-            async let title: String? = SessionTitleController.shared.generateTitle(for: sessionId)
-            async let summary: SessionSummary? = SummaryController.shared.generateSummary(for: sessionId)
-            // Hi-fi themes pass runs in parallel with summary/title so the
-            // .md render below can pick up the final payload via the
-            // corpus integration.
-            async let themesDone: Void = ThemesController.shared.generateHiFi(sessionId: sessionId)
-            _ = await (title, summary, themesDone)
-            await CorpusManager.shared.renderSession(
-                sessionId: sessionId,
-                startedAt: renderStartedAt,
-                endedAt: renderEndedAt,
-                wavPath: renderWavPath,
-                modeId: renderModeId
-            )
-            NotificationCenter.default.post(name: .rtiSessionsChanged, object: nil)
-            // Active metadata done with — clear it after the render.
-            self.activeWavPath = nil
-            self.activeModeId = nil
-        }
+        corpusBridge.triggerSummary(
+            sessionId: sessionId,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            wavPath: activeWavPath,
+            modeId: activeModeId
+        )
+        activeWavPath = nil
+        activeModeId = nil
     }
 
     private func teardownOnFailure() {
@@ -567,7 +470,7 @@ final class SessionCoordinator: ObservableObject {
         if let sid = currentSessionId {
             // Best-effort: flush JSONL so on next launch the orphan
             // recovery path can present this session for re-render.
-            LiveSessionStore.shared.closeLive(sessionId: sid)
+            corpusBridge.flushLive(sessionId: sid)
         }
         isRunning = false
     }
