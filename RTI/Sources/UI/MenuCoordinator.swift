@@ -1,7 +1,9 @@
 import AppKit
 
-/// Owns the status-item menu and its dynamic state (recent sessions,
-/// smart mode toggle, session start/stop label, etc.).
+/// Owns the status-item menu and its dynamic state. Builds menu items from
+/// the shared `[RTICommand]` registry — no per-action closure properties.
+/// Only the recent-sessions submenu and the Logs item remain as direct
+/// wiring because they're dynamically populated, not static commands.
 @MainActor
 final class MenuCoordinator: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
@@ -9,27 +11,14 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     private var smartModeItem: NSMenuItem?
     private var invisibilityItem: NSMenuItem?
     private var recentSessionsItem: NSMenuItem?
+    private var detailMenuItem: NSMenuItem?
+
+    /// Commands keyed by id for fast lookup during menu-open refresh.
+    private var commandsByID: [String: RTICommand] = [:]
 
     var onToggleSession: (() -> Void)?
     var onToggleSmartMode: (() -> Void)?
     var onToggleInvisibility: (() -> Void)?
-    var onOpenCurrentSessionDetail: (() -> Void)?
-    var onShowDebugConsole: (() -> Void)?
-    var onShowSettings: (() -> Void)?
-    var onShowAbout: (() -> Void)?
-    var onShowShortcuts: (() -> Void)?
-    var onShowOnboarding: (() -> Void)?
-    var onToggleOverlay: (() -> Void)?
-    var onToggleTopWidget: (() -> Void)?
-    var onToggleNotesPanel: (() -> Void)?
-    var onToggleDossiersPanel: (() -> Void)?
-    var onToggleThemesPanel: (() -> Void)?
-    var onToggleGuidePanel: (() -> Void)?
-    var onToggleTranslationPanel: (() -> Void)?
-    var onClearChat: (() -> Void)?
-    var onShowSessionHistory: (() -> Void)?
-    var onCaptureScreen: (() -> Void)?
-    var onShowLogs: (() -> Void)?
     var onRecentSessionSelected: ((String) -> Void)?
     var recentSessionsProvider: (() -> [Session])?
     var currentSessionIdProvider: (() -> String?)?
@@ -37,120 +26,66 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     var smartModeProvider: (() -> Bool)?
     var invisibilityProvider: (() -> Bool)?
 
-    private static let invisibleKey = "rti.invisible"
+    /// Build the status-item menu from the shared command registry.
+    /// Commands are grouped by `MenuSection` and rendered in declaration
+    /// order within each section. Commands without a `menuSection` are
+    /// skipped. The "Recent Sessions" submenu and the "Logs" item are
+    /// added after the navigation section.
+    func install(commands: [RTICommand]) {
+        for cmd in commands { commandsByID[cmd.id] = cmd }
 
-    func install() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "RTI"
         item.button?.toolTip = "RTI — click for menu (⌘\\ to toggle overlay)"
         let menu = NSMenu()
         menu.delegate = self
 
-        // Section 1: session controls — same first two items as the widget menu.
-        let sessionItem = NSMenuItem(title: "Start Recording", action: #selector(toggleSession), keyEquivalent: "")
-        sessionItem.target = self
-        menu.addItem(sessionItem)
-        self.sessionMenuItem = sessionItem
+        // Group commands by section, preserving declaration order.
+        let grouped = Dictionary(grouping: commands) { $0.menuSection }
+        for section in MenuSection.allCases {
+            guard let group = grouped[section] else { continue }
+            for cmd in group {
+                let mi = NSMenuItem(title: cmd.title, action: #selector(fireCommand(_:)), keyEquivalent: "")
+                mi.target = self
+                mi.representedObject = cmd.id
+                menu.addItem(mi)
 
-        let detailItem = NSMenuItem(title: "View Session Detail", action: #selector(openCurrentSessionDetail), keyEquivalent: "")
-        detailItem.target = self
-        menu.addItem(detailItem)
+                // Capture dynamic items for menu-open refresh.
+                switch cmd.id {
+                case "session.start":
+                    sessionMenuItem = mi
+                case "smart.toggle":
+                    smartModeItem = mi
+                case "invisibility.toggle":
+                    invisibilityItem = mi
+                case "session.detail":
+                    detailMenuItem = mi
+                default:
+                    break
+                }
+            }
 
+            // After navigation: add Logs + Recent Sessions.
+            if section == .navigation {
+                let logsItem = NSMenuItem(title: "Logs", action: #selector(fireCommand(_:)), keyEquivalent: "")
+                logsItem.target = self
+                logsItem.representedObject = "view.history" // falls through to show sessions
+                menu.addItem(logsItem)
+
+                let recentItem = NSMenuItem(title: "Recent Sessions", action: nil, keyEquivalent: "")
+                recentItem.submenu = NSMenu(title: "Recent Sessions")
+                menu.addItem(recentItem)
+                recentSessionsItem = recentItem
+            }
+
+            // Add separator between sections (except after the last).
+            if section != MenuSection.allCases.last {
+                menu.addItem(NSMenuItem.separator())
+            }
+        }
+
+        // Quit item at the bottom.
         menu.addItem(NSMenuItem.separator())
-
-        // Section 2: navigation — overlay, transcript, sessions home, logs, recents.
-        let overlayItem = NSMenuItem(title: "Show Chat Panel  ⌘\\", action: #selector(toggleOverlay), keyEquivalent: "")
-        overlayItem.target = self
-        menu.addItem(overlayItem)
-
-        let consoleItem = NSMenuItem(title: "Live Transcript  ⌘⌥T", action: #selector(showDebugConsole), keyEquivalent: "")
-        consoleItem.target = self
-        menu.addItem(consoleItem)
-
-        let historyItem = NSMenuItem(title: "Sessions…  ⌘⇧S", action: #selector(showSessionHistory), keyEquivalent: "")
-        historyItem.target = self
-        menu.addItem(historyItem)
-
-        let logsItem = NSMenuItem(title: "Logs", action: #selector(showLogs), keyEquivalent: "")
-        logsItem.target = self
-        menu.addItem(logsItem)
-
-        let recentItem = NSMenuItem(title: "Recent Sessions", action: nil, keyEquivalent: "")
-        recentItem.submenu = NSMenu(title: "Recent Sessions")
-        menu.addItem(recentItem)
-        recentSessionsItem = recentItem
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Section 3: per-session actions.
-        let captureItem = NSMenuItem(title: "Capture Screen  ⌘⇧H", action: #selector(captureScreen), keyEquivalent: "")
-        captureItem.target = self
-        menu.addItem(captureItem)
-
-        let clearItem = NSMenuItem(title: "Clear Current Chat", action: #selector(clearChat), keyEquivalent: "")
-        clearItem.target = self
-        menu.addItem(clearItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Section 4: mode toggles and panels.
-        let smartItem = NSMenuItem(title: "Enable Smart Mode", action: #selector(toggleSmartMode), keyEquivalent: "")
-        smartItem.target = self
-        menu.addItem(smartItem)
-        self.smartModeItem = smartItem
-
-        let userInvisible = UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true
-        let invisItem = NSMenuItem(title: userInvisible ? "Show on Screen Capture" : "Hide from Screen Capture", action: #selector(toggleInvisibility), keyEquivalent: "")
-        invisItem.target = self
-        invisItem.state = userInvisible ? .on : .off
-        menu.addItem(invisItem)
-        self.invisibilityItem = invisItem
-
-        let widgetItem = NSMenuItem(title: "Toggle Top Widget  ⌘⇧B", action: #selector(toggleTopWidget), keyEquivalent: "")
-        widgetItem.target = self
-        menu.addItem(widgetItem)
-
-        let notesItem = NSMenuItem(title: "Toggle Notes Panel  ⌘⇧N", action: #selector(toggleNotesPanel), keyEquivalent: "")
-        notesItem.target = self
-        menu.addItem(notesItem)
-
-        let dossiersItem = NSMenuItem(title: "Toggle Dossiers Panel  ⌘⇧D", action: #selector(toggleDossiersPanel), keyEquivalent: "")
-        dossiersItem.target = self
-        menu.addItem(dossiersItem)
-
-        let themesItem = NSMenuItem(title: "Toggle Themes Panel", action: #selector(toggleThemesPanel), keyEquivalent: "")
-        themesItem.target = self
-        menu.addItem(themesItem)
-
-        let guideItem = NSMenuItem(title: "Toggle Discussion Guide", action: #selector(toggleGuidePanel), keyEquivalent: "")
-        guideItem.target = self
-        menu.addItem(guideItem)
-
-        let translationItem = NSMenuItem(title: "Toggle Translation Panel", action: #selector(toggleTranslationPanel), keyEquivalent: "")
-        translationItem.target = self
-        menu.addItem(translationItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Section 5: app-level.
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-
-        let shortcutsItem = NSMenuItem(title: "Keyboard Shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
-        shortcutsItem.target = self
-        menu.addItem(shortcutsItem)
-
-        let aboutItem = NSMenuItem(title: "About RTI", action: #selector(showAbout), keyEquivalent: "")
-        aboutItem.target = self
-        menu.addItem(aboutItem)
-
-        let welcomeItem = NSMenuItem(title: "Show Welcome…", action: #selector(showOnboarding), keyEquivalent: "")
-        welcomeItem.target = self
-        menu.addItem(welcomeItem)
-
-        menu.addItem(NSMenuItem.separator())
-
         let quitItem = NSMenuItem(title: "Quit RTI", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -168,17 +103,25 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        sessionMenuItem?.title = (isRunningProvider?() ?? false)
-            ? "Stop Recording  ⌘⇧R"
-            : "Start Recording  ⌘⇧R"
-        let smartOn = smartModeProvider?() ?? false
-        smartModeItem?.title = smartOn ? "Disable Smart Mode" : "Enable Smart Mode"
-        smartModeItem?.state = smartOn ? .on : .off
-        let invisOn = invisibilityProvider?() ?? true
-        invisibilityItem?.title = invisOn ? "Show on Screen Capture" : "Hide from Screen Capture"
-        invisibilityItem?.state = invisOn ? .on : .off
+        // Refresh dynamic titles.
+        if let cmd = commandsByID["session.start"], let mi = sessionMenuItem {
+            mi.title = cmd.menuTitleProvider?() ?? cmd.title
+        }
+        if let cmd = commandsByID["smart.toggle"], let mi = smartModeItem {
+            mi.title = cmd.menuTitleProvider?() ?? cmd.title
+            mi.state = (smartModeProvider?() ?? false) ? .on : .off
+        }
+        if let cmd = commandsByID["invisibility.toggle"], let mi = invisibilityItem {
+            mi.title = cmd.menuTitleProvider?() ?? cmd.title
+            mi.state = (invisibilityProvider?() ?? true) ? .on : .off
+        }
+        if let mi = detailMenuItem {
+            let hasSession = currentSessionIdProvider?() != nil
+            mi.isEnabled = hasSession
+            mi.title = hasSession ? "View Session Detail" : "View Session Detail (no active session)"
+        }
+
         rebuildRecentSessionsSubmenu()
-        refreshDetailMenuItemEnablement(menu: menu)
     }
 
     private func rebuildRecentSessionsSubmenu() {
@@ -207,36 +150,16 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         }
     }
 
-    private func refreshDetailMenuItemEnablement(menu: NSMenu) {
-        guard let detailItem = menu.items.first(where: { $0.action == #selector(openCurrentSessionDetail) }) else { return }
-        let hasSession = currentSessionIdProvider?() != nil
-        detailItem.isEnabled = hasSession
-        detailItem.title = hasSession ? "View Session Detail" : "View Session Detail (no active session)"
+    @objc private func fireCommand(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let cmd = commandsByID[id] else { return }
+        cmd.perform()
     }
 
-    @objc private func toggleSession() { onToggleSession?() }
-    @objc private func toggleSmartMode() { onToggleSmartMode?() }
-    @objc private func toggleInvisibility() { onToggleInvisibility?() }
-    @objc private func openCurrentSessionDetail() { onOpenCurrentSessionDetail?() }
-    @objc private func showDebugConsole() { onShowDebugConsole?() }
-    @objc private func showSettings() { onShowSettings?() }
-    @objc private func showAbout() { onShowAbout?() }
-    @objc private func showShortcuts() { onShowShortcuts?() }
-    @objc private func showOnboarding() { onShowOnboarding?() }
-    @objc private func toggleOverlay() { onToggleOverlay?() }
-    @objc private func toggleTopWidget() { onToggleTopWidget?() }
-    @objc private func toggleNotesPanel() { onToggleNotesPanel?() }
-    @objc private func toggleDossiersPanel() { onToggleDossiersPanel?() }
-    @objc private func toggleThemesPanel() { onToggleThemesPanel?() }
-    @objc private func toggleGuidePanel() { onToggleGuidePanel?() }
-    @objc private func toggleTranslationPanel() { onToggleTranslationPanel?() }
-    @objc private func clearChat() { onClearChat?() }
-    @objc private func showSessionHistory() { onShowSessionHistory?() }
-    @objc private func captureScreen() { onCaptureScreen?() }
-    @objc private func showLogs() { onShowLogs?() }
     @objc private func openSessionDetail(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         onRecentSessionSelected?(id)
     }
+
     @objc private func quit() { NSApp.terminate(nil) }
 }

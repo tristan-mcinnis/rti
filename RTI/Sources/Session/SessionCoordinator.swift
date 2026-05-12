@@ -72,8 +72,16 @@ final class SessionCoordinator: ObservableObject {
             self?.lastErrorIsAuth = isAuth
             if self?.isRunning == true { self?.stopSession() }
         }
+    }
 
-        AnalysisScheduler.shared.register(id: "notes", task: AnalysisScheduler.AnalysisTask(
+    /// Register all periodic analysis tasks with the scheduler. Extracted
+    /// from the SessionCoordinator init so the wiring lives alongside other
+    /// app-level wiring in AppDelegate rather than inside the session
+    /// lifecycle. The scheduler stores watermarks internally; callers (the
+    /// controllers) track their per-session state.
+    static func registerAnalysisTasks() {
+        let s = AnalysisScheduler.shared
+        s.register(id: "notes", task: AnalysisScheduler.AnalysisTask(
             enabledKey: AnalysisSettingsDefaults.notesEnabledKey,
             execute: { sinceMs in
                 await NotesGenerationController.shared.generate(
@@ -82,7 +90,7 @@ final class SessionCoordinator: ObservableObject {
                 )
             }
         ))
-        AnalysisScheduler.shared.register(id: "dossiers", task: AnalysisScheduler.AnalysisTask(
+        s.register(id: "dossiers", task: AnalysisScheduler.AnalysisTask(
             enabledKey: AnalysisSettingsDefaults.dossiersEnabledKey,
             execute: { sinceMs in
                 await DossierController.shared.generate(
@@ -91,7 +99,7 @@ final class SessionCoordinator: ObservableObject {
                 )
             }
         ))
-        AnalysisScheduler.shared.register(id: "themes", task: AnalysisScheduler.AnalysisTask(
+        s.register(id: "themes", task: AnalysisScheduler.AnalysisTask(
             enabledKey: AnalysisSettingsDefaults.themesEnabledKey,
             execute: { sinceMs in
                 await ThemesController.shared.generate(
@@ -100,7 +108,7 @@ final class SessionCoordinator: ObservableObject {
                 )
             }
         ))
-        AnalysisScheduler.shared.register(id: "guide", task: AnalysisScheduler.AnalysisTask(
+        s.register(id: "guide", task: AnalysisScheduler.AnalysisTask(
             enabledKey: AnalysisSettingsDefaults.guideEnabledKey,
             execute: { sinceMs in
                 await DiscussionGuideController.shared.match(

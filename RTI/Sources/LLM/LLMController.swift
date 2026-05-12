@@ -98,8 +98,7 @@ final class LLMController: ObservableObject {
     }
 
     /// Cancel any in-flight stream and drop the in-memory entries without
-    /// touching persisted chat_messages. Used when starting/resuming a session
-    /// where the user expects history to remain on disk.
+    /// touching persisted chat_messages.
     func resetMemory() {
         cancel()
         entries = []
@@ -108,7 +107,7 @@ final class LLMController: ObservableObject {
     }
 
     /// Destructive: in-memory reset PLUS deletion of chat_messages for the
-    /// current session. Wired to the menubar "Clear Current Chat" action.
+    /// current session.
     func clear() {
         resetMemory()
         SessionCoordinator.shared.clearCurrentSessionMessages()
@@ -209,8 +208,6 @@ final class LLMController: ObservableObject {
         for (idx, entry) in entries.enumerated() {
             let isLatestUser = idx == entries.count - 1 && entry.role == "user"
             let content = isLatestUser ? fullContent : entry.text
-            // Skip non-final entries with empty content, but never skip the
-            // last user entry — the API needs at least one user message.
             if content.isEmpty, !isLatestUser { continue }
             apiMessages.append(LLMMessage(role: entry.role, content: content))
         }
@@ -223,114 +220,47 @@ final class LLMController: ObservableObject {
         reasoning = false
         let thisEntryID = assistantEntry.id
 
-        Task { [weak self] in
-            await self?.runToolLoop(initialMessages: apiMessages, streamingEntryID: thisEntryID, persistSessionId: persistSessionId)
-        }
-    }
-
-    /// Runs the streaming chat → execute tools → re-stream loop until the
-    /// model produces a stop (or an error / cancel). The streaming
-    /// assistant entry's text is appended in-place across iterations so the
-    /// user sees one assistant turn even if multiple tools were called.
-    private func runToolLoop(initialMessages: [LLMMessage], streamingEntryID thisEntryID: UUID, persistSessionId: String?) async {
-        var conversation = initialMessages
         let toolsJSON = LLMToolRegistry.wireFormatData()
-        let onReasoning: @Sendable (String) -> Void = { [weak self] _ in
-            Task { @MainActor in self?.reasoning = true }
-        }
 
-        // Hard cap so a misbehaving model can't loop on tool calls forever.
-        let maxIterations = 4
-        for _ in 0..<maxIterations {
-            // Track this turn's content so we can append it to the wire
-            // history if the model also emits tool_calls (assistant message
-            // with both content + tool_calls is permitted).
-            let turnContent = TurnContentBuffer()
-
-            let onContent: @Sendable (String) -> Void = { [weak self] delta in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    if self.reasoning { self.reasoning = false }
-                    if self.streamingEntryID != thisEntryID { return }
-                    self.appendToStreamingEntry(delta)
-                    turnContent.append(delta)
+        Task { [weak self] in
+            guard let self else { return }
+            let loop = ToolLoop(request: self.request)
+            await loop.run(
+                conversation: apiMessages,
+                toolsJSON: toolsJSON,
+                smart: self.smartMode,
+                onEvent: { event in
+                    MainActor.assumeIsolated {
+                        switch event {
+                        case .contentDelta(let delta):
+                            if self.streamingEntryID != thisEntryID { return }
+                            if self.reasoning { self.reasoning = false }
+                            self.appendToStreamingEntry(delta)
+                        case .reasoningStarted:
+                            self.reasoning = true
+                        case .reasoningEnded:
+                            self.reasoning = false
+                        case .toolStatus(let status):
+                            self.toolStatus = status
+                        case .toolStatusDone:
+                            self.toolStatus = nil
+                        case .done:
+                            self.finalizeAssistantTurn(streamingEntryID: thisEntryID, persistSessionId: persistSessionId)
+                        case .error(let message, let isAuth):
+                            guard self.streamingEntryID == thisEntryID else { return }
+                            self.lastError = message
+                            self.lastErrorIsAuth = isAuth
+                            self.streaming = false
+                            self.reasoning = false
+                            self.toolStatus = nil
+                            self.pruneTrailingEmptyAssistant()
+                            self.streamingEntryID = nil
+                            NSLog("[RTI] LLM stream error: \(message)")
+                            RTILog.log("stream error: \(message)", category: "llm")
+                        }
+                    }
                 }
-            }
-
-            let result: LLMClient.ToolAwareStreamResult
-            do {
-                result = try await request.streamWithTools(
-                    messages: conversation,
-                    toolsJSON: toolsJSON,
-                    smart: smartMode,
-                    onContent: onContent,
-                    onReasoning: onReasoning
-                )
-            } catch is CancellationError {
-                return
-            } catch {
-                guard streamingEntryID == thisEntryID else { return }
-                let llmError = error as? LLMError
-                lastError = llmError?.userMessage ?? "\(error)"
-                lastErrorIsAuth = llmError?.isAuth ?? false
-                streaming = false
-                reasoning = false
-                toolStatus = nil
-                pruneTrailingEmptyAssistant()
-                streamingEntryID = nil
-                NSLog("[RTI] LLM stream error: \(lastError ?? "unknown")")
-                RTILog.log("stream error: \(lastError ?? "unknown")", category: "llm")
-                return
-            }
-
-            // No tools requested → this is the terminal turn. Persist + done.
-            guard !result.toolCalls.isEmpty else {
-                finalizeAssistantTurn(streamingEntryID: thisEntryID, persistSessionId: persistSessionId)
-                return
-            }
-
-            // Append the assistant's tool_call message to the wire history,
-            // then run each tool and append a `tool` message with its result.
-            conversation.append(LLMMessage(
-                role: "assistant",
-                content: turnContent.snapshot().nilIfEmpty,
-                tool_calls: result.toolCalls
-            ))
-
-            for call in result.toolCalls {
-                let resultText = await executeTool(call)
-                conversation.append(LLMMessage(
-                    role: "tool",
-                    content: resultText,
-                    tool_call_id: call.id,
-                    name: call.function.name
-                ))
-            }
-            // Loop back: model now sees its tool results and continues.
-        }
-
-        // Hit the iteration cap — finalize what we have so the user isn't
-        // left with a half-streamed bubble.
-        finalizeAssistantTurn(streamingEntryID: thisEntryID, persistSessionId: persistSessionId)
-    }
-
-    /// Locates the requested tool, runs it, and returns either its output
-    /// or an error string the model can read. Updates `toolStatus` so the
-    /// UI can show what's happening while the tool is running.
-    private func executeTool(_ call: LLMToolCall) async -> String {
-        guard let tool = LLMToolRegistry.tool(named: call.function.name) else {
-            return "Tool '\(call.function.name)' is not available."
-        }
-        toolStatus = tool.runningStatus ?? "Running \(tool.name)…"
-        defer { toolStatus = nil }
-        do {
-            let output = try await tool.execute(call.function.arguments)
-            NSLog("[RTI] Tool '\(tool.name)' produced \(output.count) chars")
-            return output
-        } catch {
-            let msg = "Tool '\(tool.name)' failed: \(error.localizedDescription)"
-            NSLog("[RTI] \(msg)")
-            return msg
+            )
         }
     }
 
@@ -372,19 +302,4 @@ final class LLMController: ObservableObject {
         let threshold = max(0, elapsedMs - windowMs)
         return TranscriptContext.text(forSessionId: sessionId, sinceMs: threshold)
     }
-}
-
-/// Tiny actor-isolated string buffer used by the tool loop to capture this
-/// turn's emitted content (so we can re-attach it to the wire history if the
-/// model also requested a tool call). Kept as a class rather than a value
-/// type so the @Sendable onContent closure can mutate shared state safely.
-private final class TurnContentBuffer: @unchecked Sendable {
-    private var text: String = ""
-    private let lock = NSLock()
-    func append(_ s: String) { lock.lock(); text += s; lock.unlock() }
-    func snapshot() -> String { lock.lock(); defer { lock.unlock() }; return text }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

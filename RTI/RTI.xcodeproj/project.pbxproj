@@ -35,6 +35,7 @@
 		220D798013E40D1826B23127 /* SpeakerTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C0B2386DED8C25A82AC662 /* SpeakerTurn.swift */; };
 		228E4DB961EF2449DF2FCB1D /* ThemesPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE62EA665A102C200CDF8FB4 /* ThemesPanelWindowController.swift */; };
 		23991DEEA239F0B185B18D13 /* LLMError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D135438CFFDC7140E0AD997 /* LLMError.swift */; };
+		26A68471342CC1C1E2B26F5B /* ToolLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */; };
 		272977CAC3B308B67685E4C9 /* SessionDetailRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */; };
 		27683B96B51592F25FD534D0 /* WritePathIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D0C3A5F03649E65C27FC95 /* WritePathIntegrationTests.swift */; };
 		284A8ECC652ABDEF512D4626 /* SessionDetailRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */; };
@@ -166,7 +167,6 @@
 		D700ECF43F4CD37B819F21EB /* MCPProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB88EE9816BAEEFF0A7C7EA /* MCPProtocol.swift */; };
 		D8D888B2BFAD627972A3C6AD /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825F37E20D755398F3F17F96 /* ProjectsView.swift */; };
 		D93AB7F171F8F8AD6D7D6DB2 /* SessionSearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30B99FF79FBA673C096A7F6 /* SessionSearchResult.swift */; };
-		D95187511B448435F341F2E9 /* CorpusCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12A9D33C294DF57CBAF07DEE /* CorpusCatalog.swift */; };
 		DBCAA5D4FD382ACD913D4980 /* SonioxFailureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 411EDD7A2C3166286A52B232 /* SonioxFailureTests.swift */; };
 		DC6634EB99126FE2DB29DC33 /* DossierController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1C3402FA8BFBD520CAF73D /* DossierController.swift */; };
 		DD002A1A86822A2E66AAC847 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C48267D7243F07E859FF17B /* LogsView.swift */; };
@@ -234,7 +234,6 @@
 		109CEE81EB1098437E27DC2C /* MCPSpawnIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPSpawnIntegrationTests.swift; sourceTree = "<group>"; };
 		1275DFE4AE979EA226EC9A7A /* SessionSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSummary.swift; sourceTree = "<group>"; };
 		129EFBF37863B78243BEE1AE /* CommandPaletteWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteWindowController.swift; sourceTree = "<group>"; };
-		12A9D33C294DF57CBAF07DEE /* CorpusCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusCatalog.swift; sourceTree = "<group>"; };
 		1456E03914BAD3E5A701143B /* DiscussionGuideController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuideController.swift; sourceTree = "<group>"; };
 		166C8635ECAD7923D5605360 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		18F9E23AC8C6C42DF807253D /* PasteboardHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteboardHelpers.swift; sourceTree = "<group>"; };
@@ -320,6 +319,7 @@
 		9B43315BBB57BE38A913848E /* SonioxProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxProtocol.swift; sourceTree = "<group>"; };
 		9C48267D7243F07E859FF17B /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		9D0E2C98D689721F7ED34156 /* TopWidgetWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopWidgetWindowController.swift; sourceTree = "<group>"; };
+		9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolLoop.swift; sourceTree = "<group>"; };
 		A2066A7BF3D8A4D7430E9A00 /* CorpusWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusWriterTests.swift; sourceTree = "<group>"; };
 		A2127891ACC732EA523D20C2 /* RTIMCP */ = {isa = PBXFileReference; includeInIndex = 0; path = RTIMCP; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2B49123DC265A6BEA2C6671 /* LLMTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMTools.swift; sourceTree = "<group>"; };
@@ -601,6 +601,7 @@
 				DCE9839BBDA43C2E5038E526 /* LLMRequest.swift */,
 				A2B49123DC265A6BEA2C6671 /* LLMTools.swift */,
 				30401E0708E01C71D5A6759B /* LLMWireShapes.swift */,
+				9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */,
 			);
 			path = LLM;
 			sourceTree = "<group>";
@@ -707,7 +708,6 @@
 			isa = PBXGroup;
 			children = (
 				E72FB57724E1724B61D16734 /* CorpusBackedStore.swift */,
-				12A9D33C294DF57CBAF07DEE /* CorpusCatalog.swift */,
 				F0685C3FDC77550D1247A872 /* CorpusEntry.swift */,
 				C397F67CAA883C3EE35EF37F /* CorpusFTSReindexer.swift */,
 				3138E022716317B6DB18B9E2 /* CorpusManager.swift */,
@@ -1015,7 +1015,6 @@
 				CA226F89770F830DE007782A /* CommandPaletteWindowController.swift in Sources */,
 				2C242E5A0B3725CFE29F968A /* CommandRegistry.swift in Sources */,
 				387627B359E82DEBA3599F97 /* CorpusBackedStore.swift in Sources */,
-				D95187511B448435F341F2E9 /* CorpusCatalog.swift in Sources */,
 				C89FA8D64E22A1A17836E07C /* CorpusEntry.swift in Sources */,
 				E7A78919E326DC8E80FBC4B5 /* CorpusFTSReindexer.swift in Sources */,
 				0ABEC3C6A17E293DE6AC1CCC /* CorpusManager.swift in Sources */,
@@ -1114,6 +1113,7 @@
 				8BB85D189B87C2D3E638C155 /* ThemesPanelView.swift in Sources */,
 				228E4DB961EF2449DF2FCB1D /* ThemesPanelWindowController.swift in Sources */,
 				9ED665B1E48A7DE41ED06E74 /* TimeFormat.swift in Sources */,
+				26A68471342CC1C1E2B26F5B /* ToolLoop.swift in Sources */,
 				6D619EF785EABFE337BBBB56 /* TopWidgetView.swift in Sources */,
 				5D53AB334A181274357817CD /* TopWidgetWindowController.swift in Sources */,
 				9AC4B433178572BBF727E757 /* TranscriptAggregator.swift in Sources */,

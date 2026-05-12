@@ -1,13 +1,14 @@
 import Foundation
 import Combine
 
-/// One entry in the command palette / menubar. The single source of truth for
-/// "what can the user do right now." Commands are owned by `AppDelegate`,
-/// which wires each `perform` closure to the corresponding singleton action
-/// (SessionCoordinator, LLMController, ModeStore, the overlay controller).
+/// One entry in the command palette / menubar / hotkey system. The single
+/// source of truth for "what can the user do right now." Menu items and
+/// global hotkeys are derived from this same registry — adding a command
+/// here registers it everywhere.
 struct RTICommand: Identifiable {
     /// Stable id used for recents persistence. Format: `<group>.<verb>`.
     let id: String
+    /// Human-readable title shown in the palette, menu, and shortcuts UI.
     let title: String
     /// Optional shortcut hint shown right-aligned in the palette row
     /// (e.g. "⌘⇧R"). Purely informational — no key binding here.
@@ -17,8 +18,24 @@ struct RTICommand: Identifiable {
     /// Re-evaluated on every keystroke. Returning `false` hides the command
     /// from results and from recents. Default: always available.
     let isAvailable: () -> Bool
-    /// Fired on Enter. Closure runs on the main actor.
+    /// Fired on Enter / menu click / hotkey press. Runs on the main actor.
     let perform: () -> Void
+
+    // MARK: - Menu integration
+
+    /// Which section the menu item appears in. `nil` hides it from the
+    /// status-item menu (palette-only commands like say-next / followups).
+    let menuSection: MenuSection?
+    /// When non-nil, the menu item title is re-evaluated on every menu-open
+    /// so commands like "Start / Stop Recording" stay in sync.
+    let menuTitleProvider: (() -> String)?
+
+    // MARK: - Hotkey integration
+
+    /// Carbon `kVK_*` key code. `nil` means no global hotkey.
+    let hotkeyKeyCode: UInt32?
+    /// Carbon modifier mask (`cmdKey`, `shiftKey`, `optionKey`).
+    let hotkeyModifiers: UInt32?
 
     init(
         id: String,
@@ -26,7 +43,11 @@ struct RTICommand: Identifiable {
         subtitle: String? = nil,
         keywords: [String] = [],
         isAvailable: @escaping () -> Bool = { true },
-        perform: @escaping () -> Void
+        perform: @escaping () -> Void,
+        menuSection: MenuSection? = nil,
+        menuTitleProvider: (() -> String)? = nil,
+        hotkeyKeyCode: UInt32? = nil,
+        hotkeyModifiers: UInt32? = nil
     ) {
         self.id = id
         self.title = title
@@ -34,7 +55,21 @@ struct RTICommand: Identifiable {
         self.keywords = keywords
         self.isAvailable = isAvailable
         self.perform = perform
+        self.menuSection = menuSection
+        self.menuTitleProvider = menuTitleProvider
+        self.hotkeyKeyCode = hotkeyKeyCode
+        self.hotkeyModifiers = hotkeyModifiers
     }
+}
+
+/// Sections in the status-item menu, in display order. Commands are
+/// grouped by section; sections with no commands are skipped.
+enum MenuSection: String, CaseIterable {
+    case session
+    case navigation
+    case actions
+    case panels
+    case app
 }
 
 @MainActor

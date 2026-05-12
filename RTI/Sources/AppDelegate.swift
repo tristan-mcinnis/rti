@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
         SessionCoordinator.shared.bootstrapChatSession()
         SessionCoordinator.shared.pruneOldSessions(days: 30)
+        SessionCoordinator.registerAnalysisTasks()
         _ = ModeStore.shared
         LLMController.shared.loadHistoryForCurrentSession()
         CorpusManager.shared.recoverOrphans()
@@ -26,57 +27,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         let invisible = UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true
         windows.setSharingInvisible(invisible)
 
-        menu.install()
-        menu.onToggleSession = { SessionCoordinator.shared.toggleSession() }
-        menu.onToggleSmartMode = { LLMController.shared.smartMode.toggle() }
-        menu.onToggleInvisibility = { [weak self] in self?.toggleInvisibility() }
-        menu.onOpenCurrentSessionDetail = { [weak self] in
-            guard let id = SessionCoordinator.shared.currentSessionId else { return }
-            self?.windows.openSessionDetail(for: id)
-        }
-        menu.onShowDebugConsole = { [weak self] in self?.windows.showDebugConsole() }
-        menu.onShowSettings = { [weak self] in self?.windows.openSettings() }
-        menu.onShowAbout = { [weak self] in self?.windows.showAbout() }
-        menu.onShowShortcuts = { [weak self] in self?.windows.showShortcuts() }
-        menu.onShowOnboarding = { [weak self] in self?.windows.showOnboarding() }
-        menu.onToggleOverlay = { [weak self] in self?.windows.toggleOverlay() }
-        menu.onToggleTopWidget = { [weak self] in self?.windows.toggleTopWidget() }
-        menu.onToggleNotesPanel = { [weak self] in self?.windows.toggleNotesPanel() }
-        menu.onToggleDossiersPanel = { [weak self] in self?.windows.toggleDossiersPanel() }
-        menu.onToggleThemesPanel = { [weak self] in self?.windows.toggleThemesPanel() }
-        menu.onToggleGuidePanel = { [weak self] in self?.windows.toggleGuidePanel() }
-        menu.onToggleTranslationPanel = { [weak self] in self?.windows.toggleTranslationPanel() }
-        menu.onClearChat = { [weak self] in self?.clearChat() }
-        menu.onShowSessionHistory = { [weak self] in self?.windows.showSessionHistory() }
-        menu.onCaptureScreen = { ScreenshotManager.shared.captureAndAttach() }
-        menu.onShowLogs = { [weak self] in self?.windows.showSessionsControl(tab: .logs) }
+        // Build the shared command registry once. Menu, hotkeys, and the
+        // command palette all consume this same list.
+        let commands = CommandPaletteFactory.buildCommands(
+            windows: windows,
+            session: SessionCoordinator.shared,
+            llm: LLMController.shared,
+            modes: ModeStore.shared
+        )
+
+        CommandRegistry.shared.replaceAll(commands)
+
+        // Menu: dynamic state providers for items whose titles change.
         menu.onRecentSessionSelected = { [weak self] id in self?.windows.openSessionDetail(for: id) }
         menu.recentSessionsProvider = { SessionCoordinator.shared.recentSessions(limit: 10) }
         menu.currentSessionIdProvider = { SessionCoordinator.shared.currentSessionId }
         menu.isRunningProvider = { SessionCoordinator.shared.isRunning }
         menu.smartModeProvider = { LLMController.shared.smartMode }
         menu.invisibilityProvider = { UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true }
+        menu.install(commands: commands)
 
-        hotkeys.onToggleOverlay = { [weak self] in self?.windows.toggleOverlay() }
-        hotkeys.onToggleSession = { SessionCoordinator.shared.toggleSession() }
-        hotkeys.onSendAssist = { LLMController.shared.sendAssist() }
-        hotkeys.onCaptureScreen = { ScreenshotManager.shared.captureAndAttach() }
-        hotkeys.onToggleDebugConsole = { [weak self] in self?.windows.toggleDebugConsole() }
-        hotkeys.onToggleCommandPalette = { [weak self] in self?.windows.toggleCommandPalette() }
-        hotkeys.onToggleTopWidget = { [weak self] in self?.windows.toggleTopWidget() }
-        hotkeys.onToggleNotesPanel = { [weak self] in self?.windows.toggleNotesPanel() }
-        hotkeys.onToggleDossiersPanel = { [weak self] in self?.windows.toggleDossiersPanel() }
-        hotkeys.onShowSessions = { [weak self] in self?.windows.showSessionHistory() }
-        hotkeys.registerAll()
-
-        CommandRegistry.shared.replaceAll(
-            CommandPaletteFactory.buildCommands(
-                windows: windows,
-                session: SessionCoordinator.shared,
-                llm: LLMController.shared,
-                modes: ModeStore.shared
-            )
-        )
+        hotkeys.registerAll(commands: commands)
 
         SessionCoordinator.shared.$isRunning
             .receive(on: RunLoop.main)
@@ -109,13 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
         }
-    }
-
-    private func toggleInvisibility() {
-        let isInvisible = UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true
-        let newValue = !isInvisible
-        UserDefaults.standard.set(newValue, forKey: Self.invisibleKey)
-        windows.setSharingInvisible(newValue)
     }
 
     @objc private func toggleOverlay() { windows.toggleOverlay() }
@@ -170,16 +134,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Emergency shutdown flushes the JSONL writer and audio pipeline.
-        // We can't do unbounded async work here (the OS will kill us), but
-        // we can at least give the synchronous parts a chance to land.
         SessionCoordinator.shared.emergencyShutdown()
     }
 
-    /// Bring the overlay back when the user clicks the app's Dock icon, the
-    /// running-app indicator, or relaunches while a single instance is
-    /// already alive. Without this, an `LSUIElement` app whose overlay was
-    /// dismissed has no obvious entry point besides the menubar item.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
             windows.showOverlay()
