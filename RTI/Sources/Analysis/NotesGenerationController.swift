@@ -91,35 +91,30 @@ final class NotesGenerationController: AnalysisController {
     /// Returns the `endMs` of the processed transcript on success, so the caller can advance its watermark.
     func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
         guard !isGenerating else { return nil }
-
-        let transcript = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
         isGenerating = true
         lastError = nil
         defer { isGenerating = false }
 
-        let fullPrompt = Self.notesPrompt + "\n" + trimmed
-        let messages = [LLMMessage(role: "user", content: fullPrompt)]
-
-        guard let response = await request.collectAsync(messages: messages, smart: true),
-              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let result = await TranscriptAnalysis.runText(
+            sessionId: sessionId,
+            sinceMs: sinceMs,
+            smart: true,
+            request: request,
+            buildPrompt: { Self.notesPrompt + "\n" + $0 }
+        ) else {
             lastError = "Notes generation returned empty response."
             return nil
         }
 
-        let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
-
         let note = GeneratedNote(
             timestamp: Date(),
             rangeStartMs: sinceMs ?? 0,
-            rangeEndMs: endMs,
-            content: response
+            rangeEndMs: result.endMs,
+            content: result.payload
         )
         notes.append(note)
         persist(note: note, sessionId: sessionId)
-        return endMs
+        return result.endMs
     }
 
     private func persist(note: GeneratedNote, sessionId: String) {

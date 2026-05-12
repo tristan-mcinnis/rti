@@ -83,16 +83,9 @@ final class DossierController: AnalysisController {
     /// Generate dossiers from the transcript window starting at `sinceMs`
     /// (or from the start of the session when nil). Returns the `endMs`
     /// watermark of the processed window so the caller can advance and avoid
-    /// re-sending the entire growing transcript on every cycle. Without
-    /// windowing, a long meeting re-sends an ever-larger transcript every
-    /// 2 minutes and the token cost grows quadratically.
+    /// re-sending the entire growing transcript on every cycle.
     func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
         guard !isGenerating else { return nil }
-
-        let transcript = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
         isGenerating = true
         lastError = nil
         defer { isGenerating = false }
@@ -106,24 +99,27 @@ final class DossierController: AnalysisController {
             return "\nEntities already tracked (only return NEW ones, or ones whose description should be expanded):\n\(existing)\n"
         }()
 
-        let fullPrompt = Self.dossierPrompt + knownClause + "\nNew transcript window:\n" + trimmed
-        let messages = [LLMMessage(role: "user", content: fullPrompt)]
+        let result = await TranscriptAnalysis.run(
+            sessionId: sessionId,
+            sinceMs: sinceMs,
+            smart: true,
+            request: request,
+            category: "dossiers",
+            as: [RawDossier].self,
+            buildPrompt: { Self.dossierPrompt + knownClause + "\nNew transcript window:\n" + $0 }
+        )
 
-        guard let response = await request.collectAsync(messages: messages, smart: true),
-              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            lastError = "Dossier generation returned empty response."
+        guard let result else {
+            // Empty / parse fail / cancelled — leave watermark unchanged.
             return nil
         }
 
-        let parsed = Self.parseDossiers(from: response)
+        let parsed = result.payload.compactMap { $0.toDossier() }
         if !parsed.isEmpty {
             merge(parsed)
             persistAll(sessionId: sessionId)
         }
-
-        // Watermark = end of the window we just processed, so the next
-        // cycle picks up only fresh transcript.
-        return TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
+        return result.endMs
     }
 
     /// Merges a fresh batch into the running dossier list. Existing entries
@@ -159,10 +155,7 @@ final class DossierController: AnalysisController {
 
     /// Upsert every in-memory dossier into the database for `sessionId`.
     /// The schema's `(session_id, name_normalized)` unique index makes this
-    /// idempotent: re-running upgrades the description in place. We
-    /// persist the entire current set rather than diffing because the merge
-    /// logic already canonicalised it and the volumes are tiny (dozens
-    /// max).
+    /// idempotent: re-running upgrades the description in place.
     private func persistAll(sessionId: String) {
         let now = Date()
         let snapshot = dossiers
@@ -194,43 +187,17 @@ final class DossierController: AnalysisController {
             NSLog("[RTI] persist entity_dossiers failed: \(error)")
         }
     }
+}
 
-    nonisolated static func parseDossiers(from raw: String) -> [EntityDossier] {
-        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+/// Wire shape for the dossier JSON. Lowercased `type` is mapped to the
+/// `EntityType` enum at materialization time.
+private struct RawDossier: Decodable {
+    let name: String
+    let type: String
+    let description: String
 
-        // Strip markdown code fences if present.
-        if text.hasPrefix("```") {
-            if let start = text.firstIndex(of: "\n") {
-                text = String(text[text.index(after: start)...])
-            }
-            if text.hasSuffix("```") {
-                text = String(text.prefix(text.count - 3))
-            }
-            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        guard let data = text.data(using: .utf8) else { return [] }
-
-        struct RawDossier: Decodable {
-            let name: String
-            let type: String
-            let description: String
-        }
-
-        do {
-            let decoded = try JSONDecoder().decode([RawDossier].self, from: data)
-            return decoded.compactMap { r -> EntityDossier? in
-                guard let type = EntityType(rawValue: r.type.lowercased()) else { return nil }
-                return EntityDossier(
-                    id: UUID(),
-                    name: r.name,
-                    type: type,
-                    description: r.description
-                )
-            }
-        } catch {
-            NSLog("[RTI] Dossier JSON parse failed: \(error)")
-            return []
-        }
+    func toDossier() -> EntityDossier? {
+        guard let type = EntityType(rawValue: type.lowercased()) else { return nil }
+        return EntityDossier(id: UUID(), name: name, type: type, description: description)
     }
 }

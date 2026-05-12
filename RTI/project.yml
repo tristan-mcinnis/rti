@@ -154,6 +154,7 @@ targets:
       - path: Sources/Support/SpeakerLabelMapping.swift
       - path: Sources/Support/TimeFormat.swift
       - path: Sources/Support/SummaryFormatting.swift
+      - path: Sources/Support/JSONExtractor.swift
     dependencies:
       - package: GRDB
       - package: Yams

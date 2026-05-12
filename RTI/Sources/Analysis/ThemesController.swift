@@ -128,35 +128,30 @@ final class ThemesController: AnalysisController {
 
     private func run(sessionId: String, hiFi: Bool) async -> Int? {
         guard !isGenerating else { return nil }
-        let transcript = TranscriptContext.textWithTimestamps(forSessionId: sessionId)
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
         isGenerating = true
         lastError = nil
         defer { isGenerating = false }
 
-        let prompt = (hiFi ? Self.hiFiPrompt : Self.realtimePrompt) + "\n" + trimmed
-        let messages = [LLMMessage(role: "user", content: prompt)]
+        let prompt = hiFi ? Self.hiFiPrompt : Self.realtimePrompt
+        let result = await TranscriptAnalysis.run(
+            sessionId: sessionId,
+            sinceMs: nil,
+            shape: .timestamped,
+            smart: hiFi,
+            request: request,
+            category: "themes",
+            as: ThemesPayload.self,
+            buildPrompt: { prompt + "\n" + $0 }
+        )
 
-        guard let response = await request.collectAsync(messages: messages, smart: hiFi),
-              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            lastError = "Themes generation returned empty response."
-            return nil
-        }
-
-        guard let parsed = Self.parsePayload(response) else {
-            lastError = "Themes JSON could not be parsed."
-            return nil
-        }
-
+        guard let result else { return nil }
         // Persist + publish only if we actually got at least one topic.
-        guard !parsed.themes.isEmpty else { return nil }
+        guard !result.payload.themes.isEmpty else { return nil }
 
         let now = Date()
         let json: Data
         do {
-            json = try JSONEncoder().encode(parsed)
+            json = try JSONEncoder().encode(result.payload)
         } catch {
             NSLog("[RTI] ThemesController encode failed: \(error)")
             return nil
@@ -173,30 +168,11 @@ final class ThemesController: AnalysisController {
         // session — the user might have switched away while the request
         // was in flight.
         if self.sessionId == sessionId {
-            payload = parsed
+            payload = result.payload
             isHiFi = hiFi
             generatedAt = now
         }
-        return TranscriptContext.watermarkEndMs(forSessionId: sessionId)
-    }
-
-    private static func parsePayload(_ raw: String) -> ThemesPayload? {
-        // The model occasionally wraps JSON in ```json fences despite the
-        // prompt; strip them defensively.
-        let stripped: String = {
-            var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if s.hasPrefix("```") {
-                if let firstNewline = s.firstIndex(of: "\n") {
-                    s = String(s[s.index(after: firstNewline)...])
-                }
-                if s.hasSuffix("```") {
-                    s = String(s.dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-            return s
-        }()
-        guard let data = stripped.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(ThemesPayload.self, from: data)
+        return result.endMs
     }
 
     /// Synchronous write helper. Pulled out of the async `run` method so
