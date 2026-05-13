@@ -24,7 +24,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
         }
         .padding(16)
-        .frame(width: 560, height: 460)
+        .frame(minWidth: 560, idealWidth: 640, maxWidth: .infinity,
+               minHeight: 460, idealHeight: 640, maxHeight: .infinity)
         .overlay(alignment: .bottomTrailing) {
             if let onClose {
                 Button("Close") { onClose() }

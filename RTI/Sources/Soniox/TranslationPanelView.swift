@@ -53,10 +53,8 @@ struct TranslationPanelView: View {
                     .labelsHidden()
                     .help(translationEnabled ? "Translation on" : "Turn translation on")
             },
-            headerActions: {
-                PanelHeaderEllipsisMenu(panelID: .translation) {
-                    Toggle("Show original", isOn: $showOriginal)
-                }
+            menuItems: {
+                Toggle("Show original", isOn: $showOriginal)
             }
         ) {
             VStack(spacing: 0) {

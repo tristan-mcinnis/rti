@@ -16,18 +16,16 @@ struct NotesPanelView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 }
             },
-            headerActions: {
-                PanelHeaderEllipsisMenu(panelID: .notes) {
-                    Button("Copy all", action: copyAll)
-                        .disabled(controller.notes.isEmpty)
-                    Button("Export as .md…", action: exportToFile)
-                        .disabled(controller.notes.isEmpty)
-                    Divider()
-                    Button("Regenerate now", action: regenerate)
-                        .disabled(controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
-                    Button("Clear", role: .destructive) { controller.clear() }
-                        .disabled(controller.notes.isEmpty)
-                }
+            menuItems: {
+                Button("Copy all", action: copyAll)
+                    .disabled(controller.notes.isEmpty)
+                Button("Export as .md…", action: exportToFile)
+                    .disabled(controller.notes.isEmpty)
+                Divider()
+                Button("Regenerate now", action: regenerate)
+                    .disabled(controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
+                Button("Clear", role: .destructive) { controller.clear() }
+                    .disabled(controller.notes.isEmpty)
             }
         ) {
             VStack(spacing: 0) {

@@ -26,7 +26,7 @@ struct CorpusTab: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Corpus")
                     .font(.system(size: 16, weight: .semibold))

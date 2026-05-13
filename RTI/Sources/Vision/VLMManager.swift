@@ -128,7 +128,48 @@ final class VLMManager {
 
     /// Qwen3-VL-2B-Instruct 4-bit quantised. Same model the voice-agent uses.
     /// Auto-downloaded from HuggingFace on first call if not already cached.
-    private static let modelID = "mlx-community/Qwen3-VL-2B-Instruct-4bit"
+    static let modelID = "mlx-community/Qwen3-VL-2B-Instruct-4bit"
+
+    /// Approximate on-disk size after download. Surfaced in Settings so users
+    /// know how much space the first-run download will consume.
+    static let approximateDownloadSizeMB = 2_000
+
+    /// Likely on-disk locations the model snapshot may live in. The active
+    /// HuggingFace hub library (`swift-huggingface`) uses the system cache
+    /// `~/.cache/huggingface/hub/models--<org>--<name>`, but older builds
+    /// (and the python sibling) drop snapshots under `~/Documents/huggingface`.
+    /// We check both so the Settings "Reveal in Finder" works regardless of
+    /// which path was used.
+    static var cacheCandidates: [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let safeID = modelID.replacingOccurrences(of: "/", with: "--")
+        return [
+            home.appendingPathComponent(".cache/huggingface/hub/models--\(safeID)"),
+            home.appendingPathComponent("Documents/huggingface/models/\(modelID)"),
+        ]
+    }
+
+    /// First cache candidate that exists on disk, or nil if the model has
+    /// not been downloaded yet.
+    static var cachedLocation: URL? {
+        cacheCandidates.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Bytes occupied by the cached model, summed recursively. Returns nil
+    /// if the model isn't cached.
+    static func cachedSizeBytes() -> Int64? {
+        guard let url = cachedLocation else { return nil }
+        let keys: [URLResourceKey] = [.fileSizeKey, .isRegularFileKey]
+        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) else { return nil }
+        var total: Int64 = 0
+        for case let file as URL in enumerator {
+            let values = try? file.resourceValues(forKeys: Set(keys))
+            if values?.isRegularFile == true, let size = values?.fileSize {
+                total += Int64(size)
+            }
+        }
+        return total
+    }
 
     static let defaultPrompt =
         "Describe what you see in this screenshot in 1–2 concise sentences. Include any visible text."

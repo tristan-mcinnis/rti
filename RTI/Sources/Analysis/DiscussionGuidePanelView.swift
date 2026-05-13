@@ -17,13 +17,11 @@ struct DiscussionGuidePanelView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 }
             },
-            headerActions: {
-                PanelHeaderEllipsisMenu(panelID: .discussionGuide) {
-                    Button("Import guide…", action: importGuide)
-                    if controller.guide != nil {
-                        Divider()
-                        Button("Remove guide", role: .destructive, action: removeGuide)
-                    }
+            menuItems: {
+                Button("Import guide…", action: importGuide)
+                if controller.guide != nil {
+                    Divider()
+                    Button("Remove guide", role: .destructive, action: removeGuide)
                 }
             }
         ) {

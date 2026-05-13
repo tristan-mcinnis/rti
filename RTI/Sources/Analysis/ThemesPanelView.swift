@@ -24,18 +24,16 @@ struct ThemesPanelView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 }
             },
-            headerActions: {
-                PanelHeaderEllipsisMenu(panelID: .themes) {
-                    Button("Copy all", action: copyAll)
-                        .disabled(controller.payload.themes.isEmpty)
-                    Button("Export as .md…", action: exportToFile)
-                        .disabled(controller.payload.themes.isEmpty)
-                    Divider()
-                    Button("Regenerate now", action: regenerate)
-                        .disabled(controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
-                    Button("Clear", role: .destructive) { controller.clear() }
-                        .disabled(controller.payload.themes.isEmpty)
-                }
+            menuItems: {
+                Button("Copy all", action: copyAll)
+                    .disabled(controller.payload.themes.isEmpty)
+                Button("Export as .md…", action: exportToFile)
+                    .disabled(controller.payload.themes.isEmpty)
+                Divider()
+                Button("Regenerate now", action: regenerate)
+                    .disabled(controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
+                Button("Clear", role: .destructive) { controller.clear() }
+                    .disabled(controller.payload.themes.isEmpty)
             }
         ) {
             VStack(spacing: 0) {

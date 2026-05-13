@@ -20,7 +20,7 @@ struct GeneralTab: View {
 
     var body: some View {
         // TODO(perf): extract sections into sub-views to limit redraws
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
         VStack(alignment: .leading, spacing: 14) {
             Text("General")
                 .font(.system(size: 16, weight: .semibold))
@@ -73,6 +73,10 @@ struct GeneralTab: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider().padding(.vertical, 8)
+
+            visionModelSection
 
             Divider().padding(.vertical, 8)
 
@@ -232,6 +236,62 @@ struct GeneralTab: View {
         .background(
             RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.06))
         )
+    }
+
+    // MARK: - Vision model
+
+    @ViewBuilder
+    private var visionModelSection: some View {
+        let cached = VLMManager.cachedLocation
+        let sizeBytes = VLMManager.cachedSizeBytes()
+        let sizeText: String = {
+            if let b = sizeBytes {
+                return ByteCountFormatter.string(fromByteCount: b, countStyle: .file)
+            }
+            return "~\(VLMManager.approximateDownloadSizeMB / 1000) GB will download on first use"
+        }()
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Vision Model")
+                .font(.system(size: 13, weight: .medium))
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: cached != nil ? "checkmark.circle.fill" : "arrow.down.circle")
+                    .foregroundStyle(cached != nil ? .green : .secondary)
+                    .font(.system(size: 14))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(VLMManager.modelID)
+                        .font(.system(size: 12, design: .monospaced))
+                    Text(cached != nil ? "Downloaded · \(sizeText)" : "Not downloaded · \(sizeText)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.06)))
+
+            if let cached {
+                Text(cached.path)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                HStack {
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([cached])
+                    }
+                    .controlSize(.small)
+                    Spacer()
+                }
+            }
+
+            Text("Used for the \"Describe screenshot\" feature. Runs locally on your Mac via MLX — no images leave the device. To swap models, edit `VLMManager.modelID` in source; the new model auto-downloads on next use.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Diagnostics

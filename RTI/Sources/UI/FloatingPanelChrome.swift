@@ -6,14 +6,16 @@ import SwiftUI
 /// resize handle, close button, and corner clipping.
 ///
 /// Each panel supplies its own title, optional status accessory (badges,
-/// spinners), trailing header actions (export menus, custom controls),
-/// and body content.
-struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: View>: View {
+/// spinners), trailing ellipsis-menu items (export, regenerate, etc.),
+/// and body content. The chrome itself builds the `⋯` menu and prepends
+/// the opacity slider + appends "Hide panel" so every panel has the same
+/// shape without each one re-implementing the wrapper.
+struct FloatingPanelChrome<TitleAccessory: View, MenuItems: View, Content: View>: View {
     let title: String
     let panelID: FloatingPanelID
     @AppStorage private var backgroundOpacity: Double
     let titleAccessory: () -> TitleAccessory
-    let headerActions: () -> HeaderActions
+    let menuItems: () -> MenuItems
     let content: () -> Content
 
     init(
@@ -22,14 +24,14 @@ struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: V
         defaultOpacity: Double,
         panelID: FloatingPanelID,
         @ViewBuilder titleAccessory: @escaping () -> TitleAccessory = { EmptyView() },
-        @ViewBuilder headerActions: @escaping () -> HeaderActions = { EmptyView() },
+        @ViewBuilder menuItems: @escaping () -> MenuItems = { EmptyView() },
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.panelID = panelID
         self._backgroundOpacity = AppStorage(wrappedValue: defaultOpacity, opacityKey)
         self.titleAccessory = titleAccessory
-        self.headerActions = headerActions
+        self.menuItems = menuItems
         self.content = content
     }
 
@@ -65,11 +67,33 @@ struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: V
                 .foregroundStyle(.white)
             titleAccessory()
             Spacer()
-            headerActions()
-            FloatingPanelOpacitySlider(opacity: $backgroundOpacity)
-                .frame(width: 70)
+            ellipsisMenu
             closeButton
         }
+    }
+
+    private var ellipsisMenu: some View {
+        Menu {
+            // Opacity slider as a menu item — keeps the header uncluttered
+            // and groups per-panel chrome controls in one place.
+            FloatingPanelOpacityMenuRow(opacity: $backgroundOpacity)
+            Divider()
+            menuItems()
+            Divider()
+            Button("Hide panel") {
+                WindowCoordinator.shared.toggle(panelID)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Color.white.opacity(0.12)))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: 22, height: 22)
+        .help("Panel options")
     }
 
     private var closeButton: some View {
@@ -87,42 +111,20 @@ struct FloatingPanelChrome<TitleAccessory: View, HeaderActions: View, Content: V
     }
 }
 
-/// Standard `⋯` quick-actions menu used in every floating panel header.
-/// Each panel passes its own actions; "Hide panel" is appended at the
-/// bottom so the close affordance is reachable from one consistent place
-/// across panels (in addition to the explicit `×` button).
-struct PanelHeaderEllipsisMenu<Content: View>: View {
-    let panelID: FloatingPanelID
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        Menu {
-            content()
-            Divider()
-            Button("Hide panel") {
-                WindowCoordinator.shared.toggle(panelID)
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.7))
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(Color.white.opacity(0.12)))
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .frame(width: 22, height: 22)
-        .help("Quick actions")
-    }
-}
-
-/// Slim white opacity slider used in every floating panel header. Range
-/// matches `OverlayAppearanceDefaults.opacityRange` (10% → 100%).
-struct FloatingPanelOpacitySlider: View {
+/// Opacity slider as a Menu row. SwiftUI's Menu renders arbitrary views,
+/// but to feel native we lay out a labelled slider with the same range as
+/// `OverlayAppearanceDefaults.opacityRange` (10% → 100%).
+struct FloatingPanelOpacityMenuRow: View {
     @Binding var opacity: Double
     var body: some View {
-        Slider(value: $opacity, in: 0.10...1.00, step: 0.05) {}
-            .tint(.white.opacity(0.4))
-            .frame(height: 12)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Opacity — \(Int(opacity * 100))%")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Slider(value: $opacity, in: 0.10...1.00, step: 0.05)
+                .frame(width: 180)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 }

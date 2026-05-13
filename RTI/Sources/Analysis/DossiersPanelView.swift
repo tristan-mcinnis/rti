@@ -16,18 +16,16 @@ struct DossiersPanelView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 }
             },
-            headerActions: {
-                PanelHeaderEllipsisMenu(panelID: .dossiers) {
-                    Button("Copy all", action: copyAll)
-                        .disabled(controller.dossiers.isEmpty)
-                    Button("Export as .md…", action: exportToFile)
-                        .disabled(controller.dossiers.isEmpty)
-                    Divider()
-                    Button("Regenerate now", action: regenerate)
-                        .disabled(controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
-                    Button("Clear", role: .destructive) { controller.clear() }
-                        .disabled(controller.dossiers.isEmpty)
-                }
+            menuItems: {
+                Button("Copy all", action: copyAll)
+                    .disabled(controller.dossiers.isEmpty)
+                Button("Export as .md…", action: exportToFile)
+                    .disabled(controller.dossiers.isEmpty)
+                Divider()
+                Button("Regenerate now", action: regenerate)
+                    .disabled(controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
+                Button("Clear", role: .destructive) { controller.clear() }
+                    .disabled(controller.dossiers.isEmpty)
             }
         ) {
             VStack(spacing: 0) {
