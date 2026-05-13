@@ -53,10 +53,10 @@ struct FloatingPanelSpec {
 @MainActor
 extension FloatingPanelSpec {
     static let notes = FloatingPanelSpec(
-        savedFrameKey: "rti.notesPanel.savedFrame",
+        savedFrameKey: "rti.notesPanel.savedFrame.v2",
         opacityKey: notesOpacityKey,
-        opacityDefault: notesDefaultOpacity,
-        defaultSize: NSSize(width: 380, height: 500),
+        opacityDefault: floatingPanelDefaultOpacity,
+        defaultSize: floatingPanelDefaultSize,
         panelID: .notes,
         initialOrigin: { visible, size in
             NSPoint(x: visible.minX + 16, y: visible.maxY - size.height - 16 - 80)
@@ -65,10 +65,10 @@ extension FloatingPanelSpec {
     )
 
     static let dossiers = FloatingPanelSpec(
-        savedFrameKey: "rti.dossiersPanel.savedFrame",
+        savedFrameKey: "rti.dossiersPanel.savedFrame.v2",
         opacityKey: dossiersOpacityKey,
-        opacityDefault: dossiersDefaultOpacity,
-        defaultSize: NSSize(width: 420, height: 500),
+        opacityDefault: floatingPanelDefaultOpacity,
+        defaultSize: floatingPanelDefaultSize,
         panelID: .dossiers,
         initialOrigin: { visible, size in
             NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 16 - 80)
@@ -77,10 +77,10 @@ extension FloatingPanelSpec {
     )
 
     static let themes = FloatingPanelSpec(
-        savedFrameKey: "rti.themesPanel.savedFrame",
+        savedFrameKey: "rti.themesPanel.savedFrame.v2",
         opacityKey: themesOpacityKey,
-        opacityDefault: themesDefaultOpacity,
-        defaultSize: NSSize(width: 420, height: 560),
+        opacityDefault: floatingPanelDefaultOpacity,
+        defaultSize: floatingPanelDefaultSize,
         panelID: .themes,
         initialOrigin: { visible, size in
             NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 16 - 80)
@@ -89,10 +89,10 @@ extension FloatingPanelSpec {
     )
 
     static let discussionGuide = FloatingPanelSpec(
-        savedFrameKey: "rti.guidePanel.savedFrame",
+        savedFrameKey: "rti.guidePanel.savedFrame.v2",
         opacityKey: guideOpacityKey,
-        opacityDefault: guideDefaultOpacity,
-        defaultSize: NSSize(width: 440, height: 580),
+        opacityDefault: floatingPanelDefaultOpacity,
+        defaultSize: floatingPanelDefaultSize,
         panelID: .discussionGuide,
         initialOrigin: { visible, size in
             NSPoint(x: visible.minX + 16, y: visible.maxY - size.height - 16 - 220)
@@ -101,10 +101,10 @@ extension FloatingPanelSpec {
     )
 
     static let translation = FloatingPanelSpec(
-        savedFrameKey: "rti.translationPanel.savedFrame",
+        savedFrameKey: "rti.translationPanel.savedFrame.v2",
         opacityKey: translationOpacityKey,
-        opacityDefault: translationDefaultOpacity,
-        defaultSize: NSSize(width: 460, height: 540),
+        opacityDefault: floatingPanelDefaultOpacity,
+        defaultSize: floatingPanelDefaultSize,
         panelID: .translation,
         initialOrigin: { visible, size in
             NSPoint(x: visible.midX - size.width / 2, y: visible.maxY - size.height - 16 - 60)
@@ -113,25 +113,30 @@ extension FloatingPanelSpec {
     )
 }
 
-// MARK: - Opacity defaults
+// MARK: - Shared defaults
 
-// Top-level so the existing `@AppStorage(notesOpacityKey)` etc. call sites
-// in panel views keep compiling unchanged.
+/// Single source of truth — every floating panel starts at the same size
+/// and opacity. Per-panel keys still exist so a user can drift one panel
+/// individually via the ⋯ menu without resetting the rest. The
+/// `.v2` suffix on `savedFrameKey` above invalidates any pre-unification
+/// stored frames so the new defaults actually take effect on first open.
+let floatingPanelDefaultSize = NSSize(width: 420, height: 540)
+let floatingPanelDefaultOpacity: Double = 0.88
 
 let notesOpacityKey = "rti.notesPanel.opacity"
-let notesDefaultOpacity: Double = 0.88
+let notesDefaultOpacity: Double = floatingPanelDefaultOpacity
 
 let dossiersOpacityKey = "rti.dossiersPanel.opacity"
-let dossiersDefaultOpacity: Double = 0.88
+let dossiersDefaultOpacity: Double = floatingPanelDefaultOpacity
 
 let themesOpacityKey = "rti.themesPanel.opacity"
-let themesDefaultOpacity: Double = 0.88
+let themesDefaultOpacity: Double = floatingPanelDefaultOpacity
 
 let guideOpacityKey = "rti.guidePanel.opacity"
-let guideDefaultOpacity: Double = 0.88
+let guideDefaultOpacity: Double = floatingPanelDefaultOpacity
 
 let translationOpacityKey = "rti.translationPanel.opacity"
-let translationDefaultOpacity: Double = 0.88
+let translationDefaultOpacity: Double = floatingPanelDefaultOpacity
 
 // MARK: - Controller
 

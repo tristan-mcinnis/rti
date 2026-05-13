@@ -14,7 +14,7 @@ import SwiftUI
 /// persisted under the v2 key — bumped from v1 so anyone who saw the old
 /// flow gets the new welcome with the data disclosure once.
 enum OnboardingDefaults {
-    static let completedKey = "rti.onboarding.completed.v2"
+    static let completedKey = "rti.onboarding.completed.v3"
 
     static var hasCompleted: Bool {
         UserDefaults.standard.bool(forKey: completedKey)
@@ -334,39 +334,85 @@ private struct KeysStep: View {
 
 private struct TourStep: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HotkeyCarousel()
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 16) {
+                HotkeyCarousel()
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Quick Tour")
-                    .font(.system(size: 18, weight: .semibold))
-                Text("Five hotkeys do most of the work.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Quick Tour")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Five hotkeys do most of the work.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    tourRow("⌘ \\", "Show / hide the assistant overlay")
+                    tourRow("⌘ ⇧ R", "Start / stop a recording session")
+                    tourRow("⌘ ↵", "Assist — answer based on what's been said")
+                    tourRow("⌘ ⇧ H", "Attach the screen as image + OCR to your next message")
+                    tourRow("⌘ ⌥ T", "Show / hide the live transcript window")
+                    tourRow("⌘ ⇧ S", "Open Sessions, Projects, Ask-Your-Corpus, Settings")
+                    tourRow("⌘ K", "Command palette — search every session + run any action")
+                }
+
+                Divider().padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("What else RTI does")
+                        .font(.system(size: 14, weight: .semibold))
+
+                    featureRow(
+                        icon: "note.text",
+                        title: "Live notes, dossiers, themes",
+                        body: "Every few minutes during recording, RTI generates structured notes, identifies people/companies/products as dossiers, and groups recurring themes. Toggle each panel from ⌘⇧N / ⌘⇧D or the overlay menu."
+                    )
+                    featureRow(
+                        icon: "eye",
+                        title: "On-device vision model",
+                        body: "Press ⌘⇧H and RTI captures your screen, runs OCR + a local Qwen3-VL model (MLX, runs on your Mac) and pipes a description into the assistant. No screenshots leave the device. The model auto-downloads on first use (~2 GB); status & cache path are in Settings → General → Vision Model."
+                    )
+                    featureRow(
+                        icon: "doc.text.magnifyingglass",
+                        title: "Ask your corpus",
+                        body: "Every recording is written as markdown to ~/meetings. Hit ⌘⇧S → Ask, and the assistant searches across every past session (lexical + semantic) and answers with citations."
+                    )
+                    featureRow(
+                        icon: "globe",
+                        title: "Real-time translation",
+                        body: "Toggle the Translation panel and RTI translates each speaker as they talk. Source + target languages picked per session."
+                    )
+                    featureRow(
+                        icon: "folder",
+                        title: "Projects",
+                        body: "Group related sessions under a project. The assistant uses project context when answering — useful for recurring meetings with the same client or team."
+                    )
+                    featureRow(
+                        icon: "square.stack.3d.up",
+                        title: "Modes",
+                        body: "Switch the assistant's voice/style — Coach, Interviewer, Sales-rep, your own — in Settings → Modes. Each mode is a system prompt + reference files."
+                    )
+                    featureRow(
+                        icon: "eye.slash",
+                        title: "Hidden from screen capture",
+                        body: "RTI's overlay does not appear in QuickTime / Zoom / Meet screen-shares by default. Toggle from the ⋯ menu if you ever want it visible in a recording."
+                    )
+                }
+
+                Divider().padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Capturing the other side of a call")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("RTI captures whatever your selected input device hears. To record both sides of a call, install BlackHole, build an aggregate device that combines your mic + BlackHole in Audio MIDI Setup, then pick it under Settings → General → Audio Input.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-
-            VStack(alignment: .leading, spacing: 10) {
-                tourRow("⌘ \\", "Show / hide the assistant overlay")
-                tourRow("⌘ ⇧ R", "Start / stop a recording session")
-                tourRow("⌘ ↵", "Assist — answer based on what's been said")
-                tourRow("⌘ ⇧ H", "Attach the screen as image + OCR to your next message")
-                tourRow("⌘ ⌥ T", "Show / hide the live transcript window")
-            }
-
-            Divider().padding(.vertical, 4)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Capturing the other side of a call")
-                    .font(.system(size: 12, weight: .medium))
-                Text("RTI captures whatever your selected input device hears. To record both sides of a call, install BlackHole, build an aggregate device that combines your mic + BlackHole in Audio MIDI Setup, then pick it under Settings → General → Audio Input.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
+            .padding(.top, 4)
+            .padding(.bottom, 12)
         }
-        .padding(.top, 4)
     }
 
     private func tourRow(_ key: String, _ label: String) -> some View {
@@ -378,6 +424,24 @@ private struct TourStep: View {
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Color.secondary.opacity(0.12)))
             Text(label).font(.system(size: 12))
+            Spacer()
+        }
+    }
+
+    private func featureRow(icon: String, title: String, body: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(.tint)
+                .frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(body)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Spacer()
         }
     }
