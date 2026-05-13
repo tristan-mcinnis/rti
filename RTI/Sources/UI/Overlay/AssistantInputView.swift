@@ -6,6 +6,7 @@ struct AssistantInputView: View {
     @State private var input: String = ""
     @FocusState private var isInputFocused: Bool
     @AppStorage("rti.invisible") private var isHiddenFromCapture: Bool = true
+    @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
     private let llm = LLMController.shared
     private let modes = ModeStore.shared
     private let session = SessionCoordinator.shared
@@ -82,6 +83,20 @@ struct AssistantInputView: View {
 
     private var moreDots: some View {
         Menu {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Opacity — \(Int(backgroundOpacity * 100))%")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Slider(value: $backgroundOpacity,
+                       in: OverlayAppearanceDefaults.opacityRange,
+                       step: 0.05)
+                    .frame(width: 180)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+
+            Divider()
+
             Section("Keybinds") {
                 Button {
                     NotificationCenter.default.post(name: .rtiToggleOverlay, object: nil)
