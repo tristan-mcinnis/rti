@@ -15,6 +15,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CrashLog.install()
         CredentialStore.migrateLegacyIfNeeded()
 
+        // Beta gate. Until the user pastes a valid key, no pipelines start
+        // and no windows install. The gate window terminates the app if
+        // closed without unlocking.
+        guard LicenseStore.shared.isValid else {
+            LicenseGateWindowController.shared.show { [weak self] in
+                self?.continueLaunch()
+            }
+            return
+        }
+
+        continueLaunch()
+    }
+
+    @MainActor private func continueLaunch() {
         SessionCoordinator.shared.bootstrapChatSession()
         SessionCoordinator.shared.pruneOldSessions(days: 30)
         SessionCoordinator.registerAnalysisTasks()
@@ -36,14 +50,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         watcher.start()
         corpusWatcher = watcher
 
-        windows.install(onOpenSettings: { [weak self] in self?.windows.openSettings() })
+        windows.install(onOpenSettings: { [weak self] in
+            Task { @MainActor [weak self] in self?.windows.openSettings() }
+        })
 
         let invisible = UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true
         windows.setSharingInvisible(invisible)
 
         // Build the shared command registry once. Menu, hotkeys, and the
         // command palette all consume this same list.
-        let commands = CommandPaletteFactory.buildCommands(
+        let commands = CommandBuilder.buildCommands(
             windows: windows,
             session: SessionCoordinator.shared,
             llm: LLMController.shared,

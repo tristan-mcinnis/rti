@@ -35,6 +35,18 @@ _Avoid_: archive, exports, vault, history.
 - A **Speaker Turn** is built from one or more contiguous **Words** with the same speaker id.
 - A **Transcript Context** is rendered from a Session's **Transcript Entries** for the LLM to read.
 
+**Prompt Context**:
+The bundle of contextual attachments (glossary, project instructions, mode reference text, screenshot OCR) that gets assembled into system-level LLM messages before every chat turn. Built by `PromptBuilder` from the current app state; consumed by `LLMController` and available to `CorpusChatController`.
+_Avoid_: prompt attachments, context mix-in.
+
+**Analysis Base**:
+A protocol extension on `AnalysisController` that consolidates the concurrent-generation guard (`isGenerating` flag management) shared by Notes, Dossiers, Themes, and DiscussionGuide controllers. Each controller still owns its prompt, persistence, and type-specific result handling.
+_Avoid_: analysis superclass, shared runner.
+
+**Command Builder**:
+The stateless factory (`CommandBuilder`) that produces the `[RTICommand]` array consumed by the command palette, menubar, and global hotkeys. Commands are built in named section methods rather than one giant array, so adding a command is a one-line change in the right section.
+_Avoid_: command factory, dispatch.
+
 ## Flagged ambiguities
 
 - "Run" was used in code (`Run` struct, `groupByRuns`) to mean **Speaker Turn**. Resolved: rename to `SpeakerTurn` when the duplicated grouping logic is consolidated.

@@ -104,9 +104,9 @@ Read the corresponding findings file before changing behavior in any of these ar
 
 ## Architecture
 
-Single-process macOS app. `AppState` (`@MainActor ObservableObject`) is the app-wide singleton.
+Single-process macOS app. Coordination is distributed across `@Observable @MainActor` singletons (`SessionCoordinator`, `LLMController`, `WindowCoordinator`, `ModeStore`, etc.), wired together by `AppDelegate`. There is no single `AppState` class — each module owns its slice of state.
 
-Three pipelines feed into `AppState`:
+Three pipelines feed into the app:
 
 1. **Audio pipeline** — `AVAudioEngine` tap → 16 kHz mono PCM → Soniox WebSocket (`wss://api.soniox.com/transcribe-websocket`) → interim + final transcript entries written to SQLite. System-audio loopback via `ScreenCaptureKit` is opt-in.
 2. **Screen pipeline** — on-demand `SCScreenshotManager` capture + Vision OCR. Screenshots are passed to the LLM then discarded (never persisted).
@@ -140,6 +140,9 @@ Global hotkeys use Carbon `RegisterEventHotKey` so they fire from any frontmost 
 - **Drag-to-import (audio / video / folder)** → `RTI/Sources/Session/SessionImporter.swift` (queueing + AVAssetReader transcode + Soniox file-mode + corpus write)
 - **Live transcript-driven panels** → `RTI/Sources/Panels/PanelSpawner.swift` + `PanelKind.swift` (chat tool routes here)
 - **Lexical search across corpus** → `RTI/Sources/Session/SessionSearch.swift` (SQLite FTS5, BM25-ranked, prefix tokens AND-ed)
+- **Prompt assembly** → `RTI/Sources/LLM/PromptBuilder.swift` (PromptContext + system message ordering; used by LLMController)
+- **Analysis guard** → `RTI/Sources/Analysis/AnalysisBase.swift` (protocol extension; `isGenerating` guard shared by analysis controllers)
+- **Command definitions** → `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift` (CommandBuilder with section methods; consumed by palette, menu, hotkeys)
 - **Manual verification steps** → `RTI/VERIFY.md`
 - **Why a feature looks the way it does** → the matching `RTI/POC*-findings.md`
 - **Regenerate the Xcode project after editing `project.yml`** → `cd RTI && xcodegen generate`

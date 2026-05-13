@@ -31,3 +31,4 @@ xcuserdata/
 
 # Release artifacts
 dist/
+Scripts/license-private.key

@@ -12,6 +12,7 @@ final class DiscussionGuideController: AnalysisController {
     private(set) var guide: DiscussionGuide?
     private(set) var isImporting = false
     private(set) var isMatching = false
+    var isGenerating = false
     private(set) var lastError: String?
 
     private let request = LLMRequest()

@@ -1,14 +1,17 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// Stateless factory that builds the runtime command palette / menu / hotkey
-/// entries. Extracted from AppDelegate so the coordinator stays focused on
-/// wiring and lifecycle, not on enumerating every affordance in the app.
+/// Builds the runtime command palette / menu / hotkey entries. Extracted
+/// from AppDelegate so the coordinator stays focused on wiring and
+/// lifecycle, not on enumerating every affordance in the app.
 ///
-/// Every command carries its menu section and optional Carbon hotkey.
+/// Commands are built in named sections rather than one giant array so
+/// adding a new command is a one-line change in the right section. The
+/// top-level `build` concatenates all sections.
+///
 /// `MenuCoordinator` and `HotkeyCoordinator` consume this same list — one
 /// registry, three consumers (palette, menu, hotkeys).
-enum CommandPaletteFactory {
+enum CommandBuilder {
 
     @MainActor
     static func buildCommands(
@@ -17,8 +20,22 @@ enum CommandPaletteFactory {
         llm: LLMController,
         modes: ModeStore
     ) -> [RTICommand] {
-        var cmds: [RTICommand] = [
-            // MARK: Session
+        return sessionCommands(windows: windows, session: session)
+            + navigationCommands(windows: windows)
+            + actionCommands(llm: llm)
+            + panelCommands(windows: windows, llm: llm)
+            + appCommands(windows: windows)
+            + modeSwitchCommands(modes: modes)
+    }
+
+    // MARK: - Section builders
+
+    @MainActor
+    private static func sessionCommands(
+        windows: WindowCoordinator,
+        session: SessionCoordinator
+    ) -> [RTICommand] {
+        [
             RTICommand(
                 id: "session.start",
                 title: "Start Recording",
@@ -43,9 +60,15 @@ enum CommandPaletteFactory {
                     windows?.openSessionDetail(for: id)
                 },
                 menuSection: .session
-            ),
+            )
+        ]
+    }
 
-            // MARK: Navigation
+    @MainActor
+    private static func navigationCommands(
+        windows: WindowCoordinator
+    ) -> [RTICommand] {
+        [
             RTICommand(
                 id: "overlay.toggle",
                 title: "Show Chat Panel  ⌘\\",
@@ -84,9 +107,15 @@ enum CommandPaletteFactory {
                 perform: { [weak windows] in windows?.toggleCommandPalette() },
                 hotkeyKeyCode: UInt32(kVK_ANSI_K),
                 hotkeyModifiers: UInt32(cmdKey)
-            ),
+            )
+        ]
+    }
 
-            // MARK: Actions
+    @MainActor
+    private static func actionCommands(
+        llm: LLMController
+    ) -> [RTICommand] {
+        [
             RTICommand(
                 id: "chat.assist",
                 title: "Assist (suggest what to say)",
@@ -130,9 +159,16 @@ enum CommandPaletteFactory {
                 keywords: ["delete", "reset"],
                 perform: { AppDelegate.confirmThenClearChat() },
                 menuSection: .actions
-            ),
+            )
+        ]
+    }
 
-            // MARK: Panels
+    @MainActor
+    private static func panelCommands(
+        windows: WindowCoordinator,
+        llm: LLMController
+    ) -> [RTICommand] {
+        [
             RTICommand(
                 id: "smart.toggle",
                 title: "Smart Mode",
@@ -198,9 +234,15 @@ enum CommandPaletteFactory {
                 keywords: ["translation", "translate"],
                 perform: { [weak windows] in windows?.toggle(.translation) },
                 menuSection: .panels
-            ),
+            )
+        ]
+    }
 
-            // MARK: App
+    @MainActor
+    private static func appCommands(
+        windows: WindowCoordinator
+    ) -> [RTICommand] {
+        [
             RTICommand(
                 id: "settings.open",
                 title: "Settings…",
@@ -237,19 +279,20 @@ enum CommandPaletteFactory {
                 perform: { NSApp.terminate(nil) }
             )
         ]
+    }
 
-        for mode in modes.modes {
-            let modeId = mode.id
-            let modeName = mode.name
-            cmds.append(RTICommand(
-                id: "mode.switch.\(modeId)",
-                title: "Switch to: \(modeName)",
+    @MainActor
+    private static func modeSwitchCommands(
+        modes: ModeStore
+    ) -> [RTICommand] {
+        modes.modes.map { mode in
+            RTICommand(
+                id: "mode.switch.\(mode.id)",
+                title: "Switch to: \(mode.name)",
                 keywords: ["mode", "preset"],
-                isAvailable: { modes.activeMode?.id != modeId },
-                perform: { modes.activeModeId = modeId }
-            ))
+                isAvailable: { modes.activeMode?.id != mode.id },
+                perform: { modes.activeModeId = mode.id }
+            )
         }
-
-        return cmds
     }
 }

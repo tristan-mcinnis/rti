@@ -28,6 +28,16 @@ final class LLMClient: @unchecked Sendable {
 
     private var apiKey: String { provider.apiKey() }
 
+    // MARK: - Stream result
+
+    /// Output from a single chat-completion stream.
+    struct StreamResult {
+        let toolCalls: [LLMToolCall]
+        let finishReason: String?
+    }
+
+    // MARK: - Public streaming API
+
     /// Streams `delta.content` strings from a chat completion as they
     /// arrive. The stream terminates on `data: [DONE]` sentinel or on
     /// error.
@@ -35,32 +45,25 @@ final class LLMClient: @unchecked Sendable {
     /// `smart=true` enables provider-side reasoning when the config
     /// reports `supportsThinking=true`; otherwise it degrades to a normal
     /// completion. `onReasoning`, when supplied, fires on the main thread
-    /// for every reasoning_content chunk in smart mode. LLMController
-    /// uses it to drive the "reasoning…" indicator; other callers leave
-    /// it nil.
+    /// for every reasoning_content chunk in smart mode.
     func streamChat(
         messages: [LLMMessage],
         smart: Bool = false,
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
         let model = provider.model
-        // Thinking mode ignores sampling params; only send temperature
-        // when thinking is disabled.
         let temperature: Double? = smart ? nil : 0.6
         let thinking: LLMWireRequest.Thinking? = provider.supportsThinking
             ? LLMWireRequest.Thinking(type: smart ? "enabled" : "disabled")
             : nil
-        // Smart mode runs reasoning before any content, so the first byte
-        // can take much longer to arrive than chat. URLRequest.timeout-
-        // Interval is ignored by the async URLSession API — we use the
-        // group below instead.
         let streamTimeoutSeconds: Double = smart ? 120 : 60
-        // Fast-fail on missing API key before encoding the request body.
+
         guard !apiKey.isEmpty else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: LLMError.missingAPIKey)
             }
         }
+
         let providerName = provider.displayName
         return AsyncThrowingStream { continuation in
             let task = Task {
@@ -70,10 +73,6 @@ final class LLMClient: @unchecked Sendable {
                         messages: messages,
                         stream: true,
                         temperature: temperature,
-                        // Cost guardrail. Without this, a long meeting
-                        // transcript fed every turn could rack up bills
-                        // unbounded. 1024 fits all four prompt shapes
-                        // (Assist/Say/Followups/Recap) plus typical chat.
                         max_tokens: 1024,
                         thinking: thinking
                     )
@@ -100,10 +99,6 @@ final class LLMClient: @unchecked Sendable {
                         throw LLMError.httpError(http.statusCode, errText)
                     }
 
-                    // Race the SSE stream against a timeout. URLRequest.timeoutInterval
-                    // is only advisory for the async bytes API, so we enforce the window
-                    // ourselves. This way a hung stream fails fast at 60s (120s in smart
-                    // mode) instead of waiting for URLSession's resource timeout (300s).
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         group.addTask {
                             try await Task.sleep(nanoseconds: UInt64(streamTimeoutSeconds * 1_000_000_000))
@@ -111,11 +106,14 @@ final class LLMClient: @unchecked Sendable {
                         }
                         group.addTask { [weak self] in
                             guard let self else { return }
-                            try await processStream(bytes, continuation: continuation, onReasoning: onReasoning)
+                            try await self.processStreamBytes(bytes, onContent: { delta in
+                                continuation.yield(delta)
+                            }, onReasoning: onReasoning)
                         }
                         _ = try await group.next()
                         group.cancelAll()
                     }
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -124,32 +122,20 @@ final class LLMClient: @unchecked Sendable {
         }
     }
 
-    /// Result of a single tool-aware streaming turn.
-    /// - `toolCalls` is non-empty when the model wants the host to run
-    ///   functions (finish_reason = tool_calls). The caller executes them
-    ///   and re-streams with the results appended as `tool` messages.
-    /// - `finishReason` is the raw provider reason (e.g. "stop", "tool_calls",
-    ///   "length"). Surfaced for diagnostics.
-    struct ToolAwareStreamResult {
-        let toolCalls: [LLMToolCall]
-        let finishReason: String?
-    }
-
     /// Streaming chat with OpenAI-style tool support. Yields content deltas
     /// + reasoning via callbacks (so the UI can paint as tokens arrive),
     /// accumulates any tool_calls fragments, and returns the assembled
-    /// tool-call list when the stream finishes. The caller drives the
-    /// tool-call loop (execute → append tool messages → re-call).
+    /// tool-call list when the stream finishes.
     ///
-    /// `tools` is a pre-built JSON array (see `LLMToolRegistry.wireFormat()`).
-    /// Pass an empty array to disable tools for this turn.
+    /// `toolsJSON` is a pre-built JSON array (see `LLMToolRegistry.wireFormatData()`).
+    /// Pass nil to disable tools for this turn.
     func streamChatWithTools(
         messages: [LLMMessage],
         toolsJSON: Data?,
         smart: Bool,
         onContent: @Sendable @escaping (String) -> Void,
         onReasoning: (@Sendable (String) -> Void)? = nil
-    ) async throws -> ToolAwareStreamResult {
+    ) async throws -> StreamResult {
         let model = provider.model
         let temperature: Double? = smart ? nil : 0.6
         let streamTimeoutSeconds: Double = smart ? 120 : 60
@@ -191,14 +177,20 @@ final class LLMClient: @unchecked Sendable {
             throw LLMError.httpError(http.statusCode, errText)
         }
 
-        return try await withThrowingTaskGroup(of: ToolAwareStreamResult.self) { group in
+        return try await withThrowingTaskGroup(of: StreamResult.self) { group in
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(streamTimeoutSeconds * 1_000_000_000))
                 throw LLMError.streamError("Stream timed out after \(Int(streamTimeoutSeconds))s")
             }
             group.addTask { [weak self] in
-                guard let self else { return ToolAwareStreamResult(toolCalls: [], finishReason: nil) }
-                return try await self.processToolStream(bytes, onContent: onContent, onReasoning: onReasoning)
+                guard let self else { return StreamResult(toolCalls: [], finishReason: nil) }
+                return try await self.processStreamBytes(
+                    bytes,
+                    onContent: { delta in
+                        DispatchQueue.main.async { onContent(delta) }
+                    },
+                    onReasoning: onReasoning
+                )
             }
             let result = try await group.next()!
             group.cancelAll()
@@ -206,22 +198,17 @@ final class LLMClient: @unchecked Sendable {
         }
     }
 
-    /// Encodes `[LLMMessage]` into the JSON-friendly form used by
-    /// `JSONSerialization`. Drops nil fields so the wire body matches
-    /// OpenAI's expectations (e.g. tool messages omit `tool_calls`).
-    private func encodeMessages(_ messages: [LLMMessage]) throws -> [[String: Any]] {
-        let data = try JSONEncoder().encode(messages)
-        guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            throw LLMError.badResponse
-        }
-        return arr
-    }
+    // MARK: - Single SSE processor (unified)
 
-    private func processToolStream(
+    /// Processes SSE bytes from either the plain chat or tool-aware path.
+    /// Emits content deltas and reasoning via callbacks. Accumulates any
+    /// tool-call fragments and finish_reason. Returns the assembled
+    /// `StreamResult` when the stream ends.
+    private func processStreamBytes(
         _ bytes: URLSession.AsyncBytes,
-        onContent: @Sendable @escaping (String) -> Void,
+        onContent: @Sendable (String) -> Void,
         onReasoning: (@Sendable (String) -> Void)?
-    ) async throws -> ToolAwareStreamResult {
+    ) async throws -> StreamResult {
         let decoder = JSONDecoder()
         // Keyed by stream-chunk `index`. Tool-call fragments arrive in
         // sequence: id+name in the first chunk for an index, then
@@ -232,12 +219,15 @@ final class LLMClient: @unchecked Sendable {
         for try await rawLine in bytes.lines {
             try Task.checkCancellation()
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Comments per SSE spec start with a colon.
             if line.hasPrefix(":") { continue }
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
             if payload == "[DONE]" { break }
             guard let data = payload.data(using: .utf8) else { continue }
 
+            // Some servers send {"error": {...}} mid-stream instead of
+            // [DONE]. Surface that to the caller.
             if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let err = obj["error"] {
                 let detail: String = {
@@ -256,7 +246,7 @@ final class LLMClient: @unchecked Sendable {
                     DispatchQueue.main.async { onReasoning(reasoning) }
                 }
                 if let content = choice.delta?.content, !content.isEmpty {
-                    DispatchQueue.main.async { onContent(content) }
+                    onContent(content)
                 }
                 if let tcs = choice.delta?.tool_calls {
                     for tc in tcs {
@@ -268,7 +258,7 @@ final class LLMClient: @unchecked Sendable {
                     }
                 }
             } catch {
-                NSLog("[RTI] LLMClient tool-stream chunk decode failed: \(error)")
+                NSLog("[RTI] LLMClient SSE chunk decode failed: \(error)")
             }
         }
 
@@ -279,13 +269,24 @@ final class LLMClient: @unchecked Sendable {
                 return LLMToolCall(id: v.id, type: "function",
                                    function: .init(name: v.name, arguments: v.args))
             }
-        return ToolAwareStreamResult(toolCalls: toolCalls, finishReason: finishReason)
+        return StreamResult(toolCalls: toolCalls, finishReason: finishReason)
+    }
+
+    // MARK: - Helpers
+
+    /// Encodes `[LLMMessage]` into the JSON-friendly form used by
+    /// `JSONSerialization`. Drops nil fields so the wire body matches
+    /// OpenAI's expectations.
+    private func encodeMessages(_ messages: [LLMMessage]) throws -> [[String: Any]] {
+        let data = try JSONEncoder().encode(messages)
+        guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw LLMError.badResponse
+        }
+        return arr
     }
 
     /// Drains a `streamChat` AsyncThrowingStream into a single String,
-    /// honoring task cancellation between deltas. Used by the one-shot
-    /// generators (Summary, Title) that need the full response before
-    /// parsing, rather than per-delta UI updates.
+    /// honoring task cancellation between deltas.
     func collectStreamedResponse(
         messages: [LLMMessage],
         smart: Bool = false
@@ -305,71 +306,5 @@ final class LLMClient: @unchecked Sendable {
             data.append(byte)
         }
         return String(data: data, encoding: .utf8) ?? "<binary>"
-    }
-
-    private func processStream(
-        _ bytes: URLSession.AsyncBytes,
-        continuation: AsyncThrowingStream<String, Error>.Continuation,
-        onReasoning: (@Sendable (String) -> Void)?
-    ) async throws {
-        let decoder = JSONDecoder()
-        let providerName = provider.displayName
-        var lineCount = 0
-        var deltaCount = 0
-        for try await rawLine in bytes.lines {
-            try Task.checkCancellation()
-            lineCount += 1
-            // Strip CRLF and surrounding whitespace per the SSE spec; some
-            // proxies emit `\r\n` and providers vary on the space after
-            // `data:`. The first 200 chars are still logged but redacted
-            // (no raw response bodies — they can leak auth headers or
-            // upstream errors that include keys).
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            if lineCount <= 3 {
-                let preview = line.hasPrefix("data:") ? "data: …" : line.prefix(60)
-                NSLog("[RTI] LLMClient[\(providerName)] line[\(lineCount)]: %@", String(preview) as NSString)
-            }
-            // Comments per SSE spec start with a colon.
-            if line.hasPrefix(":") { continue }
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload == "[DONE]" {
-                NSLog("[RTI] LLMClient[\(providerName)]: [DONE] lines=\(lineCount) deltas=\(deltaCount)")
-                RTILog.log("done — lines=\(lineCount) deltas=\(deltaCount)", category: "llm")
-                continuation.finish()
-                return
-            }
-            guard let data = payload.data(using: .utf8) else { continue }
-            // After trimming, the local `payload` is a `Substring`; downstream
-            // JSON paths still work on `data`.
-            let payloadString = String(payload)
-            // Some servers send {"error": {...}} mid-stream instead of
-            // [DONE]. Surface that to the caller instead of silently
-            // swallowing it.
-            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let err = obj["error"] {
-                let detail: String = {
-                    if let msg = err as? [String: Any], let text = msg["message"] as? String {
-                        return text
-                    }
-                    return "\(err)"
-                }()
-                throw LLMError.streamError(detail)
-            }
-            do {
-                let chunk = try decoder.decode(LLMStreamChunk.self, from: data)
-                if let reasoning = chunk.choices.first?.delta?.reasoning_content, !reasoning.isEmpty,
-                   let onReasoning {
-                    DispatchQueue.main.async { onReasoning(reasoning) }
-                }
-                if let delta = chunk.choices.first?.delta?.content, !delta.isEmpty {
-                    deltaCount += 1
-                    continuation.yield(delta)
-                }
-            } catch {
-                NSLog("[RTI] LLMClient[\(providerName)] chunk decode failed: \(error) payload=\(payloadString.prefix(200))")
-            }
-        }
-        continuation.finish()
     }
 }

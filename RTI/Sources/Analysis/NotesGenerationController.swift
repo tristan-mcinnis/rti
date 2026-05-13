@@ -7,7 +7,7 @@ final class NotesGenerationController: AnalysisController {
     static let shared = NotesGenerationController()
 
     private(set) var notes: [GeneratedNote] = []
-    private(set) var isGenerating = false
+    var isGenerating = false
     private(set) var lastError: String?
 
     private let request = LLMRequest()
@@ -90,31 +90,30 @@ final class NotesGenerationController: AnalysisController {
     /// Generate notes for the given transcript window. If `sinceMs` is nil, covers the full transcript.
     /// Returns the `endMs` of the processed transcript on success, so the caller can advance its watermark.
     func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
-        guard !isGenerating else { return nil }
-        isGenerating = true
-        lastError = nil
-        defer { isGenerating = false }
+        return await withGenerationGuard {
+            lastError = nil
 
-        guard let result = await TranscriptAnalysis.runText(
-            sessionId: sessionId,
-            sinceMs: sinceMs,
-            smart: true,
-            request: request,
-            buildPrompt: { Self.notesPrompt + "\n" + $0 }
-        ) else {
-            lastError = "Notes generation returned empty response."
-            return nil
+            guard let result = await TranscriptAnalysis.runText(
+                sessionId: sessionId,
+                sinceMs: sinceMs,
+                smart: true,
+                request: request,
+                buildPrompt: { Self.notesPrompt + "\n" + $0 }
+            ) else {
+                lastError = "Notes generation returned empty response."
+                return nil
+            }
+
+            let note = GeneratedNote(
+                timestamp: Date(),
+                rangeStartMs: sinceMs ?? 0,
+                rangeEndMs: result.endMs,
+                content: result.payload
+            )
+            notes.append(note)
+            persist(note: note, sessionId: sessionId)
+            return result.endMs
         }
-
-        let note = GeneratedNote(
-            timestamp: Date(),
-            rangeStartMs: sinceMs ?? 0,
-            rangeEndMs: result.endMs,
-            content: result.payload
-        )
-        notes.append(note)
-        persist(note: note, sessionId: sessionId)
-        return result.endMs
     }
 
     private func persist(note: GeneratedNote, sessionId: String) {

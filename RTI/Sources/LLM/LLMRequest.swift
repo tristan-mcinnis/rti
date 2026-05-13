@@ -61,12 +61,12 @@ final class LLMRequest: @unchecked Sendable {
         smart: Bool,
         onContent: @Sendable @escaping (String) -> Void,
         onReasoning: (@Sendable (String) -> Void)? = nil
-    ) async throws -> LLMClient.ToolAwareStreamResult {
+    ) async throws -> LLMClient.StreamResult {
         currentTask?.cancel()
         // streamWithTools must not use withSingleFlight for the inner task —
         // the caller (ToolLoop) manages the outer task slot. We only gate
         // and capture the client here.
-        let task = Task { [client] () throws -> LLMClient.ToolAwareStreamResult in
+        let task = Task { [client] () throws -> LLMClient.StreamResult in
             try await client.streamChatWithTools(
                 messages: messages,
                 toolsJSON: toolsJSON,

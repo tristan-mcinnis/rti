@@ -17,7 +17,7 @@ final class ThemesController: AnalysisController {
     static let shared = ThemesController()
 
     private(set) var payload: ThemesPayload = .empty
-    private(set) var isGenerating = false
+    var isGenerating = false
     private(set) var lastError: String?
     private(set) var isHiFi = false
     private(set) var generatedAt: Date?

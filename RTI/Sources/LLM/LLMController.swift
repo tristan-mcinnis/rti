@@ -192,50 +192,31 @@ final class LLMController {
             return Self.systemPrompt
         }()
 
-        var apiMessages: [LLMMessage] = [LLMMessage(role: "system", content: basePrompt)]
-        if let glossary = GlossaryStore.shared.systemPromptFragment {
-            apiMessages.append(LLMMessage(role: "system", content: glossary))
-        }
-        // Prepend the active project's curated instructions (if any). The
-        // project picker in the live transcript header drives this — when
-        // a project is selected, every turn this session produces inherits
-        // its guidance.
+        // Resolve active project for prompt context.
         var appliedProjectName: String? = nil
+        var projectInstructions: String? = nil
         if let pid = SessionCoordinator.shared.activeProjectId,
-           let project = ProjectStore.shared.projects.first(where: { $0.id == pid })
-        {
-            let instructions = project.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !instructions.isEmpty {
-                apiMessages.append(LLMMessage(
-                    role: "system",
-                    content: "This session belongs to the user's project \"\(project.name)\". Project instructions follow — follow these alongside the rules above:\n---\n\(instructions)\n---"
-                ))
-                appliedProjectName = project.name
-                RTILog.log("turn — applying project=\"\(project.name)\" instructions (\(instructions.count) chars)", category: "projects")
-            } else {
-                appliedProjectName = project.name
+           let project = ProjectStore.shared.projects.first(where: { $0.id == pid }) {
+            appliedProjectName = project.name
+            let instr = project.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !instr.isEmpty {
+                projectInstructions = instr
+                RTILog.log("turn — applying project=\"\(project.name)\" instructions (\(instr.count) chars)", category: "projects")
             }
         }
-        if let reference = activeMode?.referenceText, !reference.isEmpty {
-            let capped = reference.count > 8000 ? String(reference.prefix(8000)) + "\n…[truncated]" : reference
-            let modeName = activeMode?.name ?? "active mode"
-            apiMessages.append(LLMMessage(
-                role: "system",
-                content: "Reference material attached to the active mode '\(modeName)'. Use it when relevant.\n---\n\(capped)\n---"
-            ))
-        }
-        if let manualScreenContext {
-            apiMessages.append(LLMMessage(
-                role: "system",
-                content: "User attached a screenshot. OCR text from the screen follows. Treat it as what the user is looking at.\n---\n\(manualScreenContext)\n---"
-            ))
-        }
-        for (idx, entry) in entries.enumerated() {
-            let isLatestUser = idx == entries.count - 1 && entry.role == "user"
-            let content = isLatestUser ? fullContent : entry.text
-            if content.isEmpty, !isLatestUser { continue }
-            apiMessages.append(LLMMessage(role: entry.role, content: content))
-        }
+
+        let promptContext = PromptContext(
+            baseSystemPrompt: basePrompt,
+            glossaryFragment: GlossaryStore.shared.systemPromptFragment,
+            projectName: appliedProjectName,
+            projectInstructions: projectInstructions,
+            referenceText: activeMode?.referenceText,
+            referenceModeName: activeMode?.name,
+            screenContext: manualScreenContext
+        )
+
+        var apiMessages = PromptBuilder.buildSystemMessages(context: promptContext)
+        apiMessages.append(contentsOf: PromptBuilder.buildConversationMessages(entries: entries, fullContent: fullContent))
 
         let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false, appliedProjectName: appliedProjectName)
         streamingEntryID = assistantEntry.id

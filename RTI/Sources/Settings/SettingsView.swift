@@ -10,6 +10,8 @@ struct SettingsView: View {
         TabView {
             KeysTab()
                 .tabItem { Label("Keys", systemImage: "key.fill") }
+            LicenseTab()
+                .tabItem { Label("License", systemImage: "checkmark.seal") }
             ModesTab()
                 .tabItem { Label("Modes", systemImage: "square.stack.3d.up") }
             GlossaryTab()

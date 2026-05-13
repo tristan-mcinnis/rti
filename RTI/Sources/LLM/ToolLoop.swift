@@ -43,7 +43,7 @@ struct ToolLoop {
         for _ in 0..<maxIterations {
             let turnBuffer = TurnBuffer()
 
-            let result: LLMClient.ToolAwareStreamResult
+            let result: LLMClient.StreamResult
             do {
                 result = try await request.streamWithTools(
                     messages: messages,

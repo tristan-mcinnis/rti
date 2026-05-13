@@ -13,6 +13,10 @@ import Foundation
 ///    conformer without knowing its specific type.
 @MainActor
 protocol AnalysisController: AnyObject {
+    /// True while an LLM pass is in flight. Conformers set this so the
+    /// scheduler and UI can gate concurrent generation.
+    var isGenerating: Bool { get set }
+
     /// Bind the controller to a session. Loads any persisted state for that
     /// session so the UI reflects prior analysis results immediately.
     func reset(for sessionId: String)

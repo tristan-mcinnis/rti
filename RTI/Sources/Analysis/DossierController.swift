@@ -7,7 +7,7 @@ final class DossierController: AnalysisController {
     static let shared = DossierController()
 
     private(set) var dossiers: [EntityDossier] = []
-    private(set) var isGenerating = false
+    var isGenerating = false
     private(set) var lastError: String?
 
     private let request = LLMRequest()

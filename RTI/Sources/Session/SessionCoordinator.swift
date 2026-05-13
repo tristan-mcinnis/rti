@@ -59,7 +59,6 @@ final class SessionCoordinator {
 
     private let audioPipeline = AudioPipeline()
     private let transcriptPipeline = TranscriptPipeline()
-    private let corpusBridge = SessionCorpusBridge()
     private var delayedCompleteTask: Task<Void, Never>?
     /// Active session metadata held in memory — there's no `sessions` row
     /// to persist them. Set on launch, consumed by `CorpusManager.render-
@@ -370,9 +369,9 @@ final class SessionCoordinator {
             return
         }
 
-        // Phase 3 dual-write: open a JSONL stream for this session so live
-        // events land in the on-disk record as well as in SQLite.
-        corpusBridge.openLive(sessionId: sessionId)
+        // Open a JSONL stream for this session so live events land in the
+        // on-disk record alongside the in-memory transcript.
+        LiveSessionStore.shared.openLive(sessionId: sessionId)
 
         do {
             try audioPipeline.start()
@@ -445,7 +444,7 @@ final class SessionCoordinator {
         // session's startSession() will call reset(for: newSessionId)
         // which loads that session's notes from the DB.
 
-        corpusBridge.triggerSummary(
+        finalizeCorpus(
             sessionId: sessionId,
             startedAt: startedAt,
             endedAt: endedAt,
@@ -454,6 +453,46 @@ final class SessionCoordinator {
         )
         activeWavPath = nil
         activeModeId = nil
+    }
+
+    /// Trigger the async title-gen → summary-gen → themes → markdown-render
+    /// chain for a completed session. Skips the render if the session has
+    /// no content (empty JSONL, no final words or notes).
+    private func finalizeCorpus(
+        sessionId: String,
+        startedAt: Date?,
+        endedAt: Date?,
+        wavPath: String?,
+        modeId: String?
+    ) {
+        // Close + flush JSONL so any pending writes are on disk.
+        LiveSessionStore.shared.closeLive(sessionId: sessionId)
+        let liveURL = LiveSessionStore.shared.liveDirectory.appendingPathComponent("\(sessionId).jsonl")
+        let hasContent: Bool = {
+            guard FileManager.default.fileExists(atPath: liveURL.path) else { return false }
+            guard let events = try? LiveJSONLReader.readAll(liveURL) else { return false }
+            return events.contains(where: {
+                if case .word(_, _, _, true, _, _) = $0 { return true }
+                if case .note = $0 { return true }
+                return false
+            })
+        }()
+        let renderStartedAt = startedAt ?? Date()
+        guard hasContent else { return }
+        Task { @MainActor in
+            async let title: String? = SessionTitleController.shared.generateTitle(for: sessionId)
+            async let summary: SessionSummary? = SummaryController.shared.generateSummary(for: sessionId)
+            async let themesDone: Void = ThemesController.shared.generateHiFi(sessionId: sessionId)
+            _ = await (title, summary, themesDone)
+            await CorpusManager.shared.renderSession(
+                sessionId: sessionId,
+                startedAt: renderStartedAt,
+                endedAt: endedAt,
+                wavPath: wavPath,
+                modeId: modeId
+            )
+            NotificationCenter.default.post(name: .rtiSessionsChanged, object: nil)
+        }
     }
 
     private func teardownOnFailure() {
@@ -470,7 +509,7 @@ final class SessionCoordinator {
         if let sid = currentSessionId {
             // Best-effort: flush JSONL so on next launch the orphan
             // recovery path can present this session for re-render.
-            corpusBridge.flushLive(sessionId: sid)
+            LiveSessionStore.shared.closeLive(sessionId: sid)
         }
         isRunning = false
     }
