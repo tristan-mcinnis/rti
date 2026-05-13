@@ -74,9 +74,21 @@ struct FloatingPanelChrome<TitleAccessory: View, MenuItems: View, Content: View>
 
     private var ellipsisMenu: some View {
         Menu {
-            // Opacity slider as a menu item — keeps the header uncluttered
-            // and groups per-panel chrome controls in one place.
-            FloatingPanelOpacityMenuRow(opacity: $backgroundOpacity)
+            // Opacity as a submenu — SwiftUI's `Menu` cannot host a real
+            // `Slider`, so we expose discrete presets instead.
+            Menu("Opacity — \(Int(backgroundOpacity * 100))%") {
+                ForEach(FloatingPanelOpacityPresets.values, id: \.self) { value in
+                    Button {
+                        backgroundOpacity = value
+                    } label: {
+                        if abs(value - backgroundOpacity) < 0.01 {
+                            Label("\(Int(value * 100))%", systemImage: "checkmark")
+                        } else {
+                            Text("\(Int(value * 100))%")
+                        }
+                    }
+                }
+            }
             Divider()
             menuItems()
             Divider()
@@ -111,20 +123,9 @@ struct FloatingPanelChrome<TitleAccessory: View, MenuItems: View, Content: View>
     }
 }
 
-/// Opacity slider as a Menu row. SwiftUI's Menu renders arbitrary views,
-/// but to feel native we lay out a labelled slider with the same range as
-/// `OverlayAppearanceDefaults.opacityRange` (10% → 100%).
-struct FloatingPanelOpacityMenuRow: View {
-    @Binding var opacity: Double
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Opacity — \(Int(opacity * 100))%")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Slider(value: $opacity, in: 0.10...1.00, step: 0.05)
-                .frame(width: 180)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-    }
+/// Discrete opacity presets used by every floating panel's submenu.
+/// SwiftUI's `Menu` does not render a real `Slider`, so we expose fixed
+/// steps spanning the same effective range a slider would (~20% → 100%).
+enum FloatingPanelOpacityPresets {
+    static let values: [Double] = [0.20, 0.40, 0.60, 0.75, 0.85, 0.95, 1.00]
 }

@@ -12,6 +12,10 @@ struct AssistantInputView: View {
     private let session = SessionCoordinator.shared
     private let inputState = OverlayInputState.shared
 
+    /// Discrete opacity presets — SwiftUI's `Menu` does not render `Slider`
+    /// interactively, so we expose a submenu of fixed steps instead.
+    private let opacityPresets: [Double] = [0.20, 0.40, 0.60, 0.75, 0.85, 0.95, 1.00]
+
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
@@ -83,17 +87,19 @@ struct AssistantInputView: View {
 
     private var moreDots: some View {
         Menu {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Opacity — \(Int(backgroundOpacity * 100))%")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Slider(value: $backgroundOpacity,
-                       in: OverlayAppearanceDefaults.opacityRange,
-                       step: 0.05)
-                    .frame(width: 180)
+            Menu("Opacity — \(Int(backgroundOpacity * 100))%") {
+                ForEach(opacityPresets, id: \.self) { value in
+                    Button {
+                        backgroundOpacity = value
+                    } label: {
+                        if abs(value - backgroundOpacity) < 0.01 {
+                            Label("\(Int(value * 100))%", systemImage: "checkmark")
+                        } else {
+                            Text("\(Int(value * 100))%")
+                        }
+                    }
+                }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
 
             Divider()
 
