@@ -88,7 +88,7 @@ enum KeychainStore {
                 ofItemAtPath: parent.path
             )
         } catch {
-            NSLog("[RTI] KeychainStore save failed: \(error)")
+            RTILog.log("KeychainStore save failed: \(error)", category: "credentials")
         }
     }
 

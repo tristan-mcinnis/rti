@@ -19,7 +19,7 @@ enum LaunchAtLogin {
             }
             return nil
         } catch {
-            NSLog("[RTI] LaunchAtLogin set(\(enabled)) failed: \(error)")
+            RTILog.log("LaunchAtLogin set(\(enabled)) failed: \(error)", category: "launch-at-login")
             return (error as NSError).localizedDescription
         }
     }

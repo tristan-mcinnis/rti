@@ -142,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         let bundleId = Bundle.main.bundleIdentifier ?? "com.tristan.rti"
         let instances = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
         if instances.count > 1 {
-            instances.first(where: { $0 != NSRunningApplication.current })?.activate(options: .activateIgnoringOtherApps)
+            instances.first(where: { $0 != NSRunningApplication.current })?.activate()
             NSApp.terminate(nil)
             return false
         }

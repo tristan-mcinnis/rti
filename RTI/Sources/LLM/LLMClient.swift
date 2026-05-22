@@ -83,14 +83,12 @@ final class LLMClient: @unchecked Sendable {
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.httpBody = try JSONEncoder().encode(body)
 
-                    NSLog("[RTI] LLMClient[\(providerName)]: POST \(request.url?.absoluteString ?? "?") model=\(model) messages=\(messages.count)")
                     RTILog.log("POST provider=\(providerName) model=\(model) messages=\(messages.count) smart=\(smart)", category: "llm")
                     let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else {
                         throw LLMError.badResponse
                     }
-                    NSLog("[RTI] LLMClient[\(providerName)]: HTTP \(http.statusCode)")
-                    RTILog.log("HTTP \(http.statusCode)", category: "llm")
+                    RTILog.log("HTTP \(http.statusCode) provider=\(providerName)", category: "llm")
                     guard (200..<300).contains(http.statusCode) else {
                         let errText = try await readAll(bytes)
                         if http.statusCode == 401 {
@@ -106,7 +104,7 @@ final class LLMClient: @unchecked Sendable {
                         }
                         group.addTask { [weak self] in
                             guard let self else { return }
-                            try await self.processStreamBytes(bytes, onContent: { delta in
+                            _ = try await self.processStreamBytes(bytes, onContent: { delta in
                                 continuation.yield(delta)
                             }, onReasoning: onReasoning)
                         }
@@ -167,8 +165,7 @@ final class LLMClient: @unchecked Sendable {
         request.httpBody = try JSONSerialization.data(withJSONObject: bodyDict, options: [])
 
         let toolCountForLog = (bodyDict["tools"] as? [Any])?.count ?? 0
-        NSLog("[RTI] LLMClient[\(providerName)]: POST tools=\(toolCountForLog) messages=\(messages.count)")
-        RTILog.log("POST tools=\(toolCountForLog) messages=\(messages.count) smart=\(smart)", category: "llm")
+        RTILog.log("POST provider=\(providerName) tools=\(toolCountForLog) messages=\(messages.count) smart=\(smart)", category: "llm")
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else { throw LLMError.badResponse }
         guard (200..<300).contains(http.statusCode) else {
@@ -258,7 +255,7 @@ final class LLMClient: @unchecked Sendable {
                     }
                 }
             } catch {
-                NSLog("[RTI] LLMClient SSE chunk decode failed: \(error)")
+                RTILog.log("SSE chunk decode failed: \(error)", category: "llm")
             }
         }
 

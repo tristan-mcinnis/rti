@@ -11,7 +11,7 @@ final class RTIDatabase: @unchecked Sendable {
         do {
             return try RTIDatabase()
         } catch {
-            NSLog("[RTI] RTIDatabase init failed: \(error)")
+            RTILog.log("RTIDatabase init failed: \(error)", category: "database")
             // Show alert on main thread before exiting.
             DispatchQueue.main.async {
                 let alert = NSAlert()

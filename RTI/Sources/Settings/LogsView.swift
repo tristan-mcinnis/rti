@@ -38,7 +38,7 @@ struct LogsView: View {
                                 .id(entry.id)
                         }
                         if log.entries.isEmpty {
-                            Text("No log entries yet. Action paths that have been wired into the in-app log will appear here as they fire (Soniox connect/error, audio device binding, regen progress, etc.). NSLog calls in older code paths still go to the system log only.")
+                            Text("No log entries yet. Recent activity — Soniox connect/error, audio device binding, LLM requests, regen progress — will appear here as it fires.")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
                                 .padding(.vertical, 16)

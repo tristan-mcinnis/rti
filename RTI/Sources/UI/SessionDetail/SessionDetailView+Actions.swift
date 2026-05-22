@@ -71,7 +71,7 @@ extension SessionDetailView {
                     .fetchAll(db)
             }
         } catch {
-            NSLog("[RTI] SessionDetail chat load failed: \(error)")
+            RTILog.log("SessionDetail chat load failed: \(error)", category: "session-detail")
         }
         notes = NotesGenerationController.loadNotes(forSessionId: sessionId)
         dossiers = DossierController.loadDossiers(forSessionId: sessionId)
