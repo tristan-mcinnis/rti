@@ -288,7 +288,7 @@ private struct KeysStep: View {
             }
 
             field("Soniox API key", "…", $soniox, footnote: "Live transcription. Get one at console.soniox.com.")
-            field("LLM provider key (DeepSeek)", "sk-…", $deepseek, footnote: "Assist, Q&A, Summary. Default is DeepSeek; the LLM layer is provider-agnostic.")
+            field("\(LLMProviders.active.displayName) API key", "sk-…", $deepseek, footnote: "Assist, Q&A, Summary. The LLM layer is provider-agnostic — \(LLMProviders.active.displayName) is the active provider.")
 
             HStack {
                 if saved {

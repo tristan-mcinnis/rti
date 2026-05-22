@@ -218,7 +218,17 @@ struct AssistantInputView: View {
         }
         .buttonStyle(.plain)
         .disabled(llm.streaming)
-        .help(llm.smartMode ? "Smart: deepseek-v4-flash with thinking (slower, deeper)" : "Fast: deepseek-v4-flash (tap to switch to Smart)")
+        .help(smartPillHelp)
+    }
+
+    private var smartPillHelp: String {
+        let model = LLMProviders.active.model
+        if llm.smartMode {
+            return LLMProviders.active.supportsThinking
+                ? "Smart: \(model) with thinking (slower, deeper)"
+                : "Smart: \(model) (slower, deeper)"
+        }
+        return "Fast: \(model) (tap to switch to Smart)"
     }
 
     private var sendButton: some View {

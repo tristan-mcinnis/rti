@@ -86,7 +86,7 @@ struct ResponseView: View {
             Text("Add API keys to get started")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
-            Text("RTI needs a Soniox key for live transcription and a DeepSeek key for the LLM. Both stay on this Mac.")
+            Text("RTI needs a Soniox key for live transcription and a \(LLMProviders.active.displayName) key for the assistant. Both stay on this Mac.")
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)

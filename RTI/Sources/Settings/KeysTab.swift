@@ -18,12 +18,13 @@ struct KeysTab: View {
     }
 
     var body: some View {
+        let providerName = LLMProviders.active.displayName
         VStack(alignment: .leading, spacing: 16) {
             if isFirstRun {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Welcome to RTI")
                         .font(.system(size: 18, weight: .semibold))
-                    Text("RTI needs two API keys to work: DeepSeek for the LLM, and Soniox for live transcription. Both stay in the macOS Keychain on this Mac.")
+                    Text("RTI needs two API keys to work: \(providerName) for the assistant, and Soniox for live transcription. Both stay in an owner-only file on this Mac (~/Library/Application Support/RTI/credentials.json).")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -31,12 +32,12 @@ struct KeysTab: View {
             } else {
                 Text("API Keys")
                     .font(.system(size: 16, weight: .semibold))
-                Text("Stored in macOS Keychain. Required to use RTI.")
+                Text("Stored on this Mac in ~/Library/Application Support/RTI/credentials.json (mode 0600). Required to use RTI.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
 
-            field("DeepSeek API key", "sk-…", $deepseek)
+            field("\(providerName) API key", "sk-…", $deepseek)
             field("Soniox API key", "…", $soniox)
 
             if hasMissingKey {
