@@ -153,7 +153,7 @@ final class ThemesController: AnalysisController {
         do {
             json = try JSONEncoder().encode(result.payload)
         } catch {
-            NSLog("[RTI] ThemesController encode failed: \(error)")
+            RTILog.log("ThemesController encode failed: \(error)", category: "themes")
             return nil
         }
         let row = SessionThemesRow(
@@ -182,7 +182,7 @@ final class ThemesController: AnalysisController {
         do {
             try RTIDatabase.shared.pool.write { db in try row.save(db) }
         } catch {
-            NSLog("[RTI] ThemesController persist failed: \(error)")
+            RTILog.log("ThemesController persist failed: \(error)", category: "themes")
         }
     }
 
@@ -196,7 +196,7 @@ final class ThemesController: AnalysisController {
                     .fetchOne(db)
             }
         } catch {
-            NSLog("[RTI] ThemesController load failed: \(error)")
+            RTILog.log("ThemesController load failed: \(error)", category: "themes")
             return nil
         }
     }

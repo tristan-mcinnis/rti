@@ -138,7 +138,7 @@ final class LLMController {
                 )
             }
         } catch {
-            NSLog("[RTI] loadHistoryForCurrentSession failed: \(error)")
+            RTILog.log("loadHistoryForCurrentSession failed: \(error)", category: "llm")
         }
     }
 
@@ -156,7 +156,7 @@ final class LLMController {
         do {
             try RTIDatabase.shared.pool.write { db in try msg.insert(db) }
         } catch {
-            NSLog("[RTI] persist chat_message failed: \(error)")
+            RTILog.log("persist chat_message failed: \(error)", category: "llm")
         }
     }
 
@@ -261,7 +261,7 @@ final class LLMController {
                             self.toolStatus = nil
                             self.pruneTrailingEmptyAssistant()
                             self.streamingEntryID = nil
-                            NSLog("[RTI] LLM stream error: \(message)")
+                            RTILog.log("LLM stream error: \(message)", category: "llm")
                             RTILog.log("stream error: \(message)", category: "llm")
                         }
                     }

@@ -198,7 +198,7 @@ final class DiscussionGuideController: AnalysisController {
                 try DiscussionGuideRow.deleteOne(db, key: sessionId)
             }
         } catch {
-            NSLog("[RTI] DiscussionGuideController removeGuide failed: \(error)")
+            RTILog.log("DiscussionGuideController removeGuide failed: \(error)", category: "discussion-guide")
         }
         if self.sessionId == sessionId {
             guide = nil
@@ -274,7 +274,7 @@ final class DiscussionGuideController: AnalysisController {
         do {
             try RTIDatabase.shared.pool.write { db in try row.save(db) }
         } catch {
-            NSLog("[RTI] DiscussionGuide persist failed: \(error)")
+            RTILog.log("DiscussionGuide persist failed: \(error)", category: "discussion-guide")
         }
     }
 
@@ -290,7 +290,7 @@ final class DiscussionGuideController: AnalysisController {
                     .fetchOne(db)
             }
         } catch {
-            NSLog("[RTI] DiscussionGuide load failed: \(error)")
+            RTILog.log("DiscussionGuide load failed: \(error)", category: "discussion-guide")
             return nil
         }
     }

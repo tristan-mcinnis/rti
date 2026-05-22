@@ -22,7 +22,7 @@ final class ScreenshotManager {
             } catch ScreenshotError.empty {
                 LLMController.shared.setScreenAttachError("No content found on the captured screen.")
             } catch {
-                NSLog("[RTI] Screenshot capture failed: \(error)")
+                RTILog.log("Screenshot capture failed: \(error)", category: "screenshot")
                 let msg = self.errorDescription(for: error)
                 LLMController.shared.setScreenAttachError(msg)
                 if Self.isScreenRecordingDenied(error) {
@@ -57,7 +57,7 @@ final class ScreenshotManager {
         }
 
         let combined = contextParts.joined(separator: "\n\n---\n\n")
-        NSLog("[RTI] Screenshot: VLM=\(vlmResult?.count ?? 0) chars, OCR=\(trimmedOCR.count) chars.")
+        RTILog.log("Screenshot: VLM=\(vlmResult?.count ?? 0) chars, OCR=\(trimmedOCR.count) chars.", category: "screenshot")
         return combined
     }
 

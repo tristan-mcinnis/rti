@@ -34,7 +34,7 @@ final class ModeStore {
                 try Mode.order(Column("created_at")).fetchAll(db)
             }
         } catch {
-            NSLog("[RTI] ModeStore reload failed: \(error)")
+            RTILog.log("ModeStore reload failed: \(error)", category: "modes")
         }
     }
 
@@ -55,7 +55,7 @@ final class ModeStore {
             }
             reload()
         } catch {
-            NSLog("[RTI] ModeStore update failed: \(error)")
+            RTILog.log("ModeStore update failed: \(error)", category: "modes")
         }
     }
 
@@ -78,7 +78,7 @@ final class ModeStore {
             reload()
             return m.id
         } catch {
-            NSLog("[RTI] ModeStore add failed: \(error)")
+            RTILog.log("ModeStore add failed: \(error)", category: "modes")
             return nil
         }
     }
@@ -95,7 +95,7 @@ final class ModeStore {
             if activeModeId == id { activeModeId = "builtin.meeting" }
             reload()
         } catch {
-            NSLog("[RTI] ModeStore delete failed: \(error)")
+            RTILog.log("ModeStore delete failed: \(error)", category: "modes")
         }
     }
 
@@ -132,7 +132,7 @@ final class ModeStore {
                 defaults.set("builtin.meeting", forKey: Self.activeKey)
             }
         } catch {
-            NSLog("[RTI] ModeStore seed failed: \(error)")
+            RTILog.log("ModeStore seed failed: \(error)", category: "modes")
         }
     }
 
@@ -158,7 +158,7 @@ final class ModeStore {
             }
             defaults.set(true, forKey: Self.upgradeV2Flag)
         } catch {
-            NSLog("[RTI] ModeStore upgradeV2 failed: \(error)")
+            RTILog.log("ModeStore upgradeV2 failed: \(error)", category: "modes")
         }
     }
 

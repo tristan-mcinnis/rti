@@ -206,7 +206,7 @@ final class SessionImporter {
             } catch is CancellationError {
                 // user cancelled — silent
             } catch {
-                NSLog("[RTI] SessionImporter failed: \(error)")
+                RTILog.log("SessionImporter failed: \(error)", category: "import")
                 await MainActor.run {
                     self?.lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
                 }

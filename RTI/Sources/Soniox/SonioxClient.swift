@@ -96,12 +96,11 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
             didOpen = true
             retryCount = 0
             lock.unlock()
-            NSLog("[RTI] SonioxClient: connected, sending config")
             RTILog.log("connected — sending config", category: "soniox")
             sendConfig()
 
         case .text(let string):
-            NSLog("[RTI] SonioxClient: recv %@", string.prefix(400) as NSString)
+            RTILog.log("recv \(string.prefix(400))", category: "soniox")
             handleMessage(string)
 
         case .disconnected(let reason, let code):
@@ -124,7 +123,6 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
         let blocked = intentionalDisconnect
         let phaseDidOpen = didOpen
         lock.unlock()
-        NSLog("[RTI] SonioxClient: drop — \(failure)")
         RTILog.log("dropped — \(failure)", category: "soniox")
         guard !blocked else { return }
         if failure.shouldRetry {
@@ -154,7 +152,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
         guard retryCount < Self.maxRetries else {
             retryWorkItem = nil
             lock.unlock()
-            NSLog("[RTI] SonioxClient: max retries reached")
+            RTILog.log("SonioxClient: max retries reached", category: "soniox")
             DispatchQueue.main.async { [weak self] in
                 self?.onError?(failure, phaseDidOpen)
             }
@@ -175,7 +173,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
         retryWorkItem = item
         lock.unlock()
 
-        NSLog("[RTI] SonioxClient: reconnect attempt \(attempt) in \(delay)s")
+        RTILog.log("SonioxClient: reconnect attempt \(attempt) in \(delay)s", category: "soniox")
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
@@ -202,7 +200,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
                 RTILog.log("sent config (translation=\(hasTranslation))", category: "soniox")
             }
         } catch {
-            NSLog("[RTI] SonioxClient: config encode failed: \(error)")
+            RTILog.log("SonioxClient: config encode failed: \(error)", category: "soniox")
         }
     }
 
@@ -213,7 +211,6 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
             let msg = try JSONDecoder().decode(SonioxTranscriptMessage.self, from: data)
             if let code = msg.error_code {
                 let detail = msg.error_message ?? "no detail"
-                NSLog("[RTI] SonioxClient server error: code=\(code) \(detail)")
                 RTILog.log("server error code=\(code) \(detail)", category: "soniox")
                 let failure = SonioxFailure.fromSonioxApplicationError(code: code, detail: detail)
                 lock.lock()
@@ -234,7 +231,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
                 self?.onWords?(words)
             }
         } catch {
-            NSLog("[RTI] SonioxClient: decode failed: \(error)")
+            RTILog.log("SonioxClient: decode failed: \(error)", category: "soniox")
         }
     }
 }

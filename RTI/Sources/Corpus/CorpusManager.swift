@@ -119,7 +119,7 @@ final class CorpusManager {
                 try CorpusFTSReindexer.reindex(from: corpusDirectory, in: RTIDatabase.shared.pool)
                 try CorpusIndexer.reindex(from: corpusDirectory, in: RTIDatabase.shared.pool)
             } catch {
-                NSLog("[RTI] CorpusManager FTS reindex failed: \(error)")
+                RTILog.log("CorpusManager FTS reindex failed: \(error)", category: "corpus")
             }
             // JSONL no longer needed; markdown is canonical.
             LiveSessionStore.shared.deleteLive(sessionId: sessionId)
@@ -128,7 +128,7 @@ final class CorpusManager {
             SummaryController.shared.purgeCache(forSessionId: sessionId)
             return url
         } catch {
-            NSLog("[RTI] CorpusManager renderSession failed: \(error)")
+            RTILog.log("CorpusManager renderSession failed: \(error)", category: "corpus")
             return nil
         }
     }
@@ -146,7 +146,7 @@ final class CorpusManager {
         ) else { return }
         let orphans = urls.filter { $0.pathExtension == "jsonl" }
         for url in orphans {
-            NSLog("[RTI] CorpusManager: orphaned live JSONL at \(url.path)")
+            RTILog.log("CorpusManager: orphaned live JSONL at \(url.path)", category: "corpus")
         }
     }
 

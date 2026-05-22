@@ -55,11 +55,11 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, @unc
         do {
             try stream.removeStreamOutput(self, type: .audio)
         } catch {
-            NSLog("[RTI] system audio: removeStreamOutput error: \(error)")
+            RTILog.log("system audio: removeStreamOutput error: \(error)", category: "system-audio")
         }
         stream.stopCapture { [weak self] error in
             if let error {
-                NSLog("[RTI] system audio: stopCapture error: \(error)")
+                RTILog.log("system audio: stopCapture error: \(error)", category: "system-audio")
             }
             self?.stopContinuation?.resume()
             self?.stopContinuation = nil
@@ -86,7 +86,7 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, @unc
         converter = nil
         sourceFormat = nil
         let msg = error.localizedDescription
-        NSLog("[RTI] system audio: stream stopped with error: \(msg)")
+        RTILog.log("system audio: stream stopped with error: \(msg)", category: "system-audio")
         RTILog.log("stream error — \(msg)", category: "audio")
         onError?(msg)
     }
@@ -156,7 +156,7 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, @unc
         var error: NSError?
         let status = converter.convert(to: outputBuffer, error: &error, withInputFrom: inputBlock)
         guard status != .error, outputBuffer.frameLength > 0 else {
-            if let error { NSLog("[RTI] system audio: converter error: \(error)") }
+            if let error { RTILog.log("system audio: converter error: \(error)", category: "system-audio") }
             return
         }
 

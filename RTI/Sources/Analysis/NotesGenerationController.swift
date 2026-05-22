@@ -82,7 +82,7 @@ final class NotesGenerationController: AnalysisController {
                 )
             }
         } catch {
-            NSLog("[RTI] loadNotes failed: \(error)")
+            RTILog.log("loadNotes failed: \(error)", category: "notes")
             return []
         }
     }
@@ -128,7 +128,7 @@ final class NotesGenerationController: AnalysisController {
         do {
             try RTIDatabase.shared.pool.write { db in try row.insert(db) }
         } catch {
-            NSLog("[RTI] persist generated_note failed: \(error)")
+            RTILog.log("persist generated_note failed: \(error)", category: "notes")
         }
     }
 }

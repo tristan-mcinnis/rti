@@ -20,7 +20,7 @@ final class AudioPipeline {
     private var soniox: SonioxClient?
     private var systemSoniox: SonioxClient?
 
-    func requestPermission(_ completion: @escaping (Bool) -> Void) {
+    func requestPermission(_ completion: @escaping @Sendable (Bool) -> Void) {
         AudioCaptureManager().requestPermission(completion)
     }
 
@@ -86,8 +86,7 @@ final class AudioPipeline {
             sysClient.onError = { [weak self] failure, didOpen in
                 guard let self else { return }
                 let message = failure.userMessage(didOpen: didOpen)
-                NSLog("[RTI] system audio Soniox error: \(message)")
-                RTILog.log("system soniox error — \(message)", category: "soniox")
+                RTILog.log("system audio Soniox error — \(message)", category: "soniox")
                 // System-audio failure is non-fatal for the session (mic
                 // continues). Surface it once via the same `onError`
                 // callback the mic leg uses, with `isAuth=false` so the
@@ -108,14 +107,12 @@ final class AudioPipeline {
                 let data = Data(bytes: int16[0], count: byteCount)
                 self?.systemSoniox?.sendAudio(data)
             }
-            self.systemAudio.onError = { [weak self] msg in
-                NSLog("[RTI] system audio capture error: \(msg)")
-                RTILog.log("system capture error — \(msg)", category: "audio")
+            self.systemAudio.onError = { msg in
+                RTILog.log("system audio capture error — \(msg)", category: "audio")
             }
             do {
                 try await self.systemAudio.start()
             } catch {
-                NSLog("[RTI] system audio start failed: \(error)")
                 RTILog.log("system audio start failed — \(error)", category: "audio")
             }
         }

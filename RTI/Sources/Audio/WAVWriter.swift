@@ -32,7 +32,7 @@ final class WAVWriter {
         do {
             try file.write(from: buffer)
         } catch {
-            NSLog("[RTI] WAVWriter.append failed: \(error)")
+            RTILog.log("WAVWriter.append failed: \(error)", category: "audio")
         }
     }
 

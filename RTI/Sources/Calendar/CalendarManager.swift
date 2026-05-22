@@ -24,7 +24,7 @@ final class CalendarManager {
             }
             return granted
         } catch {
-            NSLog("[RTI] Calendar access request failed: \(error)")
+            RTILog.log("Calendar access request failed: \(error)", category: "calendar")
             return false
         }
     }

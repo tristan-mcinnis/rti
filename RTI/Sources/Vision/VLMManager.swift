@@ -199,19 +199,19 @@ final class VLMManager {
                 from: downloader,
                 using: tokenizerLoader,
                 configuration: config
-            ) { [weak self] progress in
+            ) { progress in
                 Task { @MainActor in
                     let pct = Int(progress.fractionCompleted * 100)
-                    NSLog("[RTI] VLMManager: download progress \(pct)%")
+                    RTILog.log("VLMManager: download progress \(pct)%", category: "vlm")
                 }
             }
             self.modelContainer = container
             isLoaded = true
             lastError = nil
-            NSLog("[RTI] VLMManager: model loaded — \(Self.modelID)")
+            RTILog.log("VLMManager: model loaded — \(Self.modelID)", category: "vlm")
         } catch {
             lastError = error.localizedDescription
-            NSLog("[RTI] VLMManager: load failed — \(error)")
+            RTILog.log("VLMManager: load failed — \(error)", category: "vlm")
         }
     }
 
@@ -235,7 +235,7 @@ final class VLMManager {
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         guard writeJPEG(cgImage, to: tempURL) else {
-            NSLog("[RTI] VLMManager: failed to write temp JPEG")
+            RTILog.log("VLMManager: failed to write temp JPEG", category: "vlm")
             return nil
         }
 
@@ -276,12 +276,12 @@ final class VLMManager {
 
             let trimmed = fullResponse.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
-                NSLog("[RTI] VLMManager: described image — \(trimmed.count) chars")
+                RTILog.log("VLMManager: described image — \(trimmed.count) chars", category: "vlm")
                 return trimmed
             }
             return nil
         } catch {
-            NSLog("[RTI] VLMManager: generation failed — \(error)")
+            RTILog.log("VLMManager: generation failed — \(error)", category: "vlm")
             lastError = error.localizedDescription
             return nil
         }
@@ -291,7 +291,7 @@ final class VLMManager {
 
     private func writeJPEG(_ image: CGImage, to url: URL) -> Bool {
         guard let dest = CGImageDestinationCreateWithURL(
-            url as CFURL, kUTTypeJPEG, 1, nil
+            url as CFURL, UTType.jpeg.identifier as CFString, 1, nil
         ) else { return false }
         CGImageDestinationAddImage(dest, image, [
             kCGImageDestinationLossyCompressionQuality: 0.85

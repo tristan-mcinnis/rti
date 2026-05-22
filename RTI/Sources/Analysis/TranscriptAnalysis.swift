@@ -67,7 +67,7 @@ enum TranscriptAnalysis {
         do {
             payload = try JSONExtractor.decode(response, as: Payload.self)
         } catch {
-            NSLog("[RTI] TranscriptAnalysis[\(category)] decode failed: \(error)")
+            RTILog.log("TranscriptAnalysis[\(category)] decode failed: \(error)", category: "analysis")
             return nil
         }
 

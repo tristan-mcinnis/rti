@@ -75,7 +75,7 @@ final class DossierController: AnalysisController {
                 )
             }
         } catch {
-            NSLog("[RTI] loadDossiers failed: \(error)")
+            RTILog.log("loadDossiers failed: \(error)", category: "dossier")
             return []
         }
     }
@@ -184,7 +184,7 @@ final class DossierController: AnalysisController {
                 }
             }
         } catch {
-            NSLog("[RTI] persist entity_dossiers failed: \(error)")
+            RTILog.log("persist entity_dossiers failed: \(error)", category: "dossier")
         }
     }
 }

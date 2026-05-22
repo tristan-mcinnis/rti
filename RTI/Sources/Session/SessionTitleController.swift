@@ -72,10 +72,10 @@ final class SessionTitleController {
             title = parsed
         } else {
             if response == nil {
-                NSLog("[RTI] SessionTitleController: LLM returned no response for \(sessionId), using fallback")
+                RTILog.log("SessionTitleController: LLM returned no response for \(sessionId), using fallback", category: "session-title")
                 lastError = "Title generation failed; using fallback."
             } else {
-                NSLog("[RTI] SessionTitleController: parse failed for \(sessionId), using fallback")
+                RTILog.log("SessionTitleController: parse failed for \(sessionId), using fallback", category: "session-title")
             }
             title = seed
         }
@@ -133,13 +133,26 @@ final class SessionTitleController {
         return title.isEmpty ? fallbackTitle : title
     }
 
-    private static let titlePattern1 = try! NSRegularExpression(pattern: "^\\d+\\.\\s+(.+)")
-    private static let titlePattern2 = try! NSRegularExpression(pattern: "^\\d+\\)\\s+(.+)")
-    private static let titlePattern3 = try! NSRegularExpression(pattern: "^\\-\\s+(.+)")
+    /// Patterns the LLM uses for numbered/bulleted title suggestions.
+    /// `compileRegex` returns nil for an invalid pattern; an invalid literal
+    /// here is a programmer error caught at first call, not a crash hazard.
+    private static let titlePatterns: [NSRegularExpression] = [
+        "^\\d+\\.\\s+(.+)",
+        "^\\d+\\)\\s+(.+)",
+        "^\\-\\s+(.+)"
+    ].compactMap { compileRegex($0) }
+
+    private static func compileRegex(_ pattern: String) -> NSRegularExpression? {
+        do { return try NSRegularExpression(pattern: pattern) }
+        catch {
+            RTILog.log("titlePattern compile failed for \(pattern): \(error)", category: "session-title")
+            return nil
+        }
+    }
 
     static func parseFirstTitle(from response: String) -> String? {
         let lines = response.components(separatedBy: "\n")
-        let patterns = [titlePattern1, titlePattern2, titlePattern3]
+        let patterns = titlePatterns
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             for pattern in patterns {

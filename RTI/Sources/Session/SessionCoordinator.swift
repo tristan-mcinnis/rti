@@ -219,7 +219,7 @@ final class SessionCoordinator {
                 _ = try ChatMessage.filter(Column("session_id") == sid).deleteAll(db)
             }
         } catch {
-            NSLog("[RTI] clearCurrentSessionMessages failed: \(error)")
+            RTILog.log("clearCurrentSessionMessages failed: \(error)", category: "session")
         }
     }
 
@@ -243,14 +243,14 @@ final class SessionCoordinator {
                 _ = try ChatMessage.filter(Column("session_id") == id).deleteAll(db)
             }
         } catch {
-            NSLog("[RTI] deleteSession chat purge failed: \(error)")
+            RTILog.log("deleteSession chat purge failed: \(error)", category: "session")
         }
         // Reindex FTS so the deleted file's transcript/summary rows go.
         do {
             try CorpusFTSReindexer.reindex(from: CorpusManager.shared.corpusDirectory, in: RTIDatabase.shared.pool)
             try CorpusIndexer.reindex(from: CorpusManager.shared.corpusDirectory, in: RTIDatabase.shared.pool)
         } catch {
-            NSLog("[RTI] deleteSession FTS reindex failed: \(error)")
+            RTILog.log("deleteSession FTS reindex failed: \(error)", category: "session")
         }
         // Drop any orphaned live JSONL.
         LiveSessionStore.shared.deleteLive(sessionId: id)
@@ -282,13 +282,15 @@ final class SessionCoordinator {
         LLMController.shared.resetMemory()
 
         audioPipeline.requestPermission { [weak self] granted in
-            guard let self else { return }
-            guard granted else {
-                self.lastError = "Microphone permission denied."
-                self.promptForMicrophoneAccess()
-                return
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard granted else {
+                    self.lastError = "Microphone permission denied."
+                    self.promptForMicrophoneAccess()
+                    return
+                }
+                self.launchSession()
             }
-            self.launchSession()
         }
     }
 

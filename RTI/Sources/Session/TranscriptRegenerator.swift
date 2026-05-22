@@ -66,7 +66,7 @@ final class TranscriptRegenerator {
             } catch is CancellationError {
                 // intentional cancel — no error surface
             } catch {
-                NSLog("[RTI] regenerate transcript failed: \(error)")
+                RTILog.log("regenerate transcript failed: \(error)", category: "regen")
                 await MainActor.run {
                     self?.lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
                 }

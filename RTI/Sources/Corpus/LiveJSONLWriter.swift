@@ -61,6 +61,8 @@ final class LiveJSONLWriter: @unchecked Sendable {
             // the file would write past the cursor the corpus renderer
             // already read, losing those events from the markdown.
             if self.closed {
+                // NSLog (not RTILog) — this file is shared with the rti-mcp
+                // standalone CLI target, which doesn't link AppLog.
                 NSLog("[RTI] LiveJSONLWriter append after close — dropping event")
                 return
             }

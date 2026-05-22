@@ -36,7 +36,7 @@ enum SessionSearch {
                 return (bestSnippet, ordered)
             }
         } catch {
-            NSLog("[RTI] SessionSearch failed: \(error)")
+            RTILog.log("SessionSearch failed: \(error)", category: "session-search")
             return []
         }
 

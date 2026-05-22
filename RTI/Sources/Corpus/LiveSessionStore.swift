@@ -33,7 +33,7 @@ final class LiveSessionStore {
         do {
             try writer.open()
         } catch {
-            NSLog("[RTI] LiveSessionStore: live open failed: \(error)")
+            RTILog.log("LiveSessionStore: live open failed: \(error)", category: "live-session")
         }
         writers[sessionId] = writer
         return writer

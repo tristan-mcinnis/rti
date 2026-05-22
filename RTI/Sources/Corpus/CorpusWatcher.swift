@@ -34,7 +34,7 @@ final class CorpusWatcher {
         let path = directory.path
         fd = open(path, O_EVTONLY)
         guard fd >= 0 else {
-            NSLog("[RTI] CorpusWatcher: failed to open \(path) (errno=\(errno))")
+            RTILog.log("CorpusWatcher: failed to open \(path) (errno=\(errno))", category: "corpus-watcher")
             return
         }
         let src = DispatchSource.makeFileSystemObjectSource(
@@ -82,7 +82,7 @@ final class CorpusWatcher {
             try CorpusFTSReindexer.reindex(from: directory, in: dbPool)
             try CorpusIndexer.reindex(from: directory, in: dbPool)
         } catch {
-            NSLog("[RTI] CorpusWatcher reindex failed: \(error)")
+            RTILog.log("CorpusWatcher reindex failed: \(error)", category: "corpus-watcher")
         }
     }
 }

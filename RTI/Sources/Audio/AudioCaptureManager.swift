@@ -28,7 +28,7 @@ final class AudioCaptureManager: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var isRunning = false
 
-    func requestPermission(_ completion: @escaping (Bool) -> Void) {
+    func requestPermission(_ completion: @escaping @Sendable (Bool) -> Void) {
         AVCaptureDevice.requestAccess(for: .audio) { granted in
             DispatchQueue.main.async { completion(granted) }
         }
@@ -59,7 +59,6 @@ final class AudioCaptureManager: @unchecked Sendable {
                 UInt32(MemoryLayout.size(ofValue: deviceID))
             )
             if setStatus != noErr {
-                NSLog("[RTI] audio: failed to bind input device (status=\(setStatus)) — falling back to system default")
                 RTILog.log("failed to bind input device (status=\(setStatus)) — using system default", category: "audio")
             } else {
                 RTILog.log("bound to input device id=\(deviceID)", category: "audio")
@@ -120,7 +119,9 @@ final class AudioCaptureManager: @unchecked Sendable {
         var error: NSError?
         let status = converter.convert(to: output, error: &error, withInputFrom: inputBlock)
         guard status != .error, output.frameLength > 0 else {
-            if let error = error { NSLog("[RTI] audio converter error: \(error)") }
+            if let error = error {
+                RTILog.log("converter error: \(error)", category: "audio")
+            }
             return
         }
 

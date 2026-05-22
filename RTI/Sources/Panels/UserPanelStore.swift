@@ -22,7 +22,7 @@ final class UserPanelStore {
             try RTIDatabase.shared.pool.write { db in try row.insert(db) }
             panels.append(panel)
         } catch {
-            NSLog("[RTI] UserPanelStore add failed: \(error)")
+            RTILog.log("UserPanelStore add failed: \(error)", category: "user-panel")
         }
     }
 
@@ -37,7 +37,7 @@ final class UserPanelStore {
             }
             panels.removeAll()
         } catch {
-            NSLog("[RTI] UserPanelStore removeAll failed: \(error)")
+            RTILog.log("UserPanelStore removeAll failed: \(error)", category: "user-panel")
         }
     }
 
@@ -51,7 +51,7 @@ final class UserPanelStore {
             }
             panels.removeAll { $0.id == id }
         } catch {
-            NSLog("[RTI] UserPanelStore remove failed: \(error)")
+            RTILog.log("UserPanelStore remove failed: \(error)", category: "user-panel")
         }
     }
 
@@ -65,7 +65,7 @@ final class UserPanelStore {
                 panels[idx] = panel
             }
         } catch {
-            NSLog("[RTI] UserPanelStore update failed: \(error)")
+            RTILog.log("UserPanelStore update failed: \(error)", category: "user-panel")
         }
     }
 
@@ -78,7 +78,7 @@ final class UserPanelStore {
             }
             return rows.compactMap(UserPanel.init(row:))
         } catch {
-            NSLog("[RTI] UserPanelStore load failed: \(error)")
+            RTILog.log("UserPanelStore load failed: \(error)", category: "user-panel")
             return []
         }
     }
@@ -97,7 +97,7 @@ final class UserPanelStore {
         do {
             try RTIDatabase.shared.pool.write { db in try row.insert(db) }
         } catch {
-            NSLog("[RTI] UserPanelStore appendCard failed: \(error)")
+            RTILog.log("UserPanelStore appendCard failed: \(error)", category: "user-panel")
         }
     }
 
@@ -114,7 +114,7 @@ final class UserPanelStore {
                     .fetchAll(db)
             }
         } catch {
-            NSLog("[RTI] UserPanelStore cards load failed: \(error)")
+            RTILog.log("UserPanelStore cards load failed: \(error)", category: "user-panel")
             return []
         }
     }
