@@ -136,13 +136,24 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
             return
         }
 
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .short
+        dateFormatter.timeStyle = .short
 
         let currentId = currentSessionIdProvider?()
         for s in sessions {
-            let title = "\(formatter.string(from: s.startedAt))\(s.id == currentId ? "  •" : "")"
+            // Prefer the session's title so the menu actually conveys what each
+            // recording was about. Fall back to date/time when no title is set
+            // (e.g. very short sessions where title generation didn't fire).
+            let datestamp = dateFormatter.string(from: s.startedAt)
+            let label = (s.title ?? s.calendarTitle)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let display: String
+            if let label, !label.isEmpty {
+                display = "\(label) — \(datestamp)"
+            } else {
+                display = datestamp
+            }
+            let title = "\(display)\(s.id == currentId ? "  •" : "")"
             let item = NSMenuItem(title: title, action: #selector(openSessionDetail(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = s.id
