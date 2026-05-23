@@ -43,8 +43,12 @@ enum RTIPanelDefaults {
             ctx.duration = duration
             window.animator().alphaValue = 0
         }, completionHandler: { [window] in
-            window.orderOut(nil)
-            window.alphaValue = 1
+            // runAnimationGroup's completion fires on the main thread, but
+            // Swift's concurrency checker can't see that — bridge explicitly.
+            MainActor.assumeIsolated {
+                window.orderOut(nil)
+                window.alphaValue = 1
+            }
         })
     }
 

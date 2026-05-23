@@ -28,12 +28,16 @@ private final class KeyableOverlayPanel: NSPanel {
     }
 }
 
-final class OverlayWindowController: @unchecked Sendable {
+@MainActor
+final class OverlayWindowController {
     private let window: NSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
-    private var didMoveObserver: NSObjectProtocol?
-    private var didResizeObserver: NSObjectProtocol?
-    private var sizeObserver: NSObjectProtocol?
+    // Observer tokens are non-Sendable but only touched in init (set) and
+    // deinit (read for removeObserver); marking nonisolated(unsafe) lets the
+    // class stay @MainActor while keeping the cleanup path compileable.
+    private nonisolated(unsafe) var didMoveObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var didResizeObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var sizeObserver: NSObjectProtocol?
     /// The top-widget pill, attached as a child window so it tracks the
     /// overlay's position and visibility. Repositioned on every move/resize
     /// so it stays glued to the top-right corner.
@@ -61,13 +65,17 @@ final class OverlayWindowController: @unchecked Sendable {
 
         self.window = panel
 
+        // queue: .main means these fire on the main thread; assumeIsolated
+        // bridges the non-isolated callback into the class's MainActor.
         didMoveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification,
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            self?.saveFrame()
-            self?.repositionPill()
+            MainActor.assumeIsolated {
+                self?.saveFrame()
+                self?.repositionPill()
+            }
         }
 
         // Reanchor the pill on resize. addChildWindow keeps the child at a
@@ -77,7 +85,9 @@ final class OverlayWindowController: @unchecked Sendable {
             forName: NSWindow.didResizeNotification,
             object: panel,
             queue: .main
-        ) { [weak self] _ in self?.repositionPill() }
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.repositionPill() }
+        }
 
         // Settings → "Overlay Appearance" sliders post this when width/height
         // change, so the live overlay resizes immediately.
@@ -85,7 +95,9 @@ final class OverlayWindowController: @unchecked Sendable {
             forName: .rtiOverlaySizeChanged,
             object: nil,
             queue: .main
-        ) { [weak self] _ in self?.applyConfiguredSize() }
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyConfiguredSize() }
+        }
 
         if let saved = Self.loadSavedFrame() {
             window.setFrame(saved, display: false)
@@ -195,8 +207,13 @@ final class OverlayWindowController: @unchecked Sendable {
             ctx.duration = 0.15
             window.animator().alphaValue = 0
         }, completionHandler: { [window] in
-            window.orderOut(nil)
-            window.alphaValue = 1
+            // runAnimationGroup's completion fires on the main thread, but
+            // Swift's concurrency checker can't see that — assumeIsolated
+            // bridges the non-isolated callback to MainActor explicitly.
+            MainActor.assumeIsolated {
+                window.orderOut(nil)
+                window.alphaValue = 1
+            }
         })
     }
 
@@ -215,10 +232,12 @@ final class OverlayWindowController: @unchecked Sendable {
         // we'd hit UserDefaults dozens of times per second during a drag.
         frameSaveWorkItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
-            guard let self, self.window.isVisible else { return }
-            let frame = self.window.frame
-            let dict: [String: CGFloat] = ["x": frame.origin.x, "y": frame.origin.y, "w": frame.width, "h": frame.height]
-            UserDefaults.standard.set(dict, forKey: savedFrameKey)
+            MainActor.assumeIsolated {
+                guard let self, self.window.isVisible else { return }
+                let frame = self.window.frame
+                let dict: [String: CGFloat] = ["x": frame.origin.x, "y": frame.origin.y, "w": frame.width, "h": frame.height]
+                UserDefaults.standard.set(dict, forKey: savedFrameKey)
+            }
         }
         frameSaveWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)

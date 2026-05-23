@@ -36,10 +36,12 @@ enum OCRService {
 
     private static func _recognizeText(in cgImage: CGImage) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
-            var resumed = false
+            // The Vision callback and the dispatched perform() may race; this
+            // flag is set once by whichever finishes first. Class storage so
+            // Swift's concurrency checker can see the mutation is shared.
+            let resumed = ResumedFlag()
             let request = VNRecognizeTextRequest { req, err in
-                guard !resumed else { return }
-                resumed = true
+                guard resumed.tryMark() else { return }
                 if let err { continuation.resume(throwing: err); return }
                 let observations = (req.results as? [VNRecognizedTextObservation]) ?? []
                 // Vision origin is bottom-left; sort by -y then x for reading order.
@@ -59,16 +61,29 @@ enum OCRService {
 
             let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
             DispatchQueue.global(qos: .userInitiated).async {
-                guard !resumed else { return }
                 do {
                     try handler.perform([request])
                 } catch {
-                    if !resumed {
-                        resumed = true
+                    if resumed.tryMark() {
                         continuation.resume(throwing: error)
                     }
                 }
             }
         }
+    }
+}
+
+/// Atomically-set one-shot flag. Used by `_recognizeText` to guarantee the
+/// continuation resumes exactly once across the Vision-callback / perform-
+/// error race.
+private final class ResumedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    /// Returns true on the first call, false on every subsequent call.
+    func tryMark() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !done else { return false }
+        done = true
+        return true
     }
 }

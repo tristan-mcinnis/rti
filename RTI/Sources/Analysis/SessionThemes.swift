@@ -11,7 +11,7 @@ struct ThemeQuote: Codable, Identifiable, Equatable {
     /// Stable id per (theme, position) so SwiftUI re-renders cleanly when
     /// the LLM revises the same theme. We don't persist the id separately;
     /// it's derived from index + topic title at decode time.
-    var id: String { "\(timestampMs)-\(text.hashValue)" }
+    var id: String { "\(timestampMs ?? -1)-\(text.hashValue)" }
     let speaker: String?
     let timestampMs: Int?
     let text: String

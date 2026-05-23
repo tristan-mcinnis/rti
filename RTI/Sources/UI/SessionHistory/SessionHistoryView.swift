@@ -497,11 +497,10 @@ struct SessionHistoryView: View {
         // resolved we hand the full list (which may include directories)
         // to the importer, which expands directories and queues serially.
         let group = DispatchGroup()
-        let lock = NSLock()
-        var urls: [URL] = []
+        let collector = URLCollector()
         for provider in providers {
             group.enter()
-            _ = provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
                 var url: URL?
                 if let data = item as? Data {
                     url = URL(dataRepresentation: data, relativeTo: nil)
@@ -509,12 +508,13 @@ struct SessionHistoryView: View {
                     url = u
                 }
                 if let url {
-                    lock.lock(); urls.append(url); lock.unlock()
+                    collector.append(url)
                 }
                 group.leave()
             }
         }
         group.notify(queue: .main) {
+            let urls = collector.snapshot
             guard !urls.isEmpty else { return }
             importer.importFiles(urls)
         }
@@ -543,5 +543,23 @@ struct SessionHistoryView: View {
         }
         searchDebounceItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.20, execute: item)
+    }
+}
+
+/// Lock-protected URL accumulator for the parallel `NSItemProvider.loadItem`
+/// completion handlers in `handleDrop`. Replaces a captured `var` so Swift's
+/// concurrency checker can see the mutation is synchronized.
+private final class URLCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var urls: [URL] = []
+
+    func append(_ url: URL) {
+        lock.lock(); defer { lock.unlock() }
+        urls.append(url)
+    }
+
+    var snapshot: [URL] {
+        lock.lock(); defer { lock.unlock() }
+        return urls
     }
 }
