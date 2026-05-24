@@ -58,14 +58,8 @@ final class DossierController: AnalysisController {
     /// first creation. Used by `reset(for:)` and by tools/views that want
     /// dossiers without going through the singleton's mutable state.
     nonisolated static func loadDossiers(forSessionId sessionId: String) -> [EntityDossier] {
-        do {
-            let rows = try RTIDatabase.shared.pool.read { db in
-                try EntityDossierRow
-                    .filter(Column("session_id") == sessionId)
-                    .order(Column("created_at"))
-                    .fetchAll(db)
-            }
-            return rows.compactMap { row -> EntityDossier? in
+        SessionAnalysisStore.loadAll(EntityDossierRow.self, sessionId: sessionId, category: "dossier")
+            .compactMap { row -> EntityDossier? in
                 guard let type = EntityType(rawValue: row.type) else { return nil }
                 return EntityDossier(
                     id: UUID(uuidString: row.id) ?? UUID(),
@@ -74,10 +68,6 @@ final class DossierController: AnalysisController {
                     description: row.description
                 )
             }
-        } catch {
-            RTILog.log("loadDossiers failed: \(error)", category: "dossier")
-            return []
-        }
     }
 
     /// Generate dossiers from the transcript window starting at `sinceMs`
@@ -85,41 +75,40 @@ final class DossierController: AnalysisController {
     /// watermark of the processed window so the caller can advance and avoid
     /// re-sending the entire growing transcript on every cycle.
     func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
-        guard !isGenerating else { return nil }
-        isGenerating = true
-        lastError = nil
-        defer { isGenerating = false }
+        await withGenerationGuard {
+            lastError = nil
 
-        // The model needs to know about the entities we already track so it
-        // can return strictly NEW or significantly-updated ones — without
-        // this hint it tends to repeat the existing list verbatim.
-        let knownClause: String = {
-            guard !dossiers.isEmpty else { return "" }
-            let existing = dossiers.map { "- \($0.name) (\($0.type.rawValue))" }.joined(separator: "\n")
-            return "\nEntities already tracked (only return NEW ones, or ones whose description should be expanded):\n\(existing)\n"
-        }()
+            // The model needs to know about the entities we already track so it
+            // can return strictly NEW or significantly-updated ones — without
+            // this hint it tends to repeat the existing list verbatim.
+            let knownClause: String = {
+                guard !dossiers.isEmpty else { return "" }
+                let existing = dossiers.map { "- \($0.name) (\($0.type.rawValue))" }.joined(separator: "\n")
+                return "\nEntities already tracked (only return NEW ones, or ones whose description should be expanded):\n\(existing)\n"
+            }()
 
-        let result = await TranscriptAnalysis.run(
-            sessionId: sessionId,
-            sinceMs: sinceMs,
-            smart: true,
-            request: request,
-            category: "dossiers",
-            as: [RawDossier].self,
-            buildPrompt: { Self.dossierPrompt + knownClause + "\nNew transcript window:\n" + $0 }
-        )
+            let result = await TranscriptAnalysis.run(
+                sessionId: sessionId,
+                sinceMs: sinceMs,
+                smart: true,
+                request: request,
+                category: "dossiers",
+                as: [RawDossier].self,
+                buildPrompt: { Self.dossierPrompt + knownClause + "\nNew transcript window:\n" + $0 }
+            )
 
-        guard let result else {
-            // Empty / parse fail / cancelled — leave watermark unchanged.
-            return nil
+            guard let result else {
+                // Empty / parse fail / cancelled — leave watermark unchanged.
+                return nil
+            }
+
+            let parsed = result.payload.compactMap { $0.toDossier() }
+            if !parsed.isEmpty {
+                merge(parsed)
+                persistAll(sessionId: sessionId)
+            }
+            return result.endMs
         }
-
-        let parsed = result.payload.compactMap { $0.toDossier() }
-        if !parsed.isEmpty {
-            merge(parsed)
-            persistAll(sessionId: sessionId)
-        }
-        return result.endMs
     }
 
     /// Merges a fresh batch into the running dossier list. Existing entries

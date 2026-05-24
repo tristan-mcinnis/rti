@@ -143,10 +143,13 @@ class CorpusChatController {
         }
         let systemPrompt = makeSystemPrompt(context: context)
 
-        var apiMessages: [LLMMessage] = [LLMMessage(role: "system", content: systemPrompt)]
-        if let glossary = GlossaryStore.shared.systemPromptFragment {
-            apiMessages.append(LLMMessage(role: "system", content: glossary))
-        }
+        // System block (prompt + glossary, in that order) is assembled by
+        // PromptBuilder so the glossary-injection and ordering rules live in
+        // one place across every chat surface, not re-implemented here.
+        var apiMessages = PromptBuilder.buildSystemMessages(context: PromptContext(
+            baseSystemPrompt: systemPrompt,
+            glossaryFragment: GlossaryStore.shared.systemPromptFragment
+        ))
         // Last 6 prior turns (~3 exchanges) for follow-up coherence.
         let priorTurns = messages.dropLast().suffix(6)
         for turn in priorTurns {
@@ -273,6 +276,75 @@ class CorpusChatController {
         if let t = session.calendarTitle, !t.isEmpty { return t }
         if let t = session.title, !t.isEmpty { return t }
         return "Session \(session.startedAt.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    /// Result of `assembleCandidates`: the capped candidate list plus the
+    /// counts subclasses log (`hybrid` came from retrieval, `recency` from
+    /// the backfill, `dropped` exceeded the cap).
+    struct CandidateAssembly {
+        let candidates: [CorpusChatCandidate]
+        let hybridCount: Int
+        let recencyCount: Int
+        let dropped: Int
+    }
+
+    /// Shared retrieval-assembly recipe for every corpus-backed chat
+    /// surface: pull hybrid hits (BM25 + dense, RRF-merged), dedupe, then
+    /// backfill remaining slots with the most-recent sessions retrieval
+    /// missed — recency biases toward "what did we just discuss". Each
+    /// session is packaged into a `CorpusChatCandidate` with its title,
+    /// best snippet, and summary. Subclasses supply only the scope
+    /// (`includes`) and the caps; `HybridRetriever` falls back to FTS-only
+    /// when the dense index isn't ready.
+    ///
+    /// - Parameters:
+    ///   - hybridLimit: how many hits to request from `HybridRetriever`.
+    ///   - cap: hard upper bound on candidates returned.
+    ///   - includes: scope predicate on session id (default: everything).
+    ///   - recencyLimit: cap on how many recent sessions to consider for
+    ///     backfill before dedup (nil = all in scope).
+    static func assembleCandidates(
+        question: String,
+        hybridLimit: Int,
+        cap: Int,
+        includes: (String) -> Bool = { _ in true },
+        recencyLimit: Int? = nil
+    ) -> CandidateAssembly {
+        var seen = Set<String>()
+        var out: [CorpusChatCandidate] = []
+
+        for hit in HybridRetriever.retrieve(query: question, limit: hybridLimit)
+            where includes(hit.session.id) {
+            guard seen.insert(hit.session.id).inserted else { continue }
+            out.append(CorpusChatCandidate(
+                session: hit.session,
+                title: displayTitle(for: hit.session),
+                snippet: hit.bestSnippet,
+                summary: CorpusBackedStore.summary(forSessionId: hit.session.id)?.summaryText
+            ))
+        }
+        let hybridCount = out.count
+
+        var recencyPool = CorpusBackedStore.allMarkdownSessions()
+            .filter { includes($0.id) }
+            .sorted { $0.startedAt > $1.startedAt }
+        if let recencyLimit { recencyPool = Array(recencyPool.prefix(recencyLimit)) }
+        for s in recencyPool where seen.insert(s.id).inserted {
+            out.append(CorpusChatCandidate(
+                session: s,
+                title: displayTitle(for: s),
+                snippet: nil,
+                summary: CorpusBackedStore.summary(forSessionId: s.id)?.summaryText
+            ))
+        }
+        let recencyCount = out.count - hybridCount
+
+        return CandidateAssembly(
+            candidates: Array(out.prefix(cap)),
+            hybridCount: hybridCount,
+            recencyCount: recencyCount,
+            dropped: max(0, out.count - cap)
+        )
     }
 
     static func buildContext(from candidates: [CorpusChatCandidate]) -> String {

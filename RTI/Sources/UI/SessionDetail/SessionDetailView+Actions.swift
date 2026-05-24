@@ -1,4 +1,3 @@
-import GRDB
 import SwiftUI
 
 extension SessionDetailView {
@@ -63,16 +62,7 @@ extension SessionDetailView {
         transcripts = CorpusBackedStore.transcripts(forSessionId: sessionId)
         summary = CorpusBackedStore.summary(forSessionId: sessionId)
             ?? SummaryController.shared.loadSummary(for: sessionId)
-        do {
-            chatMessages = try RTIDatabase.shared.pool.read { db in
-                try ChatMessage
-                    .filter(Column("session_id") == sessionId)
-                    .order(Column("created_at"))
-                    .fetchAll(db)
-            }
-        } catch {
-            RTILog.log("SessionDetail chat load failed: \(error)", category: "session-detail")
-        }
+        chatMessages = ChatMessage.forSession(sessionId)
         notes = NotesGenerationController.loadNotes(forSessionId: sessionId)
         dossiers = DossierController.loadDossiers(forSessionId: sessionId)
     }

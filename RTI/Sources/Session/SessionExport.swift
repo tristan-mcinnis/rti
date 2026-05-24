@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import GRDB
 import UniformTypeIdentifiers
 
 enum SessionExport {
@@ -39,12 +38,7 @@ extension SessionExport {
         let entries = CorpusBackedStore.transcripts(forSessionId: sessionId)
         let summary = CorpusBackedStore.summary(forSessionId: sessionId)
 
-        let messages: [ChatMessage] = (try? RTIDatabase.shared.pool.read { db in
-            try ChatMessage
-                .filter(Column("session_id") == sessionId)
-                .order(Column("created_at"))
-                .fetchAll(db)
-        }) ?? []
+        let messages = ChatMessage.forSession(sessionId)
         let mode = session.modeId.flatMap { id in
             ModeStore.shared.modes.first(where: { $0.id == id })
         }

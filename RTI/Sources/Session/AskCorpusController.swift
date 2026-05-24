@@ -37,41 +37,18 @@ final class AskCorpusController: CorpusChatController {
     // MARK: - Strategy
 
     override func retrieve(forQuestion question: String) throws -> [CorpusChatCandidate] {
-        var seen = Set<String>()
-        var out: [CorpusChatCandidate] = []
-
-        // Hybrid retrieval: BM25 + dense embedding cosine, RRF-merged.
-        // Falls back to FTS-only inside HybridRetriever if the dense
-        // index isn't ready (e.g. fresh install before first backfill).
-        for hit in HybridRetriever.retrieve(query: question, limit: 6) {
-            guard !seen.contains(hit.session.id) else { continue }
-            seen.insert(hit.session.id)
-            out.append(CorpusChatCandidate(
-                session: hit.session,
-                title: Self.displayTitle(for: hit.session),
-                snippet: hit.bestSnippet,
-                summary: CorpusBackedStore.summary(forSessionId: hit.session.id)?.summaryText
-            ))
-        }
-
-        let recent = CorpusBackedStore.allMarkdownSessions()
-            .sorted { $0.startedAt > $1.startedAt }
-            .prefix(4)
-        for s in recent where !seen.contains(s.id) {
-            seen.insert(s.id)
-            out.append(CorpusChatCandidate(
-                session: s,
-                title: Self.displayTitle(for: s),
-                snippet: nil,
-                summary: CorpusBackedStore.summary(forSessionId: s.id)?.summaryText
-            ))
-        }
-
-        let final = Array(out.prefix(8))
-        guard !final.isEmpty else {
+        // Top 6 hybrid hits across the whole corpus, backfilled with the 4
+        // most-recent sessions for temporal questions, capped at 8.
+        let assembly = Self.assembleCandidates(
+            question: question,
+            hybridLimit: 6,
+            cap: 8,
+            recencyLimit: 4
+        )
+        guard !assembly.candidates.isEmpty else {
             throw CorpusChatError(message: "No meetings have been recorded yet. Record a session first.")
         }
-        return final
+        return assembly.candidates
     }
 
     override func makeSystemPrompt(context: String) -> String {

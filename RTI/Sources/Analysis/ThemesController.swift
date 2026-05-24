@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 import Observation
 
 /// Periodically scans the live transcript for emergent topics + their
@@ -127,77 +126,56 @@ final class ThemesController: AnalysisController {
     }
 
     private func run(sessionId: String, hiFi: Bool) async -> Int? {
-        guard !isGenerating else { return nil }
-        isGenerating = true
-        lastError = nil
-        defer { isGenerating = false }
+        await withGenerationGuard {
+            lastError = nil
 
-        let prompt = hiFi ? Self.hiFiPrompt : Self.realtimePrompt
-        let result = await TranscriptAnalysis.run(
-            sessionId: sessionId,
-            sinceMs: nil,
-            shape: .timestamped,
-            smart: hiFi,
-            request: request,
-            category: "themes",
-            as: ThemesPayload.self,
-            buildPrompt: { prompt + "\n" + $0 }
-        )
+            let prompt = hiFi ? Self.hiFiPrompt : Self.realtimePrompt
+            let result = await TranscriptAnalysis.run(
+                sessionId: sessionId,
+                sinceMs: nil,
+                shape: .timestamped,
+                smart: hiFi,
+                request: request,
+                category: "themes",
+                as: ThemesPayload.self,
+                buildPrompt: { prompt + "\n" + $0 }
+            )
 
-        guard let result else { return nil }
-        // Persist + publish only if we actually got at least one topic.
-        guard !result.payload.themes.isEmpty else { return nil }
+            guard let result else { return nil }
+            // Persist + publish only if we actually got at least one topic.
+            guard !result.payload.themes.isEmpty else { return nil }
 
-        let now = Date()
-        let json: Data
-        do {
-            json = try JSONEncoder().encode(result.payload)
-        } catch {
-            RTILog.log("ThemesController encode failed: \(error)", category: "themes")
-            return nil
-        }
-        let row = SessionThemesRow(
-            sessionId: sessionId,
-            payloadJson: String(data: json, encoding: .utf8) ?? "{\"themes\":[]}",
-            generatedAt: now,
-            isHiFi: hiFi
-        )
-        Self.persist(row: row)
+            let now = Date()
+            let json: Data
+            do {
+                json = try JSONEncoder().encode(result.payload)
+            } catch {
+                RTILog.log("ThemesController encode failed: \(error)", category: "themes")
+                return nil
+            }
+            let row = SessionThemesRow(
+                sessionId: sessionId,
+                payloadJson: String(data: json, encoding: .utf8) ?? "{\"themes\":[]}",
+                generatedAt: now,
+                isHiFi: hiFi
+            )
+            SessionAnalysisStore.save(row, category: "themes")
 
-        // Only mutate the published state if we're still on the same
-        // session — the user might have switched away while the request
-        // was in flight.
-        if self.sessionId == sessionId {
-            payload = result.payload
-            isHiFi = hiFi
-            generatedAt = now
-        }
-        return result.endMs
-    }
-
-    /// Synchronous write helper. Pulled out of the async `run` method so
-    /// Swift picks the blocking GRDB overload rather than the async one,
-    /// matching the pattern used by `NotesGenerationController.persist`.
-    nonisolated private static func persist(row: SessionThemesRow) {
-        do {
-            try RTIDatabase.shared.pool.write { db in try row.save(db) }
-        } catch {
-            RTILog.log("ThemesController persist failed: \(error)", category: "themes")
+            // Only mutate the published state if we're still on the same
+            // session — the user might have switched away while the request
+            // was in flight.
+            if self.sessionId == sessionId {
+                payload = result.payload
+                isHiFi = hiFi
+                generatedAt = now
+            }
+            return result.endMs
         }
     }
 
     /// Read the persisted themes row for an arbitrary session. Used by
     /// the session detail view and the panel's `reset(for:)`.
     nonisolated static func loadRow(sessionId: String) -> SessionThemesRow? {
-        do {
-            return try RTIDatabase.shared.pool.read { db in
-                try SessionThemesRow
-                    .filter(Column("session_id") == sessionId)
-                    .fetchOne(db)
-            }
-        } catch {
-            RTILog.log("ThemesController load failed: \(error)", category: "themes")
-            return nil
-        }
+        SessionAnalysisStore.loadOne(SessionThemesRow.self, sessionId: sessionId, category: "themes")
     }
 }

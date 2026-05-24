@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 import Observation
 
 @Observable @MainActor
@@ -66,14 +65,8 @@ final class NotesGenerationController: AnalysisController {
     /// through the singleton's mutable state (e.g. the chat read_notes
     /// tool, session detail view).
     nonisolated static func loadNotes(forSessionId sessionId: String) -> [GeneratedNote] {
-        do {
-            let rows = try RTIDatabase.shared.pool.read { db in
-                try GeneratedNoteRow
-                    .filter(Column("session_id") == sessionId)
-                    .order(Column("created_at"))
-                    .fetchAll(db)
-            }
-            return rows.map { row in
+        SessionAnalysisStore.loadAll(GeneratedNoteRow.self, sessionId: sessionId, category: "notes")
+            .map { row in
                 GeneratedNote(
                     timestamp: row.createdAt,
                     rangeStartMs: row.rangeStartMs,
@@ -81,10 +74,6 @@ final class NotesGenerationController: AnalysisController {
                     content: row.content
                 )
             }
-        } catch {
-            RTILog.log("loadNotes failed: \(error)", category: "notes")
-            return []
-        }
     }
 
     /// Generate notes for the given transcript window. If `sinceMs` is nil, covers the full transcript.
@@ -125,10 +114,6 @@ final class NotesGenerationController: AnalysisController {
             content: note.content,
             createdAt: note.timestamp
         )
-        do {
-            try RTIDatabase.shared.pool.write { db in try row.insert(db) }
-        } catch {
-            RTILog.log("persist generated_note failed: \(error)", category: "notes")
-        }
+        SessionAnalysisStore.insert(row, category: "notes")
     }
 }

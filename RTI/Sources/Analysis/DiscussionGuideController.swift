@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 import Observation
 
 /// Owns the active session's discussion guide: parses an imported
@@ -193,13 +192,7 @@ final class DiscussionGuideController: AnalysisController {
 
     /// Drop the guide for the active session.
     func removeGuide(for sessionId: String) {
-        do {
-            _ = try RTIDatabase.shared.pool.write { db in
-                try DiscussionGuideRow.deleteOne(db, key: sessionId)
-            }
-        } catch {
-            RTILog.log("DiscussionGuideController removeGuide failed: \(error)", category: "discussion-guide")
-        }
+        SessionAnalysisStore.deleteOne(DiscussionGuideRow.self, sessionId: sessionId, category: "discussion-guide")
         if self.sessionId == sessionId {
             guide = nil
         }
@@ -271,11 +264,7 @@ final class DiscussionGuideController: AnalysisController {
     // MARK: - Persistence
 
     nonisolated private static func persist(row: DiscussionGuideRow) {
-        do {
-            try RTIDatabase.shared.pool.write { db in try row.save(db) }
-        } catch {
-            RTILog.log("DiscussionGuide persist failed: \(error)", category: "discussion-guide")
-        }
+        SessionAnalysisStore.save(row, category: "discussion-guide")
     }
 
     nonisolated private static func persistMatched(row: DiscussionGuideRow) {
@@ -283,15 +272,6 @@ final class DiscussionGuideController: AnalysisController {
     }
 
     nonisolated static func loadRow(sessionId: String) -> DiscussionGuideRow? {
-        do {
-            return try RTIDatabase.shared.pool.read { db in
-                try DiscussionGuideRow
-                    .filter(Column("session_id") == sessionId)
-                    .fetchOne(db)
-            }
-        } catch {
-            RTILog.log("DiscussionGuide load failed: \(error)", category: "discussion-guide")
-            return nil
-        }
+        SessionAnalysisStore.loadOne(DiscussionGuideRow.self, sessionId: sessionId, category: "discussion-guide")
     }
 }
