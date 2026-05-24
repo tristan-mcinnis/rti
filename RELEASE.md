@@ -114,3 +114,15 @@ export RTI_VERSION=0.1.0
 - **GRDB / Starscream `not signed with Developer ID`** — SPM binary targets need to be re-signed as part of the app bundle. Xcode usually handles this; if not, add a `codesign --force --sign "$DEVELOPMENT_TEAM" <framework>` step before packaging.
 
 - **`SMAppService` silently fails in Release** — verify the app bundle is properly signed + the bundle id in the login-items plist matches `com.tristan.rti`.
+
+## Released versions
+
+Beta DMGs are built ad-hoc-signed via `./scripts/release-unsigned.sh <version>` and live in `dist/`. They are **not** notarized — testers right-click → **Open** on first launch.
+
+### 0.1.0-beta8
+- **Echo cancellation.** Apple Voice-Processing I/O on the mic input cancels the other party's voice bleeding from the speakers, so meetings on speakers no longer double-transcribe. On by default; toggle in Settings → General (`AudioCaptureManager`).
+
+### 0.1.0-beta7
+- **Meeting auto-detection.** RTI watches for Zoom / Microsoft Teams / FaceTime / Webex launching and offers to start recording (or auto-starts if opted in). `MeetingDetector`, settings in Settings → General.
+- **Vocabulary biasing.** Proper nouns from past meetings (`entity_dossiers`) are sent to Soniox as `context.terms`, sharpening proper-noun transcription. `DossierVocabulary`.
+- **Removed the on-device Pixtral VLM** from Smart Screenshot — now OCR-only. Dropped the MLX / swift-transformers / swift-huggingface dependencies and a multi-GB model download; DMG shrank ~35M → ~16M.

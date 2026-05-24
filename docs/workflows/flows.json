@@ -26,9 +26,8 @@
     { "id": "SonioxClient",               "subsystem": "soniox",     "file": "RTI/Sources/Soniox/SonioxClient.swift",                        "description": "WebSocket streaming transcription. Emits interim + final SonioxWord callbacks." },
     { "id": "SonioxFileTranscribeClient", "subsystem": "soniox",     "file": "RTI/Sources/Soniox/SonioxFileTranscribeClient.swift",          "description": "Soniox REST file API for imported audio/video. Upload → create job → poll." },
 
-    { "id": "ScreenshotManager",          "subsystem": "screenshot", "file": "RTI/Sources/Screenshot/ScreenshotManager.swift",               "description": "SCScreenshotManager capture, then OCR + VLM. Image discarded after." },
+    { "id": "ScreenshotManager",          "subsystem": "screenshot", "file": "RTI/Sources/Screenshot/ScreenshotManager.swift",               "description": "SCScreenshotManager capture, then OCR. Image discarded after." },
     { "id": "OCRService",                 "subsystem": "screenshot", "file": "RTI/Sources/Vision/OCRService.swift",                          "description": "Vision text recognition." },
-    { "id": "VLMManager",                 "subsystem": "screenshot", "file": "RTI/Sources/Vision/VLMManager.swift",                          "description": "On-device Qwen3-VL image description (MLX)." },
 
     { "id": "SessionCoordinator",         "subsystem": "session",    "file": "RTI/Sources/Session/SessionCoordinator.swift",                 "description": "Recording lifecycle. Owns AudioPipeline, dispatches Soniox words, coordinates session finalisation." },
     { "id": "TranscriptPipeline",         "subsystem": "session",    "file": "RTI/Sources/Session/TranscriptPipeline.swift",                 "description": "Per-channel turn aggregation; commits finals to JSONL + LiveSessionStore." },
@@ -108,13 +107,12 @@
     {
       "id": "smart-screenshot",
       "title": "Smart Screenshot (⌘H)",
-      "summary": "Hotkey captures the active display, runs OCR + VLM description, attaches the combined text as pending screen context, and the overlay surfaces it for the next LLM turn.",
+      "summary": "Hotkey captures the active display, runs OCR, attaches the text as pending screen context, and the overlay surfaces it for the next LLM turn.",
       "steps": [
         { "from": "HotkeyCoordinator",  "to": "RTICommand",          "label": "⌘H pressed",         "passes": "Carbon hotkey lookup invokes the screenshot command's action closure.",                                                                                       "ref": "RTI/Sources/UI/HotkeyCoordinator.swift:12-22" },
         { "from": "RTICommand",         "to": "ScreenshotManager",   "label": "captureAndAttach()",      "passes": "Command delegates to the screenshot manager which orchestrates capture + analysis.",                                                                            "ref": "RTI/Sources/UI/WindowCoordinator.swift:46" },
         { "from": "ScreenshotManager",  "to": "OCRService",          "label": "recognizeText(image)",    "passes": "Vision framework extracts text. The raw image is never persisted — only its derived text is kept.",                                                            "ref": "RTI/Sources/Screenshot/ScreenshotManager.swift:44" },
-        { "from": "ScreenshotManager",  "to": "VLMManager",          "label": "describe(image)",         "passes": "On-device Qwen3-VL produces a natural-language description of non-text screen content (UI, charts, photos).",                                                  "ref": "RTI/Sources/Screenshot/ScreenshotManager.swift:45" },
-        { "from": "ScreenshotManager",  "to": "LLMController",       "label": "attachScreenContext()",   "passes": "OCR text + VLM description are stored as the LLM controller's pendingScreenContext, ready to ride along on the next user turn.",                                  "ref": "RTI/Sources/Screenshot/ScreenshotManager.swift:21" },
+        { "from": "ScreenshotManager",  "to": "LLMController",       "label": "attachScreenContext()",   "passes": "OCR text is stored as the LLM controller's pendingScreenContext, ready to ride along on the next user turn.",                                  "ref": "RTI/Sources/Screenshot/ScreenshotManager.swift:21" },
         { "from": "LLMController",      "to": "OverlayPanelView",    "label": "observable update",       "passes": "OverlayPanelView observes pendingScreenContext and renders a chip showing the captured context is attached.",                                                    "ref": "RTI/Sources/OverlayPanelView.swift:1-47" }
       ]
     },

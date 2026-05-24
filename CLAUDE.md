@@ -108,8 +108,8 @@ Single-process macOS app. Coordination is distributed across `@Observable @MainA
 
 Three pipelines feed into the app:
 
-1. **Audio pipeline** — `AVAudioEngine` tap → 16 kHz mono PCM → Soniox WebSocket (`wss://api.soniox.com/transcribe-websocket`) → interim + final transcript entries written to SQLite. System-audio loopback via `ScreenCaptureKit` is opt-in.
-2. **Screen pipeline** — on-demand `SCScreenshotManager` capture + Vision OCR. Screenshots are passed to the LLM then discarded (never persisted).
+1. **Audio pipeline** — `AVAudioEngine` tap → 16 kHz mono PCM → Soniox WebSocket (`wss://api.soniox.com/transcribe-websocket`) → interim + final transcript entries written to SQLite. System-audio loopback via `ScreenCaptureKit` is opt-in. Apple Voice-Processing I/O (acoustic echo cancellation) is enabled on the mic input by default (`AudioCaptureManager`, toggle `AudioSettingsDefaults.echoCancellationKey`) so the other party's voice from the speakers doesn't double-transcribe. At session start, proper nouns from past meetings (`entity_dossiers`) are sent to Soniox as `context.terms` to bias recognition — see `DossierVocabulary`.
+2. **Screen pipeline** — on-demand `SCScreenshotManager` capture + Vision OCR. Screenshots are passed to the LLM then discarded (never persisted). OCR only — the former on-device Pixtral VLM was removed (beta7), dropping the MLX/swift-transformers dependencies with it.
 3. **LLM pipeline** — provider-agnostic OpenAI-compatible streaming chat (default DeepSeek at `https://api.deepseek.com/v1`) via SSE. Provider config lives in `RTI/Sources/LLM/LLMProvider.swift` (`LLMProviders` registry); swap by changing `LLMProviders.activeId`. Prompt shapes: Assist, "What should I say?", Follow-up questions, Recap.
 
 Persistence: GRDB/SQLite at `~/Library/Application Support/RTI/rti.db`. The markdown corpus at `~/meetings/*.md` is the canonical record; the SQLite store is a derived index.
@@ -125,7 +125,7 @@ Global hotkeys use Carbon `RegisterEventHotKey` so they fire from any frontmost 
 - **Streaming responses**: The LLM SSE parser handles the `data: [DONE]` sentinel and concatenates `choices[].delta.content`. DeepSeek's `reasoning_content` field (gated by `LLMProviderConfig.supportsThinking`) is surfaced through a separate `onReasoning` callback.
 - **Soniox reconnect policy**: exponential backoff 1s → 2s → 4s → 8s, max 5 retries, then surface error.
 - **Swift/SwiftUI scope**: the overlay is a hand-rolled `NSPanel`, not a SwiftUI `WindowGroup`. SwiftUI is used inside the panel via `NSHostingView`.
-- **Dependencies**: keep SPM deps minimal — only add when a feature needs it (current set: GRDB, Starscream).
+- **Dependencies**: keep SPM deps minimal — only add when a feature needs it (current set: GRDB, Starscream, Yams, MarkdownUI). The MLX / swift-transformers / swift-huggingface stack was removed in beta7 along with the screenshot VLM.
 
 ## Where to look for what
 
@@ -134,6 +134,9 @@ Global hotkeys use Carbon `RegisterEventHotKey` so they fire from any frontmost 
 - **App entry / status item** → `RTI/Sources/RTIApp.swift` + `RTI/Sources/AppDelegate.swift`
 - **Soniox wire shapes** → `RTI/Sources/Soniox/SonioxProtocol.swift`
 - **LLM wire shapes** → `RTI/Sources/LLM/LLMWireShapes.swift`
+- **Meeting auto-detection** → `RTI/Sources/Session/MeetingDetector.swift` (NSWorkspace launch watch for Zoom/Teams/FaceTime/Webex; prompts or auto-starts recording; settings under `MeetingDetectionDefaults`)
+- **Echo cancellation** → `RTI/Sources/Audio/AudioCaptureManager.swift` (`setVoiceProcessingEnabled` on the input node, before format read)
+- **Vocabulary biasing (Soniox `context.terms`)** → `RTI/Sources/Session/DossierVocabulary.swift` (past entity names) → `SonioxConfigMessage.context`
 - **Per-session Q&A** → `RTI/Sources/Session/SessionQAController.swift` (scoped to one session's transcript + summary)
 - **Cross-corpus Q&A ("Ask Your Corpus")** → `RTI/Sources/Session/AskCorpusController.swift` + `RTI/Sources/UI/SessionsControl/AskCorpusView.swift`
 - **Chat history persistence** → `RTI/Sources/Session/AskCorpusHistoryStore.swift` (JSON files under `~/Library/Application Support/RTI/ask-corpus/`)
@@ -153,7 +156,7 @@ Ask Your Corpus is retrieval-augmented generation over **hybrid retrieval** (BM2
 
 **Dense index.** `corpus_embeddings(session_id, chunk_idx, text, vector, indexed_at)` — one row per chunk, `vector` is L2-normalised Float32 BLOB. Cosine is a plain dot product. Brute-force scan over every row at query time — at our scale (<50k chunks) this is ~5 ms, no ANN structure needed.
 
-**Embedder (v1):** Apple's built-in `NLEmbedding.sentenceEmbedding(for: .english)` via `RTI/Sources/Corpus/Embedder.swift` — 512-dim, zero deps, zero install friction. Word2vec-style and lower quality than modern transformer embeddings, but already a large recall jump over lexical-only (verified: `"luxury cars"` → `"Maserati"` session matches in practice). v2 upgrade path (bge-small via MLX + swift-transformers) is sketched in `docs/specs/embeddings.md`; the swap is confined to `Embedder.swift`.
+**Embedder (v1):** Apple's built-in `NLEmbedding.sentenceEmbedding(for: .english)` via `RTI/Sources/Corpus/Embedder.swift` — 512-dim, zero deps, zero install friction. Word2vec-style and lower quality than modern transformer embeddings, but already a large recall jump over lexical-only (verified: `"luxury cars"` → `"Maserati"` session matches in practice). v2 upgrade path (bge-small via MLX + swift-transformers) is sketched in `docs/specs/embeddings.md`; the swap is confined to `Embedder.swift`. Note: MLX + swift-transformers were removed in beta7 (with the screenshot VLM), so a v2 embedder would reintroduce them.
 
 **Chunking.** `ChunkPolicy.split` is paragraph-greedy with ~500-word windows and 60-word overlap. Summary and transcript are indexed separately so the snippet text in the DB matches what the model embedded.
 

@@ -117,6 +117,7 @@ private struct AssistantSection: View {
 private struct AudioInputSection: View {
     @State private var inputDevices: [AudioInputDevice] = []
     @State private var selectedInputUID: String = AudioInputDeviceStore.preferredUID
+    @AppStorage(AudioSettingsDefaults.echoCancellationKey) private var echoCancellation: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -134,6 +135,13 @@ private struct AudioInputSection: View {
                 AudioInputDeviceStore.preferredUID = newValue
             }
             Text("Pick BlackHole (or an aggregate device that combines mic + BlackHole) to capture system audio from calls. The change applies the next time you start a session.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("Echo cancellation", isOn: $echoCancellation)
+                .padding(.top, 4)
+            Text("Cancels the other party's voice bleeding from your speakers into the mic, which otherwise gets transcribed twice. Recommended on speakers; harmless on headphones. Applies on the next session. Some external/aggregate devices may not support it.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

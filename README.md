@@ -9,6 +9,9 @@ A menubar-only macOS assistant that listens to your meetings, transcribes in rea
 - **Live transcription.** `AVAudioEngine` → 16 kHz PCM → Soniox WebSocket → markdown + SQLite, with rolling context for the assistant.
 - **Streaming assistant.** ⌘↵ asks "what should I say next?" using the last few minutes of transcript. OpenAI-compatible streaming chat.
 - **Invisible overlay.** Borderless `NSPanel` with `sharingType = .none` — excluded from QuickTime, Zoom local recording, and `screencapture`. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
+- **Meeting auto-detection.** When Zoom, Microsoft Teams, FaceTime, or Webex launches, RTI offers to start recording (or starts silently if you opt in). Settings → General.
+- **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers — so a meeting on speakers doesn't get transcribed twice. On by default; toggle in Settings → General (harmless on headphones).
+- **Vocabulary biasing.** Names, brands, and organizations RTI has extracted from past meetings are fed to Soniox as recognition hints, sharpening proper-noun transcription over time.
 - **Smart Screenshot.** ⌘⇧H captures the display under the mouse, runs Vision OCR on-device, attaches the text to your next prompt. The image is discarded.
 - **Sessions + history.** Every session persists as a markdown file in `~/meetings/` (canonical) plus an FTS-indexed SQLite database (rebuildable from corpus at any time).
 - **Ask Your Corpus.** A first-class cross-session Q&A surface inside the Sessions Control window. Retrieval-augmented (SQLite FTS5 top-6 + the 4 most-recent sessions, capped at 8) → single streaming LLM call with `[Session Title]` citations that jump to the source session. Multi-turn memory, copy / export to markdown, persistent chat history.
@@ -23,9 +26,9 @@ Audio goes to Soniox; transcripts and prompts go to your LLM provider. Everythin
 
 ## Install
 
-### Option A — pre-built `.dmg` (signed, notarized)
+### Option A — pre-built `.dmg`
 
-Grab the latest release at <https://github.com/tristan-mcinnis/rti/releases>, double-click the `.dmg`, drag `RTI.app` to `/Applications`. macOS Gatekeeper will accept it without warnings.
+Grab the latest release at <https://github.com/tristan-mcinnis/rti/releases>, double-click the `.dmg`, drag `RTI.app` to `/Applications`. Current beta DMGs are **ad-hoc signed** (not yet notarized), so the first launch needs a right-click → **Open** to get past Gatekeeper. `SMAppService` (Launch at Login) won't work on ad-hoc builds.
 
 ### Option B — build from source
 

@@ -47,6 +47,21 @@ final class AudioCaptureManager: @unchecked Sendable {
         // input AUHAL at that device before installing the tap. The AUHAL only
         // surfaces after `engine.inputNode` is touched, so do this in order.
         let input = engine.inputNode
+
+        // Acoustic echo cancellation. Apple's Voice-Processing I/O cancels
+        // the speaker output (the other party's voice) from the mic input,
+        // so a meeting on speakers doesn't double-transcribe. Best-effort:
+        // some devices (e.g. aggregates / BlackHole) reject VPIO, in which
+        // case we fall back to the raw input. Must be set before the format
+        // is read and the tap installed — VPIO changes the node format.
+        let echoCancellation = UserDefaults.standard.object(forKey: AudioSettingsDefaults.echoCancellationKey) as? Bool ?? true
+        do {
+            try input.setVoiceProcessingEnabled(echoCancellation)
+            RTILog.log("voice processing (echo cancellation) = \(echoCancellation)", category: "audio")
+        } catch {
+            RTILog.log("voice processing unavailable on this device — using raw input: \(error)", category: "audio")
+        }
+
         if let preferred = AudioInputDeviceStore.resolvePreferredDeviceID(),
            let unit = input.audioUnit {
             var deviceID = preferred

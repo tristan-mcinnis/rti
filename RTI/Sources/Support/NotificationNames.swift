@@ -30,6 +30,13 @@ enum OverlayAppearanceDefaults {
     static let opacityRange: ClosedRange<Double> = 0.10...1.00
 }
 
+enum AudioSettingsDefaults {
+    /// Apple Voice-Processing I/O on the mic: acoustic echo cancellation,
+    /// noise suppression, AGC. Cancels the other party's voice bleeding from
+    /// the speakers into the mic, which otherwise double-transcribes.
+    static let echoCancellationKey = "rti.audio.echoCancellation"
+}
+
 enum MeetingDetectionDefaults {
     /// Master switch: react to meeting apps launching at all.
     static let enabledKey = "rti.meeting.autoDetectEnabled"
