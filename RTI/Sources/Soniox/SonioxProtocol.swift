@@ -49,6 +49,14 @@ struct TranslationConfig: Codable {
     }
 }
 
+/// Soniox `context` object. Biases recognition toward known terms. We only
+/// populate `terms` (proper nouns from past meetings); `general`/`text` are
+/// available in the API but unused here.
+/// See https://soniox.com/docs/stt/concepts/context
+struct SonioxContext: Codable {
+    let terms: [String]
+}
+
 struct SonioxConfigMessage: Codable {
     let api_key: String
     let model: String
@@ -59,8 +67,9 @@ struct SonioxConfigMessage: Codable {
     let enable_speaker_diarization: Bool
     let speaker_diarization_max_speakers: Int
     let translation: TranslationConfig?
+    let context: SonioxContext?
 
-    static func `default`(apiKey: String, translation: TranslationConfig? = nil) -> SonioxConfigMessage {
+    static func `default`(apiKey: String, translation: TranslationConfig? = nil, contextTerms: [String] = []) -> SonioxConfigMessage {
         var hints = Set(["en"])
         if let t = translation {
             switch t.type {
@@ -82,7 +91,8 @@ struct SonioxConfigMessage: Codable {
             language_hints: Array(hints),
             enable_speaker_diarization: true,
             speaker_diarization_max_speakers: 8,
-            translation: translation
+            translation: translation,
+            context: contextTerms.isEmpty ? nil : SonioxContext(terms: contextTerms)
         )
     }
 }

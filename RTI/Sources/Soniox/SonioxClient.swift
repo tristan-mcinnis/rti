@@ -16,6 +16,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
     private let apiKey: String
     private let url: URL
     private let translationConfig: TranslationConfig?
+    private let contextTerms: [String]
     private let lock = NSLock()
     private var socket: WebSocket?
     private var isConnected = false
@@ -32,10 +33,11 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
     private static let maxRetries = 5
     private static let retryDelays: [TimeInterval] = [1, 2, 4, 8, 8]
 
-    init(apiKey: String, url: URL, translationConfig: TranslationConfig? = nil) {
+    init(apiKey: String, url: URL, translationConfig: TranslationConfig? = nil, contextTerms: [String] = []) {
         self.apiKey = apiKey
         self.url = url
         self.translationConfig = translationConfig
+        self.contextTerms = contextTerms
     }
 
     func connect() {
@@ -190,14 +192,14 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
 
     private func sendConfig() {
         do {
-            let config = SonioxConfigMessage.default(apiKey: apiKey, translation: translationConfig)
+            let config = SonioxConfigMessage.default(apiKey: apiKey, translation: translationConfig, contextTerms: contextTerms)
             let data = try JSONEncoder().encode(config)
             if let string = String(data: data, encoding: .utf8) {
                 lock.lock()
                 socket?.write(string: string)
                 lock.unlock()
                 let hasTranslation = translationConfig != nil
-                RTILog.log("sent config (translation=\(hasTranslation))", category: "soniox")
+                RTILog.log("sent config (translation=\(hasTranslation), contextTerms=\(contextTerms.count))", category: "soniox")
             }
         } catch {
             RTILog.log("SonioxClient: config encode failed: \(error)", category: "soniox")

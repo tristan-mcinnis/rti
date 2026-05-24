@@ -50,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         watcher.start()
         corpusWatcher = watcher
 
+        // Offer to start recording when a meeting app launches.
+        MeetingDetector.shared.start()
+
         windows.install(onOpenSettings: { [weak self] in
             Task { @MainActor [weak self] in self?.windows.openSettings() }
         })

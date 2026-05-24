@@ -29,6 +29,10 @@ final class AudioPipeline {
     /// - Returns: the URL of the WAV file being prepared.
     var translationConfig: TranslationConfig?
 
+    /// Proper nouns from past meetings, sent to Soniox as `context.terms`
+    /// to bias recognition of names/brands/orgs. Set before `prepare`.
+    var contextTerms: [String] = []
+
     func prepare(sessionId: String) throws -> URL {
         // Fast-fail before opening a WAV on disk: a missing/empty Soniox
         // key would otherwise let the user "record" silently for 5 retries
@@ -43,7 +47,8 @@ final class AudioPipeline {
         let client = SonioxClient(
             apiKey: Secrets.sonioxAPIKey,
             url: SonioxClient.defaultURL,
-            translationConfig: translationConfig
+            translationConfig: translationConfig,
+            contextTerms: contextTerms
         )
         client.onWords = { [weak self] words in self?.onWords?(words) }
         client.onError = { [weak self] failure, didOpen in
@@ -80,7 +85,8 @@ final class AudioPipeline {
             let sysClient = SonioxClient(
                 apiKey: Secrets.sonioxAPIKey,
                 url: SonioxClient.defaultURL,
-                translationConfig: translationConfig
+                translationConfig: translationConfig,
+                contextTerms: contextTerms
             )
             sysClient.onWords = { [weak self] words in self?.onSystemWords?(words) }
             sysClient.onError = { [weak self] failure, didOpen in
@@ -149,7 +155,8 @@ final class AudioPipeline {
         let mic = SonioxClient(
             apiKey: Secrets.sonioxAPIKey,
             url: SonioxClient.defaultURL,
-            translationConfig: translationConfig
+            translationConfig: translationConfig,
+            contextTerms: contextTerms
         )
         mic.onWords = { [weak self] words in self?.onWords?(words) }
         mic.onError = { [weak self] failure, didOpen in
@@ -164,7 +171,8 @@ final class AudioPipeline {
             let sys = SonioxClient(
                 apiKey: Secrets.sonioxAPIKey,
                 url: SonioxClient.defaultURL,
-                translationConfig: translationConfig
+                translationConfig: translationConfig,
+                contextTerms: contextTerms
             )
             sys.onWords = { [weak self] words in self?.onSystemWords?(words) }
             sys.onError = { [weak self] failure, didOpen in

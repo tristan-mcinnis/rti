@@ -363,6 +363,9 @@ final class SessionCoordinator {
         // name into the markdown frontmatter when the session ends.
         SessionProjectBinding.shared.carryOverToNewSession(sessionId)
 
+        // Bias Soniox toward names/brands/orgs seen in past meetings.
+        audioPipeline.contextTerms = DossierVocabulary.terms(pool: RTIDatabase.shared.pool)
+
         do {
             _ = try audioPipeline.prepare(sessionId: sessionId)
         } catch {

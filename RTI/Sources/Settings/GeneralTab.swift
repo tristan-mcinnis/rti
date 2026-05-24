@@ -21,7 +21,7 @@ struct GeneralTab: View {
                 AudioInputSection()
 
                 Divider().padding(.vertical, 8)
-                VisionModelSection()
+                MeetingDetectionSection()
 
                 Divider().padding(.vertical, 8)
                 RealTimeAnalysisSection()
@@ -144,56 +144,23 @@ private struct AudioInputSection: View {
     }
 }
 
-// MARK: - Vision Model
+// MARK: - Meeting Detection
 
-private struct VisionModelSection: View {
+private struct MeetingDetectionSection: View {
+    @AppStorage(MeetingDetectionDefaults.enabledKey) private var enabled: Bool = true
+    @AppStorage(MeetingDetectionDefaults.autoStartKey) private var autoStart: Bool = false
+
     var body: some View {
-        let cached = VLMManager.cachedLocation
-        let sizeBytes = VLMManager.cachedSizeBytes()
-        let sizeText: String = {
-            if let b = sizeBytes {
-                return ByteCountFormatter.string(fromByteCount: b, countStyle: .file)
-            }
-            return "~\(VLMManager.approximateDownloadSizeMB / 1000) GB will download on first use"
-        }()
-
         VStack(alignment: .leading, spacing: 6) {
-            Text("Vision Model")
+            Text("Meeting Detection")
                 .font(.system(size: 13, weight: .medium))
 
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: cached != nil ? "checkmark.circle.fill" : "arrow.down.circle")
-                    .foregroundStyle(cached != nil ? .green : .secondary)
-                    .font(.system(size: 14))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(VLMManager.modelID)
-                        .font(.system(size: 12, design: .monospaced))
-                    Text(cached != nil ? "Downloaded · \(sizeText)" : "Not downloaded · \(sizeText)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.06)))
+            Toggle("Offer to record when a meeting app launches", isOn: $enabled)
+            Toggle("Start recording automatically, without asking", isOn: $autoStart)
+                .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.5)
 
-            if let cached {
-                Text(cached.path)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                HStack {
-                    Button("Reveal in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([cached])
-                    }
-                    .controlSize(.small)
-                    Spacer()
-                }
-            }
-
-            Text("Used for the \"Describe screenshot\" feature. Runs locally on your Mac via MLX — no images leave the device. To swap models, edit `VLMManager.modelID` in source; the new model auto-downloads on next use.")
+            Text("Detects Zoom, Microsoft Teams, FaceTime, and Webex launching. Browser-based meetings (e.g. Google Meet) aren't detected. By default RTI asks before recording.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

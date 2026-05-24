@@ -59,7 +59,7 @@ enum LLMToolRegistry {
         name: "capture_screen",
         description: """
         Capture what the user is currently looking at on screen. Runs OCR \
-        and a vision model to return a description plus any visible text. \
+        to return any visible text. \
         Use this whenever the user asks about their screen, what they're \
         looking at, what's visible, what an app is showing, or asks you to \
         read or summarise something on their display. Do not ask the user \

@@ -30,6 +30,13 @@ enum OverlayAppearanceDefaults {
     static let opacityRange: ClosedRange<Double> = 0.10...1.00
 }
 
+enum MeetingDetectionDefaults {
+    /// Master switch: react to meeting apps launching at all.
+    static let enabledKey = "rti.meeting.autoDetectEnabled"
+    /// Opt-in: start recording silently instead of prompting.
+    static let autoStartKey = "rti.meeting.autoStart"
+}
+
 enum AnalysisSettingsDefaults {
     static let notesEnabledKey = "rti.analysis.notesEnabled"
     static let notesIntervalKey = "rti.analysis.notesIntervalSeconds"
