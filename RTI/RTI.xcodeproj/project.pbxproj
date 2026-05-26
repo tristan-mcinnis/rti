@@ -82,7 +82,6 @@
 		465EACF865D80589B46609F8 /* CorpusFTSReindexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C397F67CAA883C3EE35EF37F /* CorpusFTSReindexer.swift */; };
 		4677F7DE812D9463007623AD /* NotesPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3646E804694D758FF1840EAA /* NotesPanelView.swift */; };
 		46DF816A19FF359179B0E831 /* LiveJSONLWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A73845B79AA1D887596D445A /* LiveJSONLWriter.swift */; };
-		47F96F8A51FC2A77B16910F7 /* last-tool-error.json in Resources */ = {isa = PBXBuildFile; fileRef = 7F2A1FE41C0F8B56041C82F0 /* last-tool-error.json */; };
 		4B993F0BB848A2D8D64CB14F /* LiquidMetalBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B06ABF0FBBC9148937E7A547 /* LiquidMetalBorder.swift */; };
 		4D729115DC371C02602C5704 /* PanelKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE20418A0E3A6E3722FB9293 /* PanelKind.swift */; };
 		4DE65CFB81D76D7F0A0F062E /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 08E319D06810A68709A49060 /* GRDB */; };
@@ -348,7 +347,6 @@
 		7B29D84DC8C16CB9AF6512C9 /* GlossaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryStore.swift; sourceTree = "<group>"; };
 		7C5E72582098B8BF3192383E /* AudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPipeline.swift; sourceTree = "<group>"; };
 		7D518F760B156F2AC502BAC0 /* Embedder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Embedder.swift; sourceTree = "<group>"; };
-		7F2A1FE41C0F8B56041C82F0 /* last-tool-error.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "last-tool-error.json"; sourceTree = "<group>"; };
 		81E0F15A2A170752FA9B6015 /* ChunkPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkPolicy.swift; sourceTree = "<group>"; };
 		825F37E20D755398F3F17F96 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		82C3639F126C2E773A30F98A /* PaletteSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaletteSearch.swift; sourceTree = "<group>"; };
@@ -522,7 +520,6 @@
 				39B314C441C040CC10C72B28 /* OverlayWindowController.swift */,
 				FA159B350466B311F95C6E82 /* RTIApp.swift */,
 				541406A822542146389D5B7E /* Secrets.swift */,
-				4289C398B8C746EEA7BFFFD2 /* .omc */,
 				E9F118308854BE1E71C43BF8 /* Analysis */,
 				53DEECA334B6E32693711DB5 /* Audio */,
 				DE19E04D7D1B2968DA792EBB /* Calendar */,
@@ -584,14 +581,6 @@
 			path = Database;
 			sourceTree = "<group>";
 		};
-		4289C398B8C746EEA7BFFFD2 /* .omc */ = {
-			isa = PBXGroup;
-			children = (
-				4FF786BD6AA24C35C9576442 /* state */,
-			);
-			path = .omc;
-			sourceTree = "<group>";
-		};
 		4D37BEB0CEC1742DE440DFC9 /* Panels */ = {
 			isa = PBXGroup;
 			children = (
@@ -606,14 +595,6 @@
 				69927632A013AE7261CF5105 /* UserPanelWindowController.swift */,
 			);
 			path = Panels;
-			sourceTree = "<group>";
-		};
-		4FF786BD6AA24C35C9576442 /* state */ = {
-			isa = PBXGroup;
-			children = (
-				7F2A1FE41C0F8B56041C82F0 /* last-tool-error.json */,
-			);
-			path = state;
 			sourceTree = "<group>";
 		};
 		500D82A363AF85F130D5729B /* Widgets */ = {
@@ -920,7 +901,6 @@
 			buildConfigurationList = 44F1430CCE0AAF7D6890D4BF /* Build configuration list for PBXNativeTarget "RTI" */;
 			buildPhases = (
 				3A71D0192EC132F6AE2C0A5F /* Sources */,
-				376737D36B28078C61BA1C7D /* Resources */,
 				2F50C7F51B41B0EB703EC7F0 /* Frameworks */,
 				FAAADBE37FD2604E6E0C761E /* Embed Dependencies */,
 			);
@@ -1026,17 +1006,6 @@
 			);
 		};
 /* End PBXProject section */
-
-/* Begin PBXResourcesBuildPhase section */
-		376737D36B28078C61BA1C7D /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				47F96F8A51FC2A77B16910F7 /* last-tool-error.json in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		07784234FB4C57C667494738 /* Sources */ = {
@@ -1346,7 +1315,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti.personal;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -1408,7 +1377,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti.personal;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -1477,7 +1446,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti.personal.tests;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 				TEST_HOST = "";
@@ -1510,7 +1479,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tristan.rti.personal.tests;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 				TEST_HOST = "";

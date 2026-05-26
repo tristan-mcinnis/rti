@@ -21,7 +21,7 @@ settings:
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_ENTITLEMENTS: Sources/RTI.entitlements
     INFOPLIST_FILE: Sources/Info.plist
-    PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti
+    PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti.personal
     GENERATE_INFOPLIST_FILE: NO
   configs:
     Debug:
@@ -139,7 +139,7 @@ targets:
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti.personal.tests
         TEST_HOST: ""
         BUNDLE_LOADER: ""
 
