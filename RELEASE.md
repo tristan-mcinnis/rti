@@ -1,7 +1,8 @@
 # Release process — technical recipe
 
-For first-time setup and a plain-English explanation of what notarization,
-hardened runtime, and Developer ID actually mean, read **[DISTRIBUTING.md](DISTRIBUTING.md)** first.
+This is a **personal build**: releases are signed DMGs for my own machines, not
+public distribution. For first-time signing/notarization setup, read
+**[DISTRIBUTING.md](DISTRIBUTING.md)** first.
 
 For a one-command path, use:
 
@@ -18,7 +19,7 @@ run by hand if you want to inspect any individual step.
 - `DEVELOPMENT_TEAM` (your 10-char team ID) exported, e.g.: `export DEVELOPMENT_TEAM=ABCDE12345`
 - `APPLE_ID`, `APPLE_TEAM_ID`, and an app-specific password stored in the Keychain under the profile `rti-notary` (see notarytool step below)
 - `create-dmg` (`brew install create-dmg`) or stick with `hdiutil`
-- `gh` CLI authenticated to the `tristan-mcinnis/rti` repo
+- `gh` CLI authenticated to the `tristan-mcinnis/rti-personal` repo
 
 ## One-time setup
 
@@ -111,13 +112,16 @@ export RTI_VERSION=0.1.0
 
 - **`errSecInternalComponent`** during sign — check that the Developer ID certs are in the *login* keychain and not *local items*.
 
-- **GRDB / Starscream `not signed with Developer ID`** — SPM binary targets need to be re-signed as part of the app bundle. Xcode usually handles this; if not, add a `codesign --force --sign "$DEVELOPMENT_TEAM" <framework>` step before packaging.
+- **Starscream / Yams / MarkdownUI `not signed with Developer ID`** — SPM binary targets need to be re-signed as part of the app bundle. Xcode usually handles this; if not, add a `codesign --force --sign "$DEVELOPMENT_TEAM" <framework>` step before packaging.
 
-- **`SMAppService` silently fails in Release** — verify the app bundle is properly signed + the bundle id in the login-items plist matches `com.tristan.rti`.
+- **`SMAppService` silently fails in Release** — verify the app bundle is properly signed + the bundle id in the login-items plist matches `com.tristan.rti.personal`.
 
 ## Released versions
 
-Beta DMGs are built ad-hoc-signed via `./scripts/release-unsigned.sh <version>` and live in `dist/`. They are **not** notarized — testers right-click → **Open** on first launch.
+Beta DMGs are built ad-hoc-signed via `./scripts/release-unsigned.sh <version>` and live in `dist/`. They are **not** notarized — right-click → **Open** on first launch.
+
+### Personal refocus (unreleased)
+- **Stripped to real-time-only.** Removed everything that wasn't live meeting assistance: the SQLite database + markdown corpus, session history/detail UI, audio/video import, cross-corpus "Ask" + project Q&A, FTS5 + dense-embedding search, the periodic post-hoc analysis (notes / dossiers / themes / discussion guide), the `rti-mcp` JSON-RPC server, and calendar integration. The app is now **ephemeral**: the live transcript and chat are held in memory for the session and dropped when it ends; the WAV recording is deleted on stop. Dropped the GRDB dependency — modes are now stored as a small JSON file, user counter-panels are in-memory.
 
 ### 0.1.0-beta9
 - **CoreAudio process-tap system audio.** System audio is now captured via a CoreAudio process tap + aggregate device (macOS 14.2+) instead of ScreenCaptureKit, with SCK kept as an automatic fallback. The tap needs only `NSAudioCaptureUsageDescription` (not Screen Recording), leaves the screenshot/overlay path undisturbed, and follows the default output device so switching to AirPods/Bluetooth mid-call keeps the other party flowing. `CoreAudioTapCapture`, `SystemAudioCapturing`, wired in `AudioPipeline`.

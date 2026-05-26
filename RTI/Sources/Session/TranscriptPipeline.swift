@@ -1,9 +1,9 @@
 import Foundation
 
-/// Per-channel live transcript aggregation, note buffering, and JSONL
-/// writing. Owns the `TranscriptAggregator`s and the note entry list;
-/// produces the combined `liveEntries` and `interimLine` that the UI
-/// observes.
+/// Per-channel live transcript aggregation and note buffering. Owns the
+/// `TranscriptAggregator`s and the note entry list; produces the combined
+/// `liveEntries` and `interimLine` that the UI observes. Ephemeral build:
+/// nothing is written to disk — the in-memory entries are the only record.
 @MainActor
 final class TranscriptPipeline {
 
@@ -23,15 +23,6 @@ final class TranscriptPipeline {
         return parts.isEmpty ? nil : parts.joined(separator: "  ")
     }
 
-    init() {
-        micAggregator.onTurnsProcessed = { [weak self] turns in
-            self?.writeJSONL(turns, channel: "mic")
-        }
-        systemAggregator.onTurnsProcessed = { [weak self] turns in
-            self?.writeJSONL(turns, channel: "system")
-        }
-    }
-
     func process(words: [SonioxWord], channel: String) {
         switch channel {
         case "mic": micAggregator.process(words)
@@ -41,13 +32,10 @@ final class TranscriptPipeline {
     }
 
     @discardableResult
-    func insertNote(_ text: String, sessionId: String, startedAt: Date) -> Bool {
+    func insertNote(_ text: String, startedAt: Date) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         let offsetMs = Int(max(0, Date().timeIntervalSince(startedAt) * 1000))
-        let writer = LiveSessionStore.shared.liveWriter(sessionId: sessionId)
-            ?? LiveSessionStore.shared.openLive(sessionId: sessionId)
-        writer.append(.note(ts: offsetMs, text: trimmed))
         let entry = LiveEntry(
             speakerId: "note",
             text: trimmed,
@@ -66,20 +54,5 @@ final class TranscriptPipeline {
         micAggregator.reset()
         systemAggregator.reset()
         noteEntries = []
-    }
-
-    private func writeJSONL(_ turns: [SpeakerTurn], channel: String) {
-        guard let sessionId = SessionCoordinator.shared.currentSessionId,
-              let writer = LiveSessionStore.shared.liveWriter(sessionId: sessionId) else { return }
-        for turn in turns {
-            writer.append(.word(
-                ts: turn.startMs,
-                speaker: turn.speaker,
-                text: turn.text,
-                isFinal: true,
-                confidence: turn.confidence,
-                channel: channel
-            ))
-        }
     }
 }

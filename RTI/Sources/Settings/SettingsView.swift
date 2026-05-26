@@ -16,10 +16,6 @@ struct SettingsView: View {
                 .tabItem { Label("Modes", systemImage: "square.stack.3d.up") }
             GlossaryTab()
                 .tabItem { Label("Glossary", systemImage: "character.book.closed") }
-            CalendarTab()
-                .tabItem { Label("Calendar", systemImage: "calendar") }
-            CorpusTab()
-                .tabItem { Label("Corpus", systemImage: "doc.text.magnifyingglass") }
             GeneralTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
         }

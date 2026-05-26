@@ -14,15 +14,12 @@ final class TopWidgetWindowController {
     /// for window/screen operations.
     struct Actions {
         let onOpenChat: () -> Void
-        let onOpenSessionHome: () -> Void
         let onToggleOverlay: () -> Void
         let onCaptureScreen: () -> Void
         let onToggleInvisibility: () -> Void
         let onOpenSettings: () -> Void
         let onShowLiveTranscript: () -> Void
         let onShowLogs: () -> Void
-        let onShowSessionHistory: () -> Void
-        let onOpenCurrentSessionDetail: () -> Void
         let onClearChat: () -> Void
         let onShowShortcuts: () -> Void
         let onShowAbout: () -> Void

@@ -6,16 +6,11 @@ import Foundation
 enum PanelKind: String, Codable, CaseIterable {
     /// Live keyword/regex counter against the streaming transcript.
     case counter
-    /// Periodic LLM-generated cards (custom prompt run every N minutes).
-    case periodicCards = "periodic_cards"
 }
 
-/// One configured panel. The `kind` discriminates the `config` payload,
-/// which is stored on disk as a JSON blob — keeps the schema flexible as
-/// the kind library grows without a migration per added field.
+/// One configured panel. The `kind` discriminates the `config` payload.
 struct PanelConfig: Codable, Equatable {
     var counter: CounterConfig?
-    var periodicCards: PeriodicCardsConfig?
 }
 
 struct CounterConfig: Codable, Equatable {
@@ -73,14 +68,4 @@ enum MatchSpec: Codable, Equatable {
                 .firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) != nil
         }
     }
-}
-
-struct PeriodicCardsConfig: Codable, Equatable {
-    /// Display label for the panel (e.g. "Striking quotes").
-    var label: String
-    /// Prompt the LLM runs against the recent transcript window each tick.
-    var prompt: String
-    /// Generation interval in seconds. Clamped at runtime to [60, 600] to
-    /// stop a hallucinated config from melting the API budget.
-    var intervalSeconds: Double
 }

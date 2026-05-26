@@ -38,9 +38,6 @@ settings:
       ENABLE_HARDENED_RUNTIME: YES
 
 packages:
-  GRDB:
-    url: https://github.com/groue/GRDB.swift
-    from: "6.29.0"
   Starscream:
     url: https://github.com/daltoniam/Starscream
     from: "4.0.8"
@@ -62,42 +59,10 @@ targets:
           - RTI.entitlements
           - Secrets.swift.example
     dependencies:
-      - package: GRDB
       - package: Starscream
       - package: Yams
       - package: MarkdownUI
         product: MarkdownUI
-      - target: RTIMCP
-        copy:
-          destination: resources
-
-  # Standalone command-line binary that exposes the markdown Corpus to
-  # external agents (Claude Desktop, Codex, OpenCode, Gemini CLI, Claude
-  # Code) over JSON-RPC stdio. Reads ~/meetings/, the SQLite FTS sidecar,
-  # and live-session JSONL streams. Read-only in v1.
-  RTIMCP:
-    type: tool
-    platform: macOS
-    sources:
-      - path: MCP
-      - path: Sources/Corpus/CorpusEntry.swift
-      - path: Sources/Corpus/CorpusReader.swift
-      - path: Sources/Corpus/LiveJSONLWriter.swift
-    dependencies:
-      - package: GRDB
-      - package: Yams
-    settings:
-      base:
-        SWIFT_VERSION: "6.0"
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
-        PRODUCT_NAME: rti-mcp
-      configs:
-        Debug:
-          CODE_SIGN_STYLE: Automatic
-          CODE_SIGN_IDENTITY: "-"
-          ENABLE_HARDENED_RUNTIME: NO
-        Release:
-          ENABLE_HARDENED_RUNTIME: YES
 
   # Standalone test bundle — no host app, no NSApplication. Each Swift file
   # under test is compiled directly into the bundle (so we can unit-test
@@ -110,29 +75,13 @@ targets:
       - path: Tests
       - path: Sources/Soniox/SonioxProtocol.swift
       - path: Sources/Session/SpeakerTurn.swift
-      - path: Sources/Database/Models/TranscriptEntry.swift
       - path: Sources/LLM/LLMError.swift
       - path: Sources/Soniox/SonioxFailure.swift
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
       - path: Sources/UI/CommandPalette/PaletteSearch.swift
       - path: Sources/UI/CommandPalette/SessionDetailRequest.swift
-      - path: Sources/UI/SessionDetail/TranscriptHighlight.swift
-      - path: Sources/Database/Models/Session.swift
-      - path: Sources/Session/SessionSearchResult.swift
-      - path: Sources/Corpus/CorpusEntry.swift
-      - path: Sources/Corpus/CorpusReader.swift
-      - path: Sources/Corpus/CorpusWriter.swift
-      - path: Sources/Corpus/MarkdownRenderer.swift
-      - path: Sources/Corpus/LiveJSONLWriter.swift
-      - path: Sources/Corpus/TranscriptRender.swift
-      - path: Sources/Corpus/CorpusFTSReindexer.swift
-      - path: Sources/Corpus/ChunkPolicy.swift
-      - path: Sources/Support/SpeakerLabelMapping.swift
-      - path: Sources/Support/TimeFormat.swift
-      - path: Sources/Support/SummaryFormatting.swift
       - path: Sources/Support/JSONExtractor.swift
     dependencies:
-      - package: GRDB
       - package: Yams
     settings:
       base:

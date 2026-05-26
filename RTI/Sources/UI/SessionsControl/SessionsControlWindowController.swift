@@ -36,12 +36,4 @@ final class SessionsControlWindowController {
         NSApp.activate(ignoringOtherApps: true)
         window = w
     }
-
-    /// Show the Sessions Control window on the Sessions tab and navigate to a
-    /// specific session detail. Posts two notifications synchronously so the
-    /// view handles tab-selection then push-navigation in order.
-    func show(sessionId: String) {
-        show(tab: .sessions)
-        NotificationCenter.default.post(name: .openSessionDetail, object: sessionId)
-    }
 }

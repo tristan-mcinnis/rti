@@ -70,49 +70,33 @@ This file also provides project-specific guidance to Claude Code (claude.ai/code
 
 **Project name:** RTI (Real Time Intelligence). Use only this name in code, UI copy, bundle identifiers, and docs.
 
-## Repository status
+## Project focus — personal, real-time only
 
-The POC series (POC-1 through POC-7) is complete; per-POC findings live in `RTI/POC*-findings.md`. The build is now in active development, no longer POC-by-POC. There is no consolidated spec — when in doubt about intended behavior, read the relevant POC findings file plus the current code, not an external spec.
+This is the **personal fork** of RTI: a single-user, real-time meeting copilot. It deliberately does **not** keep anything after a meeting ends. There is no database, no markdown corpus, no session history, no audio/video import, no cross-meeting search or Q&A, and no post-hoc analysis. If a feature isn't about helping *live, in the current conversation*, it doesn't belong here — the whole point of this fork was to strip that surface away.
+
+> History note: an earlier build had all of the above (SQLite + markdown corpus, FTS5 + dense-embedding search, "Ask Your Corpus", projects, dossiers/notes/themes/discussion-guide analysis, drag-to-import, an `rti-mcp` JSON-RPC server, calendar integration). All of it was removed in the personal refocus. If you find a stray reference to any of it, it's a leftover — delete it, don't revive it.
 
 Layout:
 
-- `RTI/` — Xcode project. Generated via `xcodegen` from `RTI/project.yml`. Build with `xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug build`. Runtime artifact at `~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app`. Bundle id `com.tristan.rti`, macOS 14+, menubar-accessory app (`LSUIElement=YES`).
-- `RTI/Sources/` — all Swift sources (overlay, audio, Soniox, LLM, screenshot, GRDB, sessions, corpus, modes, widgets, settings, UI).
-- `RTI/MCP/` — `rti-mcp` standalone JSON-RPC server, bundled into Resources for external agents.
-- `RTI/Tests/` — XCTest unit + integration tests.
-- `RTI/POC*-findings.md` — historical per-POC validation logs (1–7). Reference for "why was this built this way?" — not a spec.
+- `RTI/` — Xcode project. Generated via `xcodegen` from `RTI/project.yml`. Build with `xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug build`. Runtime artifact at `~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app`. Bundle id `com.tristan.rti.personal`, macOS 14+, menubar-accessory app (`LSUIElement=YES`).
+- `RTI/Sources/` — all Swift sources (overlay, audio, Soniox, LLM, screenshot, session, modes, panels, widgets, settings, UI).
+- `RTI/Tests/` — XCTest unit tests.
+- `RTI/POC*-findings.md` — historical per-POC validation logs. Reference for "why was this built this way?" — but note much of what they describe (persistence, corpus) is gone.
 - `RTI/VERIFY.md` — manual verification steps for running builds.
 - `docs/adr/` — architecture decision records.
-- `docs/specs/` — feature specs.
-- `.omc/` — oh-my-claudecode state. `plans/` contains saved plans; `prd.json` tracks user stories. Do not hand-edit.
-
-## POC inventory (historical)
-
-All seven POCs landed; the findings files are the canonical record of what was decided and why.
-
-| POC | Element |
-|-----|---------|
-| POC-1 | Invisible overlay — borderless translucent `NSPanel`, `sharingType=.none`, ⌘\\ Carbon hotkey, menubar status item |
-| POC-2 | Audio → Soniox WebSocket → GRDB/SQLite transcript |
-| POC-3 | LLM SSE streaming + overlay assistant UI (provider-agnostic, DeepSeek default) |
-| POC-4 | Smart Screenshot — ⌘H, `SCScreenshotManager`, Vision OCR; image discarded after OCR |
-| POC-5 | Persistence layer — sessions, transcripts, messages, modes in GRDB/SQLite |
-| POC-6 | Three-window layout — split-panel overlay, top widget, mini widget |
-| POC-7 | Modes, reference files, settings, Keychain |
-
-Read the corresponding findings file before changing behavior in any of these areas.
+- `docs/specs/` — feature specs (some describe removed features).
 
 ## Architecture
 
 Single-process macOS app. Coordination is distributed across `@Observable @MainActor` singletons (`SessionCoordinator`, `LLMController`, `WindowCoordinator`, `ModeStore`, etc.), wired together by `AppDelegate`. There is no single `AppState` class — each module owns its slice of state.
 
+**Everything is ephemeral.** A "session" is just a run of live audio. The transcript (`SessionCoordinator.liveEntries`) and the chat (`LLMController.entries`) live in memory for the duration and are dropped when a new session starts. Nothing is written to a database or corpus. The WAV recording is streamed to a temp file while recording and **deleted** on stop. The only things on disk are config: API keys in `KeychainStore` and modes in `~/Library/Application Support/RTI/modes.json`.
+
 Three pipelines feed into the app:
 
-1. **Audio pipeline** — `AVAudioEngine` tap → 16 kHz mono PCM → Soniox WebSocket (`wss://api.soniox.com/transcribe-websocket`) → interim + final transcript entries written to SQLite. System-audio (the other party) is captured on a second Soniox leg via the `SystemAudioCapturing` protocol: a CoreAudio process tap (`CoreAudioTapCapture`, macOS 14.2+, preferred — no Screen Recording permission, doesn't disturb screenshot OCR, follows the default output device) with `ScreenCaptureKit` (`SystemAudioCapture`) as automatic fallback. `AudioPipeline` picks the backend at start. Apple Voice-Processing I/O (acoustic echo cancellation) is enabled on the mic input by default (`AudioCaptureManager`, toggle `AudioSettingsDefaults.echoCancellationKey`) so the other party's voice from the speakers doesn't double-transcribe. At session start, proper nouns from past meetings (`entity_dossiers`) are sent to Soniox as `context.terms` to bias recognition — see `DossierVocabulary`.
-2. **Screen pipeline** — on-demand `SCScreenshotManager` capture + Vision OCR. Screenshots are passed to the LLM then discarded (never persisted). OCR only — the former on-device Pixtral VLM was removed (beta7), dropping the MLX/swift-transformers dependencies with it.
-3. **LLM pipeline** — provider-agnostic OpenAI-compatible streaming chat (default DeepSeek at `https://api.deepseek.com/v1`) via SSE. Provider config lives in `RTI/Sources/LLM/LLMProvider.swift` (`LLMProviders` registry); swap by changing `LLMProviders.activeId`. Prompt shapes: Assist, "What should I say?", Follow-up questions, Recap.
-
-Persistence: GRDB/SQLite at `~/Library/Application Support/RTI/rti.db`. The markdown corpus at `~/meetings/*.md` is the canonical record; the SQLite store is a derived index.
+1. **Audio pipeline** — `AVAudioEngine` tap → 16 kHz mono PCM → Soniox WebSocket (`wss://api.soniox.com/transcribe-websocket`) → interim + final transcript entries held in memory (`TranscriptPipeline` → `SessionCoordinator.liveEntries`). System-audio (the other party) is captured on a second Soniox leg via the `SystemAudioCapturing` protocol: a CoreAudio process tap (`CoreAudioTapCapture`, macOS 14.2+, preferred — no Screen Recording permission, doesn't disturb screenshot OCR, follows the default output device) with `ScreenCaptureKit` (`SystemAudioCapture`) as automatic fallback. `AudioPipeline` picks the backend at start. Apple Voice-Processing I/O (acoustic echo cancellation) is enabled on the mic input by default (`AudioCaptureManager`, toggle `AudioSettingsDefaults.echoCancellationKey`) so the other party's voice from the speakers doesn't double-transcribe.
+2. **Screen pipeline** — on-demand `SCScreenshotManager` capture + Vision OCR. Screenshots are passed to the LLM then discarded (never persisted). OCR only.
+3. **LLM pipeline** — provider-agnostic OpenAI-compatible streaming chat (default DeepSeek at `https://api.deepseek.com/v1`) via SSE. Provider config lives in `RTI/Sources/LLM/LLMProvider.swift` (`LLMProviders` registry); swap by changing `LLMProviders.activeId`. Prompt shapes: Assist, "What should I say?", Follow-up questions, Recap. Recent-transcript context for each turn is built from `SessionCoordinator.liveEntries` (last ~6 minutes), not from any stored transcript.
 
 "Undetectability" = `NSWindow.sharingType = .none`. POC-1's `screencapture -x` test confirms exclusion against that capture path; QuickTime and Zoom are user-attested (see `RTI/POC1-findings.md`).
 
@@ -121,11 +105,12 @@ Global hotkeys use Carbon `RegisterEventHotKey` so they fire from any frontmost 
 ## Conventions
 
 - **Secrets**: never commit API keys, never put them in `UserDefaults`, never `.env` files. Keys live in `KeychainStore` (backed by `~/Library/Application Support/RTI/credentials.json`, mode 0600).
-- **Transcript semantics**: Soniox emits words with `is_final: false` (interim, update in place) and `is_final: true` (commit, persist to `transcript_entries`). Map `speaker: 0` → `"self"`, `1+` → `"them_1"`, `"them_2"`, etc.
+- **Transcript semantics**: Soniox emits words with `is_final: false` (interim, update in place) and `is_final: true` (commit, appended to the in-memory `liveEntries`). Map `speaker: 0` → `"self"`, `1+` → `"them_1"`, `"them_2"`, etc.
 - **Streaming responses**: The LLM SSE parser handles the `data: [DONE]` sentinel and concatenates `choices[].delta.content`. DeepSeek's `reasoning_content` field (gated by `LLMProviderConfig.supportsThinking`) is surfaced through a separate `onReasoning` callback.
 - **Soniox reconnect policy**: exponential backoff 1s → 2s → 4s → 8s, max 5 retries, then surface error.
 - **Swift/SwiftUI scope**: the overlay is a hand-rolled `NSPanel`, not a SwiftUI `WindowGroup`. SwiftUI is used inside the panel via `NSHostingView`.
-- **Dependencies**: keep SPM deps minimal — only add when a feature needs it (current set: GRDB, Starscream, Yams, MarkdownUI). The MLX / swift-transformers / swift-huggingface stack was removed in beta7 along with the screenshot VLM.
+- **Ephemeral by design**: don't reach for a database or on-disk store to "remember" something across sessions — that's explicitly out of scope. New state is in-memory unless it's user config (then JSON under Application Support, like `ModeStore`).
+- **Dependencies**: keep SPM deps minimal — only add when a feature needs it (current set: Starscream, Yams, MarkdownUI). GRDB was dropped in the personal refocus.
 
 ## Where to look for what
 
@@ -138,30 +123,13 @@ Global hotkeys use Carbon `RegisterEventHotKey` so they fire from any frontmost 
 - **Camera-activation detection** → `RTI/Sources/Session/CameraActivityMonitor.swift` (CoreMediaIO `kCMIODevicePropertyDeviceIsRunningSomewhere` listeners; fires on camera on/off)
 - **System audio capture (tap + SCK)** → `RTI/Sources/Audio/CoreAudioTapCapture.swift` (CoreAudio process tap, preferred) + `RTI/Sources/Audio/SystemAudioCapture.swift` (ScreenCaptureKit fallback); both conform to `SystemAudioCapturing`
 - **Echo cancellation** → `RTI/Sources/Audio/AudioCaptureManager.swift` (`setVoiceProcessingEnabled` on the input node, before format read)
-- **Vocabulary biasing (Soniox `context.terms`)** → `RTI/Sources/Session/DossierVocabulary.swift` (past entity names) → `SonioxConfigMessage.context`
-- **Per-session Q&A** → `RTI/Sources/Session/SessionQAController.swift` (scoped to one session's transcript + summary)
-- **Cross-corpus Q&A ("Ask Your Corpus")** → `RTI/Sources/Session/AskCorpusController.swift` + `RTI/Sources/UI/SessionsControl/AskCorpusView.swift`
-- **Chat history persistence** → `RTI/Sources/Session/AskCorpusHistoryStore.swift` (JSON files under `~/Library/Application Support/RTI/ask-corpus/`)
-- **Drag-to-import (audio / video / folder)** → `RTI/Sources/Session/SessionImporter.swift` (queueing + AVAssetReader transcode + Soniox file-mode + corpus write)
-- **Live transcript-driven panels** → `RTI/Sources/Panels/PanelSpawner.swift` + `PanelKind.swift` (chat tool routes here)
-- **Lexical search across corpus** → `RTI/Sources/Session/SessionSearch.swift` (SQLite FTS5, BM25-ranked, prefix tokens AND-ed)
+- **Live session lifecycle (start/stop, in-memory transcript)** → `RTI/Sources/Session/SessionCoordinator.swift` + `RTI/Sources/Session/TranscriptPipeline.swift`
+- **Live chat / assist / recap** → `RTI/Sources/LLM/LLMController.swift`
+- **Live transcript-driven panels (counter)** → `RTI/Sources/Panels/PanelSpawner.swift` + `PanelKind.swift` (the `spawn_panel` chat tool routes here)
+- **Chat tools** → `RTI/Sources/LLM/LLMTools.swift` (`capture_screen`, `spawn_panel`)
 - **Prompt assembly** → `RTI/Sources/LLM/PromptBuilder.swift` (PromptContext + system message ordering; used by LLMController)
-- **Analysis guard** → `RTI/Sources/Analysis/AnalysisBase.swift` (protocol extension; `isGenerating` guard shared by analysis controllers)
+- **Modes (JSON-backed prompt presets)** → `RTI/Sources/Modes/ModeStore.swift` + `Mode.swift`
 - **Command definitions** → `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift` (CommandBuilder with section methods; consumed by palette, menu, hotkeys)
+- **Live transcript / Settings / Logs window** → `RTI/Sources/UI/SessionsControl/SessionsControlView.swift`
 - **Manual verification steps** → `RTI/VERIFY.md`
-- **Why a feature looks the way it does** → the matching `RTI/POC*-findings.md`
 - **Regenerate the Xcode project after editing `project.yml`** → `cd RTI && xcodegen generate`
-
-## Notes on the corpus Q&A pipeline (post-POC additions)
-
-Ask Your Corpus is retrieval-augmented generation over **hybrid retrieval** (BM25 + dense embeddings, RRF-merged). `AskCorpusController.retrieve` and `ProjectQAController.retrieve` both call `HybridRetriever.retrieve` (`RTI/Sources/Corpus/HybridRetriever.swift`), which pulls top-20 from `SessionSearch.search` (SQLite FTS5) and top-20 sessions from cosine over `corpus_embeddings`, then fuses by `1/(60+rank)`. The top 6 sessions plus the 4 most-recent (deduped, capped at 8) get title + date + summary (≤1500 chars) + best-snippet packaged for the LLM. One streaming call with prior-turn memory (last 6 turns) and citation-aware system prompt produces the answer; the controller then parses `[Session Title]` from the response to surface only actually-cited sessions as clickable chips. Conversations auto-persist to `~/Library/Application Support/RTI/ask-corpus/` after each completed turn.
-
-**Dense index.** `corpus_embeddings(session_id, chunk_idx, text, vector, indexed_at)` — one row per chunk, `vector` is L2-normalised Float32 BLOB. Cosine is a plain dot product. Brute-force scan over every row at query time — at our scale (<50k chunks) this is ~5 ms, no ANN structure needed.
-
-**Embedder (v1):** Apple's built-in `NLEmbedding.sentenceEmbedding(for: .english)` via `RTI/Sources/Corpus/Embedder.swift` — 512-dim, zero deps, zero install friction. Word2vec-style and lower quality than modern transformer embeddings, but already a large recall jump over lexical-only (verified: `"luxury cars"` → `"Maserati"` session matches in practice). v2 upgrade path (bge-small via MLX + swift-transformers) is sketched in `docs/specs/embeddings.md`; the swap is confined to `Embedder.swift`. Note: MLX + swift-transformers were removed in beta7 (with the screenshot VLM), so a v2 embedder would reintroduce them.
-
-**Chunking.** `ChunkPolicy.split` is paragraph-greedy with ~500-word windows and 60-word overlap. Summary and transcript are indexed separately so the snippet text in the DB matches what the model embedded.
-
-**Indexing triggers.** `CorpusIndexer.reindex` runs alongside `CorpusFTSReindexer.reindex` at every call site (session finalise, import, regenerate, launch recovery, Settings rebuild). On first launch after the v17 migration, `CorpusIndexer.backfillIfEmpty` runs once in the background to populate the dense index from existing markdown. Fallback: if `NLEmbedding` is unavailable or the dense table is empty, `HybridRetriever` silently falls back to FTS-only.
-
-**Diagnostic log.** Every retrieve emits `[corpus] retrieve — fts=X dense=Y denseSessions=Z denseOnly=N ftsOnly=M fused=F used=U`. The number to watch is `denseOnly` — sessions the embedder surfaced that FTS missed entirely. > 0 is the proof embeddings are doing useful work.

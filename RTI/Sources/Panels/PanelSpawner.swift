@@ -29,9 +29,6 @@ enum PanelSpawner {
                 createdAt: Date()
             )
             UserPanelStore.shared.add(panel)
-            if panel.kind == .periodicCards {
-                PeriodicCardsController.shared.registerNewPanel(panel)
-            }
             return "Spawned \(panel.kind.rawValue) panel \"\(panel.displayTitle)\"."
         } catch SpawnError.invalidJSON(let raw) {
             return "Couldn't design a valid panel config — model returned:\n\(raw.prefix(400))"
@@ -58,9 +55,9 @@ enum PanelSpawner {
     /// and we want fast responses so the panel appears within seconds.
     private static func translate(description: String) async throws -> TranslatedConfig {
         let systemPrompt = """
-        You are a translator from natural-language panel descriptions to one of two strict JSON shapes. Return raw JSON only — no prose, no code fences.
+        You are a translator from natural-language panel descriptions to a strict JSON shape. Return raw JSON only — no prose, no code fences.
 
-        Shape A — counter (live keyword/regex match against the transcript):
+        counter (live keyword/regex match against the transcript):
         { "kind": "counter",
           "label": "Short display label (≤30 chars)",
           "match": { "type": "keyword", "value": "exact term", "caseInsensitive": true } }
@@ -69,15 +66,8 @@ enum PanelSpawner {
           "label": "Short label",
           "match": { "type": "regex", "pattern": "valid NSRegularExpression pattern" } }
 
-        Shape B — periodic_cards (LLM re-runs a prompt every interval and appends cards):
-        { "kind": "periodic_cards",
-          "label": "Short display label",
-          "prompt": "Concise instruction for the analyst LLM. Tell it the structure of the cards it should produce.",
-          "intervalSeconds": 120 }
-
         Constraints:
-        - intervalSeconds must be between 60 and 600.
-        - For counter: prefer "keyword" unless the user asks for a pattern.
+        - Prefer "keyword" unless the user asks for a pattern.
         - Always return JSON. Never apologise. Never wrap in markdown.
         """
 
@@ -117,10 +107,7 @@ enum PanelSpawner {
         switch kind {
         case .counter:
             let cfg = try JSONDecoder().decode(CounterConfig.self, from: data)
-            return TranslatedConfig(kind: kind, payload: PanelConfig(counter: cfg, periodicCards: nil))
-        case .periodicCards:
-            let cfg = try JSONDecoder().decode(PeriodicCardsConfig.self, from: data)
-            return TranslatedConfig(kind: kind, payload: PanelConfig(counter: nil, periodicCards: cfg))
+            return TranslatedConfig(kind: kind, payload: PanelConfig(counter: cfg))
         }
     }
 }

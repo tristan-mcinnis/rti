@@ -7,7 +7,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private let menu = MenuCoordinator()
     private let hotkeys = HotkeyCoordinator()
     private var sessionObservationTask: Task<Void, Never>?
-    private var corpusWatcher: CorpusWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard ensureSingleInstance() else { return }
@@ -29,26 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
 
     @MainActor private func continueLaunch() {
-        SessionCoordinator.shared.bootstrapChatSession()
-        SessionCoordinator.shared.pruneOldSessions(days: 30)
-        SessionCoordinator.registerAnalysisTasks()
         _ = ModeStore.shared
-        LLMController.shared.loadHistoryForCurrentSession()
-        CorpusManager.shared.recoverOrphans()
-        CorpusIndexer.backfillIfEmpty(
-            from: CorpusManager.shared.corpusDirectory,
-            in: RTIDatabase.shared.pool
-        )
-
-        // Keep the FTS + dense indexes in sync with on-disk markdown when
-        // anything outside the host writes to the corpus directory — chiefly
-        // `rti-mcp append_to_session`, but also manual edits.
-        let watcher = CorpusWatcher(
-            directory: CorpusManager.shared.corpusDirectory,
-            dbPool: RTIDatabase.shared.pool
-        )
-        watcher.start()
-        corpusWatcher = watcher
 
         // Clear any phantom system-audio aggregate devices left by a prior
         // crash before the first tap-based capture runs.
@@ -79,8 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CommandRegistry.shared.replaceAll(commands)
 
         // Menu: dynamic state providers for items whose titles change.
-        menu.onRecentSessionSelected = { [weak self] id in self?.windows.openSessionDetail(for: id) }
-        menu.recentSessionsProvider = { SessionCoordinator.shared.recentSessions(limit: 10) }
         menu.currentSessionIdProvider = { SessionCoordinator.shared.currentSessionId }
         menu.isRunningProvider = { SessionCoordinator.shared.isRunning }
         menu.smartModeProvider = { LLMController.shared.smartMode }
@@ -134,15 +112,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     static func confirmThenClearChat() {
         let alert = NSAlert()
         alert.messageText = "Clear current chat?"
-        alert.informativeText = "This deletes the chat messages for the current session and dismisses any open auxiliary panels (notes, dossiers, spawned counters/cards). The transcript and audio recording are not affected."
+        alert.informativeText = "This clears the chat messages and dismisses any open spawned counter panels. The live transcript is not affected."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Clear")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn {
             LLMController.shared.clear()
-            NotesGenerationController.shared.clear()
-            DossierController.shared.clear()
-            ThemesController.shared.clear()
             UserPanelStore.shared.removeAll()
             NotificationCenter.default.post(name: .rtiHideAuxiliaryPanels, object: nil)
         }

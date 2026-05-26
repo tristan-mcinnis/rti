@@ -151,7 +151,6 @@ struct TopWidgetView: View {
         RegistryMenuSection(section: .session)
         Divider()
         RegistryMenuSection(section: .navigation)
-        recentSessionsMenu
         Divider()
         RegistryMenuSection(section: .actions)
         Divider()
@@ -176,33 +175,6 @@ struct TopWidgetView: View {
                         Label(mode.name, systemImage: "checkmark")
                     } else {
                         Text(mode.name)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Recent sessions submenu. Lazy-loads the last 10 the first time the
-    /// user opens the context menu (and on subsequent opens; SwiftUI rebuilds
-    /// the menu each time, so this is cheap).
-    @ViewBuilder
-    private var recentSessionsMenu: some View {
-        Menu("Recent Sessions") {
-            let sessions = SessionCoordinator.shared.recentSessions(limit: 10)
-            if sessions.isEmpty {
-                Button("No sessions yet") {}.disabled(true)
-            } else {
-                let currentId = coordinator.currentSessionId
-                let fmt: DateFormatter = {
-                    let f = DateFormatter()
-                    f.dateStyle = .short
-                    f.timeStyle = .short
-                    return f
-                }()
-                ForEach(sessions, id: \.id) { s in
-                    let label = "\(fmt.string(from: s.startedAt))\(s.id == currentId ? "  •" : "")"
-                    Button(label) {
-                        NotificationCenter.default.post(name: .openSessionDetail, object: s.id)
                     }
                 }
             }

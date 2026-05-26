@@ -70,15 +70,12 @@ final class UserPanelWindowController: PanelWindowControlling {
         switch panel.kind {
         case .counter:
             CounterPanelView(panel: panel)
-        case .periodicCards:
-            PeriodicCardsView(panel: panel)
         }
     }
 
     private static func defaultSize(for kind: PanelKind) -> NSSize {
         switch kind {
-        case .counter:       return NSSize(width: 220, height: 150)
-        case .periodicCards: return NSSize(width: 360, height: 420)
+        case .counter: return NSSize(width: 220, height: 150)
         }
     }
 

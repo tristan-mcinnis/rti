@@ -49,17 +49,6 @@ enum CommandBuilder {
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_R),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
-            RTICommand(
-                id: "session.detail",
-                title: "View Session Detail",
-                keywords: ["view", "transcript"],
-                isAvailable: { session.currentSessionId != nil },
-                perform: { [weak windows] in
-                    guard let id = session.currentSessionId else { return }
-                    windows?.openSessionDetail(for: id)
-                },
-                menuSection: .session
             )
         ]
     }
@@ -88,16 +77,6 @@ enum CommandBuilder {
                 menuSection: .navigation,
                 hotkeyKeyCode: UInt32(kVK_ANSI_T),
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
-            ),
-            RTICommand(
-                id: "view.history",
-                title: "Sessions…  ⌘⇧S",
-                subtitle: "⌘⇧S",
-                keywords: ["past", "old", "meetings", "history", "home"],
-                perform: { [weak windows] in windows?.showSessionHistory() },
-                menuSection: .navigation,
-                hotkeyKeyCode: UInt32(kVK_ANSI_S),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
             ),
             RTICommand(
                 id: "view.command_palette",
@@ -195,38 +174,6 @@ enum CommandBuilder {
                 menuSection: .panels,
                 hotkeyKeyCode: UInt32(kVK_ANSI_B),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
-            RTICommand(
-                id: "panel.notes.toggle",
-                title: "Toggle Notes Panel  ⌘⇧N",
-                keywords: ["notes"],
-                perform: { [weak windows] in windows?.toggle(.notes) },
-                menuSection: .panels,
-                hotkeyKeyCode: UInt32(kVK_ANSI_N),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
-            RTICommand(
-                id: "panel.dossiers.toggle",
-                title: "Toggle Dossiers Panel  ⌘⇧D",
-                keywords: ["dossiers", "entities"],
-                perform: { [weak windows] in windows?.toggle(.dossiers) },
-                menuSection: .panels,
-                hotkeyKeyCode: UInt32(kVK_ANSI_D),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
-            RTICommand(
-                id: "panel.themes.toggle",
-                title: "Toggle Themes Panel",
-                keywords: ["themes"],
-                perform: { [weak windows] in windows?.toggle(.themes) },
-                menuSection: .panels
-            ),
-            RTICommand(
-                id: "panel.guide.toggle",
-                title: "Toggle Discussion Guide",
-                keywords: ["guide", "discussion"],
-                perform: { [weak windows] in windows?.toggle(.discussionGuide) },
-                menuSection: .panels
             ),
             RTICommand(
                 id: "panel.translation.toggle",

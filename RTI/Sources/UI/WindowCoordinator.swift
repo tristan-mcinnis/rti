@@ -41,21 +41,12 @@ final class WindowCoordinator {
 
         let actions = TopWidgetWindowController.Actions(
             onOpenChat: { [weak self] in self?.showOverlay() },
-            onOpenSessionHome: { [weak self] in self?.showSessionsControl(tab: .sessions) },
             onToggleOverlay: { [weak self] in self?.toggleOverlay() },
             onCaptureScreen: { ScreenshotManager.shared.captureAndAttach() },
             onToggleInvisibility: { [weak self] in self?.toggleInvisibility() },
             onOpenSettings: onOpenSettings,
             onShowLiveTranscript: { [weak self] in self?.showSessionsControl(tab: .liveTranscript) },
             onShowLogs: { [weak self] in self?.showSessionsControl(tab: .logs) },
-            onShowSessionHistory: { [weak self] in self?.showSessionsControl(tab: .sessions) },
-            onOpenCurrentSessionDetail: { [weak self] in
-                if let id = SessionCoordinator.shared.currentSessionId {
-                    self?.openSessionDetail(for: id)
-                } else {
-                    self?.showSessionsControl(tab: .sessions)
-                }
-            },
             onClearChat: { NotificationCenter.default.post(name: .rtiClearChat, object: nil) },
             onShowShortcuts: { [weak self] in self?.showShortcuts() },
             onShowAbout: { [weak self] in self?.showAbout() },
@@ -161,17 +152,11 @@ final class WindowCoordinator {
         sessionsControl?.show(tab: tab)
     }
 
-    func showSessionInSessionsControl(id: String) {
-        sessionsControl?.show(sessionId: id)
-    }
-
     // MARK: - Legacy convenience wrappers used by AppDelegate / menu
 
     func showDebugConsole() { showSessionsControl(tab: .liveTranscript) }
     func toggleDebugConsole() { showSessionsControl(tab: .liveTranscript) }
     func openSettings() { showSessionsControl(tab: .settings) }
-    func showSessionHistory() { showSessionsControl(tab: .sessions) }
-    func openSessionDetail(for id: String) { showSessionInSessionsControl(id: id) }
 
     // MARK: - Shortcuts
 

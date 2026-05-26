@@ -1,13 +1,11 @@
 import SwiftUI
 
-/// Tabbed hub view that hosts Live Transcript, Sessions (with push-nav to
-/// session detail), Settings, and Logs — replacing five separate windows.
+/// Tabbed hub view that hosts Live Transcript, Settings, and Logs. Ephemeral
+/// build: there's no session library / corpus, so the only "Now" surface is
+/// the live transcript.
 struct SessionsControlView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case liveTranscript = "Live Transcript"
-        case sessions = "Sessions"
-        case projects = "Projects"
-        case askCorpus = "Ask"
         case settings = "Settings"
         case logs = "Logs"
 
@@ -16,22 +14,13 @@ struct SessionsControlView: View {
         var icon: String {
             switch self {
             case .liveTranscript: return "text.bubble.fill"
-            case .sessions:      return "list.bullet.rectangle"
-            case .projects:      return "folder.fill"
-            case .askCorpus:     return "sparkles"
-            case .settings:      return "gearshape.fill"
-            case .logs:          return "doc.text.magnifyingglass"
+            case .settings:       return "gearshape.fill"
+            case .logs:           return "doc.text.magnifyingglass"
             }
         }
     }
 
     @State private var selectedTab: Tab
-    /// Non-nil when the Sessions tab has pushed into a session detail view.
-    @State private var sessionNavId: String?
-    /// Optional FTS query the user came from (palette → session). Forwarded
-    /// to `SessionDetailView` so it can highlight matched terms in the
-    /// transcript and auto-scroll to the first hit.
-    @State private var sessionHighlightQuery: String?
 
     init(initialTab: Tab = .liveTranscript) {
         _selectedTab = State(initialValue: initialTab)
@@ -42,11 +31,6 @@ struct SessionsControlView: View {
             List(selection: $selectedTab) {
                 Section("Now") {
                     sidebarRow(.liveTranscript)
-                }
-                Section("Library") {
-                    sidebarRow(.sessions)
-                    sidebarRow(.projects)
-                    sidebarRow(.askCorpus)
                 }
                 Section("App") {
                     sidebarRow(.settings)
@@ -65,17 +49,6 @@ struct SessionsControlView: View {
             ToolbarItem(placement: .principal) {
                 CommandPaletteSearchButton()
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openSessionDetail)) { notif in
-            guard let parsed = SessionDetailRequest.extract(from: notif.object) else { return }
-            selectedTab = .sessions
-            sessionNavId = parsed.id
-            sessionHighlightQuery = parsed.query
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .rtiShowSessionHistory)) { _ in
-            selectedTab = .sessions
-            sessionNavId = nil
-            sessionHighlightQuery = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiShowLiveTranscript)) { _ in
             selectedTab = .liveTranscript
@@ -100,22 +73,6 @@ struct SessionsControlView: View {
         case .liveTranscript:
             DebugConsoleView()
                 .environment(SessionCoordinator.shared)
-
-        case .sessions:
-            if let sessionId = sessionNavId {
-                SessionDetailView(
-                    sessionId: sessionId,
-                    highlightQuery: sessionHighlightQuery
-                )
-            } else {
-                SessionHistoryView()
-            }
-
-        case .projects:
-            ProjectsView()
-
-        case .askCorpus:
-            AskCorpusView()
 
         case .settings:
             SettingsView(onClose: nil)

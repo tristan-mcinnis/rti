@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 import Observation
 
 @Observable @MainActor
@@ -18,24 +17,15 @@ final class ModeStore {
     }
 
     private static let activeKey = "rti.modes.activeId"
-    private static let seedFlag = "rti.modes.seededV1"
-    private static let upgradeV2Flag = "rti.modes.upgradedV2"
 
     private init() {
-        seedBuiltinsIfNeeded()
-        upgradeBuiltinPromptsIfNeeded()
-        self.activeModeId = UserDefaults.standard.string(forKey: Self.activeKey)
-        reload()
-    }
-
-    func reload() {
-        do {
-            modes = try RTIDatabase.shared.pool.read { db in
-                try Mode.order(Column("created_at")).fetchAll(db)
-            }
-        } catch {
-            RTILog.log("ModeStore reload failed: \(error)", category: "modes")
-        }
+        modes = Self.loadFromDisk() ?? Self.builtinSeeds()
+        // Refresh built-in prompts in place each launch so prompt edits ship
+        // without a migration; user-added modes are untouched.
+        upgradeBuiltinPrompts()
+        persist()
+        let stored = UserDefaults.standard.string(forKey: Self.activeKey)
+        self.activeModeId = stored ?? "builtin.meeting"
     }
 
     var activeMode: Mode? {
@@ -43,24 +33,19 @@ final class ModeStore {
         return modes.first { $0.id == id }
     }
 
-    func update(id: String, name: String, systemPrompt: String, referenceText: String?) {
-        do {
-            try RTIDatabase.shared.pool.write { db in
-                if var m = try Mode.fetchOne(db, key: id) {
-                    m.name = name
-                    m.systemPrompt = systemPrompt
-                    m.referenceText = referenceText?.isEmpty == true ? nil : referenceText
-                    try m.update(db)
-                }
-            }
-            reload()
-        } catch {
-            RTILog.log("ModeStore update failed: \(error)", category: "modes")
-        }
+    func reload() {
+        if let loaded = Self.loadFromDisk() { modes = loaded }
     }
 
-    /// Insert a new user-defined mode. Returns the new id, or nil if the
-    /// write failed.
+    func update(id: String, name: String, systemPrompt: String, referenceText: String?) {
+        guard let idx = modes.firstIndex(where: { $0.id == id }) else { return }
+        modes[idx].name = name
+        modes[idx].systemPrompt = systemPrompt
+        modes[idx].referenceText = (referenceText?.isEmpty == true) ? nil : referenceText
+        persist()
+    }
+
+    /// Insert a new user-defined mode. Returns the new id, or nil if invalid.
     @discardableResult
     func addMode(name: String, systemPrompt: String) -> String? {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -73,93 +58,76 @@ final class ModeStore {
             createdAt: Date(),
             referenceText: nil
         )
-        do {
-            try RTIDatabase.shared.pool.write { db in try m.insert(db) }
-            reload()
-            return m.id
-        } catch {
-            RTILog.log("ModeStore add failed: \(error)", category: "modes")
-            return nil
-        }
+        modes.append(m)
+        persist()
+        return m.id
     }
 
-    /// Delete a non-builtin mode. Built-in modes are protected to keep the
-    /// seed set always available. If the deleted mode was active, fall
-    /// back to the meeting builtin.
+    /// Delete a non-builtin mode. Built-in modes are protected. If the deleted
+    /// mode was active, fall back to the meeting builtin.
     func deleteMode(id: String) {
         guard let mode = modes.first(where: { $0.id == id }), !mode.isBuiltin else { return }
+        modes.removeAll { $0.id == id }
+        if activeModeId == id { activeModeId = "builtin.meeting" }
+        persist()
+    }
+
+    // MARK: - Persistence
+
+    private static var fileURL: URL? {
+        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let rti = dir.appendingPathComponent("RTI", isDirectory: true)
+        try? FileManager.default.createDirectory(at: rti, withIntermediateDirectories: true)
+        return rti.appendingPathComponent("modes.json")
+    }
+
+    private static func loadFromDisk() -> [Mode]? {
+        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode([Mode].self, from: data)
+    }
+
+    private func persist() {
+        guard let url = Self.fileURL else { return }
         do {
-            _ = try RTIDatabase.shared.pool.write { db in
-                try Mode.deleteOne(db, key: id)
-            }
-            if activeModeId == id { activeModeId = "builtin.meeting" }
-            reload()
+            let data = try JSONEncoder().encode(modes)
+            try data.write(to: url, options: .atomic)
         } catch {
-            RTILog.log("ModeStore delete failed: \(error)", category: "modes")
+            RTILog.log("ModeStore persist failed: \(error)", category: "modes")
         }
     }
 
-    private func seedBuiltinsIfNeeded() {
-        let defaults = UserDefaults.standard
-        if defaults.bool(forKey: Self.seedFlag) { return }
+    private func upgradeBuiltinPrompts() {
+        let upgrades: [String: String] = [
+            "builtin.meeting": Self.meetingPrompt,
+            "builtin.interview": Self.interviewPrompt,
+            "builtin.coding": Self.codingPrompt,
+        ]
+        // Ensure any newly-shipped builtins exist, then refresh their prompts.
+        let existing = Set(modes.map(\.id))
+        for seed in Self.builtinSeeds() where !existing.contains(seed.id) {
+            modes.append(seed)
+        }
+        for idx in modes.indices where modes[idx].isBuiltin {
+            if let prompt = upgrades[modes[idx].id] {
+                modes[idx].systemPrompt = prompt
+            }
+        }
+    }
 
+    private static func builtinSeeds() -> [Mode] {
         let now = Date()
-        let seeds: [Mode] = [
-            Mode(id: "builtin.meeting", name: "Meeting",
-                 systemPrompt: Self.meetingPrompt,
+        return [
+            Mode(id: "builtin.meeting", name: "Meeting", systemPrompt: meetingPrompt,
                  isBuiltin: true, createdAt: now, referenceText: nil),
-            Mode(id: "builtin.interview", name: "Interview",
-                 systemPrompt: Self.interviewPrompt,
+            Mode(id: "builtin.interview", name: "Interview", systemPrompt: interviewPrompt,
                  isBuiltin: true, createdAt: now, referenceText: nil),
-            Mode(id: "builtin.coding", name: "Coding",
-                 systemPrompt: Self.codingPrompt,
+            Mode(id: "builtin.coding", name: "Coding", systemPrompt: codingPrompt,
                  isBuiltin: true, createdAt: now, referenceText: nil),
-            Mode(id: "builtin.custom", name: "Custom",
-                 systemPrompt: Self.customPrompt,
+            Mode(id: "builtin.custom", name: "Custom", systemPrompt: customPrompt,
                  isBuiltin: false, createdAt: now, referenceText: nil),
         ]
-        do {
-            try RTIDatabase.shared.pool.write { db in
-                for m in seeds {
-                    if try Mode.fetchOne(db, key: m.id) == nil {
-                        try m.insert(db)
-                    }
-                }
-            }
-            defaults.set(true, forKey: Self.seedFlag)
-            defaults.set(true, forKey: Self.upgradeV2Flag)
-            if defaults.string(forKey: Self.activeKey) == nil {
-                defaults.set("builtin.meeting", forKey: Self.activeKey)
-            }
-        } catch {
-            RTILog.log("ModeStore seed failed: \(error)", category: "modes")
-        }
-    }
-
-    /// Rewrite the built-in mode prompts in place on existing installs.
-    /// Runs once per prompt-content revision; user-added modes are untouched.
-    private func upgradeBuiltinPromptsIfNeeded() {
-        let defaults = UserDefaults.standard
-        if defaults.bool(forKey: Self.upgradeV2Flag) { return }
-
-        let upgrades: [(id: String, prompt: String)] = [
-            ("builtin.meeting", Self.meetingPrompt),
-            ("builtin.interview", Self.interviewPrompt),
-            ("builtin.coding", Self.codingPrompt),
-        ]
-        do {
-            try RTIDatabase.shared.pool.write { db in
-                for (id, prompt) in upgrades {
-                    if var m = try Mode.fetchOne(db, key: id), m.isBuiltin {
-                        m.systemPrompt = prompt
-                        try m.update(db)
-                    }
-                }
-            }
-            defaults.set(true, forKey: Self.upgradeV2Flag)
-        } catch {
-            RTILog.log("ModeStore upgradeV2 failed: \(error)", category: "modes")
-        }
     }
 
     // MARK: - Built-in prompts

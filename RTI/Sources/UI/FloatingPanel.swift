@@ -6,20 +6,12 @@ import SwiftUI
 /// (e.g. "hide every panel on `rtiHideAuxiliaryPanels`") without
 /// hand-rolling the same 5 lines for each kind.
 enum FloatingPanelID: CaseIterable {
-    case notes
-    case dossiers
-    case themes
-    case discussionGuide
     case translation
 
     @MainActor
     var spec: FloatingPanelSpec {
         switch self {
-        case .notes:           return .notes
-        case .dossiers:        return .dossiers
-        case .themes:          return .themes
-        case .discussionGuide: return .discussionGuide
-        case .translation:     return .translation
+        case .translation: return .translation
         }
     }
 }
@@ -52,54 +44,6 @@ struct FloatingPanelSpec {
 
 @MainActor
 extension FloatingPanelSpec {
-    static let notes = FloatingPanelSpec(
-        savedFrameKey: "rti.notesPanel.savedFrame.v2",
-        opacityKey: notesOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: floatingPanelDefaultSize,
-        panelID: .notes,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.minX + 16, y: visible.maxY - size.height - 16 - 80)
-        },
-        makeRootView: { AnyView(NotesPanelView()) }
-    )
-
-    static let dossiers = FloatingPanelSpec(
-        savedFrameKey: "rti.dossiersPanel.savedFrame.v2",
-        opacityKey: dossiersOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: floatingPanelDefaultSize,
-        panelID: .dossiers,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 16 - 80)
-        },
-        makeRootView: { AnyView(DossiersPanelView()) }
-    )
-
-    static let themes = FloatingPanelSpec(
-        savedFrameKey: "rti.themesPanel.savedFrame.v2",
-        opacityKey: themesOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: floatingPanelDefaultSize,
-        panelID: .themes,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 16 - 80)
-        },
-        makeRootView: { AnyView(ThemesPanelView()) }
-    )
-
-    static let discussionGuide = FloatingPanelSpec(
-        savedFrameKey: "rti.guidePanel.savedFrame.v2",
-        opacityKey: guideOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: floatingPanelDefaultSize,
-        panelID: .discussionGuide,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.minX + 16, y: visible.maxY - size.height - 16 - 220)
-        },
-        makeRootView: { AnyView(DiscussionGuidePanelView()) }
-    )
-
     static let translation = FloatingPanelSpec(
         savedFrameKey: "rti.translationPanel.savedFrame.v2",
         opacityKey: translationOpacityKey,

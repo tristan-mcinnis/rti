@@ -405,8 +405,6 @@ private struct DiagnosticsSection: View {
             Text("Diagnostics")
                 .font(.system(size: 13, weight: .medium))
             diagRow("Version", "RTI \(version) (\(build))")
-            diagRow("Corpus", CorpusManager.shared.corpusDirectory.path)
-            diagRow("Database", databasePath)
             diagRow("Provider", "\(LLMProviders.active.displayName) · \(LLMProviders.active.model)")
             HStack {
                 Spacer()
@@ -432,11 +430,6 @@ private struct DiagnosticsSection: View {
         }
     }
 
-    private var databasePath: String {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        return base?.appendingPathComponent("RTI/rti.db").path ?? "(unknown)"
-    }
-
     private func copyDiagnostics() {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
@@ -445,8 +438,6 @@ private struct DiagnosticsSection: View {
         let lines = [
             "RTI \(version) (\(build))",
             "Platform: \(ProcessInfo.processInfo.operatingSystemVersionString)",
-            "Corpus: \(CorpusManager.shared.corpusDirectory.path)",
-            "Database: \(databasePath)",
             "Provider: \(provider.displayName) · \(provider.model) · \(provider.baseURL.absoluteString)"
         ]
         NSPasteboard.general.clearContents()

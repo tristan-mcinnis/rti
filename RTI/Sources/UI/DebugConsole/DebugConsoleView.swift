@@ -4,7 +4,6 @@ import SwiftUI
 struct DebugConsoleView: View {
     @Environment(SessionCoordinator.self) var coordinator: SessionCoordinator
     private let modes = ModeStore.shared
-    private let projects = ProjectStore.shared
     @State private var elapsed: TimeInterval = 0
     @State private var timer: Timer?
     @State private var copiedFlash: String?
@@ -18,11 +17,6 @@ struct DebugConsoleView: View {
                 .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
             Divider()
             modeBar
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-                .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
-            Divider()
-            projectBar
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
                 .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
@@ -156,46 +150,6 @@ struct DebugConsoleView: View {
                 Text(active.name)
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    // MARK: - Project bar
-
-    /// Lets the user attach the live session to a project. When set, every
-    /// LLM turn this session produces gets the project's instructions
-    /// prepended to the system prompt, the assistant bubble shows a small
-    /// "Project: X" tag, and the project name is recorded in the session's
-    /// markdown frontmatter at render time.
-    private var projectBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "folder")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text("Project")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            Picker("", selection: Binding(
-                get: { coordinator.activeProjectId ?? "" },
-                set: { coordinator.setActiveProject($0.isEmpty ? nil : $0) }
-            )) {
-                Text("None").tag("")
-                ForEach(projects.projects) { project in
-                    Text(project.name).tag(project.id)
-                }
-            }
-            .pickerStyle(.menu)
-            .controlSize(.small)
-            .frame(maxWidth: 220)
-            Spacer()
-            if let pid = coordinator.activeProjectId,
-               let project = projects.projects.first(where: { $0.id == pid })
-            {
-                let instr = project.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
-                Text(instr.isEmpty ? "No instructions set" : "\(instr.count) chars of instructions")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .help(instr.isEmpty ? "Edit the project to add instructions" : instr)
             }
         }
     }

@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 import Observation
 
 struct ChatEntry: Identifiable, Equatable {
@@ -111,53 +110,9 @@ final class LLMController {
         lastErrorIsAuth = false
     }
 
-    /// Destructive: in-memory reset PLUS deletion of chat_messages for the
-    /// current session.
+    /// Clear the in-memory chat. Ephemeral build: there's no persisted history.
     func clear() {
         resetMemory()
-        SessionCoordinator.shared.clearCurrentSessionMessages()
-    }
-
-    func loadHistoryForCurrentSession() {
-        guard let sid = SessionCoordinator.shared.currentSessionId else { return }
-        do {
-            let rows = try RTIDatabase.shared.pool.read { db in
-                try ChatMessage
-                    .filter(Column("session_id") == sid)
-                    .order(Column("created_at"))
-                    .fetchAll(db)
-            }
-            entries = rows.compactMap { row in
-                guard row.role == "user" || row.role == "assistant" else { return nil }
-                return ChatEntry(
-                    role: row.role,
-                    text: row.content,
-                    action: row.action,
-                    contextUsed: row.hadTranscriptContext,
-                    screenContextUsed: row.hadScreenContext
-                )
-            }
-        } catch {
-            RTILog.log("loadHistoryForCurrentSession failed: \(error)", category: "llm")
-        }
-    }
-
-    private func persistMessage(sessionId: String, role: String, action: String?, content: String, hadTranscript: Bool, hadScreen: Bool) {
-        let msg = ChatMessage(
-            id: UUID().uuidString,
-            sessionId: sessionId,
-            role: role,
-            action: action,
-            content: content,
-            hadScreenContext: hadScreen,
-            hadTranscriptContext: hadTranscript,
-            createdAt: Date()
-        )
-        do {
-            try RTIDatabase.shared.pool.write { db in try msg.insert(db) }
-        } catch {
-            RTILog.log("persist chat_message failed: \(error)", category: "llm")
-        }
     }
 
     private func performSend(userInput: String, action: String) {
@@ -178,11 +133,6 @@ final class LLMController {
 
         entries.append(ChatEntry(role: "user", text: userInput, action: action, contextUsed: contextUsed, screenContextUsed: manualScreenUsed))
 
-        let persistSessionId = SessionCoordinator.shared.currentSessionId
-        if let persistSessionId {
-            persistMessage(sessionId: persistSessionId, role: "user", action: action, content: userInput, hadTranscript: contextUsed, hadScreen: manualScreenUsed)
-        }
-
         let activeMode = ModeStore.shared.activeMode
         let basePrompt: String = {
             if let prompt = activeMode?.systemPrompt,
@@ -192,24 +142,11 @@ final class LLMController {
             return Self.systemPrompt
         }()
 
-        // Resolve active project for prompt context.
-        var appliedProjectName: String? = nil
-        var projectInstructions: String? = nil
-        if let pid = SessionCoordinator.shared.activeProjectId,
-           let project = ProjectStore.shared.projects.first(where: { $0.id == pid }) {
-            appliedProjectName = project.name
-            let instr = project.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !instr.isEmpty {
-                projectInstructions = instr
-                RTILog.log("turn — applying project=\"\(project.name)\" instructions (\(instr.count) chars)", category: "projects")
-            }
-        }
-
         let promptContext = PromptContext(
             baseSystemPrompt: basePrompt,
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
-            projectName: appliedProjectName,
-            projectInstructions: projectInstructions,
+            projectName: nil,
+            projectInstructions: nil,
             referenceText: activeMode?.referenceText,
             referenceModeName: activeMode?.name,
             screenContext: manualScreenContext
@@ -218,7 +155,7 @@ final class LLMController {
         var apiMessages = PromptBuilder.buildSystemMessages(context: promptContext)
         apiMessages.append(contentsOf: PromptBuilder.buildConversationMessages(entries: entries, fullContent: fullContent))
 
-        let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false, appliedProjectName: appliedProjectName)
+        let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false)
         streamingEntryID = assistantEntry.id
         entries.append(assistantEntry)
 
@@ -251,7 +188,7 @@ final class LLMController {
                         case .toolStatusDone:
                             self.toolStatus = nil
                         case .done:
-                            self.finalizeAssistantTurn(streamingEntryID: thisEntryID, persistSessionId: persistSessionId)
+                            self.finalizeAssistantTurn(streamingEntryID: thisEntryID)
                         case .error(let message, let isAuth):
                             guard self.streamingEntryID == thisEntryID else { return }
                             self.lastError = message
@@ -270,20 +207,13 @@ final class LLMController {
         }
     }
 
-    private func finalizeAssistantTurn(streamingEntryID thisEntryID: UUID, persistSessionId: String?) {
+    private func finalizeAssistantTurn(streamingEntryID thisEntryID: UUID) {
         guard streamingEntryID == thisEntryID else { return }
         streaming = false
         reasoning = false
         toolStatus = nil
         pruneTrailingEmptyAssistant()
         streamingEntryID = nil
-
-        let finalSessionId = SessionCoordinator.shared.currentSessionId ?? persistSessionId
-        if let finalSessionId,
-           let finalText = entries.last(where: { $0.id == thisEntryID })?.text,
-           !finalText.isEmpty {
-            persistMessage(sessionId: finalSessionId, role: "assistant", action: nil, content: finalText, hadTranscript: false, hadScreen: false)
-        }
     }
 
     private func pruneTrailingEmptyAssistant() {
@@ -298,14 +228,26 @@ final class LLMController {
         entries[idx].text += delta
     }
 
+    /// Build the recent diarized transcript from the in-memory live entries,
+    /// limited to the trailing context window. Ephemeral build: there's no
+    /// on-disk transcript to read — the live entries are the only source.
     private func recentTranscriptText() -> String {
-        guard let sessionId = SessionCoordinator.shared.currentSessionId,
-              let startedAt = SessionCoordinator.shared.startedAt else {
-            return ""
-        }
-        let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+        let entries = SessionCoordinator.shared.liveEntries
+        guard !entries.isEmpty else { return "" }
+        let maxMs = entries.map(\.startMs).max() ?? 0
         let windowMs = Int(Self.contextWindowSeconds * 1000)
-        let threshold = max(0, elapsedMs - windowMs)
-        return TranscriptContext.text(forSessionId: sessionId, sinceMs: threshold)
+        let threshold = max(0, maxMs - windowMs)
+        let lines = entries
+            .filter { $0.startMs >= threshold }
+            .map { entry -> String in
+                let speaker: String
+                switch entry.speakerId {
+                case "self": speaker = "Me"
+                case "note": speaker = "[my note]"
+                default: speaker = "Them"
+                }
+                return "\(speaker): \(entry.text)"
+            }
+        return lines.joined(separator: "\n")
     }
 }
