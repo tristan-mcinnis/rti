@@ -194,12 +194,24 @@ final class SessionCoordinator {
         // before the WAV is dropped. This is the one intentional break from the
         // ephemeral rule — audio is still discarded, only the text is kept.
         if let startedAt {
+            let transcript = transcriptPipeline.liveEntries
+            let chat = LLMController.shared.entries
             SessionArchive.write(
                 startedAt: startedAt,
                 endedAt: endedAt,
-                transcript: transcriptPipeline.liveEntries,
-                chat: LLMController.shared.entries
+                transcript: transcript,
+                chat: chat
             )
+            // If this session was overlaid on a Sentinel-recorded meeting, also
+            // drop the notes + chat into that meeting's vault record so the
+            // downstream workflow can fold them in.
+            if let linkedMeeting {
+                SessionArchive.writeLinkedMeetingNotes(
+                    meeting: linkedMeeting,
+                    transcript: transcript,
+                    chat: chat
+                )
+            }
         }
 
         // Ephemeral: discard the WAV recording — nothing is kept on disk.

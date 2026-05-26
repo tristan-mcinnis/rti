@@ -60,7 +60,14 @@ enum SessionArchive {
     }
 
     private static func renderChat(startedAt: Date, endedAt: Date, entries: [ChatEntry]) -> String {
-        var lines = ["# Chat", "", header(startedAt: startedAt, endedAt: endedAt), ""]
+        let lines = ["# Chat", "", header(startedAt: startedAt, endedAt: endedAt), ""] + chatBlock(entries)
+        return lines.joined(separator: "\n")
+    }
+
+    /// One Markdown block per chat turn, shared by the local archive and the
+    /// linked-meeting record.
+    private static func chatBlock(_ entries: [ChatEntry]) -> [String] {
+        var lines: [String] = []
         for entry in entries {
             let speaker = entry.role == "assistant" ? "Assistant" : "You"
             var tags: [String] = []
@@ -73,6 +80,58 @@ enum SessionArchive {
             lines.append("")
             lines.append(entry.text)
             lines.append("")
+        }
+        return lines
+    }
+
+    // MARK: - Linked Meeting Sentinel record
+
+    /// When the RTI session was linked to a meeting that Meeting Sentinel is
+    /// recording, drop RTI's notes + chat next to Sentinel's raw transcript so
+    /// the downstream vault/Hermes workflow can fold them in. Keyed by the
+    /// meeting stem; the destination is derived from Sentinel's own audio path
+    /// (`<meetings>/recordings/<stem>.m4a` → `<meetings>/transcripts-raw/`)
+    /// rather than a hardcoded vault location. RTI's rough live transcript is
+    /// deliberately omitted — Sentinel's batch transcript is the record-of-truth.
+    static func writeLinkedMeetingNotes(meeting: SentinelMeeting, transcript: [LiveEntry], chat: [ChatEntry]) {
+        let notes = transcript.filter { $0.speakerId == "note" }
+        guard !notes.isEmpty || !chat.isEmpty else { return }
+
+        let recordingsDir = URL(fileURLWithPath: meeting.audioFilePath).deletingLastPathComponent()
+        let transcriptsRaw = recordingsDir.deletingLastPathComponent()
+            .appendingPathComponent("transcripts-raw", isDirectory: true)
+        // Only write if Sentinel's transcripts dir already exists — never
+        // create stray folders if the path derivation is ever wrong.
+        guard FileManager.default.fileExists(atPath: transcriptsRaw.path) else { return }
+
+        let file = transcriptsRaw.appendingPathComponent("\(meeting.name)-rti.md")
+        let md = renderLinkedMeeting(meeting: meeting, notes: notes, chat: chat)
+        try? md.write(to: file, atomically: true, encoding: .utf8)
+    }
+
+    private static func renderLinkedMeeting(meeting: SentinelMeeting, notes: [LiveEntry], chat: [ChatEntry]) -> String {
+        var lines = [
+            "---",
+            "source: rti-live",
+            "meeting: \(meeting.name)",
+            "generated: \(ISO8601DateFormatter().string(from: Date()))",
+            "---",
+            "",
+            "# RTI live notes — \(meeting.name)",
+            "",
+        ]
+        if !notes.isEmpty {
+            lines.append("## Notes")
+            lines.append("")
+            for note in notes.sorted(by: { $0.startMs < $1.startMs }) {
+                lines.append("- `\(offset(note.startMs))` \(note.text)")
+            }
+            lines.append("")
+        }
+        if !chat.isEmpty {
+            lines.append("## Assistant chat")
+            lines.append("")
+            lines += chatBlock(chat)
         }
         return lines.joined(separator: "\n")
     }
