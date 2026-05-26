@@ -161,6 +161,7 @@ private struct CommandPaletteSearchButton: View {
 @MainActor
 private struct SentinelMeetingBanner: View {
     @State private var monitor = MeetingSentinelMonitor.shared
+    @State private var session = SessionCoordinator.shared
     /// Ticks once a second so the elapsed time stays current.
     @State private var now = Date()
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -182,12 +183,37 @@ private struct SentinelMeetingBanner: View {
                 Text(elapsedString(meeting.startedAt))
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.secondary)
+                goLiveControl(meeting)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(.red.opacity(0.10))
             .onReceive(tick) { now = $0 }
             .help("Meeting Sentinel is recording this meeting (\(meeting.audioFilePath))")
+        }
+    }
+
+    /// Right-hand control: "Go live" to overlay RTI's live intelligence on the
+    /// meeting Sentinel is recording, or a live indicator once RTI is running.
+    @ViewBuilder
+    private func goLiveControl(_ meeting: SentinelMeeting) -> some View {
+        if session.isRunning {
+            Label("RTI live", systemImage: "waveform")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.green)
+                .labelStyle(.titleAndIcon)
+        } else {
+            Button {
+                SessionCoordinator.shared.startSession(linkedTo: meeting)
+                WindowCoordinator.shared.showOverlay()
+            } label: {
+                Text("Go live")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(.red)
+            .help("Start RTI's live transcript + assist overlay for this meeting")
         }
     }
 

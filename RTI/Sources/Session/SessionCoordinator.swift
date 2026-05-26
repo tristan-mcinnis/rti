@@ -31,6 +31,10 @@ final class SessionCoordinator {
     private(set) var startedAt: Date?
     private(set) var endedAt: Date?
     private(set) var liveEntries: [LiveEntry] = []
+    /// When the session was started to overlay a meeting that the external
+    /// Meeting Sentinel tool is recording, the linked meeting. Lets Step 3
+    /// tie RTI's notes/chat back to Sentinel's recording + vault record.
+    private(set) var linkedMeeting: SentinelMeeting?
     private(set) var interimLine: String?
     private(set) var lastError: String?
     /// True when `lastError` came from a Soniox auth/billing failure
@@ -91,8 +95,9 @@ final class SessionCoordinator {
         }
     }
 
-    func startSession() {
+    func startSession(linkedTo meeting: SentinelMeeting? = nil) {
         guard !isRunning else { return }
+        linkedMeeting = meeting
         lastError = nil
         lastErrorIsAuth = false
         delayedCompleteTask?.cancel()
