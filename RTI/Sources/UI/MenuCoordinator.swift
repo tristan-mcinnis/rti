@@ -31,7 +31,10 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         for cmd in commands { commandsByID[cmd.id] = cmd }
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "RTI"
+        if let button = item.button {
+            button.image = Self.statusImage(running: false)
+            button.imagePosition = .imageOnly
+        }
         item.button?.toolTip = "RTI — click for menu (⌘\\ to toggle overlay)"
         let menu = NSMenu()
         menu.delegate = self
@@ -77,10 +80,21 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
 
     func refreshTitle() {
         let running = isRunningProvider?() ?? false
-        statusItem?.button?.title = running ? "RTI ●" : "RTI"
+        statusItem?.button?.image = Self.statusImage(running: running)
         statusItem?.button?.toolTip = running
             ? "RTI — recording in progress"
             : "RTI — click for menu (⌘\\ to toggle overlay)"
+    }
+
+    /// Menubar glyph: a waveform that fills in (with a mic badge) while recording.
+    /// Returned as a template image so macOS tints it for light/dark menubars.
+    private static func statusImage(running: Bool) -> NSImage? {
+        let symbol = running ? "waveform.badge.mic" : "waveform"
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: running ? .semibold : .regular)
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "RTI")?
+            .withSymbolConfiguration(config)
+        image?.isTemplate = true
+        return image
     }
 
     func menuWillOpen(_ menu: NSMenu) {
