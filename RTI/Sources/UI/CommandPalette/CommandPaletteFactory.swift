@@ -79,6 +79,13 @@ enum CommandBuilder {
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),
             RTICommand(
+                id: "view.brief",
+                title: "Pre-meeting Brief",
+                keywords: ["brief", "prep", "prepare", "agenda", "meeting"],
+                perform: { [weak windows] in windows?.showMeetingBrief() },
+                menuSection: .navigation
+            ),
+            RTICommand(
                 id: "view.command_palette",
                 title: "Command Palette",
                 subtitle: "⌘K",

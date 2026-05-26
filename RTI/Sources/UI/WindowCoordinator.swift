@@ -13,6 +13,7 @@ final class WindowCoordinator {
     private var overlayController: OverlayWindowController?
     private var topWidget: TopWidgetWindowController?
     private var sessionsControl: SessionsControlWindowController?
+    private var meetingBrief: MeetingBriefWindowController?
     private var onboarding: OnboardingWindowController?
     private var shortcutsController: ShortcutsWindowController?
     private var commandPalette: CommandPaletteWindowController?
@@ -35,6 +36,7 @@ final class WindowCoordinator {
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
         shortcutsController = ShortcutsWindowController()
         sessionsControl = SessionsControlWindowController()
+        meetingBrief = MeetingBriefWindowController()
 
         let controller = OverlayWindowController(onOpenSettings: onOpenSettings)
         overlayController = controller
@@ -150,6 +152,11 @@ final class WindowCoordinator {
 
     func showSessionsControl(tab: SessionsControlView.Tab = .liveTranscript) {
         sessionsControl?.show(tab: tab)
+    }
+
+    /// Open the read-only pre-meeting brief browser (Hermes-authored briefs).
+    func showMeetingBrief() {
+        meetingBrief?.show()
     }
 
     // MARK: - Legacy convenience wrappers used by AppDelegate / menu

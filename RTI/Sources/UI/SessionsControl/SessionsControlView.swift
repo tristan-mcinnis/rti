@@ -183,6 +183,11 @@ private struct SentinelMeetingBanner: View {
                 Text(elapsedString(meeting.startedAt))
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.secondary)
+                Button("Brief") { WindowCoordinator.shared.showMeetingBrief() }
+                    .font(.system(size: 11, weight: .medium))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Review the pre-meeting brief for this meeting")
                 goLiveControl(meeting)
             }
             .padding(.horizontal, 12)
