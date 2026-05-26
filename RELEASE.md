@@ -1,8 +1,8 @@
 # Release process — technical recipe
 
 This is a **personal build**: releases are signed DMGs for my own machines, not
-public distribution. For first-time signing/notarization setup, read
-**[DISTRIBUTING.md](DISTRIBUTING.md)** first.
+public distribution. The one-time signing/notarization setup is in the
+"One-time setup" section below.
 
 For a one-command path, use:
 

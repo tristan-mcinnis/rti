@@ -1,10 +1,8 @@
 import Foundation
 
 /// A contiguous stretch of `SonioxWord`s attributed to a single speaker,
-/// collapsed into one block. The runtime aggregate that becomes a
-/// `TranscriptEntry` row when persisted.
-///
-/// See `CONTEXT.md` for the domain definition.
+/// collapsed into one block. The runtime aggregate used to build the live
+/// in-memory transcript entries.
 struct SpeakerTurn {
     let speaker: Int
     let text: String

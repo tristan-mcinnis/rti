@@ -354,7 +354,7 @@ private struct DataAndSupportSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Data & Support")
                 .font(.system(size: 13, weight: .medium))
-            Text("Audio is streamed to Soniox for transcription. Transcripts and prompts are sent to your configured LLM provider (DeepSeek by default) to generate answers. Everything else — recordings, transcripts, chat history, summaries — stays on this Mac. See PRIVACY.md in the repo for the full picture.")
+            Text("Audio is streamed to Soniox for transcription. Transcripts and prompts are sent to your configured LLM provider (DeepSeek by default) to generate answers. Nothing is stored: the live transcript and chat stay in memory for the session and are dropped when it ends; the recording is deleted on stop. Only your API keys and modes are kept on this Mac.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
