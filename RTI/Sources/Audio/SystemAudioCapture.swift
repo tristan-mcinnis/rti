@@ -8,7 +8,19 @@ enum SystemAudioError: Error {
     case alreadyRunning
 }
 
-final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
+/// A system-audio capture backend. Two conformers exist: the CoreAudio
+/// process-tap (`CoreAudioTapCapture`, preferred on macOS 14.2+) and the
+/// ScreenCaptureKit fallback (`SystemAudioCapture`). Both emit 16 kHz mono
+/// Int16 `AVAudioPCMBuffer`s on `onPCMBuffer`. `AudioPipeline` tries the tap
+/// first and falls back to SCK if it's unavailable.
+protocol SystemAudioCapturing: AnyObject {
+    var onPCMBuffer: ((AVAudioPCMBuffer) -> Void)? { get set }
+    var onError: ((String) -> Void)? { get set }
+    func start() async throws
+    func stop()
+}
+
+final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, SystemAudioCapturing, @unchecked Sendable {
     static let targetFormat: AVAudioFormat = AudioCaptureManager.targetFormat
 
     var onPCMBuffer: ((AVAudioPCMBuffer) -> Void)?

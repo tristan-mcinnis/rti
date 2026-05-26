@@ -50,7 +50,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         watcher.start()
         corpusWatcher = watcher
 
-        // Offer to start recording when a meeting app launches.
+        // Clear any phantom system-audio aggregate devices left by a prior
+        // crash before the first tap-based capture runs.
+        if #available(macOS 14.2, *) {
+            CoreAudioTapCapture.cleanupStaleDevices()
+        }
+
+        // Offer to start recording when a meeting app launches or a camera
+        // turns on in a meeting-capable app.
         MeetingDetector.shared.start()
 
         windows.install(onOpenSettings: { [weak self] in

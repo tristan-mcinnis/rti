@@ -119,6 +119,10 @@ export RTI_VERSION=0.1.0
 
 Beta DMGs are built ad-hoc-signed via `./scripts/release-unsigned.sh <version>` and live in `dist/`. They are **not** notarized — testers right-click → **Open** on first launch.
 
+### 0.1.0-beta9
+- **CoreAudio process-tap system audio.** System audio is now captured via a CoreAudio process tap + aggregate device (macOS 14.2+) instead of ScreenCaptureKit, with SCK kept as an automatic fallback. The tap needs only `NSAudioCaptureUsageDescription` (not Screen Recording), leaves the screenshot/overlay path undisturbed, and follows the default output device so switching to AirPods/Bluetooth mid-call keeps the other party flowing. `CoreAudioTapCapture`, `SystemAudioCapturing`, wired in `AudioPipeline`.
+- **Camera-activation meeting detection.** A new `CameraActivityMonitor` (CoreMediaIO listeners) fires the moment a camera turns on; `MeetingDetector` now offers to record when that happens while a meeting-capable app is running — catching Google Meet, Teams-web, and Slack huddles that the app-launch watch can't see. Gated by the existing meeting-detection setting; false positives (e.g. Photo Booth) are suppressed because no meeting-capable app is running.
+
 ### 0.1.0-beta8
 - **Echo cancellation.** Apple Voice-Processing I/O on the mic input cancels the other party's voice bleeding from the speakers, so meetings on speakers no longer double-transcribe. On by default; toggle in Settings → General (`AudioCaptureManager`).
 

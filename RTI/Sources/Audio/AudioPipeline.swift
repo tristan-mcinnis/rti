@@ -15,7 +15,9 @@ final class AudioPipeline {
     var onError: ((String, Bool) -> Void)?
 
     private let audio = AudioCaptureManager()
-    private let systemAudio = SystemAudioCapture()
+    /// Picked at `start()`: a CoreAudio process tap when available (macOS
+    /// 14.2+ and permission granted), else the ScreenCaptureKit fallback.
+    private var systemAudio: SystemAudioCapturing?
     private let wav = WAVWriter()
     private var soniox: SonioxClient?
     private var systemSoniox: SonioxClient?
@@ -106,18 +108,40 @@ final class AudioPipeline {
             sysClient.connect()
             self.systemSoniox = sysClient
 
-            self.systemAudio.onPCMBuffer = { [weak self] buffer in
+            let onPCM: (AVAudioPCMBuffer) -> Void = { [weak self] buffer in
                 guard let int16 = buffer.int16ChannelData else { return }
                 let frameLength = Int(buffer.frameLength)
                 let byteCount = frameLength * MemoryLayout<Int16>.size
                 let data = Data(bytes: int16[0], count: byteCount)
                 self?.systemSoniox?.sendAudio(data)
             }
-            self.systemAudio.onError = { msg in
+            let onErr: (String) -> Void = { msg in
                 RTILog.log("system audio capture error — \(msg)", category: "audio")
             }
+
+            // Prefer the CoreAudio process tap (no Screen Recording
+            // permission, doesn't disturb screenshot OCR, follows the output
+            // device). Fall back to ScreenCaptureKit if the tap is
+            // unavailable (older macOS) or its permission is denied.
+            if #available(macOS 14.2, *) {
+                let tap = CoreAudioTapCapture()
+                tap.onPCMBuffer = onPCM
+                tap.onError = onErr
+                do {
+                    try await tap.start()
+                    self.systemAudio = tap
+                    return
+                } catch {
+                    RTILog.log("CoreAudio tap unavailable, falling back to ScreenCaptureKit — \(error)", category: "audio")
+                }
+            }
+
+            let sck = SystemAudioCapture()
+            sck.onPCMBuffer = onPCM
+            sck.onError = onErr
             do {
-                try await self.systemAudio.start()
+                try await sck.start()
+                self.systemAudio = sck
             } catch {
                 RTILog.log("system audio start failed — \(error)", category: "audio")
             }
@@ -128,7 +152,8 @@ final class AudioPipeline {
     /// after the 1.5 s finalize window to disconnect and close the WAV.
     func finalize() {
         audio.stop()
-        systemAudio.stop()
+        systemAudio?.stop()
+        systemAudio = nil
         soniox?.finalize()
         systemSoniox?.finalize()
     }
@@ -189,7 +214,8 @@ final class AudioPipeline {
     /// Immediate teardown for failures and app termination.
     func abort() {
         audio.stop()
-        systemAudio.stop()
+        systemAudio?.stop()
+        systemAudio = nil
         soniox?.disconnect()
         soniox = nil
         systemSoniox?.disconnect()

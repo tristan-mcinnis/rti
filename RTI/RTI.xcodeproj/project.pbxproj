@@ -48,6 +48,7 @@
 		284A8ECC652ABDEF512D4626 /* SessionDetailRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */; };
 		29064D2D951C51390FE3EB29 /* AudioInputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = D402CDD1E9B3EC6E1BCB848D /* AudioInputDevice.swift */; };
 		2AEDD80E612700500221C1B8 /* TranscriptEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08FEC5983E45EFD1C28833 /* TranscriptEntry.swift */; };
+		2B2D111799A37F3D1F29777A /* CameraActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 140B7352FD12CBB8CF0423E6 /* CameraActivityMonitor.swift */; };
 		2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B43315BBB57BE38A913848E /* SonioxProtocol.swift */; };
 		2BC80B64267C234E010ABCEB /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906F7DCF321C17392E3DA594 /* Mode.swift */; };
 		2BF97B594F6B7E1C664F7750 /* MCPSpawnIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109CEE81EB1098437E27DC2C /* MCPSpawnIntegrationTests.swift */; };
@@ -65,6 +66,7 @@
 		370C3178C7B6C514677C0600 /* PanelSpawner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371316457C5E6DA973A617D7 /* PanelSpawner.swift */; };
 		379333F978F8334E614E8455 /* SessionsControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36B529563B4EAE6F3281194 /* SessionsControlView.swift */; };
 		387627B359E82DEBA3599F97 /* CorpusBackedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72FB57724E1724B61D16734 /* CorpusBackedStore.swift */; };
+		39F965230805B4D611EF735C /* CoreAudioTapCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4776B498FB22102DA79F8BA4 /* CoreAudioTapCapture.swift */; };
 		3AF3B6537EBE56DFB18295E6 /* RTIMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D64733E271DE5F43A278DD /* RTIMarkdown.swift */; };
 		3C34F7F68A114A5C28BE2BF3 /* CalendarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C107488F2C804B55D899C495 /* CalendarManager.swift */; };
 		3CF7BA318F9E008AB26485A5 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */; };
@@ -269,6 +271,7 @@
 		121D95F79C10BF74DC1B65FE /* CalendarTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarTab.swift; sourceTree = "<group>"; };
 		1275DFE4AE979EA226EC9A7A /* SessionSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSummary.swift; sourceTree = "<group>"; };
 		129EFBF37863B78243BEE1AE /* CommandPaletteWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteWindowController.swift; sourceTree = "<group>"; };
+		140B7352FD12CBB8CF0423E6 /* CameraActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraActivityMonitor.swift; sourceTree = "<group>"; };
 		1456E03914BAD3E5A701143B /* DiscussionGuideController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuideController.swift; sourceTree = "<group>"; };
 		166C8635ECAD7923D5605360 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		180E39BBB0AF568A9DB9FE4F /* PanelWindowControlling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelWindowControlling.swift; sourceTree = "<group>"; };
@@ -302,6 +305,7 @@
 		4634C6DE458122FE8AD24FBE /* TranscriptAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptAggregator.swift; sourceTree = "<group>"; };
 		4712E45AE69438604DE0B43D /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		475D47768B24F9BA6DC301C6 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
+		4776B498FB22102DA79F8BA4 /* CoreAudioTapCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreAudioTapCapture.swift; sourceTree = "<group>"; };
 		47EE32CA67E9EE87C8AFD18E /* CorpusChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusChat.swift; sourceTree = "<group>"; };
 		4810F8A917CBF2AFAC98759B /* CorpusReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusReader.swift; sourceTree = "<group>"; };
 		49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinator.swift; sourceTree = "<group>"; };
@@ -628,6 +632,7 @@
 				2AA2069EE07C9ADBE94147E8 /* AudioCaptureManager.swift */,
 				D402CDD1E9B3EC6E1BCB848D /* AudioInputDevice.swift */,
 				7C5E72582098B8BF3192383E /* AudioPipeline.swift */,
+				4776B498FB22102DA79F8BA4 /* CoreAudioTapCapture.swift */,
 				263A886E22FF815C73AD3DD6 /* SystemAudioCapture.swift */,
 				857295A827688BF13CBC8A7E /* WAVWriter.swift */,
 			);
@@ -696,6 +701,7 @@
 				DF9CD22BA63BCD171E6C20BD /* AnalysisScheduler.swift */,
 				8B3B1B204953A066A5663F35 /* AskCorpusController.swift */,
 				20E886244B65C228EF9BE4AA /* AskCorpusHistoryStore.swift */,
+				140B7352FD12CBB8CF0423E6 /* CameraActivityMonitor.swift */,
 				47EE32CA67E9EE87C8AFD18E /* CorpusChat.swift */,
 				83F481BDF87C4CF3B58F5A0B /* DossierVocabulary.swift */,
 				897088C67AD37CF458AD30EB /* MeetingDetector.swift */,
@@ -1098,12 +1104,14 @@
 				57346D2EB677C793CE82ABE7 /* AudioPipeline.swift in Sources */,
 				3C34F7F68A114A5C28BE2BF3 /* CalendarManager.swift in Sources */,
 				21625448382EC47E45115B74 /* CalendarTab.swift in Sources */,
+				2B2D111799A37F3D1F29777A /* CameraActivityMonitor.swift in Sources */,
 				EE90D8606F09CEE04504490C /* ChatMessage.swift in Sources */,
 				A8E4530CC9C297268C3EF7B0 /* ChunkPolicy.swift in Sources */,
 				CB4D4D8CAAA3C1785A037F8D /* CommandPaletteFactory.swift in Sources */,
 				7EF2AECA505820507FF3CE29 /* CommandPaletteView.swift in Sources */,
 				CA226F89770F830DE007782A /* CommandPaletteWindowController.swift in Sources */,
 				2C242E5A0B3725CFE29F968A /* CommandRegistry.swift in Sources */,
+				39F965230805B4D611EF735C /* CoreAudioTapCapture.swift in Sources */,
 				387627B359E82DEBA3599F97 /* CorpusBackedStore.swift in Sources */,
 				35468630800DADBEBC3362A7 /* CorpusChat.swift in Sources */,
 				C89FA8D64E22A1A17836E07C /* CorpusEntry.swift in Sources */,
