@@ -185,6 +185,18 @@ final class SessionCoordinator {
         audioPipeline.finish()
         self.endedAt = endedAt
 
+        // Persist a Markdown record of the transcript (notes inline) and chat
+        // before the WAV is dropped. This is the one intentional break from the
+        // ephemeral rule — audio is still discarded, only the text is kept.
+        if let startedAt {
+            SessionArchive.write(
+                startedAt: startedAt,
+                endedAt: endedAt,
+                transcript: transcriptPipeline.liveEntries,
+                chat: LLMController.shared.entries
+            )
+        }
+
         // Ephemeral: discard the WAV recording — nothing is kept on disk.
         if let path = activeWavPath {
             try? FileManager.default.removeItem(atPath: path)

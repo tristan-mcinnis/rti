@@ -44,6 +44,9 @@ struct SessionsControlView: View {
             }
         } detail: {
             contentForTab
+                .safeAreaInset(edge: .top) {
+                    SentinelMeetingBanner()
+                }
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -149,5 +152,50 @@ private struct CommandPaletteSearchButton: View {
 
     private func openPalette() {
         NotificationCenter.default.post(name: .rtiToggleCommandPalette, object: nil)
+    }
+}
+
+/// Slim banner shown while the external Meeting Sentinel tool is recording a
+/// meeting (Step 1 of the RTI ⇄ Sentinel bridge). Collapses to nothing when
+/// no meeting is live. Read-only awareness — no controls yet.
+@MainActor
+private struct SentinelMeetingBanner: View {
+    @State private var monitor = MeetingSentinelMonitor.shared
+    /// Ticks once a second so the elapsed time stays current.
+    @State private var now = Date()
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        if let meeting = monitor.liveMeeting {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 8, height: 8)
+                Text("Recording")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(meeting.name)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
+                Text(elapsedString(meeting.startedAt))
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.red.opacity(0.10))
+            .onReceive(tick) { now = $0 }
+            .help("Meeting Sentinel is recording this meeting (\(meeting.audioFilePath))")
+        }
+    }
+
+    private func elapsedString(_ start: Date) -> String {
+        let total = Int(max(0, now.timeIntervalSince(start)))
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        return h > 0
+            ? String(format: "%d:%02d:%02d", h, m, s)
+            : String(format: "%02d:%02d", m, s)
     }
 }

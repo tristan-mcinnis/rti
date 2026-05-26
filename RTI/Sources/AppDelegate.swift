@@ -40,6 +40,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // turns on in a meeting-capable app.
         MeetingDetector.shared.start()
 
+        // Follow the external Meeting Sentinel tool's recording state so the
+        // UI can surface when a meeting is being recorded outside RTI.
+        MeetingSentinelMonitor.shared.start()
+
         windows.install(onOpenSettings: { [weak self] in
             Task { @MainActor [weak self] in self?.windows.openSettings() }
         })
