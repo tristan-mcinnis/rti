@@ -19,15 +19,15 @@
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0-beta9</string>
 	<key>CFBundleVersion</key>
-	<string>202605261015</string>
+	<string>202605261023</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSCalendarsUsageDescription</key>
-	<string>RTI reads your calendar to attach meeting titles to sessions.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>RTI captures system audio to transcribe the other side of your conversations. No screen content is recorded.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>RTI reads your calendar to attach meeting titles to sessions.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
