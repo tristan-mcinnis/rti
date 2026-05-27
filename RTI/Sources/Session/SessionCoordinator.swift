@@ -63,6 +63,30 @@ final class SessionCoordinator {
         commonInit()
     }
 
+    /// Register the periodic analysis tasks with the scheduler. Called once
+    /// at launch from AppDelegate. The scheduler only fires the tasks whose
+    /// enable flag is set, and only while a session is running.
+    func registerAnalysisTasks() {
+        AnalysisScheduler.shared.register(
+            id: "notes",
+            task: .init(enabledKey: AnalysisSettingsDefaults.notesEnabledKey) { sinceMs in
+                await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
+            }
+        )
+        AnalysisScheduler.shared.register(
+            id: "dossiers",
+            task: .init(enabledKey: AnalysisSettingsDefaults.dossiersEnabledKey) { sinceMs in
+                await DossierController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
+            }
+        )
+        AnalysisScheduler.shared.register(
+            id: "discussionGuide",
+            task: .init(enabledKey: AnalysisSettingsDefaults.guideEnabledKey) { sinceMs in
+                await DiscussionGuideController.shared.match(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
+            }
+        )
+    }
+
     private func commonInit() {
         audioPipeline.onWords = { [weak self] words in
             self?.handleWords(words)
@@ -144,6 +168,16 @@ final class SessionCoordinator {
         interimLine = nil
         transcriptPipeline.reset()
 
+        // Bind the analysis controllers to the fresh session and start the
+        // periodic scheduler. Each task self-gates on its Settings toggle.
+        NotesGenerationController.shared.reset(for: sessionId)
+        DossierController.shared.reset(for: sessionId)
+        DiscussionGuideController.shared.reset(for: sessionId)
+        AnalysisScheduler.shared.start(
+            intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
+            defaultInterval: AnalysisSettingsDefaults.defaultInterval
+        )
+
         do {
             _ = try audioPipeline.prepare(sessionId: sessionId)
         } catch {
@@ -172,6 +206,7 @@ final class SessionCoordinator {
         // before the final teardown gives Soniox time to flush remaining
         // partial audio and deliver final transcripts.
         audioPipeline.finalize()
+        AnalysisScheduler.shared.stop()
         isRunning = false
 
         let endedAt = Date()
@@ -196,20 +231,27 @@ final class SessionCoordinator {
         if let startedAt {
             let transcript = transcriptPipeline.liveEntries
             let chat = LLMController.shared.entries
+            let analysis = SessionArchive.Analysis(
+                notes: NotesGenerationController.shared.notes,
+                dossiers: DossierController.shared.dossiers,
+                guide: DiscussionGuideController.shared.guide
+            )
             SessionArchive.write(
                 startedAt: startedAt,
                 endedAt: endedAt,
                 transcript: transcript,
-                chat: chat
+                chat: chat,
+                analysis: analysis
             )
             // If this session was overlaid on a Sentinel-recorded meeting, also
-            // drop the notes + chat into that meeting's vault record so the
-            // downstream workflow can fold them in.
+            // drop the notes + chat + generated analysis into that meeting's
+            // vault record so the downstream workflow can fold them in.
             if let linkedMeeting {
                 SessionArchive.writeLinkedMeetingNotes(
                     meeting: linkedMeeting,
                     transcript: transcript,
-                    chat: chat
+                    chat: chat,
+                    analysis: analysis
                 )
             }
         }

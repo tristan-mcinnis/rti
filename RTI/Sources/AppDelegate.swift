@@ -30,6 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // UI can surface when a meeting is being recorded outside RTI.
         MeetingSentinelMonitor.shared.start()
 
+        // Register the periodic real-time analysis tasks (notes, dossiers,
+        // discussion-guide matching). They only fire while a session runs and
+        // self-gate on their Settings toggles.
+        SessionCoordinator.shared.registerAnalysisTasks()
+
         windows.install(onOpenSettings: { [weak self] in
             Task { @MainActor [weak self] in self?.windows.openSettings() }
         })

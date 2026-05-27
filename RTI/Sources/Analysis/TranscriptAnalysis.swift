@@ -1,0 +1,98 @@
+import Foundation
+
+/// Shared pipeline for the periodic analyzers (Notes, Dossiers, Discussion
+/// Guide matching). Each tick: pull a transcript window → trim → ask the LLM
+/// → strip fences → JSON-decode → return payload + watermark. The lines that
+/// differ between analyzers are the prompt body, payload type, transcript
+/// renderer (timestamped or plain), smart flag, and what to do with the
+/// decoded payload — all caller-supplied.
+@MainActor
+enum TranscriptAnalysis {
+
+    /// Transcript-rendering mode. Plain → `speaker: text` lines. Timestamped
+    /// → `[mm:ss] speaker: text` lines (used by analyzers that ask the LLM
+    /// to echo timestamps back, e.g. Discussion Guide).
+    enum TranscriptShape {
+        case plain
+        case timestamped
+    }
+
+    struct Result<Payload> {
+        let payload: Payload
+        let endMs: Int
+    }
+
+    /// Run a single analysis pass. Returns nil on empty transcript, empty
+    /// LLM response, parse failure, or cancellation — callers should treat
+    /// all of these as "skip this tick" and leave their watermark unchanged.
+    static func run<Payload: Decodable>(
+        sessionId: String,
+        sinceMs: Int?,
+        shape: TranscriptShape = .plain,
+        smart: Bool,
+        request: LLMRequest,
+        category: String,
+        as type: Payload.Type = Payload.self,
+        buildPrompt: (_ transcript: String) -> String
+    ) async -> Result<Payload>? {
+        let transcript: String
+        switch shape {
+        case .plain:
+            transcript = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
+        case .timestamped:
+            transcript = TranscriptContext.textWithTimestamps(forSessionId: sessionId)
+        }
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let prompt = buildPrompt(trimmed)
+        let messages = [LLMMessage(role: "user", content: prompt)]
+
+        guard let response = await request.collectAsync(messages: messages, smart: smart),
+              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        let payload: Payload
+        do {
+            payload = try JSONExtractor.decode(response, as: Payload.self)
+        } catch {
+            RTILog.log("TranscriptAnalysis[\(category)] decode failed: \(error)", category: "analysis")
+            return nil
+        }
+
+        let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
+        return Result(payload: payload, endMs: endMs)
+    }
+
+    /// Same shape as `run`, but for analyzers whose LLM output is
+    /// free-form text rather than JSON (e.g. Notes — markdown bullets).
+    static func runText(
+        sessionId: String,
+        sinceMs: Int?,
+        shape: TranscriptShape = .plain,
+        smart: Bool,
+        request: LLMRequest,
+        buildPrompt: (_ transcript: String) -> String
+    ) async -> Result<String>? {
+        let transcript: String
+        switch shape {
+        case .plain:
+            transcript = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
+        case .timestamped:
+            transcript = TranscriptContext.textWithTimestamps(forSessionId: sessionId)
+        }
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let prompt = buildPrompt(trimmed)
+        let messages = [LLMMessage(role: "user", content: prompt)]
+
+        guard let response = await request.collectAsync(messages: messages, smart: smart),
+              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
+        return Result(payload: response, endMs: endMs)
+    }
+}

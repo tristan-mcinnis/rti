@@ -155,7 +155,6 @@ private struct RealTimeAnalysisSection: View {
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = true
     @AppStorage(AnalysisSettingsDefaults.notesIntervalKey) private var notesInterval: Double = AnalysisSettingsDefaults.defaultInterval
     @AppStorage(AnalysisSettingsDefaults.dossiersEnabledKey) private var dossiersEnabled: Bool = true
-    @AppStorage(AnalysisSettingsDefaults.themesEnabledKey) private var themesEnabled: Bool = true
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = true
 
     var body: some View {
@@ -165,7 +164,6 @@ private struct RealTimeAnalysisSection: View {
 
             Toggle("Enable notes generation", isOn: $notesEnabled)
             Toggle("Enable dossier generation", isOn: $dossiersEnabled)
-            Toggle("Enable themes & quotes generation", isOn: $themesEnabled)
             Toggle("Enable discussion guide matching", isOn: $guideEnabled)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -192,7 +190,6 @@ private struct RealTimeAnalysisSection: View {
                 Button("Reset to Defaults") {
                     notesEnabled = true
                     dossiersEnabled = true
-                    themesEnabled = true
                     guideEnabled = true
                     notesInterval = AnalysisSettingsDefaults.defaultInterval
                 }

@@ -8,14 +8,36 @@ import Foundation
 /// entries) and the chat log with the assistant. Audio is still discarded.
 ///
 /// Layout: ~/Library/Application Support/RTI/sessions/<yyyy-MM-dd HHmmss>/
-///   transcript.md   — the live transcript, notes inline
-///   chat.md         — the assistant chat log (only written if non-empty)
+///   transcript.md         — the live transcript, notes inline
+///   chat.md               — the assistant chat log (only written if non-empty)
+///   notes.md              — generated meeting notes (only if any)
+///   dossiers.md           — extracted entity dossiers (only if any)
+///   discussion-guide.md   — discussion-guide coverage (only if a guide loaded)
 enum SessionArchive {
+    /// The real-time-analysis artifacts produced during a session. Bundled
+    /// into one value so the call site in `SessionCoordinator` (and the
+    /// linked-meeting hand-off) stay tidy. Everything in here is ephemeral
+    /// in-memory state captured at stop time; this archive is the only place
+    /// it is written to disk.
+    struct Analysis {
+        var notes: [GeneratedNote] = []
+        var dossiers: [EntityDossier] = []
+        var guide: DiscussionGuide?
+
+        var isEmpty: Bool { notes.isEmpty && dossiers.isEmpty && guide == nil }
+    }
+
     /// Persist a session. Silently no-ops if there's nothing to save or the
     /// Application Support directory can't be resolved — archiving is a
     /// best-effort side record, never something that should fail a stop.
-    static func write(startedAt: Date, endedAt: Date, transcript: [LiveEntry], chat: [ChatEntry]) {
-        guard !transcript.isEmpty || !chat.isEmpty else { return }
+    static func write(
+        startedAt: Date,
+        endedAt: Date,
+        transcript: [LiveEntry],
+        chat: [ChatEntry],
+        analysis: Analysis = Analysis()
+    ) {
+        guard !transcript.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return }
 
         let transcriptMD = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
@@ -24,6 +46,19 @@ enum SessionArchive {
         if !chat.isEmpty {
             let chatMD = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
             try? chatMD.write(to: dir.appendingPathComponent("chat.md"), atomically: true, encoding: .utf8)
+        }
+
+        if !analysis.notes.isEmpty {
+            let md = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
+            try? md.write(to: dir.appendingPathComponent("notes.md"), atomically: true, encoding: .utf8)
+        }
+        if !analysis.dossiers.isEmpty {
+            let md = (["# Dossiers", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderDossiers(analysis.dossiers)]).joined(separator: "\n")
+            try? md.write(to: dir.appendingPathComponent("dossiers.md"), atomically: true, encoding: .utf8)
+        }
+        if let guide = analysis.guide {
+            let md = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
+            try? md.write(to: dir.appendingPathComponent("discussion-guide.md"), atomically: true, encoding: .utf8)
         }
     }
 
@@ -84,6 +119,55 @@ enum SessionArchive {
         return lines
     }
 
+    /// Combined markdown for generated notes — one block per note, newest
+    /// material last, separated by rules. Shared by the local archive and the
+    /// linked-meeting record.
+    private static func renderNotes(_ notes: [GeneratedNote]) -> String {
+        notes.map { n in
+            let when = headerStamp.string(from: n.timestamp)
+            return "### \(when)\n\n\(n.content)"
+        }.joined(separator: "\n\n---\n\n")
+    }
+
+    /// Dossiers grouped by entity type, each a bolded name + description.
+    private static func renderDossiers(_ dossiers: [EntityDossier]) -> String {
+        let grouped = Dictionary(grouping: dossiers) { $0.type }
+        let groups = grouped.keys.sorted { $0.displayName < $1.displayName }
+        return groups.map { type in
+            let entries = (grouped[type] ?? []).map { "- **\($0.name)** — \($0.description)" }
+            return "## \(type.displayName)\n\n\(entries.joined(separator: "\n"))"
+        }.joined(separator: "\n\n")
+    }
+
+    /// Discussion-guide coverage: a header line plus each question with its
+    /// status and any matched quotes.
+    private static func renderGuide(_ guide: DiscussionGuide) -> String {
+        let cov = guide.coverage
+        var lines = ["**\(guide.fileName)** — \(cov.answered)/\(cov.total) answered (\(cov.percent)%)", ""]
+        for obj in guide.objectives {
+            lines.append("## \(obj.title)")
+            if let desc = obj.description, !desc.isEmpty { lines.append(desc) }
+            lines.append("")
+            for sec in obj.sections {
+                lines.append("### \(sec.title)")
+                lines.append("")
+                for q in sec.questions {
+                    let mark = q.status == .answered ? "x" : " "
+                    lines.append("- [\(mark)] \(q.text)")
+                    if let r = q.response {
+                        lines.append("  - \(r.summary)")
+                        for quote in r.quotes {
+                            let stamp = quote.formattedTimestamp.isEmpty ? "" : "`\(quote.formattedTimestamp)` "
+                            lines.append("  - > \(stamp)\(quote.text)")
+                        }
+                    }
+                }
+                lines.append("")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Linked Meeting Sentinel record
 
     /// When the RTI session was linked to a meeting that Meeting Sentinel is
@@ -93,9 +177,14 @@ enum SessionArchive {
     /// (`<meetings>/recordings/<stem>.m4a` → `<meetings>/transcripts-raw/`)
     /// rather than a hardcoded vault location. RTI's rough live transcript is
     /// deliberately omitted — Sentinel's batch transcript is the record-of-truth.
-    static func writeLinkedMeetingNotes(meeting: SentinelMeeting, transcript: [LiveEntry], chat: [ChatEntry]) {
+    static func writeLinkedMeetingNotes(
+        meeting: SentinelMeeting,
+        transcript: [LiveEntry],
+        chat: [ChatEntry],
+        analysis: Analysis = Analysis()
+    ) {
         let notes = transcript.filter { $0.speakerId == "note" }
-        guard !notes.isEmpty || !chat.isEmpty else { return }
+        guard !notes.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return }
 
         let recordingsDir = URL(fileURLWithPath: meeting.audioFilePath).deletingLastPathComponent()
         let transcriptsRaw = recordingsDir.deletingLastPathComponent()
@@ -105,11 +194,16 @@ enum SessionArchive {
         guard FileManager.default.fileExists(atPath: transcriptsRaw.path) else { return }
 
         let file = transcriptsRaw.appendingPathComponent("\(meeting.name)-rti.md")
-        let md = renderLinkedMeeting(meeting: meeting, notes: notes, chat: chat)
+        let md = renderLinkedMeeting(meeting: meeting, userNotes: notes, chat: chat, analysis: analysis)
         try? md.write(to: file, atomically: true, encoding: .utf8)
     }
 
-    private static func renderLinkedMeeting(meeting: SentinelMeeting, notes: [LiveEntry], chat: [ChatEntry]) -> String {
+    private static func renderLinkedMeeting(
+        meeting: SentinelMeeting,
+        userNotes: [LiveEntry],
+        chat: [ChatEntry],
+        analysis: Analysis
+    ) -> String {
         var lines = [
             "---",
             "source: rti-live",
@@ -120,12 +214,30 @@ enum SessionArchive {
             "# RTI live notes — \(meeting.name)",
             "",
         ]
-        if !notes.isEmpty {
-            lines.append("## Notes")
+        if !userNotes.isEmpty {
+            lines.append("## User notes")
             lines.append("")
-            for note in notes.sorted(by: { $0.startMs < $1.startMs }) {
+            for note in userNotes.sorted(by: { $0.startMs < $1.startMs }) {
                 lines.append("- `\(offset(note.startMs))` \(note.text)")
             }
+            lines.append("")
+        }
+        if !analysis.notes.isEmpty {
+            lines.append("## Generated notes")
+            lines.append("")
+            lines.append(renderNotes(analysis.notes))
+            lines.append("")
+        }
+        if !analysis.dossiers.isEmpty {
+            lines.append("## Dossiers")
+            lines.append("")
+            lines.append(renderDossiers(analysis.dossiers))
+            lines.append("")
+        }
+        if let guide = analysis.guide {
+            lines.append("## Discussion guide")
+            lines.append("")
+            lines.append(renderGuide(guide))
             lines.append("")
         }
         if !chat.isEmpty {
