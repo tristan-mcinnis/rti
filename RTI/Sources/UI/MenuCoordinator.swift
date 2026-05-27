@@ -86,13 +86,26 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
             : "RTI — click for menu (⌘\\ to toggle overlay)"
     }
 
-    /// Menubar glyph: a waveform that fills in (with a mic badge) while recording.
-    /// Returned as a template image so macOS tints it for light/dark menubars.
+    /// Menubar glyph: an "R" in a circle (RTI's mark). Idle is a hollow ring
+    /// drawn as a template so macOS tints it for light/dark menubars; while a
+    /// session is live the ring fills and turns red, so "recording" reads at a
+    /// glance.
     private static func statusImage(running: Bool) -> NSImage? {
-        let symbol = running ? "waveform.badge.mic" : "waveform"
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: running ? .semibold : .regular)
+        let symbol = running ? "r.circle.fill" : "r.circle"
+        let base = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+
+        if running {
+            // Red badge with a white "R" knocked out — palette order is
+            // [letter, circle]. Explicitly NOT a template so the colour shows.
+            let red = base.applying(.init(paletteColors: [.white, .systemRed]))
+            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "RTI recording")?
+                .withSymbolConfiguration(red)
+            image?.isTemplate = false
+            return image
+        }
+
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "RTI")?
-            .withSymbolConfiguration(config)
+            .withSymbolConfiguration(base)
         image?.isTemplate = true
         return image
     }
