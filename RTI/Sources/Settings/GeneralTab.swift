@@ -21,9 +21,6 @@ struct GeneralTab: View {
                 AudioInputSection()
 
                 Divider().padding(.vertical, 8)
-                MeetingDetectionSection()
-
-                Divider().padding(.vertical, 8)
                 RealTimeAnalysisSection()
 
                 Divider().padding(.vertical, 8)
@@ -148,30 +145,6 @@ private struct AudioInputSection: View {
         }
         .onAppear {
             inputDevices = AudioInputDeviceStore.availableInputDevices()
-        }
-    }
-}
-
-// MARK: - Meeting Detection
-
-private struct MeetingDetectionSection: View {
-    @AppStorage(MeetingDetectionDefaults.enabledKey) private var enabled: Bool = true
-    @AppStorage(MeetingDetectionDefaults.autoStartKey) private var autoStart: Bool = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Meeting Detection")
-                .font(.system(size: 13, weight: .medium))
-
-            Toggle("Offer to record when a meeting app launches", isOn: $enabled)
-            Toggle("Start recording automatically, without asking", isOn: $autoStart)
-                .disabled(!enabled)
-                .opacity(enabled ? 1 : 0.5)
-
-            Text("Detects Zoom, Microsoft Teams, FaceTime, and Webex launching. Browser-based meetings (e.g. Google Meet) aren't detected. By default RTI asks before recording.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

@@ -12,9 +12,8 @@ extension Notification.Name {
     static let rtiShowLogs = Notification.Name("rti.showLogs")
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
     static let rtiSessionsChanged = Notification.Name("rti.sessionsChanged")
-    static let rtiToggleCommandPalette = Notification.Name("rti.toggleCommandPalette")
     /// Posted after a "Clear Current Chat" action so any open auxiliary
-    /// panel windows (notes, dossiers, user-spawned) dismiss themselves.
+    /// panel windows dismiss themselves.
     static let rtiHideAuxiliaryPanels = Notification.Name("rti.hideAuxiliaryPanels")
 }
 
@@ -35,13 +34,6 @@ enum AudioSettingsDefaults {
     /// noise suppression, AGC. Cancels the other party's voice bleeding from
     /// the speakers into the mic, which otherwise double-transcribes.
     static let echoCancellationKey = "rti.audio.echoCancellation"
-}
-
-enum MeetingDetectionDefaults {
-    /// Master switch: react to meeting apps launching at all.
-    static let enabledKey = "rti.meeting.autoDetectEnabled"
-    /// Opt-in: start recording silently instead of prompting.
-    static let autoStartKey = "rti.meeting.autoStart"
 }
 
 enum AnalysisSettingsDefaults {

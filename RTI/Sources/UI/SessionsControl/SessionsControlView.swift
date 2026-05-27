@@ -48,11 +48,6 @@ struct SessionsControlView: View {
                     SentinelMeetingBanner()
                 }
         }
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                CommandPaletteSearchButton()
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .rtiShowLiveTranscript)) { _ in
             selectedTab = .liveTranscript
         }
@@ -102,56 +97,6 @@ struct SessionsControlView: View {
         let v = info?["CFBundleShortVersionString"] as? String ?? "?"
         let b = info?["CFBundleVersion"] as? String ?? "?"
         return "RTI \(v) (\(b))"
-    }
-}
-
-/// Toolbar-resident search affordance that opens the command palette. Always
-/// visible across every Sessions Control tab so search is never more than
-/// one click (or ⌘K) away. Renders the "Search or ask anything…" pill —
-/// purely a button; the actual query happens inside the palette.
-@MainActor
-private struct CommandPaletteSearchButton: View {
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: openPalette) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("Search or ask anything…")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 16)
-                HStack(spacing: 2) {
-                    Text("⌘")
-                    Text("K")
-                }
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.secondary.opacity(0.12))
-                )
-            }
-            .padding(.horizontal, 10)
-            .frame(width: 360, height: 26)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.secondary.opacity(isHovered ? 0.16 : 0.10))
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .help("Search sessions, actions, and settings (⌘K)")
-        .keyboardShortcut("k", modifiers: .command)
-    }
-
-    private func openPalette() {
-        NotificationCenter.default.post(name: .rtiToggleCommandPalette, object: nil)
     }
 }
 

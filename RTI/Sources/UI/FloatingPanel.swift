@@ -21,11 +21,7 @@ enum FloatingPanelID: CaseIterable {
 /// across launches, and toggles `sharingType` with the rest of the app's
 /// invisible-to-screen-capture mode.
 ///
-/// Five panels are built this way (Notes, Dossiers, Themes, DiscussionGuide,
-/// Translation). `UserPanelWindowController` is intentionally not folded in
-/// because user panels have per-instance lifecycle (spawn, teardown,
-/// per-id frame keys); collapsing it here would re-introduce more
-/// complexity than it removes.
+/// The Translation panel is built this way.
 struct FloatingPanelSpec {
     let savedFrameKey: String
     let opacityKey: String

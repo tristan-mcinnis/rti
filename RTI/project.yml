@@ -79,7 +79,6 @@ targets:
       - path: Sources/LLM/LLMError.swift
       - path: Sources/Soniox/SonioxFailure.swift
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
-      - path: Sources/UI/CommandPalette/PaletteSearch.swift
       - path: Sources/UI/CommandPalette/SessionDetailRequest.swift
       - path: Sources/Support/JSONExtractor.swift
     dependencies:

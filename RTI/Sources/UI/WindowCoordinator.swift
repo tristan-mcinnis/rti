@@ -16,16 +16,10 @@ final class WindowCoordinator {
     private var meetingBrief: MeetingBriefWindowController?
     private var onboarding: OnboardingWindowController?
     private var shortcutsController: ShortcutsWindowController?
-    private var commandPalette: CommandPaletteWindowController?
     /// Singleton floating panels. One entry per `FloatingPanelID` once
     /// `install(_:)` has run; adding a new panel kind is just a new enum
     /// case + spec rather than another stored property here.
     private var floatingPanels: [FloatingPanelID: FloatingPanelWindowController] = [:]
-    /// User-spawned analysis panels keyed by their panel id. Lifecycle is
-    /// driven by `UserPanelStore.panels`: additions spawn an NSPanel,
-    /// removals tear it down. We subscribe in `install`.
-    private var userPanels: [String: UserPanelWindowController] = [:]
-    private var userPanelsObservationTask: Task<Void, Never>?
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
     var topWidgetIsVisible: Bool { topWidget?.isVisible ?? false }
@@ -63,28 +57,8 @@ final class WindowCoordinator {
         controller.attachPill(top.nsWindow)
         controller.show()
 
-        commandPalette = CommandPaletteWindowController()
-
         for id in FloatingPanelID.allCases {
             floatingPanels[id] = FloatingPanelWindowController(spec: id.spec)
-        }
-
-        // Spawn windows for every panel that was already configured the
-        // last time the app ran, then keep them in sync going forward.
-        // `assign(to:)` would be tempting but we need to diff add/remove,
-        // not replace the whole map.
-        reconcileUserPanels(against: UserPanelStore.shared.panels)
-        userPanelsObservationTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    withObservationTracking {
-                        _ = UserPanelStore.shared.panels
-                    } onChange: {
-                        continuation.resume()
-                    }
-                }
-                self?.reconcileUserPanels(against: UserPanelStore.shared.panels)
-            }
         }
 
         NotificationCenter.default.addObserver(
@@ -99,31 +73,10 @@ final class WindowCoordinator {
         }
     }
 
-    /// Diff the current set of spawned `UserPanel`s against existing
-    /// window controllers — spawn windows for newcomers, tear down
-    /// windows whose panel was removed.
-    private func reconcileUserPanels(against panels: [UserPanel]) {
-        let ids = Set(panels.map(\.id))
-        // Remove windows for panels that no longer exist.
-        for (id, controller) in userPanels where !ids.contains(id) {
-            controller.close()
-            userPanels.removeValue(forKey: id)
-        }
-        // Spawn windows for new panels.
-        for panel in panels where userPanels[panel.id] == nil {
-            let controller = UserPanelWindowController(panel: panel)
-            let invisible = UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
-            controller.setSharingInvisible(invisible)
-            controller.show()
-            userPanels[panel.id] = controller
-        }
-    }
-
     func setSharingInvisible(_ invisible: Bool) {
         overlayController?.setSharingInvisible(invisible)
         topWidget?.setSharingInvisible(invisible)
         for controller in floatingPanels.values { controller.setSharingInvisible(invisible) }
-        for controller in userPanels.values { controller.setSharingInvisible(invisible) }
     }
 
     /// Toggle the persisted invisibility flag and apply it to every panel.
@@ -168,10 +121,6 @@ final class WindowCoordinator {
     // MARK: - Shortcuts
 
     func showShortcuts() { shortcutsController?.show() }
-
-    // MARK: - Command Palette
-
-    func toggleCommandPalette() { commandPalette?.toggle() }
 
     // MARK: - Floating panels
 

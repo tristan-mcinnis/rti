@@ -6,13 +6,9 @@ import AppKit
 /// new panel types slot in without adding per-type methods on the
 /// coordinator.
 ///
-/// Two controllers adopt this today: `FloatingPanelWindowController`
-/// (the singleton-style panels — Notes, Dossiers, Themes,
-/// DiscussionGuide, Translation, all configured via `FloatingPanelSpec`)
-/// and `UserPanelWindowController` (the dynamically-spawned user panels).
-/// CommandPalette and Shortcuts do not — CommandPalette has a different
-/// anchoring model (child-window of Sessions Control), and Shortcuts is a
-/// standard titled `NSWindow`.
+/// `FloatingPanelWindowController` adopts this today (the singleton-style
+/// panels — Translation, configured via `FloatingPanelSpec`). Shortcuts
+/// does not — it is a standard titled `NSWindow`.
 ///
 /// Main-actor isolated because every conformer manipulates AppKit windows.
 @MainActor

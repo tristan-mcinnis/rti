@@ -27,7 +27,7 @@ enum LLMToolRegistry {
     /// All tools the chat-overlay LLM can call. Keep this small: too many
     /// tools dilutes the model's tool-choice signal.
     static var all: [LLMToolDefinition] {
-        [captureScreen, spawnPanel]
+        [captureScreen]
     }
 
     static func tool(named name: String) -> LLMToolDefinition? {
@@ -76,43 +76,6 @@ enum LLMToolRegistry {
         runningStatus: "📷 Looking at your screen…"
     )
 
-    private static let spawnPanel = LLMToolDefinition(
-        name: "spawn_panel",
-        description: """
-        Create a new live counter panel that floats over the user's screen \
-        and counts keyword/regex matches against the streaming transcript \
-        with a live sparkline. Use this when the user asks to "track", \
-        "count", "watch", "create a panel for", "show a panel of", \
-        "monitor", or otherwise spawn a live monitor of how many times \
-        something is mentioned in the meeting. \
-        The argument `description` is the user's natural-language request; \
-        the tool translates it into a typed panel config and opens the \
-        window.
-        """,
-        parameters: [
-            "type": "object",
-            "properties": [
-                "description": [
-                    "type": "string",
-                    "description": "The user's plain-English description of the panel they want."
-                ]
-            ],
-            "required": ["description"],
-            "additionalProperties": false
-        ],
-        execute: { argumentsJSON in
-            let description: String
-            if let data = argumentsJSON.data(using: .utf8),
-               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let d = obj["description"] as? String {
-                description = d
-            } else {
-                description = argumentsJSON  // model may pass raw text
-            }
-            return await PanelSpawner.spawn(fromDescription: description)
-        },
-        runningStatus: "🪄 Designing a panel…"
-    )
 }
 
 

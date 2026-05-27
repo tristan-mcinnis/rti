@@ -3,9 +3,8 @@ import SwiftUI
 
 /// Shared NSPanel-setup invariants for every RTI floating panel.
 /// Centralises the sharing-type / level / chrome flags so the
-/// "invisibility" guarantee can't drift between the built-in panels
-/// (`FloatingPanelWindowController`) and the user-spawned ones
-/// (`UserPanelWindowController`). Any new panel kind should route
+/// "invisibility" guarantee can't drift across panels
+/// (`FloatingPanelWindowController`). Any new panel kind should route
 /// through `apply(to:)` so a single audit point covers them all.
 @MainActor
 enum RTIPanelDefaults {
@@ -53,8 +52,7 @@ enum RTIPanelDefaults {
     }
 
     /// Persist a panel's frame under a UserDefaults key. Debounced by
-    /// caller (FloatingPanelWindowController uses a 0.2s DispatchWorkItem;
-    /// UserPanelWindowController writes directly on each notification).
+    /// caller (FloatingPanelWindowController uses a 0.2s DispatchWorkItem).
     static func saveFrame(_ frame: NSRect, key: String) {
         let dict: [String: CGFloat] = ["x": frame.origin.x, "y": frame.origin.y, "w": frame.width, "h": frame.height]
         UserDefaults.standard.set(dict, forKey: key)

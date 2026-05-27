@@ -84,15 +84,6 @@ enum CommandBuilder {
                 keywords: ["brief", "prep", "prepare", "agenda", "meeting"],
                 perform: { [weak windows] in windows?.showMeetingBrief() },
                 menuSection: .navigation
-            ),
-            RTICommand(
-                id: "view.command_palette",
-                title: "Command Palette",
-                subtitle: "⌘K",
-                keywords: ["find", "search"],
-                perform: { [weak windows] in windows?.toggleCommandPalette() },
-                hotkeyKeyCode: UInt32(kVK_ANSI_K),
-                hotkeyModifiers: UInt32(cmdKey)
             )
         ]
     }

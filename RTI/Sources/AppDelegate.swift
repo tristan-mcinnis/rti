@@ -14,16 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CrashLog.install()
         CredentialStore.migrateLegacyIfNeeded()
 
-        // Beta gate. Until the user pastes a valid key, no pipelines start
-        // and no windows install. The gate window terminates the app if
-        // closed without unlocking.
-        guard LicenseStore.shared.isValid else {
-            LicenseGateWindowController.shared.show { [weak self] in
-                self?.continueLaunch()
-            }
-            return
-        }
-
         continueLaunch()
     }
 
@@ -35,10 +25,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         if #available(macOS 14.2, *) {
             CoreAudioTapCapture.cleanupStaleDevices()
         }
-
-        // Offer to start recording when a meeting app launches or a camera
-        // turns on in a meeting-capable app.
-        MeetingDetector.shared.start()
 
         // Follow the external Meeting Sentinel tool's recording state so the
         // UI can surface when a meeting is being recorded outside RTI.
@@ -99,7 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         let observers: [(NSNotification.Name, Selector)] = [
             (.rtiToggleOverlay, #selector(toggleOverlay)),
             (.rtiClearChat, #selector(clearChat)),
-            (.rtiToggleCommandPalette, #selector(toggleCommandPalette)),
         ]
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
@@ -108,7 +93,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     @objc private func toggleOverlay() { windows.toggleOverlay() }
     @objc private func clearChat() { Self.confirmThenClearChat() }
-    @objc private func toggleCommandPalette() { windows.toggleCommandPalette() }
 
     /// Shows a destructive-confirmation alert; on confirm, clears the
     /// current session's chat messages. Static so `CommandPaletteFactory`
@@ -116,13 +100,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     static func confirmThenClearChat() {
         let alert = NSAlert()
         alert.messageText = "Clear current chat?"
-        alert.informativeText = "This clears the chat messages and dismisses any open spawned counter panels. The live transcript is not affected."
+        alert.informativeText = "This clears the chat messages. The live transcript is not affected."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Clear")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn {
             LLMController.shared.clear()
-            UserPanelStore.shared.removeAll()
             NotificationCenter.default.post(name: .rtiHideAuxiliaryPanels, object: nil)
         }
     }
