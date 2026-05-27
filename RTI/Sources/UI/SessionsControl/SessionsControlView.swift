@@ -69,7 +69,7 @@ struct SessionsControlView: View {
     private var contentForTab: some View {
         switch selectedTab {
         case .liveTranscript:
-            DebugConsoleView()
+            LiveTranscriptView()
                 .environment(SessionCoordinator.shared)
 
         case .settings:

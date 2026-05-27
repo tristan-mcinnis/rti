@@ -73,7 +73,7 @@ enum CommandBuilder {
                 title: "Live Transcript  ⌘⌥T",
                 subtitle: "⌘⌥T",
                 keywords: ["console", "debug"],
-                perform: { [weak windows] in windows?.showDebugConsole() },
+                perform: { [weak windows] in windows?.showLiveTranscript() },
                 menuSection: .navigation,
                 hotkeyKeyCode: UInt32(kVK_ANSI_T),
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
@@ -208,13 +208,6 @@ enum CommandBuilder {
                 title: "About RTI",
                 keywords: ["info", "version"],
                 perform: { [weak windows] in windows?.showAbout() },
-                menuSection: .app
-            ),
-            RTICommand(
-                id: "app.onboarding",
-                title: "Show Welcome…",
-                keywords: ["intro", "welcome"],
-                perform: { [weak windows] in windows?.showOnboarding() },
                 menuSection: .app
             ),
             RTICommand(

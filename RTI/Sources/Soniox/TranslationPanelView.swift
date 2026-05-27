@@ -169,7 +169,7 @@ struct TranslationPanelView: View {
         }
     }
 
-    // MARK: - Paragraph coalescing (mirrors DebugConsole logic)
+    // MARK: - Paragraph coalescing (mirrors LiveTranscriptView logic)
 
     private struct Paragraph: Identifiable {
         let id: UUID

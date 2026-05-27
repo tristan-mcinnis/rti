@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-struct DebugConsoleView: View {
+struct LiveTranscriptView: View {
     @Environment(SessionCoordinator.self) var coordinator: SessionCoordinator
     private let modes = ModeStore.shared
     @State private var elapsed: TimeInterval = 0

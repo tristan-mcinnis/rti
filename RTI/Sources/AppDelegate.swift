@@ -72,8 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
         registerNotificationObservers()
 
-        if !windows.showOnboardingIfNeeded(),
-           CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
+        if CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
             windows.openSettings()
         }
     }

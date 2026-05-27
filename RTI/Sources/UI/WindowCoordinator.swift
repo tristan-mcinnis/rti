@@ -14,7 +14,6 @@ final class WindowCoordinator {
     private var topWidget: TopWidgetWindowController?
     private var sessionsControl: SessionsControlWindowController?
     private var meetingBrief: MeetingBriefWindowController?
-    private var onboarding: OnboardingWindowController?
     private var shortcutsController: ShortcutsWindowController?
     /// Singleton floating panels. One entry per `FloatingPanelID` once
     /// `install(_:)` has run; adding a new panel kind is just a new enum
@@ -112,10 +111,9 @@ final class WindowCoordinator {
         meetingBrief?.show()
     }
 
-    // MARK: - Legacy convenience wrappers used by AppDelegate / menu
+    // MARK: - Convenience wrappers used by AppDelegate / menu
 
-    func showDebugConsole() { showSessionsControl(tab: .liveTranscript) }
-    func toggleDebugConsole() { showSessionsControl(tab: .liveTranscript) }
+    func showLiveTranscript() { showSessionsControl(tab: .liveTranscript) }
     func openSettings() { showSessionsControl(tab: .settings) }
 
     // MARK: - Shortcuts
@@ -127,26 +125,6 @@ final class WindowCoordinator {
     func show(_ id: FloatingPanelID) { floatingPanels[id]?.show() }
     func hide(_ id: FloatingPanelID) { floatingPanels[id]?.hide() }
     func toggle(_ id: FloatingPanelID) { floatingPanels[id]?.toggle() }
-
-    // MARK: - Onboarding
-
-    func showOnboardingIfNeeded() -> Bool {
-        guard !OnboardingDefaults.hasCompleted else { return false }
-        let controller = OnboardingWindowController()
-        controller.showIfNeeded()
-        onboarding = controller
-        return true
-    }
-
-    /// Reopen the onboarding window unconditionally — wired to the menubar
-    /// "Show Welcome…" item so a user who skipped, or who needs to revisit
-    /// permissions/keys, can always come back.
-    func showOnboarding() {
-        if onboarding == nil {
-            onboarding = OnboardingWindowController()
-        }
-        onboarding?.show()
-    }
 
     // MARK: - About
 

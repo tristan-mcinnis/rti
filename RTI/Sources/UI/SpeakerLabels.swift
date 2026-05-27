@@ -3,8 +3,7 @@ import SwiftUI
 /// Single source of truth for mapping Soniox speaker IDs (`self`, `them_1`, …)
 /// to human-readable labels and stable per-speaker chip colors.
 ///
-/// Used by `SessionDetailView` (transcript tab) and `DebugConsoleView` (live
-/// transcript) so the label format never drifts between them.
+/// Used by `LiveTranscriptView` so the label format stays consistent.
 enum SpeakerLabels {
 
     /// Convert a raw speaker ID to a display label.
