@@ -30,7 +30,6 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
     private var isRunning = false
     private var sourceFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
-    private var stopContinuation: CheckedContinuation<Void, Never>?
 
     func start() async throws {
         guard !isRunning else { return }
@@ -69,12 +68,10 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         } catch {
             RTILog.log("system audio: removeStreamOutput error: \(error)", category: "system-audio")
         }
-        stream.stopCapture { [weak self] error in
+        stream.stopCapture { error in
             if let error {
                 RTILog.log("system audio: stopCapture error: \(error)", category: "system-audio")
             }
-            self?.stopContinuation?.resume()
-            self?.stopContinuation = nil
         }
         self.stream = nil
         converter = nil
