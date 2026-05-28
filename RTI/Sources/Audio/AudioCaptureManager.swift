@@ -103,8 +103,23 @@ final class AudioCaptureManager: @unchecked Sendable {
 
     func stop() {
         guard isRunning else { return }
-        engine.inputNode.removeTap(onBus: 0)
+        let input = engine.inputNode
+        input.removeTap(onBus: 0)
         engine.stop()
+        // Voice-Processing I/O (acoustic echo cancellation) keeps the
+        // microphone claimed even after `engine.stop()` — the orange mic
+        // indicator stays lit and the input device stays held, which blocks
+        // other apps (e.g. Zoom) from using the mic between sessions. The
+        // engine is a long-lived instance reused across sessions, so it never
+        // deallocates to release the device on its own. Explicitly disable
+        // voice processing to fully hand the mic back to the system.
+        if input.isVoiceProcessingEnabled {
+            do {
+                try input.setVoiceProcessingEnabled(false)
+            } catch {
+                RTILog.log("failed to disable voice processing on stop: \(error)", category: "audio")
+            }
+        }
         converter = nil
         isRunning = false
     }
