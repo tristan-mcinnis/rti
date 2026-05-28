@@ -18,6 +18,11 @@ final class AudioPipeline {
     /// Picked at `start()`: a CoreAudio process tap when available (macOS
     /// 14.2+ and permission granted), else the ScreenCaptureKit fallback.
     private var systemAudio: SystemAudioCapturing?
+    /// True between `start()` and `finalize()`/`abort()`. System-audio capture
+    /// starts on an async Task; this flag lets that Task notice if the session
+    /// was already torn down while it was awaiting startup, so it can release
+    /// the backend instead of leaking a running tap.
+    private var isCapturing = false
     private let wav = WAVWriter()
     private var soniox: SonioxClient?
     private var systemSoniox: SonioxClient?
@@ -75,6 +80,7 @@ final class AudioPipeline {
     /// (non-fatal if it fails).
     func start() throws {
         try audio.start()
+        isCapturing = true
 
         // Don't even attempt the system-audio Soniox leg without a key.
         // The mic leg already enforces this in `prepare`; this guard
@@ -83,7 +89,7 @@ final class AudioPipeline {
         guard !Secrets.sonioxAPIKey.isEmpty else { return }
 
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, self.isCapturing else { return }
             let sysClient = SonioxClient(
                 apiKey: Secrets.sonioxAPIKey,
                 url: SonioxClient.defaultURL,
@@ -129,6 +135,9 @@ final class AudioPipeline {
                 tap.onError = onErr
                 do {
                     try await tap.start()
+                    // The session may have been stopped while we awaited
+                    // startup; if so, release the tap instead of leaking it.
+                    guard self.isCapturing else { tap.stop(); return }
                     self.systemAudio = tap
                     return
                 } catch {
@@ -136,11 +145,13 @@ final class AudioPipeline {
                 }
             }
 
+            guard self.isCapturing else { return }
             let sck = SystemAudioCapture()
             sck.onPCMBuffer = onPCM
             sck.onError = onErr
             do {
                 try await sck.start()
+                guard self.isCapturing else { sck.stop(); return }
                 self.systemAudio = sck
             } catch {
                 RTILog.log("system audio start failed — \(error)", category: "audio")
@@ -151,6 +162,7 @@ final class AudioPipeline {
     /// Stop capture and signal end-of-audio to Soniox. Call `finish()`
     /// after the 1.5 s finalize window to disconnect and close the WAV.
     func finalize() {
+        isCapturing = false
         audio.stop()
         systemAudio?.stop()
         systemAudio = nil
@@ -213,6 +225,7 @@ final class AudioPipeline {
 
     /// Immediate teardown for failures and app termination.
     func abort() {
+        isCapturing = false
         audio.stop()
         systemAudio?.stop()
         systemAudio = nil

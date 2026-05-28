@@ -6,9 +6,12 @@ final class WAVWriter {
     private(set) var url: URL?
 
     static func defaultURL(for sessionId: String) -> URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        let base = docs.appendingPathComponent("RTI/sessions", isDirectory: true)
+        // Ephemeral by design: the WAV is streamed to a temp file during the
+        // session and deleted on stop. Use the temp directory (not Documents)
+        // so the OS reaps any orphan left behind by a crash — raw meeting audio
+        // must never linger in a user-visible location for a "nothing kept" app.
+        let base = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("RTI/sessions", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("\(sessionId).wav")
     }
