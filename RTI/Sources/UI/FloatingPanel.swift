@@ -135,7 +135,7 @@ private final class EscapeAwareNSPanel: NSPanel {
 }
 
 @MainActor
-final class FloatingPanelWindowController: PanelWindowControlling {
+final class FloatingPanelWindowController {
     private let spec: FloatingPanelSpec
     private let window: EscapeAwareNSPanel
     private var frameSaveWorkItem: DispatchWorkItem?
@@ -186,6 +186,8 @@ final class FloatingPanelWindowController: PanelWindowControlling {
     func show() { RTIPanelDefaults.fadeIn(window) }
 
     func hide() { RTIPanelDefaults.fadeOut(window) }
+
+    func toggle() { if isVisible { hide() } else { show() } }
 
     func setSharingInvisible(_ invisible: Bool) {
         window.sharingType = invisible ? .none : .readOnly

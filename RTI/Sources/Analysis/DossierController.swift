@@ -6,7 +6,7 @@ import Observation
 /// place across ticks (the `merge()` dedup replaces what a DB unique index
 /// used to do). The end-of-session `SessionArchive` writes the final set.
 @Observable @MainActor
-final class DossierController: AnalysisController {
+final class DossierController {
     static let shared = DossierController()
 
     private(set) var dossiers: [EntityDossier] = []
@@ -58,39 +58,40 @@ final class DossierController: AnalysisController {
     /// watermark of the processed window so the caller can advance and avoid
     /// re-sending the entire growing transcript on every cycle.
     func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
-        await withGenerationGuard {
-            lastError = nil
+        guard !isGenerating else { return nil }
+        isGenerating = true
+        defer { isGenerating = false }
+        lastError = nil
 
-            // The model needs to know about the entities we already track so it
-            // can return strictly NEW or significantly-updated ones — without
-            // this hint it tends to repeat the existing list verbatim.
-            let knownClause: String = {
-                guard !dossiers.isEmpty else { return "" }
-                let existing = dossiers.map { "- \($0.name) (\($0.type.rawValue))" }.joined(separator: "\n")
-                return "\nEntities already tracked (only return NEW ones, or ones whose description should be expanded):\n\(existing)\n"
-            }()
+        // The model needs to know about the entities we already track so it
+        // can return strictly NEW or significantly-updated ones — without
+        // this hint it tends to repeat the existing list verbatim.
+        let knownClause: String = {
+            guard !dossiers.isEmpty else { return "" }
+            let existing = dossiers.map { "- \($0.name) (\($0.type.rawValue))" }.joined(separator: "\n")
+            return "\nEntities already tracked (only return NEW ones, or ones whose description should be expanded):\n\(existing)\n"
+        }()
 
-            let result = await TranscriptAnalysis.run(
-                sessionId: sessionId,
-                sinceMs: sinceMs,
-                smart: true,
-                request: request,
-                category: "dossiers",
-                as: [RawDossier].self,
-                buildPrompt: { Self.dossierPrompt + knownClause + "\nNew transcript window:\n" + $0 }
-            )
+        let result = await TranscriptAnalysis.run(
+            sessionId: sessionId,
+            sinceMs: sinceMs,
+            smart: true,
+            request: request,
+            category: "dossiers",
+            as: [RawDossier].self,
+            buildPrompt: { Self.dossierPrompt + knownClause + "\nNew transcript window:\n" + $0 }
+        )
 
-            guard let result else {
-                // Empty / parse fail / cancelled — leave watermark unchanged.
-                return nil
-            }
-
-            let parsed = result.payload.compactMap { $0.toDossier() }
-            if !parsed.isEmpty {
-                merge(parsed)
-            }
-            return result.endMs
+        guard let result else {
+            // Empty / parse fail / cancelled — leave watermark unchanged.
+            return nil
         }
+
+        let parsed = result.payload.compactMap { $0.toDossier() }
+        if !parsed.isEmpty {
+            merge(parsed)
+        }
+        return result.endMs
     }
 
     /// Merges a fresh batch into the running dossier list. Existing entries

@@ -6,7 +6,7 @@ import Observation
 /// `clear()`. The end-of-session `SessionArchive` is responsible for writing
 /// the final set to disk — this controller never touches storage.
 @Observable @MainActor
-final class NotesGenerationController: AnalysisController {
+final class NotesGenerationController {
     static let shared = NotesGenerationController()
 
     private(set) var notes: [GeneratedNote] = []
@@ -64,28 +64,29 @@ final class NotesGenerationController: AnalysisController {
     /// covers the full transcript. Returns the `endMs` of the processed
     /// transcript on success so the scheduler can advance its watermark.
     func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
-        return await withGenerationGuard {
-            lastError = nil
+        guard !isGenerating else { return nil }
+        isGenerating = true
+        defer { isGenerating = false }
+        lastError = nil
 
-            guard let result = await TranscriptAnalysis.runText(
-                sessionId: sessionId,
-                sinceMs: sinceMs,
-                smart: true,
-                request: request,
-                buildPrompt: { Self.notesPrompt + "\n" + $0 }
-            ) else {
-                lastError = "Notes generation returned empty response."
-                return nil
-            }
-
-            let note = GeneratedNote(
-                timestamp: Date(),
-                rangeStartMs: sinceMs ?? 0,
-                rangeEndMs: result.endMs,
-                content: result.payload
-            )
-            notes.append(note)
-            return result.endMs
+        guard let result = await TranscriptAnalysis.runText(
+            sessionId: sessionId,
+            sinceMs: sinceMs,
+            smart: true,
+            request: request,
+            buildPrompt: { Self.notesPrompt + "\n" + $0 }
+        ) else {
+            lastError = "Notes generation returned empty response."
+            return nil
         }
+
+        let note = GeneratedNote(
+            timestamp: Date(),
+            rangeStartMs: sinceMs ?? 0,
+            rangeEndMs: result.endMs,
+            content: result.payload
+        )
+        notes.append(note)
+        return result.endMs
     }
 }

@@ -6,13 +6,12 @@ import Observation
 /// with new transcript material. Ephemeral — the guide lives in memory only;
 /// the end-of-session `SessionArchive` writes the final state.
 @Observable @MainActor
-final class DiscussionGuideController: AnalysisController {
+final class DiscussionGuideController {
     static let shared = DiscussionGuideController()
 
     private(set) var guide: DiscussionGuide?
     private(set) var isImporting = false
     private(set) var isMatching = false
-    var isGenerating = false
     private(set) var lastError: String?
 
     private let request = LLMRequest()
@@ -165,14 +164,6 @@ final class DiscussionGuideController: AnalysisController {
             self.guide = guide
         }
         return TranscriptContext.watermarkEndMs(forSessionId: sessionId)
-    }
-
-    /// Satisfies `AnalysisController`. Delegates to `match` so the
-    /// scheduler can drive this controller the same way it drives Notes
-    /// and Dossiers.
-    @discardableResult
-    func generate(sessionId: String, sinceMs: Int? = nil) async -> Int? {
-        await match(sessionId: sessionId, sinceMs: sinceMs)
     }
 
     /// Drop the guide for the active session.
