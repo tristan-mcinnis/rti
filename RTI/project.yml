@@ -81,6 +81,7 @@ targets:
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
       - path: Sources/Support/JSONExtractor.swift
       - path: Sources/Screenshot/OCRService.swift
+      - path: Sources/Analysis/DiscussionGuide.swift
     dependencies:
       - package: Yams
     settings:

@@ -136,6 +136,12 @@ final class DiscussionGuideController {
 
     /// AnalysisScheduler entry point — match unanswered questions against
     /// the current transcript window. No-op when no guide is loaded.
+    ///
+    /// Shares the fetch → LLM → strip → decode pipeline with Notes and
+    /// Dossiers via `TranscriptAnalysis.run` (timestamped shape, so the model
+    /// can echo `[mm:ss]` into its quotes). The guide-specific work — building
+    /// the unanswered-questions list and folding matches back into the guide —
+    /// stays here.
     @discardableResult
     func match(sessionId: String, sinceMs: Int? = nil) async -> Int? {
         guard !isMatching else { return nil }
@@ -143,27 +149,31 @@ final class DiscussionGuideController {
         let unanswered = guide.unansweredQuestions()
         guard !unanswered.isEmpty else { return nil }
 
-        let transcript = TranscriptContext.textWithTimestamps(forSessionId: sessionId)
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
         isMatching = true
         defer { isMatching = false }
 
         let questionsList = unanswered.map { "- [\($0.id)] \($0.text)" }.joined(separator: "\n")
-        let prompt = Self.matchPrompt + "\n" + questionsList + "\n\nTranscript window (with [mm:ss] timestamps):\n" + trimmed
-        let messages = [LLMMessage(role: "user", content: prompt)]
-        guard let response = await request.collectAsync(messages: messages, smart: false),
-              let matches = Self.parseMatches(response) else {
-            return nil
-        }
-        guard !matches.isEmpty else { return nil }
+        guard let result = await TranscriptAnalysis.run(
+            sessionId: sessionId,
+            sinceMs: sinceMs,
+            shape: .timestamped,
+            smart: false,
+            request: request,
+            category: "discussionGuide",
+            as: GuideMatchResponse.self,
+            buildPrompt: {
+                Self.matchPrompt + "\n" + questionsList
+                    + "\n\nTranscript window (with [mm:ss] timestamps):\n" + $0
+            }
+        ) else { return nil }
 
-        guide.apply(matches: matches)
+        guard !result.payload.matches.isEmpty else { return nil }
+
+        guide.apply(matches: result.payload.matches)
         if self.sessionId == sessionId {
             self.guide = guide
         }
-        return TranscriptContext.watermarkEndMs(forSessionId: sessionId)
+        return result.endMs
     }
 
     /// Drop the guide for the active session.
@@ -205,8 +215,10 @@ final class DiscussionGuideController {
         )
     }
 
-    private static func parseMatches(_ raw: String) -> [GuideMatch]? {
-        struct Wrapper: Decodable { let matches: [GuideMatch] }
-        return JSONExtractor.tryDecode(raw, as: Wrapper.self)?.matches
-    }
+}
+
+/// Wire shape for the matcher's JSON response: `{ "matches": [GuideMatch] }`.
+/// Decoded by `TranscriptAnalysis.run`.
+private struct GuideMatchResponse: Decodable {
+    let matches: [GuideMatch]
 }

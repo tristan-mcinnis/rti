@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		08A13442ABECFB8F79AC0581 /* DiscussionGuidePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F7F28771DC943B788E73DC7 /* DiscussionGuidePanelView.swift */; };
 		09CF78AEEA87300A3459F21B /* DiscussionGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8B3F3ACDF0563BA140B344 /* DiscussionGuide.swift */; };
+		0ADC2423E06D78C0A0620D42 /* DiscussionGuideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F669AF6E63C8DB76F75D4E8E /* DiscussionGuideTests.swift */; };
 		0C930D4CA1010E41BF1CF1E1 /* WAVWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857295A827688BF13CBC8A7E /* WAVWriter.swift */; };
 		10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */; };
 		1139B65B9AAE469E7DFF917B /* ShortcutsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E5F1F0F7ACE2BCE896F4A3E /* ShortcutsWindowController.swift */; };
@@ -28,6 +29,7 @@
 		2676C18C459F082E9C145D0D /* JSONExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2EF8F8F1DB276FD1B966872 /* JSONExtractor.swift */; };
 		26A68471342CC1C1E2B26F5B /* ToolLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */; };
 		29064D2D951C51390FE3EB29 /* AudioInputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = D402CDD1E9B3EC6E1BCB848D /* AudioInputDevice.swift */; };
+		2A1E5F2F666EF4297A153802 /* DiscussionGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8B3F3ACDF0563BA140B344 /* DiscussionGuide.swift */; };
 		2B61DB745EF157484A8E57AA /* MeetingBriefStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F265BD3BA7963BC1BB43898 /* MeetingBriefStore.swift */; };
 		2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B43315BBB57BE38A913848E /* SonioxProtocol.swift */; };
 		2C242E5A0B3725CFE29F968A /* CommandRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */; };
@@ -215,6 +217,7 @@
 		F0232A6827F5D8C0C5056320 /* CrashLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashLog.swift; sourceTree = "<group>"; };
 		F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStore.swift; sourceTree = "<group>"; };
 		F36B529563B4EAE6F3281194 /* SessionsControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsControlView.swift; sourceTree = "<group>"; };
+		F669AF6E63C8DB76F75D4E8E /* DiscussionGuideTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuideTests.swift; sourceTree = "<group>"; };
 		F71367C5B955DF6CF913A6C3 /* FloatingPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPanel.swift; sourceTree = "<group>"; };
 		F88EA5A5405F40A4AF56C7C5 /* SpeakerLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabels.swift; sourceTree = "<group>"; };
 		FA159B350466B311F95C6E82 /* RTIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIApp.swift; sourceTree = "<group>"; };
@@ -352,6 +355,7 @@
 			isa = PBXGroup;
 			children = (
 				C757E6B1AFFBC70DE990E730 /* CommandRegistryTests.swift */,
+				F669AF6E63C8DB76F75D4E8E /* DiscussionGuideTests.swift */,
 				E68E2F7C2CAF4B4B57821F53 /* JSONExtractorTests.swift */,
 				DEC28BC83C424B25E884D37F /* LLMErrorTests.swift */,
 				BCAC796A736545E475CFC8F6 /* OCRServiceTests.swift */,
@@ -608,6 +612,8 @@
 			files = (
 				825E92884AE10BC255F6991F /* CommandRegistry.swift in Sources */,
 				CFC035E3E6CDBBFCF0D2612D /* CommandRegistryTests.swift in Sources */,
+				2A1E5F2F666EF4297A153802 /* DiscussionGuide.swift in Sources */,
+				0ADC2423E06D78C0A0620D42 /* DiscussionGuideTests.swift in Sources */,
 				2676C18C459F082E9C145D0D /* JSONExtractor.swift in Sources */,
 				B10297342695329ED1968C8E /* JSONExtractorTests.swift in Sources */,
 				1FBE2EB09369B4A61F97FA84 /* LLMError.swift in Sources */,
