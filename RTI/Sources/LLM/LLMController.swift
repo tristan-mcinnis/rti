@@ -8,10 +8,6 @@ struct ChatEntry: Identifiable, Equatable {
     let action: String?        // "Ask" | "Assist" — user entries only
     let contextUsed: Bool      // user entries only — transcript attached
     let screenContextUsed: Bool // user entries only — OCR screen attached
-    /// Name of the project whose instructions were prepended for this turn.
-    /// Surfaced as a small "Project: X" tag in the response bubble so the
-    /// user can see when project-specific guidance is in play.
-    var appliedProjectName: String? = nil
 }
 
 @Observable @MainActor
@@ -145,8 +141,6 @@ final class LLMController {
         let promptContext = PromptContext(
             baseSystemPrompt: basePrompt,
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
-            projectName: nil,
-            projectInstructions: nil,
             referenceText: activeMode?.referenceText,
             referenceModeName: activeMode?.name,
             screenContext: manualScreenContext

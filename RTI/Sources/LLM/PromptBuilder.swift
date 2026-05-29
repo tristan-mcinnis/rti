@@ -8,9 +8,6 @@ struct PromptContext {
     var baseSystemPrompt: String = ""
     /// Optional glossary terms the model should know.
     var glossaryFragment: String? = nil
-    /// Name + instructions of the active project (both nil if none).
-    var projectName: String? = nil
-    var projectInstructions: String? = nil
     /// Reference text attached to the active mode.
     var referenceText: String? = nil
     /// Name of the mode providing the reference.
@@ -20,7 +17,6 @@ struct PromptContext {
 
     var hasContent: Bool {
         glossaryFragment != nil
-            || projectName != nil
             || referenceText != nil
             || screenContext != nil
     }
@@ -33,7 +29,7 @@ enum PromptBuilder {
     /// Maximum characters of reference text to include.
     private static let referenceCap = 8000
 
-    /// Build the system-level messages (prompt, glossary, project, reference,
+    /// Build the system-level messages (prompt, glossary, reference,
     /// screen context) that precede the conversation history.
     static func buildSystemMessages(context: PromptContext) -> [LLMMessage] {
         var msgs: [LLMMessage] = []
@@ -46,16 +42,6 @@ enum PromptBuilder {
 
         if let glossary = context.glossaryFragment {
             msgs.append(LLMMessage(role: "system", content: glossary))
-        }
-
-        if let projectName = context.projectName {
-            let instructions = (context.projectInstructions ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            var content = "This session belongs to the user's project \"\(projectName)\"."
-            if !instructions.isEmpty {
-                content += " Project instructions follow — follow these alongside the rules above:\n---\n\(instructions)\n---"
-            }
-            msgs.append(LLMMessage(role: "system", content: content))
         }
 
         if let reference = context.referenceText, !reference.isEmpty {

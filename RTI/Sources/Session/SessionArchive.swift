@@ -109,7 +109,6 @@ enum SessionArchive {
             if let action = entry.action { tags.append(action) }
             if entry.contextUsed { tags.append("transcript") }
             if entry.screenContextUsed { tags.append("screen") }
-            if let project = entry.appliedProjectName { tags.append("project: \(project)") }
             let suffix = tags.isEmpty ? "" : " _(\(tags.joined(separator: ", ")))_"
             lines.append("**\(speaker)**\(suffix)")
             lines.append("")
