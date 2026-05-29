@@ -50,66 +50,37 @@ final class LLMClient: @unchecked Sendable {
         smart: Bool = false,
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
-        let model = provider.model
         let temperature: Double? = smart ? nil : 0.6
         let thinking: LLMWireRequest.Thinking? = provider.supportsThinking
             ? LLMWireRequest.Thinking(type: smart ? "enabled" : "disabled")
             : nil
-        let streamTimeoutSeconds: Double = smart ? 120 : 60
+        let timeoutSeconds: Double = smart ? 120 : 60
 
         guard !apiKey.isEmpty else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: LLMError.missingAPIKey)
-            }
+            return AsyncThrowingStream { $0.finish(throwing: LLMError.missingAPIKey) }
         }
 
-        let providerName = provider.displayName
+        let logDetail = "model=\(provider.model) messages=\(messages.count) smart=\(smart)"
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let body = LLMWireRequest(
-                        model: model,
+                    let body = try JSONEncoder().encode(LLMWireRequest(
+                        model: provider.model,
                         messages: messages,
                         stream: true,
                         temperature: temperature,
                         max_tokens: 1024,
                         thinking: thinking
+                    ))
+                    // Plain path yields each delta straight to the stream's
+                    // consumer — no main-thread hop (the caller decides).
+                    _ = try await performChatStream(
+                        httpBody: body,
+                        logDetail: logDetail,
+                        timeoutSeconds: timeoutSeconds,
+                        onContent: { continuation.yield($0) },
+                        onReasoning: onReasoning
                     )
-                    var request = URLRequest(url: provider.baseURL.appendingPathComponent("chat/completions"))
-                    request.httpMethod = "POST"
-                    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                    request.httpBody = try JSONEncoder().encode(body)
-
-                    RTILog.log("POST provider=\(providerName) model=\(model) messages=\(messages.count) smart=\(smart)", category: "llm")
-                    let (bytes, response) = try await session.bytes(for: request)
-                    guard let http = response as? HTTPURLResponse else {
-                        throw LLMError.badResponse
-                    }
-                    RTILog.log("HTTP \(http.statusCode) provider=\(providerName)", category: "llm")
-                    guard (200..<300).contains(http.statusCode) else {
-                        let errText = try await readAll(bytes)
-                        if http.statusCode == 401 {
-                            throw LLMError.unauthorized
-                        }
-                        throw LLMError.httpError(http.statusCode, errText)
-                    }
-
-                    try await withThrowingTaskGroup(of: Void.self) { group in
-                        group.addTask {
-                            try await Task.sleep(nanoseconds: UInt64(streamTimeoutSeconds * 1_000_000_000))
-                            throw LLMError.streamError("Stream timed out after \(Int(streamTimeoutSeconds))s")
-                        }
-                        group.addTask { [weak self] in
-                            guard let self else { return }
-                            _ = try await self.processStreamBytes(bytes, onContent: { delta in
-                                continuation.yield(delta)
-                            }, onReasoning: onReasoning)
-                        }
-                        _ = try await group.next()
-                        group.cancelAll()
-                    }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -133,14 +104,11 @@ final class LLMClient: @unchecked Sendable {
         onContent: @Sendable @escaping (String) -> Void,
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) async throws -> StreamResult {
-        let model = provider.model
         let temperature: Double? = smart ? nil : 0.6
-        let streamTimeoutSeconds: Double = smart ? 120 : 60
-        guard !apiKey.isEmpty else { throw LLMError.missingAPIKey }
-        let providerName = provider.displayName
+        let timeoutSeconds: Double = smart ? 120 : 60
 
         var bodyDict: [String: Any] = [
-            "model": model,
+            "model": provider.model,
             "messages": try encodeMessages(messages),
             "stream": true,
             "max_tokens": 1024
@@ -156,17 +124,46 @@ final class LLMClient: @unchecked Sendable {
             bodyDict["tool_choice"] = "auto"
         }
 
+        let body = try JSONSerialization.data(withJSONObject: bodyDict, options: [])
+        let toolCount = (bodyDict["tools"] as? [Any])?.count ?? 0
+        // Tools path hops each delta to main — the chat UI paints from it.
+        return try await performChatStream(
+            httpBody: body,
+            logDetail: "tools=\(toolCount) messages=\(messages.count) smart=\(smart)",
+            timeoutSeconds: timeoutSeconds,
+            onContent: { delta in DispatchQueue.main.async { onContent(delta) } },
+            onReasoning: onReasoning
+        )
+    }
+
+    /// Shared HTTP + streaming scaffolding for both chat paths. Builds the
+    /// request from a pre-encoded body, opens the SSE stream, enforces the
+    /// per-call timeout, and drives the unified SSE processor. The two public
+    /// methods differ only in how they build the body (Encodable vs
+    /// tools-augmented dict) and where `onContent` deltas go (the plain path
+    /// yields to its AsyncThrowingStream; the tools path hops to main) — both
+    /// caller-supplied.
+    private func performChatStream(
+        httpBody: Data,
+        logDetail: String,
+        timeoutSeconds: Double,
+        onContent: @Sendable @escaping (String) -> Void,
+        onReasoning: (@Sendable (String) -> Void)?
+    ) async throws -> StreamResult {
+        guard !apiKey.isEmpty else { throw LLMError.missingAPIKey }
+        let providerName = provider.displayName
+
         var request = URLRequest(url: provider.baseURL.appendingPathComponent("chat/completions"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONSerialization.data(withJSONObject: bodyDict, options: [])
+        request.httpBody = httpBody
 
-        let toolCountForLog = (bodyDict["tools"] as? [Any])?.count ?? 0
-        RTILog.log("POST provider=\(providerName) tools=\(toolCountForLog) messages=\(messages.count) smart=\(smart)", category: "llm")
+        RTILog.log("POST provider=\(providerName) \(logDetail)", category: "llm")
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else { throw LLMError.badResponse }
+        RTILog.log("HTTP \(http.statusCode) provider=\(providerName)", category: "llm")
         guard (200..<300).contains(http.statusCode) else {
             let errText = try await readAll(bytes)
             if http.statusCode == 401 { throw LLMError.unauthorized }
@@ -175,18 +172,12 @@ final class LLMClient: @unchecked Sendable {
 
         return try await withThrowingTaskGroup(of: StreamResult.self) { group in
             group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(streamTimeoutSeconds * 1_000_000_000))
-                throw LLMError.streamError("Stream timed out after \(Int(streamTimeoutSeconds))s")
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                throw LLMError.streamError("Stream timed out after \(Int(timeoutSeconds))s")
             }
             group.addTask { [weak self] in
                 guard let self else { return StreamResult(toolCalls: [], finishReason: nil) }
-                return try await self.processStreamBytes(
-                    bytes,
-                    onContent: { delta in
-                        DispatchQueue.main.async { onContent(delta) }
-                    },
-                    onReasoning: onReasoning
-                )
+                return try await self.processStreamBytes(bytes, onContent: onContent, onReasoning: onReasoning)
             }
             let result = try await group.next()!
             group.cancelAll()
