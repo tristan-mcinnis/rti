@@ -27,8 +27,6 @@
 		23991DEEA239F0B185B18D13 /* LLMError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D135438CFFDC7140E0AD997 /* LLMError.swift */; };
 		2676C18C459F082E9C145D0D /* JSONExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2EF8F8F1DB276FD1B966872 /* JSONExtractor.swift */; };
 		26A68471342CC1C1E2B26F5B /* ToolLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */; };
-		272977CAC3B308B67685E4C9 /* SessionDetailRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */; };
-		284A8ECC652ABDEF512D4626 /* SessionDetailRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */; };
 		29064D2D951C51390FE3EB29 /* AudioInputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = D402CDD1E9B3EC6E1BCB848D /* AudioInputDevice.swift */; };
 		2B61DB745EF157484A8E57AA /* MeetingBriefStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F265BD3BA7963BC1BB43898 /* MeetingBriefStore.swift */; };
 		2B669C05ADC619E925C1AB20 /* SonioxProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B43315BBB57BE38A913848E /* SonioxProtocol.swift */; };
@@ -168,7 +166,6 @@
 		60E9F2B96FC6ED7A0953E3CE /* SummaryFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryFormatting.swift; sourceTree = "<group>"; };
 		649035E229EF2DC415F6B81E /* AnalysisController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisController.swift; sourceTree = "<group>"; };
 		6820EA81EE3A97F7E8DB34B1 /* TranscriptContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptContext.swift; sourceTree = "<group>"; };
-		68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailRequest.swift; sourceTree = "<group>"; };
 		69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotkey.swift; sourceTree = "<group>"; };
 		6B9AAF26072935A461EC9839 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
 		6E938720C8D72A2A78950C66 /* NotesGenerationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesGenerationController.swift; sourceTree = "<group>"; };
@@ -456,7 +453,6 @@
 				A949A2717D3CA48DD7A09479 /* CommandPaletteFactory.swift */,
 				E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */,
 				A8917D2FFA935D09BB39F439 /* RegistryMenu.swift */,
-				68A3D1611577507C7AE6BAE3 /* SessionDetailRequest.swift */,
 			);
 			path = CommandPalette;
 			sourceTree = "<group>";
@@ -633,7 +629,6 @@
 				6D75D10D5F8F759F52EB984A /* LLMErrorTests.swift in Sources */,
 				A1D0398BF49F7796FFAEE4C0 /* OCRService.swift in Sources */,
 				1FE9522A7ACE62374AA33FF8 /* OCRServiceTests.swift in Sources */,
-				272977CAC3B308B67685E4C9 /* SessionDetailRequest.swift in Sources */,
 				A3127A4220C41C2413B23249 /* SonioxFailure.swift in Sources */,
 				DBCAA5D4FD382ACD913D4980 /* SonioxFailureTests.swift in Sources */,
 				74C468CDEFAC049BEDE3093A /* SonioxProtocol.swift in Sources */,
@@ -719,7 +714,6 @@
 				D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */,
 				DE339834D494F25C79DE1E92 /* SessionArchive.swift in Sources */,
 				32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */,
-				284A8ECC652ABDEF512D4626 /* SessionDetailRequest.swift in Sources */,
 				379333F978F8334E614E8455 /* SessionsControlView.swift in Sources */,
 				6C834E4B71CE3E24DEE4A167 /* SessionsControlWindowController.swift in Sources */,
 				BC57220A05F60410ED96C0B3 /* SettingsView.swift in Sources */,

@@ -9,10 +9,9 @@ enum LLMError: Error {
 }
 
 extension LLMError {
-    /// User-facing copy. Single source of truth so the four LLM-using
-    /// controllers (LLMController, SummaryController, SessionTitleController,
-    /// SessionQAController) surface consistent messages instead of three of
-    /// them showing raw `\(error)` output.
+    /// User-facing copy. Single source of truth so every LLM-using
+    /// controller surfaces consistent messages instead of showing raw
+    /// `\(error)` output.
     var userMessage: String {
         switch self {
         case .unauthorized:

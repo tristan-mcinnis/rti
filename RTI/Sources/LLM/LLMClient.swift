@@ -5,11 +5,10 @@ import Foundation
 /// is supplied via `LLMProviderConfig`; routing to a different LLM is a
 /// one-line change in `LLMProviders` rather than edits here.
 final class LLMClient: @unchecked Sendable {
-    /// Shared instance bound to the active provider. All four LLM-using
-    /// controllers (LLMController, SummaryController, SessionTitleController,
-    /// SessionQAController) route through this. `apiKey` is resolved at
-    /// call time, so key edits in Settings take effect on the next request
-    /// without rebinding the singleton.
+    /// Shared instance bound to the active provider. Every LLM-using
+    /// controller routes through this. `apiKey` is resolved at call time,
+    /// so key edits in Settings take effect on the next request without
+    /// rebinding the singleton.
     static let shared = LLMClient(provider: LLMProviders.active)
 
     let provider: LLMProviderConfig

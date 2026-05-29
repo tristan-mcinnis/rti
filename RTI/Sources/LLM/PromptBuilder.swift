@@ -1,8 +1,8 @@
 import Foundation
 
 /// Contextual attachments injected into the system prompt before every
-/// chat turn. Callers (LLMController, CorpusChatController) populate this
-/// from their current state; PromptBuilder assembles the ordered message list.
+/// chat turn. The caller (LLMController) populates this from its current
+/// state; PromptBuilder assembles the ordered message list.
 struct PromptContext {
     /// The base system prompt (from the active mode, or the default).
     var baseSystemPrompt: String = ""
@@ -28,8 +28,7 @@ struct PromptContext {
 
 /// Builds the ordered [LLMMessage] list fed to the LLM for every chat turn.
 /// Owns the ordering, separators, truncation, and tagging conventions so
-/// LLMController, CorpusChatController, and SessionQAController don't
-/// duplicate the assembly logic.
+/// LLMController doesn't duplicate the assembly logic.
 enum PromptBuilder {
     /// Maximum characters of reference text to include.
     private static let referenceCap = 8000

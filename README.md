@@ -2,21 +2,21 @@
 
 A menubar-only macOS assistant that listens to your meetings, transcribes in real time, and streams answers over a translucent overlay that doesn't show up in other apps' screen captures.
 
-Personal build: **real-time only and fully ephemeral** — the live transcript and chat live in memory for the session and are gone when it ends. No database, no history, no corpus. macOS 14+. Bring your own [Soniox](https://console.soniox.com) and LLM provider keys ([DeepSeek](https://platform.deepseek.com) by default; the LLM layer is provider-agnostic — see [`Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift)).
+Personal build: **real-time first, audio never kept** — the live transcript and chat live in memory during the session; on stop RTI saves a plain-Markdown record and discards the audio. No database, no searchable history, no corpus. macOS 14+. Bring your own [Soniox](https://console.soniox.com) and LLM provider keys ([DeepSeek](https://platform.deepseek.com) by default; the LLM layer is provider-agnostic — see [`Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift)).
 
 ## What it does
 
 - **Live transcription.** `AVAudioEngine` → 16 kHz PCM → Soniox WebSocket, both sides of the call, held in memory with rolling context for the assistant.
 - **Streaming assistant.** ⌘↵ asks "what should I say next?" using the last few minutes of transcript. Also: say-next, follow-up questions, recap. OpenAI-compatible streaming chat.
 - **Invisible overlay.** Borderless `NSPanel` with `sharingType = .none` — excluded from QuickTime, Zoom local recording, and `screencapture`. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
-- **Meeting auto-detection.** When Zoom, Teams, FaceTime, or Webex launches — or a camera turns on in a meeting-capable app — RTI offers to start recording (or starts silently if you opt in). Settings → General.
-- **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers. On by default; toggle in Settings → General.
+- **Meeting awareness.** When Meeting Sentinel is recording a meeting outside RTI, a banner offers **Go live** to overlay the assistant on it (and to open the pre-meeting brief, if one was written). RTI never auto-records — you start a live session yourself with ⌘⇧R.
+- **Real-time analysis panels.** Optional floating panels generate live meeting **Notes** (⌘⇧N), extract entity **Dossiers** (⌘⇧D), and track coverage of an imported **Discussion Guide** (⌘⇧G) — all held in memory and refreshed on a timer. Toggle each in Settings → General.
+- **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers. On by default; toggle in Settings → General. The mic is fully released when a session stops, so it won't block other apps.
 - **Smart Screenshot.** ⌘⇧H captures the display under the mouse, runs Vision OCR on-device, attaches the text to your next prompt. The image is discarded.
-- **Live counter panels (chat-spawned).** Ask the overlay LLM to *"count every time someone says 'Maserati'"* and a floating counter window appears, matching against the live transcript (see `RTI/Sources/Panels/`).
 - **Translation.** Optional live translation alongside the transcript (one-way or two-way), in the Live Transcript window.
 - **Modes.** Built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text. Stored as a small JSON file.
 
-Nothing is written to disk except config (API keys in the Keychain-style store, modes in `~/Library/Application Support/RTI/modes.json`). The WAV is streamed to a temp file while recording and deleted on stop.
+The only things written to disk are config (API keys in the Keychain-style store, modes in `~/Library/Application Support/RTI/modes.json`) and a write-only Markdown record of each finished session — transcript, chat, and any generated notes/dossiers/guide — under `~/Library/Application Support/RTI/sessions/`. There's no in-app reader for it; you open it in Finder. The WAV is streamed to a temp file while recording and deleted on stop — audio is never kept.
 
 ## Build & run
 
@@ -33,7 +33,7 @@ A locally built `.app` is ad-hoc-signed — Gatekeeper requires a right-click �
 
 ## First run
 
-1. Menubar → RTI → **Welcome…** (or just launch — onboarding shows automatically).
+1. Launch RTI — it runs in the menubar with no Dock icon.
 2. Grant **Microphone** and **Screen Recording** permissions.
 3. Paste your **Soniox** and **LLM provider** keys.
 4. Start a session: ⌘⇧R. Toggle the overlay: ⌘\\. Ask the assistant: ⌘↵.
@@ -47,8 +47,10 @@ A locally built `.app` is ad-hoc-signed — Gatekeeper requires a right-click �
 | ⌘ ↵ | "Assist" — ask the LLM what to say next |
 | ⌘ ⇧ H | Capture the display under the mouse; attach OCR to the next prompt |
 | ⌘ ⌥ T | Toggle the Live Transcript window |
-| ⌘ K | Toggle the command palette |
 | ⌘ ⇧ B | Toggle the recording-pill widget |
+| ⌘ ⇧ N | Toggle the Notes panel |
+| ⌘ ⇧ D | Toggle the Dossiers panel |
+| ⌘ ⇧ G | Toggle the Discussion Guide panel |
 
 ## Capturing both sides of a call
 
@@ -75,11 +77,11 @@ RTI/
     Soniox/                        # WebSocket realtime transcription
     LLM/                           # LLMProvider config + LLMClient + LLMController + tools
     Screenshot/                    # ScreenCaptureKit + Vision OCR
-    Session/                       # SessionCoordinator + in-memory transcript pipeline + meeting detection
+    Session/                       # SessionCoordinator + in-memory transcript pipeline + Meeting Sentinel bridge + session archive
     Modes/                         # ModeStore (JSON-backed prompt presets)
-    Panels/                        # Chat-spawned live counter panels
+    Analysis/                      # Real-time Notes / Dossiers / Discussion Guide panels (in-memory)
     Widgets/                       # Recording-pill widget
-    Settings/                      # Tabbed Settings, KeychainStore, LaunchAtLogin, Onboarding, Logs
+    Settings/                      # Tabbed Settings, KeychainStore, LaunchAtLogin, Logs
     Support/                       # AppLog, CrashLog, NotificationNames, formatters
     UI/                            # WindowCoordinator, MenuCoordinator, HotkeyCoordinator, design system, SwiftUI views
   Tests/                           # XCTest unit tests

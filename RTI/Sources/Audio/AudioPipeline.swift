@@ -43,7 +43,7 @@ final class AudioPipeline {
     func prepare(sessionId: String) throws -> URL {
         // Fast-fail before opening a WAV on disk: a missing/empty Soniox
         // key would otherwise let the user "record" silently for 5 retries
-        // before any error surfaces, leaving an orphan WAV in the corpus.
+        // before any error surfaces, leaving an orphan WAV behind.
         guard !Secrets.sonioxAPIKey.isEmpty else {
             throw AudioPipelineError.missingSonioxKey
         }

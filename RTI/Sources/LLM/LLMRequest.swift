@@ -83,7 +83,7 @@ final class LLMRequest: @unchecked Sendable {
     // MARK: - Callback-based streaming
 
     /// Streaming executor: yields deltas as they arrive. Fire-and-forget —
-    /// callbacks deliver results to the caller. Used by SessionQA and CorpusChat.
+    /// callbacks deliver results to the caller.
     func stream(
         messages: [LLMMessage],
         smart: Bool,

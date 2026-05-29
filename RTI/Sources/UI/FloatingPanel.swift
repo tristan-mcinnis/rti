@@ -111,9 +111,6 @@ let notesDefaultOpacity: Double = floatingPanelDefaultOpacity
 let dossiersOpacityKey = "rti.dossiersPanel.opacity"
 let dossiersDefaultOpacity: Double = floatingPanelDefaultOpacity
 
-let themesOpacityKey = "rti.themesPanel.opacity"
-let themesDefaultOpacity: Double = floatingPanelDefaultOpacity
-
 let guideOpacityKey = "rti.guidePanel.opacity"
 let guideDefaultOpacity: Double = floatingPanelDefaultOpacity
 

@@ -43,8 +43,7 @@ struct StreamingEntry {
     var action: String?
 }
 
-/// Encapsulates the streaming lifecycle shared by LLMController,
-/// SessionQAController, and CorpusChatController: stream deltas into
+/// Encapsulates the streaming lifecycle for a chat turn: stream deltas into
 /// an assistant entry, prune on error, finalize on completion.
 @MainActor
 enum StreamingTurn {

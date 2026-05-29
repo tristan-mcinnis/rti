@@ -1,17 +1,13 @@
 import Foundation
 
 extension Notification.Name {
-    static let openSessionDetail = Notification.Name("rti.openSessionDetail")
     static let rtiToggleOverlay = Notification.Name("rti.toggleOverlay")
     static let rtiClearChat = Notification.Name("rti.clearChat")
     static let rtiOverlayDidBecomeKey = Notification.Name("rti.overlayDidBecomeKey")
     static let rtiOverlaySizeChanged = Notification.Name("rti.overlaySizeChanged")
     static let rtiShowLiveTranscript = Notification.Name("rti.showLiveTranscript")
-    static let rtiShowSessionHistory = Notification.Name("rti.showSessionHistory")
-    static let rtiOrphansDetected = Notification.Name("rti.orphansDetected")
     static let rtiShowLogs = Notification.Name("rti.showLogs")
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
-    static let rtiSessionsChanged = Notification.Name("rti.sessionsChanged")
     /// Posted after a "Clear Current Chat" action so any open auxiliary
     /// panel windows dismiss themselves.
     static let rtiHideAuxiliaryPanels = Notification.Name("rti.hideAuxiliaryPanels")
