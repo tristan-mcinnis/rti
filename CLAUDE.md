@@ -83,8 +83,7 @@ Layout:
 - `RTI/Tests/` — XCTest unit tests.
 - `RTI/POC*-findings.md` — historical per-POC validation logs. Reference for "why was this built this way?" — but note much of what they describe (persistence, corpus) is gone.
 - `RTI/VERIFY.md` — manual verification steps for running builds.
-- `docs/adr/` — architecture decision records.
-- `docs/specs/` — feature specs (some describe removed features).
+- `docs/adr/` — architecture decision records (ADR 0001 is superseded — it describes the removed corpus).
 
 ## Architecture
 

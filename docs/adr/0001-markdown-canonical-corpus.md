@@ -1,8 +1,19 @@
 # ADR 0001: Markdown-Canonical Corpus
 
 **Date**: 2026-05-07
-**Status**: Accepted
+**Status**: Superseded by the personal refocus (2026-05-26)
 **Author**: RTI engineering
+
+> **Superseded.** This ADR describes the meeting **Corpus** — the persistent
+> store of transcripts, summaries, and decisions, with a SQLite/FTS5 index and
+> an `rti-mcp` server. The personal refocus removed that entire surface: RTI is
+> now single-user and real-time only, with **no corpus, no database, no search,
+> and no history**. The only thing kept across sessions is config plus a
+> write-only end-of-session Markdown archive (`SessionArchive`) that is never
+> indexed or read back in-app. See `CLAUDE.md` ("Project focus — personal,
+> real-time only") for the current model. This record is retained so the
+> build-then-remove decision stays visible — **do not** rebuild the corpus on
+> the strength of the design below.
 
 ## Context
 
@@ -74,7 +85,8 @@ Keep decisions/action_items as structured SQLite columns, with markdown for free
 
 ## References
 
-- `docs/specs/markdown-corpus-and-companions.md` — full specification of the markdown corpus format, JSONL event schema, FTS reindex logic, and MCP server tools.
-- `CONTEXT.md` — domain glossary (Corpus, Session, Transcript Entry, etc.).
-- `RTI/Sources/Database/RTIDatabase.swift` — migration v11 (drop legacy tables) and current schema.
-- `RTI/Sources/Corpus/` — implementation of the corpus write/read/render pipeline.
+The implementation and companion docs this ADR referenced (`RTI/Sources/Corpus/`,
+`RTI/Sources/Database/RTIDatabase.swift`, `docs/specs/markdown-corpus-and-companions.md`,
+`docs/specs/embeddings.md`, and `CONTEXT.md`) were all removed in the personal
+refocus and no longer exist. See `git log` before 2026-05-26 to read the corpus
+implementation, and `CLAUDE.md` for the current architecture.
