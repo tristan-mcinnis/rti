@@ -185,10 +185,8 @@ final class DiscussionGuideController: AnalysisController {
     // MARK: - Parsing
 
     private static func parseGuide(_ raw: String, fileName: String) -> DiscussionGuide? {
-        guard let data = stripFences(raw).data(using: .utf8) else { return nil }
         struct Parsed: Decodable { let objectives: [GuideObjective] }
-        let decoder = JSONDecoder()
-        guard let p = try? decoder.decode(Parsed.self, from: data), !p.objectives.isEmpty else { return nil }
+        guard let p = JSONExtractor.tryDecode(raw, as: Parsed.self), !p.objectives.isEmpty else { return nil }
         // Force all questions to start pending — the matcher will move
         // them to partial/answered as evidence comes in.
         let stripped: [GuideObjective] = p.objectives.map { obj in
@@ -217,21 +215,7 @@ final class DiscussionGuideController: AnalysisController {
     }
 
     private static func parseMatches(_ raw: String) -> [GuideMatch]? {
-        guard let data = stripFences(raw).data(using: .utf8) else { return nil }
         struct Wrapper: Decodable { let matches: [GuideMatch] }
-        return (try? JSONDecoder().decode(Wrapper.self, from: data))?.matches
-    }
-
-    private static func stripFences(_ raw: String) -> String {
-        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.hasPrefix("```") {
-            if let nl = s.firstIndex(of: "\n") {
-                s = String(s[s.index(after: nl)...])
-            }
-            if s.hasSuffix("```") {
-                s = String(s.dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        return s
+        return JSONExtractor.tryDecode(raw, as: Wrapper.self)?.matches
     }
 }

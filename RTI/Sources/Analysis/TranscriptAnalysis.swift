@@ -35,24 +35,10 @@ enum TranscriptAnalysis {
         as type: Payload.Type = Payload.self,
         buildPrompt: (_ transcript: String) -> String
     ) async -> Result<Payload>? {
-        let transcript: String
-        switch shape {
-        case .plain:
-            transcript = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
-        case .timestamped:
-            transcript = TranscriptContext.textWithTimestamps(forSessionId: sessionId)
-        }
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
+        guard let (trimmed, endMs) = fetchTranscript(sessionId: sessionId, sinceMs: sinceMs, shape: shape) else { return nil }
         let prompt = buildPrompt(trimmed)
-        let messages = [LLMMessage(role: "user", content: prompt)]
-
-        guard let response = await request.collectAsync(messages: messages, smart: smart),
-              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-
+        guard let response = await request.collectAsync(messages: [LLMMessage(role: "user", content: prompt)], smart: smart),
+              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let payload: Payload
         do {
             payload = try JSONExtractor.decode(response, as: Payload.self)
@@ -60,8 +46,6 @@ enum TranscriptAnalysis {
             RTILog.log("TranscriptAnalysis[\(category)] decode failed: \(error)", category: "analysis")
             return nil
         }
-
-        let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
         return Result(payload: payload, endMs: endMs)
     }
 
@@ -75,24 +59,30 @@ enum TranscriptAnalysis {
         request: LLMRequest,
         buildPrompt: (_ transcript: String) -> String
     ) async -> Result<String>? {
-        let transcript: String
-        switch shape {
-        case .plain:
-            transcript = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
-        case .timestamped:
-            transcript = TranscriptContext.textWithTimestamps(forSessionId: sessionId)
-        }
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
+        guard let (trimmed, endMs) = fetchTranscript(sessionId: sessionId, sinceMs: sinceMs, shape: shape) else { return nil }
         let prompt = buildPrompt(trimmed)
-        let messages = [LLMMessage(role: "user", content: prompt)]
-
-        guard let response = await request.collectAsync(messages: messages, smart: smart),
-              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
+        guard let response = await request.collectAsync(messages: [LLMMessage(role: "user", content: prompt)], smart: smart),
+              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return Result(payload: response, endMs: endMs)
+    }
+
+    // MARK: - Private
+
+    /// Fetch and trim the transcript window. Returns (trimmedTranscript, endMs),
+    /// or nil when the window is empty — callers return nil to skip the tick.
+    private static func fetchTranscript(
+        sessionId: String,
+        sinceMs: Int?,
+        shape: TranscriptShape
+    ) -> (transcript: String, endMs: Int)? {
+        let raw: String
+        switch shape {
+        case .plain:      raw = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
+        case .timestamped: raw = TranscriptContext.textWithTimestamps(forSessionId: sessionId)
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? 0
+        return (trimmed, endMs)
     }
 }

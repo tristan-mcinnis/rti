@@ -199,7 +199,6 @@ final class LLMController {
                             self.pruneTrailingEmptyAssistant()
                             self.streamingEntryID = nil
                             RTILog.log("LLM stream error: \(message)", category: "llm")
-                            RTILog.log("stream error: \(message)", category: "llm")
                         }
                     }
                 }
@@ -231,23 +230,31 @@ final class LLMController {
     /// Build the recent diarized transcript from the in-memory live entries,
     /// limited to the trailing context window. Ephemeral build: there's no
     /// on-disk transcript to read — the live entries are the only source.
+    ///
+    /// When the window contains user-typed notes, they are hoisted into a
+    /// "## User notes" preamble at the top — matching the contract described
+    /// in the system prompt above.
     private func recentTranscriptText() -> String {
-        let entries = SessionCoordinator.shared.liveEntries
-        guard !entries.isEmpty else { return "" }
-        let maxMs = entries.map(\.startMs).max() ?? 0
+        let all = SessionCoordinator.shared.liveEntries
+        guard !all.isEmpty else { return "" }
+        let maxMs = all.map(\.startMs).max() ?? 0
         let windowMs = Int(Self.contextWindowSeconds * 1000)
         let threshold = max(0, maxMs - windowMs)
-        let lines = entries
-            .filter { $0.startMs >= threshold }
-            .map { entry -> String in
-                let speaker: String
-                switch entry.speakerId {
-                case "self": speaker = "Me"
-                case "note": speaker = "[my note]"
-                default: speaker = "Them"
-                }
-                return "\(speaker): \(entry.text)"
+        let windowed = all.filter { $0.startMs >= threshold }
+
+        let formatLine: (LiveEntry) -> String = { entry in
+            switch entry.speakerId {
+            case "self": return "Me: \(entry.text)"
+            case "note": return "[my note]: \(entry.text)"
+            default:     return "Them: \(entry.text)"
             }
-        return lines.joined(separator: "\n")
+        }
+        let inline = windowed.map(formatLine).joined(separator: "\n")
+
+        let notes = windowed.filter { $0.speakerId == "note" }
+        guard !notes.isEmpty else { return inline }
+        let header = "## User notes (authoritative — trust these over any transcript ambiguity)"
+        let bullets = notes.map { "- \($0.text)" }.joined(separator: "\n")
+        return "\(header)\n\(bullets)\n\n\(inline)"
     }
 }
