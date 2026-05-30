@@ -10,6 +10,10 @@ final class AudioPipeline {
 
     var onWords: (([SonioxWord]) -> Void)?
     var onSystemWords: (([SonioxWord]) -> Void)?
+    /// Fires once when the system-audio leg actually starts, with how many
+    /// milliseconds later it started than the mic leg. Used to align the two
+    /// channels' transcript timestamps onto a common timeline.
+    var onSystemAudioStarted: ((Int) -> Void)?
     /// Fires on terminal mic-audio failures. `isAuth` gates the "Open Settings"
     /// affordance in the UI.
     var onError: ((String, Bool) -> Void)?
@@ -23,6 +27,10 @@ final class AudioPipeline {
     /// was already torn down while it was awaiting startup, so it can release
     /// the backend instead of leaking a running tap.
     private var isCapturing = false
+    /// Wall-clock instant the mic leg started sending audio (≈ the mic Soniox
+    /// stream's `startMs == 0`). Used to measure how much later the system
+    /// leg starts so its timestamps can be aligned to the mic timeline.
+    private var captureStartWall: Date?
     private let wav = WAVWriter()
     private var soniox: SonioxClient?
     private var systemSoniox: SonioxClient?
@@ -79,6 +87,7 @@ final class AudioPipeline {
     /// Start mic capture immediately; system audio starts asynchronously
     /// (non-fatal if it fails).
     func start() throws {
+        captureStartWall = Date()
         try audio.start()
         isCapturing = true
 
@@ -139,6 +148,7 @@ final class AudioPipeline {
                     // startup; if so, release the tap instead of leaking it.
                     guard self.isCapturing else { tap.stop(); return }
                     self.systemAudio = tap
+                    self.reportSystemAudioStart()
                     return
                 } catch {
                     RTILog.log("CoreAudio tap unavailable, falling back to ScreenCaptureKit — \(error)", category: "audio")
@@ -153,10 +163,18 @@ final class AudioPipeline {
                 try await sck.start()
                 guard self.isCapturing else { sck.stop(); return }
                 self.systemAudio = sck
+                self.reportSystemAudioStart()
             } catch {
                 RTILog.log("system audio start failed — \(error)", category: "audio")
             }
         }
+    }
+
+    /// Report how much later the system-audio leg started than the mic leg,
+    /// so the transcript can align the two channels' timestamps.
+    private func reportSystemAudioStart() {
+        let offsetMs = Int(max(0, Date().timeIntervalSince(captureStartWall ?? Date()) * 1000))
+        onSystemAudioStarted?(offsetMs)
     }
 
     /// Stop capture and signal end-of-audio to Soniox. Call `finish()`

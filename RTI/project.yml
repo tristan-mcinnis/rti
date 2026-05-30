@@ -76,6 +76,9 @@ targets:
       - path: Tests
       - path: Sources/Soniox/SonioxProtocol.swift
       - path: Sources/Session/SpeakerTurn.swift
+      - path: Sources/Session/LiveEntry.swift
+      - path: Sources/Session/TranscriptAggregator.swift
+      - path: Sources/Support/SpeakerLabelMapping.swift
       - path: Sources/LLM/LLMError.swift
       - path: Sources/Soniox/SonioxFailure.swift
       - path: Sources/UI/CommandPalette/CommandRegistry.swift

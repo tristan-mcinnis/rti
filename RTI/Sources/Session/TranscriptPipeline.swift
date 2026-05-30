@@ -31,6 +31,13 @@ final class TranscriptPipeline {
         }
     }
 
+    /// Align the system channel's entries onto the mic timeline. `ms` is how
+    /// much later the system-audio leg started than the mic leg; see
+    /// `TranscriptAggregator.startMsOffset`.
+    func setSystemStartOffset(ms: Int) {
+        systemAggregator.startMsOffset = ms
+    }
+
     @discardableResult
     func insertNote(_ text: String, startedAt: Date) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
