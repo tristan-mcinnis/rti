@@ -3,20 +3,6 @@ import AVFoundation
 import Foundation
 import Observation
 
-struct LiveEntry: Identifiable {
-    let id = UUID()
-    let speakerId: String
-    let text: String
-    let startMs: Int
-    let confidence: Double
-    /// "none" | "original" | "translation"
-    let translationStatus: String
-    /// Language code (e.g. "en", "fr") — nil for pre-translation tokens
-    let language: String?
-    /// Original language for translation tokens
-    let sourceLanguage: String?
-}
-
 /// Owns the live recording lifecycle. Ephemeral build: a session is purely a
 /// run of live audio → transcript held in memory for the duration. Nothing is
 /// persisted — no corpus, no database, no history. When the session ends the
@@ -93,6 +79,9 @@ final class SessionCoordinator {
         }
         audioPipeline.onSystemWords = { [weak self] words in
             self?.handleSystemWords(words)
+        }
+        audioPipeline.onSystemAudioStarted = { [weak self] offsetMs in
+            self?.transcriptPipeline.setSystemStartOffset(ms: offsetMs)
         }
         audioPipeline.onError = { [weak self] message, isAuth in
             self?.lastError = message

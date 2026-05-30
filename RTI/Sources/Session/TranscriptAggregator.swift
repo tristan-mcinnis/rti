@@ -15,6 +15,16 @@ final class TranscriptAggregator {
     private var zeroSeen: Set<String> = []
     private let channel: String
 
+    /// Added to each emitted entry's `startMs` to put this channel on a
+    /// common session timeline. Each Soniox stream counts `startMs` from its
+    /// own first audio, but the system-audio leg starts later than the mic
+    /// leg (it spins up after the CoreAudio tap / SCK is ready), so without
+    /// this its entries would sort earlier than they actually occurred when
+    /// merged with the mic channel. Set externally once the system leg
+    /// starts; raw word timestamps (dedup watermark, zero-ms detection) are
+    /// left untouched.
+    var startMsOffset: Int = 0
+
     init(channel: String) {
         self.channel = channel
     }
@@ -40,7 +50,7 @@ final class TranscriptAggregator {
                 LiveEntry(
                     speakerId: SpeakerLabelMapping.rawLabel(speaker: run.speaker, channel: channel),
                     text: run.text,
-                    startMs: run.startMs,
+                    startMs: run.startMs + startMsOffset,
                     confidence: run.confidence,
                     translationStatus: run.translationStatus,
                     language: run.language,
@@ -74,5 +84,6 @@ final class TranscriptAggregator {
         interimText = nil
         lastEndMs = 0
         zeroSeen = []
+        startMsOffset = 0
     }
 }
