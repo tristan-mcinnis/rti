@@ -39,6 +39,12 @@ jobs:
           restore-keys: |
             spm-${{ runner.os }}-
 
+      - name: Provide Secrets.swift stub
+        # Secrets.swift is gitignored (never holds real keys — those live in the
+        # Keychain at runtime). CI seeds it from the committed example so the
+        # source tree compiles, exactly as documented for a first checkout.
+        run: cp RTI/Sources/Secrets.swift.example RTI/Sources/Secrets.swift
+
       - name: Generate Xcode project
         working-directory: RTI
         run: xcodegen generate
