@@ -60,7 +60,9 @@ You cannot "loop until verified" without a harness. Do this before any code chan
 
 - **0.1 — GitHub Actions CI.** Add `.github/workflows/ci.yml` that, on push + PR to `main`:
   installs `xcodegen` (Homebrew), runs `xcodegen generate`, builds Debug, and runs the test
-  suite on a `macos-14` runner. Cache SPM where sensible.
+  suite. Use a runner whose Xcode matches the local dev toolchain (currently Xcode 26.x on
+  `macos-15`) so "CI green" faithfully mirrors local — an older Xcode (e.g. 16.2 on
+  `macos-14`) diverges on Swift 6 strict-concurrency diagnostics. Cache SPM where sensible.
   - `verify:` push a branch, confirm the Action goes green in the GitHub UI (read the run log,
     don't assume). Confirm it goes **red** if you deliberately break a test, then fix it.
 - **0.2 — Lint gate (lightweight).** Add `swiftformat --lint` (or SwiftLint, your call —

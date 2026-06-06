@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build-test:
     name: Build & Test (Debug)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -71,7 +71,7 @@ jobs:
 
   lint:
     name: SwiftFormat (changed files)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
