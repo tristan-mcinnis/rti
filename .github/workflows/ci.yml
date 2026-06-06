@@ -70,7 +70,7 @@ jobs:
             test
 
   lint:
-    name: SwiftFormat (changed files)
+    name: SwiftFormat (new files)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -80,7 +80,7 @@ jobs:
       - name: Install SwiftFormat
         run: brew install swiftformat
 
-      - name: Lint changed Swift files
+      - name: Lint newly-added Swift files
         run: |
           set -euo pipefail
           # Full history of main so merge-base can find the fork point.
@@ -90,12 +90,18 @@ jobs:
             echo "No merge-base with origin/main — nothing to lint."
             exit 0
           fi
-          FILES=$(git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- '*.swift')
+          # Lint only NEW files (added). The legacy tree predates SwiftFormat
+          # and follows none of its conventions, so linting modified files would
+          # force a full reformat on every one-line touch — burying logic in
+          # formatting noise (and the goal doc forbids a mass reformat). New
+          # code (the growing RTICore) is clean for free. --find-renames keeps
+          # relocated legacy files (git mv) out of the "added" set.
+          FILES=$(git diff --find-renames --name-only --diff-filter=A "$BASE" HEAD -- '*.swift')
           if [ -z "$FILES" ]; then
-            echo "No changed Swift files — nothing to lint."
+            echo "No newly-added Swift files — nothing to lint."
             exit 0
           fi
-          echo "Linting changed Swift files:"
+          echo "Linting newly-added Swift files:"
           echo "$FILES"
           # .swiftformat at the repo root supplies the rules/version.
           echo "$FILES" | tr '\n' '\0' | xargs -0 swiftformat --lint
