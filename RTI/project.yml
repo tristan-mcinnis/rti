@@ -50,6 +50,25 @@ packages:
     from: "2.4.0"
 
 targets:
+  # Pure-Swift logic core (no AppKit/SwiftUI, no @MainActor). Extracted so the
+  # transcription/LLM/analysis logic is unit-testable without hosting into the
+  # SwiftUI app + double-instantiating NSApplication. Both the app and the test
+  # bundle link it. Phase 1 of PRODUCTION-GOAL.md.
+  RTICore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Core
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        INFOPLIST_FILE: ""
+        CODE_SIGN_ENTITLEMENTS: ""
+        PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti.personal.core
+
   RTI:
     type: application
     platform: macOS
@@ -60,15 +79,16 @@ targets:
           - RTI.entitlements
           - Secrets.swift.example
     dependencies:
+      - target: RTICore
       - package: Starscream
       - package: Yams
       - package: MarkdownUI
         product: MarkdownUI
 
-  # Standalone test bundle — no host app, no NSApplication. Each Swift file
-  # under test is compiled directly into the bundle (so we can unit-test
-  # internal types without `@testable import RTI`, which would require hosting
-  # into the SwiftUI app and double-instantiating NSApplication).
+  # Standalone test bundle — no host app, no NSApplication. Types that have
+  # moved into RTICore are reached via `import RTICore`; the remaining entries
+  # below are app-module files still compiled directly into the bundle until
+  # they too migrate to RTICore in a later Phase 1 slice.
   RTITests:
     type: bundle.unit-test
     platform: macOS
@@ -78,14 +98,12 @@ targets:
       - path: Sources/Session/SpeakerTurn.swift
       - path: Sources/Session/LiveEntry.swift
       - path: Sources/Session/TranscriptAggregator.swift
-      - path: Sources/Support/SpeakerLabelMapping.swift
-      - path: Sources/LLM/LLMError.swift
       - path: Sources/Soniox/SonioxFailure.swift
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
-      - path: Sources/Support/JSONExtractor.swift
       - path: Sources/Screenshot/OCRService.swift
       - path: Sources/Analysis/DiscussionGuide.swift
     dependencies:
+      - target: RTICore
       - package: Yams
     settings:
       base:

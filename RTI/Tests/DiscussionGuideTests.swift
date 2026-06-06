@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// Characterizes the pure DiscussionGuide state machine (apply / unanswered /
 /// coverage) and the match-response wire shape. Locks in the behavior the

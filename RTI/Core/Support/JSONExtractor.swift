@@ -4,9 +4,9 @@ import Foundation
 /// hints despite the prompt asking for raw JSON. Six analyzer/extractor
 /// sites used to each carry their own fence-stripping copy; this is the
 /// one place that knowledge lives now.
-enum JSONExtractor {
+public enum JSONExtractor {
 
-    enum Error: Swift.Error {
+    public enum Error: Swift.Error {
         case emptyInput
         case invalidUTF8
         case decode(Swift.Error, raw: String)
@@ -14,7 +14,7 @@ enum JSONExtractor {
 
     /// Strip optional markdown code fences from a model response.
     /// Tolerates `\`\`\`json\n…\`\`\``, `\`\`\`\n…\`\`\``, and bare `\`\`\``.
-    static func stripFences(_ raw: String) -> String {
+    public static func stripFences(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard s.hasPrefix("```") else { return s }
         if let nl = s.firstIndex(of: "\n") {
@@ -30,7 +30,7 @@ enum JSONExtractor {
     /// Throws `Error.emptyInput` for blank input, `Error.invalidUTF8` if
     /// the cleaned string can't be encoded as UTF-8, or `Error.decode`
     /// wrapping the underlying decoder error.
-    static func decode<T: Decodable>(_ raw: String, as type: T.Type = T.self) throws -> T {
+    public static func decode<T: Decodable>(_ raw: String, as type: T.Type = T.self) throws -> T {
         let cleaned = stripFences(raw)
         guard !cleaned.isEmpty else { throw Error.emptyInput }
         guard let data = cleaned.data(using: .utf8) else { throw Error.invalidUTF8 }
@@ -44,7 +44,7 @@ enum JSONExtractor {
     /// Non-throwing variant — returns nil on any failure. Suits the
     /// analyzer controllers, which already treat parse failure as a
     /// "skip this tick" signal rather than a propagated error.
-    static func tryDecode<T: Decodable>(_ raw: String, as type: T.Type = T.self) -> T? {
+    public static func tryDecode<T: Decodable>(_ raw: String, as type: T.Type = T.self) -> T? {
         try? decode(raw, as: type)
     }
 }

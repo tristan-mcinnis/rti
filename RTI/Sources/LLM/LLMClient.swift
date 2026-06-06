@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Streaming chat client for any OpenAI-compatible provider.
 /// Provider behavior (URL, model, API key, optional `thinking` extension)

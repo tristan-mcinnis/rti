@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Per-channel live transcript aggregation: watermark dedup, ZeroMs dedup,
 /// interim text tracking, and SpeakerTurn collapse.
