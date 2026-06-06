@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 @MainActor
 final class TranscriptAggregatorTests: XCTestCase {

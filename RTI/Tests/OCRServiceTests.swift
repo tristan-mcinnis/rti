@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 import AppKit
 import CoreGraphics
 

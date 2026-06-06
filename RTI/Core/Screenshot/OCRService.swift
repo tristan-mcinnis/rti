@@ -4,22 +4,22 @@ import Foundation
 // strict-concurrency capture warnings without changing runtime behavior.
 @preconcurrency import Vision
 
-enum OCRServiceError: Error, LocalizedError {
+public enum OCRServiceError: Error, LocalizedError {
     case timedOut
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .timedOut: return "OCR timed out after 30 seconds."
         }
     }
 }
 
-enum OCRService {
+public enum OCRService {
     /// Runs Vision text recognition on `cgImage` and returns observations sorted
     /// top→bottom, left→right. Races the Vision request against a 30-second
     /// timeout so a hung Vision completion handler doesn't stall the caller
     /// indefinitely. Off-main; call from a background task.
-    static func recognizeText(in cgImage: CGImage) async throws -> String {
+    public static func recognizeText(in cgImage: CGImage) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
                 try await Task.sleep(nanoseconds: 30_000_000_000)

@@ -1,4 +1,5 @@
 import AppKit
+import RTICore
 import SwiftUI
 
 struct LiveTranscriptView: View {

@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 import Observation
 
 /// One entry in the command palette / menubar / hotkey system. The single

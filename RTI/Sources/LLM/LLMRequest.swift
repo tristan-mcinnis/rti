@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Shared execution primitive for LLM-powered features.
 /// Owns task lifecycle (cancel, start), error normalisation, and the

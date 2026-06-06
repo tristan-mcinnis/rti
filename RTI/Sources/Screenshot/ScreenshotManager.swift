@@ -1,4 +1,5 @@
 import AppKit
+import RTICore
 import CoreGraphics
 import Foundation
 @preconcurrency import ScreenCaptureKit

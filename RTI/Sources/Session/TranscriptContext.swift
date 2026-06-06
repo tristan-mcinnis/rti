@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Renders the live session transcript into the plain-text form the LLM reads
 /// as part of an analysis prompt. Ephemeral build: the only source is

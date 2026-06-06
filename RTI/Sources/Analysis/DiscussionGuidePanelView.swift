@@ -1,4 +1,5 @@
 import SwiftUI
+import RTICore
 import UniformTypeIdentifiers
 
 struct DiscussionGuidePanelView: View {

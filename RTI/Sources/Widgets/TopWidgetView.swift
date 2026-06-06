@@ -1,4 +1,5 @@
 import SwiftUI
+import RTICore
 
 /// Recording-first pill anchored to the top-right corner of the screen.
 ///

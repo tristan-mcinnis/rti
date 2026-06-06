@@ -1,4 +1,5 @@
 import AppKit
+import RTICore
 import Carbon.HIToolbox
 
 /// Builds the runtime command palette / menu / hotkey entries. Extracted

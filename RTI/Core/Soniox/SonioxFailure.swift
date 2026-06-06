@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Mirrors the `LLMError.userMessage` / `.isAuth` shape so both
 /// upstream services surface failures through one mental model.
-enum SonioxFailure: Error, Equatable {
+public enum SonioxFailure: Error, Equatable {
     /// 401 / 402 / 403 — authentication or billing problem. Stop retrying;
     /// surface a Settings affordance so the user can paste a fresh key.
     case auth
@@ -27,7 +27,7 @@ enum SonioxFailure: Error, Equatable {
 extension SonioxFailure {
     /// Whether `SonioxClient.scheduleReconnect` should attempt another
     /// connection. False for `auth` and `clientBug`; true otherwise.
-    var shouldRetry: Bool {
+    public var shouldRetry: Bool {
         switch self {
         case .auth, .clientBug: return false
         case .transient, .unknown: return true
@@ -36,7 +36,7 @@ extension SonioxFailure {
 
     /// True for the modes the UI uses to gate the "Open Settings"
     /// affordance — same role `LLMError.isAuth` plays.
-    var isAuth: Bool {
+    public var isAuth: Bool {
         switch self {
         case .auth: return true
         case .clientBug, .transient, .unknown: return false
@@ -48,7 +48,7 @@ extension SonioxFailure {
     /// the actionable advice is "check internet / proxy." `didOpen=true`
     /// means the session was streaming and dropped, so the message is
     /// "reconnecting" rather than "fix your network."
-    func userMessage(didOpen: Bool) -> String {
+    public func userMessage(didOpen: Bool) -> String {
         switch self {
         case .auth:
             return "Soniox rejected the API key. Open Settings to update it."
@@ -71,7 +71,7 @@ extension SonioxFailure {
     /// (these arrive over the WebSocket as JSON `{ "error_code": N, ... }`).
     /// Soniox uses HTTP-style codes here, so the mapping mirrors the
     /// inner-chapter classification.
-    static func fromSonioxApplicationError(code: Int, detail: String) -> SonioxFailure {
+    public static func fromSonioxApplicationError(code: Int, detail: String) -> SonioxFailure {
         switch code {
         case 400:
             return .clientBug(detail)
@@ -91,7 +91,7 @@ extension SonioxFailure {
     /// usually surfaces as a Soniox application error before this fires,
     /// so we lean toward `.transient` here and let the backoff cap stop
     /// us if the failure is permanent.
-    static func fromTransport(reason: String) -> SonioxFailure {
+    public static func fromTransport(reason: String) -> SonioxFailure {
         .transient(reason: reason)
     }
 }

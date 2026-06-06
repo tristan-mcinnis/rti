@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import RTICore
 
 /// Owns the active session's discussion guide: parses an imported document
 /// into structure and periodically asks the LLM to pair unanswered questions

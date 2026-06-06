@@ -65,11 +65,15 @@ You cannot "loop until verified" without a harness. Do this before any code chan
   `macos-14`) diverges on Swift 6 strict-concurrency diagnostics. Cache SPM where sensible.
   - `verify:` push a branch, confirm the Action goes green in the GitHub UI (read the run log,
     don't assume). Confirm it goes **red** if you deliberately break a test, then fix it.
-- **0.2 — Lint gate (lightweight).** Add `swiftformat --lint` (or SwiftLint, your call —
-  pick one, minimal default config) as a non-blocking-then-blocking CI step. Do **not**
-  mass-reformat the repo; only lint going forward, and fix what the gate flags in files you
-  touch.
-  - `verify:` CI shows the lint step; an intentional style violation fails it.
+- **0.2 — Lint gate (lightweight).** Add `swiftformat --lint` (minimal config, default
+  rules) as a CI step. The legacy tree follows none of SwiftFormat's conventions and the
+  repo must **not** be mass-reformatted, so the gate lints **only newly-added files** — new
+  code (notably the growing RTICore) stays clean for free, while touching a legacy file never
+  forces a full reformat.
+  - `verify:` CI shows the lint step; an intentional style violation in a new file fails it.
+  - *Done (PR #3, refined in Phase 1):* started diff-scoped on all changed files, narrowed to
+    added-only once the Phase 1 refactor showed that one-line touches were triggering huge
+    reformats of files the change didn't otherwise alter.
 
 ---
 

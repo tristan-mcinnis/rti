@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Extracted from `LLMController`. Orchestrates a single chat turn that
 /// may involve multiple streaming + tool-execution iterations. Callers

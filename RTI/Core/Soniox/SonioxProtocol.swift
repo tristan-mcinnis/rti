@@ -1,21 +1,43 @@
 import Foundation
 
-struct SonioxWord {
-    let text: String
-    let startMs: Int
-    let endMs: Int
-    let speaker: Int
-    let confidence: Double
-    let isFinal: Bool
+public struct SonioxWord {
+    public let text: String
+    public let startMs: Int
+    public let endMs: Int
+    public let speaker: Int
+    public let confidence: Double
+    public let isFinal: Bool
     /// "none" | "original" | "translation"
-    let translationStatus: String
+    public let translationStatus: String
     /// Language code of the token (e.g. "en", "fr")
-    let language: String?
+    public let language: String?
     /// Original language for translated tokens
-    let sourceLanguage: String?
+    public let sourceLanguage: String?
+
+    public init(
+        text: String,
+        startMs: Int,
+        endMs: Int,
+        speaker: Int,
+        confidence: Double,
+        isFinal: Bool,
+        translationStatus: String,
+        language: String?,
+        sourceLanguage: String?
+    ) {
+        self.text = text
+        self.startMs = startMs
+        self.endMs = endMs
+        self.speaker = speaker
+        self.confidence = confidence
+        self.isFinal = isFinal
+        self.translationStatus = translationStatus
+        self.language = language
+        self.sourceLanguage = sourceLanguage
+    }
 }
 
-struct TranslationConfig: Codable {
+public struct TranslationConfig: Codable {
     /// "one_way" or "two_way"
     let type: String
     /// Target language for one-way translation (e.g. "fr", "es")
@@ -32,7 +54,7 @@ struct TranslationConfig: Codable {
         case language_b
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(type, forKey: .type)
         try c.encodeIfPresent(target_language, forKey: .target_language)
@@ -40,11 +62,11 @@ struct TranslationConfig: Codable {
         try c.encodeIfPresent(language_b, forKey: .language_b)
     }
 
-    static func oneWay(targetLanguage: String) -> TranslationConfig {
+    public static func oneWay(targetLanguage: String) -> TranslationConfig {
         TranslationConfig(type: "one_way", target_language: targetLanguage, language_a: nil, language_b: nil)
     }
 
-    static func twoWay(languageA: String, languageB: String) -> TranslationConfig {
+    public static func twoWay(languageA: String, languageB: String) -> TranslationConfig {
         TranslationConfig(type: "two_way", target_language: nil, language_a: languageA, language_b: languageB)
     }
 }
@@ -57,7 +79,7 @@ struct SonioxContext: Codable {
     let terms: [String]
 }
 
-struct SonioxConfigMessage: Codable {
+public struct SonioxConfigMessage: Codable {
     let api_key: String
     let model: String
     let audio_format: String
@@ -69,7 +91,7 @@ struct SonioxConfigMessage: Codable {
     let translation: TranslationConfig?
     let context: SonioxContext?
 
-    static func `default`(apiKey: String, translation: TranslationConfig? = nil, contextTerms: [String] = []) -> SonioxConfigMessage {
+    public static func `default`(apiKey: String, translation: TranslationConfig? = nil, contextTerms: [String] = []) -> SonioxConfigMessage {
         var hints = Set(["en"])
         if let t = translation {
             switch t.type {
@@ -97,12 +119,12 @@ struct SonioxConfigMessage: Codable {
     }
 }
 
-struct SonioxTranscriptMessage: Decodable {
-    let tokens: [RawToken]?
-    let error_code: Int?
-    let error_message: String?
+public struct SonioxTranscriptMessage: Decodable {
+    public let tokens: [RawToken]?
+    public let error_code: Int?
+    public let error_message: String?
 
-    struct RawToken: Decodable {
+    public struct RawToken: Decodable {
         let text: String
         let start_ms: Int?
         let end_ms: Int?
@@ -113,7 +135,7 @@ struct SonioxTranscriptMessage: Decodable {
         let language: String?
         let source_language: String?
 
-        func toSonioxWord() -> SonioxWord {
+        public func toSonioxWord() -> SonioxWord {
             SonioxWord(
                 text: text,
                 startMs: start_ms ?? 0,

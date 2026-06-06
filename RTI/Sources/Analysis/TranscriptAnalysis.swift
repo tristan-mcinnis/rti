@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Shared pipeline for the periodic analyzers (Notes, Dossiers, Discussion
 /// Guide matching). Each tick: pull a transcript window → trim → ask the LLM
