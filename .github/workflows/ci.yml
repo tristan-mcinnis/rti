@@ -1,0 +1,95 @@
+name: CI
+
+# Phase 0 of PRODUCTION-GOAL.md — the safety net.
+# Two jobs run in parallel on every PR to main (and every push to main):
+#   build-test : xcodegen → build Debug → run the XCTest suite on a macOS runner.
+#   lint       : swiftformat --lint, scoped to the Swift files this change touches
+#                (boy-scout adoption — the legacy tree is not mass-reformatted).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test (Debug)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode (Swift 6 toolchain)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: .spm
+          key: spm-${{ runner.os }}-${{ hashFiles('RTI/RTI.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
+      - name: Generate Xcode project
+        working-directory: RTI
+        run: xcodegen generate
+
+      - name: Build (Debug)
+        run: |
+          xcodebuild \
+            -project RTI/RTI.xcodeproj \
+            -scheme RTI \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -clonedSourcePackagesDirPath .spm \
+            build
+
+      - name: Test (Debug)
+        run: |
+          xcodebuild \
+            -project RTI/RTI.xcodeproj \
+            -scheme RTI \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -clonedSourcePackagesDirPath .spm \
+            test
+
+  lint:
+    name: SwiftFormat (changed files)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install SwiftFormat
+        run: brew install swiftformat
+
+      - name: Lint changed Swift files
+        run: |
+          set -euo pipefail
+          # Full history of main so merge-base can find the fork point.
+          git fetch --no-tags origin main
+          BASE=$(git merge-base origin/main HEAD || true)
+          if [ -z "$BASE" ]; then
+            echo "No merge-base with origin/main — nothing to lint."
+            exit 0
+          fi
+          FILES=$(git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- '*.swift')
+          if [ -z "$FILES" ]; then
+            echo "No changed Swift files — nothing to lint."
+            exit 0
+          fi
+          echo "Linting changed Swift files:"
+          echo "$FILES"
+          # .swiftformat at the repo root supplies the rules/version.
+          echo "$FILES" | tr '\n' '\0' | xargs -0 swiftformat --lint
