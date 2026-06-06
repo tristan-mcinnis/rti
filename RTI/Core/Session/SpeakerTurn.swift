@@ -3,21 +3,21 @@ import Foundation
 /// A contiguous stretch of `SonioxWord`s attributed to a single speaker,
 /// collapsed into one block. The runtime aggregate used to build the live
 /// in-memory transcript entries.
-struct SpeakerTurn {
-    let speaker: Int
-    let text: String
-    let startMs: Int
-    let endMs: Int
-    let confidence: Double
-    let translationStatus: String
-    let language: String?
-    let sourceLanguage: String?
+public struct SpeakerTurn {
+    public let speaker: Int
+    public let text: String
+    public let startMs: Int
+    public let endMs: Int
+    public let confidence: Double
+    public let translationStatus: String
+    public let language: String?
+    public let sourceLanguage: String?
 }
 
 extension SpeakerTurn {
     /// Walk the word stream and start a new turn whenever the speaker id
     /// changes. Confidence is the unweighted mean over the words in the turn.
-    static func collapse(_ words: [SonioxWord]) -> [SpeakerTurn] {
+    public static func collapse(_ words: [SonioxWord]) -> [SpeakerTurn] {
         guard !words.isEmpty else { return [] }
         var groups: [[SonioxWord]] = []
         for word in words {

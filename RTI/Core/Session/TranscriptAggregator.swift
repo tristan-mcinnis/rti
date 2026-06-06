@@ -1,5 +1,4 @@
 import Foundation
-import RTICore
 
 /// Per-channel live transcript aggregation: watermark dedup, ZeroMs dedup,
 /// interim text tracking, and SpeakerTurn collapse.
@@ -7,11 +6,10 @@ import RTICore
 /// Each channel (mic / system) gets its own instance so the dedup state
 /// stays isolated. SessionCoordinator owns two instances and feeds words
 /// from each Soniox connection into the correct one.
-@MainActor
-final class TranscriptAggregator {
+public final class TranscriptAggregator {
 
-    private(set) var entries: [LiveEntry] = []
-    private(set) var interimText: String? = nil
+    public private(set) var entries: [LiveEntry] = []
+    public private(set) var interimText: String? = nil
     private var lastEndMs: Int = 0
     private var zeroSeen: Set<String> = []
     private let channel: String
@@ -24,9 +22,9 @@ final class TranscriptAggregator {
     /// merged with the mic channel. Set externally once the system leg
     /// starts; raw word timestamps (dedup watermark, zero-ms detection) are
     /// left untouched.
-    var startMsOffset: Int = 0
+    public var startMsOffset: Int = 0
 
-    init(channel: String) {
+    public init(channel: String) {
         self.channel = channel
     }
 
@@ -35,7 +33,7 @@ final class TranscriptAggregator {
     /// speaker indices for JSONL writing.
     var onTurnsProcessed: (([SpeakerTurn]) -> Void)?
 
-    func process(_ words: [SonioxWord]) {
+    public func process(_ words: [SonioxWord]) {
         let regularFinals = words.filter { $0.isFinal && $0.endMs > lastEndMs }
         let zeroMsFinals: [SonioxWord] = words.compactMap { word in
             guard word.isFinal, word.endMs == 0 else { return nil }
@@ -80,7 +78,7 @@ final class TranscriptAggregator {
         }
     }
 
-    func reset() {
+    public func reset() {
         entries = []
         interimText = nil
         lastEndMs = 0

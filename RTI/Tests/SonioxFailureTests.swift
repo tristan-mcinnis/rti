@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 final class SonioxFailureTests: XCTestCase {
 

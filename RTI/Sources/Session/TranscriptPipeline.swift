@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Per-channel live transcript aggregation and note buffering. Owns the
 /// `TranscriptAggregator`s and the note entry list; produces the combined

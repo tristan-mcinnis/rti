@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Writes a finished session to disk as human-readable Markdown.
 ///

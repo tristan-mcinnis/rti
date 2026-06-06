@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 import Starscream
 
 final class SonioxClient: WebSocketDelegate, @unchecked Sendable {

@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 import Observation
 
 struct ChatEntry: Identifiable, Equatable {

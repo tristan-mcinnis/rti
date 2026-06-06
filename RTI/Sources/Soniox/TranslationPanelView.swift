@@ -1,4 +1,5 @@
 import SwiftUI
+import RTICore
 
 /// Live translation overlay. Mirrors the translated stream coming back
 /// from Soniox so the user can read the conversation in their target
