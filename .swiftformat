@@ -1,0 +1,12 @@
+# SwiftFormat config for RTI (Phase 0 lint gate).
+#
+# Minimal on purpose: pin the Swift version so local and CI agree, and otherwise
+# use SwiftFormat's default rules. CI lints ONLY the Swift files a change touches
+# (see .github/workflows/ci.yml), so the existing tree is never mass-reformatted —
+# each file converges to this style the next time it's edited.
+#
+# Run locally before pushing:
+#   swiftformat --lint <files-you-changed>     # check
+#   swiftformat <files-you-changed>            # auto-fix
+
+--swiftversion 6.0
