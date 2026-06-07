@@ -28,6 +28,12 @@ final class SessionCoordinator {
     /// (`SonioxFailure.isAuth`). UI uses this to gate the "Open Settings"
     /// affordance on the error banner.
     private(set) var lastErrorIsAuth: Bool = false
+    /// Whether live transcription is actually flowing (mic leg). Surfaced in
+    /// the UI so the user always knows if their words are being captured.
+    private(set) var transcriptionHealth: TranscriptionHealth = .idle
+    /// Non-fatal notice when the system-audio (other-party) leg drops while
+    /// the mic leg keeps recording. nil when system audio is fine/absent.
+    private(set) var systemAudioNotice: String?
     /// When non-nil, Soniox will stream translation tokens alongside
     /// the regular transcript. Bound to UserDefaults and the live
     /// transcript toggle.
@@ -91,6 +97,19 @@ final class SessionCoordinator {
             self?.lastError = message
             self?.lastErrorIsAuth = isAuth
             if self?.isRunning == true { self?.stopSession() }
+        }
+        audioPipeline.onTranscriptionHealth = { [weak self] health in
+            self?.transcriptionHealth = health
+        }
+        audioPipeline.onSystemAudioHealth = { [weak self] health in
+            switch health {
+            case .failed:
+                self?.systemAudioNotice = "Other-party audio stopped — still capturing your mic."
+            case .live:
+                self?.systemAudioNotice = nil
+            case .idle, .connecting, .reconnecting:
+                break
+            }
         }
     }
 
@@ -204,6 +223,8 @@ final class SessionCoordinator {
         audioPipeline.finalize()
         AnalysisScheduler.shared.stop()
         isRunning = false
+        transcriptionHealth = .idle
+        systemAudioNotice = nil
 
         let endedAt = Date()
         self.endedAt = endedAt   // freeze widget timer immediately
@@ -270,6 +291,8 @@ final class SessionCoordinator {
             try? FileManager.default.removeItem(atPath: path)
         }
         isRunning = false
+        transcriptionHealth = .idle
+        systemAudioNotice = nil
     }
 
     private func handleSystemWords(_ words: [SonioxWord]) {

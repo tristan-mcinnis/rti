@@ -13,6 +13,14 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
     /// ("check internet / proxy") differently from mid-session drops
     /// ("reconnecting…"). Always dispatched on main.
     var onError: ((SonioxFailure, _ didOpen: Bool) -> Void)?
+    /// Connection-health transitions (connecting → live → reconnecting →
+    /// failed). Always dispatched on main. Drives the UI's "is transcription
+    /// flowing?" indicator.
+    var onStatus: ((TranscriptionHealth) -> Void)?
+
+    private func emitStatus(_ health: TranscriptionHealth) {
+        DispatchQueue.main.async { [weak self] in self?.onStatus?(health) }
+    }
 
     private let apiKey: String
     private let url: URL
@@ -47,6 +55,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
         retryCount = 0
         didOpen = false
         lock.unlock()
+        emitStatus(.connecting)
         openSocket()
     }
 
@@ -100,6 +109,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
             retryCount = 0
             lock.unlock()
             RTILog.log("connected — sending config", category: "soniox")
+            emitStatus(.live)
             sendConfig()
 
         case .text(let string):
@@ -133,6 +143,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
         if failure.shouldRetry {
             scheduleReconnect(after: failure)
         } else {
+            emitStatus(.failed)
             DispatchQueue.main.async { [weak self] in
                 self?.onError?(failure, phaseDidOpen)
             }
@@ -158,6 +169,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
             retryWorkItem = nil
             lock.unlock()
             RTILog.log("SonioxClient: max retries reached", category: "soniox")
+            emitStatus(.failed)
             DispatchQueue.main.async { [weak self] in
                 self?.onError?(failure, phaseDidOpen)
             }
@@ -179,6 +191,7 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
         lock.unlock()
 
         RTILog.log("SonioxClient: reconnect attempt \(attempt) in \(delay)s", category: "soniox")
+        emitStatus(.reconnecting)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 

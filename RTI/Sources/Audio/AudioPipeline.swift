@@ -18,6 +18,11 @@ final class AudioPipeline {
     /// Fires on terminal mic-audio failures. `isAuth` gates the "Open Settings"
     /// affordance in the UI.
     var onError: ((String, Bool) -> Void)?
+    /// Mic-leg transcription connection health (drives the UI "● live" dot).
+    var onTranscriptionHealth: ((TranscriptionHealth) -> Void)?
+    /// System-audio-leg health — used to surface a non-fatal "other party
+    /// audio lost" notice without stopping the (mic-driven) session.
+    var onSystemAudioHealth: ((TranscriptionHealth) -> Void)?
 
     private let audio = AudioCaptureManager()
     /// Picked at `start()`: a CoreAudio process tap when available (macOS
@@ -79,6 +84,7 @@ final class AudioPipeline {
         client.onError = { [weak self] failure, didOpen in
             self?.onError?(failure.userMessage(didOpen: didOpen), failure.isAuth)
         }
+        client.onStatus = { [weak self] health in self?.onTranscriptionHealth?(health) }
         client.connect()
         self.soniox = client
 
@@ -131,6 +137,7 @@ final class AudioPipeline {
                     self.onError?("System audio: \(message)", false)
                 }
             }
+            sysClient.onStatus = { [weak self] health in self?.onSystemAudioHealth?(health) }
             sysClient.connect()
             self.systemSoniox = sysClient
 
@@ -266,6 +273,7 @@ final class AudioPipeline {
         mic.onError = { [weak self] failure, didOpen in
             self?.onError?(failure.userMessage(didOpen: didOpen), failure.isAuth)
         }
+        mic.onStatus = { [weak self] health in self?.onTranscriptionHealth?(health) }
         mic.connect()
         self.soniox = mic
 
@@ -285,6 +293,7 @@ final class AudioPipeline {
                     self.onError?("System audio: \(failure.userMessage(didOpen: didOpen))", false)
                 }
             }
+            sys.onStatus = { [weak self] health in self?.onSystemAudioHealth?(health) }
             sys.connect()
             self.systemSoniox = sys
         }

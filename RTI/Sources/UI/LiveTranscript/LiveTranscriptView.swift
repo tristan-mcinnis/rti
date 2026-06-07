@@ -74,12 +74,34 @@ struct LiveTranscriptView: View {
         }
     }
 
+    private var healthColor: Color {
+        guard coordinator.isRunning else { return .secondary }
+        switch coordinator.transcriptionHealth {
+        case .live: return .green
+        case .connecting: return .yellow
+        case .reconnecting: return .orange
+        case .failed: return .red
+        case .idle: return .red
+        }
+    }
+
+    private var healthLabel: String {
+        guard coordinator.isRunning else { return "Idle" }
+        switch coordinator.transcriptionHealth {
+        case .live: return "Live"
+        case .connecting: return "Connecting…"
+        case .reconnecting: return "Reconnecting…"
+        case .failed: return "Connection lost"
+        case .idle: return "Recording…"
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 12) {
             Circle()
-                .fill(coordinator.isRunning ? Color.red : Color.secondary)
+                .fill(healthColor)
                 .frame(width: 10, height: 10)
-            Text(coordinator.isRunning ? "Recording…" : "Idle")
+            Text(healthLabel)
                 .font(.system(size: 13, weight: .medium))
             HStack(spacing: 4) {
                 Circle()
@@ -105,6 +127,12 @@ struct LiveTranscriptView: View {
                 Text(err)
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
+                    .lineLimit(1)
+            }
+            if let notice = coordinator.systemAudioNotice {
+                Text(notice)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
                     .lineLimit(1)
             }
             Button(action: copyAll) {
