@@ -102,6 +102,19 @@ export RTI_VERSION=0.1.0
      --notes "Personal signed build."
    ```
 
+## Updates (how testers learn about new builds)
+
+RTI uses a lightweight GitHub-Releases check rather than Sparkle/appcasts:
+
+- On a normal launch (keys present) and via **menubar → Check for Updates…**,
+  `UpdateChecker` queries `repos/tristan-mcinnis/rti-personal/releases/latest`,
+  compares `tag_name` to the running `CFBundleShortVersionString`
+  (`SemanticVersion` handles `v`-prefixes and `-betaN` pre-releases), and if a
+  newer release exists, offers a **Download** button that opens the release page.
+- The launch check is silent unless a newer build is published, so a tester just
+  re-downloads the DMG when prompted.
+- Therefore: **publish each release via `gh release create v<version> dist/RTI-<version>.dmg`** (the tag is what the checker reads). No appcast to host, no update signing key to manage. If you later want true in-place auto-update, swap in Sparkle with a signed appcast — `UpdateChecker` is the seam.
+
 ## Troubleshooting
 
 - **`spctl: rejected`** — almost always means notarization failed or wasn't stapled. Re-run notarytool log inspection:
