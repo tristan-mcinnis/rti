@@ -20,14 +20,17 @@ The only things written to disk are config (API keys in the Keychain-style store
 
 ## Build & run
 
-Requires Xcode 15+ and [`xcodegen`](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+Requires Xcode 16+ (Swift 6 toolchain) and [`xcodegen`](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```bash
 cd RTI
+cp Sources/Secrets.swift.example Sources/Secrets.swift   # first checkout only — gitignored, keyless stub
 xcodegen generate
 xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Debug build
 open ~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app
 ```
+
+`Secrets.swift` is gitignored and holds no keys — API keys are entered in Settings and stored in the Keychain-style store at runtime. The source tree just won't compile without the file present.
 
 A locally built `.app` is ad-hoc-signed — Gatekeeper requires a right-click → **Open** the first time, and `SMAppService.mainApp` (Launch at Login) won't work on ad-hoc builds. For a signed/notarized DMG on your own machines, see [RELEASE.md](RELEASE.md).
 

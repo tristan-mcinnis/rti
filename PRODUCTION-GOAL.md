@@ -54,6 +54,41 @@ Runtime artifact: `~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/De
 
 ---
 
+## Progress (updated 2026-06-07)
+
+Merged to `main` (each its own CI-green PR):
+
+- **Phase 0 — CI** ✅ (PR #3). Build+test+lint on `macos-15`/Xcode 26.x; red-gate proven.
+- **Phase 1 — RTICore extraction** ✅ (PRs #4–#6). Pure-Swift `RTICore` static lib now holds
+  the transcription/LLM/analysis value+logic types; app + tests link it; no `@MainActor` on
+  core types. Seams extracted: TranscriptPipeline, ModeStorage, the LLM wire types +
+  `PromptBuilder` + `LLMProviderConfig`/`LLMToolDefinition`, and the **SSE parser**. `CoreLog`
+  logging seam added.
+- **Phase 3 — tests for the seams** ✅ (PRs #6, #8). 63 → **94 tests**: SSE parser (12),
+  ModeStorage (7), TranscriptPipeline (6), PromptBuilder (6).
+- **Phase 5 — security** ✅ (PR #7). No transcript content in logs; session files `0600`/dirs
+  `0700`; stale-WAV sweep at launch.
+
+**Deliberately deferred** (diminishing value / higher risk than the rest):
+
+- Moving the *live networking classes* (`LLMClient`/`ToolLoop`/`LLMRequest`/`SonioxClient`)
+  fully into RTICore. The bug-prone kernel (SSE parsing) is already extracted + tested; moving
+  the network shells needs a mock-transport seam and refactors live code for limited extra
+  value. Their pure kernels (reconnect schedule, tool-loop iteration) are the test-worthy bits
+  if/when revisited.
+
+**Remaining — needs a hands-on Mac (can't be verified headlessly):**
+
+- **Phase 2 resilience** — esp. mic input-device-drop detection (2.1) and mid-session mic
+  permission revocation (2.6): code can be written but only *verified* by unplugging
+  AirPods / revoking permission on the real machine. (2.3 LLMRequest error visibility is done.)
+- **Phase 4 onboarding/UX** — first-run setup, proactive permissions, error banners,
+  connection-health indicator: needs the app running + permission grants to verify.
+- **Phase 6 distribution** — signed/notarized DMG + auto-update: needs Apple Developer certs.
+- **Phase 7 acceptance** — `VERIFY.md` pass + a real meeting smoke test.
+
+---
+
 ## Phase 0 — CI & guardrails (build the safety net first)
 
 You cannot "loop until verified" without a harness. Do this before any code change.

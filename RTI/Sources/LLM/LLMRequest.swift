@@ -34,9 +34,21 @@ final class LLMRequest: @unchecked Sendable {
         let task = Task { [weak self] () -> T? in
             defer { self?.currentTask = nil }
             guard let client = self?.client else { return nil }
-            guard let r = try? await work(client) else { return nil }
-            if Task.isCancelled { return nil }
-            return r
+            do {
+                let r = try await work(client)
+                if Task.isCancelled { return nil }
+                return r
+            } catch is CancellationError {
+                return nil
+            } catch is LLMError {
+                // Expected provider failure (missing key, HTTP, stream error).
+                // Callers (analysis generators) treat nil as "skip this tick".
+                return nil
+            } catch {
+                // Anything else is unexpected — don't let it vanish silently.
+                RTILog.log("LLMRequest unexpected error: \(error)", category: "llm")
+                return nil
+            }
         }
         currentTask = Task { _ = await task.value }
         return await task.value
