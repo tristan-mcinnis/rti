@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private let windows = WindowCoordinator.shared
     private let menu = MenuCoordinator()
     private let hotkeys = HotkeyCoordinator()
+    private let onboarding = OnboardingWindowController()
     private var sessionObservationTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -88,7 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         registerNotificationObservers()
 
         if CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
-            windows.openSettings()
+            // First run (or keys cleared): guide setup instead of cold-dropping
+            // into Settings.
+            onboarding.show()
         }
     }
 
