@@ -32,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             CoreAudioTapCapture.cleanupStaleDevices()
         }
 
+        // Belt-and-suspenders: delete any orphan WAV left in temp by a crash.
+        // Normal stops already delete it; the app keeps no audio.
+        WAVWriter.sweepStaleRecordings()
+
         // Follow the external Meeting Sentinel tool's recording state so the
         // UI can surface when a meeting is being recorded outside RTI.
         MeetingSentinelMonitor.shared.start()
