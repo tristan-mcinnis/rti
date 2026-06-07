@@ -1,15 +1,6 @@
 import Foundation
-import RTICore
 import Observation
-
-struct ChatEntry: Identifiable, Equatable {
-    let id = UUID()
-    let role: String           // "user" | "assistant"
-    var text: String
-    let action: String?        // "Ask" | "Assist" — user entries only
-    let contextUsed: Bool      // user entries only — transcript attached
-    let screenContextUsed: Bool // user entries only — OCR screen attached
-}
+import RTICore
 
 @Observable @MainActor
 final class LLMController {

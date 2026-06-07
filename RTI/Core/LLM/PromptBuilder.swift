@@ -3,19 +3,33 @@ import Foundation
 /// Contextual attachments injected into the system prompt before every
 /// chat turn. The caller (LLMController) populates this from its current
 /// state; PromptBuilder assembles the ordered message list.
-struct PromptContext {
+public struct PromptContext {
     /// The base system prompt (from the active mode, or the default).
-    var baseSystemPrompt: String = ""
+    public var baseSystemPrompt: String
     /// Optional glossary terms the model should know.
-    var glossaryFragment: String? = nil
+    public var glossaryFragment: String?
     /// Reference text attached to the active mode.
-    var referenceText: String? = nil
+    public var referenceText: String?
     /// Name of the mode providing the reference.
-    var referenceModeName: String? = nil
+    public var referenceModeName: String?
     /// OCR text from an attached screenshot.
-    var screenContext: String? = nil
+    public var screenContext: String?
 
-    var hasContent: Bool {
+    public init(
+        baseSystemPrompt: String = "",
+        glossaryFragment: String? = nil,
+        referenceText: String? = nil,
+        referenceModeName: String? = nil,
+        screenContext: String? = nil
+    ) {
+        self.baseSystemPrompt = baseSystemPrompt
+        self.glossaryFragment = glossaryFragment
+        self.referenceText = referenceText
+        self.referenceModeName = referenceModeName
+        self.screenContext = screenContext
+    }
+
+    public var hasContent: Bool {
         glossaryFragment != nil
             || referenceText != nil
             || screenContext != nil
@@ -25,13 +39,13 @@ struct PromptContext {
 /// Builds the ordered [LLMMessage] list fed to the LLM for every chat turn.
 /// Owns the ordering, separators, truncation, and tagging conventions so
 /// LLMController doesn't duplicate the assembly logic.
-enum PromptBuilder {
+public enum PromptBuilder {
     /// Maximum characters of reference text to include.
     private static let referenceCap = 8000
 
     /// Build the system-level messages (prompt, glossary, reference,
     /// screen context) that precede the conversation history.
-    static func buildSystemMessages(context: PromptContext) -> [LLMMessage] {
+    public static func buildSystemMessages(context: PromptContext) -> [LLMMessage] {
         var msgs: [LLMMessage] = []
 
         let basePrompt = context.baseSystemPrompt
@@ -68,7 +82,7 @@ enum PromptBuilder {
     /// Build the conversation messages from the stored chat entries plus
     /// the current user turn. The latest user message includes the transcript
     /// context prepended (fullContent) while prior turns use their raw text.
-    static func buildConversationMessages(
+    public static func buildConversationMessages(
         entries: [ChatEntry],
         fullContent: String
     ) -> [LLMMessage] {

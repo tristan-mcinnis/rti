@@ -1,27 +1,9 @@
 import Foundation
+import RTICore
 
-/// Function tools the model can invoke during a chat turn. Each tool has a
-/// JSON-schema describing its parameters (sent to the provider) and an async
-/// `execute` block that runs locally and returns a string the model sees as
-/// the tool's result.
-///
-/// Adding a new tool is a one-shot: append a `LLMToolDefinition` to
-/// `LLMToolRegistry.all` and the controller picks it up automatically.
-struct LLMToolDefinition {
-    let name: String
-    let description: String
-    /// JSON-schema for the function's parameters, as a Foundation
-    /// dictionary. Serialised once when building the request body.
-    let parameters: [String: Any]
-    /// Locally executes the tool. Returns the result text the model will
-    /// see in the next turn. Throwing converts to an error string the model
-    /// can recover from.
-    let execute: @Sendable @MainActor (_ argumentsJSON: String) async throws -> String
-    /// Optional human-readable status shown in the UI while the tool runs
-    /// (e.g. "📷 Looking at your screen…"). Falls back to the tool name.
-    let runningStatus: String?
-}
-
+/// The concrete function tools the chat-overlay LLM can call. `LLMToolDefinition`
+/// lives in RTICore; the tools themselves stay app-side because they touch app
+/// services (e.g. screen capture).
 @MainActor
 enum LLMToolRegistry {
     /// All tools the chat-overlay LLM can call. Keep this small: too many
