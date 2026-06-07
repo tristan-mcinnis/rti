@@ -64,28 +64,31 @@ Merged to `main` (each its own CI-green PR):
   core types. Seams extracted: TranscriptPipeline, ModeStorage, the LLM wire types +
   `PromptBuilder` + `LLMProviderConfig`/`LLMToolDefinition`, and the **SSE parser**. `CoreLog`
   logging seam added.
-- **Phase 3 — tests for the seams** ✅ (PRs #6, #8). 63 → **94 tests**: SSE parser (12),
-  ModeStorage (7), TranscriptPipeline (6), PromptBuilder (6).
+- **Phase 3 — tests for the seams** ✅ (PRs #6, #8, #12). 63 → **103 tests**: SSE parser (12),
+  ModeStorage (7), TranscriptPipeline (6), PromptBuilder (6), SemanticVersion (9).
 - **Phase 5 — security** ✅ (PR #7). No transcript content in logs; session files `0600`/dirs
   `0700`; stale-WAV sweep at launch.
+- **Phase 2 — resilience** ✅ (PRs #11, #13). Mic dead-air watchdog (covers device-drop, mute,
+  mid-session permission loss — 2.1/2.6), double-start guard (2.4), LLMRequest error visibility
+  (2.3), connection-health state model (2.7), and system-audio non-fatal notice (2.2).
+- **Phase 4 — onboarding/UX** ✅ (PRs #10, #13). Guided first-run window (keys + permissions,
+  screenshot-verified) and the connection-health indicator in the Live Transcript header.
+- **Phase 6 — distribution** ✅/⏳ (PR #12). GitHub-Releases auto-update + `SemanticVersion`;
+  ad-hoc DMG packaging verified. **Signed/notarized DMG still needs your Apple Developer ID.**
 
 **Deliberately deferred** (diminishing value / higher risk than the rest):
 
 - Moving the *live networking classes* (`LLMClient`/`ToolLoop`/`LLMRequest`/`SonioxClient`)
   fully into RTICore. The bug-prone kernel (SSE parsing) is already extracted + tested; moving
   the network shells needs a mock-transport seam and refactors live code for limited extra
-  value. Their pure kernels (reconnect schedule, tool-loop iteration) are the test-worthy bits
-  if/when revisited.
+  value.
+- A dedicated dismissible error banner in the **overlay** (4.3): the overlay already shows
+  `lastError`, and the overlay is `sharingType = .none` so it can't be screenshot-verified.
 
-**Remaining — needs a hands-on Mac (can't be verified headlessly):**
-
-- **Phase 2 resilience** — esp. mic input-device-drop detection (2.1) and mid-session mic
-  permission revocation (2.6): code can be written but only *verified* by unplugging
-  AirPods / revoking permission on the real machine. (2.3 LLMRequest error visibility is done.)
-- **Phase 4 onboarding/UX** — first-run setup, proactive permissions, error banners,
-  connection-health indicator: needs the app running + permission grants to verify.
-- **Phase 6 distribution** — signed/notarized DMG + auto-update: needs Apple Developer certs.
-- **Phase 7 acceptance** — `VERIFY.md` pass + a real meeting smoke test.
+**Remaining — needs a hands-on Mac (can't be verified headlessly):** see the
+"Production-readiness checklist" in `RTI/VERIFY.md`. In short: signed/notarized DMG (your Apple
+cert), and a real-meeting smoke test (both-sides transcription, watchdog no-false-positive,
+overlay invisibility, archive-on-stop).
 
 ---
 

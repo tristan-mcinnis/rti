@@ -93,3 +93,50 @@ find ~/Library/Developer/Xcode/DerivedData -name RTI.app -path "*/Debug/*"
 # Clean derived data if things get weird
 rm -rf ~/Library/Developer/Xcode/DerivedData/RTI-*
 ```
+
+---
+
+# Production-readiness checklist (private beta)
+
+Everything below builds + passes CI (103 unit tests); these are the hands-on
+checks that need a real Mac, mic, network, and a meeting — the things that
+can't be verified headlessly. Walk these before handing a DMG to a tester.
+
+## A. First-run onboarding (fresh machine, or simulate)
+To simulate without a fresh machine: quit RTI, `mv ~/Library/Application\ Support/RTI/credentials.json{,.bak}`, launch, then `mv` it back after.
+- [ ] Onboarding window appears ("Welcome to RTI") instead of cold Settings.
+- [ ] "Get a key" links open the Soniox / DeepSeek consoles.
+- [ ] Pasting both keys + **Save keys** shows the green check; relaunch keeps them.
+- [ ] **Grant** on Microphone triggers the system prompt; the row flips to "Granted".
+- [ ] Footer flips to "You're all set" once keys + mic are in.
+
+## B. Mic dead-air watchdog (the headline reliability fix)
+- [ ] Start a session on AirPods/USB mic, then disconnect/mute the device.
+- [ ] Within ~10s an error appears ("Microphone audio stopped…") and the session stops — **no silent dead-air recording**.
+- [ ] During a *normal* silent stretch (no one talking), it does **not** false-fire.
+
+## C. Connection-health indicator (Live Transcript header, ⌘⌥T)
+- [ ] On start: dot goes yellow "Connecting…" → green "Live".
+- [ ] Kill wifi ~10s: → orange "Reconnecting…". Restore: → green "Live".
+- [ ] If the other-party (system-audio) leg drops, the amber "other-party audio stopped" notice appears and the session keeps running.
+
+## D. Security (after any session)
+- [ ] `ls -le ~/Library/Application\ Support/RTI/sessions/*/` → files `-rw-------`, dir `drwx------`.
+- [ ] Settings → Logs contains **no transcript words** (only counts/status).
+- [ ] Force-quit mid-session, relaunch → no orphan `*.wav` under `$TMPDIR/RTI/sessions`.
+
+## E. Auto-update
+- [ ] After publishing a release whose tag is **newer** than the running build, menubar → **Check for Updates…** offers a Download button to the release page. (Up-to-date shows "You're up to date".)
+
+## F. Signing + notarization (needs your Apple Developer ID)
+- [ ] `export DEVELOPMENT_TEAM=…`, set up `notarytool` profile `rti-notary` (see RELEASE.md), then `./scripts/release.sh <version>`.
+- [ ] `spctl --assess --type open --context context:primary-signature -v RTI-<version>.dmg` → accepted.
+- [ ] Install from the DMG on a Mac that's never run RTI → launches without right-click-Open; onboarding works.
+- [ ] `gh release create v<version> RTI-<version>.dmg` (the tag is what the updater reads).
+
+## G. Real meeting (the final gate)
+- [ ] Join a real call. Both sides transcribe (Live Transcript shows "self" + "them").
+- [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
+- [ ] Notes / Dossiers / Discussion-guide panels populate.
+- [ ] Overlay is absent from the screen share (QuickTime/Zoom — §4/§5 above).
+- [ ] Stop → Markdown archive written under `…/RTI/sessions/`; WAV gone; mic released (orange dot clears, other apps can use the mic).
