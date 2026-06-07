@@ -92,6 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             // First run (or keys cleared): guide setup instead of cold-dropping
             // into Settings.
             onboarding.show()
+        } else {
+            // Quiet update check on normal launches — silent unless a newer
+            // build has been published.
+            UpdateChecker.checkInBackground()
         }
     }
 

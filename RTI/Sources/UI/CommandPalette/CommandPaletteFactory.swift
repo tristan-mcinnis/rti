@@ -239,6 +239,13 @@ enum CommandBuilder {
                 menuSection: .app
             ),
             RTICommand(
+                id: "app.checkUpdates",
+                title: "Check for Updates…",
+                keywords: ["update", "upgrade", "version", "release"],
+                perform: { UpdateChecker.checkAndReport() },
+                menuSection: .app
+            ),
+            RTICommand(
                 id: "app.quit",
                 title: "Quit RTI",
                 subtitle: "⌘Q",
