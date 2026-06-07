@@ -1,23 +1,5 @@
 import Foundation
-
-/// Static configuration for one OpenAI-compatible streaming-chat provider.
-/// `LLMClient` is generic over this; swapping providers is a one-line
-/// change in `LLMProviders` rather than edits to the client.
-struct LLMProviderConfig: Sendable {
-    /// Stable id used as the active-provider key in UserDefaults.
-    let id: String
-    let displayName: String
-    let baseURL: URL
-    let model: String
-    /// True when the provider accepts the DeepSeek `thinking: { type }`
-    /// extension on the chat-completions request. Disabled providers
-    /// silently skip the field so smart mode degrades to a normal
-    /// completion.
-    let supportsThinking: Bool
-    /// Closure resolved at call time so a key change in Settings is
-    /// picked up without re-instantiating the client.
-    let apiKey: @Sendable () -> String
-}
+import RTICore
 
 /// Built-in providers + which one is currently active.
 ///
