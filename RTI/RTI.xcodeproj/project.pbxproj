@@ -32,6 +32,7 @@
 		2C242E5A0B3725CFE29F968A /* CommandRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */; };
 		313D0F1E1C06B108E71D1431 /* DossiersPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5265C657B03C15FB6048DAA5 /* DossiersPanelView.swift */; };
 		32BA2D12A95743F9542C259A /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D678E1638D0423E9AF3827 /* SessionCoordinator.swift */; };
+		339C5D997495E7C638D5794D /* CoreLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 006B8822202CE3F5794B95A9 /* CoreLog.swift */; };
 		36D73C15AB5DE31F14192D31 /* LLMWireShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30401E0708E01C71D5A6759B /* LLMWireShapes.swift */; };
 		379333F978F8334E614E8455 /* SessionsControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36B529563B4EAE6F3281194 /* SessionsControlView.swift */; };
 		39F965230805B4D611EF735C /* CoreAudioTapCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4776B498FB22102DA79F8BA4 /* CoreAudioTapCapture.swift */; };
@@ -137,6 +138,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		006B8822202CE3F5794B95A9 /* CoreLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreLog.swift; sourceTree = "<group>"; };
 		020EB6BEF7FA4FC8444C4398 /* SessionsControlWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsControlWindowController.swift; sourceTree = "<group>"; };
 		0E5F1F0F7ACE2BCE896F4A3E /* ShortcutsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsWindowController.swift; sourceTree = "<group>"; };
 		0F81C4D0121A52619B08FC56 /* ResponseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseView.swift; sourceTree = "<group>"; };
@@ -495,6 +497,7 @@
 		956E8847F94C3A00FA3A71F8 /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				006B8822202CE3F5794B95A9 /* CoreLog.swift */,
 				D420B4688E416E5509DE1C22 /* JSONExtractor.swift */,
 				183550BE53C423727A436F91 /* SpeakerLabelMapping.swift */,
 			);
@@ -758,6 +761,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				339C5D997495E7C638D5794D /* CoreLog.swift in Sources */,
 				601AFBEA04B7B59B0AAF9DB4 /* DiscussionGuide.swift in Sources */,
 				D6DFA8FCF443EBD111270D9C /* JSONExtractor.swift in Sources */,
 				9CE129198AA6573BDBBC1D18 /* LLMError.swift in Sources */,
