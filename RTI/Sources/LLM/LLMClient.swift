@@ -197,67 +197,27 @@ final class LLMClient: @unchecked Sendable {
         onContent: @Sendable (String) -> Void,
         onReasoning: (@Sendable (String) -> Void)?
     ) async throws -> StreamResult {
-        let decoder = JSONDecoder()
-        // Keyed by stream-chunk `index`. Tool-call fragments arrive in
-        // sequence: id+name in the first chunk for an index, then
-        // `arguments` deltas concatenated until finish_reason fires.
-        var toolBuffer: [Int: (id: String, name: String, args: String)] = [:]
-        var finishReason: String?
-
-        for try await rawLine in bytes.lines {
+        // Parsing lives in RTICore's SSEStreamParser (unit-tested); this loop
+        // only drives the byte stream and routes events.
+        var parser = SSEStreamParser()
+        lines: for try await rawLine in bytes.lines {
             try Task.checkCancellation()
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Comments per SSE spec start with a colon.
-            if line.hasPrefix(":") { continue }
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload == "[DONE]" { break }
-            guard let data = payload.data(using: .utf8) else { continue }
-
-            // Some servers send {"error": {...}} mid-stream instead of
-            // [DONE]. Surface that to the caller.
-            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let err = obj["error"] {
-                let detail: String = {
-                    if let msg = err as? [String: Any], let text = msg["message"] as? String { return text }
-                    return "\(err)"
-                }()
-                throw LLMError.streamError(detail)
-            }
-
-            do {
-                let chunk = try decoder.decode(LLMStreamChunk.self, from: data)
-                guard let choice = chunk.choices.first else { continue }
-                if let reason = choice.finish_reason { finishReason = reason }
-                if let reasoning = choice.delta?.reasoning_content, !reasoning.isEmpty,
-                   let onReasoning {
-                    DispatchQueue.main.async { onReasoning(reasoning) }
-                }
-                if let content = choice.delta?.content, !content.isEmpty {
+            for event in parser.consume(line: rawLine) {
+                switch event {
+                case .content(let content):
                     onContent(content)
-                }
-                if let tcs = choice.delta?.tool_calls {
-                    for tc in tcs {
-                        var entry = toolBuffer[tc.index] ?? (id: "", name: "", args: "")
-                        if let id = tc.id, !id.isEmpty { entry.id = id }
-                        if let name = tc.function?.name, !name.isEmpty { entry.name = name }
-                        if let args = tc.function?.arguments { entry.args += args }
-                        toolBuffer[tc.index] = entry
+                case .reasoning(let reasoning):
+                    if let onReasoning {
+                        DispatchQueue.main.async { onReasoning(reasoning) }
                     }
+                case .done:
+                    break lines
+                case .streamError(let detail):
+                    throw LLMError.streamError(detail)
                 }
-            } catch {
-                RTILog.log("SSE chunk decode failed: \(error)", category: "llm")
             }
         }
-
-        let toolCalls = toolBuffer
-            .sorted { $0.key < $1.key }
-            .compactMap { (_, v) -> LLMToolCall? in
-                guard !v.id.isEmpty, !v.name.isEmpty else { return nil }
-                return LLMToolCall(id: v.id, type: "function",
-                                   function: .init(name: v.name, arguments: v.args))
-            }
-        return StreamResult(toolCalls: toolCalls, finishReason: finishReason)
+        return StreamResult(toolCalls: parser.assembledToolCalls(), finishReason: parser.finishReason)
     }
 
     // MARK: - Helpers
