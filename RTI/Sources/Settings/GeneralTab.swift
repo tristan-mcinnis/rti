@@ -142,6 +142,16 @@ private struct AudioInputSection: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider().padding(.vertical, 6)
+            Text("Live levels")
+                .font(.system(size: 13, weight: .medium))
+            Text("During a session, confirm both sides are being captured. Also a floating panel: menubar → Toggle Audio I/O Monitor.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            AudioMonitorContent()
+                .padding(.top, 4)
         }
         .onAppear {
             inputDevices = AudioInputDeviceStore.availableInputDevices()
