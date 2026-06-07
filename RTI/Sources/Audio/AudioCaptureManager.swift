@@ -28,6 +28,30 @@ final class AudioCaptureManager: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var isRunning = false
 
+    // Last time the input tap delivered a buffer. The tap fires continuously
+    // while the engine runs — even during silence the buffers carry silent
+    // samples — so a gap means the device/tap actually died (disconnect, mute,
+    // revoked permission), not just a quiet room. Read by the pipeline's
+    // watchdog. Touched on the audio thread + main, so it's lock-guarded.
+    private let bufferLock = NSLock()
+    private var lastBufferAt: TimeInterval = 0
+
+    /// Seconds since the last delivered input buffer, or nil if none has
+    /// arrived yet this session (so the watchdog ignores the startup window).
+    func secondsSinceLastBuffer() -> TimeInterval? {
+        bufferLock.lock()
+        let t = lastBufferAt
+        bufferLock.unlock()
+        guard t > 0 else { return nil }
+        return Date().timeIntervalSinceReferenceDate - t
+    }
+
+    private func markBufferReceived() {
+        bufferLock.lock()
+        lastBufferAt = Date().timeIntervalSinceReferenceDate
+        bufferLock.unlock()
+    }
+
     func requestPermission(_ completion: @escaping @Sendable (Bool) -> Void) {
         AVCaptureDevice.requestAccess(for: .audio) { granted in
             DispatchQueue.main.async { completion(granted) }
@@ -36,6 +60,7 @@ final class AudioCaptureManager: @unchecked Sendable {
 
     func start() throws {
         guard !isRunning else { return }
+        bufferLock.lock(); lastBufferAt = 0; bufferLock.unlock()
 
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
         guard status == .authorized else {
@@ -125,6 +150,7 @@ final class AudioCaptureManager: @unchecked Sendable {
     }
 
     private func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
+        markBufferReceived()
         guard let converter = converter else { return }
 
         let ratio = Self.targetFormat.sampleRate / buffer.format.sampleRate

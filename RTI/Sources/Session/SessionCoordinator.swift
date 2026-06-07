@@ -42,6 +42,9 @@ final class SessionCoordinator {
 
     private let audioPipeline = AudioPipeline()
     private let transcriptPipeline = TranscriptPipeline()
+    /// Set while a start is in flight (during the async mic-permission prompt)
+    /// so a second start can't kick off a duplicate permission dialog + launch.
+    private var isStarting = false
     private var delayedCompleteTask: Task<Void, Never>?
     /// WAV path for the active recording, deleted when the session ends.
     private var activeWavPath: String?
@@ -110,7 +113,8 @@ final class SessionCoordinator {
     }
 
     func startSession(linkedTo meeting: SentinelMeeting? = nil) {
-        guard !isRunning else { return }
+        guard !isRunning, !isStarting else { return }
+        isStarting = true
         linkedMeeting = meeting
         lastError = nil
         lastErrorIsAuth = false
@@ -121,6 +125,7 @@ final class SessionCoordinator {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 guard granted else {
+                    self.isStarting = false
                     self.lastError = "Microphone permission denied."
                     self.promptForMicrophoneAccess()
                     return
@@ -146,6 +151,7 @@ final class SessionCoordinator {
     }
 
     private func launchSession() {
+        isStarting = false
         let now = Date()
         let sessionId = UUID().uuidString
         activeWavPath = WAVWriter.defaultURL(for: sessionId).path
