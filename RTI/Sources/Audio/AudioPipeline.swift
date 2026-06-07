@@ -36,6 +36,15 @@ final class AudioPipeline {
     private var soniox: SonioxClient?
     private var systemSoniox: SonioxClient?
 
+    /// Watches for the mic tap going silent mid-session (device disconnect,
+    /// mute, revoked permission) — the "silent dead air" case the user can't
+    /// otherwise detect. See `checkMicHealth`.
+    private var micWatchdog: Task<Void, Never>?
+    private var micOutageReported = false
+    /// Seconds without a mic buffer before we call it dead. Generous so a brief
+    /// hiccup or device reroute doesn't false-alarm.
+    private let micOutageThreshold: TimeInterval = 8
+
     func requestPermission(_ completion: @escaping @Sendable (Bool) -> Void) {
         AudioCaptureManager().requestPermission(completion)
     }
@@ -91,6 +100,7 @@ final class AudioPipeline {
         captureStartWall = Date()
         try audio.start()
         isCapturing = true
+        startMicWatchdog()
 
         // Don't even attempt the system-audio Soniox leg without a key.
         // The mic leg already enforces this in `prepare`; this guard
@@ -178,10 +188,48 @@ final class AudioPipeline {
         onSystemAudioStarted?(offsetMs)
     }
 
+    // MARK: - Mic health watchdog
+
+    private func startMicWatchdog() {
+        micOutageReported = false
+        micWatchdog?.cancel()
+        micWatchdog = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard let self, self.isCapturing else { continue }
+                self.checkMicHealth()
+            }
+        }
+    }
+
+    private func stopMicWatchdog() {
+        micWatchdog?.cancel()
+        micWatchdog = nil
+    }
+
+    /// If the mic tap has stopped delivering buffers for longer than the
+    /// threshold, the input is effectively dead — surface it (which stops the
+    /// session) so the user isn't unknowingly recording silence. Fires at most
+    /// once per outage. Ignores the startup window (nil = no buffer yet).
+    private func checkMicHealth() {
+        guard let since = audio.secondsSinceLastBuffer() else { return }
+        if since > micOutageThreshold {
+            guard !micOutageReported else { return }
+            micOutageReported = true
+            onError?(
+                "Microphone audio stopped (\(Int(since))s ago) — the input device may have disconnected or RTI lost mic access. Restart the session, or check Settings → Privacy → Microphone.",
+                false
+            )
+        } else {
+            micOutageReported = false
+        }
+    }
+
     /// Stop capture and signal end-of-audio to Soniox. Call `finish()`
     /// after the 1.5 s finalize window to disconnect and close the WAV.
     func finalize() {
         isCapturing = false
+        stopMicWatchdog()
         audio.stop()
         systemAudio?.stop()
         systemAudio = nil
@@ -245,6 +293,7 @@ final class AudioPipeline {
     /// Immediate teardown for failures and app termination.
     func abort() {
         isCapturing = false
+        stopMicWatchdog()
         audio.stop()
         systemAudio?.stop()
         systemAudio = nil
