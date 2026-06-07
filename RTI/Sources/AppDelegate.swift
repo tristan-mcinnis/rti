@@ -1,4 +1,5 @@
 import AppKit
+import RTICore
 import SwiftUI
 
 @MainActor
@@ -10,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard ensureSingleInstance() else { return }
+
+        // Route RTICore's logs (CoreLog) into the app's log buffer via RTILog.
+        CoreLog.installSink { message, category in
+            RTILog.log(message, category: category)
+        }
 
         CrashLog.install()
         CredentialStore.migrateLegacyIfNeeded()
