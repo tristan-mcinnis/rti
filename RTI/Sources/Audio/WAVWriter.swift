@@ -10,10 +10,25 @@ final class WAVWriter {
         // session and deleted on stop. Use the temp directory (not Documents)
         // so the OS reaps any orphan left behind by a crash — raw meeting audio
         // must never linger in a user-visible location for a "nothing kept" app.
-        let base = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        try? FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+        return recordingsDir.appendingPathComponent("\(sessionId).wav")
+    }
+
+    private static var recordingsDir: URL {
+        URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("RTI/sessions", isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.appendingPathComponent("\(sessionId).wav")
+    }
+
+    /// Delete any orphan WAV files left in the temp recordings dir by a prior
+    /// crash. Safe to call at launch — no session is active then, so anything
+    /// here is stale raw audio that must not linger (the app keeps no audio).
+    static func sweepStaleRecordings() {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: recordingsDir, includingPropertiesForKeys: nil
+        ) else { return }
+        for file in files where file.pathExtension == "wav" {
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     func open(at url: URL) throws {

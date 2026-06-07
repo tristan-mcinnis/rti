@@ -103,7 +103,9 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
             sendConfig()
 
         case .text(let string):
-            RTILog.log("recv \(string.prefix(400))", category: "soniox")
+            // Log size only — the payload is live transcript content and must
+            // not land in the log buffer (which the user can copy/share).
+            RTILog.log("recv \(string.count) chars", category: "soniox")
             handleMessage(string)
 
         case .disconnected(let reason, let code):

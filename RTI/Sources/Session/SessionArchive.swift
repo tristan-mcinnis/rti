@@ -42,24 +42,24 @@ enum SessionArchive {
         guard let dir = sessionDirectory(startedAt: startedAt) else { return }
 
         let transcriptMD = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
-        try? transcriptMD.write(to: dir.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
+        writeOwnerOnly(transcriptMD, to: dir.appendingPathComponent("transcript.md"))
 
         if !chat.isEmpty {
             let chatMD = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
-            try? chatMD.write(to: dir.appendingPathComponent("chat.md"), atomically: true, encoding: .utf8)
+            writeOwnerOnly(chatMD, to: dir.appendingPathComponent("chat.md"))
         }
 
         if !analysis.notes.isEmpty {
             let md = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
-            try? md.write(to: dir.appendingPathComponent("notes.md"), atomically: true, encoding: .utf8)
+            writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
         }
         if !analysis.dossiers.isEmpty {
             let md = (["# Dossiers", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderDossiers(analysis.dossiers)]).joined(separator: "\n")
-            try? md.write(to: dir.appendingPathComponent("dossiers.md"), atomically: true, encoding: .utf8)
+            writeOwnerOnly(md, to: dir.appendingPathComponent("dossiers.md"))
         }
         if let guide = analysis.guide {
             let md = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
-            try? md.write(to: dir.appendingPathComponent("discussion-guide.md"), atomically: true, encoding: .utf8)
+            writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
         }
     }
 
@@ -73,10 +73,21 @@ enum SessionArchive {
             .appendingPathComponent(folderStamp.string(from: startedAt), isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            // Session records hold meeting transcripts/notes — keep the folder
+            // unreadable by other users on a shared Mac.
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
         } catch {
             return nil
         }
         return folder
+    }
+
+    /// Write `string` atomically, then restrict the file to owner-only (0600).
+    /// Used for every session-record file (transcript/chat/notes/etc.) so
+    /// meeting content isn't world-readable on a multi-user machine.
+    private static func writeOwnerOnly(_ string: String, to url: URL) {
+        guard (try? string.write(to: url, atomically: true, encoding: .utf8)) != nil else { return }
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     // MARK: - Rendering
@@ -195,7 +206,7 @@ enum SessionArchive {
 
         let file = transcriptsRaw.appendingPathComponent("\(meeting.name)-rti.md")
         let md = renderLinkedMeeting(meeting: meeting, userNotes: notes, chat: chat, analysis: analysis)
-        try? md.write(to: file, atomically: true, encoding: .utf8)
+        writeOwnerOnly(md, to: file)
     }
 
     private static func renderLinkedMeeting(
