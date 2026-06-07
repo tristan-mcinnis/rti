@@ -132,6 +132,7 @@ final class LLMController {
 
         let promptContext = PromptContext(
             baseSystemPrompt: basePrompt,
+            meetingContext: MeetingContextStore.shared.trimmed,
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
             referenceText: activeMode?.referenceText,
             referenceModeName: activeMode?.name,

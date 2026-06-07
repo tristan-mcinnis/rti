@@ -6,6 +6,9 @@ import Foundation
 public struct PromptContext {
     /// The base system prompt (from the active mode, or the default).
     public var baseSystemPrompt: String
+    /// User-provided context for *this* meeting (client, project, status…).
+    /// Ephemeral; treated as ground truth about who/what the call is about.
+    public var meetingContext: String?
     /// Optional glossary terms the model should know.
     public var glossaryFragment: String?
     /// Reference text attached to the active mode.
@@ -17,12 +20,14 @@ public struct PromptContext {
 
     public init(
         baseSystemPrompt: String = "",
+        meetingContext: String? = nil,
         glossaryFragment: String? = nil,
         referenceText: String? = nil,
         referenceModeName: String? = nil,
         screenContext: String? = nil
     ) {
         self.baseSystemPrompt = baseSystemPrompt
+        self.meetingContext = meetingContext
         self.glossaryFragment = glossaryFragment
         self.referenceText = referenceText
         self.referenceModeName = referenceModeName
@@ -30,7 +35,8 @@ public struct PromptContext {
     }
 
     public var hasContent: Bool {
-        glossaryFragment != nil
+        meetingContext != nil
+            || glossaryFragment != nil
             || referenceText != nil
             || screenContext != nil
     }
@@ -52,6 +58,14 @@ public enum PromptBuilder {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !basePrompt.isEmpty {
             msgs.append(LLMMessage(role: "system", content: basePrompt))
+        }
+
+        if let meeting = context.meetingContext?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !meeting.isEmpty {
+            msgs.append(LLMMessage(
+                role: "system",
+                content: "Context for this meeting, provided by the user (who/what it's about, client, project, status). Treat it as ground truth.\n---\n\(meeting)\n---"
+            ))
         }
 
         if let glossary = context.glossaryFragment {

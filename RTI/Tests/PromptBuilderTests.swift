@@ -31,6 +31,19 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertTrue(PromptBuilder.buildSystemMessages(context: PromptContext()).isEmpty)
     }
 
+    func test_systemMessages_meetingContextFollowsBase() {
+        let ctx = PromptContext(baseSystemPrompt: "BASE", meetingContext: "Client: Acme, status: behind")
+        let msgs = PromptBuilder.buildSystemMessages(context: ctx)
+        XCTAssertEqual(msgs.count, 2)
+        XCTAssertEqual(msgs[0].content, "BASE")
+        XCTAssertTrue(msgs[1].content?.contains("Acme") ?? false)
+    }
+
+    func test_systemMessages_skipsBlankMeetingContext() {
+        let ctx = PromptContext(baseSystemPrompt: "BASE", meetingContext: "   ")
+        XCTAssertEqual(PromptBuilder.buildSystemMessages(context: ctx).count, 1)
+    }
+
     func test_systemMessages_skipsEmptyReference() {
         let ctx = PromptContext(baseSystemPrompt: "BASE", referenceText: "")
         let msgs = PromptBuilder.buildSystemMessages(context: ctx)
