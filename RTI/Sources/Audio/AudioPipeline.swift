@@ -41,6 +41,12 @@ final class AudioPipeline {
     private var soniox: SonioxClient?
     private var systemSoniox: SonioxClient?
 
+    /// Live capture levels for the Audio I/O monitor. Written from the PCM
+    /// callbacks; read on main by the monitor. `systemAudioActive` reflects
+    /// whether the system-audio leg is currently wired up.
+    let levelMeter = AudioLevelMeter()
+    var systemAudioActive: Bool { systemAudio != nil }
+
     /// Watches for the mic tap going silent mid-session (device disconnect,
     /// mute, revoked permission) — the "silent dead air" case the user can't
     /// otherwise detect. See `checkMicHealth`.
@@ -89,6 +95,7 @@ final class AudioPipeline {
         self.soniox = client
 
         audio.onPCMBuffer = { [weak self] buffer in
+            self?.levelMeter.recordMic(buffer)
             self?.wav.append(buffer)
             guard let int16 = buffer.int16ChannelData else { return }
             let frameLength = Int(buffer.frameLength)
@@ -142,6 +149,7 @@ final class AudioPipeline {
             self.systemSoniox = sysClient
 
             let onPCM: (AVAudioPCMBuffer) -> Void = { [weak self] buffer in
+                self?.levelMeter.recordSystem(buffer)
                 guard let int16 = buffer.int16ChannelData else { return }
                 let frameLength = Int(buffer.frameLength)
                 let byteCount = frameLength * MemoryLayout<Int16>.size
@@ -237,6 +245,7 @@ final class AudioPipeline {
     func finalize() {
         isCapturing = false
         stopMicWatchdog()
+        levelMeter.reset()
         audio.stop()
         systemAudio?.stop()
         systemAudio = nil
@@ -303,6 +312,7 @@ final class AudioPipeline {
     func abort() {
         isCapturing = false
         stopMicWatchdog()
+        levelMeter.reset()
         audio.stop()
         systemAudio?.stop()
         systemAudio = nil

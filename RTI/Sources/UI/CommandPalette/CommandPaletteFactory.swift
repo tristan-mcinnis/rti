@@ -207,6 +207,13 @@ enum CommandBuilder {
                 keywords: ["translation", "translate"],
                 perform: { [weak windows] in windows?.toggle(.translation) },
                 menuSection: .panels
+            ),
+            RTICommand(
+                id: "panel.audioIO.toggle",
+                title: "Toggle Audio I/O Monitor",
+                keywords: ["audio", "input", "output", "mic", "microphone", "levels", "device", "meter"],
+                perform: { [weak windows] in windows?.toggle(.audioIO) },
+                menuSection: .panels
             )
         ]
     }

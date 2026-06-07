@@ -63,6 +63,36 @@ enum AudioInputDeviceStore {
         return availableInputDevices().first(where: { $0.uid == uid })?.id
     }
 
+    /// Human-readable name of the input device actually in use — the picked
+    /// device if the user chose one, otherwise the live system default.
+    static func currentInputName() -> String {
+        if isCustomDevice, let id = resolvePreferredDeviceID(),
+           let name = stringProperty(id, kAudioObjectPropertyName) {
+            return name
+        }
+        return defaultDeviceName(kAudioHardwarePropertyDefaultInputDevice) ?? "System default input"
+    }
+
+    /// Name of the default **output** device — what the system-audio tap
+    /// follows to capture the other party.
+    static func currentOutputName() -> String {
+        defaultDeviceName(kAudioHardwarePropertyDefaultOutputDevice) ?? "System default output"
+    }
+
+    private static func defaultDeviceName(_ selector: AudioObjectPropertySelector) -> String? {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &deviceID
+        ) == noErr, deviceID != 0 else { return nil }
+        return stringProperty(deviceID, kAudioObjectPropertyName)
+    }
+
     // MARK: - HAL helpers
 
     private static func hasInputChannels(deviceID: AudioDeviceID) -> Bool {

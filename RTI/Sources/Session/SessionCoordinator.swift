@@ -123,6 +123,27 @@ final class SessionCoordinator {
         return ok
     }
 
+    /// Cheap live levels for the Audio I/O monitor — safe to poll at meter
+    /// rate (~15 Hz). Device names are resolved separately (`audioDeviceNames`)
+    /// since CoreAudio enumeration is heavier.
+    func audioLevels() -> AudioLevels {
+        let snap = audioPipeline.levelMeter.snapshot()
+        return AudioLevels(
+            isRunning: isRunning,
+            systemActive: audioPipeline.systemAudioActive,
+            mic: snap.micLevel,
+            system: snap.systemLevel,
+            micFlowing: snap.micFlowing,
+            systemFlowing: snap.systemFlowing
+        )
+    }
+
+    /// The input device in use and the output device the system-audio tap
+    /// follows. Heavier (HAL enumeration) — poll at ~1 Hz, not meter rate.
+    func audioDeviceNames() -> (input: String, output: String) {
+        (AudioInputDeviceStore.currentInputName(), AudioInputDeviceStore.currentOutputName())
+    }
+
     func toggleSession() {
         if isRunning {
             stopSession()
