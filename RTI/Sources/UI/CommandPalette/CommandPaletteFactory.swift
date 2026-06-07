@@ -214,6 +214,13 @@ enum CommandBuilder {
                 keywords: ["audio", "input", "output", "mic", "microphone", "levels", "device", "meter"],
                 perform: { [weak windows] in windows?.toggle(.audioIO) },
                 menuSection: .panels
+            ),
+            RTICommand(
+                id: "panel.context.toggle",
+                title: "Toggle Context Panel",
+                keywords: ["context", "client", "project", "status", "brief", "meeting", "about"],
+                perform: { [weak windows] in windows?.toggle(.context) },
+                menuSection: .panels
             )
         ]
     }
