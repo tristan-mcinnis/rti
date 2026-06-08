@@ -1,6 +1,6 @@
 import Foundation
 
-/// Drives periodic analysis tasks (notes generation, dossier extraction,
+/// Drives periodic analysis tasks (notes generation,
 /// discussion-guide matching) on a configurable timer. Owns the Timer,
 /// interval config, per-task enabled-checks, and per-task watermarks.
 /// SessionCoordinator starts/stops the scheduler — individual controllers

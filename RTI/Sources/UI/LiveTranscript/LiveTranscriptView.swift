@@ -36,11 +36,11 @@ struct LiveTranscriptView: View {
 
     // MARK: - Translation state
 
-    @AppStorage("rti.translation.enabled") private var translationEnabled = false
-    @AppStorage("rti.translation.mode") private var translationMode = "one_way"
-    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "en"
-    @AppStorage("rti.translation.languageA") private var languageA = "en"
-    @AppStorage("rti.translation.languageB") private var languageB = "es"
+    @AppStorage(TranslationDefaults.enabledKey) private var translationEnabled = false
+    @AppStorage(TranslationDefaults.modeKey) private var translationMode = "one_way"
+    @AppStorage(TranslationDefaults.targetLanguageKey) private var targetLanguage = "en"
+    @AppStorage(TranslationDefaults.languageAKey) private var languageA = "en"
+    @AppStorage(TranslationDefaults.languageBKey) private var languageB = "zh"
 
     private let supportedLanguages: [(code: String, name: String)] = [
         ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"),
@@ -478,7 +478,7 @@ struct LiveTranscriptView: View {
                 Text("Waiting for transcription…")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
-                Text("Audio is being captured. Words will appear as Soniox finalizes them. If nothing arrives within a few seconds, check Settings → View Logs.")
+                Text("Audio is being captured. Words will appear as Soniox finalizes them.")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)

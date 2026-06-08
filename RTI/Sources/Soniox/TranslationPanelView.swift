@@ -7,12 +7,12 @@ import RTICore
 struct TranslationPanelView: View {
     private let coordinator = SessionCoordinator.shared
     @AppStorage(translationOpacityKey) private var backgroundOpacity: Double = translationDefaultOpacity
-    @AppStorage("rti.translation.enabled") private var translationEnabled = false
-    @AppStorage("rti.translation.showOriginal") private var showOriginal = true
-    @AppStorage("rti.translation.mode") private var translationMode = "one_way"
-    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "en"
-    @AppStorage("rti.translation.languageA") private var languageA = "en"
-    @AppStorage("rti.translation.languageB") private var languageB = "es"
+    @AppStorage(TranslationDefaults.enabledKey) private var translationEnabled = false
+    @AppStorage(TranslationDefaults.showOriginalKey) private var showOriginal = true
+    @AppStorage(TranslationDefaults.modeKey) private var translationMode = "one_way"
+    @AppStorage(TranslationDefaults.targetLanguageKey) private var targetLanguage = "en"
+    @AppStorage(TranslationDefaults.languageAKey) private var languageA = "en"
+    @AppStorage(TranslationDefaults.languageBKey) private var languageB = "zh"
 
     private static let languageOptions: [(code: String, label: String)] = [
         ("en", "English"), ("es", "Spanish"), ("zh", "Chinese"), ("fr", "French"),

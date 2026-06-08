@@ -139,14 +139,14 @@ private struct AudioInputSection: View {
 
             Toggle("Echo cancellation", isOn: $echoCancellation)
                 .padding(.top, 4)
-            Text("Cancels the other party's voice bleeding from your speakers into the mic, which otherwise gets transcribed twice. Recommended on speakers; harmless on headphones. Applies on the next session. Some external/aggregate devices may not support it.")
+            Text("Cancels the other party's voice bleeding from your speakers into the mic, which otherwise gets transcribed twice. Recommended on speakers. Applies on the next session.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Toggle("Protect Bluetooth headphone volume", isOn: $protectBluetoothVolume)
                 .padding(.top, 4)
-            Text("While recording, if your mic is a Bluetooth headset, RTI captures from the built-in mic instead so the headphones stay at full volume (opening a Bluetooth mic drops them into quiet \u{201C}call mode\u{201D}). Your original mic is restored when recording stops.")
+            Text("While recording, if your mic is a Bluetooth headset, RTI captures from the built-in mic instead so the headphones stay at full volume. Your original mic is restored when recording stops.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -196,7 +196,7 @@ private struct RealTimeAnalysisSection: View {
             .disabled(!notesEnabled)
             .opacity(notesEnabled ? 1 : 0.5)
 
-            Text("Notes and discussion-guide matching run automatically while recording. They appear in the overlay's Notes and Guide tabs (⌘\\ to open the overlay).")
+            Text("Notes and discussion-guide matching run automatically while recording.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -318,9 +318,6 @@ private struct HotkeysSection: View {
                 hotkeyRow("Assist (from any app)", "⌘ ↵")
                 hotkeyRow("Attach screenshot", "⌘ ⇧ H")
                 hotkeyRow("Show / hide live transcript", "⌘ ⌥ T")
-                hotkeyRow("Open sessions", "⌘ ⇧ S")
-                hotkeyRow("Toggle notes panel", "⌘ ⇧ N")
-                hotkeyRow("Toggle dossiers panel", "⌘ ⇧ D")
             }
             .font(.system(size: 12))
             .foregroundStyle(.secondary)

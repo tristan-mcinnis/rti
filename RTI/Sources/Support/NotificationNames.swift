@@ -22,6 +22,9 @@ enum OverlayAppearanceDefaults {
     static let opacityKey = "rti.overlay.opacity"
     /// When true, the overlay renders in light mode (white panel, black text).
     static let lightModeKey = "rti.overlay.lightMode"
+    /// When true (the default), every RTI panel sets `sharingType = .none` so it
+    /// is excluded from screen capture.
+    static let invisibilityKey = "rti.invisible"
     static let defaultWidth: Double = 700
     static let defaultHeight: Double = 440
     static let defaultOpacity: Double = 0.90
@@ -39,6 +42,15 @@ enum AudioSettingsDefaults {
     /// to the built-in mic so the headphones stay in full-volume A2DP instead of
     /// dropping into quiet HFP "call mode". Restored on stop.
     static let protectBluetoothVolumeKey = "rti.audio.protectBluetoothVolume"
+}
+
+enum TranslationDefaults {
+    static let enabledKey = "rti.translation.enabled"
+    static let showOriginalKey = "rti.translation.showOriginal"
+    static let modeKey = "rti.translation.mode"
+    static let targetLanguageKey = "rti.translation.targetLanguage"
+    static let languageAKey = "rti.translation.languageA"
+    static let languageBKey = "rti.translation.languageB"
 }
 
 enum AnalysisSettingsDefaults {

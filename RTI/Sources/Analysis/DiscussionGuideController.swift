@@ -178,8 +178,8 @@ final class DiscussionGuideController {
     /// AnalysisScheduler entry point — match unanswered questions against
     /// the current transcript window. No-op when no guide is loaded.
     ///
-    /// Shares the fetch → LLM → strip → decode pipeline with Notes and
-    /// Dossiers via `TranscriptAnalysis.run` (timestamped shape, so the model
+    /// Shares the fetch → LLM → strip → decode pipeline with Notes
+    /// via `TranscriptAnalysis.run` (timestamped shape, so the model
     /// can echo `[mm:ss]` into its quotes). The guide-specific work — building
     /// the unanswered-questions list and folding matches back into the guide —
     /// stays here.

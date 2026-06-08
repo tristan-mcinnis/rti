@@ -13,7 +13,6 @@ final class WindowCoordinator {
     private var overlayController: OverlayWindowController?
     private var sessionsControl: SessionsControlWindowController?
     private var meetingBrief: MeetingBriefWindowController?
-    private var shortcutsController: ShortcutsWindowController?
     /// Singleton floating panels. One entry per `FloatingPanelID` once
     /// `install(_:)` has run; adding a new panel kind is just a new enum
     /// case + spec rather than another stored property here.
@@ -25,7 +24,6 @@ final class WindowCoordinator {
     }
 
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
-        shortcutsController = ShortcutsWindowController()
         sessionsControl = SessionsControlWindowController()
         meetingBrief = MeetingBriefWindowController()
 
@@ -56,7 +54,7 @@ final class WindowCoordinator {
 
     /// Toggle the persisted invisibility flag and apply it to every panel.
     func toggleInvisibility() {
-        let key = "rti.invisible"
+        let key = OverlayAppearanceDefaults.invisibilityKey
         let current = UserDefaults.standard.object(forKey: key) as? Bool ?? true
         let next = !current
         UserDefaults.standard.set(next, forKey: key)
@@ -84,10 +82,6 @@ final class WindowCoordinator {
 
     func showLiveTranscript() { showSessionsControl(tab: .liveTranscript) }
     func openSettings() { showSessionsControl(tab: .settings) }
-
-    // MARK: - Shortcuts
-
-    func showShortcuts() { shortcutsController?.show() }
 
     // MARK: - Floating panels
 

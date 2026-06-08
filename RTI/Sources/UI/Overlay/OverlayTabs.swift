@@ -203,11 +203,11 @@ private func overlayEmptyState(_ icon: String, _ title: String, _ subtitle: Stri
 
 struct TranscriptTabView: View {
     private let session = SessionCoordinator.shared
-    @AppStorage("rti.translation.enabled") private var translationEnabled = false
-    @AppStorage("rti.translation.mode") private var translationMode = "one_way"
-    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "en"
-    @AppStorage("rti.translation.languageA") private var languageA = "en"
-    @AppStorage("rti.translation.languageB") private var languageB = "zh"
+    @AppStorage(TranslationDefaults.enabledKey) private var translationEnabled = false
+    @AppStorage(TranslationDefaults.modeKey) private var translationMode = "one_way"
+    @AppStorage(TranslationDefaults.targetLanguageKey) private var targetLanguage = "en"
+    @AppStorage(TranslationDefaults.languageAKey) private var languageA = "en"
+    @AppStorage(TranslationDefaults.languageBKey) private var languageB = "zh"
 
     private static let languageOptions: [(code: String, label: String)] = [
         ("en", "English"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French"),
@@ -471,7 +471,7 @@ struct NotesTabView: View {
                 Text(error).font(.system(size: 10)).foregroundStyle(.red)
             }
             if controller.notes.isEmpty {
-                overlayEmptyState("note.text", "Waiting for the first note…", "Notes appear in timed blocks as the conversation goes.")
+                overlayEmptyState("note.text", "No notes yet", "Notes appear as the conversation develops.")
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {

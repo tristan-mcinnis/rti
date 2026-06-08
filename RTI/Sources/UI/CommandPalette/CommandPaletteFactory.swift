@@ -162,7 +162,7 @@ enum CommandBuilder {
                 perform: { [weak windows] in windows?.toggleInvisibility() },
                 menuSection: .panels,
                 menuStateProvider: {
-                    UserDefaults.standard.object(forKey: "rti.invisible") as? Bool ?? true
+                    UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
                 }
             ),
             RTICommand(
@@ -186,13 +186,6 @@ enum CommandBuilder {
                 subtitle: "⌘,",
                 keywords: ["preferences", "config"],
                 perform: { [weak windows] in windows?.openSettings() },
-                menuSection: .app
-            ),
-            RTICommand(
-                id: "settings.shortcuts",
-                title: "Keyboard Shortcuts…",
-                keywords: ["hotkeys", "bindings"],
-                perform: { [weak windows] in windows?.showShortcuts() },
                 menuSection: .app
             ),
             RTICommand(

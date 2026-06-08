@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // UI can surface when a meeting is being recorded outside RTI.
         MeetingSentinelMonitor.shared.start()
 
-        // Register the periodic real-time analysis tasks (notes, dossiers,
+        // Register the periodic real-time analysis tasks (notes,
         // discussion-guide matching). They only fire while a session runs and
         // self-gate on their Settings toggles.
         SessionCoordinator.shared.registerAnalysisTasks()
@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             Task { @MainActor [weak self] in self?.windows.openSettings() }
         })
 
-        let invisible = UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true
+        let invisible = UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
         windows.setSharingInvisible(invisible)
 
         // Build the shared command registry once. Menu, hotkeys, and the
@@ -68,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         menu.currentSessionIdProvider = { SessionCoordinator.shared.currentSessionId }
         menu.isRunningProvider = { SessionCoordinator.shared.isRunning }
         menu.smartModeProvider = { LLMController.shared.smartMode }
-        menu.invisibilityProvider = { UserDefaults.standard.object(forKey: Self.invisibleKey) as? Bool ?? true }
+        menu.invisibilityProvider = { UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true }
         menu.install(commands: commands)
 
         hotkeys.registerAll(commands: commands)
@@ -163,6 +163,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         }
         return true
     }
-
-    private static let invisibleKey = "rti.invisible"
 }

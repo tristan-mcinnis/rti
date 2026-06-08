@@ -5,7 +5,7 @@ struct AssistantInputView: View {
 
     @State private var input: String = ""
     @FocusState private var isInputFocused: Bool
-    @AppStorage("rti.invisible") private var isHiddenFromCapture: Bool = true
+    @AppStorage(OverlayAppearanceDefaults.invisibilityKey) private var isHiddenFromCapture: Bool = true
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
     private let llm = LLMController.shared
     private let modes = ModeStore.shared
