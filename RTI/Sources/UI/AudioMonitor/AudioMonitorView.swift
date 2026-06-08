@@ -91,21 +91,3 @@ struct AudioMonitorContent: View {
         outputName = names.output
     }
 }
-
-/// Floating-panel wrapper around the meters.
-struct AudioMonitorView: View {
-    var body: some View {
-        FloatingPanelChrome(
-            title: "Audio I/O",
-            opacityKey: audioMonitorOpacityKey,
-            defaultOpacity: floatingPanelDefaultOpacity,
-            panelID: .audioIO,
-            menuItems: {
-                Button("Audio settings…") { WindowCoordinator.shared.openSettings() }
-            }
-        ) {
-            AudioMonitorContent()
-                .padding(16)
-        }
-    }
-}

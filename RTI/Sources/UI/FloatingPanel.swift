@@ -10,8 +10,6 @@ enum FloatingPanelID: CaseIterable {
     case dossiers
     case discussionGuide
     case translation
-    case audioIO
-    case context
 
     @MainActor
     var spec: FloatingPanelSpec {
@@ -20,8 +18,6 @@ enum FloatingPanelID: CaseIterable {
         case .dossiers: return .dossiers
         case .discussionGuide: return .discussionGuide
         case .translation: return .translation
-        case .audioIO: return .audioIO
-        case .context: return .context
         }
     }
 }
@@ -97,30 +93,6 @@ extension FloatingPanelSpec {
         },
         makeRootView: { AnyView(TranslationPanelView()) }
     )
-
-    static let audioIO = FloatingPanelSpec(
-        savedFrameKey: "rti.audioMonitor.savedFrame.v1",
-        opacityKey: audioMonitorOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: NSSize(width: 320, height: 210),
-        panelID: .audioIO,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.midX - size.width / 2, y: visible.minY + 16)
-        },
-        makeRootView: { AnyView(AudioMonitorView()) }
-    )
-
-    static let context = FloatingPanelSpec(
-        savedFrameKey: "rti.contextPanel.savedFrame.v1",
-        opacityKey: contextPanelOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: floatingPanelDefaultSize,
-        panelID: .context,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.minX + 16, y: visible.minY + 16)
-        },
-        makeRootView: { AnyView(ContextPanelView()) }
-    )
 }
 
 // MARK: - Shared defaults
@@ -144,10 +116,6 @@ let guideDefaultOpacity: Double = floatingPanelDefaultOpacity
 
 let translationOpacityKey = "rti.translationPanel.opacity"
 let translationDefaultOpacity: Double = floatingPanelDefaultOpacity
-
-let audioMonitorOpacityKey = "rti.audioMonitor.opacity"
-
-let contextPanelOpacityKey = "rti.contextPanel.opacity"
 
 // MARK: - Controller
 

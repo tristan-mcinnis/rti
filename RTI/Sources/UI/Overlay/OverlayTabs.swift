@@ -246,32 +246,99 @@ struct NotesTabView: View {
 // MARK: - Context
 
 struct ContextTabView: View {
+    private let store = MeetingContextStore.shared
+    @State private var clients: [VaultItem] = []
+    @State private var projects: [VaultItem] = []
     @State private var briefs: [MeetingBrief] = []
     @State private var selectedBrief: MeetingBrief?
     @State private var briefContent = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("What's this meeting about?").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                pickers
+                if let name = store.workstreamName {
+                    workstreamPreview(name: name)
+                }
+                noteEditor
+                briefSection
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollContentBackground(.hidden)
+        .onAppear(perform: load)
+    }
+
+    /// Pick a client or project from the vault.
+    private var pickers: some View {
+        HStack(spacing: 8) {
+            menu(title: "Client", icon: "person.crop.circle", items: clients)
+            menu(title: "Project", icon: "folder", items: projects)
+            Spacer()
+            if store.workstreamName != nil {
+                OverlayToolbarButton(icon: "xmark.circle", help: "Clear workstream") { store.clearWorkstream() }
+            }
+        }
+    }
+
+    private func menu(title: String, icon: String, items: [VaultItem]) -> some View {
+        Menu {
+            if items.isEmpty {
+                Text("None found in vault")
+            } else {
+                ForEach(items) { item in Button(item.name) { pick(item) } }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 10))
+                Text(title).font(.system(size: 11, weight: .medium))
+                Image(systemName: "chevron.down").font(.system(size: 8))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.1)))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private func workstreamPreview(name: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: "link").font(.system(size: 9))
+                Text(name).font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.green.opacity(0.85))
+            ScrollView {
+                RTIMarkdown(store.workstreamContext ?? "", style: .overlay).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 150)
+            .scrollContentBackground(.hidden)
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.05)))
+        }
+    }
+
+    private var noteEditor: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Your note").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75))
             ZStack(alignment: .topLeading) {
-                TextEditor(text: Binding(
-                    get: { MeetingContextStore.shared.context },
-                    set: { MeetingContextStore.shared.context = $0 }
-                ))
-                .font(.system(size: 12))
-                .foregroundStyle(.white)
-                .scrollContentBackground(.hidden)
-                .frame(height: 70)
-                .padding(6)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.08)))
-                if MeetingContextStore.shared.context.isEmpty {
-                    Text("Client / project / status — fed to the assistant.")
+                TextEditor(text: Binding(get: { store.note }, set: { store.note = $0 }))
+                    .font(.system(size: 12)).foregroundStyle(.white).scrollContentBackground(.hidden)
+                    .frame(height: 56).padding(6)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.08)))
+                if store.note.isEmpty {
+                    Text("Anything extra for the assistant…")
                         .font(.system(size: 12)).foregroundStyle(.white.opacity(0.35))
                         .padding(.horizontal, 11).padding(.vertical, 13).allowsHitTesting(false)
                 }
             }
+        }
+    }
 
-            HStack(spacing: 8) {
+    private var briefSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
                 Text("Pre-meeting brief").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75))
                 Spacer()
                 if briefs.count > 1 {
@@ -286,17 +353,22 @@ struct ContextTabView: View {
                 Text("No brief found — Hermes writes these to your vault before a call.")
                     .font(.system(size: 11)).foregroundStyle(.white.opacity(0.4))
             } else {
-                ScrollView {
-                    RTIMarkdown(briefContent, style: .overlay).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .scrollContentBackground(.hidden)
+                RTIMarkdown(briefContent, style: .overlay).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .onAppear {
-            briefs = MeetingBriefStore.recentBriefs()
-            selectedBrief = briefs.first
-            briefContent = selectedBrief.map(MeetingBriefStore.content) ?? ""
-        }
+    }
+
+    private func pick(_ item: VaultItem) {
+        store.workstreamName = item.name
+        store.workstreamContext = VaultWorkstreamStore.context(for: item)
+    }
+
+    private func load() {
+        clients = VaultWorkstreamStore.clients()
+        projects = VaultWorkstreamStore.projects()
+        briefs = MeetingBriefStore.recentBriefs()
+        selectedBrief = briefs.first
+        briefContent = selectedBrief.map(MeetingBriefStore.content) ?? ""
     }
 }
 
