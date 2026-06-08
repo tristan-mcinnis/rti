@@ -79,6 +79,7 @@
 		947E731369EA00C951D87DF4 /* VaultWorkstreamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784039F6D2FA89F0F58553A8 /* VaultWorkstreamStore.swift */; };
 		9590F51FF0C794DFCBED74B5 /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790AD9982261EEE5DF6AD6DE /* Mode.swift */; };
 		9597DC1D4F880ADBC3B5D50D /* LiveTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA3BBCAD491F3A9C8312E3E8 /* LiveTranscriptView.swift */; };
+		9ABA0CB623C5FA35D9012D00 /* VaultWorkstreamMatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F44CF42C17468829798FD28 /* VaultWorkstreamMatchTests.swift */; };
 		9CE129198AA6573BDBBC1D18 /* LLMError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AD9E48AF9E7AB7C50500B25 /* LLMError.swift */; };
 		9ED665B1E48A7DE41ED06E74 /* TimeFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A12CCA6174FEC4E6F7897A4 /* TimeFormat.swift */; };
 		9F89E22932AA0A661DB33D88 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263A886E22FF815C73AD3DD6 /* SystemAudioCapture.swift */; };
@@ -97,6 +98,7 @@
 		C43C4E3A1CED3BC8D8CEC047 /* RegistryMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8917D2FFA935D09BB39F439 /* RegistryMenu.swift */; };
 		C4A19E69783DCFE4951BDAC2 /* MenuCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */; };
 		C4A4927BA9EB63D787161998 /* ResizeHandle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5BF77DB9113B6E6B8E56C9A /* ResizeHandle.swift */; };
+		C7AF7D6EA798FC415F002E2C /* VaultWorkstreamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784039F6D2FA89F0F58553A8 /* VaultWorkstreamStore.swift */; };
 		C81F949329409B2D1BB6260E /* RTIPanelDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFBA0189543CEBE06C92DAF7 /* RTIPanelDefaults.swift */; };
 		C9B5D4C1DCC3635A79EDCB66 /* DiscussionGuideController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1456E03914BAD3E5A701143B /* DiscussionGuideController.swift */; };
 		CADDD147CFF93E3D1FFB977C /* WindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA4C9DA72BD19BF5E5E060C /* WindowCoordinator.swift */; };
@@ -195,6 +197,7 @@
 		5AA81161755C386E2B4F91AF /* SessionArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionArchive.swift; sourceTree = "<group>"; };
 		5B73FEF0D62A6679A9B1B2D9 /* ModesTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModesTab.swift; sourceTree = "<group>"; };
 		5B9F27854AAE06E1EA9736ED /* DiscussionGuideSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuideSections.swift; sourceTree = "<group>"; };
+		5F44CF42C17468829798FD28 /* VaultWorkstreamMatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultWorkstreamMatchTests.swift; sourceTree = "<group>"; };
 		6820EA81EE3A97F7E8DB34B1 /* TranscriptContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptContext.swift; sourceTree = "<group>"; };
 		69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotkey.swift; sourceTree = "<group>"; };
 		6E600DE9AB64400FE85F5FCD /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
@@ -464,6 +467,7 @@
 				44F7742FED647910D06243C4 /* SSEStreamParserTests.swift */,
 				D97A133FDA46631B3978EA60 /* TranscriptAggregatorTests.swift */,
 				2F2EEBEC4545961F15253F47 /* TranscriptPipelineTests.swift */,
+				5F44CF42C17468829798FD28 /* VaultWorkstreamMatchTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -825,6 +829,8 @@
 				FFEF45631B7D83D3141AC09B /* SpeakerTurnTests.swift in Sources */,
 				B3008BE3A1EB51DF7B3F4AA7 /* TranscriptAggregatorTests.swift in Sources */,
 				08044B6830E8410D8670DD06 /* TranscriptPipelineTests.swift in Sources */,
+				9ABA0CB623C5FA35D9012D00 /* VaultWorkstreamMatchTests.swift in Sources */,
+				C7AF7D6EA798FC415F002E2C /* VaultWorkstreamStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

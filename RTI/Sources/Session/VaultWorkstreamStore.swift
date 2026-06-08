@@ -68,7 +68,34 @@ enum VaultWorkstreamStore {
         return raw.count > contextCap ? String(raw.prefix(contextCap)) + "\n…[truncated]" : raw
     }
 
+    /// Best-effort match of a Sentinel meeting name to a vault workstream — used
+    /// to pre-select context when you "Go live" on a recorded meeting. Returns
+    /// the item whose name appears (whole-word) in the meeting name, preferring
+    /// projects, then the longest match. Conservative: only names of 4+ chars
+    /// match, so a short slug can't false-positive. Pure (no FS) for testing.
+    static func match(meetingName: String, in items: [VaultItem]) -> VaultItem? {
+        let haystack = " \(normalize(meetingName)) "
+        guard haystack.count > 2 else { return nil }
+        return items
+            .filter { item in
+                let needle = normalize(item.name)
+                return needle.count >= 4 && haystack.contains(" \(needle) ")
+            }
+            .max { a, b in
+                if a.isProject != b.isProject { return !a.isProject } // projects win
+                return normalize(a.name).count < normalize(b.name).count // else longest
+            }
+    }
+
     // MARK: - Helpers
+
+    /// Lowercase, fold every non-alphanumeric run to a single space. Lets a
+    /// hyphenated slug ("acme-digital") match a spaced title ("Acme Digital").
+    static func normalize(_ s: String) -> String {
+        String(s.lowercased().map { $0.isLetter || $0.isNumber ? $0 : " " })
+            .split(separator: " ")
+            .joined(separator: " ")
+    }
 
     private static func items(
         in subdir: String,

@@ -35,4 +35,16 @@ final class MeetingContextStore {
         workstreamName = nil
         workstreamContext = nil
     }
+
+    /// Best-effort: when a session is linked to a Sentinel meeting, pre-select
+    /// the vault workstream whose name appears in the meeting name. No-ops if
+    /// the user already picked one or nothing matches — a wrong guess just shows
+    /// in the "RTI is using:" banner for the user to clear.
+    func autoLink(toMeetingNamed meetingName: String) {
+        guard workstreamName == nil else { return }
+        let items = VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()
+        guard let match = VaultWorkstreamStore.match(meetingName: meetingName, in: items) else { return }
+        workstreamName = match.name
+        workstreamContext = VaultWorkstreamStore.context(for: match)
+    }
 }

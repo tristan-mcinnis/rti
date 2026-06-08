@@ -357,14 +357,26 @@ struct ContextTabView: View {
     @State private var briefs: [MeetingBrief] = []
     @State private var selectedBrief: MeetingBrief?
     @State private var briefContent = ""
+    @State private var pickerOpen = false
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                pickers
-                if let name = store.workstreamName {
-                    workstreamPreview(name: name)
+                Text("Who is this meeting about?")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                Text("Pick a client or project from your vault — RTI grounds every suggestion in it until you clear it.")
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if store.workstreamName != nil {
+                    usingBanner
+                    workstreamPreview
+                } else {
+                    picker
                 }
+
                 noteEditor
                 briefSection
             }
@@ -374,54 +386,108 @@ struct ContextTabView: View {
         .onAppear(perform: load)
     }
 
-    /// Pick a client or project from the vault.
-    private var pickers: some View {
-        HStack(spacing: 8) {
-            menu(title: "Client", icon: "person.crop.circle", items: clients)
-            menu(title: "Project", icon: "folder", items: projects)
-            Spacer()
-            if store.workstreamName != nil {
-                OverlayToolbarButton(icon: "xmark.circle", help: "Clear workstream") { store.clearWorkstream() }
+    // MARK: - One combined client/project picker
+
+    private var picker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                pickerOpen.toggle()
+                if pickerOpen { searchFocused = true }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 10))
+                    Text("Pick client or project").font(.system(size: 12, weight: .medium))
+                    Spacer()
+                    Image(systemName: pickerOpen ? "chevron.up" : "chevron.down").font(.system(size: 9))
+                }
+                .foregroundStyle(.white.opacity(0.85))
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.1)))
             }
+            .buttonStyle(.plain)
+
+            if pickerOpen { pickerList }
         }
     }
 
-    private func menu(title: String, icon: String, items: [VaultItem]) -> some View {
-        Menu {
-            if items.isEmpty {
-                Text("None found in vault")
+    private var pickerList: some View {
+        VStack(spacing: 0) {
+            TextField("Type to filter…", text: $query)
+                .textFieldStyle(.plain).font(.system(size: 12)).foregroundStyle(.white)
+                .focused($searchFocused)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+            Divider().overlay(Color.white.opacity(0.1))
+            if filteredItems.isEmpty {
+                Text(allItems.isEmpty ? "Nothing found in your vault." : "No match for “\(query)”.")
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.4))
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(10)
             } else {
-                ForEach(items) { item in Button(item.name) { pick(item) } }
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(filteredItems) { pickerRow($0) }
+                    }
+                }
+                .frame(maxHeight: 200)
             }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 10))
-                Text(title).font(.system(size: 11, weight: .medium))
-                Image(systemName: "chevron.down").font(.system(size: 8))
-            }
-            .foregroundStyle(.white.opacity(0.85))
-            .padding(.horizontal, 9).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.1)))
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1))
     }
 
-    private func workstreamPreview(name: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
-                Image(systemName: "link").font(.system(size: 9))
-                Text(name).font(.system(size: 11, weight: .semibold))
+    private func pickerRow(_ item: VaultItem) -> some View {
+        Button {
+            pick(item)
+            pickerOpen = false
+            query = ""
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: item.isProject ? "folder" : "person.crop.circle")
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55)).frame(width: 16)
+                Text(item.name).font(.system(size: 12)).foregroundStyle(.white.opacity(0.9))
+                Spacer()
+                Text(item.isProject ? "Project" : "Client")
+                    .font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.4))
             }
-            .foregroundStyle(.green.opacity(0.85))
-            ScrollView {
-                RTIMarkdown(store.workstreamContext ?? "", style: .overlay).frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 150)
-            .scrollContentBackground(.hidden)
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.05)))
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+    }
+
+    private var usingBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 11)).foregroundStyle(.green.opacity(0.85))
+            Text("RTI is using:").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+            Text(store.workstreamName ?? "").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+            Spacer()
+            Button { store.clearWorkstream() } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(.white.opacity(0.45))
+            }
+            .buttonStyle(.plain).help("Clear — stop grounding answers in this workstream")
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.12)))
+    }
+
+    private var workstreamPreview: some View {
+        ScrollView {
+            RTIMarkdown(store.workstreamContext ?? "", style: .overlay).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 150)
+        .scrollContentBackground(.hidden)
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.05)))
+    }
+
+    /// Projects first, then clients — the combined list the picker filters.
+    private var allItems: [VaultItem] {
+        projects + clients
+    }
+
+    private var filteredItems: [VaultItem] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return allItems }
+        return allItems.filter { $0.name.lowercased().contains(q) }
     }
 
     private var noteEditor: some View {

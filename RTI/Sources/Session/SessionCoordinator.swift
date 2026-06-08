@@ -150,6 +150,7 @@ final class SessionCoordinator {
         guard !isRunning, !isStarting else { return }
         isStarting = true
         linkedMeeting = meeting
+        if let meeting { MeetingContextStore.shared.autoLink(toMeetingNamed: meeting.name) }
         lastError = nil
         lastErrorIsAuth = false
         delayedCompleteTask?.cancel()
