@@ -110,10 +110,17 @@ To simulate without a fresh machine: quit RTI, `mv ~/Library/Application\ Suppor
 - [ ] **Grant** on Microphone triggers the system prompt; the row flips to "Granted".
 - [ ] Footer flips to "You're all set" once keys + mic are in.
 
-## B. Mic dead-air watchdog (the headline reliability fix)
-- [ ] Start a session on AirPods/USB mic, then disconnect/mute the device.
-- [ ] Within ~10s an error appears ("Microphone audio stopped…") and the session stops — **no silent dead-air recording**.
-- [ ] During a *normal* silent stretch (no one talking), it does **not** false-fire.
+## B. Audio I/O — the device-routing check (do this on EVERY call's first 10s)
+This is the definitive both-sides-recorded test. Open the **Audio I/O Monitor**
+(menubar → Toggle Audio I/O Monitor, or Settings → Audio → Live levels).
+- [ ] Start a session. **You** row shows the right input device + "Live".
+- [ ] Say "testing one two" → the **You** meter moves and a `self:` transcript line appears.
+- [ ] Other party talks → the **Them** meter moves + a `them:` line appears, and the **Them** device is the output you're listening through (e.g. AirPods).
+- [ ] **The AirPods trap:** with AirPods in, both rows should read the AirPods device and both meters move. If **Them** is flat while they're talking, system-audio capture is on the wrong output → re-pick / restart. If **You** is flat while you talk, your mic is wrong → Settings → Audio.
+
+### Mic dead-air watchdog
+- [ ] Start a session, then disconnect/mute the mic. Within ~10s "Microphone audio stopped…" appears and the session stops — **no silent dead-air recording**.
+- [ ] During a *normal* silent stretch (no one talking), it does **not** false-fire (the meter is flat but the leg still reads "Live").
 
 ## C. Connection-health indicator (Live Transcript header, ⌘⌥T)
 - [ ] On start: dot goes yellow "Connecting…" → green "Live".
@@ -134,7 +141,11 @@ To simulate without a fresh machine: quit RTI, `mv ~/Library/Application\ Suppor
 - [ ] Install from the DMG on a Mac that's never run RTI → launches without right-click-Open; onboarding works.
 - [ ] `gh release create v<version> RTI-<version>.dmg` (the tag is what the updater reads).
 
-## G. Real meeting (the final gate)
+## G. Context (client/project/status)
+- [ ] Open the **Context panel** (menubar → Toggle Context Panel). Type a note ("Client: Acme, status: behind"). ⌘↵ Assist → the suggestion reflects it.
+- [ ] If your Hermes vault has a pre-meeting brief, it auto-loads in the panel (picker if several).
+
+## H. Real meeting (the final gate)
 - [ ] Join a real call. Both sides transcribe (Live Transcript shows "self" + "them").
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
 - [ ] Notes / Dossiers / Discussion-guide panels populate.
