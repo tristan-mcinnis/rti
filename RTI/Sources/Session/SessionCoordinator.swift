@@ -70,12 +70,6 @@ final class SessionCoordinator {
             }
         )
         AnalysisScheduler.shared.register(
-            id: "dossiers",
-            task: .init(enabledKey: AnalysisSettingsDefaults.dossiersEnabledKey) { sinceMs in
-                await DossierController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
-            }
-        )
-        AnalysisScheduler.shared.register(
             id: "discussionGuide",
             task: .init(enabledKey: AnalysisSettingsDefaults.guideEnabledKey) { sinceMs in
                 await DiscussionGuideController.shared.match(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
@@ -207,7 +201,6 @@ final class SessionCoordinator {
         // Bind the analysis controllers to the fresh session and start the
         // periodic scheduler. Each task self-gates on its Settings toggle.
         NotesGenerationController.shared.reset(for: sessionId)
-        DossierController.shared.reset(for: sessionId)
         DiscussionGuideController.shared.reset(for: sessionId)
         AnalysisScheduler.shared.start(
             intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
@@ -271,7 +264,6 @@ final class SessionCoordinator {
             let chat = LLMController.shared.entries
             let analysis = SessionArchive.Analysis(
                 notes: NotesGenerationController.shared.notes,
-                dossiers: DossierController.shared.dossiers,
                 guide: DiscussionGuideController.shared.guide
             )
             SessionArchive.write(

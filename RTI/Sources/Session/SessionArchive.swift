@@ -12,7 +12,6 @@ import RTICore
 ///   transcript.md         — the live transcript, notes inline
 ///   chat.md               — the assistant chat log (only written if non-empty)
 ///   notes.md              — generated meeting notes (only if any)
-///   dossiers.md           — extracted entity dossiers (only if any)
 ///   discussion-guide.md   — discussion-guide coverage (only if a guide loaded)
 enum SessionArchive {
     /// The real-time-analysis artifacts produced during a session. Bundled
@@ -22,10 +21,9 @@ enum SessionArchive {
     /// it is written to disk.
     struct Analysis {
         var notes: [GeneratedNote] = []
-        var dossiers: [EntityDossier] = []
         var guide: DiscussionGuide?
 
-        var isEmpty: Bool { notes.isEmpty && dossiers.isEmpty && guide == nil }
+        var isEmpty: Bool { notes.isEmpty && guide == nil }
     }
 
     /// Persist a session. Silently no-ops if there's nothing to save or the
@@ -52,10 +50,6 @@ enum SessionArchive {
         if !analysis.notes.isEmpty {
             let md = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
-        }
-        if !analysis.dossiers.isEmpty {
-            let md = (["# Dossiers", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderDossiers(analysis.dossiers)]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("dossiers.md"))
         }
         if let guide = analysis.guide {
             let md = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
@@ -138,16 +132,6 @@ enum SessionArchive {
             let when = headerStamp.string(from: n.timestamp)
             return "### \(when)\n\n\(n.content)"
         }.joined(separator: "\n\n---\n\n")
-    }
-
-    /// Dossiers grouped by entity type, each a bolded name + description.
-    private static func renderDossiers(_ dossiers: [EntityDossier]) -> String {
-        let grouped = Dictionary(grouping: dossiers) { $0.type }
-        let groups = grouped.keys.sorted { $0.displayName < $1.displayName }
-        return groups.map { type in
-            let entries = (grouped[type] ?? []).map { "- **\($0.name)** — \($0.description)" }
-            return "## \(type.displayName)\n\n\(entries.joined(separator: "\n"))"
-        }.joined(separator: "\n\n")
     }
 
     /// Discussion-guide coverage: a header line plus each question with its
@@ -237,12 +221,6 @@ enum SessionArchive {
             lines.append("## Generated notes")
             lines.append("")
             lines.append(renderNotes(analysis.notes))
-            lines.append("")
-        }
-        if !analysis.dossiers.isEmpty {
-            lines.append("## Dossiers")
-            lines.append("")
-            lines.append(renderDossiers(analysis.dossiers))
             lines.append("")
         }
         if let guide = analysis.guide {

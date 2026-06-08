@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Shared chrome for floating analysis panels (Notes, Dossiers,
-/// Discussion Guide, Translation). Handles: rounded dark
+/// Shared chrome for floating panels (now just Translation — the analysis
+/// panels were folded into the tabbed overlay). Handles: rounded dark
 /// translucent background with user-adjustable opacity, header layout,
 /// resize handle, close button, and corner clipping.
 ///

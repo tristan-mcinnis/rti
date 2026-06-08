@@ -6,17 +6,11 @@ import SwiftUI
 /// (e.g. "hide every panel on `rtiHideAuxiliaryPanels`") without
 /// hand-rolling the same 5 lines for each kind.
 enum FloatingPanelID: CaseIterable {
-    case notes
-    case dossiers
-    case discussionGuide
     case translation
 
     @MainActor
     var spec: FloatingPanelSpec {
         switch self {
-        case .notes: return .notes
-        case .dossiers: return .dossiers
-        case .discussionGuide: return .discussionGuide
         case .translation: return .translation
         }
     }
@@ -46,42 +40,6 @@ struct FloatingPanelSpec {
 
 @MainActor
 extension FloatingPanelSpec {
-    static let notes = FloatingPanelSpec(
-        savedFrameKey: "rti.notesPanel.savedFrame.v2",
-        opacityKey: notesOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: floatingPanelDefaultSize,
-        panelID: .notes,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 16)
-        },
-        makeRootView: { AnyView(NotesPanelView()) }
-    )
-
-    static let dossiers = FloatingPanelSpec(
-        savedFrameKey: "rti.dossiersPanel.savedFrame.v2",
-        opacityKey: dossiersOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: floatingPanelDefaultSize,
-        panelID: .dossiers,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.maxX - size.width - 16, y: visible.minY + 16)
-        },
-        makeRootView: { AnyView(DossiersPanelView()) }
-    )
-
-    static let discussionGuide = FloatingPanelSpec(
-        savedFrameKey: "rti.guidePanel.savedFrame.v2",
-        opacityKey: guideOpacityKey,
-        opacityDefault: floatingPanelDefaultOpacity,
-        defaultSize: floatingPanelDefaultSize,
-        panelID: .discussionGuide,
-        initialOrigin: { visible, size in
-            NSPoint(x: visible.minX + 16, y: visible.maxY - size.height - 16)
-        },
-        makeRootView: { AnyView(DiscussionGuidePanelView()) }
-    )
-
     static let translation = FloatingPanelSpec(
         savedFrameKey: "rti.translationPanel.savedFrame.v2",
         opacityKey: translationOpacityKey,
@@ -97,22 +55,12 @@ extension FloatingPanelSpec {
 
 // MARK: - Shared defaults
 
-/// Single source of truth — every floating panel starts at the same size
-/// and opacity. Per-panel keys still exist so a user can drift one panel
-/// individually via the ⋯ menu without resetting the rest. The
-/// `.v2` suffix on `savedFrameKey` above invalidates any pre-unification
-/// stored frames so the new defaults actually take effect on first open.
+/// Shared size + opacity defaults for floating panels. Translation is the only
+/// remaining one (the Notes/Dossiers/Guide panels were folded into the tabbed
+/// overlay); its opacity key lets the user drift it via the ⋯ menu. The `.v2`
+/// suffix on `savedFrameKey` above invalidates any pre-unification stored frame.
 let floatingPanelDefaultSize = NSSize(width: 420, height: 540)
 let floatingPanelDefaultOpacity: Double = 0.88
-
-let notesOpacityKey = "rti.notesPanel.opacity"
-let notesDefaultOpacity: Double = floatingPanelDefaultOpacity
-
-let dossiersOpacityKey = "rti.dossiersPanel.opacity"
-let dossiersDefaultOpacity: Double = floatingPanelDefaultOpacity
-
-let guideOpacityKey = "rti.guidePanel.opacity"
-let guideDefaultOpacity: Double = floatingPanelDefaultOpacity
 
 let translationOpacityKey = "rti.translationPanel.opacity"
 let translationDefaultOpacity: Double = floatingPanelDefaultOpacity

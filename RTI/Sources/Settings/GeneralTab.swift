@@ -164,7 +164,6 @@ private struct AudioInputSection: View {
 private struct RealTimeAnalysisSection: View {
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = true
     @AppStorage(AnalysisSettingsDefaults.notesIntervalKey) private var notesInterval: Double = AnalysisSettingsDefaults.defaultInterval
-    @AppStorage(AnalysisSettingsDefaults.dossiersEnabledKey) private var dossiersEnabled: Bool = true
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = true
 
     var body: some View {
@@ -173,7 +172,6 @@ private struct RealTimeAnalysisSection: View {
                 .font(.system(size: 13, weight: .medium))
 
             Toggle("Enable notes generation", isOn: $notesEnabled)
-            Toggle("Enable dossier generation", isOn: $dossiersEnabled)
             Toggle("Enable discussion guide matching", isOn: $guideEnabled)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -190,7 +188,7 @@ private struct RealTimeAnalysisSection: View {
             .disabled(!notesEnabled)
             .opacity(notesEnabled ? 1 : 0.5)
 
-            Text("Notes and dossiers generate automatically while recording. They appear in overlay panels you can open with ⌘⇧N and ⌘⇧D.")
+            Text("Notes and discussion-guide matching run automatically while recording. They appear in the overlay's Notes and Guide tabs (⌘\\ to open the overlay).")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -199,7 +197,6 @@ private struct RealTimeAnalysisSection: View {
                 Spacer()
                 Button("Reset to Defaults") {
                     notesEnabled = true
-                    dossiersEnabled = true
                     guideEnabled = true
                     notesInterval = AnalysisSettingsDefaults.defaultInterval
                 }

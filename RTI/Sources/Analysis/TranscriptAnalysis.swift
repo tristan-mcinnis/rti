@@ -1,7 +1,7 @@
 import Foundation
 import RTICore
 
-/// Shared pipeline for the periodic analyzers (Notes, Dossiers, Discussion
+/// Shared pipeline for the periodic analyzers (Notes generation, Discussion
 /// Guide matching). Each tick: pull a transcript window → trim → ask the LLM
 /// → strip fences → JSON-decode → return payload + watermark. The lines that
 /// differ between analyzers are the prompt body, payload type, transcript
