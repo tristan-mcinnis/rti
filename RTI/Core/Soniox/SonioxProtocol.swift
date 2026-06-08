@@ -37,7 +37,7 @@ public struct SonioxWord {
     }
 }
 
-public struct TranslationConfig: Codable {
+public struct TranslationConfig: Codable, Equatable {
     /// "one_way" or "two_way"
     let type: String
     /// Target language for one-way translation (e.g. "fr", "es")

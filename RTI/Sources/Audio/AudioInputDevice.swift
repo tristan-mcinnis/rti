@@ -79,6 +79,79 @@ enum AudioInputDeviceStore {
         defaultDeviceName(kAudioHardwarePropertyDefaultOutputDevice) ?? "System default output"
     }
 
+    // MARK: - Bluetooth volume protection
+    //
+    // Opening a Bluetooth headset's mic flips it from rich stereo (A2DP) into
+    // low-quality mono "call mode" (HFP), which halves the user's listening
+    // volume. These helpers let `BluetoothMicGuard` detect that situation and
+    // route capture to the built-in mic instead.
+
+    static func defaultInputDeviceID() -> AudioDeviceID? {
+        defaultDeviceID(kAudioHardwarePropertyDefaultInputDevice)
+    }
+
+    static func defaultOutputIsBluetooth() -> Bool {
+        guard let id = defaultDeviceID(kAudioHardwarePropertyDefaultOutputDevice) else { return false }
+        return isBluetooth(id)
+    }
+
+    static func defaultInputIsBluetooth() -> Bool {
+        guard let id = defaultInputDeviceID() else { return false }
+        return isBluetooth(id)
+    }
+
+    /// The built-in microphone's device ID, if the Mac has one.
+    static func builtInInputDeviceID() -> AudioDeviceID? {
+        availableInputDevices().first { transportType($0.id) == kAudioDeviceTransportTypeBuiltIn }?.id
+    }
+
+    /// Set the system default input device. Returns true on success.
+    @discardableResult
+    static func setDefaultInputDevice(_ id: AudioDeviceID) -> Bool {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var device = id
+        let status = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil,
+            UInt32(MemoryLayout<AudioDeviceID>.size), &device
+        )
+        return status == noErr
+    }
+
+    private static func transportType(_ deviceID: AudioDeviceID) -> UInt32 {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &transport) == noErr else { return 0 }
+        return transport
+    }
+
+    private static func isBluetooth(_ deviceID: AudioDeviceID) -> Bool {
+        let t = transportType(deviceID)
+        return t == kAudioDeviceTransportTypeBluetooth || t == kAudioDeviceTransportTypeBluetoothLE
+    }
+
+    private static func defaultDeviceID(_ selector: AudioObjectPropertySelector) -> AudioDeviceID? {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &deviceID
+        ) == noErr, deviceID != 0 else { return nil }
+        return deviceID
+    }
+
     private static func defaultDeviceName(_ selector: AudioObjectPropertySelector) -> String? {
         var addr = AudioObjectPropertyAddress(
             mSelector: selector,

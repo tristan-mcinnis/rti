@@ -68,6 +68,21 @@ enum VaultWorkstreamStore {
         return raw.count > contextCap ? String(raw.prefix(contextCap)) + "\n…[truncated]" : raw
     }
 
+    /// The `.md` discussion guides that live under a project's
+    /// `discussion-guide/` folder, recursing sub-folders (some projects bucket
+    /// guides by audience, e.g. running/training). Empty for clients or projects
+    /// without that folder. Read-only; RTI never writes here.
+    static func discussionGuides(for item: VaultItem) -> [URL] {
+        guard item.isProject else { return [] }
+        let dir = item.url.appendingPathComponent("discussion-guide", isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(
+            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ) else { return [] }
+        return enumerator.compactMap { $0 as? URL }
+            .filter { $0.pathExtension.lowercased() == "md" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     /// Best-effort match of a Sentinel meeting name to a vault workstream — used
     /// to pre-select context when you "Go live" on a recorded meeting. Returns
     /// the item whose name appears (whole-word) in the meeting name, preferring

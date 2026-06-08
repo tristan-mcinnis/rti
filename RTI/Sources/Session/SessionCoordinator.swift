@@ -65,8 +65,10 @@ final class SessionCoordinator {
     func registerAnalysisTasks() {
         AnalysisScheduler.shared.register(
             id: "notes",
-            task: .init(enabledKey: AnalysisSettingsDefaults.notesEnabledKey) { sinceMs in
-                await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
+            task: .init(enabledKey: AnalysisSettingsDefaults.notesEnabledKey) { _ in
+                // Notes own their own watermark (so the manual Generate button
+                // can't duplicate) — ignore the scheduler's sinceMs.
+                await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
             }
         )
         AnalysisScheduler.shared.register(
@@ -208,11 +210,17 @@ final class SessionCoordinator {
             defaultInterval: AnalysisSettingsDefaults.defaultInterval
         )
 
+        // Keep Bluetooth headphones in full-volume A2DP: if the default mic is a
+        // BT headset, route capture to the built-in mic for the session. Must run
+        // before the engine reads the default input device.
+        BluetoothMicGuard.shared.engage()
+
         do {
             _ = try audioPipeline.prepare(sessionId: sessionId)
         } catch {
             lastError = "Couldn't create audio file: \(error)"
             audioPipeline.abort()
+            BluetoothMicGuard.shared.release()
             return
         }
 
@@ -221,6 +229,7 @@ final class SessionCoordinator {
         } catch {
             lastError = "Audio start failed: \(error)"
             audioPipeline.abort()
+            BluetoothMicGuard.shared.release()
             return
         }
 
@@ -255,6 +264,8 @@ final class SessionCoordinator {
         guard currentSessionId == sessionId else { return }
 
         audioPipeline.finish()
+        // Restore the user's original default mic now that capture has stopped.
+        BluetoothMicGuard.shared.release()
         self.endedAt = endedAt
 
         // Persist a Markdown record of the transcript (notes inline) and chat
@@ -299,6 +310,8 @@ final class SessionCoordinator {
 
     /// Synchronous teardown invoked from applicationWillTerminate.
     func emergencyShutdown() {
+        // Restore the default mic even on an abrupt quit (no-op if not switched).
+        BluetoothMicGuard.shared.release()
         guard isRunning else { return }
         audioPipeline.abort()
         if let path = activeWavPath {

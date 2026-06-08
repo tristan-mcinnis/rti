@@ -115,6 +115,7 @@ private struct AudioInputSection: View {
     @State private var inputDevices: [AudioInputDevice] = []
     @State private var selectedInputUID: String = AudioInputDeviceStore.preferredUID
     @AppStorage(AudioSettingsDefaults.echoCancellationKey) private var echoCancellation: Bool = true
+    @AppStorage(AudioSettingsDefaults.protectBluetoothVolumeKey) private var protectBluetoothVolume: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -139,6 +140,13 @@ private struct AudioInputSection: View {
             Toggle("Echo cancellation", isOn: $echoCancellation)
                 .padding(.top, 4)
             Text("Cancels the other party's voice bleeding from your speakers into the mic, which otherwise gets transcribed twice. Recommended on speakers; harmless on headphones. Applies on the next session. Some external/aggregate devices may not support it.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("Protect Bluetooth headphone volume", isOn: $protectBluetoothVolume)
+                .padding(.top, 4)
+            Text("While recording, if your mic is a Bluetooth headset, RTI captures from the built-in mic instead so the headphones stay at full volume (opening a Bluetooth mic drops them into quiet \u{201C}call mode\u{201D}). Your original mic is restored when recording stops.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -212,11 +220,21 @@ private struct OverlayAppearanceSection: View {
     @AppStorage(OverlayAppearanceDefaults.widthKey) private var overlayWidth: Double = OverlayAppearanceDefaults.defaultWidth
     @AppStorage(OverlayAppearanceDefaults.heightKey) private var overlayHeight: Double = OverlayAppearanceDefaults.defaultHeight
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var overlayOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
+    @AppStorage(OverlayAppearanceDefaults.lightModeKey) private var lightMode: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Overlay Appearance")
                 .font(.system(size: 13, weight: .medium))
+
+            Toggle("Light mode", isOn: $lightMode)
+                .onChange(of: lightMode) { _, _ in
+                    NotificationCenter.default.post(name: .rtiOverlayAppearanceChanged, object: nil)
+                }
+            Text("White panel, dark text. Off keeps the dark glass overlay.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 2)
 
             sliderRow(
                 label: "Width",

@@ -5,6 +5,9 @@ extension Notification.Name {
     static let rtiClearChat = Notification.Name("rti.clearChat")
     static let rtiOverlayDidBecomeKey = Notification.Name("rti.overlayDidBecomeKey")
     static let rtiOverlaySizeChanged = Notification.Name("rti.overlaySizeChanged")
+    /// Posted when the light/dark setting flips so the live panel re-applies its
+    /// NSAppearance immediately.
+    static let rtiOverlayAppearanceChanged = Notification.Name("rti.overlayAppearanceChanged")
     static let rtiShowLiveTranscript = Notification.Name("rti.showLiveTranscript")
     static let rtiShowLogs = Notification.Name("rti.showLogs")
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
@@ -17,6 +20,8 @@ enum OverlayAppearanceDefaults {
     static let widthKey = "rti.overlay.width"
     static let heightKey = "rti.overlay.height"
     static let opacityKey = "rti.overlay.opacity"
+    /// When true, the overlay renders in light mode (white panel, black text).
+    static let lightModeKey = "rti.overlay.lightMode"
     static let defaultWidth: Double = 700
     static let defaultHeight: Double = 440
     static let defaultOpacity: Double = 0.90
@@ -30,6 +35,10 @@ enum AudioSettingsDefaults {
     /// noise suppression, AGC. Cancels the other party's voice bleeding from
     /// the speakers into the mic, which otherwise double-transcribes.
     static let echoCancellationKey = "rti.audio.echoCancellation"
+    /// While recording, if the default mic is a Bluetooth headset, route capture
+    /// to the built-in mic so the headphones stay in full-volume A2DP instead of
+    /// dropping into quiet HFP "call mode". Restored on stop.
+    static let protectBluetoothVolumeKey = "rti.audio.protectBluetoothVolume"
 }
 
 enum AnalysisSettingsDefaults {

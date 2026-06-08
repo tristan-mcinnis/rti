@@ -79,10 +79,15 @@ final class AudioCaptureManager: @unchecked Sendable {
         // some devices (e.g. aggregates / BlackHole) reject VPIO, in which
         // case we fall back to the raw input. Must be set before the format
         // is read and the tap installed — VPIO changes the node format.
-        let echoCancellation = UserDefaults.standard.object(forKey: AudioSettingsDefaults.echoCancellationKey) as? Bool ?? true
+        let echoSetting = UserDefaults.standard.object(forKey: AudioSettingsDefaults.echoCancellationKey) as? Bool ?? true
+        // Skip Voice-Processing I/O when listening on Bluetooth: there's no
+        // speaker bleed to cancel on headphones, and VPIO can itself force the
+        // headset into low-quality HFP mode (the volume-drop culprit).
+        let onBluetoothOutput = AudioInputDeviceStore.defaultOutputIsBluetooth()
+        let echoCancellation = echoSetting && !onBluetoothOutput
         do {
             try input.setVoiceProcessingEnabled(echoCancellation)
-            RTILog.log("voice processing (echo cancellation) = \(echoCancellation)", category: "audio")
+            RTILog.log("voice processing (echo cancellation) = \(echoCancellation)\(onBluetoothOutput && echoSetting ? " [forced off: Bluetooth output]" : "")", category: "audio")
         } catch {
             RTILog.log("voice processing unavailable on this device — using raw input: \(error)", category: "audio")
         }

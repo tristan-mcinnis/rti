@@ -16,6 +16,9 @@ final class MeetingContextStore {
     var workstreamName: String?
     /// Content loaded from the picked vault client/project.
     var workstreamContext: String?
+    /// The picked vault item itself — kept so the Setup tab can offer that
+    /// project's discussion guides. nil when nothing is picked.
+    var workstreamItem: VaultItem?
 
     private init() {}
 
@@ -34,6 +37,7 @@ final class MeetingContextStore {
     func clearWorkstream() {
         workstreamName = nil
         workstreamContext = nil
+        workstreamItem = nil
     }
 
     /// Best-effort: when a session is linked to a Sentinel meeting, pre-select
@@ -46,5 +50,6 @@ final class MeetingContextStore {
         guard let match = VaultWorkstreamStore.match(meetingName: meetingName, in: items) else { return }
         workstreamName = match.name
         workstreamContext = VaultWorkstreamStore.context(for: match)
+        workstreamItem = match
     }
 }

@@ -10,7 +10,7 @@ struct TranslationPanelView: View {
     @AppStorage("rti.translation.enabled") private var translationEnabled = false
     @AppStorage("rti.translation.showOriginal") private var showOriginal = true
     @AppStorage("rti.translation.mode") private var translationMode = "one_way"
-    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "es"
+    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "en"
     @AppStorage("rti.translation.languageA") private var languageA = "en"
     @AppStorage("rti.translation.languageB") private var languageB = "es"
 

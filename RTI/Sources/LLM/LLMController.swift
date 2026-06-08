@@ -40,7 +40,7 @@ final class LLMController {
     private static let followupsPrompt = "List 3 thoughtful follow-up questions I could ask the other person right now. Bullet points, one line each."
     private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items."
 
-    private static let contextWindowSeconds: Double = 360
+    private static let contextWindowSeconds: Double = 900
 
     init(request: LLMRequest = LLMRequest()) {
         self.request = request
@@ -112,7 +112,7 @@ final class LLMController {
         let transcript = recentTranscriptText()
         let contextUsed = !transcript.isEmpty
         let fullContent = contextUsed
-            ? "Recent conversation (last 6 minutes, diarized):\n\(transcript)\n\nUser question: \(userInput)"
+            ? "Recent conversation (last 15 minutes, diarized):\n\(transcript)\n\nUser question: \(userInput)"
             : userInput
 
         let manualScreenContext = pendingScreenContext
@@ -222,7 +222,9 @@ final class LLMController {
     /// "## User notes" preamble at the top — matching the contract described
     /// in the system prompt above.
     private func recentTranscriptText() -> String {
-        let all = SessionCoordinator.shared.liveEntries
+        // Exclude live-translation tokens — the assistant reads the original
+        // spoken transcript, not its translated duplicate.
+        let all = SessionCoordinator.shared.liveEntries.filter { $0.translationStatus != "translation" }
         guard !all.isEmpty else { return "" }
         let maxMs = all.map(\.startMs).max() ?? 0
         let windowMs = Int(Self.contextWindowSeconds * 1000)

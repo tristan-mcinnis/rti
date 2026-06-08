@@ -5,15 +5,16 @@ struct OverlayPanelView: View {
     var onOpenSettings: () -> Void = {}
 
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
+    @AppStorage(OverlayAppearanceDefaults.lightModeKey) private var lightMode = false
     @State private var tab: OverlayTab = .assist
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(white: 0.14).opacity(backgroundOpacity))
+                .fill(Color.overlayPanel.opacity(backgroundOpacity))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        .stroke(Color.overlayBorder, lineWidth: 1.5)
                 )
 
             VStack(spacing: 0) {
@@ -33,8 +34,8 @@ struct OverlayPanelView: View {
                         TranscriptTabView().tabContentPadding()
                     case .notes:
                         NotesTabView().tabContentPadding()
-                    case .context:
-                        ContextTabView().tabContentPadding()
+                    case .setup:
+                        SetupTabView().tabContentPadding()
                     case .guide:
                         GuideTabView().tabContentPadding()
                     }
@@ -47,6 +48,7 @@ struct OverlayPanelView: View {
                 .padding([.bottom, .trailing], 6)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .preferredColorScheme(lightMode ? .light : .dark)
     }
 
     /// The original chat surface, now the default "Assist" tab.

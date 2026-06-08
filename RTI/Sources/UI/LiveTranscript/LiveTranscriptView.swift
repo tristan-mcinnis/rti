@@ -38,7 +38,7 @@ struct LiveTranscriptView: View {
 
     @AppStorage("rti.translation.enabled") private var translationEnabled = false
     @AppStorage("rti.translation.mode") private var translationMode = "one_way"
-    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "es"
+    @AppStorage("rti.translation.targetLanguage") private var targetLanguage = "en"
     @AppStorage("rti.translation.languageA") private var languageA = "en"
     @AppStorage("rti.translation.languageB") private var languageB = "es"
 

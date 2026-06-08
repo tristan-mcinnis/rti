@@ -88,15 +88,54 @@ enum SessionArchive {
 
     private static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry]) -> String {
         var lines = ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), ""]
-        for entry in entries.sorted(by: { $0.startMs < $1.startMs }) {
-            let clock = offset(entry.startMs)
-            if entry.speakerId == "note" {
-                lines.append("`\(clock)` **📝 Note:** \(entry.text)")
-            } else {
-                lines.append("`\(clock)` **\(speakerLabel(entry.speakerId)):** \(entry.text)")
-            }
+
+        // Originals only — live-translation tokens are a viewing convenience, not
+        // part of the kept record.
+        let sorted = entries
+            .filter { $0.translationStatus != "translation" }
+            .sorted { $0.startMs < $1.startMs }
+
+        // Neutral, appearance-ordered speaker labels — matching the live view.
+        // The capture channel (mic vs system) doesn't identify who's talking.
+        var speakerNumber: [String: Int] = [:]
+        var nextNumber = 1
+        func label(for id: String) -> String {
+            if id == "note" { return "📝 Note" }
+            if let n = speakerNumber[id] { return "Speaker \(n)" }
+            let n = nextNumber
+            speakerNumber[id] = n
+            nextNumber += 1
+            return "Speaker \(n)"
+        }
+
+        // Coalesce a speaker's consecutive fragments into one flowing paragraph,
+        // timestamped at the start of the run. Notes stay on their own line.
+        var runSpeaker: String?
+        var runStartMs = 0
+        var buffer = ""
+        func flush() {
+            guard let speaker = runSpeaker, !buffer.isEmpty else { return }
+            lines.append("`\(offset(runStartMs))` **\(label(for: speaker)):** \(buffer)")
             lines.append("")
         }
+
+        for entry in sorted {
+            if entry.speakerId == "note" {
+                flush()
+                runSpeaker = nil
+                buffer = ""
+                lines.append("`\(offset(entry.startMs))` **📝 Note:** \(entry.text)")
+                lines.append("")
+            } else if entry.speakerId == runSpeaker {
+                buffer += " " + entry.text
+            } else {
+                flush()
+                runSpeaker = entry.speakerId
+                runStartMs = entry.startMs
+                buffer = entry.text
+            }
+        }
+        flush()
         return lines.joined(separator: "\n")
     }
 
@@ -129,9 +168,10 @@ enum SessionArchive {
     /// linked-meeting record.
     private static func renderNotes(_ notes: [GeneratedNote]) -> String {
         notes.map { n in
-            let when = headerStamp.string(from: n.timestamp)
-            return "### \(when)\n\n\(n.content)"
-        }.joined(separator: "\n\n---\n\n")
+            var head = "### \(offset(n.rangeStartMs)) – \(offset(n.rangeEndMs))"
+            if !n.title.isEmpty { head += " · \(n.title)" }
+            return "\(head)\n\n\(n.content)"
+        }.joined(separator: "\n\n")
     }
 
     /// Discussion-guide coverage: a header line plus each question with its
@@ -244,18 +284,6 @@ enum SessionArchive {
     }
 
     // MARK: - Formatting helpers
-
-    /// "them_1" → "Them 1", "self" → "You", anything else title-cased.
-    private static func speakerLabel(_ id: String) -> String {
-        switch id {
-        case "self": return "You"
-        default:
-            if id.hasPrefix("them_"), let n = id.split(separator: "_").last {
-                return "Them \(n)"
-            }
-            return id.capitalized
-        }
-    }
 
     /// Milliseconds-since-start → "m:ss" (or "h:mm:ss" past an hour).
     private static func offset(_ ms: Int) -> String {

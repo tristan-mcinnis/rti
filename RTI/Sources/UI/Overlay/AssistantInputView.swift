@@ -23,13 +23,13 @@ struct AssistantInputView: View {
                     if input.isEmpty {
                         Text(textFieldPrompt)
                             .font(.system(size: 14))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .foregroundStyle(Color.overlayInk.opacity(0.45))
                             .allowsHitTesting(false)
                     }
                     TextField("", text: $input)
                         .textFieldStyle(.plain)
                         .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.95))
+                        .foregroundStyle(Color.overlayInk.opacity(0.95))
                         .focused($isInputFocused)
                         .onSubmit(submit)
                 }
@@ -38,12 +38,12 @@ struct AssistantInputView: View {
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.overlayInk.opacity(0.06))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(inputState.isNoteMode
                                     ? Color.yellow.opacity(0.55)
-                                    : Color.white.opacity(0.10),
+                                    : Color.overlayInk.opacity(0.10),
                                     lineWidth: 1)
                     )
             )
@@ -78,7 +78,7 @@ struct AssistantInputView: View {
             Text("Recording")
                 .font(.system(size: 11, weight: .medium))
         }
-        .foregroundStyle(.white.opacity(0.75))
+        .foregroundStyle(Color.overlayInk.opacity(0.75))
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(Capsule().fill(Color.red.opacity(0.18)))
@@ -188,13 +188,13 @@ struct AssistantInputView: View {
             Image(systemName: "ellipsis")
                 .symbolRenderingMode(.monochrome)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(Color.overlayInk.opacity(0.7))
                 .frame(width: 28, height: 26)
-                .background(Capsule().fill(Color.white.opacity(0.06)))
+                .background(Capsule().fill(Color.overlayInk.opacity(0.06)))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .tint(.white.opacity(0.7))
+        .tint(Color.overlayInk.opacity(0.7))
         .frame(width: 28)
         .help("Quick actions and settings")
     }
@@ -207,13 +207,13 @@ struct AssistantInputView: View {
                 Text("Smart")
                     .font(.system(size: 12, weight: .semibold))
             }
-            .foregroundStyle(.white.opacity(llm.smartMode ? 1.0 : 0.7))
+            .foregroundStyle(Color.overlayInk.opacity(llm.smartMode ? 1.0 : 0.7))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(
                 Capsule().fill(llm.smartMode
                                ? Color.blue
-                               : Color.white.opacity(0.08))
+                               : Color.overlayInk.opacity(0.08))
             )
         }
         .buttonStyle(.plain)
@@ -236,10 +236,10 @@ struct AssistantInputView: View {
         return Button(action: submit) {
             Image(systemName: "arrow.up")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white.opacity(isEmpty ? 0.45 : 1.0))
+                .foregroundStyle(Color.overlayInk.opacity(isEmpty ? 0.45 : 1.0))
                 .frame(width: 34, height: 30)
                 .background(
-                    Capsule().fill(Color.white.opacity(isEmpty ? 0.06 : 0.10))
+                    Capsule().fill(Color.overlayInk.opacity(isEmpty ? 0.06 : 0.10))
                 )
                 .liquidMetalBorder(Capsule(), lineWidth: 1.2, period: 4.0, glow: 5, active: !isEmpty)
         }

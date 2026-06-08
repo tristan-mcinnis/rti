@@ -11,6 +11,10 @@ final class DiscussionGuideController {
     static let shared = DiscussionGuideController()
 
     private(set) var guide: DiscussionGuide?
+    /// A freshly parsed guide awaiting the user's confirmation in the Setup
+    /// tab. Lets us show the parsed structure ("does this look right?") before
+    /// it becomes the active guide — the safety net for messy input.
+    private(set) var pendingGuide: DiscussionGuide?
     private(set) var isImporting = false
     private(set) var isMatching = false
     private(set) var lastError: String?
@@ -88,51 +92,87 @@ final class DiscussionGuideController {
     // MARK: - Public API
 
     func reset(for sessionId: String) {
-        self.sessionId = sessionId
         lastError = nil
         isMatching = false
-        guide = nil
+        // Preserve a guide staged before the call (confirmed while no session was
+        // running → sessionId == nil) and bind it to this fresh session. Drop a
+        // guide that belonged to a previous, now-ended session.
+        let staged = guide != nil && self.sessionId == nil
+        self.sessionId = sessionId
+        if !staged { guide = nil }
     }
 
     func clear() {
         sessionId = nil
         guide = nil
+        pendingGuide = nil
         lastError = nil
         isMatching = false
     }
 
-    /// Import a discussion guide from a file (.md, .txt). Reads the
-    /// content, calls the parser LLM, and holds the structured guide
-    /// in memory for the active session.
-    func importGuide(from url: URL, sessionId: String) async {
-        guard !isImporting else { return }
-        isImporting = true
-        defer { isImporting = false }
+    // MARK: - Loading (pre-call or live)
 
-        let rawText: String
+    /// Read a guide file (.md/.txt) and parse it into a pending preview. Works
+    /// with or without an active session — the guide is only *committed* on
+    /// `confirmPending()`. Falls back from UTF-8 to the file's own encoding so
+    /// the odd non-UTF-8 export still reads.
+    func loadFile(from url: URL) async {
+        let raw: String
         do {
-            rawText = try String(contentsOf: url, encoding: .utf8)
+            raw = try Self.readText(url)
         } catch {
             lastError = "Could not read file: \(error.localizedDescription)"
             return
         }
-        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        await parse(text: raw, fileName: url.lastPathComponent)
+    }
+
+    /// Parse raw guide text (pasted or read from a file) into a pending preview.
+    /// The LLM normalises whatever formatting the source had into structure.
+    func parse(text: String, fileName: String) async {
+        guard !isImporting else { return }
+        isImporting = true
+        defer { isImporting = false }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            lastError = "Guide file is empty."
+            lastError = "Nothing to parse."
             return
         }
 
         let messages = [LLMMessage(role: "user", content: Self.parsePrompt + "\n" + trimmed)]
         guard let response = await request.collectAsync(messages: messages, smart: true),
-              let parsed = Self.parseGuide(response, fileName: url.lastPathComponent) else {
-            lastError = "Guide parsing failed — the LLM response wasn't valid JSON."
+              let parsed = Self.parseGuide(response, fileName: fileName) else {
+            lastError = "Couldn't turn that into a guide. Try a cleaner paste or a different file."
             return
         }
 
-        if self.sessionId == sessionId {
-            guide = parsed
-            lastError = nil
-        }
+        pendingGuide = parsed
+        lastError = nil
+    }
+
+    /// Commit the pending preview as the active guide. Binds it to the running
+    /// session if there is one; otherwise leaves it staged (sessionId == nil) so
+    /// the next session picks it up via `reset(for:)`.
+    func confirmPending() {
+        guard let pending = pendingGuide else { return }
+        guide = pending
+        pendingGuide = nil
+        let coordinator = SessionCoordinator.shared
+        sessionId = coordinator.isRunning ? coordinator.currentSessionId : nil
+    }
+
+    /// Discard the pending preview without committing it.
+    func discardPending() {
+        pendingGuide = nil
+        lastError = nil
+    }
+
+    /// Drop the active guide (and any pending preview). Usable pre-call or live.
+    func remove() {
+        guide = nil
+        pendingGuide = nil
+        lastError = nil
     }
 
     /// AnalysisScheduler entry point — match unanswered questions against
@@ -177,14 +217,14 @@ final class DiscussionGuideController {
         return result.endMs
     }
 
-    /// Drop the guide for the active session.
-    func removeGuide(for sessionId: String) {
-        if self.sessionId == sessionId {
-            guide = nil
-        }
-    }
-
     // MARK: - Parsing
+
+    /// Read a text file as UTF-8, falling back to its detected encoding.
+    private static func readText(_ url: URL) throws -> String {
+        if let utf8 = try? String(contentsOf: url, encoding: .utf8) { return utf8 }
+        var used: String.Encoding = .utf8
+        return try String(contentsOf: url, usedEncoding: &used)
+    }
 
     private static func parseGuide(_ raw: String, fileName: String) -> DiscussionGuide? {
         struct Parsed: Decodable { let objectives: [GuideObjective] }

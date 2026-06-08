@@ -86,10 +86,10 @@ struct ResponseView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Add API keys to get started")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Color.overlayInk.opacity(0.85))
             Text("RTI needs a Soniox key for live transcription and a \(LLMProviders.active.displayName) key for the assistant. Both stay on this Mac.")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(Color.overlayInk.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
             Button("Open Settings…", action: onOpenSettings)
                 .buttonStyle(.borderedProminent)
@@ -101,17 +101,17 @@ struct ResponseView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Ready when you are")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.65))
+                .foregroundStyle(Color.overlayInk.opacity(0.65))
             VStack(alignment: .leading, spacing: 6) {
                 Text("Try asking:")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(Color.overlayInk.opacity(0.35))
                 ForEach(["Summarize the last few minutes",
                          "What did they decide?",
                          "Help me reply"], id: \.self) { example in
                     Text("• " + example)
                         .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(Color.overlayInk.opacity(0.4))
                 }
             }
         }
@@ -151,12 +151,12 @@ struct ResponseView: View {
                 if entry.screenContextUsed {
                     Text("Viewed screen")
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(Color.overlayInk.opacity(0.4))
                 }
                 if entry.contextUsed {
                     Text("Viewed conversation")
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(Color.overlayInk.opacity(0.4))
                 }
                 if let action = entry.action {
                     Text(action)
@@ -169,7 +169,7 @@ struct ResponseView: View {
             }
             Text(entry.text)
                 .font(.system(size: 14))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.overlayInk)
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -177,7 +177,7 @@ struct ResponseView: View {
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.10))
+                        .fill(Color.overlayInk.opacity(0.10))
                 )
         }
     }
@@ -192,7 +192,7 @@ struct ResponseView: View {
                     .scaleEffect(0.7)
                 Text(streamingPlaceholderLabel)
                     .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(Color.overlayInk.opacity(0.55))
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
@@ -210,7 +210,7 @@ struct ResponseView: View {
                             .scaleEffect(0.6)
                         Text(toolStatus)
                             .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(Color.overlayInk.opacity(0.55))
                     }
                 }
             }

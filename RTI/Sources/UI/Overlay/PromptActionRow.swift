@@ -36,13 +36,13 @@ struct PromptActionRow: View {
                 Text("Note")
                     .font(.system(size: 12, weight: .semibold))
             }
-            .foregroundStyle(inputState.isNoteMode ? Color.black : Color.white.opacity(0.85))
+            .foregroundStyle(inputState.isNoteMode ? Color.black : Color.overlayInk.opacity(0.85))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
                 Capsule().fill(inputState.isNoteMode
                                ? Color.yellow
-                               : Color.white.opacity(0.08))
+                               : Color.overlayInk.opacity(0.08))
             )
         }
         .buttonStyle(.plain)
@@ -59,13 +59,13 @@ struct PromptActionRow: View {
                 Text(label)
                     .font(.system(size: 12, weight: .semibold))
             }
-            .foregroundStyle(isPrimary ? Color.white : Color.white.opacity(0.85))
+            .foregroundStyle(isPrimary ? Color.overlayInk : Color.overlayInk.opacity(0.85))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
                 Capsule().fill(isPrimary
-                               ? Color.white.opacity(0.14)
-                               : Color.white.opacity(0.08))
+                               ? Color.overlayInk.opacity(0.14)
+                               : Color.overlayInk.opacity(0.08))
             )
             .liquidMetalBorder(Capsule(), lineWidth: 1.0, period: 5.0, glow: 4, active: isPrimary)
         }

@@ -14,11 +14,11 @@ struct ObjectiveSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(objective.title)
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.overlayInk)
             if let desc = objective.description, !desc.isEmpty {
                 Text(desc)
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(Color.overlayInk.opacity(0.65))
             }
             ForEach(objective.sections) { section in
                 SectionGroup(section: section)
@@ -34,7 +34,7 @@ struct SectionGroup: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(section.title)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(Color.overlayInk.opacity(0.78))
             ForEach(section.questions) { q in
                 QuestionRow(question: q)
             }
@@ -54,14 +54,14 @@ struct QuestionRow: View {
                     .foregroundStyle(iconColor)
                 Text(question.text)
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(question.status == .pending ? 0.7 : 0.95))
+                    .foregroundStyle(Color.overlayInk.opacity(question.status == .pending ? 0.7 : 0.95))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let response = question.response {
                 Text(response.summary)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.78))
+                    .foregroundStyle(Color.overlayInk.opacity(0.78))
                     .padding(.leading, 17)
                 if !response.quotes.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
@@ -86,7 +86,7 @@ struct QuestionRow: View {
 
     private var iconColor: Color {
         switch question.status {
-        case .pending: .white.opacity(0.4)
+        case .pending: Color.overlayInk.opacity(0.4)
         case .partial: .yellow.opacity(0.8)
         case .answered: .green.opacity(0.85)
         }
@@ -99,7 +99,7 @@ struct GuideQuoteView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Rectangle()
-                .fill(Color.white.opacity(0.25))
+                .fill(Color.overlayInk.opacity(0.25))
                 .frame(width: 2)
                 .frame(maxHeight: .infinity)
             VStack(alignment: .leading, spacing: 1) {
@@ -107,17 +107,17 @@ struct GuideQuoteView: View {
                     if let speaker = quote.speaker, !speaker.isEmpty {
                         Text(speaker)
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(Color.overlayInk.opacity(0.75))
                     }
                     if !quote.formattedTimestamp.isEmpty {
                         Text(quote.formattedTimestamp)
                             .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(Color.overlayInk.opacity(0.5))
                     }
                 }
                 Text(quote.text)
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(Color.overlayInk.opacity(0.88))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }

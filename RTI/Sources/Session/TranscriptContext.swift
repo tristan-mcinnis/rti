@@ -13,8 +13,11 @@ import RTICore
 enum TranscriptContext {
 
     /// Live entries, optionally windowed to those at or after `sinceMs`.
+    /// Translation tokens are excluded — analysis (notes, guide) reads the
+    /// original spoken transcript, not the live-translated duplicate, which
+    /// would otherwise double the prompt and confuse the model.
     private static func entries(sinceMs: Int?) -> [LiveEntry] {
-        let all = SessionCoordinator.shared.liveEntries
+        let all = SessionCoordinator.shared.liveEntries.filter { $0.translationStatus != "translation" }
         guard let sinceMs else { return all }
         return all.filter { $0.startMs >= sinceMs }
     }

@@ -37,6 +37,7 @@ final class OverlayWindowController {
     // class stay @MainActor while keeping the cleanup path compileable.
     private nonisolated(unsafe) var didMoveObserver: NSObjectProtocol?
     private nonisolated(unsafe) var sizeObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var appearanceObserver: NSObjectProtocol?
 
     init(onOpenSettings: @Sendable @escaping () -> Void = {}) {
         let initialSize = Self.configuredSize()
@@ -50,13 +51,16 @@ final class OverlayWindowController {
         panel.level = .floating
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = false
+        // A window shadow separates the panel from the desktop — important in
+        // light mode, where a pale panel otherwise blurs into a light background.
+        panel.hasShadow = true
         panel.sharingType = .none
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true
 
         panel.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
+        panel.appearance = Self.configuredAppearance()
 
         self.window = panel
 
@@ -82,6 +86,15 @@ final class OverlayWindowController {
             MainActor.assumeIsolated { self?.applyConfiguredSize() }
         }
 
+        // Settings → "Light mode" toggle posts this so the panel re-themes live.
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: .rtiOverlayAppearanceChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.window.appearance = Self.configuredAppearance() }
+        }
+
         if let saved = Self.loadSavedFrame() {
             window.setFrame(saved, display: false)
         } else {
@@ -92,6 +105,13 @@ final class OverlayWindowController {
     deinit {
         if let o = didMoveObserver { NotificationCenter.default.removeObserver(o) }
         if let o = sizeObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = appearanceObserver { NotificationCenter.default.removeObserver(o) }
+    }
+
+    /// The NSAppearance the overlay should use, per the Settings light-mode flag.
+    private static func configuredAppearance() -> NSAppearance? {
+        let light = UserDefaults.standard.bool(forKey: OverlayAppearanceDefaults.lightModeKey)
+        return NSAppearance(named: light ? .aqua : .darkAqua)
     }
 
     private static func configuredSize() -> NSSize {

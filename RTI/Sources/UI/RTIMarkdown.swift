@@ -103,13 +103,13 @@ private extension Theme {
 
     static let rtiOverlay: Theme = Theme()
         .text {
-            ForegroundColor(.white.opacity(0.92))
+            ForegroundColor(Color.overlayInk.opacity(0.92))
             FontSize(14)
         }
         .code {
             FontFamilyVariant(.monospaced)
             FontSize(.em(0.92))
-            BackgroundColor(.white.opacity(0.10))
+            BackgroundColor(Color.overlayInk.opacity(0.10))
         }
         .strong { FontWeight(.semibold) }
         .link { ForegroundColor(Color(red: 0.55, green: 0.78, blue: 1.0)) }
@@ -118,7 +118,7 @@ private extension Theme {
                 .markdownTextStyle {
                     FontWeight(.semibold)
                     FontSize(18)
-                    ForegroundColor(.white)
+                    ForegroundColor(Color.overlayInk)
                 }
                 .markdownMargin(top: 10, bottom: 4)
         }
@@ -127,7 +127,7 @@ private extension Theme {
                 .markdownTextStyle {
                     FontWeight(.semibold)
                     FontSize(16)
-                    ForegroundColor(.white)
+                    ForegroundColor(Color.overlayInk)
                 }
                 .markdownMargin(top: 8, bottom: 4)
         }
@@ -136,7 +136,7 @@ private extension Theme {
                 .markdownTextStyle {
                     FontWeight(.semibold)
                     FontSize(14)
-                    ForegroundColor(.white)
+                    ForegroundColor(Color.overlayInk)
                 }
                 .markdownMargin(top: 6, bottom: 2)
         }
@@ -154,11 +154,11 @@ private extension Theme {
                     .markdownTextStyle {
                         FontFamilyVariant(.monospaced)
                         FontSize(12.5)
-                        ForegroundColor(.white.opacity(0.95))
+                        ForegroundColor(Color.overlayInk.opacity(0.95))
                     }
                     .padding(10)
             }
-            .background(Color.white.opacity(0.08))
+            .background(Color.overlayInk.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .markdownMargin(top: 6, bottom: 6)
         }
@@ -167,9 +167,9 @@ private extension Theme {
                 .padding(.leading, 10)
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .fill(Color.white.opacity(0.35))
+                        .fill(Color.overlayInk.opacity(0.35))
                         .frame(width: 2)
                 }
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(Color.overlayInk.opacity(0.75))
         }
 }
