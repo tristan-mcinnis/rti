@@ -2,10 +2,10 @@ import SwiftUI
 
 struct OverlayPanelView: View {
     private let llm = LLMController.shared
-    private let session = SessionCoordinator.shared
     var onOpenSettings: () -> Void = {}
 
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
+    @State private var tab: OverlayTab = .assist
 
     var body: some View {
         ZStack {
@@ -17,25 +17,26 @@ struct OverlayPanelView: View {
                 )
 
             VStack(spacing: 0) {
-                ResponseView(
-                    entries: llm.entries,
-                    streaming: llm.streaming,
-                    error: llm.lastError,
-                    errorIsAuth: llm.lastErrorIsAuth,
-                    onOpenSettings: onOpenSettings
-                )
+                OverlayTabBar(selection: $tab)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+
+                Group {
+                    switch tab {
+                    case .assist:
+                        assistTab
+                    case .transcript:
+                        TranscriptTabView().tabContentPadding()
+                    case .notes:
+                        NotesTabView().tabContentPadding()
+                    case .context:
+                        ContextTabView().tabContentPadding()
+                    case .guide:
+                        GuideTabView().tabContentPadding()
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
-
-                PromptActionRow()
-                    .padding(.horizontal, 18)
-                    .padding(.top, 12)
-                    .padding(.bottom, 10)
-
-                AssistantInputView(onOpenSettings: onOpenSettings)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 14)
             }
 
             ResizeHandle()
@@ -43,5 +44,36 @@ struct OverlayPanelView: View {
                 .padding([.bottom, .trailing], 6)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// The original chat surface, now the default "Assist" tab.
+    private var assistTab: some View {
+        VStack(spacing: 0) {
+            ResponseView(
+                entries: llm.entries,
+                streaming: llm.streaming,
+                error: llm.lastError,
+                errorIsAuth: llm.lastErrorIsAuth,
+                onOpenSettings: onOpenSettings
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 18)
+
+            PromptActionRow()
+                .padding(.horizontal, 18)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
+
+            AssistantInputView(onOpenSettings: onOpenSettings)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
+        }
+    }
+}
+
+private extension View {
+    /// Uniform padding for the non-assist tab contents.
+    func tabContentPadding() -> some View {
+        padding(.horizontal, 16).padding(.bottom, 14)
     }
 }

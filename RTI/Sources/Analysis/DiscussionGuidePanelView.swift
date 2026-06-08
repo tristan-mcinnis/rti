@@ -111,7 +111,7 @@ struct DiscussionGuidePanelView: View {
     }
 }
 
-private struct ObjectiveSection: View {
+struct ObjectiveSection: View {
     let objective: GuideObjective
 
     var body: some View {
@@ -131,7 +131,7 @@ private struct ObjectiveSection: View {
     }
 }
 
-private struct SectionGroup: View {
+struct SectionGroup: View {
     let section: GuideSection
 
     var body: some View {
@@ -147,7 +147,7 @@ private struct SectionGroup: View {
     }
 }
 
-private struct QuestionRow: View {
+struct QuestionRow: View {
     let question: GuideQuestion
 
     var body: some View {
@@ -197,7 +197,7 @@ private struct QuestionRow: View {
     }
 }
 
-private struct GuideQuoteView: View {
+struct GuideQuoteView: View {
     let quote: GuideQuote
 
     var body: some View {

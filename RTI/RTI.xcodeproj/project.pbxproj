@@ -27,6 +27,7 @@
 		21C31783D28F882D5113840B /* TranscriptAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B63184AD359AE0CB6329FEAE /* TranscriptAggregator.swift */; };
 		2218D1F7F18DB4CBE40B7F44 /* TranscriptPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B53A84BF72FDBA8F116F8830 /* TranscriptPipeline.swift */; };
 		22E2768F36E8699A7021E985 /* KeysTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11CAA5FC3CFBA01C2F56F17C /* KeysTab.swift */; };
+		2693F11D60783CCBF40B7EF1 /* OverlayTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A242BA4653FB39E2D02749 /* OverlayTabs.swift */; };
 		26A68471342CC1C1E2B26F5B /* ToolLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */; };
 		29064D2D951C51390FE3EB29 /* AudioInputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = D402CDD1E9B3EC6E1BCB848D /* AudioInputDevice.swift */; };
 		29C06EDAA42A138EB8B1071F /* LiveEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF53B3542A43C6A9146B94E0 /* LiveEntry.swift */; };
@@ -211,6 +212,7 @@
 		73922AAADA102ECEF611A7B6 /* RTIDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIDesign.swift; sourceTree = "<group>"; };
 		73D64733E271DE5F43A278DD /* RTIMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIMarkdown.swift; sourceTree = "<group>"; };
 		74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuCoordinator.swift; sourceTree = "<group>"; };
+		77A242BA4653FB39E2D02749 /* OverlayTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayTabs.swift; sourceTree = "<group>"; };
 		784D2F42B9624F60F08B2572 /* OnboardingWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindowController.swift; sourceTree = "<group>"; };
 		790AD9982261EEE5DF6AD6DE /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
 		7A2EDE12AAA4B6961C42456B /* libRTICore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRTICore.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -382,6 +384,7 @@
 				FDC5292C23D09D793067E231 /* AssistantInputView.swift */,
 				B06ABF0FBBC9148937E7A547 /* LiquidMetalBorder.swift */,
 				AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */,
+				77A242BA4653FB39E2D02749 /* OverlayTabs.swift */,
 				ACB0FDA7D71E13CA3074CA76 /* PromptActionRow.swift */,
 				B5BF77DB9113B6E6B8E56C9A /* ResizeHandle.swift */,
 				0F81C4D0121A52619B08FC56 /* ResponseView.swift */,
@@ -940,6 +943,7 @@
 				70205523ED58EBF515AA24F4 /* OnboardingWindowController.swift in Sources */,
 				DF9B733225B63D3BEE464B79 /* OverlayInputState.swift in Sources */,
 				13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */,
+				2693F11D60783CCBF40B7EF1 /* OverlayTabs.swift in Sources */,
 				69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */,
 				EC5E34E0DC8EA2C464250FF2 /* PasteboardHelpers.swift in Sources */,
 				44CBAA0BB8BCCF9DEE1CDFF3 /* PromptActionRow.swift in Sources */,

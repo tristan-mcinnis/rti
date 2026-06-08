@@ -175,51 +175,10 @@ enum CommandBuilder {
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
             ),
             RTICommand(
-                id: "panel.notes.toggle",
-                title: "Toggle Notes Panel  ⌘⇧N",
-                keywords: ["notes", "minutes", "summary"],
-                perform: { [weak windows] in windows?.toggle(.notes) },
-                menuSection: .panels,
-                hotkeyKeyCode: UInt32(kVK_ANSI_N),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
-            RTICommand(
-                id: "panel.dossiers.toggle",
-                title: "Toggle Dossiers Panel  ⌘⇧D",
-                keywords: ["dossier", "entities", "people", "brands"],
-                perform: { [weak windows] in windows?.toggle(.dossiers) },
-                menuSection: .panels,
-                hotkeyKeyCode: UInt32(kVK_ANSI_D),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
-            RTICommand(
-                id: "panel.discussionGuide.toggle",
-                title: "Toggle Discussion Guide Panel  ⌘⇧G",
-                keywords: ["guide", "discussion", "questions", "agenda", "coverage"],
-                perform: { [weak windows] in windows?.toggle(.discussionGuide) },
-                menuSection: .panels,
-                hotkeyKeyCode: UInt32(kVK_ANSI_G),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
-            RTICommand(
                 id: "panel.translation.toggle",
                 title: "Toggle Translation Panel",
                 keywords: ["translation", "translate"],
                 perform: { [weak windows] in windows?.toggle(.translation) },
-                menuSection: .panels
-            ),
-            RTICommand(
-                id: "panel.audioIO.toggle",
-                title: "Toggle Audio I/O Monitor",
-                keywords: ["audio", "input", "output", "mic", "microphone", "levels", "device", "meter"],
-                perform: { [weak windows] in windows?.toggle(.audioIO) },
-                menuSection: .panels
-            ),
-            RTICommand(
-                id: "panel.context.toggle",
-                title: "Toggle Context Panel",
-                keywords: ["context", "client", "project", "status", "brief", "meeting", "about"],
-                perform: { [weak windows] in windows?.toggle(.context) },
                 menuSection: .panels
             )
         ]
