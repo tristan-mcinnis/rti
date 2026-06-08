@@ -267,9 +267,9 @@ struct AssistantInputView: View {
         return "Ask about your screen or conversation — ⌘↵ for Assist"
     }
 
-    /// Route through the registered command so the menubar item, command
-    /// palette, and pill menu all share one toggle path that both persists
-    /// the flag and applies sharingType to every panel.
+    /// Route through the registered command so the menubar item and command
+    /// palette share one toggle path that both persists the flag and applies
+    /// sharingType to every panel.
     private func toggleHiddenFromCapture() {
         CommandRegistry.shared.commands.first { $0.id == "invisibility.toggle" }?.perform()
     }

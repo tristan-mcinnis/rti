@@ -58,6 +58,111 @@ struct OverlayTabBar: View {
     }
 }
 
+// MARK: - Record control
+
+/// Inline record/stop control that lives in the overlay's header row — it
+/// replaces the old free-floating top-widget pill (the "too floaty" button),
+/// folding recording into the one master panel. Click toggles the session;
+/// while live it shows a pulsing dot + a dot-matrix timer over a red wash;
+/// after stop it freezes the final duration until the next session.
+struct OverlayRecordButton: View {
+    private let coordinator = SessionCoordinator.shared
+
+    @State private var now = Date()
+    @State private var hovering = false
+
+    /// Half-second tick keeps the timer fresh; TimeFormat quantises to seconds.
+    private let tick = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Button(action: { coordinator.toggleSession() }) {
+            HStack(spacing: 6) {
+                dot
+                label
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(background)
+            .overlay(Capsule(style: .continuous).stroke(borderColor, lineWidth: 1))
+            .clipShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(coordinator.isRunning ? "Stop recording (⌘⇧R)" : "Start recording (⌘⇧R)")
+        .onReceive(tick) { _ in if coordinator.isRunning { now = Date() } }
+    }
+
+    @ViewBuilder
+    private var dot: some View {
+        if coordinator.isRunning {
+            PulsingRecordDot()
+        } else {
+            Circle()
+                .fill(Color(red: 1.0, green: 0.27, blue: 0.27).opacity(coordinator.endedAt != nil ? 0.45 : 0.85))
+                .frame(width: 7, height: 7)
+        }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if coordinator.isRunning {
+            DotMatrixText(text: elapsedLabel, dot: 1.2, spacing: 0.5, gap: 1.2,
+                          color: .white, dim: Color.white.opacity(0.08))
+        } else if let frozen = postRecordingLabel {
+            DotMatrixText(text: frozen, dot: 1.2, spacing: 0.5, gap: 1.2,
+                          color: Color.white.opacity(0.55), dim: Color.white.opacity(0.06))
+        } else {
+            Text("Record")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+                .kerning(0.2)
+        }
+    }
+
+    private var background: some View {
+        ZStack {
+            Capsule(style: .continuous).fill(Color.white.opacity(hovering ? 0.14 : 0.08))
+            if coordinator.isRunning {
+                Capsule(style: .continuous).fill(Color(red: 1.0, green: 0.20, blue: 0.20).opacity(0.18))
+            }
+        }
+    }
+
+    private var borderColor: Color {
+        coordinator.isRunning
+            ? Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
+            : Color.white.opacity(hovering ? 0.22 : 0.12)
+    }
+
+    private var elapsedLabel: String {
+        guard let started = coordinator.startedAt else { return "0:00" }
+        return TimeFormat.elapsed(now.timeIntervalSince(started))
+    }
+
+    private var postRecordingLabel: String? {
+        guard let started = coordinator.startedAt, let ended = coordinator.endedAt else { return nil }
+        return TimeFormat.elapsed(ended.timeIntervalSince(started))
+    }
+}
+
+/// Pulsing red indicator for the live record control. Owns its animation so it
+/// restarts cleanly each time recording begins (onAppear → repeatForever).
+private struct PulsingRecordDot: View {
+    @State private var on = false
+
+    var body: some View {
+        Circle()
+            .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
+            .frame(width: 7, height: 7)
+            .shadow(color: Color(red: 1.0, green: 0.27, blue: 0.27).opacity(on ? 0.85 : 0.20), radius: on ? 4 : 1)
+            .scaleEffect(on ? 1.0 : 0.65)
+            .opacity(on ? 1.0 : 0.55)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) { on = true }
+            }
+    }
+}
+
 // MARK: - Shared tab chrome
 
 /// A compact icon button used in tab toolbars (copy / export / etc.), styled

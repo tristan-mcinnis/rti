@@ -17,10 +17,13 @@ struct OverlayPanelView: View {
                 )
 
             VStack(spacing: 0) {
-                OverlayTabBar(selection: $tab)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
+                HStack(spacing: 8) {
+                    OverlayTabBar(selection: $tab)
+                    OverlayRecordButton()
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
 
                 Group {
                     switch tab {

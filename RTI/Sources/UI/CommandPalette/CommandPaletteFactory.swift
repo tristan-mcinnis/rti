@@ -166,15 +166,6 @@ enum CommandBuilder {
                 }
             ),
             RTICommand(
-                id: "widget.top.toggle",
-                title: "Toggle Top Widget  ⌘⇧B",
-                keywords: ["pill", "bar"],
-                perform: { [weak windows] in windows?.toggleTopWidget() },
-                menuSection: .panels,
-                hotkeyKeyCode: UInt32(kVK_ANSI_B),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
-            RTICommand(
                 id: "panel.translation.toggle",
                 title: "Toggle Translation Panel",
                 keywords: ["translation", "translate"],
