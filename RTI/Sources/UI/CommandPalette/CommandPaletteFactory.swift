@@ -106,20 +106,29 @@ enum CommandBuilder {
             RTICommand(
                 id: "chat.saynext",
                 title: "Say Next (one-line draft reply)",
+                subtitle: "⌘⌥S",
                 keywords: ["respond", "reply"],
-                perform: { llm.sendSaySomething() }
+                perform: { llm.sendSaySomething() },
+                hotkeyKeyCode: UInt32(kVK_ANSI_S),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),
             RTICommand(
                 id: "chat.followups",
                 title: "Follow-up Questions",
+                subtitle: "⌘⌥F",
                 keywords: ["questions", "ask"],
-                perform: { llm.sendFollowupQuestions() }
+                perform: { llm.sendFollowupQuestions() },
+                hotkeyKeyCode: UInt32(kVK_ANSI_F),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),
             RTICommand(
                 id: "chat.recap",
                 title: "Recap so far",
+                subtitle: "⌘⌥R",
                 keywords: ["summary", "review"],
-                perform: { llm.sendRecap() }
+                perform: { llm.sendRecap() },
+                hotkeyKeyCode: UInt32(kVK_ANSI_R),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),
             RTICommand(
                 id: "capture.screen",

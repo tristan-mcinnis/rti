@@ -310,3 +310,48 @@ enum SessionArchive {
         return f
     }()
 }
+
+// MARK: - Reading the archive (launcher only — reveals in Finder, never reads in-app)
+
+extension SessionArchive {
+    struct ArchivedSession: Identifiable {
+        var id: URL { url }
+        let url: URL
+        /// Pretty label, e.g. "Jun 8 · 16:13".
+        let displayName: String
+    }
+
+    /// `~/Library/Application Support/RTI/sessions`.
+    static func sessionsBaseDirectory() -> URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("RTI", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+    }
+
+    /// Recent archived sessions, newest first (folder names are timestamp-
+    /// prefixed, so reverse lexicographic = newest-first). Backs a convenience
+    /// launcher only — returns folders to reveal in Finder, not content to read.
+    static func recentSessions(limit: Int = 10) -> [ArchivedSession] {
+        guard let base = sessionsBaseDirectory(),
+              let urls = try? FileManager.default.contentsOfDirectory(
+                at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
+        else { return [] }
+        return urls
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+            .prefix(limit)
+            .map { ArchivedSession(url: $0, displayName: prettyName($0.lastPathComponent)) }
+    }
+
+    /// "2026-06-08 161305" → "Jun 8 · 16:13"; falls back to the raw name.
+    private static func prettyName(_ folder: String) -> String {
+        guard let date = folderStamp.date(from: folder) else { return folder }
+        return sessionListStamp.string(from: date)
+    }
+
+    private static let sessionListStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d · HH:mm"
+        return f
+    }()
+}

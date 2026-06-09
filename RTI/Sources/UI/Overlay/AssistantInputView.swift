@@ -163,6 +163,8 @@ struct AssistantInputView: View {
                 Label("Modes", systemImage: "square.stack.3d.up")
             }
 
+            recentSessionsSection
+
             Divider()
 
             Button(action: toggleHiddenFromCapture) {
@@ -199,16 +201,44 @@ struct AssistantInputView: View {
         .help("Quick actions and settings")
     }
 
+    /// Quick access to the saved session records. These are read-only Markdown
+    /// folders RTI writes on stop; this just reveals them in Finder (the
+    /// sanctioned access path) — no in-app reader/search.
+    @ViewBuilder
+    private var recentSessionsSection: some View {
+        Divider()
+        Menu {
+            let sessions = SessionArchive.recentSessions(limit: 8)
+            if sessions.isEmpty {
+                Button("No saved sessions yet") {}.disabled(true)
+            } else {
+                ForEach(sessions) { session in
+                    Button { NSWorkspace.shared.open(session.url) } label: {
+                        Label(session.displayName, systemImage: "clock.arrow.circlepath")
+                    }
+                }
+                Divider()
+                Button {
+                    if let base = SessionArchive.sessionsBaseDirectory() { NSWorkspace.shared.open(base) }
+                } label: {
+                    Label("Open sessions folder…", systemImage: "folder")
+                }
+            }
+        } label: {
+            Label("Recent sessions", systemImage: "clock.arrow.circlepath")
+        }
+    }
+
     /// Leading "✦" button — folds the prompt actions (Assist / What should I
     /// say? / Follow-ups / Recap), the Smart toggle, and Note mode into one
     /// menu so the composer reclaims the whole action row. The glyph tints blue
     /// when Smart is on, preserving at-a-glance state without a permanent pill.
     private var actionsMenu: some View {
         Menu {
-            Button { llm.sendAssist() } label: { Label("Assist", systemImage: "sparkles") }
-            Button { llm.sendSaySomething() } label: { Label("What should I say?", systemImage: "wand.and.rays") }
-            Button { llm.sendFollowupQuestions() } label: { Label("Follow-ups", systemImage: "bubble.left.and.text.bubble.right") }
-            Button { llm.sendRecap() } label: { Label("Recap", systemImage: "arrow.clockwise") }
+            Button { llm.sendAssist() } label: { Label("Assist  ⌘⏎", systemImage: "sparkles") }
+            Button { llm.sendSaySomething() } label: { Label("What should I say?  ⌘⌥S", systemImage: "wand.and.rays") }
+            Button { llm.sendFollowupQuestions() } label: { Label("Follow-ups  ⌘⌥F", systemImage: "bubble.left.and.text.bubble.right") }
+            Button { llm.sendRecap() } label: { Label("Recap  ⌘⌥R", systemImage: "arrow.clockwise") }
 
             Divider()
 
