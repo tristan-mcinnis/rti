@@ -66,7 +66,7 @@ final class AnalysisScheduler {
 
     private func fire() {
         for (id, task) in tasks {
-            let enabled = UserDefaults.standard.object(forKey: task.enabledKey) as? Bool ?? true
+            let enabled = UserDefaults.standard.object(forKey: task.enabledKey) as? Bool ?? false
             guard enabled else { continue }
             let sinceMs = watermarks[id] == 0 ? nil : watermarks[id]
             Task { @MainActor [weak self] in
