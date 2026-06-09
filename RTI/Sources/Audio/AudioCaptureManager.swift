@@ -79,7 +79,12 @@ final class AudioCaptureManager: @unchecked Sendable {
         // some devices (e.g. aggregates / BlackHole) reject VPIO, in which
         // case we fall back to the raw input. Must be set before the format
         // is read and the tap installed — VPIO changes the node format.
-        let echoSetting = UserDefaults.standard.object(forKey: AudioSettingsDefaults.echoCancellationKey) as? Bool ?? true
+        // Default OFF: Apple's Voice-Processing I/O, enabled on an input node
+        // that we only *tap* (no running output graph), delivers SILENT buffers
+        // on some Macs — which kills transcription entirely. Verified 2026-06-09.
+        // Leave AEC opt-in until VPIO is wired so it doesn't zero the mic; the
+        // system-audio tap already captures the other party separately.
+        let echoSetting = UserDefaults.standard.object(forKey: AudioSettingsDefaults.echoCancellationKey) as? Bool ?? false
         // Skip Voice-Processing I/O when listening on Bluetooth: there's no
         // speaker bleed to cancel on headphones, and VPIO can itself force the
         // headset into low-quality HFP mode (the volume-drop culprit).

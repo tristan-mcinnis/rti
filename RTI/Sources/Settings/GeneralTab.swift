@@ -114,7 +114,7 @@ private struct AssistantSection: View {
 private struct AudioInputSection: View {
     @State private var inputDevices: [AudioInputDevice] = []
     @State private var selectedInputUID: String = AudioInputDeviceStore.preferredUID
-    @AppStorage(AudioSettingsDefaults.echoCancellationKey) private var echoCancellation: Bool = true
+    @AppStorage(AudioSettingsDefaults.echoCancellationKey) private var echoCancellation: Bool = false
     @AppStorage(AudioSettingsDefaults.protectBluetoothVolumeKey) private var protectBluetoothVolume: Bool = true
 
     var body: some View {
@@ -139,7 +139,7 @@ private struct AudioInputSection: View {
 
             Toggle("Echo cancellation", isOn: $echoCancellation)
                 .padding(.top, 4)
-            Text("Cancels the other party's voice bleeding from your speakers into the mic, which otherwise gets transcribed twice. Recommended on speakers. Applies on the next session.")
+            Text("Cancels the other party's voice bleeding from your speakers into the mic. Off by default: on some Macs Apple's voice-processing silences the mic entirely (no transcript). Only enable if you're on speakers and transcription still works. Applies on the next session.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
