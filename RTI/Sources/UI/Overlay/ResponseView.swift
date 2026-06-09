@@ -98,20 +98,24 @@ struct ResponseView: View {
     }
 
     private var readyBody: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Ready when you are")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.overlayInk.opacity(0.65))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.overlayInk.opacity(0.6))
             VStack(alignment: .leading, spacing: 6) {
-                Text("Try asking:")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.overlayInk.opacity(0.35))
                 ForEach(["Summarize the last few minutes",
                          "What did they decide?",
                          "Help me reply"], id: \.self) { example in
-                    Text("• " + example)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.overlayInk.opacity(0.4))
+                    Button { llm.sendAskAnything(example) } label: {
+                        Text(example)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.overlayInk.opacity(0.7))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Capsule().fill(Color.overlayInk.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Ask this")
                 }
             }
         }
