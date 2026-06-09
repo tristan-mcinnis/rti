@@ -49,8 +49,8 @@ struct AssistantInputView: View {
             )
 
             HStack(spacing: 10) {
+                actionsMenu
                 moreDots
-                smartPill
                 if session.isRunning { recordingBadge }
                 Spacer()
                 if llm.streaming {
@@ -199,36 +199,51 @@ struct AssistantInputView: View {
         .help("Quick actions and settings")
     }
 
-    private var smartPill: some View {
-        Button(action: { llm.smartMode.toggle() }) {
-            HStack(spacing: 5) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .semibold))
-                Text("Smart")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(Color.overlayInk.opacity(llm.smartMode ? 1.0 : 0.7))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                Capsule().fill(llm.smartMode
-                               ? Color.blue
-                               : Color.overlayInk.opacity(0.08))
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(llm.streaming)
-        .help(smartPillHelp)
-    }
+    /// Leading "✦" button — folds the prompt actions (Assist / What should I
+    /// say? / Follow-ups / Recap), the Smart toggle, and Note mode into one
+    /// menu so the composer reclaims the whole action row. The glyph tints blue
+    /// when Smart is on, preserving at-a-glance state without a permanent pill.
+    private var actionsMenu: some View {
+        Menu {
+            Button { llm.sendAssist() } label: { Label("Assist", systemImage: "sparkles") }
+            Button { llm.sendSaySomething() } label: { Label("What should I say?", systemImage: "wand.and.rays") }
+            Button { llm.sendFollowupQuestions() } label: { Label("Follow-ups", systemImage: "bubble.left.and.text.bubble.right") }
+            Button { llm.sendRecap() } label: { Label("Recap", systemImage: "arrow.clockwise") }
 
-    private var smartPillHelp: String {
-        let model = LLMProviders.active.model
-        if llm.smartMode {
-            return LLMProviders.active.supportsThinking
-                ? "Smart: \(model) with thinking (slower, deeper)"
-                : "Smart: \(model) (slower, deeper)"
+            Divider()
+
+            Button { llm.smartMode.toggle() } label: {
+                if llm.smartMode {
+                    Label("Smart mode (slower, deeper)", systemImage: "checkmark")
+                } else {
+                    Label("Smart mode (slower, deeper)", systemImage: "sparkles")
+                }
+            }
+
+            if session.isRunning {
+                Button { inputState.isNoteMode.toggle() } label: {
+                    if inputState.isNoteMode {
+                        Label("Note mode", systemImage: "checkmark")
+                    } else {
+                        Label("Note mode", systemImage: "note.text")
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "sparkles")
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(llm.smartMode ? Color.blue : Color.overlayInk.opacity(0.7))
+                .frame(width: 28, height: 26)
+                .background(Capsule().fill(llm.smartMode
+                                           ? Color.blue.opacity(0.16)
+                                           : Color.overlayInk.opacity(0.06)))
         }
-        return "Fast: \(model) (tap to switch to Smart)"
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .tint(Color.overlayInk.opacity(0.7))
+        .frame(width: 28)
+        .help(llm.smartMode ? "Assist actions · Smart on" : "Assist actions")
     }
 
     private var sendButton: some View {

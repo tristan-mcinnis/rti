@@ -135,11 +135,24 @@ struct ResponseView: View {
         if entry.role == "user" {
             HStack {
                 Spacer(minLength: 40)
-                userBubble(entry)
+                // Canned actions (Assist, Recap, …) show a compact chip rather
+                // than dumping the full internal prompt as a bubble.
+                if let action = entry.action, action != "Ask" {
+                    cannedActionChip(action)
+                } else {
+                    userBubble(entry)
+                }
             }
         } else {
             HStack {
-                assistantBody(entry)
+                AssistantMessageRow(
+                    entry: entry,
+                    isStreaming: streaming && entry.id == entries.last?.id,
+                    toolStatus: llm.toolStatus,
+                    placeholderLabel: streamingPlaceholderLabel,
+                    onCopy: { NSPasteboard.copyString(entry.text) },
+                    onRegenerate: { llm.regenerate(assistantID: entry.id) }
+                )
                 Spacer(minLength: 40)
             }
         }
@@ -158,14 +171,6 @@ struct ResponseView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Color.overlayInk.opacity(0.4))
                 }
-                if let action = entry.action {
-                    Text(action)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Color.blue))
-                }
             }
             Text(entry.text)
                 .font(.system(size: 14))
@@ -182,38 +187,111 @@ struct ResponseView: View {
         }
     }
 
-    @ViewBuilder
-    private func assistantBody(_ entry: ChatEntry) -> some View {
-        let isStreamingThis = streaming && entry.id == entries.last?.id
-        if isStreamingThis && entry.text.isEmpty {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.7)
-                Text(streamingPlaceholderLabel)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.overlayInk.opacity(0.55))
+    /// A canned-action turn (Assist / Recap / …) shown as a compact chip
+    /// instead of the verbose internal prompt the user never actually typed.
+    private func cannedActionChip(_ action: String) -> some View {
+        let icon: String = {
+            switch action {
+            case "Assist": return "sparkles"
+            case "Say next": return "wand.and.rays"
+            case "Follow-ups": return "bubble.left.and.text.bubble.right"
+            case "Recap": return "arrow.clockwise"
+            default: return "sparkles"
             }
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                let display = entry.text + (isStreamingThis ? " ▍" : "")
-                RTIMarkdown(display, style: .overlay)
-                    .fixedSize(horizontal: false, vertical: true)
+        }()
+        return HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+            Text(action)
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(Color.overlayInk.opacity(0.6))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(Color.overlayInk.opacity(0.06)))
+    }
 
-                // Show the tool status under the assistant text when a tool
-                // is mid-execution after the model has already streamed some
-                // prose. (Empty-text case is handled by the branch above.)
-                if isStreamingThis, let toolStatus = llm.toolStatus, !toolStatus.isEmpty {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .controlSize(.small)
-                            .scaleEffect(0.6)
-                        Text(toolStatus)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.overlayInk.opacity(0.55))
+}
+
+/// One assistant reply, with a hover-revealed Copy + Regenerate bar.
+/// The bar collapses to zero height when not hovering so a long chat stays
+/// tight — it pops in under the message on hover (ChatGPT-style).
+private struct AssistantMessageRow: View {
+    let entry: ChatEntry
+    let isStreaming: Bool
+    let toolStatus: String?
+    let placeholderLabel: String
+    let onCopy: () -> Void
+    let onRegenerate: () -> Void
+
+    @State private var hovering = false
+    @State private var copied = false
+
+    var body: some View {
+        Group {
+            if isStreaming && entry.text.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                    Text(placeholderLabel)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.overlayInk.opacity(0.55))
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    let display = entry.text + (isStreaming ? " ▍" : "")
+                    RTIMarkdown(display, style: .overlay)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // Tool status under the text while a tool runs mid-stream.
+                    if isStreaming, let toolStatus, !toolStatus.isEmpty {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .scaleEffect(0.6)
+                            Text(toolStatus)
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.overlayInk.opacity(0.55))
+                        }
+                    }
+
+                    // Hover actions on a settled (non-streaming) reply. The bar
+                    // always occupies its space (so hovering never reflows the
+                    // chat — no jump); only its opacity changes on hover.
+                    if !isStreaming && !entry.text.isEmpty {
+                        actionBar
+                            .opacity(hovering ? 1 : 0)
+                            .allowsHitTesting(hovering)
                     }
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.12), value: hovering)
+        .onHover { hovering = $0 }
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 2) {
+            iconButton(systemName: copied ? "checkmark" : "doc.on.doc",
+                       help: "Copy") {
+                onCopy()
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
+            }
+            iconButton(systemName: "arrow.clockwise", help: "Regenerate", action: onRegenerate)
+        }
+    }
+
+    private func iconButton(systemName: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.overlayInk.opacity(0.45))
+                .frame(width: 26, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }

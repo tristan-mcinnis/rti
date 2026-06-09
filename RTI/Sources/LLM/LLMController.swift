@@ -69,6 +69,21 @@ final class LLMController {
         performSend(userInput: Self.recapPrompt, action: "Recap")
     }
 
+    /// Re-run the turn that produced `assistantID`: drop that assistant reply
+    /// (and anything after it), then re-send the user turn it answered.
+    /// Transcript context is rebuilt fresh from the current live entries.
+    func regenerate(assistantID: UUID) {
+        guard !streaming,
+              let assistantIdx = entries.firstIndex(where: { $0.id == assistantID }),
+              entries[assistantIdx].role == "assistant" else { return }
+        let userIdx = assistantIdx - 1
+        guard userIdx >= 0, entries[userIdx].role == "user" else { return }
+        let userEntry = entries[userIdx]
+        // performSend re-appends the user turn, so drop it here too.
+        entries.removeSubrange(userIdx...)
+        performSend(userInput: userEntry.text, action: userEntry.action ?? "Ask")
+    }
+
     func attachScreenContext(_ text: String) {
         pendingScreenContext = text
         lastError = nil

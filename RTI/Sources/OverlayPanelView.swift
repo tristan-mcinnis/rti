@@ -64,13 +64,9 @@ struct OverlayPanelView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, 18)
 
-            PromptActionRow()
-                .padding(.horizontal, 18)
-                .padding(.top, 12)
-                .padding(.bottom, 10)
-
             AssistantInputView(onOpenSettings: onOpenSettings)
                 .padding(.horizontal, 14)
+                .padding(.top, 10)
                 .padding(.bottom, 14)
         }
     }

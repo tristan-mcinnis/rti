@@ -1,11 +1,10 @@
 import Foundation
 import Observation
 
-/// Shared mode flag for the overlay input bar. Set by `PromptActionRow` (the
-/// Note button) and read by `AssistantInputView` so hitting Enter inserts an
-/// inline note into the transcript instead of sending to the LLM. Lives as a
-/// singleton because the two views are siblings and don't have a parent that
-/// can hoist the state for them.
+/// Shared mode flag for the overlay input bar. Toggled from the input bar's
+/// "✦" actions menu (Note mode) and read by `AssistantInputView` so hitting
+/// Enter inserts an inline note into the transcript instead of sending to the
+/// LLM. A singleton so the flag survives view rebuilds.
 @Observable @MainActor
 final class OverlayInputState {
     static let shared = OverlayInputState()
