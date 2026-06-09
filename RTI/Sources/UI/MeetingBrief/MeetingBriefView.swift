@@ -12,10 +12,15 @@ struct MeetingBriefView: View {
         NavigationSplitView {
             List(selection: $selected) {
                 ForEach(briefs) { brief in
-                    Text(brief.title)
-                        .font(.system(size: 12))
-                        .lineLimit(2)
-                        .tag(brief)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(brief.displayTitle)
+                            .font(.system(size: 12, weight: .medium))
+                            .lineLimit(2)
+                        if let date = brief.datePrefix {
+                            Text(date).font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .tag(brief)
                 }
             }
             .listStyle(.sidebar)

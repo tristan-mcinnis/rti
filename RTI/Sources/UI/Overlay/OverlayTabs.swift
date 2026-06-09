@@ -563,9 +563,6 @@ struct SetupTabView: View {
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
-    @State private var briefs: [MeetingBrief] = []
-    @State private var selectedBrief: MeetingBrief?
-    @State private var briefContent = ""
     @State private var pickerOpen = false
     @State private var query = ""
     @State private var pasteOpen = false
@@ -595,7 +592,6 @@ struct SetupTabView: View {
                 discussionGuideSection
 
                 noteEditor
-                briefSection
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -744,42 +740,6 @@ struct SetupTabView: View {
                         .font(.system(size: 12)).foregroundStyle(Color.overlayInk.opacity(0.35))
                         .padding(.horizontal, 11).padding(.vertical, 13).allowsHitTesting(false)
                 }
-            }
-        }
-    }
-
-    private var briefSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Pre-meeting brief").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
-                Spacer()
-                if briefs.count > 1 {
-                    Picker("", selection: $selectedBrief) {
-                        ForEach(briefs) { Text($0.displayTitle).tag(Optional($0)) }
-                    }
-                    .labelsHidden().frame(maxWidth: 160)
-                    .onChange(of: selectedBrief) { _, new in briefContent = new.map(MeetingBriefStore.content) ?? "" }
-                }
-            }
-            Text("Pulled from your vault — written by Ava's Meeting Prep ahead of calls. RTI only reads them.")
-                .font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.4))
-                .fixedSize(horizontal: false, vertical: true)
-
-            if briefs.isEmpty {
-                Text("No brief yet. One shows up here automatically when Ava preps an upcoming call.")
-                    .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                if let b = selectedBrief {
-                    HStack(spacing: 6) {
-                        Image(systemName: "doc.text").font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.5))
-                        Text(b.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.9))
-                        if let d = b.datePrefix {
-                            Text(d).font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.4))
-                        }
-                    }
-                }
-                RTIMarkdown(briefContent, style: .overlay).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -979,21 +939,6 @@ struct SetupTabView: View {
     private func load() {
         clients = VaultWorkstreamStore.clients()
         projects = VaultWorkstreamStore.projects()
-        briefs = MeetingBriefStore.recentBriefs()
-        selectedBrief = bestDefaultBrief()
-        briefContent = selectedBrief.map(MeetingBriefStore.content) ?? ""
-    }
-
-    /// Prefer the brief whose name matches the picked workstream; else the
-    /// newest. Saves scrolling a dropdown when the meeting's already chosen.
-    private func bestDefaultBrief() -> MeetingBrief? {
-        if let name = store.workstreamName?.lowercased(), !name.isEmpty {
-            let slug = name.replacingOccurrences(of: " ", with: "-")
-            if let match = briefs.first(where: {
-                $0.title.lowercased().contains(slug) || $0.displayTitle.lowercased().contains(name)
-            }) { return match }
-        }
-        return briefs.first
     }
 }
 
