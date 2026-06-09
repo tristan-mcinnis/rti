@@ -35,10 +35,13 @@ enum OverlayTab: String, CaseIterable, Identifiable {
 
 struct OverlayTabBar: View {
     @Binding var selection: OverlayTab
+    /// Which tabs to show. Notes/Guide are opt-in (toggled in Setup), so the
+    /// bar only renders the ones currently enabled.
+    var tabs: [OverlayTab] = OverlayTab.allCases
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(OverlayTab.allCases) { tab in
+            ForEach(tabs) { tab in
                 Button { selection = tab } label: {
                     HStack(spacing: 5) {
                         Image(systemName: tab.icon).font(.system(size: 10, weight: .medium))
@@ -555,6 +558,9 @@ struct NotesTabView: View {
 struct SetupTabView: View {
     private let store = MeetingContextStore.shared
     private let guideController = DiscussionGuideController.shared
+    // These also gate the live tabs (Notes / Guide) — see OverlayPanelView.
+    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = false
+    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
     @State private var briefs: [MeetingBrief] = []
@@ -581,6 +587,9 @@ struct SetupTabView: View {
                 } else {
                     picker
                 }
+
+                Divider().overlay(Color.overlayInk.opacity(0.08)).padding(.vertical, 2)
+                livePanelsSection
 
                 Divider().overlay(Color.overlayInk.opacity(0.08)).padding(.vertical, 2)
                 discussionGuideSection
@@ -698,6 +707,30 @@ struct SetupTabView: View {
         return allItems.filter { $0.name.lowercased().contains(q) }
     }
 
+    /// Opt-in live panels. These flags also gate the Notes/Guide tabs, so
+    /// flipping one here makes its tab appear (and starts the live analysis).
+    private var livePanelsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Live panels")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.85))
+            Text("Off by default. Turn one on to add its tab and run it live during the call.")
+                .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
+                .fixedSize(horizontal: false, vertical: true)
+            livePanelToggle($notesEnabled, "Notes", "Periodic AI notes as the conversation develops")
+            livePanelToggle($guideEnabled, "Guide", "Track which discussion-guide questions get answered")
+        }
+    }
+
+    private func livePanelToggle(_ isOn: Binding<Bool>, _ title: String, _ detail: String) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.overlayInk.opacity(0.9))
+                Text(detail).font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.45))
+            }
+        }
+        .toggleStyle(.switch).controlSize(.mini).tint(.blue)
+    }
+
     private var noteEditor: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Your note").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
@@ -716,22 +749,36 @@ struct SetupTabView: View {
     }
 
     private var briefSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Pre-meeting brief").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
                 Spacer()
                 if briefs.count > 1 {
                     Picker("", selection: $selectedBrief) {
-                        ForEach(briefs) { Text($0.title).tag(Optional($0)) }
+                        ForEach(briefs) { Text($0.displayTitle).tag(Optional($0)) }
                     }
-                    .labelsHidden().frame(maxWidth: 150)
+                    .labelsHidden().frame(maxWidth: 160)
                     .onChange(of: selectedBrief) { _, new in briefContent = new.map(MeetingBriefStore.content) ?? "" }
                 }
             }
+            Text("Pulled from your vault — written by Ava's Meeting Prep ahead of calls. RTI only reads them.")
+                .font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.4))
+                .fixedSize(horizontal: false, vertical: true)
+
             if briefs.isEmpty {
-                Text("No brief found — Hermes writes these to your vault before a call.")
-                    .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.4))
+                Text("No brief yet. One shows up here automatically when Ava preps an upcoming call.")
+                    .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
+                if let b = selectedBrief {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.text").font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.5))
+                        Text(b.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.9))
+                        if let d = b.datePrefix {
+                            Text(d).font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.4))
+                        }
+                    }
+                }
                 RTIMarkdown(briefContent, style: .overlay).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -933,8 +980,20 @@ struct SetupTabView: View {
         clients = VaultWorkstreamStore.clients()
         projects = VaultWorkstreamStore.projects()
         briefs = MeetingBriefStore.recentBriefs()
-        selectedBrief = briefs.first
+        selectedBrief = bestDefaultBrief()
         briefContent = selectedBrief.map(MeetingBriefStore.content) ?? ""
+    }
+
+    /// Prefer the brief whose name matches the picked workstream; else the
+    /// newest. Saves scrolling a dropdown when the meeting's already chosen.
+    private func bestDefaultBrief() -> MeetingBrief? {
+        if let name = store.workstreamName?.lowercased(), !name.isEmpty {
+            let slug = name.replacingOccurrences(of: " ", with: "-")
+            if let match = briefs.first(where: {
+                $0.title.lowercased().contains(slug) || $0.displayTitle.lowercased().contains(name)
+            }) { return match }
+        }
+        return briefs.first
     }
 }
 

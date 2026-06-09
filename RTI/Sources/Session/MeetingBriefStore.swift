@@ -6,8 +6,27 @@ import Foundation
 struct MeetingBrief: Identifiable, Hashable {
     var id: URL { url }
     let url: URL
+    /// Raw filename stem, e.g. `2026-06-09-acme-brand-prep`.
     let title: String
     let modified: Date
+
+    /// `YYYY-MM-DD` parsed from the filename prefix, if present.
+    var datePrefix: String? {
+        title.range(of: #"^\d{4}-\d{2}-\d{2}"#, options: .regularExpression)
+            .map { String(title[$0]) }
+    }
+
+    /// Human label: drop the date prefix and the `-prep` suffix, de-hyphenate,
+    /// title-case. `2026-06-09-acme-brand-prep` → `Acme Brand`.
+    var displayTitle: String {
+        var s = title
+        if let r = s.range(of: #"^\d{4}-\d{2}-\d{2}-"#, options: .regularExpression) {
+            s.removeSubrange(r)
+        }
+        if s.lowercased().hasSuffix("-prep") { s = String(s.dropLast(5)) }
+        s = s.replacingOccurrences(of: "-", with: " ").trimmingCharacters(in: .whitespaces)
+        return s.isEmpty ? title : s.capitalized
+    }
 }
 
 /// Read-only access to the vault's pre-meeting briefs. The briefs directory
@@ -36,6 +55,12 @@ enum MeetingBriefStore {
 
         let briefs = urls
             .filter { $0.pathExtension == "md" }
+            // Real briefs are date-prefixed (`YYYY-MM-DD-…`). This drops the
+            // directory README and any other stray docs in the folder.
+            .filter {
+                $0.deletingPathExtension().lastPathComponent
+                    .range(of: #"^\d{4}-\d{2}-\d{2}-"#, options: .regularExpression) != nil
+            }
             .map { url -> MeetingBrief in
                 let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey])
                     .contentModificationDate) ?? .distantPast
@@ -50,8 +75,19 @@ enum MeetingBriefStore {
     }
 
     static func content(of brief: MeetingBrief) -> String {
-        (try? String(contentsOf: brief.url, encoding: .utf8))
+        let raw = (try? String(contentsOf: brief.url, encoding: .utf8))
             ?? "_Couldn't read \(brief.url.lastPathComponent)._"
+        return stripFrontmatter(raw)
+    }
+
+    /// Drop a leading YAML frontmatter block (`---` … `---`) so the rendered
+    /// brief shows prose, not its `title:`/`type:` metadata header.
+    private static func stripFrontmatter(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        guard lines.first == "---",
+              let close = lines.dropFirst().firstIndex(of: "---") else { return text }
+        return lines[(close + 1)...].joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func sentinelConfigURL() -> URL {

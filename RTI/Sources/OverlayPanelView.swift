@@ -6,7 +6,18 @@ struct OverlayPanelView: View {
 
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
     @AppStorage(OverlayAppearanceDefaults.lightModeKey) private var lightMode = false
+    // Notes/Guide are opt-in: their tabs only show when their live analysis is
+    // enabled (toggled in Setup). Default tabs are Setup · Assist · Transcript.
+    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = false
+    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
     @State private var tab: OverlayTab = .assist
+
+    private var visibleTabs: [OverlayTab] {
+        var t: [OverlayTab] = [.setup, .assist, .transcript]
+        if notesEnabled { t.append(.notes) }
+        if guideEnabled { t.append(.guide) }
+        return t
+    }
 
     var body: some View {
         ZStack {
@@ -19,12 +30,15 @@ struct OverlayPanelView: View {
 
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    OverlayTabBar(selection: $tab)
+                    OverlayTabBar(selection: $tab, tabs: visibleTabs)
                     OverlayRecordButton()
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
                 .padding(.bottom, 8)
+                // If the active tab gets turned off in Setup, fall back to Assist.
+                .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
+                .onChange(of: guideEnabled) { _, _ in normalizeSelection() }
 
                 Group {
                     switch tab {
@@ -49,6 +63,10 @@ struct OverlayPanelView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .preferredColorScheme(lightMode ? .light : .dark)
+    }
+
+    private func normalizeSelection() {
+        if !visibleTabs.contains(tab) { tab = .assist }
     }
 
     /// The original chat surface, now the default "Assist" tab.
