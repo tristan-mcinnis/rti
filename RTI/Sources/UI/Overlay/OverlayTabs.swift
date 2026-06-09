@@ -392,28 +392,39 @@ struct TranscriptTabView: View {
                 ))
             }
         }
-        return result.filter { !shown($0).text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        // Keep a turn if it has spoken text, or a translation to show. Crucially
+        // the original is ALWAYS kept — turning translation on never hides the
+        // transcript you already have.
+        return result.filter { para in
+            !para.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || (translationEnabled && !para.translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
     }
 
-    /// What a turn shows: the translation (when translating and present), else
-    /// the original — plus whether it's the translated form (for styling).
-    private func shown(_ para: Paragraph) -> (text: String, translated: Bool) {
-        let t = para.translation.trimmingCharacters(in: .whitespacesAndNewlines)
-        if translationEnabled, !t.isEmpty { return (para.translation, true) }
-        return (para.original, false)
-    }
-
+    /// Show the original always; when translating, show the translation as a
+    /// second line beneath it. So toggling translation mid-session is purely
+    /// additive — it never wipes the preceding transcript.
     private func paragraphRow(_ para: Paragraph) -> some View {
-        let display = shown(para)
+        let original = para.original.trimmingCharacters(in: .whitespacesAndNewlines)
+        let translation = para.translation.trimmingCharacters(in: .whitespacesAndNewlines)
         return VStack(alignment: .leading, spacing: 2) {
             Text(para.speakerLabel)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(para.speakerId == "note" ? Color.yellow.opacity(0.8) : Color.overlayInk.opacity(0.5))
-            Text(display.text)
-                .font(.system(size: 12))
-                .foregroundStyle(display.translated ? Color.blue.opacity(0.95) : Color.overlayInk.opacity(0.9))
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            if !original.isEmpty {
+                Text(original)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.overlayInk.opacity(0.9))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if translationEnabled, !translation.isEmpty {
+                Text(translation)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.blue.opacity(0.95))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -422,7 +433,12 @@ struct TranscriptTabView: View {
     }
 
     private func transcriptText() -> String {
-        paragraphs.map { "\($0.speakerLabel): \(shown($0).text)" }.joined(separator: "\n")
+        paragraphs.map { para in
+            var line = "\(para.speakerLabel): \(para.original)"
+            let t = para.translation.trimmingCharacters(in: .whitespacesAndNewlines)
+            if translationEnabled, !t.isEmpty { line += "\n  ↳ \(para.translation)" }
+            return line
+        }.joined(separator: "\n")
     }
 
     private var healthColor: Color {

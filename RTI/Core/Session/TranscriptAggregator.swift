@@ -85,4 +85,17 @@ public final class TranscriptAggregator {
         zeroSeen = []
         startMsOffset = 0
     }
+
+    /// Prepare for a mid-session Soniox reconnect (e.g. a translation toggle).
+    /// Keeps the accumulated `entries`, but rolls the timeline offset forward to
+    /// where we left off and resets the raw watermark — because the new stream
+    /// restarts its word timestamps at ~0. Without this, the new stream's finals
+    /// would be dropped by the `endMs > lastEndMs` watermark and/or sort to the
+    /// top of the transcript.
+    public func prepareForReconnect() {
+        startMsOffset += lastEndMs
+        lastEndMs = 0
+        zeroSeen = []
+        interimText = nil
+    }
 }

@@ -63,4 +63,12 @@ public final class TranscriptPipeline {
         systemAggregator.reset()
         noteEntries = []
     }
+
+    /// Keep the transcript across a Soniox reconnect (translation toggle),
+    /// continuing the timeline so new finals append after the existing ones
+    /// instead of being dropped or reordered. Notes are untouched.
+    public func prepareForReconnect() {
+        micAggregator.prepareForReconnect()
+        systemAggregator.prepareForReconnect()
+    }
 }

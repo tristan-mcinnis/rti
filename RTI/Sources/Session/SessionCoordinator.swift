@@ -41,7 +41,12 @@ final class SessionCoordinator {
         didSet {
             audioPipeline.translationConfig = translationConfig
             if isRunning {
+                // Keep the transcript across the Soniox reconnect and continue
+                // the timeline, so toggling translation never wipes preceding
+                // entries or drops the next ones.
+                transcriptPipeline.prepareForReconnect()
                 audioPipeline.reconfigureTranslation()
+                publishState()
             }
         }
     }
