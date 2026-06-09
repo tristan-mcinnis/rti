@@ -22,8 +22,27 @@ final class LLMController {
 
     private let request: LLMRequest
     private var streamingEntryID: UUID?
+    /// Metadata for the in-flight turn, written to the vault turn log on
+    /// successful completion (see VaultLogStore).
+    private var pendingTurn: PendingTurn?
+
+    private struct PendingTurn {
+        let id: UUID
+        let ts: String
+        let action: String
+        let mode: String?
+        let provider: String
+        let model: String
+        let smart: Bool
+        let inSession: Bool
+        let contextUsed: Bool
+        let screenUsed: Bool
+        let userInput: String
+        let transcriptContext: String
+    }
 
     private static let smartModeKey = "rti.llm.smartMode"
+    private static let iso8601 = ISO8601DateFormatter()
 
     private static let systemPrompt = """
     You are RTI, a real-time meeting assistant. The user is in an active conversation.
@@ -102,6 +121,7 @@ final class LLMController {
         toolStatus = nil
         pruneTrailingEmptyAssistant()
         streamingEntryID = nil
+        pendingTurn = nil
     }
 
     /// Cancel any in-flight stream and drop the in-memory entries without
@@ -161,6 +181,21 @@ final class LLMController {
         streamingEntryID = assistantEntry.id
         entries.append(assistantEntry)
 
+        pendingTurn = PendingTurn(
+            id: assistantEntry.id,
+            ts: Self.iso8601.string(from: Date()),
+            action: action,
+            mode: activeMode?.name,
+            provider: LLMProviders.activeId,
+            model: LLMProviders.active.model,
+            smart: smartMode,
+            inSession: SessionCoordinator.shared.isRunning,
+            contextUsed: contextUsed,
+            screenUsed: manualScreenUsed,
+            userInput: userInput,
+            transcriptContext: transcript
+        )
+
         streaming = true
         reasoning = false
         let thisEntryID = assistantEntry.id
@@ -200,6 +235,7 @@ final class LLMController {
                             self.toolStatus = nil
                             self.pruneTrailingEmptyAssistant()
                             self.streamingEntryID = nil
+                            self.pendingTurn = nil
                             RTILog.log("LLM stream error: \(message)", category: "llm")
                         }
                     }
@@ -213,8 +249,25 @@ final class LLMController {
         streaming = false
         reasoning = false
         toolStatus = nil
+        logCompletedTurn(thisEntryID)
         pruneTrailingEmptyAssistant()
         streamingEntryID = nil
+    }
+
+    /// Write the just-finished turn (prompt metadata + output) to the vault
+    /// turn log. Skips empty/cancelled turns. Captures standalone chats too.
+    private func logCompletedTurn(_ id: UUID) {
+        guard let pending = pendingTurn, pending.id == id,
+              let idx = entries.firstIndex(where: { $0.id == id }) else { return }
+        pendingTurn = nil
+        let output = entries[idx].text
+        guard !output.isEmpty else { return }
+        VaultLogStore.append(.init(
+            ts: pending.ts, action: pending.action, mode: pending.mode,
+            provider: pending.provider, model: pending.model, smart: pending.smart,
+            inSession: pending.inSession, contextUsed: pending.contextUsed,
+            screenUsed: pending.screenUsed, userInput: pending.userInput,
+            transcriptContext: pending.transcriptContext, output: output))
     }
 
     private func pruneTrailingEmptyAssistant() {
