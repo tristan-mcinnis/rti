@@ -41,20 +41,28 @@ enum SessionArchive {
         guard !transcript.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return }
 
-        let transcriptMD = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
-        writeOwnerOnly(transcriptMD, to: dir.appendingPathComponent("transcript.md"))
+        // Only archive a transcript when there's real spoken content (a
+        // non-note entry) — a header-only transcript.md just pollutes search.
+        if transcript.contains(where: { $0.speakerId != "note" }) {
+            let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
+            let md = (frontmatter(kind: "Transcript", startedAt: startedAt) + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md"))
+        }
 
         if !chat.isEmpty {
-            let chatMD = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
-            writeOwnerOnly(chatMD, to: dir.appendingPathComponent("chat.md"))
+            let body = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
+            let md = (frontmatter(kind: "Chat", startedAt: startedAt) + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
         }
 
         if !analysis.notes.isEmpty {
-            let md = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
+            let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
+            let md = (frontmatter(kind: "Notes", startedAt: startedAt) + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
         }
         if let guide = analysis.guide {
-            let md = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
+            let body = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
+            let md = (frontmatter(kind: "Discussion guide", startedAt: startedAt) + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
         }
     }
@@ -279,6 +287,36 @@ enum SessionArchive {
         let seconds = Int(max(0, endedAt.timeIntervalSince(startedAt)))
         return "_\(started) · \(duration(seconds))_"
     }
+
+    /// YAML frontmatter so the vault's Neon ingester titles + links these files
+    /// (mirrors `renderLinkedMeeting`'s block). Must be the very first thing in
+    /// the file, before the H1. `kind` is the file's human label, e.g.
+    /// "Transcript" / "Chat" / "Notes" / "Discussion guide". `type: reference`
+    /// keeps all four out of the meeting_note / transcript / discussion_guide
+    /// buckets the ingester would otherwise infer from the filename.
+    private static func frontmatter(kind: String, startedAt: Date) -> [String] {
+        let stamp = frontmatterStamp.string(from: startedAt)   // "2026-06-09 11:07"
+        let date = String(stamp.prefix(10))                    // "2026-06-09"
+        return [
+            "---",
+            "title: \"RTI session · \(stamp) · \(kind)\"",
+            "type: reference",
+            "date: \(date)",
+            "source: rti",
+            "projects:",
+            "  - rti",
+            "tags:",
+            "  - rti",
+            "---",
+            "",
+        ]
+    }
+
+    private static let frontmatterStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f
+    }()
 
     // MARK: - Formatting helpers
 
