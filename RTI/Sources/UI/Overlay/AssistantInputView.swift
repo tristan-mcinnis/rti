@@ -17,50 +17,49 @@ struct AssistantInputView: View {
     private let opacityPresets: [Double] = [0.20, 0.40, 0.60, 0.75, 0.85, 0.95, 1.00]
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                ZStack(alignment: .leading) {
-                    if input.isEmpty {
-                        Text(textFieldPrompt)
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.overlayInk.opacity(0.45))
-                            .allowsHitTesting(false)
-                    }
-                    TextField("", text: $input)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.overlayInk.opacity(0.95))
-                        .focused($isInputFocused)
-                        .onSubmit(submit)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.overlayInk.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(inputState.isNoteMode
-                                    ? Color.yellow.opacity(0.55)
-                                    : Color.overlayInk.opacity(0.10),
-                                    lineWidth: 1)
-                    )
-            )
+        // One composer pill: leading actions, flexible field, trailing send —
+        // no separate control row ("chin"). Recording state lives on the
+        // top-bar Record button, so there's no inline badge here.
+        HStack(spacing: 6) {
+            actionsMenu
+            moreDots
 
-            HStack(spacing: 10) {
-                actionsMenu
-                moreDots
-                if session.isRunning { recordingBadge }
-                Spacer()
-                if llm.streaming {
-                    stopButton
-                } else {
-                    sendButton
+            ZStack(alignment: .leading) {
+                if input.isEmpty {
+                    Text(textFieldPrompt)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.overlayInk.opacity(0.45))
+                        .allowsHitTesting(false)
                 }
+                TextField("", text: $input)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.overlayInk.opacity(0.95))
+                    .focused($isInputFocused)
+                    .onSubmit(submit)
             }
-            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity)
+            .padding(.leading, 2)
+
+            if llm.streaming {
+                stopButton
+            } else {
+                sendButton
+            }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.overlayInk.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(inputState.isNoteMode
+                                ? Color.yellow.opacity(0.55)
+                                : Color.overlayInk.opacity(0.10),
+                                lineWidth: 1)
+                )
+        )
         .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
             // Defer so the focus change lands after the panel finishes its
             // becomeKey transition; otherwise SwiftUI sometimes drops it.
@@ -68,21 +67,6 @@ struct AssistantInputView: View {
                 isInputFocused = true
             }
         }
-    }
-
-    private var recordingBadge: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(Color.red)
-                .frame(width: 6, height: 6)
-            Text("Recording")
-                .font(.system(size: 11, weight: .medium))
-        }
-        .foregroundStyle(Color.overlayInk.opacity(0.75))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(Color.red.opacity(0.18)))
-        .help("Audio is being captured and transcribed. Press ⌘⇧R to stop.")
     }
 
     private var moreDots: some View {
