@@ -8,7 +8,9 @@ import RTICore
 /// (including user-authored notes, which live inline as `speakerId == "note"`
 /// entries) and the chat log with the assistant. Audio is still discarded.
 ///
-/// Layout: ~/Library/Application Support/RTI/sessions/<yyyy-MM-dd HHmmss>/
+/// Layout: <vault>/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
+/// (falls back to ~/Library/Application Support/RTI/sessions/ if the vault
+/// can't be located via Sentinel's config):
 ///   transcript.md         — the live transcript, notes inline
 ///   chat.md               — the assistant chat log (only written if non-empty)
 ///   notes.md              — generated meeting notes (only if any)
@@ -58,13 +60,8 @@ enum SessionArchive {
     }
 
     private static func sessionDirectory(startedAt: Date) -> URL? {
-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let folder = base
-            .appendingPathComponent("RTI", isDirectory: true)
-            .appendingPathComponent("sessions", isDirectory: true)
-            .appendingPathComponent(folderStamp.string(from: startedAt), isDirectory: true)
+        guard let base = sessionsBaseDirectory() else { return nil }
+        let folder = base.appendingPathComponent(folderStamp.string(from: startedAt), isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             // Session records hold meeting transcripts/notes — keep the folder
@@ -321,9 +318,14 @@ extension SessionArchive {
         let displayName: String
     }
 
-    /// `~/Library/Application Support/RTI/sessions`.
+    /// Base dir for per-session records. Prefer the vault so captured sessions
+    /// live with everything else under `…/projects/personal/rti/sessions`; fall
+    /// back to Application Support if the vault can't be located.
     static func sessionsBaseDirectory() -> URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+        if let vault = VaultLogStore.rtiDirectory()?.appendingPathComponent("sessions", isDirectory: true) {
+            return vault
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("RTI", isDirectory: true)
             .appendingPathComponent("sessions", isDirectory: true)
     }

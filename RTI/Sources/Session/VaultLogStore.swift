@@ -42,7 +42,8 @@ enum VaultLogStore {
     // MARK: - Paths
 
     /// `<vault>/databases/projects/personal/rti`, derived from Sentinel's config.
-    private static func rtiDirectory() -> URL? {
+    /// Also used by SessionArchive to place per-session records in the vault.
+    static func rtiDirectory() -> URL? {
         guard let rec = sentinelRecordingsDir() else { return nil }
         // rec = <vault>/databases/meetings/recordings → up two = <vault>/databases
         let databases = rec.deletingLastPathComponent().deletingLastPathComponent()
