@@ -263,10 +263,18 @@ private struct AssistantMessageRow: View {
                         actionBar
                             .opacity(hovering ? 1 : 0)
                             .allowsHitTesting(hovering)
+                            // Buffer beneath the icons so moving the cursor down
+                            // onto them doesn't slip past the hover region and
+                            // make the bar vanish before you can click.
+                            .padding(.bottom, 6)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        // Track hover over the whole row rectangle (incl. transparent gaps),
+        // not just the opaque glyphs — otherwise the corner is a dead zone.
+        .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.12), value: hovering)
         .onHover { hovering = $0 }
     }
@@ -288,7 +296,7 @@ private struct AssistantMessageRow: View {
             Image(systemName: systemName)
                 .font(.system(size: 12))
                 .foregroundStyle(Color.overlayInk.opacity(0.45))
-                .frame(width: 26, height: 20)
+                .frame(width: 30, height: 24)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
