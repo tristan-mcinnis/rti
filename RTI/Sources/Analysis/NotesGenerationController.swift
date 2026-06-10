@@ -45,11 +45,19 @@ final class NotesGenerationController {
 
     Rules:
     - Be specific and concrete, e.g. "- Favourite brand is Brandco, but can't find a store in Shanghai".
-    - Refer to people by name when clear (e.g. 小瑞), otherwise by role (the
-      moderator), otherwise keep the transcript's "Speaker N" label. Once a name
-      has appeared, use that same name in every later bullet — never switch back
-      to a generic label for that person. NEVER invent labels like "them_1",
-      "Participant 1", or "self".
+    - MODERATOR: the person asking the questions and steering topics is "the
+      moderator" — call them that, never "Speaker N". Log their questions only
+      when needed to make an answer intelligible; participants' content is what
+      matters.
+    - NAMES: refer to participants by name when clear, otherwise keep the
+      transcript's "Speaker N" label. Render Chinese forms of address properly:
+      王女士 → "Ms. Wang (王女士)", 李先生 → "Mr. Li (李先生)" — NEVER ad-hoc
+      romanizations like "Wang nvshi". Once a name is known, use it in every
+      later bullet. NEVER invent labels like "them_1", "Participant 1", or "self".
+    - GARBLED TERMS: if a Chinese term looks mis-transcribed or you are not
+      confident what it means, do NOT invent a confident gloss — write it as
+      term (unclear) or use the likely intended term with a ? — e.g. "工字背心?
+      (racerback tank)".
     - Skip greetings and filler; capture every substantive point that was made.
     - VERBATIM QUOTES: when a participant says something vivid, surprising, or
       quotable, include the short verbatim phrase inline in its bullet —
