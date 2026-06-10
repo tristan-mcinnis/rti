@@ -10,7 +10,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private let onboarding = OnboardingWindowController()
     private var sessionObservationTask: Task<Void, Never>?
 
+    /// Marker the crash watchdog reads: present = last exit was a clean quit
+    /// (don't relaunch); absent while not running = crash (relaunch).
+    private static let cleanExitFlag = NSString(string: "~/.local/state/rti/clean-exit").expandingTildeInPath
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Running again — clear the clean-exit marker so the watchdog knows a
+        // disappearance from here on is a crash, not a quit.
+        try? FileManager.default.removeItem(atPath: Self.cleanExitFlag)
+
         guard ensureSingleInstance() else { return }
 
         // Route RTICore's logs (CoreLog) into the app's log buffer via RTILog.
@@ -155,6 +163,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     func applicationWillTerminate(_ notification: Notification) {
         SessionCoordinator.shared.emergencyShutdown()
+        let dir = (Self.cleanExitFlag as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: Self.cleanExitFlag, contents: nil)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {

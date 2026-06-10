@@ -246,6 +246,15 @@ final class LLMController {
         if !priorBlock.isEmpty {
             fullContent += "\n\nYou already suggested the following earlier in this session — do NOT repeat or rephrase these; build on the newest conversation instead:\n\(priorBlock)"
         }
+        // Guide awareness: when a discussion guide is loaded, Assist and
+        // Follow-ups see what's still uncovered — "what haven't we asked yet"
+        // is the moderator's core anxiety and the listener's best flag.
+        if ["Assist", "Follow-ups"].contains(action) {
+            let coverage = Self.guideCoverageContext()
+            if !coverage.isEmpty {
+                fullContent += "\n\n\(coverage)"
+            }
+        }
 
         let manualScreenContext = pendingScreenContext
         pendingScreenContext = nil
@@ -395,6 +404,36 @@ final class LLMController {
             outputs.append(entries[idx + 1].text)
         }
         return outputs.suffix(3).map { "- \($0.replacingOccurrences(of: "\n", with: " "))" }.joined(separator: "\n")
+    }
+
+    /// Compact "what the discussion guide still needs" block for the
+    /// assist-family prompts. Empty string when no guide is loaded or
+    /// everything is covered.
+    private static func guideCoverageContext() -> String {
+        guard let guide = DiscussionGuideController.shared.guide else { return "" }
+        var open: [String] = []
+        var partial: [String] = []
+        for obj in guide.objectives {
+            for section in obj.sections {
+                for q in section.questions {
+                    let line = "[\(section.title)] \(q.text)"
+                    switch q.status {
+                    case .pending: open.append(line)
+                    case .partial: partial.append(line)
+                    case .answered: break
+                    }
+                }
+            }
+        }
+        guard !open.isEmpty || !partial.isEmpty else { return "" }
+        var out = "Discussion guide coverage (factor this into your suggestion — flag what's still missing if time is passing):"
+        if !open.isEmpty {
+            out += "\nNOT yet covered:\n" + open.prefix(12).map { "- \($0)" }.joined(separator: "\n")
+        }
+        if !partial.isEmpty {
+            out += "\nPartially covered:\n" + partial.prefix(6).map { "- \($0)" }.joined(separator: "\n")
+        }
+        return out
     }
 
     private func pruneTrailingEmptyAssistant() {

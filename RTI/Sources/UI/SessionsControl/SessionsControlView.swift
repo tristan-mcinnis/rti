@@ -115,9 +115,9 @@ struct SessionsControlView: View {
 private struct SentinelMeetingBanner: View {
     @State private var monitor = MeetingSentinelMonitor.shared
     @State private var session = SessionCoordinator.shared
-    /// Ticks once a second so the elapsed time stays current.
-    @State private var now = Date()
-    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // No Combine timer — the per-instance Timer.publish subscription pattern
+    // segfaulted in OverlayRecordButton (stale SubscriptionView on teardown);
+    // the elapsed label uses TimelineView so SwiftUI owns the clock.
 
     var body: some View {
         if let meeting = monitor.liveMeeting {
@@ -133,9 +133,11 @@ private struct SentinelMeetingBanner: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
-                Text(elapsedString(meeting.startedAt))
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(elapsedString(meeting.startedAt, now: context.date))
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
                 Button("Brief") { WindowCoordinator.shared.showMeetingBrief() }
                     .font(.system(size: 11, weight: .medium))
                     .buttonStyle(.bordered)
@@ -146,7 +148,6 @@ private struct SentinelMeetingBanner: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(.red.opacity(0.10))
-            .onReceive(tick) { now = $0 }
             .help("Meeting Sentinel is recording this meeting (\(meeting.audioFilePath))")
         }
     }
@@ -175,7 +176,7 @@ private struct SentinelMeetingBanner: View {
         }
     }
 
-    private func elapsedString(_ start: Date) -> String {
+    private func elapsedString(_ start: Date, now: Date) -> String {
         let total = Int(max(0, now.timeIntervalSince(start)))
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         return h > 0

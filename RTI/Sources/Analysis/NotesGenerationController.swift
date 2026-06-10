@@ -51,6 +51,10 @@ final class NotesGenerationController {
       to a generic label for that person. NEVER invent labels like "them_1",
       "Participant 1", or "self".
     - Skip greetings and filler; capture every substantive point that was made.
+    - VERBATIM QUOTES: when a participant says something vivid, surprising, or
+      quotable, include the short verbatim phrase inline in its bullet —
+      formatted "原话 (pinyin, English)" — these verbatims are gold for the
+      debrief. At most 2–3 per block; only genuinely striking lines.
     - SIDE CONVERSATIONS: if a stretch is clearly off-topic chatter between
       observers — talk about software/tools, note-taking apps, screens, file
       syncing, scheduling other projects, or anything unrelated to the main
@@ -100,12 +104,19 @@ final class NotesGenerationController {
         guard !window.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         RTILog.log("notes: generating from \(window.count) chars (since \(windowStartMs)ms)", category: "notes")
 
+        // Continuity: each tick only sees its 2-minute slice, so feed the
+        // previous block back in — the model stops re-introducing people and
+        // topics it already noted.
+        let priorBlock = notes.last.map { prior in
+            "PREVIOUS NOTES BLOCK (already written — context only; do NOT repeat "
+            + "or re-introduce these people/points):\n\(prior.content)\n\n"
+        } ?? ""
         guard let result = await TranscriptAnalysis.runText(
             sessionId: sessionId,
             sinceMs: sinceMs,
             smart: false,
             request: request,
-            buildPrompt: { Self.notesPrompt + "\n" + $0 }
+            buildPrompt: { Self.notesPrompt + "\n" + priorBlock + $0 }
         ) else {
             // There WAS transcript to summarize but the model returned nothing —
             // a real failure worth surfacing (don't leave the user guessing).

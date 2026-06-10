@@ -57,6 +57,7 @@ final class SessionCoordinator {
     /// so a second start can't kick off a duplicate permission dialog + launch.
     private var isStarting = false
     private var delayedCompleteTask: Task<Void, Never>?
+    private var checkpointTask: Task<Void, Never>?
     /// WAV path for the active recording, deleted when the session ends.
     private var activeWavPath: String?
 
@@ -240,6 +241,7 @@ final class SessionCoordinator {
 
         publishState()
         isRunning = true
+        startCheckpointLoop()
     }
 
     func stopSession() {
@@ -251,6 +253,8 @@ final class SessionCoordinator {
         // partial audio and deliver final transcripts.
         audioPipeline.finalize()
         AnalysisScheduler.shared.stop()
+        checkpointTask?.cancel()
+        checkpointTask = nil
         isRunning = false
         transcriptionHealth = .idle
         systemAudioNotice = nil
@@ -365,10 +369,13 @@ final class SessionCoordinator {
     }
 
     /// Write the archive for the in-memory session state (shared by the
-    /// normal completeStop path and emergencyShutdown). Returns the archive
-    /// dir. Safe to call twice — SessionArchive overwrites the same folder.
+    /// normal completeStop path, emergencyShutdown, and the periodic
+    /// crash-safety checkpoint). Returns the archive dir. Safe to call
+    /// repeatedly — SessionArchive overwrites the same folder. `route` is
+    /// false for mid-session checkpoints: routing a half-finished session
+    /// would create a premature field-notes file the final route then skips.
     @discardableResult
-    private func archiveCurrentSession(endedAt: Date) -> URL? {
+    private func archiveCurrentSession(endedAt: Date, route: Bool = true) -> URL? {
         guard let startedAt else { return nil }
         let workstreamItem = MeetingContextStore.shared.workstreamItem
         let workstreamSlug = (workstreamItem?.isProject == true)
@@ -386,8 +393,22 @@ final class SessionCoordinator {
             workstreamSlug: workstreamSlug,
             linkedMeeting: linkedMeeting?.name
         )
-        if let dir { SessionArchive.runVaultRouter(sessionDir: dir) }
+        if route, let dir { SessionArchive.runVaultRouter(sessionDir: dir) }
         return dir
+    }
+
+    /// Crash-safety checkpoint: while a session runs, re-write the archive
+    /// every 5 minutes so a hard crash (the one teardown path that can't
+    /// archive) loses at most the last few minutes of notes/transcript.
+    private func startCheckpointLoop() {
+        checkpointTask?.cancel()
+        checkpointTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
+                guard let self, self.isRunning, !Task.isCancelled else { return }
+                self.archiveCurrentSession(endedAt: Date(), route: false)
+            }
+        }
     }
 
     private func handleSystemWords(_ words: [SonioxWord]) {
