@@ -89,8 +89,9 @@ final class LLMController {
     private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items."
 
     /// Granola-style whole-meeting summary — runs over the FULL transcript,
-    /// not the 15-minute assist window.
-    private static let summaryPrompt = """
+    /// not the 15-minute assist window. Internal: SessionArchive reuses it
+    /// for the end-of-session auto-summary so chat and archive stay identical.
+    static let meetingSummaryPrompt = """
     Write a structured summary of this ENTIRE meeting so far, in markdown. Work \
     only from what was actually said — no invention, no padding.
 
@@ -148,7 +149,7 @@ final class LLMController {
 
     /// Granola-style structured summary of the whole meeting so far.
     func sendSummary() {
-        performSend(userInput: Self.summaryPrompt, action: "Summary", fullTranscript: true)
+        performSend(userInput: Self.meetingSummaryPrompt, action: "Summary", fullTranscript: true)
     }
 
     func sendAskAnything(_ input: String) {

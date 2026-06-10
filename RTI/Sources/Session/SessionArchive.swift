@@ -79,6 +79,25 @@ enum SessionArchive {
         return dir
     }
 
+    /// Generate the Granola-style wrap-up over the full session transcript
+    /// and write it as `summary.md` beside the other session files. Quiet
+    /// no-op on trivial sessions or LLM failure — the archive must never
+    /// depend on a model call succeeding.
+    @MainActor
+    static func writeAutoSummary(sessionId: String, to dir: URL, startedAt: Date) async {
+        guard let result = await TranscriptAnalysis.runText(
+            sessionId: sessionId,
+            sinceMs: nil,
+            smart: false,
+            request: LLMRequest(),
+            buildPrompt: { LLMController.meetingSummaryPrompt + "\n\nTranscript:\n" + $0 }
+        ) else { return }
+        let payload = result.payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !payload.isEmpty else { return }
+        let md = (frontmatter(kind: "Summary", startedAt: startedAt) + ["# Meeting summary", "", payload, ""]).joined(separator: "\n")
+        writeOwnerOnly(md, to: dir.appendingPathComponent("summary.md"))
+    }
+
     /// Fire the vault-side session router (capture + declare here; route
     /// there). Best-effort and fire-and-forget: missing script or python is a
     /// silent no-op, and the app never waits on or parses the result.
@@ -395,7 +414,7 @@ enum SessionArchive {
 // MARK: - Reading the archive (launcher only — reveals in Finder, never reads in-app)
 
 extension SessionArchive {
-    struct ArchivedSession: Identifiable {
+    struct ArchivedSession: Identifiable, Hashable {
         var id: URL { url }
         let url: URL
         /// Pretty label, e.g. "Jun 8 · 16:13".

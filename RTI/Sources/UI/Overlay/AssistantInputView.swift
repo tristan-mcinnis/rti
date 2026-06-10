@@ -92,26 +92,14 @@ struct AssistantInputView: View {
 
             Divider()
 
-            Section("Keybinds") {
+            // Panel housekeeping only — AI actions live in the ✦ menu.
+            Section("Panel") {
                 Button {
                     NotificationCenter.default.post(name: .rtiToggleOverlay, object: nil)
                 } label: {
                     Label("Show / hide overlay", systemImage: "rectangle.dashed")
                 }
                 .keyboardShortcut("\\", modifiers: .command)
-
-                Button {
-                    LLMController.shared.sendAssist()
-                } label: {
-                    Label("Assist", systemImage: "sparkles")
-                }
-                .keyboardShortcut(.return, modifiers: .command)
-
-                Button {
-                    NotificationCenter.default.post(name: .rtiClearChat, object: nil)
-                } label: {
-                    Label("Clear chat", systemImage: "eraser")
-                }
 
                 Button {
                     SessionCoordinator.shared.toggleSession()
@@ -129,11 +117,10 @@ struct AssistantInputView: View {
                 .keyboardShortcut("h", modifiers: .command)
 
                 Button {
-                    NotificationCenter.default.post(name: .rtiShowLiveTranscript, object: nil)
+                    NotificationCenter.default.post(name: .rtiClearChat, object: nil)
                 } label: {
-                    Label("Show live transcript", systemImage: "waveform")
+                    Label("Clear chat", systemImage: "eraser")
                 }
-                .keyboardShortcut("t", modifiers: [.command, .option])
             }
 
             Menu {
@@ -190,31 +177,16 @@ struct AssistantInputView: View {
         .help("Quick actions and settings")
     }
 
-    /// Quick access to the saved session records. These are read-only Markdown
-    /// folders RTI writes on stop; this just reveals them in Finder (the
-    /// sanctioned access path) — no in-app reader/search.
+    /// Saved session records — opens the in-app read-only browser (Sessions
+    /// tab of the control window). Finder stays available from inside the
+    /// browser for anyone who wants the raw folders.
     @ViewBuilder
     private var recentSessionsSection: some View {
         Divider()
-        Menu {
-            let sessions = SessionArchive.recentSessions(limit: 8)
-            if sessions.isEmpty {
-                Button("No saved sessions yet") {}.disabled(true)
-            } else {
-                ForEach(sessions) { session in
-                    Button { NSWorkspace.shared.open(session.url) } label: {
-                        Label(session.displayName, systemImage: "clock.arrow.circlepath")
-                    }
-                }
-                Divider()
-                Button {
-                    if let base = SessionArchive.sessionsBaseDirectory() { NSWorkspace.shared.open(base) }
-                } label: {
-                    Label("Open sessions folder…", systemImage: "folder")
-                }
-            }
+        Button {
+            WindowCoordinator.shared.showSessionsControl(tab: .sessions)
         } label: {
-            Label("Recent sessions", systemImage: "clock.arrow.circlepath")
+            Label("Past sessions…", systemImage: "clock.arrow.circlepath")
         }
     }
 
@@ -253,6 +225,11 @@ struct AssistantInputView: View {
                     Label("Listener mode (I'm not speaking)", systemImage: "ear")
                 }
             }
+
+            Button(action: applyFieldworkPreset) {
+                Label("Fieldwork preset (interview + listener)", systemImage: "person.2.wave.2")
+            }
+            .help("Interview mode + listener mode + ⌘⏎ → Assist in one click; pick the project in Setup")
 
             Divider()
 
@@ -331,6 +308,17 @@ struct AssistantInputView: View {
     /// sharingType to every panel.
     private func toggleHiddenFromCapture() {
         CommandRegistry.shared.commands.first { $0.id == "invisibility.toggle" }?.perform()
+    }
+
+    /// One-click setup for sitting in on fieldwork (FGD/IDI as an observer):
+    /// Interview mode + listener mode + ⌘⏎ bound to Assist. The workstream
+    /// (project) still gets picked in Setup — that's a per-meeting fact.
+    private func applyFieldworkPreset() {
+        if let interview = modes.modes.first(where: { $0.name.localizedCaseInsensitiveContains("interview") }) {
+            modes.activeModeId = interview.id
+        }
+        llm.listenerMode = true
+        llm.primaryAction = .assist
     }
 
     private func submit() {

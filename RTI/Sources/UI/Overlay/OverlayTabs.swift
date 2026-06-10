@@ -73,12 +73,12 @@ struct OverlayTabBar: View {
 struct OverlayRecordButton: View {
     private let coordinator = SessionCoordinator.shared
 
-    @State private var now = Date()
     @State private var hovering = false
 
-    /// Half-second tick keeps the timer fresh; TimeFormat quantises to seconds.
-    private let tick = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
-
+    // No Combine timer here: a per-instance Timer.publish subscription was the
+    // crash site of a SIGSEGV (stale SubscriptionView firing during view
+    // teardown, 2026-06-10 crash report). The elapsed label uses TimelineView
+    // instead — SwiftUI owns the clock and its lifecycle.
     var body: some View {
         Button(action: { coordinator.toggleSession() }) {
             HStack(spacing: 6) {
@@ -94,7 +94,6 @@ struct OverlayRecordButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(coordinator.isRunning ? "Stop recording (⌘⇧R)" : "Start recording (⌘⇧R)")
-        .onReceive(tick) { _ in if coordinator.isRunning { now = Date() } }
     }
 
     @ViewBuilder
@@ -111,8 +110,10 @@ struct OverlayRecordButton: View {
     @ViewBuilder
     private var label: some View {
         if coordinator.isRunning {
-            DotMatrixText(text: elapsedLabel, dot: 1.2, spacing: 0.5, gap: 1.2,
-                          color: .white, dim: Color.overlayInk.opacity(0.08))
+            TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                DotMatrixText(text: elapsedLabel(at: context.date), dot: 1.2, spacing: 0.5, gap: 1.2,
+                              color: .white, dim: Color.overlayInk.opacity(0.08))
+            }
         } else if let frozen = postRecordingLabel {
             DotMatrixText(text: frozen, dot: 1.2, spacing: 0.5, gap: 1.2,
                           color: Color.overlayInk.opacity(0.55), dim: Color.overlayInk.opacity(0.06))
@@ -139,7 +140,7 @@ struct OverlayRecordButton: View {
             : Color.overlayInk.opacity(hovering ? 0.22 : 0.12)
     }
 
-    private var elapsedLabel: String {
+    private func elapsedLabel(at now: Date) -> String {
         guard let started = coordinator.startedAt else { return "0:00" }
         return TimeFormat.elapsed(now.timeIntervalSince(started))
     }

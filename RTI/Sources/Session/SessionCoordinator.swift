@@ -301,7 +301,17 @@ final class SessionCoordinator {
                 linkedMeeting: linkedMeeting?.name
             )
             if let archiveDir {
-                SessionArchive.runVaultRouter(sessionDir: archiveDir)
+                // Auto-summary (Granola-style wrap-up) first, then route —
+                // so the field-notes companion can include the summary.
+                // Best-effort: a failed summary never blocks routing.
+                Task { @MainActor in
+                    await SessionArchive.writeAutoSummary(
+                        sessionId: sessionId,
+                        to: archiveDir,
+                        startedAt: startedAt
+                    )
+                    SessionArchive.runVaultRouter(sessionDir: archiveDir)
+                }
             }
             // If this session was overlaid on a Sentinel-recorded meeting, also
             // drop the notes + chat + generated analysis into that meeting's
@@ -327,17 +337,57 @@ final class SessionCoordinator {
     }
 
     /// Synchronous teardown invoked from applicationWillTerminate.
+    ///
+    /// Quit must never destroy a session record: the quit dialog promises
+    /// "finalize the session", so archive whatever we have before tearing the
+    /// pipeline down. Covers both quit-while-recording and quit during the
+    /// 1.5s post-stop flush window (where completeStop hasn't run yet).
     func emergencyShutdown() {
         // Restore the default mic even on an abrupt quit (no-op if not switched).
         BluetoothMicGuard.shared.release()
-        guard isRunning else { return }
-        audioPipeline.abort()
+
+        let stopPending = delayedCompleteTask != nil
+        guard isRunning || stopPending else { return }
+        delayedCompleteTask?.cancel()
+        delayedCompleteTask = nil
+
+        if isRunning {
+            audioPipeline.abort()
+        }
+        archiveCurrentSession(endedAt: endedAt ?? Date())
+
         if let path = activeWavPath {
             try? FileManager.default.removeItem(atPath: path)
         }
         isRunning = false
         transcriptionHealth = .idle
         systemAudioNotice = nil
+    }
+
+    /// Write the archive for the in-memory session state (shared by the
+    /// normal completeStop path and emergencyShutdown). Returns the archive
+    /// dir. Safe to call twice — SessionArchive overwrites the same folder.
+    @discardableResult
+    private func archiveCurrentSession(endedAt: Date) -> URL? {
+        guard let startedAt else { return nil }
+        let workstreamItem = MeetingContextStore.shared.workstreamItem
+        let workstreamSlug = (workstreamItem?.isProject == true)
+            ? workstreamItem?.url.lastPathComponent
+            : nil
+        let dir = SessionArchive.write(
+            startedAt: startedAt,
+            endedAt: endedAt,
+            transcript: transcriptPipeline.liveEntries,
+            chat: LLMController.shared.entries,
+            analysis: SessionArchive.Analysis(
+                notes: NotesGenerationController.shared.notes,
+                guide: DiscussionGuideController.shared.guide
+            ),
+            workstreamSlug: workstreamSlug,
+            linkedMeeting: linkedMeeting?.name
+        )
+        if let dir { SessionArchive.runVaultRouter(sessionDir: dir) }
+        return dir
     }
 
     private func handleSystemWords(_ words: [SonioxWord]) {

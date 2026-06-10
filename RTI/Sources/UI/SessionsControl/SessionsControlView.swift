@@ -6,6 +6,7 @@ import SwiftUI
 struct SessionsControlView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case liveTranscript = "Live Transcript"
+        case sessions = "Sessions"
         case settings = "Settings"
         case logs = "Logs"
 
@@ -14,6 +15,7 @@ struct SessionsControlView: View {
         var icon: String {
             switch self {
             case .liveTranscript: return "text.bubble.fill"
+            case .sessions:       return "clock.arrow.circlepath"
             case .settings:       return "gearshape.fill"
             case .logs:           return "doc.text.magnifyingglass"
             }
@@ -31,6 +33,9 @@ struct SessionsControlView: View {
             List(selection: $selectedTab) {
                 Section("Now") {
                     sidebarRow(.liveTranscript)
+                }
+                Section("Library") {
+                    sidebarRow(.sessions)
                 }
                 Section("App") {
                     sidebarRow(.settings)
@@ -71,6 +76,9 @@ struct SessionsControlView: View {
         case .liveTranscript:
             LiveTranscriptView()
                 .environment(SessionCoordinator.shared)
+
+        case .sessions:
+            SessionsBrowserView()
 
         case .settings:
             SettingsView(onClose: nil)

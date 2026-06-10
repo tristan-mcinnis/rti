@@ -70,14 +70,11 @@ enum CommandBuilder {
                 hotkeyModifiers: UInt32(cmdKey)
             ),
             RTICommand(
-                id: "view.live",
-                title: "Live Transcript  ⌘⌥T",
-                subtitle: "⌘⌥T",
-                keywords: ["console", "debug"],
-                perform: { [weak windows] in windows?.showLiveTranscript() },
-                menuSection: .navigation,
-                hotkeyKeyCode: UInt32(kVK_ANSI_T),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
+                id: "view.sessions",
+                title: "Past Sessions",
+                keywords: ["history", "archive", "library", "previous"],
+                perform: { [weak windows] in windows?.showSessionsControl(tab: .sessions) },
+                menuSection: .navigation
             ),
             RTICommand(
                 id: "view.brief",
@@ -184,6 +181,19 @@ enum CommandBuilder {
         llm: LLMController
     ) -> [RTICommand] {
         [
+            RTICommand(
+                id: "fieldwork.preset",
+                title: "Fieldwork Preset (interview + listener + ⌘⏎ Assist)",
+                keywords: ["fgd", "idi", "observe", "research", "preset"],
+                perform: {
+                    let modes = ModeStore.shared
+                    if let interview = modes.modes.first(where: { $0.name.localizedCaseInsensitiveContains("interview") }) {
+                        modes.activeModeId = interview.id
+                    }
+                    llm.listenerMode = true
+                    llm.primaryAction = .assist
+                }
+            ),
             RTICommand(
                 id: "listener.toggle",
                 title: "Listener Mode (I'm not speaking)",
