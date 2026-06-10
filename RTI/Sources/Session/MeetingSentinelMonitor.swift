@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 /// A meeting that the external "Meeting Sentinel" tool (`meet start`/`meet stop`,
-/// `~/.local/bin/meet` → `meeting-sentinel-repo/meet.py`) is currently recording.
+/// `~/.local/bin/meet` → `meeting-stack/meeting-sentinel/meet.py`) is currently recording.
 struct SentinelMeeting: Equatable {
     let name: String
     let startedAt: Date
