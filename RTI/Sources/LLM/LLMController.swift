@@ -323,7 +323,18 @@ final class LLMController {
                             self.toolStatus = status
                         case .toolStatusDone:
                             self.toolStatus = nil
-                        case .done:
+                        case .done(let finalText):
+                            // Deltas hop to main through a different queue
+                            // chain than .done, so the last few can land AFTER
+                            // finalize and get dropped — the mid-sentence
+                            // truncation bug. .done carries the complete
+                            // buffered text; reconcile against it so event
+                            // ordering can't lose the tail.
+                            if self.streamingEntryID == thisEntryID,
+                               let idx = self.entries.firstIndex(where: { $0.id == thisEntryID }),
+                               finalText.count > self.entries[idx].text.count {
+                                self.entries[idx].text = finalText
+                            }
                             self.finalizeAssistantTurn(streamingEntryID: thisEntryID)
                         case .error(let message, let isAuth):
                             guard self.streamingEntryID == thisEntryID else { return }
