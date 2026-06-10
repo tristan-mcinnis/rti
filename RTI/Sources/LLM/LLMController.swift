@@ -83,10 +83,10 @@ final class LLMController {
     Prefer them over what appears in the raw transcript.
     """
 
-    private static let assistPrompt = "Based on the recent conversation, suggest what I should say or ask next. Be concise — max 3 short lines."
-    private static let saySomethingPrompt = "Given the conversation so far, draft exactly one short reply I could say next. One line, natural, in my voice. No preamble."
-    private static let followupsPrompt = "List 3 thoughtful follow-up questions I could ask the other person right now. Bullet points, one line each."
-    private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items."
+    private static let assistPrompt = "Based on the recent conversation, suggest what I should say or ask next (the suggested line itself should be in the conversation's language). Be concise — max 3 short lines of framing in ENGLISH."
+    private static let saySomethingPrompt = "Given the conversation so far, draft exactly one short reply I could say next, in the language the conversation is being held in. One line, natural, in my voice. No preamble."
+    private static let followupsPrompt = "List 3 thoughtful follow-up questions I could ask the other person right now, written in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
+    private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items. Reply in ENGLISH regardless of the conversation's language — keep short original-language terms in parentheses where they carry meaning."
 
     /// Granola-style whole-meeting summary — runs over the FULL transcript,
     /// not the 15-minute assist window. Internal: SessionArchive reuses it
@@ -124,8 +124,8 @@ final class LLMController {
 
     // Listener-mode variants: the user is observing, not speaking, so "what
     // should I say" is the wrong frame. Surface what's notable instead.
-    private static let listenerAssistPrompt = "I'm a passive listener in this meeting, not a speaker. In max 3 short lines: flag the most notable thing in the recent conversation (an insight, contradiction, or thread the group is missing) and why it matters."
-    private static let listenerFollowupsPrompt = "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along. Bullet points, one line each."
+    private static let listenerAssistPrompt = "I'm a passive listener in this meeting, not a speaker. In max 3 short lines: flag the most notable thing in the recent conversation (an insight, contradiction, or thread the group is missing) and why it matters. Reply in ENGLISH regardless of the conversation's language — keep short original-language terms in parentheses where they carry meaning."
+    private static let listenerFollowupsPrompt = "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along, each in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
 
     private static let contextWindowSeconds: Double = 900
 
