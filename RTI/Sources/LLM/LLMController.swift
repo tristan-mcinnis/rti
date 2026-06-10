@@ -126,15 +126,16 @@ final class LLMController {
     // Listener-mode variants: the user is observing, not speaking, so "what
     // should I say" is the wrong frame. Surface what's notable instead.
     private static let listenerAssistPrompt = """
-    I'm a passive listener in this meeting, not a speaker, glancing at this     mid-session — it must be scannable in 5 seconds, NOT a paragraph.
+    I'm a researcher passively observing this session. Surface what I just     LEARNED — not what to say (I never speak). Glanceable in 5 seconds, NOT a     paragraph.
 
-    Flag the single most notable thing in the recent conversation using EXACTLY     this format, one short line each (max ~20 words per line):
+    Flag the single most significant thing in the recent conversation using     EXACTLY this format:
 
-    **Heard:** <what just happened — include the key verbatim if there is one>
-    **Matters:** <why this is significant for the research objective>
-    **Probe:** <the one question worth asking next, in the conversation's language + English gloss>
+    **[TAG]** <one line: what was said/revealed — include the key verbatim with     its speaker if there is one>
+    **Matters:** <one line: why this is significant for the research objective>
 
-    Reply in ENGLISH (except the Probe line's question). Original-language terms     ALWAYS as term (pinyin, English meaning) — e.g. 得体 (détǐ, appropriate) —     never bare Chinese. No preamble, no extra prose outside the three lines.
+    TAG is one of: FINDING (a clear insight or need), TENSION (views split     within the group), CONTRADICTION (someone contradicts themselves or earlier     consensus), NEW THREAD (an unexpected topic worth attention), MISSED (the     discussion moved past something important without probing it).
+
+    Reply in ENGLISH. Original-language terms ALWAYS as term (pinyin, English     meaning) — e.g. 得体 (détǐ, appropriate) — never bare Chinese. Max ~25 words     per line. No preamble, nothing outside the two lines.
     """
     private static let listenerFollowupsPrompt = "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along, each in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
 
