@@ -125,7 +125,17 @@ final class LLMController {
 
     // Listener-mode variants: the user is observing, not speaking, so "what
     // should I say" is the wrong frame. Surface what's notable instead.
-    private static let listenerAssistPrompt = "I'm a passive listener in this meeting, not a speaker. In max 3 short lines: flag the most notable thing in the recent conversation (an insight, contradiction, or thread the group is missing) and why it matters. Reply in ENGLISH regardless of the conversation's language. When you keep an original-language term, ALWAYS write it as term (pinyin/romanization, English meaning) — e.g. 健身穿搭 (jiànshēn chuāndā, workout outfits) — never bare Chinese the reader might not parse."
+    private static let listenerAssistPrompt = """
+    I'm a passive listener in this meeting, not a speaker, glancing at this     mid-session — it must be scannable in 5 seconds, NOT a paragraph.
+
+    Flag the single most notable thing in the recent conversation using EXACTLY     this format, one short line each (max ~20 words per line):
+
+    **Heard:** <what just happened — include the key verbatim if there is one>
+    **Matters:** <why this is significant for the research objective>
+    **Probe:** <the one question worth asking next, in the conversation's language + English gloss>
+
+    Reply in ENGLISH (except the Probe line's question). Original-language terms     ALWAYS as term (pinyin, English meaning) — e.g. 得体 (détǐ, appropriate) —     never bare Chinese. No preamble, no extra prose outside the three lines.
+    """
     private static let listenerFollowupsPrompt = "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along, each in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
 
     private static let contextWindowSeconds: Double = 900
