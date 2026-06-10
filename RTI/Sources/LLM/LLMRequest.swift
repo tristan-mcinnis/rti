@@ -59,9 +59,9 @@ final class LLMRequest: @unchecked Sendable {
     /// Collect the full streaming response. Returns nil on cancellation, error, or
     /// empty result. Used by title/summary/analysis generators so callers can
     /// await the result before rendering.
-    func collectAsync(messages: [LLMMessage], smart: Bool) async -> String? {
+    func collectAsync(messages: [LLMMessage], smart: Bool, timeoutOverride: Double? = nil) async -> String? {
         return await withSingleFlight { client in
-            try await client.collectStreamedResponse(messages: messages, smart: smart)
+            try await client.collectStreamedResponse(messages: messages, smart: smart, timeoutOverride: timeoutOverride)
         }
     }
 

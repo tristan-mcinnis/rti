@@ -49,13 +49,14 @@ final class LLMClient: @unchecked Sendable {
     func streamChat(
         messages: [LLMMessage],
         smart: Bool = false,
+        timeoutOverride: Double? = nil,
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
         let temperature: Double? = smart ? nil : 0.6
         let thinking: LLMWireRequest.Thinking? = provider.supportsThinking
             ? LLMWireRequest.Thinking(type: smart ? "enabled" : "disabled")
             : nil
-        let timeoutSeconds: Double = smart ? 120 : 60
+        let timeoutSeconds: Double = timeoutOverride ?? (smart ? 120 : 60)
 
         guard !apiKey.isEmpty else {
             return AsyncThrowingStream { $0.finish(throwing: LLMError.missingAPIKey) }
@@ -237,10 +238,11 @@ final class LLMClient: @unchecked Sendable {
     /// honoring task cancellation between deltas.
     func collectStreamedResponse(
         messages: [LLMMessage],
-        smart: Bool = false
+        smart: Bool = false,
+        timeoutOverride: Double? = nil
     ) async throws -> String {
         var full = ""
-        for try await delta in streamChat(messages: messages, smart: smart) {
+        for try await delta in streamChat(messages: messages, smart: smart, timeoutOverride: timeoutOverride) {
             try Task.checkCancellation()
             full += delta
         }

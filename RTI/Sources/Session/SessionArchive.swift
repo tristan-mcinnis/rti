@@ -85,17 +85,29 @@ enum SessionArchive {
     /// depend on a model call succeeding.
     @MainActor
     static func writeAutoSummary(sessionId: String, to dir: URL, startedAt: Date) async {
-        guard let result = await TranscriptAnalysis.runText(
-            sessionId: sessionId,
-            sinceMs: nil,
+        let transcript = TranscriptContext.text(forSessionId: sessionId)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else { return }
+        // Full-meeting summaries routinely outlive the default 60s stream
+        // timeout (the silent failure that left archives without summary.md)
+        // — give this call its own generous budget and log failures.
+        let prompt = LLMController.meetingSummaryPrompt + "\n\nTranscript:\n" + transcript
+        guard let payloadRaw = await LLMRequest().collectAsync(
+            messages: [LLMMessage(role: "user", content: prompt)],
             smart: false,
-            request: LLMRequest(),
-            buildPrompt: { LLMController.meetingSummaryPrompt + "\n\nTranscript:\n" + $0 }
-        ) else { return }
-        let payload = result.payload.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !payload.isEmpty else { return }
+            timeoutOverride: 300
+        ) else {
+            RTILog.log("auto-summary: LLM call failed/timed out for \(dir.lastPathComponent)", category: "summary")
+            return
+        }
+        let payload = payloadRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !payload.isEmpty else {
+            RTILog.log("auto-summary: empty response for \(dir.lastPathComponent)", category: "summary")
+            return
+        }
         let md = (frontmatter(kind: "Summary", startedAt: startedAt) + ["# Meeting summary", "", payload, ""]).joined(separator: "\n")
         writeOwnerOnly(md, to: dir.appendingPathComponent("summary.md"))
+        RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)", category: "summary")
     }
 
     /// Fire the vault-side session router (capture + declare here; route
