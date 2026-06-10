@@ -86,7 +86,7 @@ final class LLMController {
     private static let assistPrompt = "Based on the recent conversation, suggest what I should say or ask next (the suggested line itself should be in the conversation's language). Be concise — max 3 short lines of framing in ENGLISH."
     private static let saySomethingPrompt = "Given the conversation so far, draft exactly one short reply I could say next, in the language the conversation is being held in. One line, natural, in my voice. No preamble."
     private static let followupsPrompt = "List 3 thoughtful follow-up questions I could ask the other person right now, written in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
-    private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items. Reply in ENGLISH regardless of the conversation's language — keep short original-language terms in parentheses where they carry meaning."
+    private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items. Reply in ENGLISH regardless of the conversation's language. When you keep an original-language term, ALWAYS write it as term (pinyin/romanization, English meaning) — e.g. 健身穿搭 (jiànshēn chuāndā, workout outfits) — never bare Chinese the reader might not parse."
 
     /// Granola-style whole-meeting summary — runs over the FULL transcript,
     /// not the 15-minute assist window. Internal: SessionArchive reuses it
@@ -102,7 +102,8 @@ final class LLMController {
     ## Key points
     The substantive content, grouped under short bold topic headers in the order \
     the topics arose. Concrete and specific — keep names, brands, numbers, and \
-    essential original-language terms in parentheses (e.g. 松弛, 背刺). Attribute \
+    essential original-language terms as term (pinyin, English meaning) — e.g. \
+    松弛 (sōngchí, relaxed ease), 背刺 (bèicì, price betrayal). Attribute \
     views to named people where clear, otherwise by role.
 
     ## Decisions & agreements
@@ -124,7 +125,7 @@ final class LLMController {
 
     // Listener-mode variants: the user is observing, not speaking, so "what
     // should I say" is the wrong frame. Surface what's notable instead.
-    private static let listenerAssistPrompt = "I'm a passive listener in this meeting, not a speaker. In max 3 short lines: flag the most notable thing in the recent conversation (an insight, contradiction, or thread the group is missing) and why it matters. Reply in ENGLISH regardless of the conversation's language — keep short original-language terms in parentheses where they carry meaning."
+    private static let listenerAssistPrompt = "I'm a passive listener in this meeting, not a speaker. In max 3 short lines: flag the most notable thing in the recent conversation (an insight, contradiction, or thread the group is missing) and why it matters. Reply in ENGLISH regardless of the conversation's language. When you keep an original-language term, ALWAYS write it as term (pinyin/romanization, English meaning) — e.g. 健身穿搭 (jiànshēn chuāndā, workout outfits) — never bare Chinese the reader might not parse."
     private static let listenerFollowupsPrompt = "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along, each in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
 
     private static let contextWindowSeconds: Double = 900

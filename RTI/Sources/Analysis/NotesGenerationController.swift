@@ -28,9 +28,10 @@ final class NotesGenerationController {
 
     LANGUAGE: Write the notes in ENGLISH. The conversation may be in Chinese or
     another language; translate as you go. You MAY keep a short essential term in
-    its original language in parentheses when the English alone loses meaning —
-    e.g. "fear of looking identical (撞衫)", "chest pads (胸垫)". Do NOT write whole
-    bullets in Chinese. Keep people's names and brand names as spoken.
+    its original language when the English alone loses meaning, ALWAYS formatted
+    as term (pinyin, English meaning) — e.g. "撞衫 (zhuàngshān, fear of wearing
+    the same outfit)", "胸垫 (xiōngdiàn, chest pads)". Never a bare Chinese term
+    without pinyin + meaning, and do NOT write whole bullets in Chinese. Keep people's names and brand names as spoken.
 
     For this slice of the conversation, produce:
     1. A first line `TITLE: <a short 3–6 word title for what this slice covered>`.
