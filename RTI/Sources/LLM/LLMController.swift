@@ -413,11 +413,24 @@ final class LLMController {
         let threshold = fullWindow ? 0 : max(0, maxMs - windowMs)
         let windowed = all.filter { $0.startMs >= threshold }
 
+        // Stable appearance-ordered speaker numbers (from the full session,
+        // not the window) so the assistant can tell participants apart and
+        // attribute consistently across turns.
+        var speakerNumber: [String: Int] = [:]
+        var nextNumber = 1
+        for e in all where e.speakerId != "self" && e.speakerId != "note" {
+            if speakerNumber[e.speakerId] == nil {
+                speakerNumber[e.speakerId] = nextNumber
+                nextNumber += 1
+            }
+        }
         let formatLine: (LiveEntry) -> String = { entry in
             switch entry.speakerId {
             case "self": return "Me: \(entry.text)"
             case "note": return "[my note]: \(entry.text)"
-            default:     return "Them: \(entry.text)"
+            default:
+                let n = speakerNumber[entry.speakerId].map { "Speaker \($0)" } ?? "Speaker ?"
+                return "\(n): \(entry.text)"
             }
         }
         let inline = windowed.map(formatLine).joined(separator: "\n")

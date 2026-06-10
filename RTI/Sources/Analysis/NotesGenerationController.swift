@@ -44,11 +44,11 @@ final class NotesGenerationController {
 
     Rules:
     - Be specific and concrete, e.g. "- Favourite brand is Brandco, but can't find a store in Shanghai".
-    - Refer to people by name when clear, otherwise by role (the moderator, the
-      participant). Once a name has appeared (e.g. 小瑞), use that same name in
-      every later bullet — never switch back to a generic label for that person.
-      NEVER write raw transcript labels like "them_1" or "self" — if a label like
-      that would slip through, rewrite it as a name or role before output.
+    - Refer to people by name when clear (e.g. 小瑞), otherwise by role (the
+      moderator), otherwise keep the transcript's "Speaker N" label. Once a name
+      has appeared, use that same name in every later bullet — never switch back
+      to a generic label for that person. NEVER invent labels like "them_1",
+      "Participant 1", or "self".
     - Skip greetings and filler; capture every substantive point that was made.
     - SIDE CONVERSATIONS: if a stretch is clearly off-topic chatter between
       observers — talk about software/tools, note-taking apps, screens, file
