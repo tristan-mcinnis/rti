@@ -284,13 +284,25 @@ final class SessionCoordinator {
                 notes: NotesGenerationController.shared.notes,
                 guide: DiscussionGuideController.shared.guide
             )
-            SessionArchive.write(
+            // Declare (not decide): the matched project workstream slug and any
+            // linked Sentinel meeting go into the archive frontmatter, then the
+            // vault-side router applies the routing policy.
+            let workstreamItem = MeetingContextStore.shared.workstreamItem
+            let workstreamSlug = (workstreamItem?.isProject == true)
+                ? workstreamItem?.url.lastPathComponent
+                : nil
+            let archiveDir = SessionArchive.write(
                 startedAt: startedAt,
                 endedAt: endedAt,
                 transcript: transcript,
                 chat: chat,
-                analysis: analysis
+                analysis: analysis,
+                workstreamSlug: workstreamSlug,
+                linkedMeeting: linkedMeeting?.name
             )
+            if let archiveDir {
+                SessionArchive.runVaultRouter(sessionDir: archiveDir)
+            }
             // If this session was overlaid on a Sentinel-recorded meeting, also
             // drop the notes + chat + generated analysis into that meeting's
             // vault record so the downstream workflow can fold them in.

@@ -23,7 +23,7 @@ final class LLMController {
     /// Which quick action ⌘⏎ fires. Remappable per meeting (e.g. Recap when
     /// you're a passive listener and never need Assist).
     enum PrimaryAction: String, CaseIterable {
-        case assist, recap, sayNext, followups
+        case assist, recap, sayNext, followups, summary
 
         var label: String {
             switch self {
@@ -31,6 +31,7 @@ final class LLMController {
             case .recap: return "Recap"
             case .sayNext: return "Say Next"
             case .followups: return "Follow-ups"
+            case .summary: return "Summary"
             }
         }
     }
@@ -87,6 +88,39 @@ final class LLMController {
     private static let followupsPrompt = "List 3 thoughtful follow-up questions I could ask the other person right now. Bullet points, one line each."
     private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items."
 
+    /// Granola-style whole-meeting summary — runs over the FULL transcript,
+    /// not the 15-minute assist window.
+    private static let summaryPrompt = """
+    Write a structured summary of this ENTIRE meeting so far, in markdown. Work \
+    only from what was actually said — no invention, no padding.
+
+    ## TL;DR
+    2–3 sentences: what this meeting was, what it covered, the single most \
+    important takeaway.
+
+    ## Key points
+    The substantive content, grouped under short bold topic headers in the order \
+    the topics arose. Concrete and specific — keep names, brands, numbers, and \
+    essential original-language terms in parentheses (e.g. 松弛, 背刺). Attribute \
+    views to named people where clear, otherwise by role.
+
+    ## Decisions & agreements
+    Anything decided, agreed, or confirmed. If none, write "None."
+
+    ## Tensions & contradictions
+    Where views split, or someone contradicted themselves or the group. These \
+    are often the most valuable — be precise about who held which side. If \
+    none, write "None observed."
+
+    ## Open questions & follow-ups
+    Unresolved threads, things someone said they'd do, topics raised but not \
+    explored.
+
+    Rules: write in English (translate as needed); skip greetings, logistics, \
+    and side conversations about tools or scheduling; never use raw transcript \
+    labels like "them_1".
+    """
+
     // Listener-mode variants: the user is observing, not speaking, so "what
     // should I say" is the wrong frame. Surface what's notable instead.
     private static let listenerAssistPrompt = "I'm a passive listener in this meeting, not a speaker. In max 3 short lines: flag the most notable thing in the recent conversation (an insight, contradiction, or thread the group is missing) and why it matters."
@@ -108,7 +142,13 @@ final class LLMController {
         case .recap: sendRecap()
         case .sayNext: sendSaySomething()
         case .followups: sendFollowupQuestions()
+        case .summary: sendSummary()
         }
+    }
+
+    /// Granola-style structured summary of the whole meeting so far.
+    func sendSummary() {
+        performSend(userInput: Self.summaryPrompt, action: "Summary", fullTranscript: true)
     }
 
     func sendAskAnything(_ input: String) {
@@ -183,20 +223,23 @@ final class LLMController {
         resetMemory()
     }
 
-    private func performSend(userInput: String, action: String) {
+    private func performSend(userInput: String, action: String, fullTranscript: Bool = false) {
         request.cancel()
         lastError = nil
         lastErrorIsAuth = false
         toolStatus = nil
 
-        let transcript = recentTranscriptText()
+        let transcript = recentTranscriptText(fullWindow: fullTranscript)
         let contextUsed = !transcript.isEmpty
         // Quick actions fire repeatedly during a session; without memory of
         // its own prior output the model re-suggests the same thing every
         // time. Feed back what it already said and ask it to move on.
         let priorBlock = priorSuggestions(action: action)
+        let contextLabel = fullTranscript
+            ? "Full meeting transcript (diarized)"
+            : "Recent conversation (last 15 minutes, diarized)"
         var fullContent = contextUsed
-            ? "Recent conversation (last 15 minutes, diarized):\n\(transcript)\n\nUser question: \(userInput)"
+            ? "\(contextLabel):\n\(transcript)\n\nUser question: \(userInput)"
             : userInput
         if !priorBlock.isEmpty {
             fullContent += "\n\nYou already suggested the following earlier in this session — do NOT repeat or rephrase these; build on the newest conversation instead:\n\(priorBlock)"
@@ -360,14 +403,14 @@ final class LLMController {
     /// When the window contains user-typed notes, they are hoisted into a
     /// "## User notes" preamble at the top — matching the contract described
     /// in the system prompt above.
-    private func recentTranscriptText() -> String {
+    private func recentTranscriptText(fullWindow: Bool = false) -> String {
         // Exclude live-translation tokens — the assistant reads the original
         // spoken transcript, not its translated duplicate.
         let all = SessionCoordinator.shared.liveEntries.filter { $0.translationStatus != "translation" }
         guard !all.isEmpty else { return "" }
         let maxMs = all.map(\.startMs).max() ?? 0
         let windowMs = Int(Self.contextWindowSeconds * 1000)
-        let threshold = max(0, maxMs - windowMs)
+        let threshold = fullWindow ? 0 : max(0, maxMs - windowMs)
         let windowed = all.filter { $0.startMs >= threshold }
 
         let formatLine: (LiveEntry) -> String = { entry in

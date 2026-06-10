@@ -31,40 +31,69 @@ enum SessionArchive {
     /// Persist a session. Silently no-ops if there's nothing to save or the
     /// Application Support directory can't be resolved — archiving is a
     /// best-effort side record, never something that should fail a stop.
+    /// Returns the session directory it wrote (nil if nothing was saved) so
+    /// the caller can hand it to the vault-side router. `workstreamSlug` and
+    /// `linkedMeeting` are pure DECLARATIONS stamped into frontmatter — all
+    /// routing policy lives in the vault's triage tooling, never in this app.
+    @discardableResult
     static func write(
         startedAt: Date,
         endedAt: Date,
         transcript: [LiveEntry],
         chat: [ChatEntry],
-        analysis: Analysis = Analysis()
-    ) {
-        guard !transcript.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return }
-        guard let dir = sessionDirectory(startedAt: startedAt) else { return }
+        analysis: Analysis = Analysis(),
+        workstreamSlug: String? = nil,
+        linkedMeeting: String? = nil
+    ) -> URL? {
+        guard !transcript.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return nil }
+        guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
+
+        func fm(_ kind: String) -> [String] {
+            frontmatter(kind: kind, startedAt: startedAt, workstreamSlug: workstreamSlug, linkedMeeting: linkedMeeting)
+        }
 
         // Only archive a transcript when there's real spoken content (a
         // non-note entry) — a header-only transcript.md just pollutes search.
         if transcript.contains(where: { $0.speakerId != "note" }) {
             let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
-            let md = (frontmatter(kind: "Transcript", startedAt: startedAt) + [body]).joined(separator: "\n")
+            let md = (fm("Transcript") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md"))
         }
 
         if !chat.isEmpty {
             let body = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
-            let md = (frontmatter(kind: "Chat", startedAt: startedAt) + [body]).joined(separator: "\n")
+            let md = (fm("Chat") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
         }
 
         if !analysis.notes.isEmpty {
             let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
-            let md = (frontmatter(kind: "Notes", startedAt: startedAt) + [body]).joined(separator: "\n")
+            let md = (fm("Notes") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
         }
         if let guide = analysis.guide {
             let body = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
-            let md = (frontmatter(kind: "Discussion guide", startedAt: startedAt) + [body]).joined(separator: "\n")
+            let md = (fm("Discussion guide") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
         }
+        return dir
+    }
+
+    /// Fire the vault-side session router (capture + declare here; route
+    /// there). Best-effort and fire-and-forget: missing script or python is a
+    /// silent no-op, and the app never waits on or parses the result.
+    static func runVaultRouter(sessionDir: URL) {
+        // databasesDir = <git root>/vault/databases → up two = git root.
+        guard let databases = VaultWorkstreamStore.databasesDir() else { return }
+        let script = databases
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent(".claude/tools/triage/route-rti-session.py")
+        guard FileManager.default.fileExists(atPath: script.path) else { return }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        proc.arguments = [script.path, sessionDir.path]
+        try? proc.run()
     }
 
     private static func sessionDirectory(startedAt: Date) -> URL? {
@@ -294,15 +323,31 @@ enum SessionArchive {
     /// "Transcript" / "Chat" / "Notes" / "Discussion guide". `type: reference`
     /// keeps all four out of the meeting_note / transcript / discussion_guide
     /// buckets the ingester would otherwise infer from the filename.
-    private static func frontmatter(kind: String, startedAt: Date) -> [String] {
+    private static func frontmatter(
+        kind: String,
+        startedAt: Date,
+        workstreamSlug: String? = nil,
+        linkedMeeting: String? = nil
+    ) -> [String] {
         let stamp = frontmatterStamp.string(from: startedAt)   // "2026-06-09 11:07"
         let date = String(stamp.prefix(10))                    // "2026-06-09"
-        return [
+        var lines = [
             "---",
             "title: \"RTI session · \(stamp) · \(kind)\"",
             "type: reference",
             "date: \(date)",
             "source: rti",
+        ]
+        // Declarations for the vault-side router (route-rti-session.py):
+        // which workstream this session was set up against, and which Sentinel
+        // meeting it overlaid. Facts only — routing policy lives in the vault.
+        if let workstreamSlug, !workstreamSlug.isEmpty {
+            lines.append("workstream: \(workstreamSlug)")
+        }
+        if let linkedMeeting, !linkedMeeting.isEmpty {
+            lines.append("linked_meeting: \"\(linkedMeeting)\"")
+        }
+        lines += [
             "projects:",
             "  - rti",
             "tags:",
@@ -310,6 +355,7 @@ enum SessionArchive {
             "---",
             "",
         ]
+        return lines
     }
 
     private static let frontmatterStamp: DateFormatter = {

@@ -228,6 +228,7 @@ struct AssistantInputView: View {
             Button { llm.sendSaySomething() } label: { Label(llm.primaryAction == .sayNext ? "What should I say?  ⌘⏎" : "What should I say?  ⌘⌥S", systemImage: "wand.and.rays") }
             Button { llm.sendFollowupQuestions() } label: { Label(llm.primaryAction == .followups ? "Follow-ups  ⌘⏎" : "Follow-ups  ⌘⌥F", systemImage: "bubble.left.and.text.bubble.right") }
             Button { llm.sendRecap() } label: { Label(llm.primaryAction == .recap ? "Recap  ⌘⏎" : "Recap  ⌘⌥R", systemImage: "arrow.clockwise") }
+            Button { llm.sendSummary() } label: { Label(llm.primaryAction == .summary ? "Meeting Summary  ⌘⏎" : "Meeting Summary  ⌘⌥M", systemImage: "doc.text") }
 
             Divider()
 

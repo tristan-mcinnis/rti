@@ -141,6 +141,15 @@ enum CommandBuilder {
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),
             RTICommand(
+                id: "chat.summary",
+                title: "Meeting Summary (full transcript)",
+                subtitle: "⌘⌥M",
+                keywords: ["granola", "summarize", "minutes", "wrap"],
+                perform: { llm.sendSummary() },
+                hotkeyKeyCode: UInt32(kVK_ANSI_M),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
+            ),
+            RTICommand(
                 id: "capture.screen",
                 title: "Capture Screen  ⌘⇧H",
                 subtitle: "⌘H",

@@ -70,7 +70,7 @@ final class LLMClient: @unchecked Sendable {
                         messages: messages,
                         stream: true,
                         temperature: temperature,
-                        max_tokens: 1024,
+                        max_tokens: 4096,
                         thinking: thinking
                     ))
                     // Plain path yields each delta straight to the stream's
@@ -112,7 +112,7 @@ final class LLMClient: @unchecked Sendable {
             "model": provider.model,
             "messages": try encodeMessages(messages),
             "stream": true,
-            "max_tokens": 1024
+            "max_tokens": 4096
         ]
         if let temperature { bodyDict["temperature"] = temperature }
         if provider.supportsThinking {
