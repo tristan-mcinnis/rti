@@ -60,6 +60,11 @@ struct AssistantInputView: View {
                                 lineWidth: 1)
                 )
         )
+        // A draft typed during one meeting must not survive into the next —
+        // an accidental ⏎ would send stale text into the wrong conversation.
+        .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
+            input = ""
+        }
         .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
             // Defer so the focus change lands after the panel finishes its
             // becomeKey transition; otherwise SwiftUI sometimes drops it.
@@ -219,10 +224,34 @@ struct AssistantInputView: View {
     /// when Smart is on, preserving at-a-glance state without a permanent pill.
     private var actionsMenu: some View {
         Menu {
-            Button { llm.sendAssist() } label: { Label("Assist  ⌘⏎", systemImage: "sparkles") }
-            Button { llm.sendSaySomething() } label: { Label("What should I say?  ⌘⌥S", systemImage: "wand.and.rays") }
-            Button { llm.sendFollowupQuestions() } label: { Label("Follow-ups  ⌘⌥F", systemImage: "bubble.left.and.text.bubble.right") }
-            Button { llm.sendRecap() } label: { Label("Recap  ⌘⌥R", systemImage: "arrow.clockwise") }
+            Button { llm.sendAssist() } label: { Label(llm.primaryAction == .assist ? "Assist  ⌘⏎" : "Assist", systemImage: "sparkles") }
+            Button { llm.sendSaySomething() } label: { Label(llm.primaryAction == .sayNext ? "What should I say?  ⌘⏎" : "What should I say?  ⌘⌥S", systemImage: "wand.and.rays") }
+            Button { llm.sendFollowupQuestions() } label: { Label(llm.primaryAction == .followups ? "Follow-ups  ⌘⏎" : "Follow-ups  ⌘⌥F", systemImage: "bubble.left.and.text.bubble.right") }
+            Button { llm.sendRecap() } label: { Label(llm.primaryAction == .recap ? "Recap  ⌘⏎" : "Recap  ⌘⌥R", systemImage: "arrow.clockwise") }
+
+            Divider()
+
+            Menu("⌘⏎ runs: \(llm.primaryAction.label)") {
+                ForEach(LLMController.PrimaryAction.allCases, id: \.rawValue) { action in
+                    Button {
+                        llm.primaryAction = action
+                    } label: {
+                        if llm.primaryAction == action {
+                            Label(action.label, systemImage: "checkmark")
+                        } else {
+                            Text(action.label)
+                        }
+                    }
+                }
+            }
+
+            Button { llm.listenerMode.toggle() } label: {
+                if llm.listenerMode {
+                    Label("Listener mode (I'm not speaking)", systemImage: "checkmark")
+                } else {
+                    Label("Listener mode (I'm not speaking)", systemImage: "ear")
+                }
+            }
 
             Divider()
 

@@ -251,6 +251,11 @@ struct TranscriptTabView: View {
                     .onChange(of: session.liveEntries.count) { _, _ in
                         if let last = paras.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                     }
+                    // Returning to this tab re-instantiates the view at the
+                    // top — jump straight back to the latest line.
+                    .onAppear {
+                        if let last = paras.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
                 }
             }
         }
@@ -497,7 +502,13 @@ struct NotesTabView: View {
                         LazyVStack(alignment: .leading, spacing: 14) {
                             ForEach(controller.notes) { note in
                                 VStack(alignment: .leading, spacing: 4) {
-                                    noteHeader(note)
+                                    HStack(alignment: .top, spacing: 6) {
+                                        noteHeader(note)
+                                        Spacer()
+                                        OverlayToolbarButton(icon: "doc.on.doc", help: "Copy this note block") {
+                                            NSPasteboard.copyMarkdownRich(noteMarkdown(note))
+                                        }
+                                    }
                                     RTIMarkdown(note.content, style: .overlay)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
@@ -509,6 +520,11 @@ struct NotesTabView: View {
                     .scrollContentBackground(.hidden)
                     .onChange(of: controller.notes.count) { _, _ in
                         if let last = controller.notes.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                    }
+                    // Returning to this tab re-instantiates the view at the
+                    // top — jump straight back to the newest note.
+                    .onAppear {
+                        if let last = controller.notes.last { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
             }
@@ -547,21 +563,29 @@ struct NotesTabView: View {
         return "\(from.formatted(style)) – \(to.formatted(style))"
     }
 
+    /// One note block as markdown — same shape as its slice of combinedMarkdown.
+    private func noteMarkdown(_ note: GeneratedNote) -> String {
+        var head = "## \(mmss(note.rangeStartMs)) – \(mmss(note.rangeEndMs))"
+        if !note.title.isEmpty { head += " · \(note.title)" }
+        if let local = localRange(note) { head += "\n_Local time: \(local)_" }
+        return "\(head)\n\n\(note.content)"
+    }
+
     private func combinedMarkdown() -> String {
-        controller.notes.map { note in
-            var head = "## \(mmss(note.rangeStartMs)) – \(mmss(note.rangeEndMs))"
-            if !note.title.isEmpty { head += " · \(note.title)" }
-            if let local = localRange(note) { head += "\n_Local time: \(local)_" }
-            return "\(head)\n\n\(note.content)"
-        }.joined(separator: "\n\n")
+        controller.notes.map(noteMarkdown).joined(separator: "\n\n")
     }
 
     private func export() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "rti-notes-\(Date().formatted(.iso8601.year().month().day())).md"
         panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        try? combinedMarkdown().write(to: url, atomically: true, encoding: .utf8)
+        let content = combinedMarkdown()
+        // begin (sheet-less async) instead of runModal so a slow volume
+        // enumeration can't freeze the overlay.
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 }
 

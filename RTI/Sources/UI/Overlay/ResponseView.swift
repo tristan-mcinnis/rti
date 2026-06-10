@@ -58,6 +58,11 @@ struct ResponseView: View {
             // fires. We watch entries.count (catches batched user+assistant
             // appends), then defer one runloop tick so SwiftUI has measured
             // the new row before we ask the ScrollViewReader to seek to it.
+            // Returning to this tab re-instantiates the view at the top —
+            // jump straight back to the latest turn.
+            .onAppear {
+                if let lastId = entries.last?.id { proxy.scrollTo(lastId, anchor: .bottom) }
+            }
             .onChange(of: entries.count) { _, _ in scrollToBottom(proxy: proxy) }
             .onChange(of: entries.last?.id) { _, _ in scrollToBottom(proxy: proxy) }
             // Streaming: each SSE token mutates entries.last?.text, which

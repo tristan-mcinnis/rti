@@ -257,6 +257,7 @@ final class SessionCoordinator {
 
         let endedAt = Date()
         self.endedAt = endedAt   // freeze widget timer immediately
+        NotificationCenter.default.post(name: .rtiSessionDidStop, object: nil)
         delayedCompleteTask?.cancel()
         delayedCompleteTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)

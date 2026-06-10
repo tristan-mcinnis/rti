@@ -20,6 +20,32 @@ final class LLMController {
         didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
     }
 
+    /// Which quick action ⌘⏎ fires. Remappable per meeting (e.g. Recap when
+    /// you're a passive listener and never need Assist).
+    enum PrimaryAction: String, CaseIterable {
+        case assist, recap, sayNext, followups
+
+        var label: String {
+            switch self {
+            case .assist: return "Assist"
+            case .recap: return "Recap"
+            case .sayNext: return "Say Next"
+            case .followups: return "Follow-ups"
+            }
+        }
+    }
+
+    var primaryAction: PrimaryAction {
+        didSet { UserDefaults.standard.set(primaryAction.rawValue, forKey: Self.primaryActionKey) }
+    }
+
+    /// Passive-listener sessions: the user is observing the meeting, not
+    /// speaking. Swaps the moderator-voiced quick actions ("what should I say
+    /// next") for observer ones ("what's notable, what could I pass along").
+    var listenerMode: Bool {
+        didSet { UserDefaults.standard.set(listenerMode, forKey: Self.listenerModeKey) }
+    }
+
     private let request: LLMRequest
     private var streamingEntryID: UUID?
     /// Metadata for the in-flight turn, written to the vault turn log on
@@ -42,6 +68,8 @@ final class LLMController {
     }
 
     private static let smartModeKey = "rti.llm.smartMode"
+    private static let primaryActionKey = "rti.llm.primaryAction"
+    private static let listenerModeKey = "rti.llm.listenerMode"
     private static let iso8601 = ISO8601DateFormatter()
 
     private static let systemPrompt = """
@@ -59,11 +87,28 @@ final class LLMController {
     private static let followupsPrompt = "List 3 thoughtful follow-up questions I could ask the other person right now. Bullet points, one line each."
     private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items."
 
+    // Listener-mode variants: the user is observing, not speaking, so "what
+    // should I say" is the wrong frame. Surface what's notable instead.
+    private static let listenerAssistPrompt = "I'm a passive listener in this meeting, not a speaker. In max 3 short lines: flag the most notable thing in the recent conversation (an insight, contradiction, or thread the group is missing) and why it matters."
+    private static let listenerFollowupsPrompt = "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along. Bullet points, one line each."
+
     private static let contextWindowSeconds: Double = 900
 
     init(request: LLMRequest = LLMRequest()) {
         self.request = request
         self.smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
+        self.primaryAction = PrimaryAction(rawValue: UserDefaults.standard.string(forKey: Self.primaryActionKey) ?? "") ?? .assist
+        self.listenerMode = UserDefaults.standard.bool(forKey: Self.listenerModeKey)
+    }
+
+    /// Dispatch the remappable ⌘⏎ action.
+    func sendPrimary() {
+        switch primaryAction {
+        case .assist: sendAssist()
+        case .recap: sendRecap()
+        case .sayNext: sendSaySomething()
+        case .followups: sendFollowupQuestions()
+        }
     }
 
     func sendAskAnything(_ input: String) {
@@ -73,7 +118,7 @@ final class LLMController {
     }
 
     func sendAssist() {
-        performSend(userInput: Self.assistPrompt, action: "Assist")
+        performSend(userInput: listenerMode ? Self.listenerAssistPrompt : Self.assistPrompt, action: "Assist")
     }
 
     func sendSaySomething() {
@@ -81,7 +126,7 @@ final class LLMController {
     }
 
     func sendFollowupQuestions() {
-        performSend(userInput: Self.followupsPrompt, action: "Follow-ups")
+        performSend(userInput: listenerMode ? Self.listenerFollowupsPrompt : Self.followupsPrompt, action: "Follow-ups")
     }
 
     func sendRecap() {
@@ -146,9 +191,16 @@ final class LLMController {
 
         let transcript = recentTranscriptText()
         let contextUsed = !transcript.isEmpty
-        let fullContent = contextUsed
+        // Quick actions fire repeatedly during a session; without memory of
+        // its own prior output the model re-suggests the same thing every
+        // time. Feed back what it already said and ask it to move on.
+        let priorBlock = priorSuggestions(action: action)
+        var fullContent = contextUsed
             ? "Recent conversation (last 15 minutes, diarized):\n\(transcript)\n\nUser question: \(userInput)"
             : userInput
+        if !priorBlock.isEmpty {
+            fullContent += "\n\nYou already suggested the following earlier in this session — do NOT repeat or rephrase these; build on the newest conversation instead:\n\(priorBlock)"
+        }
 
         let manualScreenContext = pendingScreenContext
         pendingScreenContext = nil
@@ -164,9 +216,12 @@ final class LLMController {
             }
             return Self.systemPrompt
         }()
+        let effectivePrompt = listenerMode
+            ? basePrompt + "\n\nThe user is a PASSIVE LISTENER in this meeting — observing, not speaking. Never draft lines for them to say; frame help as observations, flags, and questions they could pass to whoever is leading."
+            : basePrompt
 
         let promptContext = PromptContext(
-            baseSystemPrompt: basePrompt,
+            baseSystemPrompt: effectivePrompt,
             meetingContext: MeetingContextStore.shared.combined,
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
             referenceText: activeMode?.referenceText,
@@ -268,6 +323,22 @@ final class LLMController {
             inSession: pending.inSession, contextUsed: pending.contextUsed,
             screenUsed: pending.screenUsed, userInput: pending.userInput,
             transcriptContext: pending.transcriptContext, output: output))
+    }
+
+    /// The assistant's previous answers to this same quick action (Assist /
+    /// Follow-ups / Say next), newest last, capped to the last 3 so the
+    /// anti-repeat context stays small. Recap and free-form Ask are exempt —
+    /// repetition is fine there.
+    private func priorSuggestions(action: String) -> String {
+        guard ["Assist", "Follow-ups", "Say next"].contains(action) else { return "" }
+        var outputs: [String] = []
+        for (idx, entry) in entries.enumerated() {
+            guard entry.role == "user", entry.action == action,
+                  idx + 1 < entries.count, entries[idx + 1].role == "assistant",
+                  !entries[idx + 1].text.isEmpty else { continue }
+            outputs.append(entries[idx + 1].text)
+        }
+        return outputs.suffix(3).map { "- \($0.replacingOccurrences(of: "\n", with: " "))" }.joined(separator: "\n")
     }
 
     private func pruneTrailingEmptyAssistant() {

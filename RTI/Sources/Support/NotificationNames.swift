@@ -14,6 +14,9 @@ extension Notification.Name {
     /// Posted after a "Clear Current Chat" action so any open auxiliary
     /// panel windows dismiss themselves.
     static let rtiHideAuxiliaryPanels = Notification.Name("rti.hideAuxiliaryPanels")
+    /// Posted when a session stops, so per-session UI state (e.g. an unsent
+    /// draft in the composer) can reset before the next meeting.
+    static let rtiSessionDidStop = Notification.Name("rti.sessionDidStop")
 }
 
 enum OverlayAppearanceDefaults {

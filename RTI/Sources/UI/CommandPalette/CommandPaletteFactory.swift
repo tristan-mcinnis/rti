@@ -94,14 +94,24 @@ enum CommandBuilder {
         llm: LLMController
     ) -> [RTICommand] {
         [
+            // ⌘⏎ is the remappable "primary" hotkey — it dispatches whatever
+            // quick action the user picked (Assist by default; e.g. Recap in
+            // a meeting where they're a passive listener).
+            RTICommand(
+                id: "chat.primary",
+                title: "Primary Action (remappable)",
+                subtitle: "⌘⏎",
+                keywords: ["help", "suggestion", "assist", "primary"],
+                perform: { llm.sendPrimary() },
+                menuTitleProvider: { "\(llm.primaryAction.label)  ⌘⏎" },
+                hotkeyKeyCode: UInt32(kVK_Return),
+                hotkeyModifiers: UInt32(cmdKey)
+            ),
             RTICommand(
                 id: "chat.assist",
                 title: "Assist (suggest what to say)",
-                subtitle: "⌘⏎",
                 keywords: ["help", "suggestion"],
-                perform: { llm.sendAssist() },
-                hotkeyKeyCode: UInt32(kVK_Return),
-                hotkeyModifiers: UInt32(cmdKey)
+                perform: { llm.sendAssist() }
             ),
             RTICommand(
                 id: "chat.saynext",
@@ -139,7 +149,16 @@ enum CommandBuilder {
                 menuSection: .actions,
                 hotkeyKeyCode: UInt32(kVK_ANSI_H),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
+            )
+        ] + LLMController.PrimaryAction.allCases.map { action in
+            RTICommand(
+                id: "primary.set.\(action.rawValue)",
+                title: "Set ⌘⏎ to: \(action.label)",
+                keywords: ["primary", "hotkey", "remap", "bind"],
+                isAvailable: { llm.primaryAction != action },
+                perform: { llm.primaryAction = action }
+            )
+        } + [
             RTICommand(
                 id: "chat.clear",
                 title: "Clear Current Chat",
@@ -156,6 +175,14 @@ enum CommandBuilder {
         llm: LLMController
     ) -> [RTICommand] {
         [
+            RTICommand(
+                id: "listener.toggle",
+                title: "Listener Mode (I'm not speaking)",
+                keywords: ["passive", "observer", "listen", "moderator"],
+                perform: { llm.listenerMode.toggle() },
+                menuSection: .panels,
+                menuStateProvider: { llm.listenerMode }
+            ),
             RTICommand(
                 id: "smart.toggle",
                 title: "Smart Mode",
