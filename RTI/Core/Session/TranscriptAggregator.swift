@@ -59,8 +59,13 @@ public final class TranscriptAggregator {
             for entry in newEntries {
                 entries.append(entry)
             }
-            if entries.count > 500 {
-                entries.removeFirst(entries.count - 500)
+            // Soft safety bound only — was 500, which silently evicted all
+            // but the last ~11 minutes of a 2-hour session (2026-06-11) and
+            // truncated the archived transcript. Long sessions are the whole
+            // point; text entries are tiny, so the bound exists purely as a
+            // runaway guard.
+            if entries.count > 50_000 {
+                entries.removeFirst(entries.count - 50_000)
             }
             let nonZeroMax = finals.compactMap({ $0.endMs > 0 ? $0.endMs : nil }).max()
             if let m = nonZeroMax { lastEndMs = m }

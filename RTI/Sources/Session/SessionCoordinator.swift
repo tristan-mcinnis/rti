@@ -280,6 +280,10 @@ final class SessionCoordinator {
 
     private func completeStop(sessionId: String, endedAt: Date) {
         guard currentSessionId == sessionId else { return }
+        // Clear the handle: a completed-but-non-nil task otherwise convinces
+        // emergencyShutdown a stop is still pending, triggering a phantom
+        // re-archive on quit long after the session ended.
+        delayedCompleteTask = nil
 
         audioPipeline.finish()
         // Restore the user's original default mic now that capture has stopped.
