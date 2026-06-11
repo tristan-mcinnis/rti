@@ -3,6 +3,12 @@ import SwiftUI
 struct LogsView: View {
     private let log = AppLog.shared
     @State private var crashLogText: String = ""
+    @State private var mode: Mode = .live
+    @State private var pastFiles: [URL] = []
+    @State private var selectedPast: URL?
+    @State private var pastText: String = ""
+
+    enum Mode: String, CaseIterable { case live = "Live", past = "Past" }
 
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -13,21 +19,51 @@ struct LogsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Text("Live log")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("\(log.entries.count) entries")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                Picker("", selection: $mode) {
+                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 130)
+                if mode == .live {
+                    Text("\(log.entries.count) entries")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("", selection: $selectedPast) {
+                        ForEach(pastFiles, id: \.self) { url in
+                            Text(url.deletingPathExtension().lastPathComponent
+                                .replacingOccurrences(of: "rti-", with: "")).tag(Optional(url))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 140)
+                }
                 Spacer()
-                Button("Copy") { copyLive() }
-                Button("Clear") { log.clear() }
-                Button("Reveal in Finder") { revealCrashLog() }
+                if mode == .live {
+                    Button("Copy") { copyLive() }
+                    Button("Clear") { log.clear() }
+                } else {
+                    Button("Copy") { copyPast() }
+                    Button("Reveal in Finder") { revealPastLogs() }
+                }
+                Button("Crash log") { revealCrashLog() }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
 
             Divider()
+
+            if mode == .past {
+                ScrollView {
+                    Text(pastText.isEmpty ? "No log file for this day." : pastText)
+                        .font(.system(size: 11, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                }
+            } else {
 
             // In-memory live log — scroll auto-pins to the latest line.
             ScrollViewReader { proxy in
@@ -54,6 +90,7 @@ struct LogsView: View {
                     }
                 }
             }
+            }
 
             Divider()
 
@@ -72,6 +109,12 @@ struct LogsView: View {
         }
         .frame(minWidth: 600, minHeight: 480)
         .onAppear { reloadCrashLog() }
+        .onChange(of: mode) { _, new in
+            guard new == .past else { return }
+            pastFiles = AppLog.pastLogFiles()
+            if selectedPast == nil { selectedPast = pastFiles.first }
+        }
+        .onChange(of: selectedPast) { _, _ in loadPast() }
     }
 
     private func row(_ entry: AppLog.Entry) -> some View {
@@ -108,6 +151,24 @@ struct LogsView: View {
     private func revealCrashLog() {
         guard let url = CrashLog.logURL, FileManager.default.fileExists(atPath: url.path) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    private func loadPast() {
+        guard let selectedPast else { pastText = ""; return }
+        pastText = (try? String(contentsOf: selectedPast, encoding: .utf8)) ?? ""
+    }
+
+    private func copyPast() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(pastText, forType: .string)
+    }
+
+    private func revealPastLogs() {
+        if let selectedPast {
+            NSWorkspace.shared.activateFileViewerSelecting([selectedPast])
+        } else {
+            NSWorkspace.shared.open(AppLog.logsDirectory)
+        }
     }
 
     private func copyLive() {

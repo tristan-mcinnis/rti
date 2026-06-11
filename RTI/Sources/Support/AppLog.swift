@@ -22,8 +22,29 @@ final class AppLog {
         let message: String
     }
 
+    /// On-disk log home: ~/Library/Logs/RTI/rti-YYYY-MM-DD.log, one file per
+    /// day, pruned past `retentionDays`. The in-memory ring buffer stays the
+    /// "Live" view; these files are the "Past" view — so a crash or quit no
+    /// longer erases the evidence.
+    nonisolated static let logsDirectory = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
+    private static let retentionDays = 14
+    private static let fileQueue = DispatchQueue(label: "rti.applog.file", qos: .utility)
+    private static let dayStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    private static let lineStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss.SSS"
+        return f
+    }()
+
     private init() {
         entries.reserveCapacity(maxEntries)
+        Self.fileQueue.async { Self.pruneOldFiles() }
     }
 
     func log(_ message: String, category: String = "RTI") {
@@ -33,6 +54,40 @@ final class AppLog {
             entries.removeFirst(entries.count - maxEntries)
         }
         NSLog("[%@] %@", category, message)
+        let line = "\(Self.lineStamp.string(from: entry.timestamp)) [\(category)] \(message)\n"
+        let day = Self.dayStamp.string(from: entry.timestamp)
+        Self.fileQueue.async { Self.append(line, day: day) }
+    }
+
+    private static func append(_ line: String, day: String) {
+        let url = logsDirectory.appendingPathComponent("rti-\(day).log")
+        try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+        } else {
+            try? line.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    private static func pruneOldFiles() {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: logsDirectory, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        let cutoff = Date().addingTimeInterval(-Double(retentionDays) * 86_400)
+        for f in files where f.lastPathComponent.hasPrefix("rti-") {
+            let mod = (try? f.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            if let mod, mod < cutoff { try? FileManager.default.removeItem(at: f) }
+        }
+    }
+
+    /// Daily log files on disk, newest first — the "Past" view's source.
+    nonisolated static func pastLogFiles() -> [URL] {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: logsDirectory, includingPropertiesForKeys: nil)) ?? []
+        return files
+            .filter { $0.lastPathComponent.hasPrefix("rti-") && $0.pathExtension == "log" }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
     }
 
     func clear() {

@@ -1,5 +1,6 @@
 import Foundation
 import RTICore
+import UserNotifications
 
 /// Writes a finished session to disk as human-readable Markdown.
 ///
@@ -108,6 +109,21 @@ enum SessionArchive {
         let md = (frontmatter(kind: "Summary", startedAt: startedAt) + ["# Meeting summary", "", payload, ""]).joined(separator: "\n")
         writeOwnerOnly(md, to: dir.appendingPathComponent("summary.md"))
         RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)", category: "summary")
+        notifySummaryReady(sessionFolder: dir.lastPathComponent)
+    }
+
+    /// Local notification when the post-stop summary lands, so the user knows
+    /// the wrap-up is readable (Sessions browser / vault) without checking.
+    private static func notifySummaryReady(sessionFolder: String) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Session summary ready"
+            content.body = "Meeting summary for \(sessionFolder) is in the session archive."
+            let request = UNNotificationRequest(identifier: "rti.summary.\(sessionFolder)", content: content, trigger: nil)
+            center.add(request)
+        }
     }
 
     /// Fire the vault-side session router (capture + declare here; route

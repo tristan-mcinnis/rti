@@ -31,10 +31,24 @@ struct OverlayMicControl: View {
         Button {
             session.micMuted.toggle()
         } label: {
-            Image(systemName: session.micMuted ? "mic.slash.fill" : "mic.fill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(session.micMuted ? Color.orange : Color.overlayInk.opacity(0.75))
-                .frame(width: 24, height: 26)
+            ZStack(alignment: .bottom) {
+                Image(systemName: session.micMuted ? "mic.slash.fill" : "mic.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(session.micMuted ? Color.orange : Color.overlayInk.opacity(0.75))
+                // Zoom-style reassurance: a faint green level bar under the
+                // mic while recording, so you can SEE it's hearing you.
+                if session.isRunning && !session.micMuted {
+                    TimelineView(.periodic(from: .now, by: 0.15)) { _ in
+                        let level = CGFloat(min(1, max(0, session.audioLevels().mic)))
+                        Capsule()
+                            .fill(Color.green.opacity(0.85))
+                            .frame(width: 3 + 11 * level, height: 2)
+                            .animation(.linear(duration: 0.12), value: level)
+                    }
+                    .padding(.bottom, 3)
+                }
+            }
+            .frame(width: 24, height: 26)
         }
         .buttonStyle(.plain)
         .help(session.micMuted
