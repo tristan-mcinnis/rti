@@ -81,12 +81,33 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
     // MARK: - Tap + Aggregate Device Setup
 
     private func createTapAndAggregateDevice() throws {
-        // Global stereo process mix excluding RTI itself — the CoreAudio
-        // equivalent of SCK's "system audio" stream.
-        let tapDesc = Self.makeGlobalTapDescription(
-            excludingProcessID: Self.currentProcessAudioObjectID(),
-            name: "RTI System Audio Tap"
-        )
+        // Per-app capture when the user picked one (and it's resolvable right
+        // now); otherwise the global stereo mix excluding RTI itself. The
+        // fallback rule is "capture everything rather than capture nothing" —
+        // a missing app must never silently lose the other party's audio.
+        let tapDesc: CATapDescription
+        let selectedApp = AudioInputDeviceStore.captureAppBundleID
+        if !selectedApp.isEmpty {
+            let objects = AudioInputDeviceStore.processObjects(forAppBundleID: selectedApp)
+            if objects.isEmpty {
+                RTILog.log("per-app capture: '\(selectedApp)' has no audio processes — falling back to all apps", category: "audio")
+                tapDesc = Self.makeGlobalTapDescription(
+                    excludingProcessID: Self.currentProcessAudioObjectID(),
+                    name: "RTI System Audio Tap"
+                )
+            } else {
+                tapDesc = CATapDescription(stereoMixdownOfProcesses: objects)
+                tapDesc.name = "RTI App Audio Tap (\(selectedApp))"
+                tapDesc.isPrivate = true
+                tapDesc.muteBehavior = .unmuted
+                RTILog.log("per-app capture: tapping \(objects.count) process(es) of \(selectedApp)", category: "audio")
+            }
+        } else {
+            tapDesc = Self.makeGlobalTapDescription(
+                excludingProcessID: Self.currentProcessAudioObjectID(),
+                name: "RTI System Audio Tap"
+            )
+        }
 
         // Registering the tap triggers the first-run permission dialog
         // ("RTI would like to record audio from other applications").

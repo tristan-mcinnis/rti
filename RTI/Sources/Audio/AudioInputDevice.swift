@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 import Foundation
 
@@ -166,6 +167,91 @@ enum AudioInputDeviceStore {
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
         for buf in buffers where buf.mNumberChannels > 0 { return true }
         return false
+    }
+
+    // MARK: - Per-app system-audio capture
+
+    /// Bundle ID of the app whose audio the system tap should capture, or ""
+    /// for the default global tap (everything except RTI). Helper processes
+    /// (e.g. browser renderers) are matched by bundle-ID prefix.
+    private static let captureAppKey = "rti.audio.captureAppBundleID"
+    static var captureAppBundleID: String {
+        get { UserDefaults.standard.string(forKey: captureAppKey) ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: captureAppKey) }
+    }
+
+    struct CaptureApp: Identifiable, Hashable {
+        var id: String { bundleID }
+        let bundleID: String
+        let name: String
+    }
+
+    /// Every HAL audio process object with its PID and bundle ID. These are
+    /// the processes a CATapDescription can target.
+    static func audioProcessObjects() -> [(object: AudioObjectID, pid: pid_t, bundleID: String)] {
+        var size: UInt32 = 0
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyProcessObjectList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return [] }
+        let count = Int(size) / MemoryLayout<AudioObjectID>.size
+        guard count > 0 else { return [] }
+        var objects = [AudioObjectID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &objects) == noErr else { return [] }
+
+        var pidAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioProcessPropertyPID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var bundleAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioProcessPropertyBundleID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        return objects.compactMap { obj in
+            var pid: pid_t = 0
+            var pidSize = UInt32(MemoryLayout<pid_t>.size)
+            guard AudioObjectGetPropertyData(obj, &pidAddr, 0, nil, &pidSize, &pid) == noErr else { return nil }
+            var unmanaged: Unmanaged<CFString>?
+            var strSize = UInt32(MemoryLayout<Unmanaged<CFString>>.size)
+            let bundle: String
+            if AudioObjectGetPropertyData(obj, &bundleAddr, 0, nil, &strSize, &unmanaged) == noErr, let v = unmanaged {
+                bundle = v.takeRetainedValue() as String
+            } else {
+                bundle = ""
+            }
+            return (obj, pid, bundle)
+        }
+    }
+
+    /// Apps the user can pick as a capture target: running applications that
+    /// own at least one HAL audio process (matched by bundle-ID prefix so
+    /// browser/Electron helper processes count toward their parent app).
+    static func capturableApps() -> [CaptureApp] {
+        let processBundles = audioProcessObjects().map(\.bundleID).filter { !$0.isEmpty }
+        guard !processBundles.isEmpty else { return [] }
+        let myBundle = Bundle.main.bundleIdentifier ?? ""
+        var seen = Set<String>()
+        var apps: [CaptureApp] = []
+        for app in NSWorkspace.shared.runningApplications {
+            guard let bid = app.bundleIdentifier, bid != myBundle, !seen.contains(bid),
+                  let name = app.localizedName,
+                  processBundles.contains(where: { $0 == bid || $0.hasPrefix(bid + ".") }) else { continue }
+            seen.insert(bid)
+            apps.append(CaptureApp(bundleID: bid, name: name))
+        }
+        return apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// HAL process objects belonging to `bundleID` (prefix match covers
+    /// helper processes). Empty when the app isn't producing audio objects.
+    static func processObjects(forAppBundleID bundleID: String) -> [AudioObjectID] {
+        audioProcessObjects()
+            .filter { $0.bundleID == bundleID || $0.bundleID.hasPrefix(bundleID + ".") }
+            .map(\.object)
     }
 
     /// Set the system default input device. Returns true on success.

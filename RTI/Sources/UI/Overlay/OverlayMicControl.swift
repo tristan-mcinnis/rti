@@ -14,6 +14,8 @@ struct OverlayMicControl: View {
     @State private var outputDevices: [AudioInputDevice] = []
     @State private var preferredUID: String = AudioInputDeviceStore.preferredUID
     @State private var currentOutputUID: String = AudioInputDeviceStore.defaultOutputUID() ?? ""
+    @State private var captureApps: [AudioInputDeviceStore.CaptureApp] = []
+    @State private var captureAppBundleID: String = AudioInputDeviceStore.captureAppBundleID
     @State private var hovering = false
 
     var body: some View {
@@ -82,6 +84,15 @@ struct OverlayMicControl: View {
                     }
                 }
             }
+            Section("Capture audio from") {
+                captureAppButton(name: "All apps", bundleID: "")
+                ForEach(captureApps) { app in
+                    captureAppButton(name: app.name, bundleID: app.bundleID)
+                }
+                if !captureAppBundleID.isEmpty {
+                    Text("Falls back to all apps if it isn't running")
+                }
+            }
             Divider()
             Button {
                 session.micMuted.toggle()
@@ -104,8 +115,23 @@ struct OverlayMicControl: View {
             devices = AudioInputDeviceStore.availableInputDevices()
             outputDevices = AudioInputDeviceStore.availableOutputDevices()
             currentOutputUID = AudioInputDeviceStore.defaultOutputUID() ?? ""
+            captureApps = AudioInputDeviceStore.capturableApps()
+            captureAppBundleID = AudioInputDeviceStore.captureAppBundleID
         }
         .help("Choose input device")
+    }
+
+    private func captureAppButton(name: String, bundleID: String) -> some View {
+        Button {
+            AudioInputDeviceStore.captureAppBundleID = bundleID
+            captureAppBundleID = bundleID
+        } label: {
+            if captureAppBundleID == bundleID {
+                Label(name, systemImage: "checkmark")
+            } else {
+                Text(name)
+            }
+        }
     }
 
     private func deviceButton(name: String, uid: String) -> some View {
