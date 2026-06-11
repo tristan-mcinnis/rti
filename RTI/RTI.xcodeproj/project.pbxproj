@@ -88,6 +88,7 @@
 		A2A95FC74DEF459A4305012C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 339AADEB6C29116EE425898B /* Assets.xcassets */; };
 		A831955894F48D26C454920B /* AudioLevelMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C00DCEB6ECA2EBB23770EE /* AudioLevelMeter.swift */; };
 		AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC5292C23D09D793067E231 /* AssistantInputView.swift */; };
+		AB52D0CC721DF630D8DEAAAB /* OverlayMicControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEABD1BAE63B2784CF6F677D /* OverlayMicControl.swift */; };
 		ADB4AE30C262C458189E43A6 /* DiscussionGuideSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B9F27854AAE06E1EA9736ED /* DiscussionGuideSections.swift */; };
 		B10297342695329ED1968C8E /* JSONExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68E2F7C2CAF4B4B57821F53 /* JSONExtractorTests.swift */; };
 		B3008BE3A1EB51DF7B3F4AA7 /* TranscriptAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97A133FDA46631B3978EA60 /* TranscriptAggregatorTests.swift */; };
@@ -267,6 +268,7 @@
 		E68E2F7C2CAF4B4B57821F53 /* JSONExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONExtractorTests.swift; sourceTree = "<group>"; };
 		EC3C7300A48D060C2EFC76D8 /* GlossaryTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryTab.swift; sourceTree = "<group>"; };
 		EC9B66DB5C8A2C473FD51AC1 /* MarkdownRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRender.swift; sourceTree = "<group>"; };
+		EEABD1BAE63B2784CF6F677D /* OverlayMicControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayMicControl.swift; sourceTree = "<group>"; };
 		EFBA0189543CEBE06C92DAF7 /* RTIPanelDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIPanelDefaults.swift; sourceTree = "<group>"; };
 		F0232A6827F5D8C0C5056320 /* CrashLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashLog.swift; sourceTree = "<group>"; };
 		F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStore.swift; sourceTree = "<group>"; };
@@ -378,6 +380,7 @@
 				FDC5292C23D09D793067E231 /* AssistantInputView.swift */,
 				B06ABF0FBBC9148937E7A547 /* LiquidMetalBorder.swift */,
 				AC02C5928AD5841C8E23FFDF /* OverlayInputState.swift */,
+				EEABD1BAE63B2784CF6F677D /* OverlayMicControl.swift */,
 				77A242BA4653FB39E2D02749 /* OverlayTabs.swift */,
 				BF37EDBBE4844C6D238BE42C /* OverlayTheme.swift */,
 				B5BF77DB9113B6E6B8E56C9A /* ResizeHandle.swift */,
@@ -916,6 +919,7 @@
 				81BC2CEA2DC6EFAF94287BA0 /* OnboardingView.swift in Sources */,
 				70205523ED58EBF515AA24F4 /* OnboardingWindowController.swift in Sources */,
 				DF9B733225B63D3BEE464B79 /* OverlayInputState.swift in Sources */,
+				AB52D0CC721DF630D8DEAAAB /* OverlayMicControl.swift in Sources */,
 				13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */,
 				2693F11D60783CCBF40B7EF1 /* OverlayTabs.swift in Sources */,
 				51B326D7BC3CD3CF6275F5B1 /* OverlayTheme.swift in Sources */,

@@ -31,6 +31,13 @@ final class SessionCoordinator {
     /// Whether live transcription is actually flowing (mic leg). Surfaced in
     /// the UI so the user always knows if their words are being captured.
     private(set) var transcriptionHealth: TranscriptionHealth = .idle
+    /// User-facing mic mute (Zoom-style). Mutes only the mic leg — system
+    /// audio keeps flowing. NOT for in-person sessions, where the mic IS the
+    /// room capture. Resets to unmuted on every session start so a forgotten
+    /// mute can't silently eat the next meeting.
+    var micMuted = false {
+        didSet { audioPipeline.micMuted = micMuted }
+    }
     /// Non-fatal notice when the system-audio (other-party) leg drops while
     /// the mic leg keeps recording. nil when system audio is fine/absent.
     private(set) var systemAudioNotice: String?
@@ -240,6 +247,7 @@ final class SessionCoordinator {
         }
 
         publishState()
+        micMuted = false
         isRunning = true
         startCheckpointLoop()
     }

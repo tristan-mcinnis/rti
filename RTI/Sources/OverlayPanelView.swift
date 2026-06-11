@@ -31,6 +31,7 @@ struct OverlayPanelView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     OverlayTabBar(selection: $tab, tabs: visibleTabs)
+                    OverlayMicControl()
                     OverlayRecordButton()
                 }
                 .padding(.horizontal, 12)

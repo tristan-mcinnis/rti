@@ -24,6 +24,14 @@ final class AudioPipeline {
     /// audio lost" notice without stopping the (mic-driven) session.
     var onSystemAudioHealth: ((TranscriptionHealth) -> Void)?
 
+    /// Mute the user's mic leg (system-audio capture is unaffected). True
+    /// mute — buffers are dropped inside the capture manager before they
+    /// reach Soniox.
+    var micMuted: Bool {
+        get { audio.micMuted }
+        set { audio.micMuted = newValue }
+    }
+
     private let audio = AudioCaptureManager()
     /// Picked at `start()`: a CoreAudio process tap when available (macOS
     /// 14.2+ and permission granted), else the ScreenCaptureKit fallback.

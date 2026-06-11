@@ -38,6 +38,14 @@ enum CommandBuilder {
     ) -> [RTICommand] {
         [
             RTICommand(
+                id: "mic.mute.toggle",
+                title: "Mute / Unmute My Mic",
+                keywords: ["microphone", "mute", "silence", "input"],
+                perform: { session.micMuted.toggle() },
+                menuSection: .session,
+                menuStateProvider: { session.micMuted }
+            ),
+            RTICommand(
                 id: "session.start",
                 title: "Start Recording",
                 subtitle: "⌘⇧R",

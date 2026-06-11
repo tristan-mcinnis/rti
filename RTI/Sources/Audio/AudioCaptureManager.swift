@@ -35,6 +35,16 @@ final class AudioCaptureManager: @unchecked Sendable {
     // watchdog. Touched on the audio thread + main, so it's lock-guarded.
     private let bufferLock = NSLock()
     private var lastBufferAt: TimeInterval = 0
+    /// True mute: input buffers are dropped BEFORE conversion/transmission, so
+    /// nothing from the mic leaves the machine. The tap keeps running (health
+    /// watchdog still sees buffers) and unmute is instant. Audio-thread read,
+    /// main-thread write — lock-guarded.
+    private var muted = false
+
+    var micMuted: Bool {
+        get { bufferLock.lock(); defer { bufferLock.unlock() }; return muted }
+        set { bufferLock.lock(); muted = newValue; bufferLock.unlock() }
+    }
 
     /// Seconds since the last delivered input buffer, or nil if none has
     /// arrived yet this session (so the watchdog ignores the startup window).
@@ -161,6 +171,7 @@ final class AudioCaptureManager: @unchecked Sendable {
 
     private func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
         markBufferReceived()
+        guard !micMuted else { return }
         guard let converter = converter else { return }
 
         let ratio = Self.targetFormat.sampleRate / buffer.format.sampleRate
