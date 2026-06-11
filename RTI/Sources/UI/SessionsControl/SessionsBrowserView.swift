@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Read-only browser for archived session records (the Markdown folders
 /// SessionArchive writes to the vault on stop). Browse and read — never
@@ -41,21 +42,27 @@ struct SessionsBrowserView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         Spacer()
-                        Button {
-                            NSWorkspace.shared.open(selected.url)
+                        Menu {
+                            Button("Copy as Markdown") {
+                                NSPasteboard.copyMarkdownRich(fileText)
+                            }
+                            Button("Save as Markdown…") { exportMarkdown() }
+                            Button("Save as PDF…") { exportPDF() }
+                            Divider()
+                            Button("Reveal in Finder") { NSWorkspace.shared.open(selected.url) }
                         } label: {
-                            Image(systemName: "folder")
+                            Image(systemName: "square.and.arrow.up")
                         }
-                        .help("Reveal this session in Finder")
+                        .menuStyle(.borderlessButton)
+                        .frame(width: 40)
+                        .help("Copy or export this file")
                     }
                     .padding(10)
 
                     Divider()
 
                     ScrollView {
-                        Text(fileText)
-                            .font(.system(size: 12.5))
-                            .textSelection(.enabled)
+                        RTIMarkdown(fileText, style: .panel)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(14)
                     }
@@ -88,6 +95,53 @@ struct SessionsBrowserView: View {
             byName[name].map { SessionFile(url: $0, name: String(name.dropLast(3))) }
         }
         selectedFile = files.first
+    }
+
+    private func exportMarkdown() {
+        guard let selectedFile, let selected else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "rti-\(selectedFile.name)-\(selected.displayName.replacingOccurrences(of: " · ", with: "-").replacingOccurrences(of: ":", with: "")).md"
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        let content = fileText
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// Render the markdown to a paginated PDF via NSAttributedString printing.
+    private func exportPDF() {
+        guard let selectedFile else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = panelBaseName(selectedFile) + ".pdf"
+        panel.allowedContentTypes = [.pdf]
+        let content = fileText
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let attributed = (try? NSAttributedString(
+                markdown: content,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            )) ?? NSAttributedString(string: content)
+            let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 540, height: 720))
+            textView.textStorage?.setAttributedString(attributed)
+            textView.font = .systemFont(ofSize: 11)
+            let printInfo = NSPrintInfo()
+            printInfo.jobDisposition = .save
+            printInfo.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = url
+            printInfo.topMargin = 36; printInfo.bottomMargin = 36
+            printInfo.leftMargin = 36; printInfo.rightMargin = 36
+            let op = NSPrintOperation(view: textView, printInfo: printInfo)
+            op.showsPrintPanel = false
+            op.showsProgressPanel = false
+            op.run()
+        }
+    }
+
+    private func panelBaseName(_ file: SessionFile) -> String {
+        let stamp = selected?.displayName
+            .replacingOccurrences(of: " · ", with: "-")
+            .replacingOccurrences(of: ":", with: "") ?? "session"
+        return "rti-\(file.name)-\(stamp)"
     }
 
     private func loadText() {

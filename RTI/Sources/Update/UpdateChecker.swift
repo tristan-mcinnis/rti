@@ -51,14 +51,13 @@ enum UpdateChecker {
     @MainActor
     static func checkAndReport() {
         Task { @MainActor in
-            if let info = await checkForUpdate() {
-                presentUpdateAvailable(info)
-            } else {
-                let alert = NSAlert()
-                alert.messageText = "You're up to date"
-                alert.informativeText = "RTI \(currentVersion?.description ?? "") is the latest version."
-                alert.runModal()
-            }
+            // Local builds (installed from source by the build pipeline) are
+            // ahead of any GitHub release — never offer a release "update"
+            // that would actually be a downgrade.
+            let alert = NSAlert()
+            alert.messageText = "Locally built version"
+            alert.informativeText = "RTI \(currentVersion?.description ?? "") is installed from source and is newer than any published release. Updates ship via rebuilds, not GitHub releases."
+            alert.runModal()
         }
     }
 

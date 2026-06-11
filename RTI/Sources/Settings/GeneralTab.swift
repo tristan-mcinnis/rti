@@ -322,7 +322,7 @@ private struct HotkeysSection: View {
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
 
-            Text("Hotkeys are fixed in this build; customization is planned. The overlay's \"…\" menu lists the same keybinds for quick access.")
+            Text("⌘⏎ is remappable to any quick action (✦ menu → \"⌘⏎ runs\"). Other hotkeys are fixed: ⌘⇧R record, ⌘⌥R recap, ⌘⌥M summary, ⌘⌥S say-next, ⌘⌥F follow-ups, ⌘⇧H screenshot, ⌘\\ overlay.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
@@ -346,7 +346,7 @@ private struct DataAndSupportSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Data & Support")
                 .font(.system(size: 13, weight: .medium))
-            Text("Audio is streamed to Soniox for transcription. Transcripts and prompts are sent to your configured LLM provider (DeepSeek by default) to generate answers. Nothing is stored: the live transcript and chat stay in memory for the session and are dropped when it ends; the recording is deleted on stop. Only your API keys and modes are kept on this Mac.")
+            Text("Audio is streamed to Soniox for transcription. Transcripts and prompts are sent to your configured LLM provider (DeepSeek by default) to generate answers. Audio is never kept: the WAV is deleted on stop. Text IS kept: the session record (transcript, notes, chat, auto-summary) is written to your vault on stop — and checkpointed every 5 minutes during recording — where it syncs and becomes searchable. API keys stay in the keychain on this Mac.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
