@@ -105,6 +105,69 @@ enum AudioInputDeviceStore {
         availableInputDevices().first { transportType($0.id) == kAudioDeviceTransportTypeBuiltIn }?.id
     }
 
+    /// Enumerate all output-capable devices on the system.
+    static func availableOutputDevices() -> [AudioInputDevice] {
+        var size: UInt32 = 0
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var status = AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size)
+        guard status == noErr else { return [] }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: count)
+        status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &deviceIDs)
+        guard status == noErr else { return [] }
+        return deviceIDs.compactMap { id -> AudioInputDevice? in
+            guard hasOutputChannels(deviceID: id) else { return nil }
+            guard let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
+                  let name = stringProperty(id, kAudioObjectPropertyName) else { return nil }
+            return AudioInputDevice(id: id, uid: uid, name: name)
+        }
+    }
+
+    /// UID of the current system default output device (what playback uses and
+    /// what the system-audio tap follows).
+    static func defaultOutputUID() -> String? {
+        guard let id = defaultDeviceID(kAudioHardwarePropertyDefaultOutputDevice) else { return nil }
+        return stringProperty(id, kAudioDevicePropertyDeviceUID)
+    }
+
+    /// Set the system default OUTPUT device (Zoom-style speaker picker). The
+    /// running system-audio tap auto-follows via its default-output listener.
+    @discardableResult
+    static func setDefaultOutputDevice(_ id: AudioDeviceID) -> Bool {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var device = id
+        let status = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil,
+            UInt32(MemoryLayout<AudioDeviceID>.size), &device
+        )
+        return status == noErr
+    }
+
+    private static func hasOutputChannels(deviceID: AudioDeviceID) -> Bool {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &addr, 0, nil, &size) == noErr,
+              size > 0 else { return false }
+        let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: Int(size))
+        defer { bufferList.deallocate() }
+        guard AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, bufferList) == noErr else { return false }
+        let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
+        for buf in buffers where buf.mNumberChannels > 0 { return true }
+        return false
+    }
+
     /// Set the system default input device. Returns true on success.
     @discardableResult
     static func setDefaultInputDevice(_ id: AudioDeviceID) -> Bool {

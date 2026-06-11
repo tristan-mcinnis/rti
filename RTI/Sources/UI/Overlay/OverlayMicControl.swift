@@ -11,7 +11,9 @@ struct OverlayMicControl: View {
     private let session = SessionCoordinator.shared
 
     @State private var devices: [AudioInputDevice] = []
+    @State private var outputDevices: [AudioInputDevice] = []
     @State private var preferredUID: String = AudioInputDeviceStore.preferredUID
+    @State private var currentOutputUID: String = AudioInputDeviceStore.defaultOutputUID() ?? ""
     @State private var hovering = false
 
     var body: some View {
@@ -49,7 +51,22 @@ struct OverlayMicControl: View {
                 }
             }
             if session.isRunning {
-                Text("Device changes apply on the next session")
+                Text("Input changes apply on the next session")
+            }
+            Section("Output device (speaker — capture follows it)") {
+                ForEach(outputDevices) { device in
+                    Button {
+                        if AudioInputDeviceStore.setDefaultOutputDevice(device.id) {
+                            currentOutputUID = device.uid
+                        }
+                    } label: {
+                        if currentOutputUID == device.uid {
+                            Label(device.name, systemImage: "checkmark")
+                        } else {
+                            Text(device.name)
+                        }
+                    }
+                }
             }
             Divider()
             Button {
@@ -69,7 +86,11 @@ struct OverlayMicControl: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .onAppear { devices = AudioInputDeviceStore.availableInputDevices() }
+        .onAppear {
+            devices = AudioInputDeviceStore.availableInputDevices()
+            outputDevices = AudioInputDeviceStore.availableOutputDevices()
+            currentOutputUID = AudioInputDeviceStore.defaultOutputUID() ?? ""
+        }
         .help("Choose input device")
     }
 

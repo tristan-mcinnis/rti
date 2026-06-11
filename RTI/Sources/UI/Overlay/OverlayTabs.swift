@@ -110,13 +110,19 @@ struct OverlayRecordButton: View {
     @ViewBuilder
     private var label: some View {
         if coordinator.isRunning {
+            // Same size/weight as the idle "Record" label — just the elapsed
+            // time, monospaced digits so it doesn't jitter.
             TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                DotMatrixText(text: elapsedLabel(at: context.date), dot: 1.2, spacing: 0.5, gap: 1.2,
-                              color: .white, dim: Color.overlayInk.opacity(0.08))
+                Text(elapsedLabel(at: context.date))
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundStyle(Color.overlayInk.opacity(0.85))
+                    .kerning(0.2)
             }
         } else if let frozen = postRecordingLabel {
-            DotMatrixText(text: frozen, dot: 1.2, spacing: 0.5, gap: 1.2,
-                          color: Color.overlayInk.opacity(0.55), dim: Color.overlayInk.opacity(0.06))
+            Text(frozen)
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(Color.overlayInk.opacity(0.55))
+                .kerning(0.2)
         } else {
             Text("Record")
                 .font(.system(size: 11, weight: .medium))
