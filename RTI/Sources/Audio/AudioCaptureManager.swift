@@ -171,8 +171,12 @@ final class AudioCaptureManager: @unchecked Sendable {
 
     private func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
         markBufferReceived()
-        guard !micMuted else { return }
         guard let converter = converter else { return }
+        // Mute = SILENCE, not absence: Soniox 408-times-out a stream that
+        // stops receiving audio (observed 2026-06-11, killed the session).
+        // So while muted we keep the exact buffer cadence but zero the
+        // samples after conversion — the stream stays alive, hears nothing.
+        let muted = micMuted
 
         let ratio = Self.targetFormat.sampleRate / buffer.format.sampleRate
         let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
@@ -202,6 +206,10 @@ final class AudioCaptureManager: @unchecked Sendable {
             return
         }
 
+        if muted, let channelData = output.int16ChannelData {
+            let byteCount = Int(output.frameLength) * MemoryLayout<Int16>.size
+            memset(channelData[0], 0, byteCount)
+        }
         onPCMBuffer?(output)
     }
 }
