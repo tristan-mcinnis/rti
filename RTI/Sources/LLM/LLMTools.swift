@@ -84,7 +84,11 @@ enum LLMToolRegistry {
         ],
         execute: { argumentsJSON in
             let query = decodeQuery(from: argumentsJSON)
-            return await VaultSearch.searchFormatted(query: query)
+            let start = Date()
+            let result = await VaultSearch.searchFormatted(query: query)
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            RTILog.log("search_vault '\(query)' took \(ms)ms", category: "vault")
+            return result
         },
         runningStatus: "🔎 Searching the vault…"
     )

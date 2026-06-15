@@ -33,9 +33,23 @@ enum VaultSearch {
     /// Skip files larger than this — a knowledge doc is never this big, and a
     /// stray dump shouldn't stall the scan.
     private static let maxFileBytes = 256 * 1024
-    /// Safety cap on how many files a single query will read.
-    private static let maxFilesScanned = 6000
+    /// Safety cap on how many files a single query will read. Set above the
+    /// real corpus size (~7k) so a normal vault is scanned whole; this only
+    /// guards against a pathological tree.
+    private static let maxFilesScanned = 20000
     private static let resultLimit = 5
+
+    /// Thread-safe sink for the parallel scan to merge per-core partial results.
+    /// `@unchecked Sendable` because the NSLock makes the mutation safe — the
+    /// compiler can't prove it.
+    private final class ResultSink: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [Result] = []
+        func add(_ batch: [Result]) {
+            lock.lock(); items.append(contentsOf: batch); lock.unlock()
+        }
+        func drain() -> [Result] { items }
+    }
 
     // MARK: - Public entry (async, off the main thread)
 
@@ -65,17 +79,17 @@ enum VaultSearch {
         let terms = tokenize(query)
         guard !terms.isEmpty else { return [] }
 
+        // Phase 1 — cheap walk to collect candidate files (no content reads).
+        // Reading + scoring ~7k files is the expensive part, so we do it in
+        // parallel below rather than inline here.
         guard let enumerator = FileManager.default.enumerator(
             at: databases,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else { return [] }
 
-        var scored: [Result] = []
-        var filesSeen = 0
-
+        var candidates: [(url: URL, modified: Date)] = []
         for case let url as URL in enumerator {
-            // Prune noisy subtrees wholesale.
             if skipDirComponents.contains(url.lastPathComponent) {
                 enumerator.skipDescendants()
                 continue
@@ -84,28 +98,37 @@ enum VaultSearch {
             guard let vals = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
                   vals.isRegularFile == true,
                   (vals.fileSize ?? 0) <= maxFileBytes else { continue }
+            candidates.append((url, vals.contentModificationDate ?? .distantPast))
+            if candidates.count >= maxFilesScanned { break }
+        }
+        guard !candidates.isEmpty else { return [] }
 
-            filesSeen += 1
-            if filesSeen > maxFilesScanned { break }
-
-            guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            let relative = relativePath(of: url, under: databases)
-            let title = documentTitle(content: content, url: url)
-
-            let (score, excerpt) = rank(terms: terms, title: title, relativePath: relative, content: content)
-            guard score > 0 else { continue }
-            scored.append(Result(
-                title: title,
-                relativePath: relative,
-                modified: vals.contentModificationDate ?? .distantPast,
-                excerpt: excerpt,
-                score: score
-            ))
+        // Phase 2 — read + score in parallel across all cores. Each core works
+        // a contiguous slice into a local array, then merges once under a lock;
+        // no per-file contention. Drops a ~5s sequential scan to sub-second.
+        let cores = max(1, min(candidates.count, ProcessInfo.processInfo.activeProcessorCount))
+        let chunk = (candidates.count + cores - 1) / cores
+        let sink = ResultSink()
+        DispatchQueue.concurrentPerform(iterations: cores) { c in
+            let start = c * chunk
+            guard start < candidates.count else { return }
+            let end = min(start + chunk, candidates.count)
+            var local: [Result] = []
+            for i in start..<end {
+                let (url, modified) = candidates[i]
+                guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                let relative = relativePath(of: url, under: databases)
+                let title = documentTitle(content: content, url: url)
+                let (score, excerpt) = rank(terms: terms, title: title, relativePath: relative, content: content)
+                guard score > 0 else { continue }
+                local.append(Result(title: title, relativePath: relative, modified: modified, excerpt: excerpt, score: score))
+            }
+            sink.add(local)
         }
 
         // Highest score first; break ties by recency (fresher wins).
         return Array(
-            scored.sorted {
+            sink.drain().sorted {
                 $0.score != $1.score ? $0.score > $1.score : $0.modified > $1.modified
             }.prefix(resultLimit)
         )
