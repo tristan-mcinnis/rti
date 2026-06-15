@@ -7,6 +7,7 @@ Personal build: **real-time first, audio never kept** — the live transcript an
 ## What it does
 
 - **Live transcription.** `AVAudioEngine` → 16 kHz PCM → Soniox WebSocket, both sides of the call, held in memory with rolling context for the assistant.
+- **Clear recording lifecycle.** The record control names every phase — **Recording → Paused → Saving → Summarizing → Notes ready** — so you always know what RTI is doing. **Pause/resume** (⌘⇧P) suspends transcription while holding the Soniox socket warm, so resume is instant (no re-handshake). On finish you watch the end-of-session summary generate (Granola-style "Summarizing…"), then **start a new recording with one click** — the previous session is saved, not cleared, and the new one can begin even while the last summary is still being written.
 - **Streaming assistant.** ⌘↵ asks "what should I say next?" using the last few minutes of transcript. Also: say-next, follow-up questions, recap. OpenAI-compatible streaming chat.
 - **Invisible overlay.** Borderless `NSPanel` with `sharingType = .none` — excluded from QuickTime, Zoom local recording, and `screencapture`. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
 - **Meeting awareness.** When Meeting Sentinel is recording a meeting outside RTI, a banner offers **Go live** to overlay the assistant on it (and to open the pre-meeting brief, if one was written). RTI never auto-records — you start a live session yourself with ⌘⇧R.
@@ -46,7 +47,8 @@ A locally built `.app` is ad-hoc-signed — Gatekeeper requires a right-click �
 | Key | Action |
 |-----|--------|
 | ⌘ \\ | Toggle the assistant overlay |
-| ⌘ ⇧ R | Start / stop a recording session |
+| ⌘ ⇧ R | Start a session / finish it / start a new one (phase-aware) |
+| ⌘ ⇧ P | Pause / resume the recording (keeps the connection warm) |
 | ⌘ ↵ | "Assist" — ask the LLM what to say next |
 | ⌘ ⇧ H | Capture the display under the mouse; attach OCR to the next prompt |
 | ⌘ ⌥ T | Toggle the Live Transcript window |

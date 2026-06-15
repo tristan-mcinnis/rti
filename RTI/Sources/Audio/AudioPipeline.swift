@@ -1,14 +1,13 @@
 import AppKit
-import RTICore
 import AVFoundation
 import Foundation
+import RTICore
 
 /// Owns the full audio capture → WAV + Soniox pipeline for both mic and
 /// system audio. Hides the dual-channel complexity behind a small interface:
 /// prepare, start, finalize, finish, abort.
 @MainActor
 final class AudioPipeline {
-
     var onWords: (([SonioxWord]) -> Void)?
     var onSystemWords: (([SonioxWord]) -> Void)?
     /// Fires once when the system-audio leg actually starts, with how many
@@ -32,6 +31,13 @@ final class AudioPipeline {
         set { audio.micMuted = newValue }
     }
 
+    /// Pause/resume without tearing anything down. While suspended, real audio
+    /// is replaced with silence on BOTH legs so the Soniox sockets stay warm
+    /// (resume is instant, no re-handshake) but nothing is transcribed, and
+    /// paused audio is not written to the WAV. Distinct from `micMuted`, which
+    /// is Zoom-style and only affects the mic leg.
+    var suspended = false
+
     private let audio = AudioCaptureManager()
     /// Picked at `start()`: a CoreAudio process tap when available (macOS
     /// 14.2+ and permission granted), else the ScreenCaptureKit fallback.
@@ -53,7 +59,9 @@ final class AudioPipeline {
     /// callbacks; read on main by the monitor. `systemAudioActive` reflects
     /// whether the system-audio leg is currently wired up.
     let levelMeter = AudioLevelMeter()
-    var systemAudioActive: Bool { systemAudio != nil }
+    var systemAudioActive: Bool {
+        systemAudio != nil
+    }
 
     /// Watches for the mic tap going silent mid-session (device disconnect,
     /// mute, revoked permission) — the "silent dead air" case the user can't
@@ -100,16 +108,23 @@ final class AudioPipeline {
         }
         client.onStatus = { [weak self] health in self?.onTranscriptionHealth?(health) }
         client.connect()
-        self.soniox = client
+        soniox = client
 
         audio.onPCMBuffer = { [weak self] buffer in
-            self?.levelMeter.recordMic(buffer)
-            self?.wav.append(buffer)
+            guard let self else { return }
+            levelMeter.recordMic(buffer)
             guard let int16 = buffer.int16ChannelData else { return }
             let frameLength = Int(buffer.frameLength)
             let byteCount = frameLength * MemoryLayout<Int16>.size
+            if suspended {
+                // Paused: don't keep the audio (no WAV append) and don't
+                // transcribe it — just feed silence so Soniox doesn't idle-out.
+                soniox?.sendAudio(Data(count: byteCount))
+                return
+            }
+            wav.append(buffer)
             let data = Data(bytes: int16[0], count: byteCount)
-            self?.soniox?.sendAudio(data)
+            soniox?.sendAudio(data)
         }
 
         return wavURL
@@ -130,7 +145,7 @@ final class AudioPipeline {
         guard !Secrets.sonioxAPIKey.isEmpty else { return }
 
         Task { @MainActor [weak self] in
-            guard let self, self.isCapturing else { return }
+            guard let self, isCapturing else { return }
             let sysClient = SonioxClient(
                 apiKey: Secrets.sonioxAPIKey,
                 url: SonioxClient.defaultURL,
@@ -149,20 +164,25 @@ final class AudioPipeline {
                 // Settings (the mic side already would have for an auth
                 // error).
                 if failure.isAuth {
-                    self.onError?("System audio: \(message)", false)
+                    onError?("System audio: \(message)", false)
                 }
             }
             sysClient.onStatus = { [weak self] health in self?.onSystemAudioHealth?(health) }
             sysClient.connect()
-            self.systemSoniox = sysClient
+            systemSoniox = sysClient
 
             let onPCM: (AVAudioPCMBuffer) -> Void = { [weak self] buffer in
-                self?.levelMeter.recordSystem(buffer)
+                guard let self else { return }
+                levelMeter.recordSystem(buffer)
                 guard let int16 = buffer.int16ChannelData else { return }
                 let frameLength = Int(buffer.frameLength)
                 let byteCount = frameLength * MemoryLayout<Int16>.size
+                if suspended {
+                    systemSoniox?.sendAudio(Data(count: byteCount))
+                    return
+                }
                 let data = Data(bytes: int16[0], count: byteCount)
-                self?.systemSoniox?.sendAudio(data)
+                systemSoniox?.sendAudio(data)
             }
             let onErr: (String) -> Void = { msg in
                 RTILog.log("system audio capture error — \(msg)", category: "audio")
@@ -180,24 +200,24 @@ final class AudioPipeline {
                     try await tap.start()
                     // The session may have been stopped while we awaited
                     // startup; if so, release the tap instead of leaking it.
-                    guard self.isCapturing else { tap.stop(); return }
-                    self.systemAudio = tap
-                    self.reportSystemAudioStart()
+                    guard isCapturing else { tap.stop(); return }
+                    systemAudio = tap
+                    reportSystemAudioStart()
                     return
                 } catch {
                     RTILog.log("CoreAudio tap unavailable, falling back to ScreenCaptureKit — \(error)", category: "audio")
                 }
             }
 
-            guard self.isCapturing else { return }
+            guard isCapturing else { return }
             let sck = SystemAudioCapture()
             sck.onPCMBuffer = onPCM
             sck.onError = onErr
             do {
                 try await sck.start()
-                guard self.isCapturing else { sck.stop(); return }
-                self.systemAudio = sck
-                self.reportSystemAudioStart()
+                guard isCapturing else { sck.stop(); return }
+                systemAudio = sck
+                reportSystemAudioStart()
             } catch {
                 RTILog.log("system audio start failed — \(error)", category: "audio")
             }
@@ -219,8 +239,8 @@ final class AudioPipeline {
         micWatchdog = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
-                guard let self, self.isCapturing else { continue }
-                self.checkMicHealth()
+                guard let self, isCapturing else { continue }
+                checkMicHealth()
             }
         }
     }
@@ -292,7 +312,7 @@ final class AudioPipeline {
         }
         mic.onStatus = { [weak self] health in self?.onTranscriptionHealth?(health) }
         mic.connect()
-        self.soniox = mic
+        soniox = mic
 
         // System leg (if active).
         if systemSoniox != nil {
@@ -307,12 +327,12 @@ final class AudioPipeline {
             sys.onError = { [weak self] failure, didOpen in
                 guard let self else { return }
                 if failure.isAuth {
-                    self.onError?("System audio: \(failure.userMessage(didOpen: didOpen))", false)
+                    onError?("System audio: \(failure.userMessage(didOpen: didOpen))", false)
                 }
             }
             sys.onStatus = { [weak self] health in self?.onSystemAudioHealth?(health) }
             sys.connect()
-            self.systemSoniox = sys
+            systemSoniox = sys
         }
     }
 
@@ -338,7 +358,7 @@ enum AudioPipelineError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingSonioxKey:
-            return "No Soniox API key set. Open Settings to paste a key, then start the session again."
+            "No Soniox API key set. Open Settings to paste a key, then start the session again."
         }
     }
 }

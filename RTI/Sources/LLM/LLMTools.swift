@@ -9,7 +9,7 @@ enum LLMToolRegistry {
     /// All tools the chat-overlay LLM can call. Keep this small: too many
     /// tools dilutes the model's tool-choice signal.
     static var all: [LLMToolDefinition] {
-        [captureScreen]
+        [captureScreen, searchVault]
     }
 
     static func tool(named name: String) -> LLMToolDefinition? {
@@ -57,6 +57,49 @@ enum LLMToolRegistry {
         },
         runningStatus: "📷 Looking at your screen…"
     )
+
+    private static let searchVault = LLMToolDefinition(
+        name: "search_vault",
+        description: """
+        Search Tristan's knowledge vault — past meetings, project status \
+        dashboards, research findings, client notes, proposals, and reports. \
+        Use this when the conversation raises a question whose answer lives in \
+        the knowledge base rather than the live transcript: project status, a \
+        past decision ("what did we decide about…"), what was agreed, client or \
+        stakeholder background, prior research findings, or where a project \
+        stands. Do NOT use it for questions about the current conversation — \
+        the transcript already covers those. Returns the most relevant \
+        documents with short excerpts.
+        """,
+        parameters: [
+            "type": "object",
+            "properties": [
+                "query": [
+                    "type": "string",
+                    "description": "A short phrase describing what to look for, e.g. 'AcmeBrand store format decision' or 'Vandelay collectibles target consumer'.",
+                ] as [String: Any],
+            ] as [String: Any],
+            "required": ["query"],
+            "additionalProperties": false,
+        ],
+        execute: { argumentsJSON in
+            let query = decodeQuery(from: argumentsJSON)
+            return await VaultSearch.searchFormatted(query: query)
+        },
+        runningStatus: "🔎 Searching the vault…"
+    )
+
+    /// Pull `query` out of the tool-call arguments JSON. Tolerant: a bare string
+    /// or malformed JSON falls back to the raw argument text so a search still
+    /// runs instead of erroring.
+    private static func decodeQuery(from argumentsJSON: String) -> String {
+        if let data = argumentsJSON.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let q = obj["query"] as? String {
+            return q
+        }
+        return argumentsJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
 }
 

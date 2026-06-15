@@ -26,12 +26,17 @@ final class NotesGenerationController {
     private static let notesPrompt = """
     You are taking live meeting notes — jotting points down as they are said.
 
+    ⚠️ CRITICAL FORMAT RULE — applies to EVERY Chinese term, everywhere in your
+    output: write it as 中文 (pīnyīn, English meaning). The pinyin is MANDATORY,
+    with tone marks. A bare Chinese term WITHOUT pinyin is a format error.
+    Examples: 没得选 (méi dé xuǎn, no other choice); 撞衫 (zhuàngshān, wearing the
+    same outfit as someone); 胸垫 (xiōngdiàn, chest pads). Never write 没得选 alone.
+
     LANGUAGE: Write the notes in ENGLISH. The conversation may be in Chinese or
     another language; translate as you go. You MAY keep a short essential term in
-    its original language when the English alone loses meaning, ALWAYS formatted
-    as term (pinyin, English meaning) — e.g. "撞衫 (zhuàngshān, fear of wearing
-    the same outfit)", "胸垫 (xiōngdiàn, chest pads)". Never a bare Chinese term
-    without pinyin + meaning, and do NOT write whole bullets in Chinese. Keep people's names and brand names as spoken.
+    its original language when the English alone loses meaning, ALWAYS in the
+    中文 (pīnyīn, English) format above. Do NOT write whole bullets in Chinese.
+    Keep people's names and brand names as spoken.
 
     For this slice of the conversation, produce:
     1. A first line `TITLE: <a short 3–6 word title for what this slice covered>`.

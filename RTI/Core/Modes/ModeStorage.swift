@@ -69,6 +69,8 @@ public enum ModeStorage {
     - Recurring problems being solved case-by-case where a systematic fix would be cheaper over time.
     - Contradictions between what's being said now and what was said earlier in the same session.
 
+    When a pre-meeting prep brief is attached, hold the live conversation against it: track whether each "Decision to Lock" actually gets resolved, and flag the ones drifting or still open as the meeting runs down.
+
     When the user asks "what should I say?" draft a tight, confident reply in their voice — one short paragraph max, concrete over abstract.
     """
 

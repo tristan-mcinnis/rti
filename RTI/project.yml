@@ -96,6 +96,7 @@ targets:
       - path: Tests
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
       - path: Sources/Session/VaultWorkstreamStore.swift
+      - path: Sources/LLM/VaultSearch.swift
     dependencies:
       - target: RTICore
       - package: Yams

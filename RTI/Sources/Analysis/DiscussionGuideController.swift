@@ -77,14 +77,16 @@ final class DiscussionGuideController {
     }
 
     Rules:
-    - Only emit a match when the transcript clearly addresses the question. Skip questions that have not been touched.
-    - Quote text MUST be verbatim from the transcript.
+    - Match SEMANTICALLY, not by wording. The moderator paraphrases and often asks in Chinese; a question counts as touched whenever its MEANING or topic comes up, regardless of exact phrasing or language. Each guide question is given in English and 中文 (separated by " / ") — match against either.
+    - Emit a match whenever the transcript meaningfully touches a question. Use "partial" generously for a topic that came up but wasn't fully resolved; use "answered" only when the response is substantive and complete.
+    - Skip a question ONLY if its topic genuinely has not come up at all.
+    - Each questionId MUST be copied EXACTLY from the bracketed id in the list below (e.g. "obj_2_sec_1_q3"). Never invent or alter an id.
+    - Quote text MUST be verbatim from the transcript, in its original language.
     - Compute timestampMs from the `[mm:ss]` prefix (mm*60000 + ss*1000).
-    - status = "answered" only when the response is substantive and complete; otherwise "partial".
     - confidence = "high" only when the quote leaves no ambiguity.
     - Output JSON only.
 
-    Unanswered questions:
+    Unanswered questions (format: "- [id] English / 中文"):
     """
 
     private init() {}
@@ -112,23 +114,27 @@ final class DiscussionGuideController {
 
     // MARK: - Loading (pre-call or live)
 
-    /// Read a guide file (.md/.txt) and parse it into a pending preview. Works
-    /// with or without an active session — the guide is only *committed* on
-    /// `confirmPending()`. Falls back from UTF-8 to the file's own encoding so
-    /// the odd non-UTF-8 export still reads.
+    /// Read a guide file (any of .md/.txt/.docx/.doc/.pdf/.rtf/.html) and parse
+    /// it into a pending preview. Works with or without an active session — the
+    /// guide is only *committed* on `confirmPending()`. Format extraction lives
+    /// in `GuideTextExtractor`; structure parsing in `parse(text:)`.
     func loadFile(from url: URL) async {
         let raw: String
         do {
-            raw = try Self.readText(url)
+            raw = try GuideTextExtractor.text(from: url)
         } catch {
             lastError = "Could not read file: \(error.localizedDescription)"
+            RTILog.log("guide: extract failed for \(url.lastPathComponent): \(error.localizedDescription)", category: "guide")
             return
         }
         await parse(text: raw, fileName: url.lastPathComponent)
     }
 
-    /// Parse raw guide text (pasted or read from a file) into a pending preview.
-    /// The LLM normalises whatever formatting the source had into structure.
+    /// Parse raw guide text (pasted or extracted from a file) into a pending
+    /// preview. Deterministic-first: the IC house format is parsed directly with
+    /// no model call; only genuinely unstructured input falls back to the LLM
+    /// normaliser. Either way the preview gates commit, so the user sees what
+    /// was parsed before it goes live.
     func parse(text: String, fileName: String) async {
         guard !isImporting else { return }
         isImporting = true
@@ -140,15 +146,53 @@ final class DiscussionGuideController {
             return
         }
 
-        let messages = [LLMMessage(role: "user", content: Self.parsePrompt + "\n" + trimmed)]
-        guard let response = await request.collectAsync(messages: messages, smart: true),
-              let parsed = Self.parseGuide(response, fileName: fileName) else {
-            lastError = "Couldn't turn that into a guide. Try a cleaner paste or a different file."
+        // 1) Deterministic house-format parse — instant, offline, lossless.
+        if let objectives = GuideParser.parse(trimmed) {
+            let questionCount = objectives.reduce(0) { $0 + $1.sections.reduce(0) { $0 + $1.questions.count } }
+            pendingGuide = DiscussionGuide(
+                id: UUID().uuidString,
+                fileName: fileName,
+                parsedAt: Date(),
+                objectives: objectives
+            )
+            lastError = nil
+            RTILog.log("guide: parsed deterministically — \(objectives.count) objectives, \(questionCount) questions", category: "guide")
             return
         }
 
+        // 2) Fallback: LLM normalisation for messy / non-house-format input.
+        RTILog.log("guide: no house structure detected, falling back to LLM parse", category: "guide")
+        guard let parsed = await llmParse(trimmed, fileName: fileName) else {
+            lastError = "Couldn't turn that into a guide. Try a cleaner paste or a different file."
+            return
+        }
         pendingGuide = parsed
         lastError = nil
+    }
+
+    /// LLM fallback parser with one repair retry. Logs the raw model output on
+    /// failure so a bad parse is diagnosable instead of a blind red line.
+    private func llmParse(_ text: String, fileName: String) async -> DiscussionGuide? {
+        let base = [LLMMessage(role: "user", content: Self.parsePrompt + "\n" + text)]
+        guard let response = await request.collectAsync(messages: base, smart: true) else {
+            RTILog.log("guide: LLM parse returned no response", category: "guide")
+            return nil
+        }
+        if let guide = Self.parseGuide(response, fileName: fileName) { return guide }
+
+        // Models sometimes wrap JSON in prose or emit trailing commas — one
+        // targeted repair pass recovers most of those.
+        RTILog.log("guide: LLM JSON invalid, retrying once. Raw head: \(response.prefix(240))", category: "guide")
+        let repair = base + [
+            LLMMessage(role: "assistant", content: response),
+            LLMMessage(role: "user", content: "That was not valid JSON in the required shape. Output ONLY the JSON object — no prose, no markdown fences."),
+        ]
+        guard let retry = await request.collectAsync(messages: repair, smart: true),
+              let guide = Self.parseGuide(retry, fileName: fileName) else {
+            RTILog.log("guide: LLM parse failed after repair retry", category: "guide")
+            return nil
+        }
+        return guide
     }
 
     /// Commit the pending preview as the active guide. Binds it to the running
@@ -193,24 +237,43 @@ final class DiscussionGuideController {
         isMatching = true
         defer { isMatching = false }
 
-        let questionsList = unanswered.map { "- [\($0.id)] \($0.text)" }.joined(separator: "\n")
-        guard let result = await TranscriptAnalysis.run(
+        // One line per question — flatten the EN/中文 newline so each stays a
+        // single "- [id] EN / 中文" row the model can key by id cleanly.
+        let questionsList = unanswered.map { q in
+            "- [\(q.id)] " + q.text.replacingOccurrences(of: "\n", with: " / ")
+        }.joined(separator: "\n")
+        RTILog.log("guide: matching \(unanswered.count) unanswered questions", category: "guide")
+
+        guard let result = await TranscriptAnalysis.runLenientArray(
             sessionId: sessionId,
             sinceMs: sinceMs,
             shape: .timestamped,
             smart: false,
             request: request,
             category: "discussionGuide",
-            as: GuideMatchResponse.self,
+            key: "matches",
+            as: GuideMatch.self,
             buildPrompt: {
                 Self.matchPrompt + "\n" + questionsList
                     + "\n\nTranscript window (with [mm:ss] timestamps):\n" + $0
             }
-        ) else { return nil }
+        ) else {
+            RTILog.log("guide: matcher got no result (empty transcript or LLM/parse failure)", category: "guide")
+            return nil
+        }
 
-        guard !result.payload.matches.isEmpty else { return nil }
+        let returned = result.payload
+        let allIds = Set(guide.objectives.flatMap { $0.sections.flatMap { $0.questions.map(\.id) } })
+        let validCount = returned.filter { allIds.contains($0.questionId) }.count
+        RTILog.log("guide: LLM returned \(returned.count) matches, \(validCount) map to known ids", category: "guide")
+        if returned.count > 0, validCount == 0 {
+            let sample = returned.prefix(3).map(\.questionId).joined(separator: ", ")
+            RTILog.log("guide: NONE matched known ids — returned ids e.g. [\(sample)]", category: "guide")
+        }
 
-        guide.apply(matches: result.payload.matches)
+        guard !returned.isEmpty else { return nil }
+
+        guide.apply(matches: returned)
         if self.sessionId == sessionId {
             self.guide = guide
         }
@@ -218,13 +281,6 @@ final class DiscussionGuideController {
     }
 
     // MARK: - Parsing
-
-    /// Read a text file as UTF-8, falling back to its detected encoding.
-    private static func readText(_ url: URL) throws -> String {
-        if let utf8 = try? String(contentsOf: url, encoding: .utf8) { return utf8 }
-        var used: String.Encoding = .utf8
-        return try String(contentsOf: url, usedEncoding: &used)
-    }
 
     private static func parseGuide(_ raw: String, fileName: String) -> DiscussionGuide? {
         struct Parsed: Decodable { let objectives: [GuideObjective] }
@@ -256,10 +312,4 @@ final class DiscussionGuideController {
         )
     }
 
-}
-
-/// Wire shape for the matcher's JSON response: `{ "matches": [GuideMatch] }`.
-/// Decoded by `TranscriptAnalysis.run`.
-private struct GuideMatchResponse: Decodable {
-    let matches: [GuideMatch]
 }

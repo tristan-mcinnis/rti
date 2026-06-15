@@ -50,6 +50,30 @@ enum TranscriptAnalysis {
         return Result(payload: payload, endMs: endMs)
     }
 
+    /// Like `run`, but for `{ "key": [Item] }` responses where we want to keep
+    /// whatever items decoded even if one is malformed or the response was
+    /// truncated mid-array (see `JSONExtractor.decodeArrayLenient`). Returns the
+    /// recovered items (possibly empty) + watermark, or nil only when the
+    /// transcript window was empty / the LLM returned nothing.
+    static func runLenientArray<Item: Decodable>(
+        sessionId: String,
+        sinceMs: Int?,
+        shape: TranscriptShape = .plain,
+        smart: Bool,
+        request: LLMRequest,
+        category: String,
+        key: String,
+        as type: Item.Type = Item.self,
+        buildPrompt: (_ transcript: String) -> String
+    ) async -> Result<[Item]>? {
+        guard let (trimmed, endMs) = fetchTranscript(sessionId: sessionId, sinceMs: sinceMs, shape: shape) else { return nil }
+        let prompt = buildPrompt(trimmed)
+        guard let response = await request.collectAsync(messages: [LLMMessage(role: "user", content: prompt)], smart: smart),
+              !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let items = JSONExtractor.decodeArrayLenient(response, key: key, as: Item.self)
+        return Result(payload: items, endMs: endMs)
+    }
+
     /// Same shape as `run`, but for analyzers whose LLM output is
     /// free-form text rather than JSON (e.g. Notes — markdown bullets).
     static func runText(

@@ -1,8 +1,8 @@
 import AppKit
-import RTICore
 import AVFoundation
 import Foundation
 import Observation
+import RTICore
 
 /// Owns the live recording lifecycle. Ephemeral build: a session is purely a
 /// run of live audio → transcript held in memory for the duration. Nothing is
@@ -13,10 +13,50 @@ import Observation
 final class SessionCoordinator {
     static let shared = SessionCoordinator()
 
-    private(set) var isRunning = false
+    /// The session lifecycle as an explicit state machine, replacing the old
+    /// binary `isRunning`. Every phase is something the UI can name to the user
+    /// — the missing "what's it doing right now?" signal (Granola-style):
+    ///
+    ///   idle → recording ⇄ paused → finishing → summarizing → done → (idle/recording)
+    ///
+    /// `paused` keeps the Soniox socket warm (fed silence) so resume is instant.
+    /// `finishing` is the brief post-stop flush window; `summarizing` is the
+    /// end-of-session auto-summary running; `done` is the frozen, summary-ready
+    /// state. Starting a new session is allowed from `summarizing` onward.
+    enum Phase: Equatable {
+        case idle, recording, paused, finishing, summarizing, done
+    }
+
+    private(set) var phase: Phase = .idle
+
+    /// Audio is being captured (recording or paused). Kept as a derived flag so
+    /// the ~40 existing call sites that gate on "is a session live" keep working
+    /// unchanged while the richer `phase` drives the new UX.
+    var isRunning: Bool {
+        phase == .recording || phase == .paused
+    }
+
+    var isPaused: Bool {
+        phase == .paused
+    }
+
+    /// True while the end-of-session summary is being generated (post-stop).
+    var isSummarizing: Bool {
+        phase == .summarizing
+    }
+
     private(set) var currentSessionId: String?
     private(set) var startedAt: Date?
     private(set) var endedAt: Date?
+    /// When the just-finished session started a pause; used to subtract paused
+    /// time from the displayed elapsed duration so the timer reflects captured
+    /// time, not wall-clock.
+    private(set) var pausedAt: Date?
+    private var pausedAccumulated: TimeInterval = 0
+    /// Result of the end-of-session auto-summary, surfaced so the record control
+    /// can offer "Summary ready" (open it) vs. a quiet failure.
+    private(set) var summaryURL: URL?
+    private(set) var summaryFailed = false
     private(set) var liveEntries: [LiveEntry] = []
     /// When the session was started to overlay a meeting that the external
     /// Meeting Sentinel tool is recording, the linked meeting. Lets Step 3
@@ -38,6 +78,7 @@ final class SessionCoordinator {
     var micMuted = false {
         didSet { audioPipeline.micMuted = micMuted }
     }
+
     /// Non-fatal notice when the system-audio (other-party) leg drops while
     /// the mic leg keeps recording. nil when system audio is fine/absent.
     private(set) var systemAudioNotice: String?
@@ -65,6 +106,11 @@ final class SessionCoordinator {
     private var isStarting = false
     private var delayedCompleteTask: Task<Void, Never>?
     private var checkpointTask: Task<Void, Never>?
+    /// When the last session was stopped — used to reject a phantom restart
+    /// fired immediately after a manual stop (the stop→start race).
+    private var lastStopAt: Date?
+    /// Cooldown after a stop during which a new start is ignored.
+    private static let restartCooldown: TimeInterval = 3.0
     /// WAV path for the active recording, deleted when the session ends.
     private var activeWavPath: String?
 
@@ -88,6 +134,14 @@ final class SessionCoordinator {
             id: "discussionGuide",
             task: .init(enabledKey: AnalysisSettingsDefaults.guideEnabledKey) { sinceMs in
                 await DiscussionGuideController.shared.match(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
+            }
+        )
+        AnalysisScheduler.shared.register(
+            id: "findings",
+            task: .init(enabledKey: AnalysisSettingsDefaults.findingsEnabledKey) { _ in
+                // Findings own their own watermark (so the manual Generate button
+                // can't duplicate) — ignore the scheduler's sinceMs.
+                await FindingsController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
             }
         )
     }
@@ -153,16 +207,70 @@ final class SessionCoordinator {
         (AudioInputDeviceStore.currentInputName(), AudioInputDeviceStore.currentOutputName())
     }
 
+    /// The record control's primary click. Idle/done → start a fresh session
+    /// (the previous one is already archived — "new recording", not "clear").
+    /// Recording/paused → finish. No-op during the brief finishing flush.
     func toggleSession() {
-        if isRunning {
+        switch phase {
+        case .recording, .paused:
             stopSession()
-        } else {
-            startSession()
+        case .idle, .done, .summarizing:
+            startSession(userInitiated: true)
+        case .finishing:
+            break
         }
     }
 
-    func startSession(linkedTo meeting: SentinelMeeting? = nil) {
+    /// Suspend capture without tearing down: stop feeding real audio to Soniox
+    /// (the socket stays warm on silence, so resume is instant — no
+    /// re-handshake) and freeze the elapsed timer. Paused audio is never
+    /// transcribed. Mirrors the pause/resume contract users expect from Granola
+    /// and Tactiq.
+    func pause() {
+        guard phase == .recording else { return }
+        pausedAt = Date()
+        audioPipeline.suspended = true
+        phase = .paused
+        publishState()
+    }
+
+    func resume() {
+        guard phase == .paused else { return }
+        if let pausedAt { pausedAccumulated += Date().timeIntervalSince(pausedAt) }
+        pausedAt = nil
+        audioPipeline.suspended = false
+        phase = .recording
+        publishState()
+    }
+
+    func togglePause() {
+        switch phase {
+        case .recording: pause()
+        case .paused: resume()
+        default: break
+        }
+    }
+
+    /// Captured-time elapsed (wall clock minus any paused spans). Drives the
+    /// record control's timer so it counts real recorded time.
+    func elapsed(at now: Date) -> TimeInterval {
+        guard let startedAt else { return 0 }
+        let end = endedAt ?? now
+        var paused = pausedAccumulated
+        if let pausedAt { paused += end.timeIntervalSince(pausedAt) }
+        return max(0, end.timeIntervalSince(startedAt) - paused)
+    }
+
+    func startSession(linkedTo meeting: SentinelMeeting? = nil, userInitiated: Bool = false) {
         guard !isRunning, !isStarting else { return }
+        // Reject the stop→start race: a phantom restart fired ~4s after a manual
+        // stop (the "0:05 / no audio received" blip). Don't start while a stop is
+        // still finalizing, or within a short cooldown after one. The cooldown
+        // only guards against *automatic* restarts (e.g. the Sentinel go-live
+        // banner) — a deliberate user "new recording" press bypasses it.
+        if delayedCompleteTask != nil { return }
+        if !userInitiated,
+           let stopped = lastStopAt, Date().timeIntervalSince(stopped) < Self.restartCooldown { return }
         isStarting = true
         linkedMeeting = meeting
         if let meeting { MeetingContextStore.shared.autoLink(toMeetingNamed: meeting.name) }
@@ -175,12 +283,12 @@ final class SessionCoordinator {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 guard granted else {
-                    self.isStarting = false
-                    self.lastError = "Microphone permission denied."
-                    self.promptForMicrophoneAccess()
+                    isStarting = false
+                    lastError = "Microphone permission denied."
+                    promptForMicrophoneAccess()
                     return
                 }
-                self.launchSession()
+                launchSession()
             }
         }
     }
@@ -195,7 +303,8 @@ final class SessionCoordinator {
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn,
-           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+        {
             NSWorkspace.shared.open(url)
         }
     }
@@ -208,6 +317,22 @@ final class SessionCoordinator {
         currentSessionId = sessionId
         startedAt = now
         endedAt = nil
+        pausedAt = nil
+        pausedAccumulated = 0
+        audioPipeline.suspended = false
+        summaryURL = nil
+        summaryFailed = false
+
+        // Don't let "passive listener" framing bleed across sessions: a fieldwork
+        // session leaves listenerMode on, which then mis-frames the next meeting
+        // ("I never speak") where the user is actually a participant. Reconcile
+        // to the active mode at every start.
+        LLMController.shared.reconcileListenerModeForSessionStart()
+
+        // Auto-attach a same-day prep brief for this meeting (if one matches),
+        // so Meeting-mode Assist works against "what we said we needed from this
+        // call", not just the transcript. Read fresh each start; no-op when none.
+        MeetingContextStore.shared.loadBriefForSession(meetingName: linkedMeeting?.name)
 
         // Reset the live transcript for the fresh session.
         liveEntries = []
@@ -218,6 +343,7 @@ final class SessionCoordinator {
         // periodic scheduler. Each task self-gates on its Settings toggle.
         NotesGenerationController.shared.reset(for: sessionId)
         DiscussionGuideController.shared.reset(for: sessionId)
+        FindingsController.shared.reset(for: sessionId)
         AnalysisScheduler.shared.start(
             intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
             defaultInterval: AnalysisSettingsDefaults.defaultInterval
@@ -248,12 +374,20 @@ final class SessionCoordinator {
 
         publishState()
         micMuted = false
-        isRunning = true
+        phase = .recording
         startCheckpointLoop()
     }
 
     func stopSession() {
         guard isRunning, let sessionId = currentSessionId else { return }
+        lastStopAt = Date()
+
+        // Settle any in-progress pause so the frozen duration excludes it.
+        if phase == .paused, let pausedAt {
+            pausedAccumulated += Date().timeIntervalSince(pausedAt)
+        }
+        pausedAt = nil
+        audioPipeline.suspended = false
 
         // Stop audio capture before finalizing Soniox so no new audio enters
         // the pipeline while finalize() signals end-of-stream. The 1.5s delay
@@ -263,12 +397,12 @@ final class SessionCoordinator {
         AnalysisScheduler.shared.stop()
         checkpointTask?.cancel()
         checkpointTask = nil
-        isRunning = false
+        phase = .finishing
         transcriptionHealth = .idle
         systemAudioNotice = nil
 
         let endedAt = Date()
-        self.endedAt = endedAt   // freeze widget timer immediately
+        self.endedAt = endedAt // freeze widget timer immediately
         NotificationCenter.default.post(name: .rtiSessionDidStop, object: nil)
         delayedCompleteTask?.cancel()
         delayedCompleteTask = Task { [weak self] in
@@ -298,7 +432,8 @@ final class SessionCoordinator {
             let chat = LLMController.shared.entries
             let analysis = SessionArchive.Analysis(
                 notes: NotesGenerationController.shared.notes,
-                guide: DiscussionGuideController.shared.guide
+                guide: DiscussionGuideController.shared.guide,
+                findings: FindingsController.shared.findings
             )
             // Declare (not decide): the matched project workstream slug and any
             // linked Sentinel meeting go into the archive frontmatter, then the
@@ -316,18 +451,42 @@ final class SessionCoordinator {
                 workstreamSlug: workstreamSlug,
                 linkedMeeting: linkedMeeting?.name
             )
-            if let archiveDir {
-                // Auto-summary (Granola-style wrap-up) first, then route —
-                // so the field-notes companion can include the summary.
-                // Best-effort: a failed summary never blocks routing.
-                Task { @MainActor in
-                    await SessionArchive.writeAutoSummary(
-                        sessionId: sessionId,
+            // Render the transcript NOW and hand it to the summary call. The old
+            // path re-read the live transcript inside the async summary, so
+            // starting a new recording before it finished would summarise the
+            // wrong (empty) session. Capturing it here makes "finish → start
+            // again immediately" safe.
+            let transcriptText = TranscriptContext.format(transcript)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if let archiveDir, !transcriptText.isEmpty {
+                // Granola-style: show the user we're working ("Generating
+                // summary…") and flip to `done` when it lands. Routing runs
+                // regardless — a failed/slow summary never blocks it.
+                phase = .summarizing
+                Task { @MainActor [weak self] in
+                    let url = await SessionArchive.writeAutoSummary(
+                        transcriptText: transcriptText,
                         to: archiveDir,
                         startedAt: startedAt
                     )
                     SessionArchive.runVaultRouter(sessionDir: archiveDir)
+                    guard let self else { return }
+                    // Only resolve to `done` if this is still the session the
+                    // user is looking at — a new recording may already be live.
+                    if currentSessionId == sessionId, phase == .summarizing {
+                        summaryURL = url
+                        summaryFailed = (url == nil)
+                        phase = .done
+                        resetWorkspaceForDone()
+                    }
                 }
+            } else {
+                // Nothing worth summarising (or archive failed) — go straight to
+                // done and still route whatever was captured.
+                phase = .done
+                resetWorkspaceForDone()
+                if let archiveDir { SessionArchive.runVaultRouter(sessionDir: archiveDir) }
             }
             // If this session was overlaid on a Sentinel-recorded meeting, also
             // drop the notes + chat + generated analysis into that meeting's
@@ -340,6 +499,9 @@ final class SessionCoordinator {
                     analysis: analysis
                 )
             }
+        } else {
+            phase = .done
+            resetWorkspaceForDone()
         }
 
         // Ephemeral: discard the WAV recording — nothing is kept on disk.
@@ -350,6 +512,15 @@ final class SessionCoordinator {
         // The live transcript stays in memory so chat turns can continue
         // referencing it after audio stops; it's reset on the next session.
         publishState()
+    }
+
+    /// When a session reaches `done`, reset the interactive Assist chat back to
+    /// its "ready" state. The meeting's substance is already saved (summary +
+    /// transcript on disk; transcript/notes/findings tabs stay reviewable until
+    /// the next recording) — leaving the live chat hanging around just reads as
+    /// stale. Fixes the "why is the old chat still there after Done?" confusion.
+    private func resetWorkspaceForDone() {
+        LLMController.shared.clear()
     }
 
     /// Synchronous teardown invoked from applicationWillTerminate.
@@ -375,7 +546,7 @@ final class SessionCoordinator {
         if let path = activeWavPath {
             try? FileManager.default.removeItem(atPath: path)
         }
-        isRunning = false
+        phase = .idle
         transcriptionHealth = .idle
         systemAudioNotice = nil
     }
@@ -400,7 +571,8 @@ final class SessionCoordinator {
             chat: LLMController.shared.entries,
             analysis: SessionArchive.Analysis(
                 notes: NotesGenerationController.shared.notes,
-                guide: DiscussionGuideController.shared.guide
+                guide: DiscussionGuideController.shared.guide,
+                findings: FindingsController.shared.findings
             ),
             workstreamSlug: workstreamSlug,
             linkedMeeting: linkedMeeting?.name
@@ -417,26 +589,58 @@ final class SessionCoordinator {
         checkpointTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
-                guard let self, self.isRunning, !Task.isCancelled else { return }
-                self.archiveCurrentSession(endedAt: Date(), route: false)
+                guard let self, isRunning, !Task.isCancelled else { return }
+                archiveCurrentSession(endedAt: Date(), route: false)
             }
         }
     }
 
     private func handleSystemWords(_ words: [SonioxWord]) {
         guard currentSessionId != nil else { return }
-        transcriptPipeline.process(words: words, channel: "system")
-        publishState()
+        let entriesChanged = transcriptPipeline.process(words: words, channel: "system")
+        publishState(entriesChanged: entriesChanged)
     }
 
     private func handleWords(_ words: [SonioxWord]) {
         guard currentSessionId != nil else { return }
-        transcriptPipeline.process(words: words, channel: "mic")
-        publishState()
+        let entriesChanged = transcriptPipeline.process(words: words, channel: "mic")
+        publishState(entriesChanged: entriesChanged)
     }
 
-    private func publishState() {
-        interimLine = transcriptPipeline.interimLine
-        liveEntries = transcriptPipeline.liveEntries
+    // Coalesced UI publishing. Soniox delivers frames many times a second; each
+    // one updating the @Observable `interimLine`/`liveEntries` makes SwiftUI
+    // re-run the transcript view's O(n) body. At ~40min that flooded the main
+    // thread's update queue (`SwiftUICore.flushObservers → Update.ensure`) into
+    // a 100%-CPU invalidation storm that froze the UI. So we mark state dirty on
+    // each frame but flush to the observed properties at most ~8x/sec — well
+    // under the run loop's capacity, smooth for live text, and bounded no matter
+    // how long the session runs.
+    private var publishFlushScheduled = false
+    private var pendingEntriesChanged = false
+    private static let publishIntervalNs: UInt64 = 120_000_000 // ~8 Hz
+
+    private func publishState(entriesChanged: Bool = true) {
+        pendingEntriesChanged = pendingEntriesChanged || entriesChanged
+        guard !publishFlushScheduled else { return }
+        publishFlushScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.publishIntervalNs)
+            guard let self else { return }
+            publishFlushScheduled = false
+            let changed = pendingEntriesChanged
+            pendingEntriesChanged = false
+            flushPublishState(entriesChanged: changed)
+        }
+    }
+
+    /// Copy the latest pipeline state into the observed properties. `interimLine`
+    /// is cheap; the big `liveEntries` array is republished only when finals
+    /// actually appended (interim-only frames just refresh the partial line).
+    private func flushPublishState(entriesChanged: Bool) {
+        let newInterim = transcriptPipeline.interimLine
+        if newInterim != interimLine { interimLine = newInterim }
+        if entriesChanged {
+            liveEntries = transcriptPipeline.liveEntries
+        }
     }
 }

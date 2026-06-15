@@ -25,8 +25,11 @@ enum SessionArchive {
     struct Analysis {
         var notes: [GeneratedNote] = []
         var guide: DiscussionGuide?
+        var findings: [FindingEntry] = []
 
-        var isEmpty: Bool { notes.isEmpty && guide == nil }
+        var isEmpty: Bool {
+            notes.isEmpty && guide == nil && findings.isEmpty
+        }
     }
 
     /// Persist a session. Silently no-ops if there's nothing to save or the
@@ -77,6 +80,11 @@ enum SessionArchive {
             let md = (fm("Discussion guide") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
         }
+        if !analysis.findings.isEmpty {
+            let body = (["# Findings", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderFindings(analysis.findings)]).joined(separator: "\n")
+            let md = (fm("Findings") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("findings.md"))
+        }
         return dir
     }
 
@@ -84,11 +92,17 @@ enum SessionArchive {
     /// and write it as `summary.md` beside the other session files. Quiet
     /// no-op on trivial sessions or LLM failure — the archive must never
     /// depend on a model call succeeding.
+    /// - Parameter transcriptText: the rendered transcript, captured by the
+    ///   caller at stop time. Passed in (rather than re-read from the live
+    ///   session) so starting a new recording before the summary finishes can't
+    ///   make it summarise the wrong session.
+    /// - Returns: the `summary.md` URL on success, or `nil` if there was nothing
+    ///   to summarise or the model call failed (a quiet, non-blocking no-op).
     @MainActor
-    static func writeAutoSummary(sessionId: String, to dir: URL, startedAt: Date) async {
-        let transcript = TranscriptContext.text(forSessionId: sessionId)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else { return }
+    @discardableResult
+    static func writeAutoSummary(transcriptText: String, to dir: URL, startedAt: Date) async -> URL? {
+        let transcript = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else { return nil }
         // Full-meeting summaries routinely outlive the default 60s stream
         // timeout (the silent failure that left archives without summary.md)
         // — give this call its own generous budget and log failures.
@@ -99,17 +113,19 @@ enum SessionArchive {
             timeoutOverride: 300
         ) else {
             RTILog.log("auto-summary: LLM call failed/timed out for \(dir.lastPathComponent)", category: "summary")
-            return
+            return nil
         }
         let payload = payloadRaw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !payload.isEmpty else {
             RTILog.log("auto-summary: empty response for \(dir.lastPathComponent)", category: "summary")
-            return
+            return nil
         }
         let md = (frontmatter(kind: "Summary", startedAt: startedAt) + ["# Meeting summary", "", payload, ""]).joined(separator: "\n")
-        writeOwnerOnly(md, to: dir.appendingPathComponent("summary.md"))
+        let url = dir.appendingPathComponent("summary.md")
+        writeOwnerOnly(md, to: url)
         RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)", category: "summary")
         notifySummaryReady(sessionFolder: dir.lastPathComponent)
+        return url
     }
 
     /// Local notification when the post-stop summary lands, so the user knows
@@ -255,6 +271,20 @@ enum SessionArchive {
         }.joined(separator: "\n\n")
     }
 
+    /// Findings ledger: one bullet per tagged finding, in the order logged,
+    /// with its `[mm:ss]`, why-it-matters line, and any verbatim quote.
+    private static func renderFindings(_ findings: [FindingEntry]) -> String {
+        findings.map { f in
+            var line = "- **[\(f.tag.label)]** `\(offset(f.rangeMs))` \(f.headline)"
+            if !f.matters.isEmpty { line += "\n  - _Matters:_ \(f.matters)" }
+            if let quote = f.quote, !quote.isEmpty {
+                let who = f.speaker.map { "\($0): " } ?? ""
+                line += "\n  - > \(who)\(quote)"
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+
     /// Discussion-guide coverage: a header line plus each question with its
     /// status and any matched quotes.
     private static func renderGuide(_ guide: DiscussionGuide) -> String {
@@ -350,6 +380,12 @@ enum SessionArchive {
             lines.append(renderGuide(guide))
             lines.append("")
         }
+        if !analysis.findings.isEmpty {
+            lines.append("## Findings")
+            lines.append("")
+            lines.append(renderFindings(analysis.findings))
+            lines.append("")
+        }
         if !chat.isEmpty {
             lines.append("## Assistant chat")
             lines.append("")
@@ -376,8 +412,8 @@ enum SessionArchive {
         workstreamSlug: String? = nil,
         linkedMeeting: String? = nil
     ) -> [String] {
-        let stamp = frontmatterStamp.string(from: startedAt)   // "2026-06-09 11:07"
-        let date = String(stamp.prefix(10))                    // "2026-06-09"
+        let stamp = frontmatterStamp.string(from: startedAt) // "2026-06-09 11:07"
+        let date = String(stamp.prefix(10)) // "2026-06-09"
         var lines = [
             "---",
             "title: \"RTI session · \(stamp) · \(kind)\"",
@@ -443,7 +479,10 @@ enum SessionArchive {
 
 extension SessionArchive {
     struct ArchivedSession: Identifiable, Hashable {
-        var id: URL { url }
+        var id: URL {
+            url
+        }
+
         let url: URL
         /// Pretty label, e.g. "Jun 8 · 16:13".
         let displayName: String
@@ -467,7 +506,8 @@ extension SessionArchive {
     static func recentSessions(limit: Int = 10) -> [ArchivedSession] {
         guard let base = sessionsBaseDirectory(),
               let urls = try? FileManager.default.contentsOfDirectory(
-                at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
+                  at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+              )
         else { return [] }
         return urls
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }

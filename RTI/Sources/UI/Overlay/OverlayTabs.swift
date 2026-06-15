@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 enum OverlayTab: String, CaseIterable, Identifiable {
     // Setup is leftmost — it's the pre-call surface (who the meeting is about +
     // the discussion guide). The rest are live.
-    case setup, assist, transcript, notes, guide
+    case setup, assist, transcript, notes, guide, findings
     var id: String {
         rawValue
     }
@@ -19,6 +19,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         case .transcript: "Transcript"
         case .notes: "Notes"
         case .guide: "Guide"
+        case .findings: "Findings"
         }
     }
 
@@ -29,6 +30,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         case .transcript: "text.bubble"
         case .notes: "note.text"
         case .guide: "list.bullet.clipboard"
+        case .findings: "flag"
         }
     }
 }
@@ -40,14 +42,18 @@ struct OverlayTabBar: View {
     var tabs: [OverlayTab] = OverlayTab.allCases
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 1) {
             ForEach(tabs) { tab in
                 Button { selection = tab } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: tab.icon).font(.system(size: 10, weight: .medium))
+                        // Single line so a wide record pill never wraps a tab
+                        // label to two rows; if space is tight the label
+                        // truncates gracefully rather than squishing.
                         Text(tab.title).font(.system(size: 11, weight: .medium))
+                            .lineLimit(1)
                     }
-                    .padding(.horizontal, 9)
+                    .padding(.horizontal, 7)
                     .padding(.vertical, 5)
                     .foregroundStyle(selection == tab ? Color.overlayInk : Color.overlayInk.opacity(0.5))
                     .background(
@@ -65,24 +71,25 @@ struct OverlayTabBar: View {
 
 // MARK: - Record control
 
-/// Inline record/stop control that lives in the overlay's header row — it
-/// replaces the old free-floating top-widget pill (the "too floaty" button),
-/// folding recording into the one master panel. Click toggles the session;
-/// while live it shows a pulsing dot + a dot-matrix timer over a red wash;
-/// after stop it freezes the final duration until the next session.
+/// Inline record control in the overlay header. Now phase-aware: instead of a
+/// binary record/stop, it names every step of the lifecycle so the user always
+/// knows what the app is doing — recording, paused, saving, generating the
+/// summary, or done (Granola-style). Click is the forward action for the
+/// current phase (start / finish / start-new); pause/resume and "open summary"
+/// live in the small aux button beside it (`OverlaySessionAuxButton`).
 struct OverlayRecordButton: View {
     private let coordinator = SessionCoordinator.shared
 
     @State private var hovering = false
 
-    // No Combine timer here: a per-instance Timer.publish subscription was the
-    // crash site of a SIGSEGV (stale SubscriptionView firing during view
-    // teardown, 2026-06-10 crash report). The elapsed label uses TimelineView
-    // instead — SwiftUI owns the clock and its lifecycle.
+    /// No Combine timer here: a per-instance Timer.publish subscription was the
+    /// crash site of a SIGSEGV (stale SubscriptionView firing during view
+    /// teardown, 2026-06-10 crash report). The elapsed label uses TimelineView
+    /// instead — SwiftUI owns the clock and its lifecycle.
     var body: some View {
-        Button(action: { coordinator.toggleSession() }) {
+        Button(action: primaryAction) {
             HStack(spacing: 6) {
-                dot
+                glyph
                 label
             }
             .padding(.horizontal, 10)
@@ -92,68 +99,180 @@ struct OverlayRecordButton: View {
             .clipShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(coordinator.phase == .finishing)
         .onHover { hovering = $0 }
-        .help(coordinator.isRunning ? "Stop recording (⌘⇧R)" : "Start recording (⌘⇧R)")
+        .help(helpText)
+    }
+
+    private func primaryAction() {
+        // toggleSession knows the phase: start from idle/done/summarizing,
+        // finish from recording/paused, no-op while finishing.
+        coordinator.toggleSession()
     }
 
     @ViewBuilder
-    private var dot: some View {
-        if coordinator.isRunning {
+    private var glyph: some View {
+        switch coordinator.phase {
+        case .recording:
             PulsingRecordDot()
-        } else {
+        case .paused:
+            Image(systemName: "pause.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Color.orange)
+        case .finishing, .summarizing:
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.62)
+                .frame(width: 9, height: 9)
+        case .done:
+            Image(systemName: coordinator.summaryURL != nil ? "checkmark.circle.fill" : "checkmark")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(coordinator.summaryURL != nil ? Color.green.opacity(0.9) : Color.overlayInk.opacity(0.55))
+        case .idle:
             Circle()
-                .fill(Color(red: 1.0, green: 0.27, blue: 0.27).opacity(coordinator.endedAt != nil ? 0.45 : 0.85))
+                .fill(Color(red: 1.0, green: 0.27, blue: 0.27).opacity(0.85))
                 .frame(width: 7, height: 7)
         }
     }
 
     @ViewBuilder
     private var label: some View {
-        if coordinator.isRunning {
-            // Same size/weight as the idle "Record" label — just the elapsed
-            // time, monospaced digits so it doesn't jitter.
+        switch coordinator.phase {
+        case .recording, .paused:
+            // Live elapsed (captured time — paused spans excluded). Monospaced
+            // digits so it doesn't jitter.
+            // Just the timer — the amber pause glyph + colour (and the resume
+            // button beside) already say "paused", so we don't spend header
+            // width on the word and squeeze the tab bar.
             TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                Text(elapsedLabel(at: context.date))
+                Text(TimeFormat.elapsed(coordinator.elapsed(at: context.date)))
                     .font(.system(size: 11, weight: .medium).monospacedDigit())
-                    .foregroundStyle(Color.overlayInk.opacity(0.85))
+                    .foregroundStyle(coordinator.phase == .paused ? Color.orange.opacity(0.95) : Color.overlayInk.opacity(0.85))
                     .kerning(0.2)
+                    .fixedSize()
             }
-        } else if let frozen = postRecordingLabel {
-            Text(frozen)
-                .font(.system(size: 11, weight: .medium).monospacedDigit())
-                .foregroundStyle(Color.overlayInk.opacity(0.55))
-                .kerning(0.2)
-        } else {
-            Text("Record")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.overlayInk.opacity(0.75))
-                .kerning(0.2)
+        case .finishing:
+            labelText("Saving…", opacity: 0.6)
+        case .summarizing:
+            labelText("Summarizing…", opacity: 0.7)
+        case .done:
+            labelText(coordinator.summaryURL != nil ? "Notes ready" : "Done", opacity: 0.6)
+        case .idle:
+            labelText("Record", opacity: 0.75)
         }
+    }
+
+    private func labelText(_ text: String, opacity: Double) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Color.overlayInk.opacity(opacity))
+            .kerning(0.2)
+            .fixedSize()
     }
 
     private var background: some View {
         ZStack {
             Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.14 : 0.08))
-            if coordinator.isRunning {
+            switch coordinator.phase {
+            case .recording:
                 Capsule(style: .continuous).fill(Color(red: 1.0, green: 0.20, blue: 0.20).opacity(0.18))
+            case .paused:
+                Capsule(style: .continuous).fill(Color.orange.opacity(0.14))
+            default:
+                EmptyView()
             }
         }
     }
 
     private var borderColor: Color {
-        coordinator.isRunning
-            ? Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
-            : Color.overlayInk.opacity(hovering ? 0.22 : 0.12)
+        switch coordinator.phase {
+        case .recording: Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
+        case .paused: Color.orange.opacity(0.5)
+        default: Color.overlayInk.opacity(hovering ? 0.22 : 0.12)
+        }
     }
 
-    private func elapsedLabel(at now: Date) -> String {
-        guard let started = coordinator.startedAt else { return "0:00" }
-        return TimeFormat.elapsed(now.timeIntervalSince(started))
+    private var helpText: String {
+        switch coordinator.phase {
+        case .idle: "Start recording (⌘⇧R)"
+        case .recording: "Finish & summarize (⌘⇧R)"
+        case .paused: "Finish & summarize (⌘⇧R) — currently paused"
+        case .finishing: "Saving the session…"
+        case .summarizing: "Generating the summary in the background — click to start a new recording"
+        case .done: coordinator.summaryURL != nil
+            ? "Session saved, notes ready. Click to start a new recording (⌘⇧R)"
+            : "Session saved. Click to start a new recording (⌘⇧R)"
+        }
+    }
+}
+
+/// Small companion button beside the record control. Pause/resume while a
+/// session is live; "open summary" once notes are ready. Only shown when it has
+/// something to do, so the header stays uncluttered when idle.
+struct OverlaySessionAuxButton: View {
+    private let coordinator = SessionCoordinator.shared
+    @State private var hovering = false
+
+    private enum Kind { case pause, resume, openSummary, none }
+
+    private var kind: Kind {
+        switch coordinator.phase {
+        case .recording: .pause
+        case .paused: .resume
+        case .summarizing, .done: coordinator.summaryURL != nil ? .openSummary : .none
+        default: .none
+        }
     }
 
-    private var postRecordingLabel: String? {
-        guard let started = coordinator.startedAt, let ended = coordinator.endedAt else { return nil }
-        return TimeFormat.elapsed(ended.timeIntervalSince(started))
+    var body: some View {
+        if kind != .none {
+            Button(action: act) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 26, height: 26)
+                    .background(Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.14 : 0.08)))
+                    .overlay(Capsule(style: .continuous).stroke(Color.overlayInk.opacity(0.14), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help(help)
+        }
+    }
+
+    private var icon: String {
+        switch kind {
+        case .pause: "pause.fill"
+        case .resume: "play.fill"
+        case .openSummary: "doc.text"
+        case .none: ""
+        }
+    }
+
+    private var tint: Color {
+        switch kind {
+        case .resume: Color.green.opacity(0.9)
+        case .openSummary: Color.green.opacity(0.9)
+        default: Color.overlayInk.opacity(0.7)
+        }
+    }
+
+    private var help: String {
+        switch kind {
+        case .pause: "Pause — stops transcribing, keeps the connection live (resume is instant)"
+        case .resume: "Resume recording"
+        case .openSummary: "Open the meeting summary"
+        case .none: ""
+        }
+    }
+
+    private func act() {
+        switch kind {
+        case .pause, .resume: coordinator.togglePause()
+        case .openSummary:
+            if let url = coordinator.summaryURL { NSWorkspace.shared.open(url) }
+        case .none: break
+        }
     }
 }
 
@@ -221,7 +340,7 @@ struct TranscriptTabView: View {
 
     private static let languageOptions: [(code: String, label: String)] = [
         ("en", "English"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French"),
-        ("de", "German"), ("ja", "Japanese"), ("ko", "Korean"), ("pt", "Portuguese")
+        ("de", "German"), ("ja", "Japanese"), ("ko", "Korean"), ("pt", "Portuguese"),
     ]
 
     var body: some View {
@@ -335,14 +454,13 @@ struct TranscriptTabView: View {
     }
 
     private func syncTranslation() {
-        let desired: TranslationConfig?
-        if !translationEnabled {
-            desired = nil
+        let desired: TranslationConfig? = if !translationEnabled {
+            nil
         } else if translationMode == "two_way" {
             // Same language both sides is a no-op — leave translation idle.
-            desired = languageA == languageB ? nil : .twoWay(languageA: languageA, languageB: languageB)
+            languageA == languageB ? nil : .twoWay(languageA: languageA, languageB: languageB)
         } else {
-            desired = .oneWay(targetLanguage: targetLanguage)
+            .oneWay(targetLanguage: targetLanguage)
         }
         // Only reassign when it actually changes — a redundant set would swap the
         // Soniox clients and blip transcription for no reason.
@@ -454,6 +572,7 @@ struct TranscriptTabView: View {
     }
 
     private var healthColor: Color {
+        if session.isPaused { return .orange }
         guard session.isRunning else { return Color.overlayInk.opacity(0.3) }
         switch session.transcriptionHealth {
         case .live: return .green
@@ -464,6 +583,7 @@ struct TranscriptTabView: View {
     }
 
     private var healthLabel: String {
+        if session.isPaused { return "Paused" }
         guard session.isRunning else { return "Idle" }
         switch session.transcriptionHealth {
         case .live: return "Live"
@@ -596,6 +716,145 @@ struct NotesTabView: View {
     }
 }
 
+// MARK: - Findings ledger
+
+/// Accumulating ledger of tagged findings across the session — the passive
+/// counterpart to the one-shot ⌘↵ listener flag. Mirrors NotesTabView's shape:
+/// chronological list, newest last, auto-scrolled, copy/export in the toolbar.
+struct FindingsTabView: View {
+    private let controller = FindingsController.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Findings").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
+                if controller.isGenerating {
+                    ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
+                }
+                Spacer()
+                OverlayToolbarButton(icon: "arrow.clockwise", help: "Scan for findings now",
+                                     disabled: controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
+                {
+                    if let sid = SessionCoordinator.shared.currentSessionId { Task { _ = await controller.generate(sessionId: sid) } }
+                }
+                OverlayToolbarButton(icon: "doc.on.doc", help: "Copy all findings", disabled: controller.findings.isEmpty) {
+                    NSPasteboard.copyMarkdownRich(combinedMarkdown())
+                }
+                OverlayToolbarButton(icon: "square.and.arrow.down", help: "Export as .md", disabled: controller.findings.isEmpty, action: export)
+            }
+            if let error = controller.lastError {
+                Text(error).font(.system(size: 10)).foregroundStyle(.red)
+            }
+            if controller.findings.isEmpty {
+                overlayEmptyState("flag", "No findings yet", "Tagged findings, tensions, and missed threads appear here as the session develops.")
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 12) {
+                            ForEach(controller.findings) { finding in
+                                findingRow(finding).id(finding.id)
+                            }
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                    .onChange(of: controller.findings.count) { _, _ in
+                        if let last = controller.findings.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                    }
+                    .onAppear {
+                        if let last = controller.findings.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func findingRow(_ f: FindingEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    Image(systemName: f.tag.icon).font(.system(size: 9, weight: .bold))
+                    Text(f.tag.label.uppercased()).font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(tagColor(f.tag))
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 4).fill(tagColor(f.tag).opacity(0.14)))
+                Text(mmss(f.rangeMs))
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(Color.overlayInk.opacity(0.4))
+                Spacer()
+                OverlayToolbarButton(icon: "doc.on.doc", help: "Copy this finding") {
+                    NSPasteboard.copyMarkdownRich(findingMarkdown(f))
+                }
+            }
+            Text(f.headline)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.overlayInk.opacity(0.95))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            if !f.matters.isEmpty {
+                Text("Matters: \(f.matters)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.overlayInk.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            if let quote = f.quote, !quote.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Rectangle().fill(tagColor(f.tag).opacity(0.4)).frame(width: 2)
+                    VStack(alignment: .leading, spacing: 1) {
+                        if let speaker = f.speaker, !speaker.isEmpty {
+                            Text(speaker).font(.system(size: 10, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.6))
+                        }
+                        Text(quote).font(.system(size: 11)).italic().foregroundStyle(Color.overlayInk.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func tagColor(_ tag: FindingTag) -> Color {
+        switch tag {
+        case .finding: .green
+        case .tension: .orange
+        case .contradiction: .red
+        case .newThread: .blue
+        case .missed: .yellow
+        }
+    }
+
+    private func mmss(_ ms: Int) -> String {
+        let s = max(0, ms) / 1000
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private func findingMarkdown(_ f: FindingEntry) -> String {
+        var out = "- **[\(f.tag.label)]** `\(mmss(f.rangeMs))` \(f.headline)"
+        if !f.matters.isEmpty { out += "\n  - _Matters:_ \(f.matters)" }
+        if let quote = f.quote, !quote.isEmpty {
+            let who = f.speaker.map { "\($0): " } ?? ""
+            out += "\n  - > \(who)\(quote)"
+        }
+        return out
+    }
+
+    private func combinedMarkdown() -> String {
+        controller.findings.map(findingMarkdown).joined(separator: "\n")
+    }
+
+    private func export() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "rti-findings-\(Date().formatted(.iso8601.year().month().day())).md"
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        let content = combinedMarkdown()
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+}
+
 // MARK: - Setup
 
 /// The pre-call surface: who the meeting is about (vault workstream + note +
@@ -608,6 +867,7 @@ struct SetupTabView: View {
     // These also gate the live tabs (Notes / Guide) — see OverlayPanelView.
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = false
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
+    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = false
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
     @State private var pickerOpen = false
@@ -761,6 +1021,7 @@ struct SetupTabView: View {
                 .fixedSize(horizontal: false, vertical: true)
             livePanelToggle($notesEnabled, "Notes", "Periodic AI notes as the conversation develops")
             livePanelToggle($guideEnabled, "Guide", "Track which discussion-guide questions get answered")
+            livePanelToggle($findingsEnabled, "Findings", "Running ledger of tagged findings, tensions & missed threads")
         }
     }
 
@@ -977,7 +1238,15 @@ struct SetupTabView: View {
 
     private func uploadGuide() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText, .plainText]
+        // Markdown/text plus the common exported formats — extraction is handled
+        // by GuideTextExtractor, so the picker just has to let them through.
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "md") ?? .plainText,
+            .plainText, .text,
+            UTType(filenameExtension: "docx") ?? .data,
+            UTType(filenameExtension: "doc") ?? .data,
+            .pdf, .rtf, .html,
+        ]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await guideController.loadFile(from: url) }

@@ -179,4 +179,18 @@ public struct GuideMatch: Codable, Equatable {
         self.confidence = confidence
         self.status = status
     }
+
+    // Tolerant decode: only `questionId` is required. Models occasionally typo a
+    // field (e.g. "queries" instead of "quotes") or omit one; rather than let
+    // that drop the whole match (and the rest of the batch alongside it), we
+    // default the soft fields. `quotes` defaults to none, confidence to medium,
+    // status to partial, summary to empty.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        questionId = try c.decode(String.self, forKey: .questionId)
+        summary = (try? c.decode(String.self, forKey: .summary)) ?? ""
+        quotes = (try? c.decode([GuideQuote].self, forKey: .quotes)) ?? []
+        confidence = (try? c.decode(GuideQuoteConfidence.self, forKey: .confidence)) ?? .medium
+        status = (try? c.decode(GuideQuestionStatus.self, forKey: .status)) ?? .partial
+    }
 }

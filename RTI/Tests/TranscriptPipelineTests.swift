@@ -54,6 +54,42 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertTrue(p.liveEntries.isEmpty)
     }
 
+    // MARK: - Cross-channel echo dedup
+
+    func test_crossChannel_echo_collapsesNearDuplicate() {
+        let p = TranscriptPipeline()
+        // System tap captures the full line; the mic re-hears the same audio a
+        // beat later, slightly truncated, diarized as a different speaker.
+        p.process(words: [word("我下了班的时候会进行力量训练", speaker: 0, start: 1000, end: 2000)], channel: "system")
+        p.process(words: [word("下了班的时候会进行力量训练", speaker: 2, start: 1300, end: 2200)], channel: "mic")
+        XCTAssertEqual(p.liveEntries.count, 1, "echo pair should collapse to one entry")
+        XCTAssertEqual(p.liveEntries.first?.text, "我下了班的时候会进行力量训练", "the more complete text is kept")
+    }
+
+    func test_crossChannel_keepsLongerTextInEarlierSlot() {
+        let p = TranscriptPipeline()
+        // The earlier (mic) leg is truncated; the later (system) leg is fuller.
+        p.process(words: [word("下了班会进行力量训练", speaker: 2, start: 1000, end: 2000)], channel: "mic")
+        p.process(words: [word("我下了班会进行力量训练", speaker: 0, start: 1200, end: 2100)], channel: "system")
+        XCTAssertEqual(p.liveEntries.count, 1)
+        XCTAssertEqual(p.liveEntries.first?.text, "我下了班会进行力量训练", "fuller transcription wins")
+    }
+
+    func test_crossChannel_distinctContent_isKept() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("我每天早上都会去跑步", speaker: 0, start: 1000, end: 1100)], channel: "system")
+        p.process(words: [word("我比较喜欢撸铁和普拉提", speaker: 2, start: 1200, end: 1300)], channel: "mic")
+        XCTAssertEqual(p.liveEntries.count, 2, "genuinely different lines must not be merged")
+    }
+
+    func test_crossChannel_outsideTimeWindow_isKept() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("我下了班的时候会进行力量训练", speaker: 0, start: 1000, end: 2000)], channel: "system")
+        // Same text but 6s later — beyond the 5s echo window, so a real repeat.
+        p.process(words: [word("我下了班的时候会进行力量训练", speaker: 2, start: 8000, end: 9000)], channel: "mic")
+        XCTAssertEqual(p.liveEntries.count, 2, "matches outside the echo window are not deduped")
+    }
+
     func test_reset_clearsEverything() {
         let p = TranscriptPipeline()
         p.process(words: [word("x", speaker: 0, start: 0, end: 100)], channel: "mic")

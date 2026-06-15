@@ -10,12 +10,14 @@ struct OverlayPanelView: View {
     // enabled (toggled in Setup). Default tabs are Setup · Assist · Transcript.
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = false
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
+    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = false
     @State private var tab: OverlayTab = .assist
 
     private var visibleTabs: [OverlayTab] {
         var t: [OverlayTab] = [.setup, .assist, .transcript]
         if notesEnabled { t.append(.notes) }
         if guideEnabled { t.append(.guide) }
+        if findingsEnabled { t.append(.findings) }
         return t
     }
 
@@ -29,10 +31,11 @@ struct OverlayPanelView: View {
                 )
 
             VStack(spacing: 0) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     OverlayTabBar(selection: $tab, tabs: visibleTabs)
                     OverlayMicControl()
                     OverlayRecordButton()
+                    OverlaySessionAuxButton()
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
@@ -40,6 +43,7 @@ struct OverlayPanelView: View {
                 // If the active tab gets turned off in Setup, fall back to Assist.
                 .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
                 .onChange(of: guideEnabled) { _, _ in normalizeSelection() }
+                .onChange(of: findingsEnabled) { _, _ in normalizeSelection() }
 
                 Group {
                     switch tab {
@@ -53,6 +57,8 @@ struct OverlayPanelView: View {
                         SetupTabView().tabContentPadding()
                     case .guide:
                         GuideTabView().tabContentPadding()
+                    case .findings:
+                        FindingsTabView().tabContentPadding()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

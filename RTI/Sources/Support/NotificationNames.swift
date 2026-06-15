@@ -60,6 +60,7 @@ enum AnalysisSettingsDefaults {
     static let notesEnabledKey = "rti.analysis.notesEnabled"
     static let notesIntervalKey = "rti.analysis.notesIntervalSeconds"
     static let guideEnabledKey = "rti.analysis.guideEnabled"
+    static let findingsEnabledKey = "rti.analysis.findingsEnabled"
     static let defaultInterval: Double = 120
     static let intervalRange: ClosedRange<Double> = 60...600
 }

@@ -15,6 +15,14 @@ final class LLMClient: @unchecked Sendable {
     let provider: LLMProviderConfig
     private let session: URLSession
 
+    /// Hard ceiling on output tokens per completion. Set to DeepSeek's maximum
+    /// (8192) rather than the old 4096: a full-meeting Granola summary of a 2h+
+    /// session — especially bilingual, where CJK + pinyin burn tokens fast —
+    /// blew past 4096 and got cut off mid-sentence. This is a CEILING, not a
+    /// target: the short quick actions self-limit via their prompts and stop
+    /// well before it, so raising it costs them nothing.
+    private static let maxOutputTokens = 8192
+
     private static let sharedSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForResource = 300
@@ -71,7 +79,7 @@ final class LLMClient: @unchecked Sendable {
                         messages: messages,
                         stream: true,
                         temperature: temperature,
-                        max_tokens: 4096,
+                        max_tokens: Self.maxOutputTokens,
                         thinking: thinking
                     ))
                     // Plain path yields each delta straight to the stream's
@@ -113,7 +121,7 @@ final class LLMClient: @unchecked Sendable {
             "model": provider.model,
             "messages": try encodeMessages(messages),
             "stream": true,
-            "max_tokens": 4096
+            "max_tokens": Self.maxOutputTokens
         ]
         if let temperature { bodyDict["temperature"] = temperature }
         if provider.supportsThinking {

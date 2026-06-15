@@ -74,6 +74,42 @@ enum MeetingBriefStore {
         return Array(briefs.prefix(limit))
     }
 
+    /// The prep brief to attach to a session, if one is confidently this
+    /// session's. Conservative on purpose: a brief is only auto-loaded when it
+    /// can be tied to the session by *name* (the linked meeting's name, or the
+    /// picked workstream), or when there is exactly one brief for the day. A
+    /// same-day-but-unrelated brief (e.g. a fieldwork session on a day with a
+    /// separate client call) is left out rather than injected wrongly.
+    static func briefMatching(meetingName: String?, workstreamName: String?, today: String) -> MeetingBrief? {
+        let todays = recentBriefs(limit: 30).filter { $0.datePrefix == today }
+        guard !todays.isEmpty else { return nil }
+
+        for needle in [meetingName, workstreamName].compactMap({ $0 }) {
+            let needleTokens = nameTokens(needle)
+            guard !needleTokens.isEmpty else { continue }
+            if let hit = todays.first(where: { brief in
+                !nameTokens(brief.displayTitle).isDisjoint(with: needleTokens)
+            }) {
+                return hit
+            }
+        }
+
+        // No name signal but an unambiguous single brief today → safe to use.
+        return todays.count == 1 ? todays.first : nil
+    }
+
+    /// Significant (4+ char) lowercase word tokens of a name, for overlap
+    /// matching. "Acme Brand" → {"acme", "brand"}; "Acme-Digital" → {"acme",
+    /// "digital"}. Short tokens are dropped so a stray "the"/"q3" can't match.
+    private static func nameTokens(_ s: String) -> Set<String> {
+        Set(
+            VaultWorkstreamStore.normalize(s)
+                .split(separator: " ")
+                .map(String.init)
+                .filter { $0.count >= 4 }
+        )
+    }
+
     static func content(of brief: MeetingBrief) -> String {
         let raw = (try? String(contentsOf: brief.url, encoding: .utf8))
             ?? "_Couldn't read \(brief.url.lastPathComponent)._"

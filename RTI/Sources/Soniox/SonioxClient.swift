@@ -113,9 +113,12 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
             sendConfig()
 
         case .text(let string):
-            // Log size only — the payload is live transcript content and must
-            // not land in the log buffer (which the user can copy/share).
-            RTILog.log("recv \(string.count) chars", category: "soniox")
+            // NB: no per-frame logging here. Logging every inbound frame (tens
+            // of thousands per long session) hopped to the main actor, mutated
+            // the @Observable log buffer, and called NSLog on each — a real CPU
+            // tax for zero diagnostic value. Final-token receipt is still logged
+            // downstream in `handleMessage`. (Payload is live transcript content
+            // and must never land in the user-copyable log buffer anyway.)
             handleMessage(string)
 
         case .disconnected(let reason, let code):

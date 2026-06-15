@@ -33,7 +33,13 @@ public final class TranscriptAggregator {
     /// speaker indices for JSONL writing.
     var onTurnsProcessed: (([SpeakerTurn]) -> Void)?
 
-    public func process(_ words: [SonioxWord]) {
+    /// Returns `true` when new FINAL entries were appended to `entries` (so the
+    /// owning pipeline knows to invalidate its merged cache and republish the
+    /// live list). Interim-only frames return `false` — they update
+    /// `interimText` but leave `entries` untouched, so callers can skip the
+    /// expensive full-transcript republish on the bulk of frames.
+    @discardableResult
+    public func process(_ words: [SonioxWord]) -> Bool {
         let regularFinals = words.filter { $0.isFinal && $0.endMs > lastEndMs }
         let zeroMsFinals: [SonioxWord] = words.compactMap { word in
             guard word.isFinal, word.endMs == 0 else { return nil }
@@ -81,6 +87,8 @@ public final class TranscriptAggregator {
                 "\(SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: channel)): \($0.text)"
             }.joined(separator: "  ")
         }
+
+        return !finals.isEmpty
     }
 
     public func reset() {

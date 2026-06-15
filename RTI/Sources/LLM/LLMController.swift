@@ -27,11 +27,11 @@ final class LLMController {
 
         var label: String {
             switch self {
-            case .assist: return "Assist"
-            case .recap: return "Recap"
-            case .sayNext: return "Say Next"
-            case .followups: return "Follow-ups"
-            case .summary: return "Summary"
+            case .assist: "Assist"
+            case .recap: "Recap"
+            case .sayNext: "Say Next"
+            case .followups: "Follow-ups"
+            case .summary: "Summary"
             }
         }
     }
@@ -45,6 +45,21 @@ final class LLMController {
     /// next") for observer ones ("what's notable, what could I pass along").
     var listenerMode: Bool {
         didSet { UserDefaults.standard.set(listenerMode, forKey: Self.listenerModeKey) }
+    }
+
+    /// Stop listener framing from leaking across sessions. `listenerMode` is a
+    /// sticky global, so a fieldwork session leaves it on and the NEXT meeting
+    /// then gets the "I'm a passive observer, I never speak" assist prompt —
+    /// wrong when the user is actually a participant (the real cause of the
+    /// "assist wasn't helpful in the meeting" complaint). At every session start
+    /// we keep listener mode ONLY when the active mode is a fieldwork/observation
+    /// mode; a normal meeting resets to participant framing.
+    func reconcileListenerModeForSessionStart() {
+        guard listenerMode else { return }
+        let name = (ModeStore.shared.activeMode?.name ?? "").lowercased()
+        let fieldwork = ["interview", "observ", "fgd", "idi", "fieldwork", "listen"]
+            .contains { name.contains($0) }
+        if !fieldwork { listenerMode = false }
     }
 
     private let request: LLMRequest
@@ -95,6 +110,11 @@ final class LLMController {
     Write a structured summary of this ENTIRE meeting so far, in markdown. Work \
     only from what was actually said — no invention, no padding.
 
+    ⚠️ CRITICAL FORMAT RULE — applies to EVERY Chinese term, everywhere including \
+    the TL;DR: write it as 中文 (pīnyīn, English meaning). The pinyin (with tone \
+    marks) is MANDATORY. A bare Chinese term with no pinyin is a format error — \
+    e.g. 没得选 (méi dé xuǎn, no other choice), never 没得选 alone.
+
     ## TL;DR
     2–3 sentences: what this meeting was, what it covered, the single most \
     important takeaway.
@@ -123,19 +143,20 @@ final class LLMController {
     labels like "them_1".
     """
 
-    // Listener-mode variants: the user is observing, not speaking, so "what
-    // should I say" is the wrong frame. Surface what's notable instead.
+    /// Listener-mode variants: the user is observing, not speaking, so "what
+    /// should I say" is the wrong frame. Surface what's notable instead.
     private static let listenerAssistPrompt = """
-    I'm a researcher passively observing this session. Surface what I just     LEARNED — not what to say (I never speak). Glanceable in 5 seconds, NOT a     paragraph.
+    I'm a researcher passively observing this session. Surface what I just LEARNED — not what to say (I never speak). Glanceable in 5 seconds, not a paragraph.
 
-    Flag the single most significant thing in the recent conversation using     EXACTLY this format:
+    Flag the single most significant thing in the recent conversation. Output EXACTLY two lines with a BLANK LINE between them (so they render as separate lines, not one run-on):
 
-    **[TAG]** <one line: what was said/revealed — include the key verbatim with     its speaker if there is one>
+    **[TAG]** <one line: what was said or revealed; include the key verbatim with its speaker if there is one>
+
     **Matters:** <one line: why this is significant for the research objective>
 
-    TAG is one of: FINDING (a clear insight or need), TENSION (views split     within the group), CONTRADICTION (someone contradicts themselves or earlier     consensus), NEW THREAD (an unexpected topic worth attention), MISSED (the     discussion moved past something important without probing it).
+    TAG is one of: FINDING (a clear insight or need), TENSION (views split within the group), CONTRADICTION (someone contradicts themselves or earlier consensus), NEW THREAD (an unexpected topic worth attention), MISSED (the discussion moved past something important without probing it).
 
-    Reply in ENGLISH. Original-language terms ALWAYS as term (pinyin, English     meaning) — e.g. 得体 (détǐ, appropriate) — never bare Chinese. Max ~25 words     per line. No preamble, nothing outside the two lines.
+    Reply in ENGLISH. Original-language terms ALWAYS as term (pinyin, English meaning) — e.g. 得体 (détǐ, appropriate) — never bare Chinese. Max ~25 words per line. Keep the blank line between the two lines. No preamble, nothing else.
     """
     private static let listenerFollowupsPrompt = "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along, each in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
 
@@ -143,9 +164,9 @@ final class LLMController {
 
     init(request: LLMRequest = LLMRequest()) {
         self.request = request
-        self.smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
-        self.primaryAction = PrimaryAction(rawValue: UserDefaults.standard.string(forKey: Self.primaryActionKey) ?? "") ?? .assist
-        self.listenerMode = UserDefaults.standard.bool(forKey: Self.listenerModeKey)
+        smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
+        primaryAction = PrimaryAction(rawValue: UserDefaults.standard.string(forKey: Self.primaryActionKey) ?? "") ?? .assist
+        listenerMode = UserDefaults.standard.bool(forKey: Self.listenerModeKey)
     }
 
     /// Dispatch the remappable ⌘⏎ action.
@@ -276,7 +297,8 @@ final class LLMController {
         let activeMode = ModeStore.shared.activeMode
         let basePrompt: String = {
             if let prompt = activeMode?.systemPrompt,
-               !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+               !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
                 return prompt
             }
             return Self.systemPrompt
@@ -285,9 +307,15 @@ final class LLMController {
             ? basePrompt + "\n\nThe user is a PASSIVE LISTENER in this meeting — observing, not speaking. Never draft lines for them to say; frame help as observations, flags, and questions they could pass to whoever is leading."
             : basePrompt
 
+        // The auto-matched prep brief is for active meeting participation, not
+        // passive fieldwork — skip it in listener mode (the brief still loads,
+        // it just isn't injected when you're only observing).
+        let meetingBrief = listenerMode ? nil : MeetingContextStore.shared.briefContext
+
         let promptContext = PromptContext(
             baseSystemPrompt: effectivePrompt,
             meetingContext: MeetingContextStore.shared.combined,
+            meetingBrief: meetingBrief,
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
             referenceText: activeMode?.referenceText,
             referenceModeName: activeMode?.name,
@@ -324,15 +352,15 @@ final class LLMController {
 
         Task { [weak self] in
             guard let self else { return }
-            let loop = ToolLoop(request: self.request)
+            let loop = ToolLoop(request: request)
             await loop.run(
                 conversation: apiMessages,
                 toolsJSON: toolsJSON,
-                smart: self.smartMode,
+                smart: smartMode,
                 onEvent: { event in
                     MainActor.assumeIsolated {
                         switch event {
-                        case .contentDelta(let delta):
+                        case let .contentDelta(delta):
                             if self.streamingEntryID != thisEntryID { return }
                             if self.reasoning { self.reasoning = false }
                             self.appendToStreamingEntry(delta)
@@ -340,11 +368,11 @@ final class LLMController {
                             self.reasoning = true
                         case .reasoningEnded:
                             self.reasoning = false
-                        case .toolStatus(let status):
+                        case let .toolStatus(status):
                             self.toolStatus = status
                         case .toolStatusDone:
                             self.toolStatus = nil
-                        case .done(let finalText):
+                        case let .done(finalText):
                             // Deltas hop to main through a different queue
                             // chain than .done, so the last few can land AFTER
                             // finalize and get dropped — the mid-sentence
@@ -353,11 +381,12 @@ final class LLMController {
                             // ordering can't lose the tail.
                             if self.streamingEntryID == thisEntryID,
                                let idx = self.entries.firstIndex(where: { $0.id == thisEntryID }),
-                               finalText.count > self.entries[idx].text.count {
+                               finalText.count > self.entries[idx].text.count
+                            {
                                 self.entries[idx].text = finalText
                             }
                             self.finalizeAssistantTurn(streamingEntryID: thisEntryID)
-                        case .error(let message, let isAuth):
+                        case let .error(message, isAuth):
                             guard self.streamingEntryID == thisEntryID else { return }
                             self.lastError = message
                             self.lastErrorIsAuth = isAuth
@@ -398,7 +427,8 @@ final class LLMController {
             provider: pending.provider, model: pending.model, smart: pending.smart,
             inSession: pending.inSession, contextUsed: pending.contextUsed,
             screenUsed: pending.screenUsed, userInput: pending.userInput,
-            transcriptContext: pending.transcriptContext, output: output))
+            transcriptContext: pending.transcriptContext, output: output
+        ))
     }
 
     /// The assistant's previous answers to this same quick action (Assist /

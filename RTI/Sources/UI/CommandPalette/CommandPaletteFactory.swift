@@ -1,6 +1,6 @@
 import AppKit
-import RTICore
 import Carbon.HIToolbox
+import RTICore
 
 /// Builds the runtime command palette / menu / hotkey entries. Extracted
 /// from AppDelegate so the coordinator stays focused on wiring and
@@ -13,7 +13,6 @@ import Carbon.HIToolbox
 /// `MenuCoordinator` and `HotkeyCoordinator` consume this same list — one
 /// registry, three consumers (palette, menu, hotkeys).
 enum CommandBuilder {
-
     @MainActor
     static func buildCommands(
         windows: WindowCoordinator,
@@ -21,7 +20,7 @@ enum CommandBuilder {
         llm: LLMController,
         modes: ModeStore
     ) -> [RTICommand] {
-        return sessionCommands(windows: windows, session: session)
+        sessionCommands(windows: windows, session: session)
             + navigationCommands(windows: windows)
             + actionCommands(llm: llm)
             + panelCommands(windows: windows, llm: llm)
@@ -33,7 +32,7 @@ enum CommandBuilder {
 
     @MainActor
     private static func sessionCommands(
-        windows: WindowCoordinator,
+        windows _: WindowCoordinator,
         session: SessionCoordinator
     ) -> [RTICommand] {
         [
@@ -49,16 +48,34 @@ enum CommandBuilder {
                 id: "session.start",
                 title: "Start Recording",
                 subtitle: "⌘⇧R",
-                keywords: ["record", "begin", "transcribe"],
-                isAvailable: { !session.isRunning },
+                keywords: ["record", "begin", "transcribe", "finish", "stop", "new"],
                 perform: { session.toggleSession() },
                 menuSection: .session,
                 menuTitleProvider: {
-                    session.isRunning ? "Stop Recording  ⌘⇧R" : "Start Recording  ⌘⇧R"
+                    switch session.phase {
+                    case .recording, .paused: "Finish Recording  ⌘⇧R"
+                    case .summarizing, .done: "New Recording  ⌘⇧R"
+                    case .finishing: "Saving…"
+                    case .idle: "Start Recording  ⌘⇧R"
+                    }
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_R),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            )
+            ),
+            RTICommand(
+                id: "session.pause",
+                title: "Pause / Resume Recording",
+                subtitle: "⌘⇧P",
+                keywords: ["pause", "resume", "hold", "suspend"],
+                isAvailable: { session.phase == .recording || session.phase == .paused },
+                perform: { session.togglePause() },
+                menuSection: .session,
+                menuTitleProvider: {
+                    session.isPaused ? "Resume Recording  ⌘⇧P" : "Pause Recording  ⌘⇧P"
+                },
+                hotkeyKeyCode: UInt32(kVK_ANSI_P),
+                hotkeyModifiers: UInt32(cmdKey | shiftKey)
+            ),
         ]
     }
 
@@ -90,7 +107,7 @@ enum CommandBuilder {
                 keywords: ["brief", "prep", "prepare", "agenda", "meeting"],
                 perform: { [weak windows] in windows?.showMeetingBrief() },
                 menuSection: .navigation
-            )
+            ),
         ]
     }
 
@@ -163,7 +180,7 @@ enum CommandBuilder {
                 menuSection: .actions,
                 hotkeyKeyCode: UInt32(kVK_ANSI_H),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            )
+            ),
         ] + LLMController.PrimaryAction.allCases.map { action in
             RTICommand(
                 id: "primary.set.\(action.rawValue)",
@@ -179,7 +196,7 @@ enum CommandBuilder {
                 keywords: ["delete", "reset"],
                 perform: { AppDelegate.confirmThenClearChat() },
                 menuSection: .actions
-            )
+            ),
         ]
     }
 
@@ -234,7 +251,7 @@ enum CommandBuilder {
                 keywords: ["translation", "translate"],
                 perform: { [weak windows] in windows?.toggle(.translation) },
                 menuSection: .panels
-            )
+            ),
         ]
     }
 
@@ -270,7 +287,7 @@ enum CommandBuilder {
                 title: "Quit RTI",
                 subtitle: "⌘Q",
                 perform: { NSApp.terminate(nil) }
-            )
+            ),
         ]
     }
 

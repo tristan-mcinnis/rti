@@ -20,6 +20,14 @@ final class MeetingContextStore {
     /// project's discussion guides. nil when nothing is picked.
     var workstreamItem: VaultItem?
 
+    /// Content of the pre-meeting prep brief auto-matched to this session
+    /// (authored by Ava's Meeting Prep job, read from `<meetings>/briefs/`).
+    /// Separate from `combined` so it's injected only for active-participant
+    /// meeting sessions, never fieldwork/observation. nil when none matched.
+    private(set) var briefContext: String?
+    /// Display title of the matched brief, for the "RTI is using:" banner.
+    private(set) var briefTitle: String?
+
     private init() {}
 
     /// The combined context fed to the assistant (workstream first, then note).
@@ -52,4 +60,28 @@ final class MeetingContextStore {
         workstreamContext = VaultWorkstreamStore.context(for: match)
         workstreamItem = match
     }
+
+    /// At session start, match a same-day prep brief to this session and load
+    /// it (or clear a stale one). Conservative matching (name, or a single
+    /// unambiguous brief) lives in `MeetingBriefStore.briefMatching`. Called
+    /// fresh every start so a brief never leaks into a later, unrelated session.
+    func loadBriefForSession(meetingName: String?) {
+        briefTitle = nil
+        briefContext = nil
+        guard let brief = MeetingBriefStore.briefMatching(
+            meetingName: meetingName,
+            workstreamName: workstreamName,
+            today: Self.todayStamp.string(from: Date())
+        ) else { return }
+        let content = MeetingBriefStore.content(of: brief).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else { return }
+        briefTitle = brief.displayTitle
+        briefContext = content
+    }
+
+    private static let todayStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 }

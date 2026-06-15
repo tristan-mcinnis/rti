@@ -9,6 +9,9 @@ public struct PromptContext {
     /// User-provided context for *this* meeting (client, project, status…).
     /// Ephemeral; treated as ground truth about who/what the call is about.
     public var meetingContext: String?
+    /// A pre-meeting prep brief auto-matched to this session (decisions to
+    /// lock, tensions, blind spots). Injected only for active meeting sessions.
+    public var meetingBrief: String?
     /// Optional glossary terms the model should know.
     public var glossaryFragment: String?
     /// Reference text attached to the active mode.
@@ -21,6 +24,7 @@ public struct PromptContext {
     public init(
         baseSystemPrompt: String = "",
         meetingContext: String? = nil,
+        meetingBrief: String? = nil,
         glossaryFragment: String? = nil,
         referenceText: String? = nil,
         referenceModeName: String? = nil,
@@ -28,6 +32,7 @@ public struct PromptContext {
     ) {
         self.baseSystemPrompt = baseSystemPrompt
         self.meetingContext = meetingContext
+        self.meetingBrief = meetingBrief
         self.glossaryFragment = glossaryFragment
         self.referenceText = referenceText
         self.referenceModeName = referenceModeName
@@ -36,6 +41,7 @@ public struct PromptContext {
 
     public var hasContent: Bool {
         meetingContext != nil
+            || meetingBrief != nil
             || glossaryFragment != nil
             || referenceText != nil
             || screenContext != nil
@@ -65,6 +71,27 @@ public enum PromptBuilder {
             msgs.append(LLMMessage(
                 role: "system",
                 content: "Context for this meeting, provided by the user (who/what it's about, client, project, status). Treat it as ground truth.\n---\n\(meeting)\n---"
+            ))
+        }
+
+        if let brief = context.meetingBrief?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !brief.isEmpty {
+            let capped = brief.count > referenceCap
+                ? String(brief.prefix(referenceCap)) + "\n…[truncated]"
+                : brief
+            msgs.append(LLMMessage(
+                role: "system",
+                content: """
+                Pre-meeting prep brief for this call, written ahead of time. Use it to make your help \
+                specific to what this meeting needs — don't read it back verbatim:
+                - Track each "Decision to Lock" against the live conversation; flag when one is being \
+                resolved, and when one is drifting or still unaddressed as time passes.
+                - Flag when the discussion contradicts the project status or a prior decision noted here.
+                - Surface a listed blind spot or open item the moment it becomes relevant.
+                ---
+                \(capped)
+                ---
+                """
             ))
         }
 
