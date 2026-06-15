@@ -40,6 +40,10 @@ struct ToolLoop {
     ) async {
         var messages = conversation
         let maxIterations = 4
+        // The model otherwise fires several refining vault searches in one turn
+        // (observed: 5), each a full query — so it stalls. Allow one, then make
+        // it answer from what it got.
+        var vaultSearches = 0
 
         for _ in 0..<maxIterations {
             let turnBuffer = TurnBuffer()
@@ -85,6 +89,16 @@ struct ToolLoop {
                     let resultText = "Tool '\(call.function.name)' is not available."
                     messages.append(LLMMessage(role: "tool", content: resultText, tool_call_id: call.id, name: call.function.name))
                     continue
+                }
+                // One vault search per turn: further searches return a nudge to
+                // answer instead of running, keeping the reply snappy.
+                if call.function.name == "search_vault" {
+                    vaultSearches += 1
+                    if vaultSearches > 1 {
+                        let nudge = "You already searched the vault this turn. Do not search again — answer the user now from the results already returned above."
+                        messages.append(LLMMessage(role: "tool", content: nudge, tool_call_id: call.id, name: call.function.name))
+                        continue
+                    }
                 }
                 onEvent(.toolStatus(tool.runningStatus ?? "Running \(tool.name)…"))
                 let resultText: String

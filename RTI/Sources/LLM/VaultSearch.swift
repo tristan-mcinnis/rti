@@ -61,6 +61,13 @@ enum VaultSearch {
         guard !trimmed.isEmpty else {
             return "No query was provided. Pass a short phrase describing what to look for."
         }
+        // Prefer the Neon hybrid index (semantic, the shared "one brain"). It
+        // returns nil only when unavailable (offline, db down, bun missing) —
+        // an empty-but-successful search is honoured, not retried by grep.
+        if let neon = await VaultSearchCLI.search(query: trimmed) {
+            return format(neon, query: trimmed)
+        }
+        // Fallback: local grep scan so vault search still works offline.
         let results = await withCheckedContinuation { (cont: CheckedContinuation<[Result], Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 cont.resume(returning: search(query: trimmed))
