@@ -334,6 +334,10 @@ final class SessionCoordinator {
         // call", not just the transcript. Read fresh each start; no-op when none.
         MeetingContextStore.shared.loadBriefForSession(meetingName: linkedMeeting?.name)
 
+        // Meetings are when vault searches cluster — wake Neon now so the first
+        // in-session search is warm, not a ~10-15s cold-start.
+        VaultSearchCLI.warmUp()
+
         // Reset the live transcript for the fresh session.
         liveEntries = []
         interimLine = nil

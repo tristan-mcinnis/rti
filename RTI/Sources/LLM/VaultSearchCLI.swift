@@ -14,6 +14,25 @@ enum VaultSearchCLI {
     /// fall back. The warm query is ~2s; this leaves headroom for a cold start.
     private static let timeout: TimeInterval = 12
 
+    /// Fire-and-forget: wake the Neon compute (it suspends when idle, costing
+    /// the next real search a ~10-15s serverless cold-start). Uses a cheap
+    /// fts query — no Jina embed — purely to keep the database warm. Output is
+    /// discarded; never blocks the caller. Safe to call repeatedly.
+    static func warmUp() {
+        guard let bun = bunPath(), let cli = cliPath() else { return }
+        let hermesDir = cli.deletingLastPathComponent().deletingLastPathComponent()
+        DispatchQueue.global(qos: .utility).async {
+            let proc = Process()
+            proc.executableURL = bun
+            proc.currentDirectoryURL = hermesDir
+            proc.arguments = ["run", cli.path, "search", "warmup", "--mode", "fts", "--limit", "1"]
+            proc.standardOutput = FileHandle.nullDevice
+            proc.standardError = FileHandle.nullDevice
+            do { try proc.run() } catch { return }
+            proc.waitUntilExit()
+        }
+    }
+
     static func search(query: String, limit: Int = 6) async -> [VaultSearch.Result]? {
         guard let bun = bunPath(), let cli = cliPath() else { return nil }
         let hermesDir = cli.deletingLastPathComponent().deletingLastPathComponent() // src → hermes

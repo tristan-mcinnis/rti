@@ -29,6 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CrashLog.install()
         CredentialStore.migrateLegacyIfNeeded()
 
+        // Wake the Neon search compute now so the first vault search of the
+        // session doesn't pay the serverless cold-start.
+        VaultSearchCLI.warmUp()
+
         continueLaunch()
     }
 
