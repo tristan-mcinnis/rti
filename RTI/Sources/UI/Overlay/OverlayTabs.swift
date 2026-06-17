@@ -69,6 +69,38 @@ struct OverlayTabBar: View {
     }
 }
 
+/// Leading icon button that opens the Setup surface. Setup is a pre-call
+/// surface (project, discussion guide, live-analysis toggles), so it sits to
+/// the left of the live tabs as a compact icon rather than competing with them
+/// for equal weight. Click toggles into Setup and back to where you were.
+struct OverlaySetupButton: View {
+    @Binding var selection: OverlayTab
+    @State private var lastNonSetup: OverlayTab = .assist
+
+    var body: some View {
+        Button {
+            if selection == .setup {
+                selection = lastNonSetup
+            } else {
+                lastNonSetup = selection
+                selection = .setup
+            }
+        } label: {
+            Image(systemName: OverlayTab.setup.icon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(selection == .setup ? Color.overlayInk : Color.overlayInk.opacity(0.5))
+                .frame(width: 26, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(selection == .setup ? Color.overlayInk.opacity(0.14) : Color.clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Setup — project, discussion guide, and live-analysis toggles (⌘⌥0)")
+    }
+}
+
 // MARK: - Record control
 
 /// Inline record control in the overlay header. Now phase-aware: instead of a
@@ -100,7 +132,7 @@ struct OverlayRecordButton: View {
         }
         .buttonStyle(.plain)
         .disabled(coordinator.phase == .finishing)
-        .onHover { hovering = $0 }
+        .hoverHighlight($hovering)
         .help(helpText)
     }
 
@@ -227,15 +259,25 @@ struct OverlaySessionAuxButton: View {
     var body: some View {
         if kind != .none {
             Button(action: act) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(tint)
-                    .frame(width: 26, height: 26)
-                    .background(Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.14 : 0.08)))
-                    .overlay(Capsule(style: .continuous).stroke(Color.overlayInk.opacity(0.14), lineWidth: 1))
+                HStack(spacing: 4) {
+                    Image(systemName: icon)
+                        .font(.system(size: 10, weight: .bold))
+                    if let labelText {
+                        Text(labelText)
+                            .font(.system(size: 11, weight: .medium))
+                            .kerning(0.2)
+                            .fixedSize()
+                    }
+                }
+                .foregroundStyle(tint)
+                .frame(height: 26)
+                .padding(.horizontal, labelText == nil ? 0 : 9)
+                .frame(minWidth: 26)
+                .background(Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.14 : 0.08)))
+                .overlay(Capsule(style: .continuous).stroke(Color.overlayInk.opacity(0.14), lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .onHover { hovering = $0 }
+            .hoverHighlight($hovering)
             .help(help)
         }
     }
@@ -257,10 +299,18 @@ struct OverlaySessionAuxButton: View {
         }
     }
 
+    /// Resume is the one aux action worth spelling out: pausing is reversible
+    /// and low-stakes, but a paused session reads as "stuck" until you spot the
+    /// tiny resume glyph. Labelling it (and the ⌘⇧P hint below) makes getting
+    /// going again obvious. Pause/openSummary stay compact icons.
+    private var labelText: String? {
+        kind == .resume ? "Resume" : nil
+    }
+
     private var help: String {
         switch kind {
-        case .pause: "Pause — stops transcribing, keeps the connection live (resume is instant)"
-        case .resume: "Resume recording"
+        case .pause: "Pause (⌘⇧P) — stops transcribing, keeps the connection live so resume is instant"
+        case .resume: "Resume recording (⌘⇧P)"
         case .openSummary: "Open the meeting summary"
         case .none: ""
         }
@@ -1290,6 +1340,36 @@ struct GuideTabView: View {
             } else {
                 overlayEmptyState("list.bullet.clipboard", "No guide loaded", "Attach a guide in the Setup tab; RTI pairs its questions with the conversation.")
             }
+        }
+    }
+}
+
+// MARK: - Hover highlight (Swift 6 teardown-crash workaround)
+
+extension View {
+    /// `.onHover` whose action closure is authored in a `nonisolated` context,
+    /// so the Swift 6 compiler does NOT wrap it in the dynamic main-actor
+    /// executor assertion (`swift_task_isCurrentExecutor`) that a plain
+    /// `.onHover { hovering = $0 }` inside a `@MainActor` `body` gets.
+    ///
+    /// That assertion segfaulted — EXC_BAD_ACCESS in `swift_getObjectType` ←
+    /// `swift_task_isMainExecutor` — when a stale AppKit tracking-area
+    /// `mouseMoved:` was delivered into an overlay node mid-teardown. That's the
+    /// crash that took RTI down when you moused over the "Notes ready" pill at
+    /// session end (crash reports 2026-06-15..17, all in OverlayMicControl /
+    /// OverlayRecordButton hover closures). AppKit always delivers hover events
+    /// on the main thread, so dropping the now-fatal runtime check is safe — the
+    /// state write still happens on main.
+    nonisolated func hoverHighlight(_ flag: Binding<Bool>) -> some View {
+        onHover { flag.wrappedValue = $0 }
+    }
+
+    /// Optional-id variant for list rows: set `binding` to `id` on enter, clear
+    /// it on exit (only if it still points at this row). Same nonisolated-closure
+    /// rationale as `hoverHighlight(_:)`.
+    nonisolated func hoverHighlight<ID: Equatable>(_ binding: Binding<ID?>, id: ID) -> some View {
+        onHover { inside in
+            binding.wrappedValue = inside ? id : (binding.wrappedValue == id ? nil : binding.wrappedValue)
         }
     }
 }

@@ -285,7 +285,7 @@ private struct AssistantMessageRow: View {
         // not just the opaque glyphs — otherwise the corner is a dead zone.
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.12), value: hovering)
-        .onHover { hovering = $0 }
+        .hoverHighlight($hovering)
     }
 
     private var actionBar: some View {

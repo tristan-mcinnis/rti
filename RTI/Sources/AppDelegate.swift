@@ -125,22 +125,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
 
     @objc private func toggleOverlay() { windows.toggleOverlay() }
-    @objc private func clearChat() { Self.confirmThenClearChat() }
+    @objc private func clearChat() { Self.clearChatNow() }
 
-    /// Shows a destructive-confirmation alert; on confirm, clears the
-    /// current session's chat messages. Static so `CommandPaletteFactory`
-    /// can reference it without a live AppDelegate instance.
-    static func confirmThenClearChat() {
-        let alert = NSAlert()
-        alert.messageText = "Clear current chat?"
-        alert.informativeText = "This clears the chat messages. The live transcript is not affected."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Clear")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
-            LLMController.shared.clear()
-            NotificationCenter.default.post(name: .rtiHideAuxiliaryPanels, object: nil)
-        }
+    /// Clear the current session's chat immediately — no confirmation modal.
+    /// The chat is ephemeral (no persisted history) and the live transcript is
+    /// untouched, so a blocking "Are you sure?" alert was pure friction; clearing
+    /// is now a single click / keystroke. Static so `CommandPaletteFactory` can
+    /// reference it without a live AppDelegate instance.
+    static func clearChatNow() {
+        LLMController.shared.clear()
+        NotificationCenter.default.post(name: .rtiHideAuxiliaryPanels, object: nil)
     }
 
     private func ensureSingleInstance() -> Bool {

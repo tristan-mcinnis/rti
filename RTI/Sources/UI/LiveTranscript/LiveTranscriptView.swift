@@ -428,7 +428,7 @@ struct LiveTranscriptView: View {
             }
         }
         .contentShape(Rectangle())
-        .onHover { inside in hoveredId = inside ? p.id : (hoveredId == p.id ? nil : hoveredId) }
+        .hoverHighlight($hoveredId, id: p.id)
     }
 
     private func translationLabel(_ p: LiveParagraph) -> String {

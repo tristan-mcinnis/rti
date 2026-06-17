@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AssistantInputView: View {
     var onOpenSettings: () -> Void = {}
 
     @State private var input: String = ""
+    @State private var isDropTargeted = false
     @FocusState private var isInputFocused: Bool
     @AppStorage(OverlayAppearanceDefaults.invisibilityKey) private var isHiddenFromCapture: Bool = true
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
@@ -51,15 +53,23 @@ struct AssistantInputView: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color.overlayInk.opacity(0.06))
+                .fill(Color.overlayInk.opacity(isDropTargeted ? 0.12 : 0.06))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(inputState.isNoteMode
-                                ? Color.yellow.opacity(0.55)
-                                : Color.overlayInk.opacity(0.10),
-                                lineWidth: 1)
+                        .stroke(isDropTargeted
+                                ? Color.blue.opacity(0.7)
+                                : (inputState.isNoteMode
+                                   ? Color.yellow.opacity(0.55)
+                                   : Color.overlayInk.opacity(0.10)),
+                                lineWidth: isDropTargeted ? 1.5 : 1)
                 )
         )
+        // Drop an image here → it's OCR'd on-device and attached as context for
+        // the next message (same path as ⌘⇧H screen capture; no image is sent
+        // to the model, only the extracted text).
+        .onDrop(of: [.image], isTargeted: $isDropTargeted) { providers in
+            handleImageDrop(providers)
+        }
         // A draft typed during one meeting must not survive into the next —
         // an accidental ⏎ would send stale text into the wrong conversation.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
@@ -112,15 +122,17 @@ struct AssistantInputView: View {
                 Button {
                     ScreenshotManager.shared.captureAndAttach()
                 } label: {
-                    Label("Attach screenshot", systemImage: "camera.viewfinder")
+                    Label("Capture screen under cursor", systemImage: "camera.viewfinder")
                 }
                 .keyboardShortcut("h", modifiers: .command)
+                .help("Reads the whole display your mouse is on (not a single window) via on-device OCR, then attaches the text to your next message.")
 
                 Button {
                     NotificationCenter.default.post(name: .rtiClearChat, object: nil)
                 } label: {
                     Label("Clear chat", systemImage: "eraser")
                 }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
             }
 
             Menu {
@@ -196,11 +208,15 @@ struct AssistantInputView: View {
     /// when Smart is on, preserving at-a-glance state without a permanent pill.
     private var actionsMenu: some View {
         Menu {
-            Button { llm.sendAssist() } label: { Label(llm.primaryAction == .assist ? "Assist  ⌘⏎" : "Assist", systemImage: "sparkles") }
-            Button { llm.sendSaySomething() } label: { Label(llm.primaryAction == .sayNext ? "What should I say?  ⌘⏎" : "What should I say?  ⌘⌥S", systemImage: "wand.and.rays") }
-            Button { llm.sendFollowupQuestions() } label: { Label(llm.primaryAction == .followups ? "Follow-ups  ⌘⏎" : "Follow-ups  ⌘⌥F", systemImage: "bubble.left.and.text.bubble.right") }
-            Button { llm.sendRecap() } label: { Label(llm.primaryAction == .recap ? "Recap  ⌘⏎" : "Recap  ⌘⌥R", systemImage: "arrow.clockwise") }
-            Button { llm.sendSummary() } label: { Label(llm.primaryAction == .summary ? "Meeting Summary  ⌘⏎" : "Meeting Summary  ⌘⌥M", systemImage: "doc.text") }
+            // Mode-aware: the visible actions follow the active mode + listener
+            // state (a fieldwork observer gets "Key tensions / What's unsaid /
+            // Themes", not "What should I say"). One source of truth lives in
+            // LLMController.allQuickActions.
+            ForEach(llm.availableQuickActions()) { action in
+                Button { action.run(llm) } label: {
+                    Label(actionLabel(action), systemImage: action.symbol)
+                }
+            }
 
             Divider()
 
@@ -300,8 +316,28 @@ struct AssistantInputView: View {
         if inputState.isNoteMode {
             return "Type a note — Enter inserts inline into the transcript"
         }
-        return "Ask about your screen or conversation — ⌘↵ for Assist"
+        return "Ask, drop an image, or ⌘↵ for Assist"
     }
+
+    /// Menu label for a quick action: append "⌘⏎" when it's the bound primary,
+    /// otherwise its own hotkey hint (if any). Hints mirror CommandPaletteFactory.
+    private func actionLabel(_ action: LLMController.QuickAction) -> String {
+        if let primary = action.primary, llm.primaryAction == primary {
+            return "\(action.label)  ⌘⏎"
+        }
+        let hint = Self.hotkeyHints[action.id] ?? ""
+        return hint.isEmpty ? action.label : "\(action.label)  \(hint)"
+    }
+
+    private static let hotkeyHints: [String: String] = [
+        "sayNext": "⌘⌥S",
+        "followups": "⌘⌥F",
+        "keyTensions": "⌘⌥T",
+        "probe": "⌘⌥U",
+        "themes": "⌘⌥E",
+        "recap": "⌘⌥R",
+        "summary": "⌘⌥M",
+    ]
 
     /// Route through the registered command so the menubar item and command
     /// palette share one toggle path that both persists the flag and applies
@@ -319,6 +355,19 @@ struct AssistantInputView: View {
         }
         llm.listenerMode = true
         llm.primaryAction = .assist
+    }
+
+    /// Load the first dropped image and hand it to ScreenshotManager for
+    /// on-device OCR → attach as pending context. Returns true if we took it.
+    private func handleImageDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSImage.self) }) else {
+            return false
+        }
+        provider.loadObject(ofClass: NSImage.self) { object, _ in
+            guard let image = object as? NSImage else { return }
+            Task { @MainActor in ScreenshotManager.shared.attachDroppedImage(image) }
+        }
+        return true
     }
 
     private func submit() {

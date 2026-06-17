@@ -26,7 +26,7 @@ struct OverlayMicControl: View {
         .background(Capsule(style: .continuous).fill(backgroundColor))
         .overlay(Capsule(style: .continuous).stroke(borderColor, lineWidth: 1))
         .clipShape(Capsule(style: .continuous))
-        .onHover { hovering = $0 }
+        .hoverHighlight($hovering)
     }
 
     private var muteButton: some View {

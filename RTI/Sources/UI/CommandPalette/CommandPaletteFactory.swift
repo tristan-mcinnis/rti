@@ -22,10 +22,42 @@ enum CommandBuilder {
     ) -> [RTICommand] {
         sessionCommands(windows: windows, session: session)
             + navigationCommands(windows: windows)
+            + tabCommands(windows: windows)
             + actionCommands(llm: llm)
             + panelCommands(windows: windows, llm: llm)
             + appCommands(windows: windows)
             + modeSwitchCommands(modes: modes)
+    }
+
+    // MARK: - Tab navigation (⌘⌥0–5)
+
+    /// Jump straight to an overlay tab from anywhere. Each command shows the
+    /// overlay then posts the target tab; OverlayPanelView only switches to
+    /// tabs that are currently visible (Notes/Guide/Findings are opt-in).
+    @MainActor
+    private static func tabCommands(windows: WindowCoordinator) -> [RTICommand] {
+        func tabCmd(_ tab: String, _ title: String, key: Int, hint: String) -> RTICommand {
+            RTICommand(
+                id: "view.tab.\(tab)",
+                title: "\(title)  \(hint)",
+                keywords: ["tab", "switch", "jump", "go", tab],
+                perform: { [weak windows] in
+                    windows?.showOverlay()
+                    NotificationCenter.default.post(name: .rtiSelectTab, object: tab)
+                },
+                menuSection: .navigation,
+                hotkeyKeyCode: UInt32(key),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
+            )
+        }
+        return [
+            tabCmd("setup", "Go to Setup", key: kVK_ANSI_0, hint: "⌘⌥0"),
+            tabCmd("assist", "Go to Assist", key: kVK_ANSI_1, hint: "⌘⌥1"),
+            tabCmd("transcript", "Go to Transcript", key: kVK_ANSI_2, hint: "⌘⌥2"),
+            tabCmd("notes", "Go to Notes", key: kVK_ANSI_3, hint: "⌘⌥3"),
+            tabCmd("guide", "Go to Guide", key: kVK_ANSI_4, hint: "⌘⌥4"),
+            tabCmd("findings", "Go to Findings", key: kVK_ANSI_5, hint: "⌘⌥5"),
+        ]
     }
 
     // MARK: - Section builders
@@ -171,6 +203,51 @@ enum CommandBuilder {
                 hotkeyKeyCode: UInt32(kVK_ANSI_M),
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),
+            // Listener research actions — for sitting in on fieldwork as an
+            // observer. The qualitative-researcher counterparts to Say Next /
+            // Follow-ups, surfaced in the ✦ menu only in listener mode but
+            // always hotkey-reachable.
+            RTICommand(
+                id: "chat.keyTensions",
+                title: "Key Tensions",
+                subtitle: "⌘⌥T",
+                keywords: ["tension", "disagree", "split", "observe", "listener"],
+                perform: { llm.sendKeyTensions() },
+                hotkeyKeyCode: UInt32(kVK_ANSI_T),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
+            ),
+            RTICommand(
+                id: "chat.probe",
+                title: "What's Unsaid / Probe",
+                subtitle: "⌘⌥U",
+                keywords: ["probe", "unsaid", "explore", "deepen", "listener"],
+                perform: { llm.sendProbe() },
+                hotkeyKeyCode: UInt32(kVK_ANSI_U),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
+            ),
+            RTICommand(
+                id: "chat.themes",
+                title: "Emerging Themes",
+                subtitle: "⌘⌥E",
+                keywords: ["theme", "pattern", "synthesis", "listener"],
+                perform: { llm.sendThemes() },
+                hotkeyKeyCode: UInt32(kVK_ANSI_E),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
+            ),
+            RTICommand(
+                id: "note.toggle",
+                title: "Note Mode (type into transcript)",
+                subtitle: "⌘⌥N",
+                keywords: ["note", "annotate", "inline", "mark"],
+                isAvailable: { SessionCoordinator.shared.isRunning },
+                perform: {
+                    guard SessionCoordinator.shared.isRunning else { return }
+                    OverlayInputState.shared.isNoteMode.toggle()
+                },
+                menuSection: .actions,
+                hotkeyKeyCode: UInt32(kVK_ANSI_N),
+                hotkeyModifiers: UInt32(cmdKey | optionKey)
+            ),
             RTICommand(
                 id: "capture.screen",
                 title: "Capture Screen  ⌘⇧H",
@@ -194,7 +271,7 @@ enum CommandBuilder {
                 id: "chat.clear",
                 title: "Clear Current Chat",
                 keywords: ["delete", "reset"],
-                perform: { AppDelegate.confirmThenClearChat() },
+                perform: { AppDelegate.clearChatNow() },
                 menuSection: .actions
             ),
         ]
