@@ -20,27 +20,11 @@ final class LLMController {
         didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
     }
 
-    /// Which quick action ⌘⏎ fires. Remappable per meeting (e.g. Recap when
-    /// you're a passive listener and never need Assist).
-    enum PrimaryAction: String, CaseIterable {
-        case assist, recap, sayNext, followups, summary, keyTensions, probe, themes
-
-        var label: String {
-            switch self {
-            case .assist: "Assist"
-            case .recap: "Recap"
-            case .sayNext: "Say Next"
-            case .followups: "Follow-ups"
-            case .summary: "Summary"
-            case .keyTensions: "Key tensions"
-            case .probe: "What's unsaid / probe"
-            case .themes: "Emerging themes"
-            }
-        }
-    }
-
-    var primaryAction: PrimaryAction {
-        didSet { UserDefaults.standard.set(primaryAction.rawValue, forKey: Self.primaryActionKey) }
+    /// Which assistant action ⌘⏎ fires, by `AssistantAction.id`. Remappable per
+    /// meeting; persisted. Defaults to "assist". (Was a `PrimaryAction` enum;
+    /// the id strings are the same, so the stored value is compatible.)
+    var primaryActionID: String {
+        didSet { UserDefaults.standard.set(primaryActionID, forKey: Self.primaryActionKey) }
     }
 
     var recapDepth: RecapDepth {
@@ -101,22 +85,30 @@ final class LLMController {
     init(request: LLMRequest = LLMRequest()) {
         self.request = request
         smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
-        primaryAction = PrimaryAction(rawValue: UserDefaults.standard.string(forKey: Self.primaryActionKey) ?? "") ?? .assist
+        primaryActionID = UserDefaults.standard.string(forKey: Self.primaryActionKey) ?? "assist"
         listenerMode = UserDefaults.standard.bool(forKey: Self.listenerModeKey)
         recapDepth = RecapDepth(rawValue: UserDefaults.standard.string(forKey: Self.recapDepthKey) ?? "") ?? .standard
     }
 
     /// Dispatch the remappable ⌘⏎ action.
     func sendPrimary() {
-        switch primaryAction {
-        case .assist: sendAssist()
-        case .recap: sendRecap()
-        case .sayNext: sendSaySomething()
-        case .followups: sendFollowupQuestions()
-        case .summary: sendSummary()
-        case .keyTensions: sendKeyTensions()
-        case .probe: sendProbe()
-        case .themes: sendThemes()
+        perform(actionID: primaryActionID)
+    }
+
+    /// Dispatch an assistant action by its `AssistantAction.id`. The single
+    /// place mapping an action to its send function — the ✦ menu, command
+    /// palette, global hotkeys, and ⌘⏎ all route through here.
+    func perform(actionID: String) {
+        switch actionID {
+        case "assist": sendAssist()
+        case "recap": sendRecap()
+        case "sayNext": sendSaySomething()
+        case "followups": sendFollowupQuestions()
+        case "summary": sendSummary()
+        case "keyTensions": sendKeyTensions()
+        case "probe": sendProbe()
+        case "themes": sendThemes()
+        default: break
         }
     }
 
@@ -509,49 +501,14 @@ final class LLMController {
 // MARK: - Mode-aware quick actions
 
 extension LLMController {
-    /// A quick action surfaced in the ✦ menu / command palette. The visible set
-    /// adapts to the active mode + listener state so a fieldwork observer sees
-    /// "Key tensions / What's unsaid / Themes" instead of the meeting-shaped
-    /// "What should I say" — the core of making RTI's functions mode-aware.
-    struct QuickAction: Identifiable {
-        let id: String
-        let label: String
-        let symbol: String
-        /// The matching ⌘⏎-remappable primary action, when one exists.
-        let primary: PrimaryAction?
-        let run: (LLMController) -> Void
-        /// nil = show regardless of listener state; true = listener-only;
-        /// false = speaker-only (hidden when observing).
-        let listenerOnly: Bool?
-        /// Mode families this action applies to; nil = all.
-        let modes: Set<ModeKind>?
-    }
-
-    /// The full catalogue, in display order. `availableQuickActions` filters it.
-    static let allQuickActions: [QuickAction] = [
-        QuickAction(id: "assist", label: "Assist", symbol: "sparkles",
-                    primary: .assist, run: { $0.sendAssist() }, listenerOnly: nil, modes: nil),
-        QuickAction(id: "sayNext", label: "What should I say?", symbol: "wand.and.rays",
-                    primary: .sayNext, run: { $0.sendSaySomething() }, listenerOnly: false, modes: nil),
-        QuickAction(id: "followups", label: "Follow-ups", symbol: "bubble.left.and.text.bubble.right",
-                    primary: .followups, run: { $0.sendFollowupQuestions() }, listenerOnly: nil, modes: nil),
-        QuickAction(id: "keyTensions", label: "Key tensions", symbol: "bolt.horizontal",
-                    primary: .keyTensions, run: { $0.sendKeyTensions() }, listenerOnly: true, modes: [.interview, .meeting, .other]),
-        QuickAction(id: "probe", label: "What's unsaid / probe", symbol: "magnifyingglass",
-                    primary: .probe, run: { $0.sendProbe() }, listenerOnly: true, modes: [.interview, .meeting, .other]),
-        QuickAction(id: "themes", label: "Emerging themes", symbol: "square.stack.3d.up",
-                    primary: .themes, run: { $0.sendThemes() }, listenerOnly: true, modes: [.interview, .meeting, .other]),
-        QuickAction(id: "recap", label: "Recap", symbol: "arrow.clockwise",
-                    primary: .recap, run: { $0.sendRecap() }, listenerOnly: nil, modes: nil),
-        QuickAction(id: "summary", label: "Session summary", symbol: "doc.text",
-                    primary: .summary, run: { $0.sendSummary() }, listenerOnly: nil, modes: nil),
-    ]
-
-    /// Quick actions valid for the current mode + listener state.
-    func availableQuickActions() -> [QuickAction] {
+    /// The assistant actions to surface in the ✦ menu for the current mode +
+    /// listener state — projected from the single `AssistantAction.all`
+    /// catalogue (no per-surface registry). The ✦ menu runs each via
+    /// `perform(actionID:)`.
+    func availableQuickActions() -> [AssistantAction] {
         let kind = ModeStore.shared.activeMode?.kind ?? .other
         let listener = listenerMode
-        return Self.allQuickActions.filter { action in
+        return AssistantAction.all.filter { action in
             if let lo = action.listenerOnly, lo != listener { return false }
             if let modes = action.modes, !modes.contains(kind) { return false }
             return true

@@ -34,7 +34,7 @@ public struct Mode: Codable, Identifiable, Equatable {
 /// or coding, instead of being meeting-shaped everywhere. Derived from the
 /// built-in id when possible, otherwise inferred from the mode name so user
 /// modes ("FGD observer", "IDI") still classify sensibly.
-public enum ModeKind {
+public enum ModeKind: Sendable {
     case meeting, interview, coding, other
 }
 

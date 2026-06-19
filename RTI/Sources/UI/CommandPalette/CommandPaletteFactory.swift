@@ -143,6 +143,29 @@ enum CommandBuilder {
         ]
     }
 
+    /// Translate an AssistantAction hotkey letter to a Carbon virtual key code.
+    private static func carbonKeyCode(for key: String) -> UInt32? {
+        let map: [String: Int] = [
+            "A": kVK_ANSI_A, "B": kVK_ANSI_B, "C": kVK_ANSI_C, "D": kVK_ANSI_D,
+            "E": kVK_ANSI_E, "F": kVK_ANSI_F, "G": kVK_ANSI_G, "H": kVK_ANSI_H,
+            "I": kVK_ANSI_I, "J": kVK_ANSI_J, "K": kVK_ANSI_K, "L": kVK_ANSI_L,
+            "M": kVK_ANSI_M, "N": kVK_ANSI_N, "O": kVK_ANSI_O, "P": kVK_ANSI_P,
+            "Q": kVK_ANSI_Q, "R": kVK_ANSI_R, "S": kVK_ANSI_S, "T": kVK_ANSI_T,
+            "U": kVK_ANSI_U, "V": kVK_ANSI_V, "W": kVK_ANSI_W, "X": kVK_ANSI_X,
+            "Y": kVK_ANSI_Y, "Z": kVK_ANSI_Z,
+        ]
+        return map[key.uppercased()].map(UInt32.init)
+    }
+
+    /// Translate AssistantAction modifier flags to Carbon modifier mask.
+    private static func carbonModifiers(_ m: ActionHotkey.Modifiers) -> UInt32 {
+        var r = 0
+        if m.contains(.command) { r |= cmdKey }
+        if m.contains(.option) { r |= optionKey }
+        if m.contains(.shift) { r |= shiftKey }
+        return UInt32(r)
+    }
+
     @MainActor
     private static func actionCommands(
         llm: LLMController
@@ -157,45 +180,26 @@ enum CommandBuilder {
                 subtitle: "⌘⏎",
                 keywords: ["help", "suggestion", "assist", "primary"],
                 perform: { llm.sendPrimary() },
-                menuTitleProvider: { "\(llm.primaryAction.label)  ⌘⏎" },
+                menuTitleProvider: { "\(AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist")  ⌘⏎" },
                 hotkeyKeyCode: UInt32(kVK_Return),
                 hotkeyModifiers: UInt32(cmdKey)
             ),
+        ] + AssistantAction.all.map { action in
+            // Every quick action's palette entry + global hotkey is derived
+            // from the one AssistantAction catalogue.
             RTICommand(
-                id: "chat.assist",
-                title: "Assist (suggest what to say)",
-                keywords: ["help", "suggestion"],
-                perform: { llm.sendAssist() }
-            ),
-            RTICommand(
-                id: "chat.saynext",
-                title: "Say Next (one-line draft reply)",
-                subtitle: "⌘⌥S",
-                keywords: ["respond", "reply"],
-                perform: { llm.sendSaySomething() },
-                hotkeyKeyCode: UInt32(kVK_ANSI_S),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
-            ),
-            RTICommand(
-                id: "chat.followups",
-                title: "Follow-up Questions",
-                subtitle: "⌘⌥F",
-                keywords: ["questions", "ask"],
-                perform: { llm.sendFollowupQuestions() },
-                hotkeyKeyCode: UInt32(kVK_ANSI_F),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
-            ),
-            RTICommand(
-                id: "chat.recap",
-                title: "Recap so far",
-                subtitle: "⌘⌥R",
-                keywords: ["summary", "review", "depth", "length"],
-                perform: { llm.sendRecap() },
-                hotkeyKeyCode: UInt32(kVK_ANSI_R),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
-            ),
-            // One-shot depth overrides — don't change the sticky default that
-            // ⌘⌥R uses; set that in the ✦ menu's "Recap depth" submenu.
+                id: "chat.\(action.id)",
+                title: action.paletteTitle,
+                subtitle: action.hotkey?.display,
+                keywords: action.keywords,
+                perform: { llm.perform(actionID: action.id) },
+                hotkeyKeyCode: action.hotkey.flatMap { carbonKeyCode(for: $0.key) },
+                hotkeyModifiers: action.hotkey.map { carbonModifiers($0.modifiers) }
+            )
+        } + [
+            // One-shot recap depth overrides — not in the catalogue (they don't
+            // change the sticky default ⌘⌥R uses; set that in the ✦ "Recap
+            // depth" submenu).
             RTICommand(
                 id: "chat.recap.brief",
                 title: "Recap (brief)",
@@ -207,46 +211,6 @@ enum CommandBuilder {
                 title: "Recap (detailed)",
                 keywords: ["recap", "long", "full", "thorough", "length"],
                 perform: { llm.sendRecap(depth: .detailed) }
-            ),
-            RTICommand(
-                id: "chat.summary",
-                title: "Meeting Summary (full transcript)",
-                subtitle: "⌘⌥M",
-                keywords: ["granola", "summarize", "minutes", "wrap"],
-                perform: { llm.sendSummary() },
-                hotkeyKeyCode: UInt32(kVK_ANSI_M),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
-            ),
-            // Listener research actions — for sitting in on fieldwork as an
-            // observer. The qualitative-researcher counterparts to Say Next /
-            // Follow-ups, surfaced in the ✦ menu only in listener mode but
-            // always hotkey-reachable.
-            RTICommand(
-                id: "chat.keyTensions",
-                title: "Key Tensions",
-                subtitle: "⌘⌥T",
-                keywords: ["tension", "disagree", "split", "observe", "listener"],
-                perform: { llm.sendKeyTensions() },
-                hotkeyKeyCode: UInt32(kVK_ANSI_T),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
-            ),
-            RTICommand(
-                id: "chat.probe",
-                title: "What's Unsaid / Probe",
-                subtitle: "⌘⌥U",
-                keywords: ["probe", "unsaid", "explore", "deepen", "listener"],
-                perform: { llm.sendProbe() },
-                hotkeyKeyCode: UInt32(kVK_ANSI_U),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
-            ),
-            RTICommand(
-                id: "chat.themes",
-                title: "Emerging Themes",
-                subtitle: "⌘⌥E",
-                keywords: ["theme", "pattern", "synthesis", "listener"],
-                perform: { llm.sendThemes() },
-                hotkeyKeyCode: UInt32(kVK_ANSI_E),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),
             RTICommand(
                 id: "note.toggle",
@@ -272,13 +236,13 @@ enum CommandBuilder {
                 hotkeyKeyCode: UInt32(kVK_ANSI_H),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
             ),
-        ] + LLMController.PrimaryAction.allCases.map { action in
+        ] + AssistantAction.primaryEligibleActions.map { action in
             RTICommand(
-                id: "primary.set.\(action.rawValue)",
+                id: "primary.set.\(action.id)",
                 title: "Set ⌘⏎ to: \(action.label)",
                 keywords: ["primary", "hotkey", "remap", "bind"],
-                isAvailable: { llm.primaryAction != action },
-                perform: { llm.primaryAction = action }
+                isAvailable: { llm.primaryActionID != action.id },
+                perform: { llm.primaryActionID = action.id }
             )
         } + [
             RTICommand(
@@ -307,7 +271,7 @@ enum CommandBuilder {
                         modes.activeModeId = interview.id
                     }
                     llm.listenerMode = true
-                    llm.primaryAction = .assist
+                    llm.primaryActionID = "assist"
                 }
             ),
             RTICommand(

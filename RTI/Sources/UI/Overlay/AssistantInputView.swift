@@ -212,21 +212,21 @@ struct AssistantInputView: View {
             // Mode-aware: the visible actions follow the active mode + listener
             // state (a fieldwork observer gets "Key tensions / What's unsaid /
             // Themes", not "What should I say"). One source of truth lives in
-            // LLMController.allQuickActions.
+            // AssistantAction.all (RTICore).
             ForEach(llm.availableQuickActions()) { action in
-                Button { action.run(llm) } label: {
+                Button { llm.perform(actionID: action.id) } label: {
                     Label(actionLabel(action), systemImage: action.symbol)
                 }
             }
 
             Divider()
 
-            Menu("⌘⏎ runs: \(llm.primaryAction.label)") {
-                ForEach(LLMController.PrimaryAction.allCases, id: \.rawValue) { action in
+            Menu("⌘⏎ runs: \(AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist")") {
+                ForEach(AssistantAction.primaryEligibleActions) { action in
                     Button {
-                        llm.primaryAction = action
+                        llm.primaryActionID = action.id
                     } label: {
-                        if llm.primaryAction == action {
+                        if llm.primaryActionID == action.id {
                             Label(action.label, systemImage: "checkmark")
                         } else {
                             Text(action.label)
@@ -338,23 +338,13 @@ struct AssistantInputView: View {
 
     /// Menu label for a quick action: append "⌘⏎" when it's the bound primary,
     /// otherwise its own hotkey hint (if any). Hints mirror CommandPaletteFactory.
-    private func actionLabel(_ action: LLMController.QuickAction) -> String {
-        if let primary = action.primary, llm.primaryAction == primary {
+    private func actionLabel(_ action: AssistantAction) -> String {
+        if action.id == llm.primaryActionID {
             return "\(action.label)  ⌘⏎"
         }
-        let hint = Self.hotkeyHints[action.id] ?? ""
+        let hint = action.hotkey?.display ?? ""
         return hint.isEmpty ? action.label : "\(action.label)  \(hint)"
     }
-
-    private static let hotkeyHints: [String: String] = [
-        "sayNext": "⌘⌥S",
-        "followups": "⌘⌥F",
-        "keyTensions": "⌘⌥T",
-        "probe": "⌘⌥U",
-        "themes": "⌘⌥E",
-        "recap": "⌘⌥R",
-        "summary": "⌘⌥M",
-    ]
 
     /// Route through the registered command so the menubar item and command
     /// palette share one toggle path that both persists the flag and applies
@@ -371,7 +361,7 @@ struct AssistantInputView: View {
             modes.activeModeId = interview.id
         }
         llm.listenerMode = true
-        llm.primaryAction = .assist
+        llm.primaryActionID = "assist"
     }
 
     /// Load the first dropped image and hand it to ScreenshotManager for
