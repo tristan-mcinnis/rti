@@ -159,12 +159,25 @@ struct ResponseView: View {
                     isStreaming: streaming && entry.id == entries.last?.id,
                     toolStatus: llm.toolStatus,
                     placeholderLabel: streamingPlaceholderLabel,
+                    // The whole-meeting Summary is the one reply you most often
+                    // re-run (it's long, expensive, and the meeting moved on),
+                    // so its Copy/Regenerate bar stays visible instead of
+                    // hiding until hover — a discoverable 🔁, Granola-style.
+                    alwaysShowActions: isSummaryReply(entry),
                     onCopy: { NSPasteboard.copyString(entry.text) },
                     onRegenerate: { llm.regenerate(assistantID: entry.id) }
                 )
                 Spacer(minLength: 40)
             }
         }
+    }
+
+    /// True when this assistant reply answered a "Session summary" action — i.e.
+    /// the immediately preceding entry is a user turn whose action is "Summary".
+    private func isSummaryReply(_ entry: ChatEntry) -> Bool {
+        guard let idx = entries.firstIndex(where: { $0.id == entry.id }), idx > 0 else { return false }
+        let prev = entries[idx - 1]
+        return prev.role == "user" && prev.action == "Summary"
     }
 
     private func userBubble(_ entry: ChatEntry) -> some View {
@@ -230,6 +243,7 @@ private struct AssistantMessageRow: View {
     let isStreaming: Bool
     let toolStatus: String?
     let placeholderLabel: String
+    var alwaysShowActions: Bool = false
     let onCopy: () -> Void
     let onRegenerate: () -> Void
 
@@ -270,8 +284,8 @@ private struct AssistantMessageRow: View {
                     // chat — no jump); only its opacity changes on hover.
                     if !isStreaming && !entry.text.isEmpty {
                         actionBar
-                            .opacity(hovering ? 1 : 0)
-                            .allowsHitTesting(hovering)
+                            .opacity(hovering || alwaysShowActions ? 1 : 0)
+                            .allowsHitTesting(hovering || alwaysShowActions)
                             // Buffer beneath the icons so moving the cursor down
                             // onto them doesn't slip past the hover region and
                             // make the bar vanish before you can click.

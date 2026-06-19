@@ -78,6 +78,7 @@
 		825E92884AE10BC255F6991F /* CommandRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */; };
 		82C3660C16403F069F36F24A /* GlossaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B29D84DC8C16CB9AF6512C9 /* GlossaryStore.swift */; };
 		89A9FDEA99D4D51B30C1E452 /* MeetingBriefView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E55E7E809BEFA879CDB0EF /* MeetingBriefView.swift */; };
+		8B7C7A2CDBAFAD2310CFEA78 /* PromptCatalogueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA5DD7D9DF3E60B90ADF8190 /* PromptCatalogueTests.swift */; };
 		8C9F95FEB23B217AAC4BD34B /* BluetoothMicGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C50E7DEF1DAF80B9A47B19 /* BluetoothMicGuard.swift */; };
 		8CDA4BA033249A871FFB6483 /* LLMRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCE9839BBDA43C2E5038E526 /* LLMRequest.swift */; };
 		8DEE483B23E4702C74BE1D0A /* MeetingBriefWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31CC0E4EE8250CED065D98FC /* MeetingBriefWindowController.swift */; };
@@ -113,6 +114,7 @@
 		CADDD147CFF93E3D1FFB977C /* WindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA4C9DA72BD19BF5E5E060C /* WindowCoordinator.swift */; };
 		CB4D4D8CAAA3C1785A037F8D /* CommandPaletteFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A949A2717D3CA48DD7A09479 /* CommandPaletteFactory.swift */; };
 		CB82055FF93F65006B55C5C7 /* RTIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA159B350466B311F95C6E82 /* RTIApp.swift */; };
+		CD402CE562E0C04C9FF82420 /* PromptCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CDD6D99F4986080B652F32 /* PromptCatalogue.swift */; };
 		CF5FF001DE978EB34EEEC205 /* LLMToolDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C4E876D9FF41F74EFFEA95F /* LLMToolDefinition.swift */; };
 		CFC035E3E6CDBBFCF0D2612D /* CommandRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C757E6B1AFFBC70DE990E730 /* CommandRegistryTests.swift */; };
 		D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541406A822542146389D5B7E /* Secrets.swift */; };
@@ -247,6 +249,7 @@
 		A0128BDEFE77C4E515ACDD39 /* FindingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindingsController.swift; sourceTree = "<group>"; };
 		A2B49123DC265A6BEA2C6671 /* LLMTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMTools.swift; sourceTree = "<group>"; };
 		A6596433646EBB3D1705418D /* LLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMClient.swift; sourceTree = "<group>"; };
+		A7CDD6D99F4986080B652F32 /* PromptCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCatalogue.swift; sourceTree = "<group>"; };
 		A8917D2FFA935D09BB39F439 /* RegistryMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistryMenu.swift; sourceTree = "<group>"; };
 		A949A2717D3CA48DD7A09479 /* CommandPaletteFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteFactory.swift; sourceTree = "<group>"; };
 		AA87E36EF736B644385CF983 /* SonioxProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxProtocol.swift; sourceTree = "<group>"; };
@@ -284,6 +287,7 @@
 		DF9CD22BA63BCD171E6C20BD /* AnalysisScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisScheduler.swift; sourceTree = "<group>"; };
 		E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandRegistry.swift; sourceTree = "<group>"; };
 		E68E2F7C2CAF4B4B57821F53 /* JSONExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONExtractorTests.swift; sourceTree = "<group>"; };
+		EA5DD7D9DF3E60B90ADF8190 /* PromptCatalogueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCatalogueTests.swift; sourceTree = "<group>"; };
 		EC3C7300A48D060C2EFC76D8 /* GlossaryTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryTab.swift; sourceTree = "<group>"; };
 		EC9B66DB5C8A2C473FD51AC1 /* MarkdownRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRender.swift; sourceTree = "<group>"; };
 		EEABD1BAE63B2784CF6F677D /* OverlayMicControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayMicControl.swift; sourceTree = "<group>"; };
@@ -478,6 +482,7 @@
 				D929744F84265097DB100BCC /* ModeStorageTests.swift */,
 				BCAC796A736545E475CFC8F6 /* OCRServiceTests.swift */,
 				509A39C86FD52EB3F522B733 /* PromptBuilderTests.swift */,
+				EA5DD7D9DF3E60B90ADF8190 /* PromptCatalogueTests.swift */,
 				FB8680E2F035967E31E804B3 /* SemanticVersionTests.swift */,
 				411EDD7A2C3166286A52B232 /* SonioxFailureTests.swift */,
 				C1AFC667337DE7A5E7208A1B /* SpeakerTurnTests.swift */,
@@ -591,6 +596,7 @@
 				9C4E876D9FF41F74EFFEA95F /* LLMToolDefinition.swift */,
 				07BA5CAD60E682182E71AFB7 /* LLMWireShapes.swift */,
 				6E600DE9AB64400FE85F5FCD /* PromptBuilder.swift */,
+				A7CDD6D99F4986080B652F32 /* PromptCatalogue.swift */,
 				2525644C4658E171935FFFE0 /* SSEStreamParser.swift */,
 			);
 			path = LLM;
@@ -850,6 +856,7 @@
 				3E2B1E0EEC5CE5A181E21456 /* ModeStorageTests.swift in Sources */,
 				1FE9522A7ACE62374AA33FF8 /* OCRServiceTests.swift in Sources */,
 				807CF4F7B4714747A5B8438D /* PromptBuilderTests.swift in Sources */,
+				8B7C7A2CDBAFAD2310CFEA78 /* PromptCatalogueTests.swift in Sources */,
 				F0617591740F88E7EADB8566 /* SSEStreamParserTests.swift in Sources */,
 				ED3A1AA673F8618F309EDC88 /* SemanticVersionTests.swift in Sources */,
 				DBCAA5D4FD382ACD913D4980 /* SonioxFailureTests.swift in Sources */,
@@ -882,6 +889,7 @@
 				EBD3FE60B6F14CE2A219D660 /* ModeStorage.swift in Sources */,
 				68C0D8807FD67C3B406053F8 /* OCRService.swift in Sources */,
 				4F03A0990EC6A6A4CEB49A07 /* PromptBuilder.swift in Sources */,
+				CD402CE562E0C04C9FF82420 /* PromptCatalogue.swift in Sources */,
 				8F80BA43EB6C566FDA7761F3 /* SSEStreamParser.swift in Sources */,
 				5B830A47326BAFC69FB9213D /* SemanticVersion.swift in Sources */,
 				F652990DB1E58795DB10217D /* SonioxFailure.swift in Sources */,

@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import RTICore
 
 struct AssistantInputView: View {
     var onOpenSettings: () -> Void = {}
@@ -229,6 +230,22 @@ struct AssistantInputView: View {
                             Label(action.label, systemImage: "checkmark")
                         } else {
                             Text(action.label)
+                        }
+                    }
+                }
+            }
+
+            // How long ⌘⌥R (and the primary action, when set to Recap) runs.
+            // Sticky default; one-shot brief/detailed live in the palette.
+            Menu("Recap depth: \(llm.recapDepth.label)") {
+                ForEach(RecapDepth.allCases, id: \.rawValue) { depth in
+                    Button {
+                        llm.recapDepth = depth
+                    } label: {
+                        if llm.recapDepth == depth {
+                            Label(depth.label, systemImage: "checkmark")
+                        } else {
+                            Text(depth.label)
                         }
                     }
                 }

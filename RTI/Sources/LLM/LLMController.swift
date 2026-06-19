@@ -23,7 +23,7 @@ final class LLMController {
     /// Which quick action ⌘⏎ fires. Remappable per meeting (e.g. Recap when
     /// you're a passive listener and never need Assist).
     enum PrimaryAction: String, CaseIterable {
-        case assist, recap, sayNext, followups, summary
+        case assist, recap, sayNext, followups, summary, keyTensions, probe, themes
 
         var label: String {
             switch self {
@@ -32,12 +32,19 @@ final class LLMController {
             case .sayNext: "Say Next"
             case .followups: "Follow-ups"
             case .summary: "Summary"
+            case .keyTensions: "Key tensions"
+            case .probe: "What's unsaid / probe"
+            case .themes: "Emerging themes"
             }
         }
     }
 
     var primaryAction: PrimaryAction {
         didSet { UserDefaults.standard.set(primaryAction.rawValue, forKey: Self.primaryActionKey) }
+    }
+
+    var recapDepth: RecapDepth {
+        didSet { UserDefaults.standard.set(recapDepth.rawValue, forKey: Self.recapDepthKey) }
     }
 
     /// Passive-listener sessions: the user is observing the meeting, not
@@ -86,79 +93,8 @@ final class LLMController {
     private static let smartModeKey = "rti.llm.smartMode"
     private static let primaryActionKey = "rti.llm.primaryAction"
     private static let listenerModeKey = "rti.llm.listenerMode"
+    private static let recapDepthKey = "rti.llm.recapDepth"
     private static let iso8601 = ISO8601DateFormatter()
-
-    private static let systemPrompt = """
-    You are RTI, a real-time meeting assistant. The user is in an active conversation.
-    Keep responses short (under 120 words), direct, and actionable. Use simple markdown
-    where it helps (bullets, **bold** for key terms). If you don't know something, say so briefly.
-
-    If the transcript context starts with a "## User notes" block, treat those notes as
-    authoritative corrections from the user (e.g. name spellings, identity clarifications).
-    Prefer them over what appears in the raw transcript.
-    """
-
-    private static let assistPrompt = "Based on the recent conversation, suggest what I should say or ask next (the suggested line itself should be in the conversation's language). Be concise — max 3 short lines of framing in ENGLISH."
-    private static let saySomethingPrompt = "Given the conversation so far, draft exactly one short reply I could say next, in the language the conversation is being held in. One line, natural, in my voice. No preamble."
-    private static let followupsPrompt = "List 3 thoughtful follow-up questions I could ask the other person right now, written in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
-    private static let recapPrompt = "Recap the conversation so far in 3–5 short bullets: what was discussed, decisions, open items. Reply in ENGLISH regardless of the conversation's language. When you keep an original-language term, ALWAYS write it as term (pinyin/romanization, English meaning) — e.g. 健身穿搭 (jiànshēn chuāndā, workout outfits) — never bare Chinese the reader might not parse."
-
-    /// Granola-style whole-meeting summary — runs over the FULL transcript,
-    /// not the 15-minute assist window. Internal: SessionArchive reuses it
-    /// for the end-of-session auto-summary so chat and archive stay identical.
-    static let meetingSummaryPrompt = """
-    Write a structured summary of this ENTIRE meeting so far, in markdown. Work \
-    only from what was actually said — no invention, no padding.
-
-    ⚠️ CRITICAL FORMAT RULE — applies to EVERY Chinese term, everywhere including \
-    the TL;DR: write it as 中文 (pīnyīn, English meaning). The pinyin (with tone \
-    marks) is MANDATORY. A bare Chinese term with no pinyin is a format error — \
-    e.g. 没得选 (méi dé xuǎn, no other choice), never 没得选 alone.
-
-    ## TL;DR
-    2–3 sentences: what this meeting was, what it covered, the single most \
-    important takeaway.
-
-    ## Key points
-    The substantive content, grouped under short bold topic headers in the order \
-    the topics arose. Concrete and specific — keep names, brands, numbers, and \
-    essential original-language terms as term (pinyin, English meaning) — e.g. \
-    松弛 (sōngchí, relaxed ease), 背刺 (bèicì, price betrayal). Attribute \
-    views to named people where clear, otherwise by role.
-
-    ## Decisions & agreements
-    Anything decided, agreed, or confirmed. If none, write "None."
-
-    ## Tensions & contradictions
-    Where views split, or someone contradicted themselves or the group. These \
-    are often the most valuable — be precise about who held which side. If \
-    none, write "None observed."
-
-    ## Open questions & follow-ups
-    Unresolved threads, things someone said they'd do, topics raised but not \
-    explored.
-
-    Rules: write in English (translate as needed); skip greetings, logistics, \
-    and side conversations about tools or scheduling; never use raw transcript \
-    labels like "them_1".
-    """
-
-    /// Listener-mode variants: the user is observing, not speaking, so "what
-    /// should I say" is the wrong frame. Surface what's notable instead.
-    private static let listenerAssistPrompt = """
-    I'm a researcher passively observing this session. Surface what I just LEARNED — not what to say (I never speak). Glanceable in 5 seconds, not a paragraph.
-
-    Flag the single most significant thing in the recent conversation. Output EXACTLY two lines with a BLANK LINE between them (so they render as separate lines, not one run-on):
-
-    **[TAG]** <one line: what was said or revealed; include the key verbatim with its speaker if there is one>
-
-    **Matters:** <one line: why this is significant for the research objective>
-
-    TAG is one of: FINDING (a clear insight or need), TENSION (views split within the group), CONTRADICTION (someone contradicts themselves or earlier consensus), NEW THREAD (an unexpected topic worth attention), MISSED (the discussion moved past something important without probing it).
-
-    Reply in ENGLISH. Original-language terms ALWAYS as term (pinyin, English meaning) — e.g. 得体 (détǐ, appropriate) — never bare Chinese. Max ~25 words per line. Keep the blank line between the two lines. No preamble, nothing else.
-    """
-    private static let listenerFollowupsPrompt = "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along, each in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
 
     private static let contextWindowSeconds: Double = 900
 
@@ -167,6 +103,7 @@ final class LLMController {
         smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
         primaryAction = PrimaryAction(rawValue: UserDefaults.standard.string(forKey: Self.primaryActionKey) ?? "") ?? .assist
         listenerMode = UserDefaults.standard.bool(forKey: Self.listenerModeKey)
+        recapDepth = RecapDepth(rawValue: UserDefaults.standard.string(forKey: Self.recapDepthKey) ?? "") ?? .standard
     }
 
     /// Dispatch the remappable ⌘⏎ action.
@@ -177,12 +114,32 @@ final class LLMController {
         case .sayNext: sendSaySomething()
         case .followups: sendFollowupQuestions()
         case .summary: sendSummary()
+        case .keyTensions: sendKeyTensions()
+        case .probe: sendProbe()
+        case .themes: sendThemes()
         }
     }
 
-    /// Granola-style structured summary of the whole meeting so far.
+    /// Structured summary of the whole session so far. Shape follows the active
+    /// mode (research debrief for interviews, minutes otherwise) and always runs
+    /// on the reasoning ("smart") model — the wrap-up is worth the extra latency.
     func sendSummary() {
-        performSend(userInput: Self.meetingSummaryPrompt, action: "Summary", fullTranscript: true)
+        let kind = ModeStore.shared.activeMode?.kind ?? .other
+        performSend(userInput: PromptCatalogue.summary(for: kind), action: "Summary", fullTranscript: true, forceSmart: true)
+    }
+
+    /// Listener research actions — surface tensions / what's unsaid / themes for
+    /// a fieldwork observer instead of "what should I say".
+    func sendKeyTensions() {
+        performSend(userInput: PromptCatalogue.keyTensions, action: "Key tensions")
+    }
+
+    func sendProbe() {
+        performSend(userInput: PromptCatalogue.probe, action: "Probe")
+    }
+
+    func sendThemes() {
+        performSend(userInput: PromptCatalogue.themes, action: "Themes")
     }
 
     func sendAskAnything(_ input: String) {
@@ -192,19 +149,21 @@ final class LLMController {
     }
 
     func sendAssist() {
-        performSend(userInput: listenerMode ? Self.listenerAssistPrompt : Self.assistPrompt, action: "Assist")
+        performSend(userInput: PromptCatalogue.assist(listener: listenerMode), action: "Assist")
     }
 
     func sendSaySomething() {
-        performSend(userInput: Self.saySomethingPrompt, action: "Say next")
+        performSend(userInput: PromptCatalogue.sayNext, action: "Say next")
     }
 
     func sendFollowupQuestions() {
-        performSend(userInput: listenerMode ? Self.listenerFollowupsPrompt : Self.followupsPrompt, action: "Follow-ups")
+        performSend(userInput: PromptCatalogue.followups(listener: listenerMode), action: "Follow-ups")
     }
 
-    func sendRecap() {
-        performSend(userInput: Self.recapPrompt, action: "Recap")
+    /// Recap at the given depth, or the user's sticky default when unspecified
+    /// (⌘⌥R and the ⌘⏎ primary action both take the default).
+    func sendRecap(depth: RecapDepth? = nil) {
+        performSend(userInput: PromptCatalogue.recap(depth ?? recapDepth), action: "Recap")
     }
 
     /// Re-run the turn that produced `assistantID`: drop that assistant reply
@@ -217,9 +176,19 @@ final class LLMController {
         let userIdx = assistantIdx - 1
         guard userIdx >= 0, entries[userIdx].role == "user" else { return }
         let userEntry = entries[userIdx]
+        let action = userEntry.action ?? "Ask"
         // performSend re-appends the user turn, so drop it here too.
         entries.removeSubrange(userIdx...)
-        performSend(userInput: userEntry.text, action: userEntry.action ?? "Ask")
+        // Summary is special: it runs over the FULL transcript on the smart
+        // model. The stored user text is the (possibly now-stale) prompt, so
+        // re-dispatch through the live summary path rather than replaying it as
+        // a normal 15-minute, fast-model turn — otherwise "regenerate" silently
+        // produces a different, weaker artifact than the one it's replacing.
+        if action == "Summary" {
+            sendSummary()
+        } else {
+            performSend(userInput: userEntry.text, action: action)
+        }
     }
 
     func attachScreenContext(_ text: String) {
@@ -257,8 +226,9 @@ final class LLMController {
         resetMemory()
     }
 
-    private func performSend(userInput: String, action: String, fullTranscript: Bool = false) {
+    private func performSend(userInput: String, action: String, fullTranscript: Bool = false, forceSmart: Bool = false) {
         request.cancel()
+        let effectiveSmart = smartMode || forceSmart
         lastError = nil
         lastErrorIsAuth = false
         toolStatus = nil
@@ -281,7 +251,7 @@ final class LLMController {
         // Guide awareness: when a discussion guide is loaded, Assist and
         // Follow-ups see what's still uncovered — "what haven't we asked yet"
         // is the moderator's core anxiety and the listener's best flag.
-        if ["Assist", "Follow-ups"].contains(action) {
+        if ["Assist", "Follow-ups", "Probe"].contains(action) {
             let coverage = Self.guideCoverageContext()
             if !coverage.isEmpty {
                 fullContent += "\n\n\(coverage)"
@@ -301,7 +271,7 @@ final class LLMController {
             {
                 return prompt
             }
-            return Self.systemPrompt
+            return PromptCatalogue.system
         }()
         let effectivePrompt = listenerMode
             ? basePrompt + "\n\nThe user is a PASSIVE LISTENER in this meeting — observing, not speaking. Never draft lines for them to say; frame help as observations, flags, and questions they could pass to whoever is leading."
@@ -336,7 +306,7 @@ final class LLMController {
             mode: activeMode?.name,
             provider: LLMProviders.activeId,
             model: LLMProviders.active.model,
-            smart: smartMode,
+            smart: effectiveSmart,
             inSession: SessionCoordinator.shared.isRunning,
             contextUsed: contextUsed,
             screenUsed: manualScreenUsed,
@@ -356,7 +326,7 @@ final class LLMController {
             await loop.run(
                 conversation: apiMessages,
                 toolsJSON: toolsJSON,
-                smart: smartMode,
+                smart: effectiveSmart,
                 onEvent: { event in
                     MainActor.assumeIsolated {
                         switch event {
@@ -436,7 +406,7 @@ final class LLMController {
     /// anti-repeat context stays small. Recap and free-form Ask are exempt —
     /// repetition is fine there.
     private func priorSuggestions(action: String) -> String {
-        guard ["Assist", "Follow-ups", "Say next"].contains(action) else { return "" }
+        guard ["Assist", "Follow-ups", "Say next", "Key tensions", "Probe", "Themes"].contains(action) else { return "" }
         var outputs: [String] = []
         for (idx, entry) in entries.enumerated() {
             guard entry.role == "user", entry.action == action,
@@ -533,5 +503,58 @@ final class LLMController {
         let header = "## User notes (authoritative — trust these over any transcript ambiguity)"
         let bullets = notes.map { "- \($0.text)" }.joined(separator: "\n")
         return "\(header)\n\(bullets)\n\n\(inline)"
+    }
+}
+
+// MARK: - Mode-aware quick actions
+
+extension LLMController {
+    /// A quick action surfaced in the ✦ menu / command palette. The visible set
+    /// adapts to the active mode + listener state so a fieldwork observer sees
+    /// "Key tensions / What's unsaid / Themes" instead of the meeting-shaped
+    /// "What should I say" — the core of making RTI's functions mode-aware.
+    struct QuickAction: Identifiable {
+        let id: String
+        let label: String
+        let symbol: String
+        /// The matching ⌘⏎-remappable primary action, when one exists.
+        let primary: PrimaryAction?
+        let run: (LLMController) -> Void
+        /// nil = show regardless of listener state; true = listener-only;
+        /// false = speaker-only (hidden when observing).
+        let listenerOnly: Bool?
+        /// Mode families this action applies to; nil = all.
+        let modes: Set<ModeKind>?
+    }
+
+    /// The full catalogue, in display order. `availableQuickActions` filters it.
+    static let allQuickActions: [QuickAction] = [
+        QuickAction(id: "assist", label: "Assist", symbol: "sparkles",
+                    primary: .assist, run: { $0.sendAssist() }, listenerOnly: nil, modes: nil),
+        QuickAction(id: "sayNext", label: "What should I say?", symbol: "wand.and.rays",
+                    primary: .sayNext, run: { $0.sendSaySomething() }, listenerOnly: false, modes: nil),
+        QuickAction(id: "followups", label: "Follow-ups", symbol: "bubble.left.and.text.bubble.right",
+                    primary: .followups, run: { $0.sendFollowupQuestions() }, listenerOnly: nil, modes: nil),
+        QuickAction(id: "keyTensions", label: "Key tensions", symbol: "bolt.horizontal",
+                    primary: .keyTensions, run: { $0.sendKeyTensions() }, listenerOnly: true, modes: [.interview, .meeting, .other]),
+        QuickAction(id: "probe", label: "What's unsaid / probe", symbol: "magnifyingglass",
+                    primary: .probe, run: { $0.sendProbe() }, listenerOnly: true, modes: [.interview, .meeting, .other]),
+        QuickAction(id: "themes", label: "Emerging themes", symbol: "square.stack.3d.up",
+                    primary: .themes, run: { $0.sendThemes() }, listenerOnly: true, modes: [.interview, .meeting, .other]),
+        QuickAction(id: "recap", label: "Recap", symbol: "arrow.clockwise",
+                    primary: .recap, run: { $0.sendRecap() }, listenerOnly: nil, modes: nil),
+        QuickAction(id: "summary", label: "Session summary", symbol: "doc.text",
+                    primary: .summary, run: { $0.sendSummary() }, listenerOnly: nil, modes: nil),
+    ]
+
+    /// Quick actions valid for the current mode + listener state.
+    func availableQuickActions() -> [QuickAction] {
+        let kind = ModeStore.shared.activeMode?.kind ?? .other
+        let listener = listenerMode
+        return Self.allQuickActions.filter { action in
+            if let lo = action.listenerOnly, lo != listener { return false }
+            if let modes = action.modes, !modes.contains(kind) { return false }
+            return true
+        }
     }
 }

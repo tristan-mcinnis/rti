@@ -105,7 +105,10 @@ struct GuideQuoteView: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     if let speaker = quote.speaker, !speaker.isEmpty {
-                        Text(speaker)
+                        // Normalize raw Soniox IDs (self / them_1) to the same
+                        // "You" / "Speaker N" labels the Transcript tab uses, so
+                        // the Guide tab doesn't leak internal diarization IDs.
+                        Text(SpeakerLabels.displayName(for: speaker))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Color.overlayInk.opacity(0.75))
                     }

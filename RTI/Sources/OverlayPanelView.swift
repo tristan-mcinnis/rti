@@ -13,8 +13,11 @@ struct OverlayPanelView: View {
     @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = false
     @State private var tab: OverlayTab = .assist
 
+    // Setup is the pre-call surface, not a live tab — it's pulled out of the
+    // equal-weight row into a leading icon button (OverlaySetupButton) so the
+    // top bar gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
-        var t: [OverlayTab] = [.setup, .assist, .transcript]
+        var t: [OverlayTab] = [.assist, .transcript]
         if notesEnabled { t.append(.notes) }
         if guideEnabled { t.append(.guide) }
         if findingsEnabled { t.append(.findings) }
@@ -32,6 +35,7 @@ struct OverlayPanelView: View {
 
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
+                    OverlaySetupButton(selection: $tab)
                     OverlayTabBar(selection: $tab, tabs: visibleTabs)
                     OverlayMicControl()
                     OverlayRecordButton()
@@ -44,6 +48,13 @@ struct OverlayPanelView: View {
                 .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
                 .onChange(of: guideEnabled) { _, _ in normalizeSelection() }
                 .onChange(of: findingsEnabled) { _, _ in normalizeSelection() }
+                // Global hotkeys (⌘⌥1–5) and commands switch tabs by posting a
+                // notification with the target tab's rawValue.
+                .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { note in
+                    guard let raw = note.object as? String,
+                          let target = OverlayTab(rawValue: raw) else { return }
+                    if target == .setup || visibleTabs.contains(target) { tab = target }
+                }
 
                 Group {
                     switch tab {
@@ -73,7 +84,9 @@ struct OverlayPanelView: View {
     }
 
     private func normalizeSelection() {
-        if !visibleTabs.contains(tab) { tab = .assist }
+        // Setup lives outside visibleTabs but is always reachable, so don't
+        // kick the user out of it when a live-analysis toggle flips.
+        if tab != .setup, !visibleTabs.contains(tab) { tab = .assist }
     }
 
     /// The original chat surface, now the default "Assist" tab.

@@ -33,6 +33,33 @@ final class ScreenshotManager {
         }
     }
 
+    /// OCR an image the user dropped into the composer and attach the text as
+    /// pending context for the next turn — the drag-and-drop sibling of
+    /// `captureAndAttach()`. The image itself is never sent to the model (the
+    /// provider is text-only); on-device Vision OCR extracts the text.
+    func attachDroppedImage(_ image: NSImage) {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            LLMController.shared.setScreenAttachError("Couldn't read that image.")
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let ocr = try await OCRService.recognizeText(in: cgImage)
+                let trimmed = self.truncate(ocr)
+                guard !trimmed.isEmpty else {
+                    LLMController.shared.setScreenAttachError("No readable text found in that image.")
+                    return
+                }
+                RTILog.log("Dropped image: OCR=\(trimmed.count) chars.", category: "screenshot")
+                LLMController.shared.attachScreenContext("Text from a dropped image:\n\(trimmed)")
+            } catch {
+                RTILog.log("Dropped-image OCR failed: \(error)", category: "screenshot")
+                LLMController.shared.setScreenAttachError("Couldn't read text from that image.")
+            }
+        }
+    }
+
     /// Capture + OCR and return the visible-text string.
     /// Throws `ScreenshotError.empty` if OCR produced no text.
     /// Used by the LLM `capture_screen` tool so the result flows directly

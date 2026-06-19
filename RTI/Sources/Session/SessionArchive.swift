@@ -106,10 +106,14 @@ enum SessionArchive {
         // Full-meeting summaries routinely outlive the default 60s stream
         // timeout (the silent failure that left archives without summary.md)
         // — give this call its own generous budget and log failures.
-        let prompt = LLMController.meetingSummaryPrompt + "\n\nTranscript:\n" + transcript
+        // Shape the wrap-up to the session's mode (research debrief for
+        // interviews, minutes otherwise) and run it on the reasoning ("smart")
+        // model — the end-of-session summary is worth the extra latency.
+        let kind = ModeStore.shared.activeMode?.kind ?? .other
+        let prompt = PromptCatalogue.summary(for: kind) + "\n\nTranscript:\n" + transcript
         guard let payloadRaw = await LLMRequest().collectAsync(
             messages: [LLMMessage(role: "user", content: prompt)],
-            smart: false,
+            smart: true,
             timeoutOverride: 300
         ) else {
             RTILog.log("auto-summary: LLM call failed/timed out for \(dir.lastPathComponent)", category: "summary")
@@ -120,12 +124,36 @@ enum SessionArchive {
             RTILog.log("auto-summary: empty response for \(dir.lastPathComponent)", category: "summary")
             return nil
         }
-        let md = (frontmatter(kind: "Summary", startedAt: startedAt) + ["# Meeting summary", "", payload, ""]).joined(separator: "\n")
+        // Title by mode: an interview produces a research debrief, not minutes.
+        // Also strip any H1 the model prepended (the debrief prompt makes it
+        // title the section "# QUALITATIVE RESEARCH DEBRIEF" itself) so the
+        // archive doesn't stack two headings.
+        let title = kind == .interview ? "# Research debrief" : "# Meeting summary"
+        let body = stripLeadingH1(payload)
+        let md = (frontmatter(kind: "Summary", startedAt: startedAt) + [title, "", body, ""]).joined(separator: "\n")
         let url = dir.appendingPathComponent("summary.md")
         writeOwnerOnly(md, to: url)
         RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)", category: "summary")
         notifySummaryReady(sessionFolder: dir.lastPathComponent)
         return url
+    }
+
+    /// Drop a single leading H1 (and the blank lines after it) from a model
+    /// payload — so a self-titled section ("# QUALITATIVE RESEARCH DEBRIEF")
+    /// doesn't double up under the archive's own H1. H2s ("## Overview") are
+    /// left untouched: `hasPrefix("# ")` is false for "## ".
+    private static func stripLeadingH1(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n")
+        while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
+            lines.removeFirst()
+        }
+        if let first = lines.first, first.hasPrefix("# ") {
+            lines.removeFirst()
+            while let next = lines.first, next.trimmingCharacters(in: .whitespaces).isEmpty {
+                lines.removeFirst()
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Local notification when the post-stop summary lands, so the user knows

@@ -17,6 +17,9 @@ extension Notification.Name {
     /// Posted when a session stops, so per-session UI state (e.g. an unsent
     /// draft in the composer) can reset before the next meeting.
     static let rtiSessionDidStop = Notification.Name("rti.sessionDidStop")
+    /// Posted (object = OverlayTab rawValue String) to switch the overlay's
+    /// active tab from a global hotkey or command.
+    static let rtiSelectTab = Notification.Name("rti.selectTab")
 }
 
 enum OverlayAppearanceDefaults {

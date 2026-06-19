@@ -189,10 +189,24 @@ enum CommandBuilder {
                 id: "chat.recap",
                 title: "Recap so far",
                 subtitle: "⌘⌥R",
-                keywords: ["summary", "review"],
+                keywords: ["summary", "review", "depth", "length"],
                 perform: { llm.sendRecap() },
                 hotkeyKeyCode: UInt32(kVK_ANSI_R),
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
+            ),
+            // One-shot depth overrides — don't change the sticky default that
+            // ⌘⌥R uses; set that in the ✦ menu's "Recap depth" submenu.
+            RTICommand(
+                id: "chat.recap.brief",
+                title: "Recap (brief)",
+                keywords: ["recap", "short", "tldr", "length"],
+                perform: { llm.sendRecap(depth: .brief) }
+            ),
+            RTICommand(
+                id: "chat.recap.detailed",
+                title: "Recap (detailed)",
+                keywords: ["recap", "long", "full", "thorough", "length"],
+                perform: { llm.sendRecap(depth: .detailed) }
             ),
             RTICommand(
                 id: "chat.summary",
