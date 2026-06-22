@@ -62,12 +62,16 @@ enum LLMToolRegistry {
         name: "search_vault",
         description: """
         Search Tristan's knowledge vault — past meetings, project status \
-        dashboards, research findings, client notes, proposals, and reports. \
+        dashboards, research findings, client notes, proposals, reports, and \
+        the project's research transcripts (what consumers or experts said in \
+        specific groups and interviews). When a project is set for this meeting, \
+        the search is automatically focused on that project first. \
         Use this when the conversation raises a question whose answer lives in \
         the knowledge base rather than the live transcript: project status, a \
         past decision ("what did we decide about…"), what was agreed, client or \
-        stakeholder background, prior research findings, or where a project \
-        stands. Do NOT use it for questions about the current conversation — \
+        stakeholder background, prior research findings, or what a participant \
+        said in a research session ("what did Group 1 say about their favourite \
+        store"). Do NOT use it for questions about the current conversation — \
         the transcript already covers those. Returns the most relevant \
         documents with short excerpts.
         """,
@@ -84,8 +88,10 @@ enum LLMToolRegistry {
         ],
         execute: { argumentsJSON in
             let query = decodeQuery(from: argumentsJSON)
+            // Focus on the meeting's project when one is picked (nil = whole vault).
+            let scope = MeetingContextStore.shared.workstreamScopePath
             let start = Date()
-            let result = await VaultSearch.searchFormatted(query: query)
+            let result = await VaultSearch.searchFormatted(query: query, scopeRelativePath: scope)
             let ms = Int(Date().timeIntervalSince(start) * 1000)
             RTILog.log("search_vault '\(query)' took \(ms)ms", category: "vault")
             return result

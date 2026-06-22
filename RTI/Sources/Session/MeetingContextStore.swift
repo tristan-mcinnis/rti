@@ -42,6 +42,15 @@ final class MeetingContextStore {
         return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
     }
 
+    /// The picked project's path relative to `databases/`, so vault search can
+    /// focus on this meeting's project (e.g. surface what a participant said in
+    /// *this* project's transcripts first). nil when nothing, or a client, is
+    /// picked — search then runs vault-wide.
+    var workstreamScopePath: String? {
+        guard let item = workstreamItem else { return nil }
+        return VaultWorkstreamStore.scopeRelativePath(for: item)
+    }
+
     func clearWorkstream() {
         workstreamName = nil
         workstreamContext = nil

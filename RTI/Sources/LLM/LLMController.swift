@@ -278,6 +278,7 @@ final class LLMController {
             baseSystemPrompt: effectivePrompt,
             meetingContext: MeetingContextStore.shared.combined,
             meetingBrief: meetingBrief,
+            discussionGuide: DiscussionGuideController.shared.guide?.assistantContextSummary(),
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
             referenceText: activeMode?.referenceText,
             referenceModeName: activeMode?.name,

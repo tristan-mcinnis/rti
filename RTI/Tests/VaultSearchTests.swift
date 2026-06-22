@@ -73,4 +73,35 @@ final class VaultSearchTests: XCTestCase {
             """)
         XCTAssertTrue(excerpt.contains("store format"))
     }
+
+    // MARK: project scoping
+
+    private func result(_ path: String) -> VaultSearch.Result {
+        VaultSearch.Result(title: path, relativePath: path, modified: .distantPast, excerpt: "", score: 1)
+    }
+
+    func testScopeKeepsOnlyInProjectResults() {
+        let results = [
+            result("projects/acme-running/transcripts/consumer/group-1.md"),
+            result("projects/other/00-status.md"),
+            result("meetings/20260601-x.md"),
+        ]
+        let scoped = VaultSearch.applyScope(results, scope: "projects/acme-running")
+        XCTAssertTrue(scoped.inScope)
+        XCTAssertEqual(scoped.results.count, 1)
+        XCTAssertEqual(scoped.results.first?.relativePath, "projects/acme-running/transcripts/consumer/group-1.md")
+    }
+
+    func testScopeBroadensWhenNoInProjectMatch() {
+        let results = [result("projects/other/00-status.md"), result("meetings/20260601-x.md")]
+        let scoped = VaultSearch.applyScope(results, scope: "projects/acme-running")
+        XCTAssertFalse(scoped.inScope) // fell back to whole-vault results
+        XCTAssertEqual(scoped.results.count, 2)
+    }
+
+    func testNoScopeReturnsAllUnflagged() {
+        let scoped = VaultSearch.applyScope([result("meetings/a.md")], scope: nil)
+        XCTAssertFalse(scoped.inScope)
+        XCTAssertEqual(scoped.results.count, 1)
+    }
 }

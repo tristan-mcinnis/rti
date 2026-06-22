@@ -31,6 +31,14 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertTrue(PromptBuilder.buildSystemMessages(context: PromptContext()).isEmpty)
     }
 
+    func test_systemMessages_discussionGuideInjected() {
+        let ctx = PromptContext(baseSystemPrompt: "BASE", discussionGuide: "[ ] What drives your purchase?")
+        let msgs = PromptBuilder.buildSystemMessages(context: ctx)
+        XCTAssertEqual(msgs.count, 2)
+        XCTAssertTrue(msgs[1].content?.contains("discussion guide") ?? false)
+        XCTAssertTrue(msgs[1].content?.contains("What drives your purchase?") ?? false)
+    }
+
     func test_systemMessages_meetingContextFollowsBase() {
         let ctx = PromptContext(baseSystemPrompt: "BASE", meetingContext: "Client: Acme, status: behind")
         let msgs = PromptBuilder.buildSystemMessages(context: ctx)

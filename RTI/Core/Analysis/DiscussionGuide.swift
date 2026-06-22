@@ -144,6 +144,41 @@ public struct DiscussionGuide: Codable, Equatable {
         }
     }
 
+    /// A compact text rendering of the guide for injection into the assistant's
+    /// prompt, so the assist panel can answer questions about it ("what's left to
+    /// cover?", "what did they say on pricing?", "what should I ask next?").
+    /// Each question carries a status marker and, where the live matcher has
+    /// found evidence, a one-line summary of what was said. Kept terse so it
+    /// doesn't bloat every turn.
+    public func assistantContextSummary() -> String {
+        func marker(_ s: GuideQuestionStatus) -> String {
+            switch s {
+            case .answered: return "[x]"
+            case .partial: return "[~]"
+            case .pending: return "[ ]"
+            }
+        }
+        let cov = coverage
+        var lines: [String] = [
+            "Discussion guide: \(fileName) — \(cov.answered)/\(cov.total) covered (\(cov.percent)%). "
+                + "Markers: [x] answered, [~] partially covered, [ ] not yet covered.",
+        ]
+        for obj in objectives {
+            lines.append("\n## \(obj.title)")
+            if let d = obj.description, !d.isEmpty { lines.append("  (\(d))") }
+            for sec in obj.sections {
+                lines.append("### \(sec.title)")
+                for q in sec.questions {
+                    lines.append("\(marker(q.status)) \(q.text)")
+                    if let summary = q.response?.summary, !summary.isEmpty {
+                        lines.append("    → so far: \(summary)")
+                    }
+                }
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     public func unansweredQuestions() -> [GuideQuestion] {
         var out: [GuideQuestion] = []
         for o in objectives {

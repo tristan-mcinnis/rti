@@ -132,4 +132,19 @@ final class DiscussionGuideTests: XCTestCase {
         XCTAssertEqual(m.quotes.first?.timestampMs, 123456)
         XCTAssertEqual(m.quotes.first?.speaker, "them_1")
     }
+
+    func testAssistantContextSummaryRendersStatusAndCoverage() {
+        var guide = makeGuide()
+        guide.apply(matches: [
+            GuideMatch(questionId: "q1", summary: "Buys on price.",
+                       quotes: [quote("It's the price.")], confidence: .high, status: .answered),
+        ])
+        let text = guide.assistantContextSummary()
+        // Coverage header reflects 1 of 2 answered.
+        XCTAssertTrue(text.contains("1/2 covered"))
+        // Answered question is marked and carries its live summary; the other stays pending.
+        XCTAssertTrue(text.contains("[x] First?"))
+        XCTAssertTrue(text.contains("so far: Buys on price."))
+        XCTAssertTrue(text.contains("[ ] Second?"))
+    }
 }

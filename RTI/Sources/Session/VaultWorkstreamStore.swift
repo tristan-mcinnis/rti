@@ -100,6 +100,18 @@ enum VaultWorkstreamStore {
         return bestByBaseName.values.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
+    /// The path of a picked workstream relative to `databases/`, used to focus
+    /// vault search on the project a meeting is about (e.g.
+    /// `projects/acme-running-retail-concept`). nil for clients — a client is a
+    /// single note, not a directory tree to scope to — or when the vault can't
+    /// be located.
+    static func scopeRelativePath(for item: VaultItem) -> String? {
+        guard item.isProject, let base = databasesDir() else { return nil }
+        let full = item.url.standardizedFileURL.path
+        let basePath = base.standardizedFileURL.path + "/"
+        return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : nil
+    }
+
     /// Best-effort match of a Sentinel meeting name to a vault workstream — used
     /// to pre-select context when you "Go live" on a recorded meeting. Returns
     /// the item whose name appears (whole-word) in the meeting name, preferring

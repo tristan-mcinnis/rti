@@ -12,6 +12,10 @@ public struct PromptContext {
     /// A pre-meeting prep brief auto-matched to this session (decisions to
     /// lock, tensions, blind spots). Injected only for active meeting sessions.
     public var meetingBrief: String?
+    /// The active session's discussion guide rendered to text (objectives,
+    /// sections, questions, coverage status). Lets the assist panel answer
+    /// questions about the guide and what's been covered.
+    public var discussionGuide: String?
     /// Optional glossary terms the model should know.
     public var glossaryFragment: String?
     /// Reference text attached to the active mode.
@@ -25,6 +29,7 @@ public struct PromptContext {
         baseSystemPrompt: String = "",
         meetingContext: String? = nil,
         meetingBrief: String? = nil,
+        discussionGuide: String? = nil,
         glossaryFragment: String? = nil,
         referenceText: String? = nil,
         referenceModeName: String? = nil,
@@ -33,6 +38,7 @@ public struct PromptContext {
         self.baseSystemPrompt = baseSystemPrompt
         self.meetingContext = meetingContext
         self.meetingBrief = meetingBrief
+        self.discussionGuide = discussionGuide
         self.glossaryFragment = glossaryFragment
         self.referenceText = referenceText
         self.referenceModeName = referenceModeName
@@ -42,6 +48,7 @@ public struct PromptContext {
     public var hasContent: Bool {
         meetingContext != nil
             || meetingBrief != nil
+            || discussionGuide != nil
             || glossaryFragment != nil
             || referenceText != nil
             || screenContext != nil
@@ -88,6 +95,25 @@ public enum PromptBuilder {
                 resolved, and when one is drifting or still unaddressed as time passes.
                 - Flag when the discussion contradicts the project status or a prior decision noted here.
                 - Surface a listed blind spot or open item the moment it becomes relevant.
+                ---
+                \(capped)
+                ---
+                """
+            ))
+        }
+
+        if let guide = context.discussionGuide?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !guide.isEmpty {
+            let capped = guide.count > referenceCap
+                ? String(guide.prefix(referenceCap)) + "\n…[truncated]"
+                : guide
+            msgs.append(LLMMessage(
+                role: "system",
+                content: """
+                The discussion guide for this session, with live coverage status. Use it to \
+                answer the user's questions about the guide — what's left to cover, what a \
+                participant has said on a topic so far, what to ask or probe next, and which \
+                objective a thread maps to. Don't read it back wholesale; answer what's asked.
                 ---
                 \(capped)
                 ---

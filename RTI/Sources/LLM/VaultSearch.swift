@@ -56,24 +56,52 @@ enum VaultSearch {
     /// Run a vault search and format the results as the string the model sees.
     /// Never throws — a miss or an unreachable vault returns an explanatory line
     /// the model can act on.
-    static func searchFormatted(query: String) async -> String {
+    /// `scopeRelativePath` (e.g. `projects/acme-running-retail-concept`) focuses
+    /// results on the meeting's project: in-project documents (its transcripts,
+    /// meetings, findings) are preferred, and only if nothing in the project
+    /// matches does the search broaden to the whole vault — so "what did Group
+    /// One say about their favourite store" lands on this project's transcript.
+    static func searchFormatted(query: String, scopeRelativePath: String? = nil) async -> String {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return "No query was provided. Pass a short phrase describing what to look for."
         }
         // Prefer the Neon hybrid index (semantic, the shared "one brain"). It
         // returns nil only when unavailable (offline, db down, bun missing) —
-        // an empty-but-successful search is honoured, not retried by grep.
-        if let neon = await VaultSearchCLI.search(query: trimmed) {
-            return format(neon, query: trimmed)
+        // an empty-but-successful search is honoured, not retried by grep. When
+        // scoped, pull a deeper page so the in-project filter has candidates.
+        if let neon = await VaultSearchCLI.search(query: trimmed, limit: scopeRelativePath == nil ? 6 : 16) {
+            let scoped = applyScope(neon, scope: scopeRelativePath)
+            return format(scoped.results, query: trimmed, scopedHit: scoped.inScope)
         }
-        // Fallback: local grep scan so vault search still works offline.
-        let results = await withCheckedContinuation { (cont: CheckedContinuation<[Result], Never>) in
+        // Fallback: local grep scan so vault search still works offline. Scoped
+        // first; if the project has no match, broaden to the whole vault.
+        var inScope = scopeRelativePath != nil
+        var results = await grep(query: trimmed, scopeRelativePath: scopeRelativePath)
+        if results.isEmpty, scopeRelativePath != nil {
+            inScope = false
+            results = await grep(query: trimmed, scopeRelativePath: nil)
+        }
+        return format(results, query: trimmed, scopedHit: inScope && !results.isEmpty)
+    }
+
+    /// Async wrapper over the synchronous `search` core, off the main thread.
+    private static func grep(query: String, scopeRelativePath: String?) async -> [Result] {
+        await withCheckedContinuation { (cont: CheckedContinuation<[Result], Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                cont.resume(returning: search(query: trimmed))
+                cont.resume(returning: search(query: query, scopeRelativePath: scopeRelativePath))
             }
         }
-        return format(results, query: trimmed)
+    }
+
+    /// Keep only results inside the scoped project; if none, return the
+    /// unfiltered top (broaden) and report the miss so the caller can label it.
+    static func applyScope(_ results: [Result], scope: String?) -> (results: [Result], inScope: Bool) {
+        guard let scope, !scope.isEmpty else { return (Array(results.prefix(resultLimit)), false) }
+        let prefix = scope.hasSuffix("/") ? scope : scope + "/"
+        let hits = results.filter { $0.relativePath.hasPrefix(prefix) }
+        if !hits.isEmpty { return (Array(hits.prefix(resultLimit)), true) }
+        return (Array(results.prefix(resultLimit)), false)
     }
 
     // MARK: - Core
@@ -81,16 +109,26 @@ enum VaultSearch {
     /// Synchronous search. Locates `databases/`, scans markdown, ranks, and
     /// returns the top results. Empty when the vault can't be found or nothing
     /// matches.
-    static func search(query: String) -> [Result] {
+    /// `scopeRelativePath` restricts the walk to a project subtree under
+    /// `databases/` (e.g. `projects/foo`); nil scans the whole knowledge base.
+    static func search(query: String, scopeRelativePath: String? = nil) -> [Result] {
         guard let databases = VaultWorkstreamStore.databasesDir() else { return [] }
         let terms = tokenize(query)
         guard !terms.isEmpty else { return [] }
+
+        // Paths stay relative to `databases/` (not the scoped root) so results
+        // read the same whether or not a scope is applied.
+        let walkRoot: URL = {
+            guard let scope = scopeRelativePath, !scope.isEmpty else { return databases }
+            let dir = databases.appendingPathComponent(scope, isDirectory: true)
+            return (try? dir.checkResourceIsReachable()) == true ? dir : databases
+        }()
 
         // Phase 1 — cheap walk to collect candidate files (no content reads).
         // Reading + scoring ~7k files is the expensive part, so we do it in
         // parallel below rather than inline here.
         guard let enumerator = FileManager.default.enumerator(
-            at: databases,
+            at: walkRoot,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else { return [] }
@@ -279,13 +317,14 @@ enum VaultSearch {
         return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : url.lastPathComponent
     }
 
-    private static func format(_ results: [Result], query: String) -> String {
+    private static func format(_ results: [Result], query: String, scopedHit: Bool = false) -> String {
         guard !results.isEmpty else {
             return "No vault documents matched \"\(query)\". The knowledge base may not cover this — try different or broader terms, or rely on the live transcript."
         }
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyy-MM-dd"
-        var out = "Found \(results.count) relevant vault document\(results.count == 1 ? "" : "s") for \"\(query)\":\n"
+        let focus = scopedHit ? " (focused on this meeting's project)" : ""
+        var out = "Found \(results.count) relevant vault document\(results.count == 1 ? "" : "s")\(focus) for \"\(query)\":\n"
         for (i, r) in results.enumerated() {
             out += "\n\(i + 1). \(r.title) (\(r.relativePath), updated \(stamp.string(from: r.modified)))"
             if !r.excerpt.isEmpty { out += "\n   \(r.excerpt)" }
