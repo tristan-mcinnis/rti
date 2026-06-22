@@ -23,11 +23,24 @@ final class AutoAssistController {
     private(set) var cards: [AutoAssistCard] = []
     var isGenerating = false
     private(set) var lastError: String?
+    /// Cards added while the user wasn't looking at the Auto tab — drives the
+    /// tab's unread badge so a proactive suggestion is noticeable.
+    private(set) var unseenCount = 0
 
     private let request = LLMRequest()
     private var sessionId: String?
     /// Watermark: ms of the last transcript covered.
     private var lastMs = 0
+
+    // Proactive triggering: fire a short beat after talk settles, not just on
+    // the slow scheduler tick — so a client's question gets answered in seconds.
+    private var debounceTimer: Timer?
+    private var lastPassAt: Date?
+    /// Wait this long after the last new speech before firing, so we act on a
+    /// finished thought (a complete question) rather than a half-sentence.
+    private static let quietWindow: TimeInterval = 7
+    /// Floor between passes — bounds cost during a long monologue.
+    private static let minInterval: TimeInterval = 25
 
     private static let prompt = """
     You are sitting beside the user during a live meeting as their proactive
@@ -77,6 +90,10 @@ final class AutoAssistController {
         isGenerating = false
         cards = []
         lastMs = 0
+        unseenCount = 0
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+        lastPassAt = nil
     }
 
     func clear() {
@@ -85,6 +102,41 @@ final class AutoAssistController {
         lastError = nil
         isGenerating = false
         lastMs = 0
+        unseenCount = 0
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+        lastPassAt = nil
+    }
+
+    /// Mark the surfaced cards as seen (called when the user views the Auto tab).
+    func markSeen() { unseenCount = 0 }
+
+    // MARK: - Proactive triggering
+
+    /// Called when new final transcript content lands. Debounces, then fires a
+    /// pass once talk has settled — subject to the per-pass floor. Cheap to call
+    /// on every committed line; no-ops when Auto is off or no session runs.
+    func noteActivity() {
+        guard UserDefaults.standard.bool(forKey: AnalysisSettingsDefaults.autoAssistEnabledKey),
+              SessionCoordinator.shared.currentSessionId != nil else { return }
+        debounceTimer?.invalidate()
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.quietWindow, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.fireIfDue() }
+        }
+    }
+
+    /// Run a pass now if the floor since the last one has elapsed; otherwise
+    /// re-arm so this content is still covered once the floor passes.
+    private func fireIfDue() {
+        guard let sid = SessionCoordinator.shared.currentSessionId else { return }
+        if let last = lastPassAt, Date().timeIntervalSince(last) < Self.minInterval {
+            debounceTimer?.invalidate()
+            debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.minInterval, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fireIfDue() }
+            }
+            return
+        }
+        Task { @MainActor in _ = await self.generate(sessionId: sid) }
     }
 
     /// Surface cards over the transcript since the last pass. Used by both the
@@ -95,6 +147,9 @@ final class AutoAssistController {
         isGenerating = true
         defer { isGenerating = false }
         lastError = nil
+        // All paths (debounce, scheduler, manual) update the floor so the
+        // proactive trigger rate-limits against every kind of pass.
+        lastPassAt = Date()
 
         let windowStartMs = lastMs
         let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
@@ -153,6 +208,7 @@ final class AutoAssistController {
             )
         }
         cards.append(contentsOf: fresh)
+        unseenCount += fresh.count
         if cards.count > 300 { cards.removeFirst(cards.count - 300) }
         return endMs
     }

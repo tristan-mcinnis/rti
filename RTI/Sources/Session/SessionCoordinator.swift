@@ -360,6 +360,7 @@ final class SessionCoordinator {
             intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
             defaultInterval: AnalysisSettingsDefaults.defaultInterval
         )
+        startKeepWarm()
 
         // Keep Bluetooth headphones in full-volume A2DP: if the default mic is a
         // BT headset, route capture to the built-in mic for the session. Must run
@@ -407,6 +408,8 @@ final class SessionCoordinator {
         // partial audio and deliver final transcripts.
         audioPipeline.finalize()
         AnalysisScheduler.shared.stop()
+        keepWarmTimer?.invalidate()
+        keepWarmTimer = nil
         checkpointTask?.cancel()
         checkpointTask = nil
         phase = .finishing
@@ -653,6 +656,27 @@ final class SessionCoordinator {
         if newInterim != interimLine { interimLine = newInterim }
         if entriesChanged {
             liveEntries = transcriptPipeline.liveEntries
+            // New speech just landed → let Auto mode react proactively (it
+            // debounces and rate-limits internally, so this is cheap to call).
+            AutoAssistController.shared.noteActivity()
         }
+    }
+
+    // MARK: - Keep-warm
+
+    /// During a session, vault searches (Assist tool calls + Auto mode) cluster.
+    /// Neon's serverless compute suspends after a few minutes idle, which would
+    /// make the next search eat a ~15s cold start (past VaultSearchCLI's 12s
+    /// timeout → silent grep fallback). A light periodic ping keeps it warm so
+    /// every in-session search stays on the ~2.4s semantic path.
+    private var keepWarmTimer: Timer?
+    private static let keepWarmInterval: TimeInterval = 240
+
+    private func startKeepWarm() {
+        keepWarmTimer?.invalidate()
+        keepWarmTimer = Timer.scheduledTimer(withTimeInterval: Self.keepWarmInterval, repeats: true) { _ in
+            VaultSearchCLI.warmUp()
+        }
+        keepWarmTimer?.tolerance = 30
     }
 }

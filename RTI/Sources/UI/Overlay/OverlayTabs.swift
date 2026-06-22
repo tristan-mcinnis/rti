@@ -43,6 +43,10 @@ struct OverlayTabBar: View {
     /// bar only renders the ones currently enabled.
     var tabs: [OverlayTab] = OverlayTab.allCases
 
+    /// Reading the @Observable controller here makes the bar re-render when a
+    /// proactive card arrives, lighting the Auto tab's unread badge.
+    private var autoUnseen: Int { AutoAssistController.shared.unseenCount }
+
     var body: some View {
         HStack(spacing: 1) {
             ForEach(tabs) { tab in
@@ -54,6 +58,14 @@ struct OverlayTabBar: View {
                         // truncates gracefully rather than squishing.
                         Text(tab.title).font(.system(size: 11, weight: .medium))
                             .lineLimit(1)
+                        // Unread badge: Auto surfaced cards the user hasn't seen.
+                        if tab == .auto, selection != .auto, autoUnseen > 0 {
+                            Text("\(autoUnseen)")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.blue))
+                        }
                     }
                     .padding(.horizontal, 7)
                     .padding(.vertical, 5)
@@ -947,9 +959,11 @@ struct AutoTabView: View {
                     }
                     .scrollContentBackground(.hidden)
                     .onChange(of: controller.cards.count) { _, _ in
+                        controller.markSeen()
                         if let last = controller.cards.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                     }
                     .onAppear {
+                        controller.markSeen()
                         if let last = controller.cards.last { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
