@@ -9,7 +9,7 @@ enum LLMToolRegistry {
     /// All tools the chat-overlay LLM can call. Keep this small: too many
     /// tools dilutes the model's tool-choice signal.
     static var all: [LLMToolDefinition] {
-        [captureScreen, searchVault]
+        [captureScreen, searchVault, recentMeetings]
     }
 
     static func tool(named name: String) -> LLMToolDefinition? {
@@ -97,6 +97,32 @@ enum LLMToolRegistry {
             return result
         },
         runningStatus: "🔎 Searching the vault…"
+    )
+
+    private static let recentMeetings = LLMToolDefinition(
+        name: "recent_meetings",
+        description: """
+        List this meeting's project's most recent meetings and sessions, newest \
+        first (the latest is #1). Use this — NOT search_vault — whenever the \
+        answer is the most RECENT record rather than the most topically relevant \
+        one: "what was the last/latest meeting", "what did we discuss recently", \
+        "recap our last session", "what happened earlier today/yesterday/this \
+        week", or any follow-up about the previous conversation. search_vault \
+        ranks by relevance and has no sense of time, so it will return an old \
+        but on-topic note for these; this returns the actual newest records with \
+        their dates. After getting the list, you can search_vault for detail on a \
+        specific one if needed.
+        """,
+        parameters: [
+            "type": "object",
+            "properties": [:] as [String: Any],
+            "additionalProperties": false,
+        ],
+        execute: { _ in
+            let scope = MeetingContextStore.shared.workstreamScopePath
+            return VaultMeetings.recentFormatted(scopeRelativePath: scope)
+        },
+        runningStatus: "🗓️ Checking recent meetings…"
     )
 
     /// Pull `query` out of the tool-call arguments JSON. Tolerant: a bare string

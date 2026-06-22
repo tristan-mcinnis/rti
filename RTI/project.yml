@@ -99,6 +99,7 @@ targets:
       - path: Sources/LLM/VaultSearch.swift
       - path: Sources/LLM/VaultSearchCLI.swift
       - path: Sources/Analysis/AutoAssistCard.swift
+      - path: Sources/Session/VaultMeetings.swift
     dependencies:
       - target: RTICore
       - package: Yams
