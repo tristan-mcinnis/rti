@@ -17,7 +17,10 @@ enum VaultMeetings {
         let title: String
         let relativePath: String
         let kind: String          // "meeting" | "session"
-        let excerpt: String
+        /// A real content blurb — the Overview / summary / key-points text, not
+        /// the file's meta-preamble. Generous (up to ~1600 chars) so the most
+        /// recent meeting can be answered inline without a second lookup.
+        let summary: String
     }
 
     /// The project's meetings + session notes, newest first. `scopeRelativePath`
@@ -67,9 +70,15 @@ enum VaultMeetings {
         var out = "This project's most recent meetings and sessions, newest first (the latest is #1):\n"
         for (i, m) in items.enumerated() {
             out += "\n\(i + 1). \(m.title) — \(m.displayDate) (\(m.kind), \(m.relativePath))"
-            if !m.excerpt.isEmpty { out += "\n   \(m.excerpt)" }
+            // The most recent meeting gets its full summary so "what did we
+            // discuss last time" is answerable from this one call; the rest get
+            // a short preview (read_document on its path for the full content).
+            if !m.summary.isEmpty {
+                let blurb = i == 0 ? m.summary : (m.summary.count > 240 ? String(m.summary.prefix(240)) + "…" : m.summary)
+                out += "\n   \(blurb)"
+            }
         }
-        out += "\n\nThese are sorted by date. For \"the last/latest meeting\" use #1. Note a raw session note is a transcript, not a synthesised summary."
+        out += "\n\nSorted by date — for \"the last/latest meeting\" use #1. For the full content of any entry, call read_document with its path."
         return out
     }
 
@@ -84,7 +93,7 @@ enum VaultMeetings {
             title: title(from: text, url: url),
             relativePath: rel,
             kind: kind,
-            excerpt: excerpt(from: text)
+            summary: summary(from: text, maxChars: 1600)
         )
     }
 
@@ -122,18 +131,40 @@ enum VaultMeetings {
         return url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "-", with: " ")
     }
 
-    /// First substantive body line(s) after frontmatter, trimmed to a snippet.
-    private static func excerpt(from text: String) -> String {
+    /// A real content blurb — not the file's meta-preamble. Prefers the text
+    /// under an Overview / Summary / Key-points / Takeaway heading (where the
+    /// auto-generated meeting summary lives), skipping headings, fences, and the
+    /// "use this as signal / analyze the transcript" disclaimer lines that open a
+    /// field-notes file. Concatenated up to `maxChars`. Exposed for testing.
+    static func summary(from text: String, maxChars: Int) -> String {
         var lines = text.components(separatedBy: .newlines)
         if lines.first == "---", let end = lines.dropFirst().firstIndex(of: "---") {
             lines = Array(lines[(end + 1)...])
         }
-        let body = lines
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .first { $0.count >= 12 && !$0.hasPrefix("#") && !$0.hasPrefix("---") && !$0.hasPrefix("```") }
-        guard let line = body else { return "" }
-        let cleaned = line.replacingOccurrences(of: "*", with: "").replacingOccurrences(of: "#", with: "")
-        return cleaned.count > 240 ? String(cleaned.prefix(240)) + "…" : cleaned
+        let metaCues = ["hypothesis layer", "evidence layer", "use this as signal",
+                        "auto-generated", "generated notes", "the assistant's live flags"]
+        func isMeta(_ s: String) -> Bool { let lo = s.lowercased(); return metaCues.contains { lo.contains($0) } }
+
+        // Jump to the first summary-ish section heading, if any.
+        var start = 0
+        for (i, l) in lines.enumerated() where l.hasPrefix("#") {
+            let lo = l.lowercased()
+            if lo.contains("overview") || lo.contains("summary") || lo.contains("key point") || lo.contains("takeaway") {
+                start = i + 1
+                break
+            }
+        }
+        var out = ""
+        for raw in lines[start...] {
+            let t = raw.trimmingCharacters(in: .whitespaces)
+            if t.isEmpty || t.hasPrefix("```") || t == "---" || isMeta(t) { continue }
+            let clean = t.replacingOccurrences(of: "#", with: "").replacingOccurrences(of: "*", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            guard clean.count >= 4 else { continue }
+            out += (out.isEmpty ? "" : " ") + clean
+            if out.count >= maxChars { break }
+        }
+        return out.count > maxChars ? String(out.prefix(maxChars)) + "…" : out
     }
 
     private static func relativePath(of url: URL, under base: URL) -> String {

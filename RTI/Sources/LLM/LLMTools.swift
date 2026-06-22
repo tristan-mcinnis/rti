@@ -9,7 +9,7 @@ enum LLMToolRegistry {
     /// All tools the chat-overlay LLM can call. Keep this small: too many
     /// tools dilutes the model's tool-choice signal.
     static var all: [LLMToolDefinition] {
-        [captureScreen, searchVault, recentMeetings]
+        [captureScreen, searchVault, recentMeetings, readDocument, grepVault, listFiles]
     }
 
     static func tool(named name: String) -> LLMToolDefinition? {
@@ -124,6 +124,100 @@ enum LLMToolRegistry {
         },
         runningStatus: "🗓️ Checking recent meetings…"
     )
+
+    private static let readDocument = LLMToolDefinition(
+        name: "read_document",
+        description: """
+        Read the full text of one vault document by its path (as printed by \
+        search_vault, recent_meetings, grep_vault, or list_files). Use this when \
+        a search/list surfaced the right file but you need its actual content to \
+        answer — e.g. after recent_meetings gives you the last meeting, read it \
+        to say what was discussed. Markdown only (PDFs/PPTX aren't readable; rely \
+        on their search_vault summary). Long files are truncated.
+        """,
+        parameters: [
+            "type": "object",
+            "properties": [
+                "path": [
+                    "type": "string",
+                    "description": "Vault-relative path, e.g. 'projects/acme-running-retail-concept/transcripts/notes/rti-session-20260622-1630.md'.",
+                ] as [String: Any],
+            ] as [String: Any],
+            "required": ["path"],
+            "additionalProperties": false,
+        ],
+        execute: { argumentsJSON in
+            let path = decodeField("path", from: argumentsJSON)
+            return VaultFiles.read(relativePath: path)
+        },
+        runningStatus: "📄 Reading the document…"
+    )
+
+    private static let grepVault = LLMToolDefinition(
+        name: "grep_vault",
+        description: """
+        Exact keyword search across the project's documents (case-insensitive \
+        substring), returning matching files with the matching lines. The precise \
+        complement to search_vault: use grep_vault when you want every literal \
+        mention of a specific name, term, quote, or number ("staff", a person's \
+        name, "¥500"); use search_vault when you want meaning-based relevance. \
+        Focused on the current project when one is set.
+        """,
+        parameters: [
+            "type": "object",
+            "properties": [
+                "query": [
+                    "type": "string",
+                    "description": "The literal term or phrase to find, e.g. 'store staff' or 'no-pad'.",
+                ] as [String: Any],
+            ] as [String: Any],
+            "required": ["query"],
+            "additionalProperties": false,
+        ],
+        execute: { argumentsJSON in
+            let query = decodeField("query", from: argumentsJSON)
+            return VaultFiles.grep(query: query, scopeRelativePath: MeetingContextStore.shared.workstreamScopePath)
+        },
+        runningStatus: "🔦 Grepping the vault…"
+    )
+
+    private static let listFiles = LLMToolDefinition(
+        name: "list_files",
+        description: """
+        List the documents in the current project (or the whole vault if none is \
+        set), optionally filtered by a substring of the path. Use to see what \
+        material exists — "what transcripts/meetings/reports do we have" — before \
+        reading or searching. Pass a pattern like 'transcript' or 'report' to \
+        narrow.
+        """,
+        parameters: [
+            "type": "object",
+            "properties": [
+                "pattern": [
+                    "type": "string",
+                    "description": "Optional path substring filter, e.g. 'transcript', 'meeting', 'report'. Omit to list everything.",
+                ] as [String: Any],
+            ] as [String: Any],
+            "additionalProperties": false,
+        ],
+        execute: { argumentsJSON in
+            let pattern = decodeField("pattern", from: argumentsJSON)
+            return VaultFiles.list(scopeRelativePath: MeetingContextStore.shared.workstreamScopePath,
+                                   pattern: pattern.isEmpty ? nil : pattern)
+        },
+        runningStatus: "🗂️ Listing files…"
+    )
+
+    /// Pull a named string field out of tool-call arguments JSON. Tolerant: a
+    /// bare string or malformed JSON falls back to the raw argument text.
+    private static func decodeField(_ key: String, from argumentsJSON: String) -> String {
+        if let data = argumentsJSON.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let v = obj[key] as? String {
+            return v
+        }
+        return argumentsJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     /// Pull `query` out of the tool-call arguments JSON. Tolerant: a bare string
     /// or malformed JSON falls back to the raw argument text so a search still
