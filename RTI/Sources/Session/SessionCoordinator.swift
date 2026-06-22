@@ -144,6 +144,13 @@ final class SessionCoordinator {
                 await FindingsController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
             }
         )
+        AnalysisScheduler.shared.register(
+            id: "autoAssist",
+            task: .init(enabledKey: AnalysisSettingsDefaults.autoAssistEnabledKey) { _ in
+                // Auto mode owns its own watermark — ignore the scheduler's sinceMs.
+                await AutoAssistController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
+            }
+        )
     }
 
     private func commonInit() {
@@ -348,6 +355,7 @@ final class SessionCoordinator {
         NotesGenerationController.shared.reset(for: sessionId)
         DiscussionGuideController.shared.reset(for: sessionId)
         FindingsController.shared.reset(for: sessionId)
+        AutoAssistController.shared.reset(for: sessionId)
         AnalysisScheduler.shared.start(
             intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
             defaultInterval: AnalysisSettingsDefaults.defaultInterval

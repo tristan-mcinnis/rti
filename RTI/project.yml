@@ -98,6 +98,7 @@ targets:
       - path: Sources/Session/VaultWorkstreamStore.swift
       - path: Sources/LLM/VaultSearch.swift
       - path: Sources/LLM/VaultSearchCLI.swift
+      - path: Sources/Analysis/AutoAssistCard.swift
     dependencies:
       - target: RTICore
       - package: Yams

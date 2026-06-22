@@ -11,13 +11,16 @@ struct OverlayPanelView: View {
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = false
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
     @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = false
+    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = false
     @State private var tab: OverlayTab = .assist
 
     // Setup is the pre-call surface, not a live tab — it's pulled out of the
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
     // top bar gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
-        var t: [OverlayTab] = [.assist, .transcript]
+        var t: [OverlayTab] = [.assist]
+        if autoAssistEnabled { t.append(.auto) }
+        t.append(.transcript)
         if notesEnabled { t.append(.notes) }
         if guideEnabled { t.append(.guide) }
         if findingsEnabled { t.append(.findings) }
@@ -48,6 +51,7 @@ struct OverlayPanelView: View {
                 .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
                 .onChange(of: guideEnabled) { _, _ in normalizeSelection() }
                 .onChange(of: findingsEnabled) { _, _ in normalizeSelection() }
+                .onChange(of: autoAssistEnabled) { _, _ in normalizeSelection() }
                 // Global hotkeys (⌘⌥1–5) and commands switch tabs by posting a
                 // notification with the target tab's rawValue.
                 .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { note in
@@ -60,6 +64,8 @@ struct OverlayPanelView: View {
                     switch tab {
                     case .assist:
                         assistTab
+                    case .auto:
+                        AutoTabView().tabContentPadding()
                     case .transcript:
                         TranscriptTabView().tabContentPadding()
                     case .notes:

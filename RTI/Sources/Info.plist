@@ -19,9 +19,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0-beta17</string>
+	<string>0.1.0-beta18</string>
 	<key>CFBundleVersion</key>
-	<string>202606182345</string>
+	<string>202606221800</string>
 	<key>LSEnvironment</key>
 	<dict>
 		<key>SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE</key>

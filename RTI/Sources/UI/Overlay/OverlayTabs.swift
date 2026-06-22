@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 enum OverlayTab: String, CaseIterable, Identifiable {
     // Setup is leftmost — it's the pre-call surface (who the meeting is about +
     // the discussion guide). The rest are live.
-    case setup, assist, transcript, notes, guide, findings
+    case setup, assist, auto, transcript, notes, guide, findings
     var id: String {
         rawValue
     }
@@ -16,6 +16,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         switch self {
         case .setup: "Setup"
         case .assist: "Assist"
+        case .auto: "Auto"
         case .transcript: "Transcript"
         case .notes: "Notes"
         case .guide: "Guide"
@@ -27,6 +28,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         switch self {
         case .setup: "checklist"
         case .assist: "sparkles"
+        case .auto: "wand.and.stars"
         case .transcript: "text.bubble"
         case .notes: "note.text"
         case .guide: "list.bullet.clipboard"
@@ -905,6 +907,104 @@ struct FindingsTabView: View {
     }
 }
 
+// MARK: - Auto
+
+/// Auto mode surface: the proactive cards `AutoAssistController` surfaces live —
+/// things to say, ask, recall from the project, or flag. Mirrors the Findings
+/// panel's shape (header + manual scan + scrolling list) but each row is an
+/// in-the-moment suggestion rather than a logged observation.
+struct AutoTabView: View {
+    private let controller = AutoAssistController.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Auto").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
+                if controller.isGenerating {
+                    ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
+                }
+                Spacer()
+                OverlayToolbarButton(icon: "arrow.clockwise", help: "Surface suggestions now",
+                                     disabled: controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
+                {
+                    if let sid = SessionCoordinator.shared.currentSessionId { Task { _ = await controller.generate(sessionId: sid) } }
+                }
+            }
+            if let error = controller.lastError {
+                Text(error).font(.system(size: 10)).foregroundStyle(.red)
+            }
+            if controller.cards.isEmpty {
+                overlayEmptyState("wand.and.stars", "Listening…",
+                                  "As the meeting develops, Auto surfaces things to say, ask, or recall from this project. Set the project in Setup to ground it.")
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            ForEach(controller.cards) { card in
+                                cardRow(card).id(card.id)
+                            }
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                    .onChange(of: controller.cards.count) { _, _ in
+                        if let last = controller.cards.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                    }
+                    .onAppear {
+                        if let last = controller.cards.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func cardRow(_ c: AutoAssistCard) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    Image(systemName: c.kind.icon).font(.system(size: 9, weight: .bold))
+                    Text(c.kind.label.uppercased()).font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(kindColor(c.kind))
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 4).fill(kindColor(c.kind).opacity(0.14)))
+                Spacer()
+                OverlayToolbarButton(icon: "doc.on.doc", help: "Copy") {
+                    NSPasteboard.copyMarkdownRich(c.text)
+                }
+            }
+            Text(c.text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.overlayInk.opacity(0.95))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            if !c.why.isEmpty {
+                Text(c.why)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.overlayInk.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let source = c.source, !source.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "doc.text").font(.system(size: 8))
+                    Text(source).font(.system(size: 10)).lineLimit(1)
+                }
+                .foregroundStyle(Color.overlayInk.opacity(0.4))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Monochrome-friendly tint per kind (kept subtle, like the Findings tags).
+    private func kindColor(_ kind: AutoCardKind) -> Color {
+        switch kind {
+        case .say: .blue
+        case .ask: .teal
+        case .recall: .green
+        case .flag: .orange
+        }
+    }
+}
+
 // MARK: - Setup
 
 /// The pre-call surface: who the meeting is about (vault workstream + note +
@@ -918,6 +1018,7 @@ struct SetupTabView: View {
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = false
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
     @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = false
+    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = false
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
     @State private var pickerOpen = false
@@ -1072,6 +1173,7 @@ struct SetupTabView: View {
             livePanelToggle($notesEnabled, "Notes", "Periodic AI notes as the conversation develops")
             livePanelToggle($guideEnabled, "Guide", "Track which discussion-guide questions get answered")
             livePanelToggle($findingsEnabled, "Findings", "Running ledger of tagged findings, tensions & missed threads")
+            livePanelToggle($autoAssistEnabled, "Auto", "Proactively surface things to say, ask & recall from this project — live")
         }
     }
 
