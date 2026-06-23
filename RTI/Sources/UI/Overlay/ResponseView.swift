@@ -28,7 +28,7 @@ struct ResponseView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if entries.isEmpty && !streaming && error == nil {
+                    if entries.isEmpty, !streaming, error == nil {
                         emptyStateBody
                     }
 
@@ -53,11 +53,14 @@ struct ResponseView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Drive scroll-to-bottom from a few signals so a new turn lands
-            // visibly even if the row hasn't laid out yet when onChange first
-            // fires. We watch entries.count (catches batched user+assistant
-            // appends), then defer one runloop tick so SwiftUI has measured
-            // the new row before we ask the ScrollViewReader to seek to it.
+            // Drive scroll-to-bottom when a new turn lands. We watch
+            // entries.count (catches batched user+assistant appends) and
+            // entries.last?.id (catches a new assistant stream starting),
+            // then defer one runloop tick so SwiftUI has measured the new row
+            // before we ask the ScrollViewReader to seek to it.
+            // We intentionally do NOT scroll on entries.last?.text changes:
+            // if the user has scrolled up to read earlier turns, a streaming
+            // response should not yank them back down on every token.
             // Returning to this tab re-instantiates the view at the top —
             // jump straight back to the latest turn.
             .onAppear {
@@ -65,16 +68,6 @@ struct ResponseView: View {
             }
             .onChange(of: entries.count) { _, _ in scrollToBottom(proxy: proxy) }
             .onChange(of: entries.last?.id) { _, _ in scrollToBottom(proxy: proxy) }
-            // Streaming: each SSE token mutates entries.last?.text, which
-            // re-renders the body. An inline Timer.publish would be re-created
-            // on every rebuild and never fire while tokens arrive faster than
-            // its interval, so drive scroll directly off the text growing.
-            .onChange(of: entries.last?.text) { _, _ in
-                guard let lastId = entries.last?.id else { return }
-                DispatchQueue.main.async {
-                    proxy.scrollTo(lastId, anchor: .bottom)
-                }
-            }
         }
     }
 
@@ -110,7 +103,8 @@ struct ResponseView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(["Summarize the last few minutes",
                          "What did they decide?",
-                         "Help me reply"], id: \.self) { example in
+                         "Help me reply"], id: \.self)
+                { example in
                     Button { llm.sendAskAnything(example) } label: {
                         Text(example)
                             .font(.system(size: 12))
@@ -138,6 +132,9 @@ struct ResponseView: View {
             }
         }
     }
+
+    // Streaming responses no longer auto-scroll on every token so the user can
+    // read earlier turns uninterrupted. New turns still scroll into view.
 
     @ViewBuilder
     private func entryRow(_ entry: ChatEntry) -> some View {
@@ -212,15 +209,13 @@ struct ResponseView: View {
     /// A canned-action turn (Assist / Recap / …) shown as a compact chip
     /// instead of the verbose internal prompt the user never actually typed.
     private func cannedActionChip(_ action: String) -> some View {
-        let icon: String = {
-            switch action {
-            case "Assist": return "sparkles"
-            case "Say next": return "wand.and.rays"
-            case "Follow-ups": return "bubble.left.and.text.bubble.right"
-            case "Recap": return "arrow.clockwise"
-            default: return "sparkles"
-            }
-        }()
+        let icon = switch action {
+        case "Assist": "sparkles"
+        case "Say next": "wand.and.rays"
+        case "Follow-ups": "bubble.left.and.text.bubble.right"
+        case "Recap": "arrow.clockwise"
+        default: "sparkles"
+        }
         return HStack(spacing: 5) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
@@ -232,7 +227,6 @@ struct ResponseView: View {
         .padding(.vertical, 5)
         .background(Capsule().fill(Color.overlayInk.opacity(0.06)))
     }
-
 }
 
 /// One assistant reply, with a hover-revealed Copy + Regenerate bar.
@@ -252,7 +246,7 @@ private struct AssistantMessageRow: View {
 
     var body: some View {
         Group {
-            if isStreaming && entry.text.isEmpty {
+            if isStreaming, entry.text.isEmpty {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
@@ -282,7 +276,7 @@ private struct AssistantMessageRow: View {
                     // Hover actions on a settled (non-streaming) reply. The bar
                     // always occupies its space (so hovering never reflows the
                     // chat — no jump); only its opacity changes on hover.
-                    if !isStreaming && !entry.text.isEmpty {
+                    if !isStreaming, !entry.text.isEmpty {
                         actionBar
                             .opacity(hovering || alwaysShowActions ? 1 : 0)
                             .allowsHitTesting(hovering || alwaysShowActions)
@@ -305,7 +299,8 @@ private struct AssistantMessageRow: View {
     private var actionBar: some View {
         HStack(spacing: 2) {
             iconButton(systemName: copied ? "checkmark" : "doc.on.doc",
-                       help: "Copy") {
+                       help: "Copy")
+            {
                 onCopy()
                 copied = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
@@ -323,6 +318,8 @@ private struct AssistantMessageRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(help)
+        .accessibilityHint("Double-click or press VO-Space to activate")
         .help(help)
     }
 }

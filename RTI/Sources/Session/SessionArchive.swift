@@ -453,10 +453,10 @@ enum SessionArchive {
         // which workstream this session was set up against, and which Sentinel
         // meeting it overlaid. Facts only — routing policy lives in the vault.
         if let workstreamSlug, !workstreamSlug.isEmpty {
-            lines.append("workstream: \(workstreamSlug)")
+            lines.append("workstream: \(yamlQuoted(workstreamSlug))")
         }
         if let linkedMeeting, !linkedMeeting.isEmpty {
-            lines.append("linked_meeting: \"\(linkedMeeting)\"")
+            lines.append("linked_meeting: \(yamlQuoted(linkedMeeting))")
         }
         lines += [
             "projects:",
@@ -501,6 +501,19 @@ enum SessionArchive {
         f.timeStyle = .short
         return f
     }()
+
+    /// Escape a string for YAML double-quoted scalars. Backslash, double quote,
+    /// and common whitespace escapes are handled so meeting names or slugs that
+    /// contain colons, quotes, or newlines cannot corrupt the frontmatter.
+    private static func yamlQuoted(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+        return "\"\(escaped)\""
+    }
 }
 
 // MARK: - Reading the archive (launcher only — reveals in Finder, never reads in-app)

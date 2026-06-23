@@ -109,7 +109,9 @@ final class AutoAssistController {
     }
 
     /// Mark the surfaced cards as seen (called when the user views the Auto tab).
-    func markSeen() { unseenCount = 0 }
+    func markSeen() {
+        unseenCount = 0
+    }
 
     // MARK: - Proactive triggering
 
@@ -156,9 +158,10 @@ final class AutoAssistController {
         let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !window.isEmpty else { return nil }
-        // Advance the watermark even on an empty result so we never re-cover.
+        // Compute the watermark but DO NOT apply it until the LLM call succeeds.
+        // If the request fails or returns empty, we want to retry this window
+        // rather than permanently skip it.
         let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? windowStartMs
-        lastMs = endMs
 
         // Grounding: who/what the meeting is about + the live guide state.
         let projectContext = MeetingContextStore.shared.combined
@@ -192,7 +195,7 @@ final class AutoAssistController {
 
         guard let response = await request.collectAsync(
             messages: [LLMMessage(role: "user", content: prompt)], smart: false
-        ), !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return endMs }
+        ), !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
 
         let items = JSONExtractor.decodeArrayLenient(response, key: "cards", as: CardItem.self)
         let existing = Set(cards.map { Self.norm($0.text) })
@@ -210,6 +213,8 @@ final class AutoAssistController {
         cards.append(contentsOf: fresh)
         unseenCount += fresh.count
         if cards.count > 300 { cards.removeFirst(cards.count - 300) }
+        // Only advance the watermark once the LLM response has been accepted.
+        lastMs = endMs
         return endMs
     }
 

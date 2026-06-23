@@ -9,7 +9,6 @@ import RTICore
 /// decoded payload — all caller-supplied.
 @MainActor
 enum TranscriptAnalysis {
-
     /// Transcript-rendering mode. Plain → `speaker: text` lines. Timestamped
     /// → `[mm:ss] speaker: text` lines (used by analyzers that ask the LLM
     /// to echo timestamps back, e.g. Discussion Guide).
@@ -33,7 +32,7 @@ enum TranscriptAnalysis {
         smart: Bool,
         request: LLMRequest,
         category: String,
-        as type: Payload.Type = Payload.self,
+        as _: Payload.Type = Payload.self,
         buildPrompt: (_ transcript: String) -> String
     ) async -> Result<Payload>? {
         guard let (trimmed, endMs) = fetchTranscript(sessionId: sessionId, sinceMs: sinceMs, shape: shape) else { return nil }
@@ -61,9 +60,9 @@ enum TranscriptAnalysis {
         shape: TranscriptShape = .plain,
         smart: Bool,
         request: LLMRequest,
-        category: String,
+        category _: String,
         key: String,
-        as type: Item.Type = Item.self,
+        as _: Item.Type = Item.self,
         buildPrompt: (_ transcript: String) -> String
     ) async -> Result<[Item]>? {
         guard let (trimmed, endMs) = fetchTranscript(sessionId: sessionId, sinceMs: sinceMs, shape: shape) else { return nil }
@@ -100,10 +99,9 @@ enum TranscriptAnalysis {
         sinceMs: Int?,
         shape: TranscriptShape
     ) -> (transcript: String, endMs: Int)? {
-        let raw: String
-        switch shape {
-        case .plain:      raw = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
-        case .timestamped: raw = TranscriptContext.textWithTimestamps(forSessionId: sessionId)
+        let raw: String = switch shape {
+        case .plain: TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
+        case .timestamped: TranscriptContext.textWithTimestamps(forSessionId: sessionId, sinceMs: sinceMs)
         }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }

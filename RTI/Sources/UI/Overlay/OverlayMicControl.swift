@@ -39,7 +39,7 @@ struct OverlayMicControl: View {
                     .foregroundStyle(session.micMuted ? Color.orange : Color.overlayInk.opacity(0.75))
                 // Zoom-style reassurance: a faint green level bar under the
                 // mic while recording, so you can SEE it's hearing you.
-                if session.isRunning && !session.micMuted {
+                if session.isRunning, !session.micMuted {
                     TimelineView(.periodic(from: .now, by: 0.15)) { _ in
                         let level = CGFloat(min(1, max(0, session.audioLevels().mic)))
                         Capsule()
@@ -53,9 +53,13 @@ struct OverlayMicControl: View {
             .frame(width: 24, height: 26)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(session.micMuted ? "Unmute microphone" : "Mute microphone")
+        .accessibilityHint(session.micMuted
+            ? "Your mic isn't being captured; system audio still is."
+            : "Mute your mic. System audio keeps recording. Don't mute in-person sessions — the mic captures the room.")
         .help(session.micMuted
-              ? "Mic muted — your mic isn't being captured (system audio still is). Click to unmute."
-              : "Mute your mic (system audio keeps recording). Don't mute in-person sessions — the mic captures the room.")
+            ? "Mic muted — your mic isn't being captured (system audio still is). Click to unmute."
+            : "Mute your mic (system audio keeps recording). Don't mute in-person sessions — the mic captures the room.")
     }
 
     private var deviceMenu: some View {
@@ -111,6 +115,7 @@ struct OverlayMicControl: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .accessibilityLabel("Choose input device")
         .onAppear {
             devices = AudioInputDeviceStore.availableInputDevices()
             outputDevices = AudioInputDeviceStore.availableOutputDevices()

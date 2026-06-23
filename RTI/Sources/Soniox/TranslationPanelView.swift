@@ -1,5 +1,5 @@
-import SwiftUI
 import RTICore
+import SwiftUI
 
 /// Live translation overlay. Mirrors the translated stream coming back
 /// from Soniox so the user can read the conversation in their target
@@ -17,23 +17,8 @@ struct TranslationPanelView: View {
     private static let languageOptions: [(code: String, label: String)] = [
         ("en", "English"), ("es", "Spanish"), ("zh", "Chinese"), ("fr", "French"),
         ("de", "German"), ("ja", "Japanese"), ("ko", "Korean"), ("pt", "Portuguese"),
-        ("it", "Italian"), ("ru", "Russian"), ("ar", "Arabic"), ("hi", "Hindi")
+        ("it", "Italian"), ("ru", "Russian"), ("ar", "Arabic"), ("hi", "Hindi"),
     ]
-
-    private var effectiveTranslationConfig: TranslationConfig? {
-        guard translationEnabled else { return nil }
-        switch translationMode {
-        case "two_way":
-            guard languageA != languageB else { return nil }
-            return .twoWay(languageA: languageA, languageB: languageB)
-        default:
-            return .oneWay(targetLanguage: targetLanguage)
-        }
-    }
-
-    private func syncTranslationConfig() {
-        coordinator.translationConfig = effectiveTranslationConfig
-    }
 
     var body: some View {
         FloatingPanelChrome(
@@ -95,12 +80,6 @@ struct TranslationPanelView: View {
                 }
             }
         }
-        .onAppear { syncTranslationConfig() }
-        .onChange(of: translationEnabled) { _, _ in syncTranslationConfig() }
-        .onChange(of: translationMode) { _, _ in syncTranslationConfig() }
-        .onChange(of: targetLanguage) { _, _ in syncTranslationConfig() }
-        .onChange(of: languageA) { _, _ in syncTranslationConfig() }
-        .onChange(of: languageB) { _, _ in syncTranslationConfig() }
     }
 
     private var languageBar: some View {

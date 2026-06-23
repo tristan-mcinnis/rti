@@ -2,396 +2,6 @@ import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The tabs of the consolidated overlay. One window, one toggle (⌘\), tabs
-/// across the top — instead of a constellation of floating panels.
-enum OverlayTab: String, CaseIterable, Identifiable {
-    // Setup is leftmost — it's the pre-call surface (who the meeting is about +
-    // the discussion guide). The rest are live.
-    case setup, assist, auto, transcript, notes, guide, findings
-    var id: String {
-        rawValue
-    }
-
-    var title: String {
-        switch self {
-        case .setup: "Setup"
-        case .assist: "Assist"
-        case .auto: "Auto"
-        case .transcript: "Transcript"
-        case .notes: "Notes"
-        case .guide: "Guide"
-        case .findings: "Findings"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .setup: "checklist"
-        case .assist: "sparkles"
-        case .auto: "wand.and.stars"
-        case .transcript: "text.bubble"
-        case .notes: "note.text"
-        case .guide: "list.bullet.clipboard"
-        case .findings: "flag"
-        }
-    }
-}
-
-struct OverlayTabBar: View {
-    @Binding var selection: OverlayTab
-    /// Which tabs to show. Notes/Guide are opt-in (toggled in Setup), so the
-    /// bar only renders the ones currently enabled.
-    var tabs: [OverlayTab] = OverlayTab.allCases
-
-    /// Reading the @Observable controller here makes the bar re-render when a
-    /// proactive card arrives, lighting the Auto tab's unread badge.
-    private var autoUnseen: Int { AutoAssistController.shared.unseenCount }
-
-    var body: some View {
-        HStack(spacing: 1) {
-            ForEach(tabs) { tab in
-                Button { selection = tab } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: tab.icon).font(.system(size: 10, weight: .medium))
-                        // Single line so a wide record pill never wraps a tab
-                        // label to two rows; if space is tight the label
-                        // truncates gracefully rather than squishing.
-                        Text(tab.title).font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                        // Unread badge: Auto surfaced cards the user hasn't seen.
-                        if tab == .auto, selection != .auto, autoUnseen > 0 {
-                            Text("\(autoUnseen)")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 4).padding(.vertical, 1)
-                                .background(Capsule().fill(Color.blue))
-                        }
-                    }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 5)
-                    .foregroundStyle(selection == tab ? Color.overlayInk : Color.overlayInk.opacity(0.5))
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(selection == tab ? Color.overlayInk.opacity(0.14) : Color.clear)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-}
-
-/// Leading icon button that opens the Setup surface. Setup is a pre-call
-/// surface (project, discussion guide, live-analysis toggles), so it sits to
-/// the left of the live tabs as a compact icon rather than competing with them
-/// for equal weight. Click toggles into Setup and back to where you were.
-struct OverlaySetupButton: View {
-    @Binding var selection: OverlayTab
-    @State private var lastNonSetup: OverlayTab = .assist
-
-    var body: some View {
-        Button {
-            if selection == .setup {
-                selection = lastNonSetup
-            } else {
-                lastNonSetup = selection
-                selection = .setup
-            }
-        } label: {
-            Image(systemName: OverlayTab.setup.icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(selection == .setup ? Color.overlayInk : Color.overlayInk.opacity(0.5))
-                .frame(width: 26, height: 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(selection == .setup ? Color.overlayInk.opacity(0.14) : Color.clear)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Setup — project, discussion guide, and live-analysis toggles (⌘⌥0)")
-    }
-}
-
-// MARK: - Record control
-
-/// Inline record control in the overlay header. Now phase-aware: instead of a
-/// binary record/stop, it names every step of the lifecycle so the user always
-/// knows what the app is doing — recording, paused, saving, generating the
-/// summary, or done (Granola-style). Click is the forward action for the
-/// current phase (start / finish / start-new); pause/resume and "open summary"
-/// live in the small aux button beside it (`OverlaySessionAuxButton`).
-struct OverlayRecordButton: View {
-    private let coordinator = SessionCoordinator.shared
-
-    @State private var hovering = false
-
-    /// No Combine timer here: a per-instance Timer.publish subscription was the
-    /// crash site of a SIGSEGV (stale SubscriptionView firing during view
-    /// teardown, 2026-06-10 crash report). The elapsed label uses TimelineView
-    /// instead — SwiftUI owns the clock and its lifecycle.
-    var body: some View {
-        Button(action: primaryAction) {
-            HStack(spacing: 6) {
-                glyph
-                label
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-            .background(background)
-            .overlay(Capsule(style: .continuous).stroke(borderColor, lineWidth: 1))
-            .clipShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(coordinator.phase == .finishing)
-        .hoverHighlight($hovering)
-        .help(helpText)
-    }
-
-    private func primaryAction() {
-        // toggleSession knows the phase: start from idle/done/summarizing,
-        // finish from recording/paused, no-op while finishing.
-        coordinator.toggleSession()
-    }
-
-    @ViewBuilder
-    private var glyph: some View {
-        switch coordinator.phase {
-        case .recording:
-            PulsingRecordDot()
-        case .paused:
-            Image(systemName: "pause.fill")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Color.orange)
-        case .finishing, .summarizing:
-            ProgressView()
-                .controlSize(.small)
-                .scaleEffect(0.62)
-                .frame(width: 9, height: 9)
-        case .done:
-            Image(systemName: coordinator.summaryURL != nil ? "checkmark.circle.fill" : "checkmark")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(coordinator.summaryURL != nil ? Color.green.opacity(0.9) : Color.overlayInk.opacity(0.55))
-        case .idle:
-            Circle()
-                .fill(Color(red: 1.0, green: 0.27, blue: 0.27).opacity(0.85))
-                .frame(width: 7, height: 7)
-        }
-    }
-
-    @ViewBuilder
-    private var label: some View {
-        switch coordinator.phase {
-        case .recording, .paused:
-            // Live elapsed (captured time — paused spans excluded). Monospaced
-            // digits so it doesn't jitter.
-            // Just the timer — the amber pause glyph + colour (and the resume
-            // button beside) already say "paused", so we don't spend header
-            // width on the word and squeeze the tab bar.
-            TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                Text(TimeFormat.elapsed(coordinator.elapsed(at: context.date)))
-                    .font(.system(size: 11, weight: .medium).monospacedDigit())
-                    .foregroundStyle(coordinator.phase == .paused ? Color.orange.opacity(0.95) : Color.overlayInk.opacity(0.85))
-                    .kerning(0.2)
-                    .fixedSize()
-            }
-        case .finishing:
-            labelText("Saving…", opacity: 0.6)
-        case .summarizing:
-            labelText("Summarizing…", opacity: 0.7)
-        case .done:
-            labelText(coordinator.summaryURL != nil ? "Notes ready" : "Done", opacity: 0.6)
-        case .idle:
-            labelText("Record", opacity: 0.75)
-        }
-    }
-
-    private func labelText(_ text: String, opacity: Double) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(Color.overlayInk.opacity(opacity))
-            .kerning(0.2)
-            .fixedSize()
-    }
-
-    private var background: some View {
-        ZStack {
-            Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.14 : 0.08))
-            switch coordinator.phase {
-            case .recording:
-                Capsule(style: .continuous).fill(Color(red: 1.0, green: 0.20, blue: 0.20).opacity(0.18))
-            case .paused:
-                Capsule(style: .continuous).fill(Color.orange.opacity(0.14))
-            default:
-                EmptyView()
-            }
-        }
-    }
-
-    private var borderColor: Color {
-        switch coordinator.phase {
-        case .recording: Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
-        case .paused: Color.orange.opacity(0.5)
-        default: Color.overlayInk.opacity(hovering ? 0.22 : 0.12)
-        }
-    }
-
-    private var helpText: String {
-        switch coordinator.phase {
-        case .idle: "Start recording (⌘⇧R)"
-        case .recording: "Finish & summarize (⌘⇧R)"
-        case .paused: "Finish & summarize (⌘⇧R) — currently paused"
-        case .finishing: "Saving the session…"
-        case .summarizing: "Generating the summary in the background — click to start a new recording"
-        case .done: coordinator.summaryURL != nil
-            ? "Session saved, notes ready. Click to start a new recording (⌘⇧R)"
-            : "Session saved. Click to start a new recording (⌘⇧R)"
-        }
-    }
-}
-
-/// Small companion button beside the record control. Pause/resume while a
-/// session is live; "open summary" once notes are ready. Only shown when it has
-/// something to do, so the header stays uncluttered when idle.
-struct OverlaySessionAuxButton: View {
-    private let coordinator = SessionCoordinator.shared
-    @State private var hovering = false
-
-    private enum Kind { case pause, resume, openSummary, none }
-
-    private var kind: Kind {
-        switch coordinator.phase {
-        case .recording: .pause
-        case .paused: .resume
-        case .summarizing, .done: coordinator.summaryURL != nil ? .openSummary : .none
-        default: .none
-        }
-    }
-
-    var body: some View {
-        if kind != .none {
-            Button(action: act) {
-                HStack(spacing: 4) {
-                    Image(systemName: icon)
-                        .font(.system(size: 10, weight: .bold))
-                    if let labelText {
-                        Text(labelText)
-                            .font(.system(size: 11, weight: .medium))
-                            .kerning(0.2)
-                            .fixedSize()
-                    }
-                }
-                .foregroundStyle(tint)
-                .frame(height: 26)
-                .padding(.horizontal, labelText == nil ? 0 : 9)
-                .frame(minWidth: 26)
-                .background(Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.14 : 0.08)))
-                .overlay(Capsule(style: .continuous).stroke(Color.overlayInk.opacity(0.14), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .hoverHighlight($hovering)
-            .help(help)
-        }
-    }
-
-    private var icon: String {
-        switch kind {
-        case .pause: "pause.fill"
-        case .resume: "play.fill"
-        case .openSummary: "doc.text"
-        case .none: ""
-        }
-    }
-
-    private var tint: Color {
-        switch kind {
-        case .resume: Color.green.opacity(0.9)
-        case .openSummary: Color.green.opacity(0.9)
-        default: Color.overlayInk.opacity(0.7)
-        }
-    }
-
-    /// Resume is the one aux action worth spelling out: pausing is reversible
-    /// and low-stakes, but a paused session reads as "stuck" until you spot the
-    /// tiny resume glyph. Labelling it (and the ⌘⇧P hint below) makes getting
-    /// going again obvious. Pause/openSummary stay compact icons.
-    private var labelText: String? {
-        kind == .resume ? "Resume" : nil
-    }
-
-    private var help: String {
-        switch kind {
-        case .pause: "Pause (⌘⇧P) — stops transcribing, keeps the connection live so resume is instant"
-        case .resume: "Resume recording (⌘⇧P)"
-        case .openSummary: "Open the meeting summary"
-        case .none: ""
-        }
-    }
-
-    private func act() {
-        switch kind {
-        case .pause, .resume: coordinator.togglePause()
-        case .openSummary:
-            if let url = coordinator.summaryURL { NSWorkspace.shared.open(url) }
-        case .none: break
-        }
-    }
-}
-
-/// Pulsing red indicator for the live record control. Owns its animation so it
-/// restarts cleanly each time recording begins (onAppear → repeatForever).
-private struct PulsingRecordDot: View {
-    @State private var on = false
-
-    var body: some View {
-        Circle()
-            .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
-            .frame(width: 7, height: 7)
-            .shadow(color: Color(red: 1.0, green: 0.27, blue: 0.27).opacity(on ? 0.85 : 0.20), radius: on ? 4 : 1)
-            .scaleEffect(on ? 1.0 : 0.65)
-            .opacity(on ? 1.0 : 0.55)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) { on = true }
-            }
-    }
-}
-
-// MARK: - Shared tab chrome
-
-/// A compact icon button used in tab toolbars (copy / export / etc.), styled
-/// consistently across every tab.
-struct OverlayToolbarButton: View {
-    let icon: String
-    let help: String
-    var disabled = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.overlayInk.opacity(disabled ? 0.25 : 0.6))
-                .frame(width: 22, height: 18)
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .help(help)
-    }
-}
-
-private func overlayEmptyState(_ icon: String, _ title: String, _ subtitle: String) -> some View {
-    VStack(spacing: 6) {
-        Image(systemName: icon).font(.system(size: 26)).foregroundStyle(Color.overlayInk.opacity(0.35))
-        Text(title).font(.system(size: 13)).foregroundStyle(Color.overlayInk.opacity(0.6))
-        Text(subtitle).font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.4))
-            .multilineTextAlignment(.center)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding(.horizontal, 24)
-}
-
 // MARK: - Transcript
 
 struct TranscriptTabView: View {
@@ -401,6 +11,7 @@ struct TranscriptTabView: View {
     @AppStorage(TranslationDefaults.targetLanguageKey) private var targetLanguage = "en"
     @AppStorage(TranslationDefaults.languageAKey) private var languageA = "en"
     @AppStorage(TranslationDefaults.languageBKey) private var languageB = "zh"
+    @State private var paragraphs: [Paragraph] = []
 
     private static let languageOptions: [(code: String, label: String)] = [
         ("en", "English"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French"),
@@ -438,7 +49,7 @@ struct TranscriptTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .scrollContentBackground(.hidden)
-                    .onChange(of: session.liveEntries.count) { _, _ in
+                    .onChange(of: paragraphs.last?.id) { _, _ in
                         if let last = paras.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                     }
                     // Returning to this tab re-instantiates the view at the
@@ -449,15 +60,13 @@ struct TranscriptTabView: View {
                 }
             }
         }
-        // Make this control the source of truth: push the *displayed* target to
-        // Soniox whenever the tab appears or the toggle/language changes. Guards
-        // against a stale config (e.g. a legacy panel's Spanish default).
-        .onAppear { syncTranslation() }
-        .onChange(of: translationEnabled) { _, _ in syncTranslation() }
-        .onChange(of: translationMode) { _, _ in syncTranslation() }
-        .onChange(of: targetLanguage) { _, _ in syncTranslation() }
-        .onChange(of: languageA) { _, _ in syncTranslation() }
-        .onChange(of: languageB) { _, _ in syncTranslation() }
+        // SessionCoordinator observes UserDefaults and is the sole writer of
+        // `translationConfig`. The view only reads the same defaults keys for
+        // its controls; it no longer pushes config directly.
+        .onAppear { paragraphs = makeParagraphs() }
+        .onChange(of: session.liveEntries.count) { _, _ in paragraphs = makeParagraphs() }
+        .onChange(of: session.liveEntries.last?.id) { _, _ in paragraphs = makeParagraphs() }
+        .onChange(of: translationEnabled) { _, _ in paragraphs = makeParagraphs() }
     }
 
     // MARK: - Translation control
@@ -480,6 +89,7 @@ struct TranscriptTabView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(translationEnabled ? "Turn translation off" : "Turn translation on")
             .help(translationEnabled ? "Translation on — shown under each line" : "Translate the transcript inline")
 
             if translationEnabled {
@@ -500,6 +110,7 @@ struct TranscriptTabView: View {
                         .foregroundStyle(Color.overlayInk.opacity(0.5))
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 14)
+                .accessibilityLabel("Translation mode and languages")
                 .help("Translation mode & languages")
             }
         }
@@ -515,22 +126,6 @@ struct TranscriptTabView: View {
         translationMode == "two_way"
             ? "\(languageA.uppercased())↔\(languageB.uppercased())"
             : languageLabel(targetLanguage)
-    }
-
-    private func syncTranslation() {
-        let desired: TranslationConfig? = if !translationEnabled {
-            nil
-        } else if translationMode == "two_way" {
-            // Same language both sides is a no-op — leave translation idle.
-            languageA == languageB ? nil : .twoWay(languageA: languageA, languageB: languageB)
-        } else {
-            .oneWay(targetLanguage: targetLanguage)
-        }
-        // Only reassign when it actually changes — a redundant set would swap the
-        // Soniox clients and blip transcription for no reason.
-        if session.translationConfig != desired {
-            session.translationConfig = desired
-        }
     }
 
     // MARK: - Speaker turns (one stream, coalesced by speaker)
@@ -553,7 +148,10 @@ struct TranscriptTabView: View {
     /// first appearance. We deliberately do NOT call the mic source "You": with
     /// people in the room, their voices come through the mic too, so the capture
     /// channel doesn't identify who's talking.
-    private var paragraphs: [Paragraph] {
+    ///
+    /// Cached in `@State` and rebuilt only when `liveEntries` changes, so long
+    /// transcripts don't re-coalesce on every SwiftUI render.
+    private func makeParagraphs() -> [Paragraph] {
         var result: [Paragraph] = []
         var speakerNumber: [String: Int] = [:]
         var nextNumber = 1
@@ -1456,36 +1054,6 @@ struct GuideTabView: View {
             } else {
                 overlayEmptyState("list.bullet.clipboard", "No guide loaded", "Attach a guide in the Setup tab; RTI pairs its questions with the conversation.")
             }
-        }
-    }
-}
-
-// MARK: - Hover highlight (Swift 6 teardown-crash workaround)
-
-extension View {
-    /// `.onHover` whose action closure is authored in a `nonisolated` context,
-    /// so the Swift 6 compiler does NOT wrap it in the dynamic main-actor
-    /// executor assertion (`swift_task_isCurrentExecutor`) that a plain
-    /// `.onHover { hovering = $0 }` inside a `@MainActor` `body` gets.
-    ///
-    /// That assertion segfaulted — EXC_BAD_ACCESS in `swift_getObjectType` ←
-    /// `swift_task_isMainExecutor` — when a stale AppKit tracking-area
-    /// `mouseMoved:` was delivered into an overlay node mid-teardown. That's the
-    /// crash that took RTI down when you moused over the "Notes ready" pill at
-    /// session end (crash reports 2026-06-15..17, all in OverlayMicControl /
-    /// OverlayRecordButton hover closures). AppKit always delivers hover events
-    /// on the main thread, so dropping the now-fatal runtime check is safe — the
-    /// state write still happens on main.
-    nonisolated func hoverHighlight(_ flag: Binding<Bool>) -> some View {
-        onHover { flag.wrappedValue = $0 }
-    }
-
-    /// Optional-id variant for list rows: set `binding` to `id` on enter, clear
-    /// it on exit (only if it still points at this row). Same nonisolated-closure
-    /// rationale as `hoverHighlight(_:)`.
-    nonisolated func hoverHighlight<ID: Equatable>(_ binding: Binding<ID?>, id: ID) -> some View {
-        onHover { inside in
-            binding.wrappedValue = inside ? id : (binding.wrappedValue == id ? nil : binding.wrappedValue)
         }
     }
 }

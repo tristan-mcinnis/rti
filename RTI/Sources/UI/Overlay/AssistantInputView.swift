@@ -1,6 +1,6 @@
+import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import RTICore
 
 struct AssistantInputView: View {
     var onOpenSettings: () -> Void = {}
@@ -58,11 +58,11 @@ struct AssistantInputView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
                         .stroke(isDropTargeted
-                                ? Color.blue.opacity(0.7)
-                                : (inputState.isNoteMode
-                                   ? Color.yellow.opacity(0.55)
-                                   : Color.overlayInk.opacity(0.10)),
-                                lineWidth: isDropTargeted ? 1.5 : 1)
+                            ? Color.blue.opacity(0.7)
+                            : (inputState.isNoteMode
+                                ? Color.yellow.opacity(0.55)
+                                : Color.overlayInk.opacity(0.10)),
+                            lineWidth: isDropTargeted ? 1.5 : 1)
                 )
         )
         // Drop an image here → it's OCR'd on-device and attached as context for
@@ -187,6 +187,8 @@ struct AssistantInputView: View {
         .menuIndicator(.hidden)
         .tint(Color.overlayInk.opacity(0.7))
         .frame(width: 28)
+        .accessibilityLabel("More actions")
+        .accessibilityHint("Quick actions and settings")
         .help("Quick actions and settings")
     }
 
@@ -290,13 +292,15 @@ struct AssistantInputView: View {
                 .foregroundColor(llm.smartMode ? Color.blue : Color.overlayInk.opacity(0.7))
                 .frame(width: 28, height: 26)
                 .background(Capsule().fill(llm.smartMode
-                                           ? Color.blue.opacity(0.16)
-                                           : Color.overlayInk.opacity(0.06)))
+                        ? Color.blue.opacity(0.16)
+                        : Color.overlayInk.opacity(0.06)))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .tint(Color.overlayInk.opacity(0.7))
         .frame(width: 28)
+        .accessibilityLabel("Assist actions")
+        .accessibilityHint(llm.smartMode ? "Assist actions. Smart mode is on." : "Assist actions")
         .help(llm.smartMode ? "Assist actions · Smart on" : "Assist actions")
     }
 
@@ -314,6 +318,8 @@ struct AssistantInputView: View {
         }
         .buttonStyle(.plain)
         .disabled(isEmpty || llm.streaming)
+        .accessibilityLabel("Send message")
+        .accessibilityHint("Send the current message")
         .help("Send message (return)")
     }
 
@@ -326,6 +332,8 @@ struct AssistantInputView: View {
                 .background(Capsule().fill(Color.red.opacity(0.85)))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Stop streaming")
+        .accessibilityHint("Stop the current assistant response")
         .help("Stop streaming response")
     }
 

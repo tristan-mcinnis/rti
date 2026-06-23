@@ -13,7 +13,6 @@ import RTICore
 /// session — but kept on the signatures so analysis call sites read clearly.
 @MainActor
 enum TranscriptContext {
-
     /// Live entries, optionally windowed to those at or after `sinceMs`.
     /// Translation tokens are excluded — analysis (notes, guide) reads the
     /// original spoken transcript, not the live-translated duplicate, which
@@ -28,18 +27,28 @@ enum TranscriptContext {
     /// `\n`: `[user note]: text` for note rows, `Speaker N: text` otherwise.
     /// Speaker numbering is derived from the FULL session (not the window) so
     /// "Speaker 2" means the same person in every periodic notes block.
-    static func text(forSessionId sessionId: String, sinceMs: Int? = nil) -> String {
-        format(entries(sinceMs: sinceMs), label: speakerLabeler(for: entries(sinceMs: nil)))
+    static func text(forSessionId _: String, sinceMs: Int? = nil) -> String {
+        let all = entries(sinceMs: nil)
+        let window: [LiveEntry] = if let sinceMs {
+            all.filter { $0.startMs >= sinceMs }
+        } else {
+            all
+        }
+        return format(window, label: speakerLabeler(for: all))
     }
 
     /// Like `text(forSessionId:)` but prefixes each spoken line with a
     /// `[mm:ss]` timestamp derived from `startMs`. Used by the discussion-
     /// guide matcher so the LLM can echo timestamps into its quote payloads.
     /// User notes are left without timestamps (they were typed, not spoken).
-    static func textWithTimestamps(forSessionId sessionId: String) -> String {
+    ///
+    /// Speaker numbering is derived from the FULL session so labels stay stable
+    /// across windows, but only entries at or after `sinceMs` are emitted.
+    static func textWithTimestamps(forSessionId _: String, sinceMs: Int? = nil) -> String {
         let all = entries(sinceMs: nil)
+        let window = entries(sinceMs: sinceMs)
         let label = speakerLabeler(for: all)
-        return all.map { e in
+        return window.map { e in
             if e.speakerId == "note" {
                 return "[user note]: \(e.text)"
             }
@@ -72,7 +81,7 @@ enum TranscriptContext {
 
     /// The end-ms of the transcript window. Used by periodic analysis
     /// controllers to advance their watermarks. Returns nil when empty.
-    static func watermarkEndMs(forSessionId sessionId: String, sinceMs: Int? = nil) -> Int? {
+    static func watermarkEndMs(forSessionId _: String, sinceMs: Int? = nil) -> Int? {
         entries(sinceMs: sinceMs).last?.startMs
     }
 

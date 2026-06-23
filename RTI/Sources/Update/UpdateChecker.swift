@@ -47,16 +47,18 @@ enum UpdateChecker {
 
     // MARK: - User-facing
 
-    /// Manual "Check for Updates…": always reports a result.
+    /// Manual "Check for Updates…": actually checks GitHub Releases and either
+    /// presents the download or reports that the running build is up to date.
     @MainActor
     static func checkAndReport() {
         Task { @MainActor in
-            // Local builds (installed from source by the build pipeline) are
-            // ahead of any GitHub release — never offer a release "update"
-            // that would actually be a downgrade.
+            if let info = await checkForUpdate() {
+                presentUpdateAvailable(info)
+                return
+            }
             let alert = NSAlert()
-            alert.messageText = "Locally built version"
-            alert.informativeText = "RTI \(currentVersion?.description ?? "") is installed from source and is newer than any published release. Updates ship via rebuilds, not GitHub releases."
+            alert.messageText = "Up to date"
+            alert.informativeText = "RTI \(currentVersion?.description ?? "this build") is the latest published release."
             alert.runModal()
         }
     }

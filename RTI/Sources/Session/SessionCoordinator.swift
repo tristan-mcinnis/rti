@@ -106,6 +106,7 @@ final class SessionCoordinator {
     private var isStarting = false
     private var delayedCompleteTask: Task<Void, Never>?
     private var checkpointTask: Task<Void, Never>?
+    private var translationDefaultsObserver: NSObjectProtocol?
     /// When the last session was stopped — used to reject a phantom restart
     /// fired immediately after a manual stop (the stop→start race).
     private var lastStopAt: Date?
@@ -154,6 +155,20 @@ final class SessionCoordinator {
     }
 
     private func commonInit() {
+        // Keep the live translation config in sync with UserDefaults without
+        // letting every view push its own copy. Views mutate the defaults keys;
+        // this store-derived update is the single writer to `translationConfig`.
+        translationConfig = TranslationStore.currentConfig()
+        translationDefaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.translationConfig = TranslationStore.currentConfig()
+            }
+        }
+
         audioPipeline.onWords = { [weak self] words in
             self?.handleWords(words)
         }

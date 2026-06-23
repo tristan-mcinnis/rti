@@ -219,6 +219,7 @@ final class LLMController {
     }
 
     private func performSend(userInput: String, action: String, fullTranscript: Bool = false, forceSmart: Bool = false) {
+        guard !streaming else { return }
         request.cancel()
         let effectiveSmart = smartMode || forceSmart
         lastError = nil

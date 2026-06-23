@@ -5,10 +5,9 @@ import SwiftUI
 struct LiveTranscriptView: View {
     @Environment(SessionCoordinator.self) var coordinator: SessionCoordinator
     private let modes = ModeStore.shared
-    @State private var elapsed: TimeInterval = 0
-    @State private var timer: Timer?
     @State private var copiedFlash: String?
     @State private var hoveredId: UUID?
+    @State private var paragraphs: [LiveParagraph] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,9 +28,8 @@ struct LiveTranscriptView: View {
             Divider()
             transcriptList
         }
-        .onAppear(perform: startClock)
-        .onAppear(perform: syncTranslationConfig)
-        .onDisappear(perform: stopClock)
+        .onAppear { paragraphs = makeParagraphs() }
+        .onChange(of: coordinator.liveEntries.count) { _, _ in paragraphs = makeParagraphs() }
     }
 
     // MARK: - Translation state
@@ -48,21 +46,6 @@ struct LiveTranscriptView: View {
         ("zh", "Chinese"), ("ru", "Russian"), ("ar", "Arabic"), ("hi", "Hindi"),
         ("nl", "Dutch"), ("pl", "Polish"), ("tr", "Turkish"), ("vi", "Vietnamese"),
     ]
-
-    private var effectiveTranslationConfig: TranslationConfig? {
-        guard translationEnabled else { return nil }
-        switch translationMode {
-        case "two_way":
-            guard languageA != languageB else { return nil }
-            return .twoWay(languageA: languageA, languageB: languageB)
-        default:
-            return .oneWay(targetLanguage: targetLanguage)
-        }
-    }
-
-    private func syncTranslationConfig() {
-        coordinator.translationConfig = effectiveTranslationConfig
-    }
 
     private var translationSummary: String {
         guard translationEnabled else { return "Off" }
@@ -118,10 +101,12 @@ struct LiveTranscriptView: View {
                     .fill(Color.orange.opacity(0.10))
             )
             Spacer()
-            if coordinator.isRunning {
-                Text(formatElapsed(elapsed))
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
+            if coordinator.isRunning, let start = coordinator.startedAt {
+                TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                    Text(formatElapsed(Date().timeIntervalSince(start)))
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
             }
             if let err = coordinator.lastError {
                 Text(err)
@@ -198,9 +183,6 @@ struct LiveTranscriptView: View {
             Toggle("", isOn: $translationEnabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .onChange(of: translationEnabled) { _, _ in
-                    syncTranslationConfig()
-                }
 
             if translationEnabled {
                 Picker("Mode", selection: $translationMode) {
@@ -210,9 +192,6 @@ struct LiveTranscriptView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .frame(width: 120)
-                .onChange(of: translationMode) { _, _ in
-                    syncTranslationConfig()
-                }
 
                 if translationMode == "one_way" {
                     Picker("To", selection: $targetLanguage) {
@@ -222,9 +201,6 @@ struct LiveTranscriptView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
-                        .onChange(of: targetLanguage) { _, _ in
-                        syncTranslationConfig()
-                    }
                 } else {
                     Picker("A", selection: $languageA) {
                         ForEach(supportedLanguages, id: \.code) { lang in
@@ -233,9 +209,6 @@ struct LiveTranscriptView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
-                        .onChange(of: languageA) { _, _ in
-                        syncTranslationConfig()
-                    }
                     Text("↔").font(.system(size: 10)).foregroundStyle(.secondary)
                     Picker("B", selection: $languageB) {
                         ForEach(supportedLanguages, id: \.code) { lang in
@@ -244,9 +217,6 @@ struct LiveTranscriptView: View {
                     }
                     .controlSize(.small)
                     .frame(width: 100)
-                        .onChange(of: languageB) { _, _ in
-                        syncTranslationConfig()
-                    }
 
                     if languageA == languageB {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -283,14 +253,17 @@ struct LiveTranscriptView: View {
 
     /// Soniox finalizes in 1–3s windows so the raw stream is dozens of tiny
     /// fragments. Coalesce consecutive same-speaker entries into paragraphs
-    /// for a readable live view. Computed each render — small list, cheap.
-    private var paragraphs: [LiveParagraph] {
+    /// for a readable live view. Cached in `@State` and rebuilt only when
+    /// `liveEntries` changes, so long transcripts don't re-coalesce on every
+    /// SwiftUI render.
+    private func makeParagraphs() -> [LiveParagraph] {
         var out: [LiveParagraph] = []
         for entry in coordinator.liveEntries {
             let isTranslation = entry.translationStatus == "translation"
             if let last = out.last,
                last.speakerId == entry.speakerId,
-               last.isTranslation == isTranslation {
+               last.isTranslation == isTranslation
+            {
                 let merged = LiveParagraph(
                     id: last.id,
                     speakerId: last.speakerId,
@@ -321,7 +294,8 @@ struct LiveTranscriptView: View {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     if paragraphs.isEmpty,
                        (coordinator.interimLine ?? "").isEmpty,
-                       coordinator.isRunning {
+                       coordinator.isRunning
+                    {
                         waitingPlaceholder
                     }
                     ForEach(paragraphs) { p in
@@ -489,24 +463,6 @@ struct LiveTranscriptView: View {
 
     private func speakerDisplayName(_ id: String) -> String {
         SpeakerLabels.displayName(for: id)
-    }
-
-    private func startClock() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            MainActor.assumeIsolated {
-                if let start = coordinator.startedAt {
-                    elapsed = Date().timeIntervalSince(start)
-                } else {
-                    elapsed = 0
-                }
-            }
-        }
-    }
-
-    private func stopClock() {
-        timer?.invalidate()
-        timer = nil
     }
 
     private func formatElapsed(_ t: TimeInterval) -> String {
