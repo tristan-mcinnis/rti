@@ -24,39 +24,58 @@ enum CommandBuilder {
             + navigationCommands(windows: windows)
             + tabCommands(windows: windows)
             + actionCommands(llm: llm)
+            + transcriptionCommands()
             + panelCommands(windows: windows, llm: llm)
             + appCommands(windows: windows)
             + modeSwitchCommands(modes: modes)
     }
 
-    // MARK: - Tab navigation (⌘⌥0–5)
+    // MARK: - Transcription provider (menu quick-switch)
 
-    /// Jump straight to an overlay tab from anywhere. Each command shows the
-    /// overlay then posts the target tab; OverlayPanelView only switches to
-    /// tabs that are currently visible (Notes/Guide/Findings are opt-in).
+    /// Quick-switch the live speech-to-text engine from the menubar, with a
+    /// checkmark on the active one. Applies to the next session — a mid-session
+    /// swap would tear down and rebuild both audio legs and risk dropping the
+    /// meeting, so we don't hot-swap a live recording.
+    @MainActor
+    private static func transcriptionCommands() -> [RTICommand] {
+        STTProviders.all.map { provider in
+            RTICommand(
+                id: "stt.provider.\(provider.id)",
+                title: "Transcription: \(provider.displayName)",
+                keywords: ["transcription", "stt", "provider", "engine", "soniox", "assemblyai", "model", "switch"],
+                perform: { STTProviders.activeId = provider.id },
+                menuSection: .panels,
+                menuStateProvider: { STTProviders.activeId == provider.id }
+            )
+        }
+    }
+
+    // MARK: - Tab navigation (palette only)
+
+    /// Jump straight to an overlay tab. The tabs are one click away in the
+    /// overlay's top bar, so these carry no global hotkey and don't appear in
+    /// the menubar — they stay searchable in the command palette only, to keep
+    /// both the hotkey set and the menu uncluttered.
     @MainActor
     private static func tabCommands(windows: WindowCoordinator) -> [RTICommand] {
-        func tabCmd(_ tab: String, _ title: String, key: Int, hint: String) -> RTICommand {
+        func tabCmd(_ tab: String, _ title: String) -> RTICommand {
             RTICommand(
                 id: "view.tab.\(tab)",
-                title: "\(title)  \(hint)",
+                title: title,
                 keywords: ["tab", "switch", "jump", "go", tab],
                 perform: { [weak windows] in
                     windows?.showOverlay()
                     NotificationCenter.default.post(name: .rtiSelectTab, object: tab)
-                },
-                menuSection: .navigation,
-                hotkeyKeyCode: UInt32(key),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
+                }
             )
         }
         return [
-            tabCmd("setup", "Go to Setup", key: kVK_ANSI_0, hint: "⌘⌥0"),
-            tabCmd("assist", "Go to Assist", key: kVK_ANSI_1, hint: "⌘⌥1"),
-            tabCmd("transcript", "Go to Transcript", key: kVK_ANSI_2, hint: "⌘⌥2"),
-            tabCmd("notes", "Go to Notes", key: kVK_ANSI_3, hint: "⌘⌥3"),
-            tabCmd("guide", "Go to Guide", key: kVK_ANSI_4, hint: "⌘⌥4"),
-            tabCmd("findings", "Go to Findings", key: kVK_ANSI_5, hint: "⌘⌥5"),
+            tabCmd("setup", "Go to Setup"),
+            tabCmd("assist", "Go to Assist"),
+            tabCmd("transcript", "Go to Transcript"),
+            tabCmd("notes", "Go to Notes"),
+            tabCmd("guide", "Go to Guide"),
+            tabCmd("findings", "Go to Findings"),
         ]
     }
 
@@ -240,9 +259,10 @@ enum CommandBuilder {
             RTICommand(
                 id: "primary.set.\(action.id)",
                 title: "Set ⌘⏎ to: \(action.label)",
-                keywords: ["primary", "hotkey", "remap", "bind"],
+                keywords: ["primary", "hotkey", "remap", "bind", "command assist"],
                 isAvailable: { llm.primaryActionID != action.id },
-                perform: { llm.primaryActionID = action.id }
+                perform: { llm.primaryActionID = action.id },
+                menuSection: .actions
             )
         } + [
             RTICommand(
@@ -300,12 +320,26 @@ enum CommandBuilder {
                     UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
                 }
             ),
+            // On/off the translation feature itself. SessionCoordinator observes
+            // this default and reconfigures the live transcription clients, so it
+            // applies mid-session. (The translation config/panel lives in
+            // Settings + the palette's "Toggle Translation Panel".)
+            RTICommand(
+                id: "translation.toggle",
+                title: "Translation",
+                keywords: ["translation", "translate", "language", "bilingual"],
+                perform: {
+                    let d = UserDefaults.standard
+                    d.set(!d.bool(forKey: TranslationDefaults.enabledKey), forKey: TranslationDefaults.enabledKey)
+                },
+                menuSection: .panels,
+                menuStateProvider: { UserDefaults.standard.bool(forKey: TranslationDefaults.enabledKey) }
+            ),
             RTICommand(
                 id: "panel.translation.toggle",
                 title: "Toggle Translation Panel",
-                keywords: ["translation", "translate"],
-                perform: { [weak windows] in windows?.toggle(.translation) },
-                menuSection: .panels
+                keywords: ["translation", "translate", "panel"],
+                perform: { [weak windows] in windows?.toggle(.translation) }
             ),
         ]
     }

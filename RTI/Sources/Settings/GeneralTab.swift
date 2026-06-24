@@ -341,14 +341,15 @@ private struct HotkeysSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 hotkeyRow("Toggle overlay", "⌘ \\")
                 hotkeyRow("Start / stop session", "⌘ ⇧ R")
-                hotkeyRow("Assist (from any app)", "⌘ ↵")
+                hotkeyRow("Pause / resume", "⌘ ⇧ P")
+                hotkeyRow("Primary action (remappable)", "⌘ ↵")
+                hotkeyRow("Note mode (type into transcript)", "⌘ ⌥ N")
                 hotkeyRow("Attach screenshot", "⌘ ⇧ H")
-                hotkeyRow("Show / hide live transcript", "⌘ ⌥ T")
             }
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
 
-            Text("⌘⏎ is remappable to any quick action (✦ menu → \"⌘⏎ runs\"). Other hotkeys are fixed: ⌘⇧R record, ⌘⌥R recap, ⌘⌥M summary, ⌘⌥S say-next, ⌘⌥F follow-ups, ⌘⇧H screenshot, ⌘\\ overlay.")
+            Text("⌘⏎ is the remappable primary action (set it from the menu → \"Set ⌘⏎ to:\"). Tab switching (Assist / Transcript / Notes / Guide) has no hotkey — the tabs are one click in the overlay top bar. Quick AI actions (recap ⌘⌥R, summary ⌘⌥M, say-next ⌘⌥S, follow-ups ⌘⌥F) still have hotkeys and are also in the command palette.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
