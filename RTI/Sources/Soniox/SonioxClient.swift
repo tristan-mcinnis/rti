@@ -233,13 +233,13 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
             if let code = msg.error_code {
                 let detail = msg.error_message ?? "no detail"
                 RTILog.log("server error code=\(code) \(detail)", category: "soniox")
-                let failure = SonioxFailure.fromSonioxApplicationError(code: code, detail: detail)
-                lock.lock()
-                let phaseDidOpen = didOpen
-                lock.unlock()
-                DispatchQueue.main.async { [weak self] in
-                    self?.onError?(failure, phaseDidOpen)
-                }
+                // Route server application errors through the same retry/fatal
+                // gate as transport drops. A transient code (408 decode timeout,
+                // 429, 5xx) must RECONNECT, not fire onError — otherwise a brief
+                // gap of no decodable audio (other party silent, or a Bluetooth
+                // mic blip) ends the whole session and auto-summarizes. Only
+                // auth / clientBug (shouldRetry == false) escalate to onError.
+                handleDrop(SonioxFailure.fromSonioxApplicationError(code: code, detail: detail))
                 return
             }
             guard let raw = msg.tokens, !raw.isEmpty else { return }
