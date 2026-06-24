@@ -50,6 +50,15 @@ enum VaultLogStore {
         return databases.appendingPathComponent("projects/personal/rti", isDirectory: true)
     }
 
+    /// `<vault>/databases/meetings/recordings` — Meeting Sentinel's recordings
+    /// dir, which is git-ignored and mirrored daily to COS by rclone. Durable
+    /// meeting audio (MeetingRecorder's m4a files) belongs here so it rides the
+    /// existing backup pipe with no new plumbing. nil if the vault can't be
+    /// located (caller falls back to Application Support).
+    static func recordingsDirectory() -> URL? {
+        sentinelRecordingsDir()
+    }
+
     private static func sentinelRecordingsDir() -> URL? {
         guard let data = try? Data(contentsOf: sentinelConfigURL()),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

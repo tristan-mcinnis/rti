@@ -52,8 +52,18 @@ final class AudioPipeline {
     /// leg starts so its timestamps can be aligned to the mic timeline.
     private var captureStartWall: Date?
     private let wav = WAVWriter()
+    /// Durable two-file (mic + system) m4a archive of the whole meeting, kept in
+    /// the COS-synced vault recordings dir. The source for the async, diarized
+    /// re-transcribe pass. Independent of the ephemeral mic-only `wav`.
+    private let recorder = MeetingRecorder()
     private var soniox: SonioxClient?
     private var systemSoniox: SonioxClient?
+
+    /// URLs of the kept meeting recordings once the session has finished, for
+    /// the session archive / re-transcribe lane. nil until `finish()`/`abort()`,
+    /// or for a leg that captured no audio.
+    var micRecordingURL: URL? { recorder.micURL }
+    var systemRecordingURL: URL? { recorder.systemURL }
 
     /// Live capture levels for the Audio I/O monitor. Written from the PCM
     /// callbacks; read on main by the monitor. `systemAudioActive` reflects
@@ -95,6 +105,7 @@ final class AudioPipeline {
 
         let wavURL = WAVWriter.defaultURL(for: sessionId)
         try wav.open(at: wavURL)
+        recorder.open(sessionId: sessionId)
 
         let client = SonioxClient(
             apiKey: Secrets.sonioxAPIKey,
@@ -123,6 +134,7 @@ final class AudioPipeline {
                 return
             }
             wav.append(buffer)
+            recorder.appendMic(buffer)
             let data = Data(bytes: int16[0], count: byteCount)
             soniox?.sendAudio(data)
         }
@@ -181,6 +193,7 @@ final class AudioPipeline {
                     systemSoniox?.sendAudio(Data(count: byteCount))
                     return
                 }
+                recorder.appendSystem(buffer)
                 let data = Data(bytes: int16[0], count: byteCount)
                 systemSoniox?.sendAudio(data)
             }
@@ -288,6 +301,7 @@ final class AudioPipeline {
         systemSoniox?.disconnect()
         systemSoniox = nil
         wav.close()
+        recorder.close()
     }
 
     /// Swap the Soniox transcription clients to apply a new translation
@@ -349,6 +363,7 @@ final class AudioPipeline {
         systemSoniox?.disconnect()
         systemSoniox = nil
         wav.close()
+        recorder.close()
     }
 }
 
