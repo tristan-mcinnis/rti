@@ -45,6 +45,7 @@ enum CommandBuilder {
                 keywords: ["transcription", "stt", "provider", "engine", "soniox", "assemblyai", "model", "switch"],
                 perform: { STTProviders.activeId = provider.id },
                 menuSection: .panels,
+                menuParent: "Transcription model",
                 menuStateProvider: { STTProviders.activeId == provider.id }
             )
         }
@@ -258,11 +259,12 @@ enum CommandBuilder {
         ] + AssistantAction.primaryEligibleActions.map { action in
             RTICommand(
                 id: "primary.set.\(action.id)",
-                title: "Set ⌘⏎ to: \(action.label)",
+                title: action.label,
                 keywords: ["primary", "hotkey", "remap", "bind", "command assist"],
-                isAvailable: { llm.primaryActionID != action.id },
                 perform: { llm.primaryActionID = action.id },
-                menuSection: .actions
+                menuSection: .actions,
+                menuParent: "Set ⌘⏎ to",
+                menuStateProvider: { llm.primaryActionID == action.id }
             )
         } + [
             RTICommand(

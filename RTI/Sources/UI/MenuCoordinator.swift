@@ -7,12 +7,12 @@ import AppKit
 @MainActor
 final class MenuCoordinator: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
-    private var sessionMenuItem: NSMenuItem?
-    private var smartModeItem: NSMenuItem?
-    private var invisibilityItem: NSMenuItem?
 
     /// Commands keyed by id for fast lookup during menu-open refresh.
     private var commandsByID: [String: RTICommand] = [:]
+    /// Every built menu item (top-level and submenu children) keyed by command
+    /// id, so menu-open can refresh titles and checkmark state generically.
+    private var itemsByID: [String: NSMenuItem] = [:]
 
     var onToggleSession: (() -> Void)?
     var onToggleSmartMode: (() -> Void)?
@@ -39,26 +39,26 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        // Group commands by section, preserving declaration order.
+        // Group commands by section, preserving declaration order. Within a
+        // section, commands sharing a `menuParent` collapse into one submenu
+        // (built at the parent's first occurrence) instead of going flat.
         let grouped = Dictionary(grouping: commands) { $0.menuSection }
         for section in MenuSection.allCases {
             guard let group = grouped[section] else { continue }
+            var builtSubmenus = Set<String>()
             for cmd in group {
-                let mi = NSMenuItem(title: cmd.title, action: #selector(fireCommand(_:)), keyEquivalent: "")
-                mi.target = self
-                mi.representedObject = cmd.id
-                menu.addItem(mi)
-
-                // Capture dynamic items for menu-open refresh.
-                switch cmd.id {
-                case "session.start":
-                    sessionMenuItem = mi
-                case "smart.toggle":
-                    smartModeItem = mi
-                case "invisibility.toggle":
-                    invisibilityItem = mi
-                default:
-                    break
+                if let parent = cmd.menuParent {
+                    guard !builtSubmenus.contains(parent) else { continue }
+                    builtSubmenus.insert(parent)
+                    let parentItem = NSMenuItem(title: parent, action: nil, keyEquivalent: "")
+                    let sub = NSMenu()
+                    for child in group where child.menuParent == parent {
+                        sub.addItem(makeItem(child))
+                    }
+                    parentItem.submenu = sub
+                    menu.addItem(parentItem)
+                } else {
+                    menu.addItem(makeItem(cmd))
                 }
             }
 
@@ -110,18 +110,29 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         return image
     }
 
+    /// Build one menu item from a command, recording it for menu-open refresh
+    /// and seeding its checkmark from the current state.
+    private func makeItem(_ cmd: RTICommand) -> NSMenuItem {
+        let mi = NSMenuItem(
+            title: cmd.menuTitleProvider?() ?? cmd.title,
+            action: #selector(fireCommand(_:)),
+            keyEquivalent: ""
+        )
+        mi.target = self
+        mi.representedObject = cmd.id
+        if let state = cmd.menuStateProvider { mi.state = state() ? .on : .off }
+        itemsByID[cmd.id] = mi
+        return mi
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
-        // Refresh dynamic titles.
-        if let cmd = commandsByID["session.start"], let mi = sessionMenuItem {
-            mi.title = cmd.menuTitleProvider?() ?? cmd.title
-        }
-        if let cmd = commandsByID["smart.toggle"], let mi = smartModeItem {
-            mi.title = cmd.menuTitleProvider?() ?? cmd.title
-            mi.state = (smartModeProvider?() ?? false) ? .on : .off
-        }
-        if let cmd = commandsByID["invisibility.toggle"], let mi = invisibilityItem {
-            mi.title = cmd.menuTitleProvider?() ?? cmd.title
-            mi.state = (invisibilityProvider?() ?? true) ? .on : .off
+        // Refresh every item's dynamic title + checkmark state generically.
+        // Submenu children are refreshed here too (they're in itemsByID), so
+        // they're current by the time the user hovers into a submenu.
+        for (id, mi) in itemsByID {
+            guard let cmd = commandsByID[id] else { continue }
+            if let title = cmd.menuTitleProvider { mi.title = title() }
+            if let state = cmd.menuStateProvider { mi.state = state() ? .on : .off }
         }
     }
 

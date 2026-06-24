@@ -631,6 +631,7 @@ struct SetupTabView: View {
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
     @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = false
     @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = false
+    @AppStorage(STTProviders.activeIdKey) private var sttProviderId = "soniox"
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
     @State private var pickerOpen = false
@@ -659,6 +660,9 @@ struct SetupTabView: View {
                 livePanelsSection
 
                 Divider().overlay(Color.overlayInk.opacity(0.08)).padding(.vertical, 2)
+                transcriptionModelSection
+
+                Divider().overlay(Color.overlayInk.opacity(0.08)).padding(.vertical, 2)
                 discussionGuideSection
 
                 noteEditor
@@ -667,6 +671,25 @@ struct SetupTabView: View {
         }
         .scrollContentBackground(.hidden)
         .onAppear(perform: load)
+    }
+
+    // MARK: - Transcription model
+
+    private var transcriptionModelSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Transcription model")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.85))
+            Picker("", selection: $sttProviderId) {
+                ForEach(STTProviders.all, id: \.id) { provider in
+                    Text(provider.displayName).tag(provider.id)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text("Which engine transcribes live audio. Soniox is the default (best multilingual + diarization); AssemblyAI needs its key in Settings → Keys. Applies on the next session.")
+                .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - One combined client/project picker

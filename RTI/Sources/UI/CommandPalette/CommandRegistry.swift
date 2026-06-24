@@ -27,6 +27,12 @@ struct RTICommand: Identifiable {
     /// Which section the menu item appears in. `nil` hides it from the
     /// status-item menu (palette-only commands like say-next / followups).
     let menuSection: MenuSection?
+    /// When set, the menu item is nested inside a submenu with this title
+    /// (within its section) instead of appearing flat. Commands sharing the
+    /// same `menuParent` in the same section collect under one submenu — used
+    /// to keep families like "Set ⌘⏎ to: …" and provider switches from
+    /// flooding the top-level menu.
+    let menuParent: String?
     /// When non-nil, the menu item title is re-evaluated on every menu-open
     /// so commands like "Start / Stop Recording" stay in sync.
     let menuTitleProvider: (() -> String)?
@@ -52,6 +58,7 @@ struct RTICommand: Identifiable {
         isAvailable: @escaping () -> Bool = { true },
         perform: @escaping () -> Void,
         menuSection: MenuSection? = nil,
+        menuParent: String? = nil,
         menuTitleProvider: (() -> String)? = nil,
         menuStateProvider: (() -> Bool)? = nil,
         hotkeyKeyCode: UInt32? = nil,
@@ -64,6 +71,7 @@ struct RTICommand: Identifiable {
         self.isAvailable = isAvailable
         self.perform = perform
         self.menuSection = menuSection
+        self.menuParent = menuParent
         self.menuTitleProvider = menuTitleProvider
         self.menuStateProvider = menuStateProvider
         self.hotkeyKeyCode = hotkeyKeyCode
