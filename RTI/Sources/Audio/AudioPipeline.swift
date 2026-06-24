@@ -56,8 +56,11 @@ final class AudioPipeline {
     /// the COS-synced vault recordings dir. The source for the async, diarized
     /// re-transcribe pass. Independent of the ephemeral mic-only `wav`.
     private let recorder = MeetingRecorder()
-    private var soniox: SonioxClient?
-    private var systemSoniox: SonioxClient?
+    /// The active speech-to-text client (Soniox / AssemblyAI / future), built by
+    /// STTProviders from the user's Settings choice. `soniox` is a historical
+    /// name; it is whichever provider is active.
+    private var soniox: STTClient?
+    private var systemSoniox: STTClient?
 
     /// URLs of the kept meeting recordings once the session has finished, for
     /// the session archive / re-transcribe lane. nil until `finish()`/`abort()`,
@@ -99,7 +102,7 @@ final class AudioPipeline {
         // Fast-fail before opening a WAV on disk: a missing/empty Soniox
         // key would otherwise let the user "record" silently for 5 retries
         // before any error surfaces, leaving an orphan WAV behind.
-        guard !Secrets.sonioxAPIKey.isEmpty else {
+        guard STTProviders.activeHasKey else {
             throw AudioPipelineError.missingSonioxKey
         }
 
@@ -107,9 +110,7 @@ final class AudioPipeline {
         try wav.open(at: wavURL)
         recorder.open(sessionId: sessionId)
 
-        let client = SonioxClient(
-            apiKey: Secrets.sonioxAPIKey,
-            url: SonioxClient.defaultURL,
+        let client = STTProviders.makeActiveClient(
             translationConfig: translationConfig,
             contextTerms: contextTerms
         )
@@ -154,13 +155,11 @@ final class AudioPipeline {
         // The mic leg already enforces this in `prepare`; this guard
         // mirrors it so we don't silently consume Soniox credits on a
         // doomed second connection.
-        guard !Secrets.sonioxAPIKey.isEmpty else { return }
+        guard STTProviders.activeHasKey else { return }
 
         Task { @MainActor [weak self] in
             guard let self, isCapturing else { return }
-            let sysClient = SonioxClient(
-                apiKey: Secrets.sonioxAPIKey,
-                url: SonioxClient.defaultURL,
+            let sysClient = STTProviders.makeActiveClient(
                 translationConfig: translationConfig,
                 contextTerms: contextTerms
             )
@@ -310,13 +309,11 @@ final class AudioPipeline {
     /// the current `translationConfig` and immediately receive incoming
     /// PCM buffers via the existing `onPCMBuffer` closures.
     func reconfigureTranslation() {
-        guard !Secrets.sonioxAPIKey.isEmpty else { return }
+        guard STTProviders.activeHasKey else { return }
 
         // Mic leg.
         soniox?.disconnect()
-        let mic = SonioxClient(
-            apiKey: Secrets.sonioxAPIKey,
-            url: SonioxClient.defaultURL,
+        let mic = STTProviders.makeActiveClient(
             translationConfig: translationConfig,
             contextTerms: contextTerms
         )
@@ -331,9 +328,7 @@ final class AudioPipeline {
         // System leg (if active).
         if systemSoniox != nil {
             systemSoniox?.disconnect()
-            let sys = SonioxClient(
-                apiKey: Secrets.sonioxAPIKey,
-                url: SonioxClient.defaultURL,
+            let sys = STTProviders.makeActiveClient(
                 translationConfig: translationConfig,
                 contextTerms: contextTerms
             )
@@ -373,7 +368,7 @@ enum AudioPipelineError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingSonioxKey:
-            "No Soniox API key set. Open Settings to paste a key, then start the session again."
+            "No speech-to-text API key set for the selected provider. Open Settings to paste a key, then start the session again."
         }
     }
 }

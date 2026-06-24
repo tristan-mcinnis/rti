@@ -18,6 +18,9 @@ struct GeneralTab: View {
                 AssistantSection()
 
                 Divider().padding(.vertical, 8)
+                TranscriptionSection()
+
+                Divider().padding(.vertical, 8)
                 AudioInputSection()
 
                 Divider().padding(.vertical, 8)
@@ -106,6 +109,29 @@ private struct AssistantSection: View {
         .background(
             RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.06))
         )
+    }
+}
+
+// MARK: - Transcription (speech-to-text provider)
+
+private struct TranscriptionSection: View {
+    @AppStorage(STTProviders.activeIdKey) private var providerId = "soniox"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Transcription")
+                .font(.system(size: 13, weight: .medium))
+            Picker("Speech-to-text", selection: $providerId) {
+                ForEach(STTProviders.all, id: \.id) { provider in
+                    Text(provider.displayName).tag(provider.id)
+                }
+            }
+            .pickerStyle(.menu)
+            Text("Which engine transcribes live audio. Soniox is the default (best multilingual + diarization). AssemblyAI uses Universal-Streaming v3 — add its key in the Keys tab first. Falls back to Soniox if the selected provider has no key. Applies on the next session.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
@@ -346,7 +372,7 @@ private struct DataAndSupportSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Data & Support")
                 .font(.system(size: 13, weight: .medium))
-            Text("Audio is streamed to Soniox for transcription. Transcripts and prompts are sent to your configured LLM provider (DeepSeek by default) to generate answers. Audio is never kept: the WAV is deleted on stop. Text IS kept: the session record (transcript, notes, chat, auto-summary) is written to your vault on stop — and checkpointed every 5 minutes during recording — where it syncs and becomes searchable. API keys stay in the keychain on this Mac.")
+            Text("Live audio is streamed to your transcription provider (Soniox by default, or AssemblyAI) for transcription. Transcripts and prompts are sent to your configured LLM provider (DeepSeek by default) to generate answers. The full meeting is saved as m4a in your vault recordings folder (kept for backup and high-quality re-transcription); the working 16 kHz WAV is still deleted on stop. The session record (transcript, notes, chat, auto-summary) is written to your vault on stop — and checkpointed every 5 minutes during recording — where it syncs and becomes searchable. API keys stay in an owner-only file on this Mac.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -2,7 +2,7 @@ import Foundation
 import RTICore
 import Starscream
 
-final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
+final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     static let defaultURL = URL(string: "wss://stt-rt.soniox.com/transcribe-websocket")!
 
     var onWords: (([SonioxWord]) -> Void)?
@@ -254,5 +254,332 @@ final class SonioxClient: WebSocketDelegate, @unchecked Sendable {
         } catch {
             RTILog.log("SonioxClient: decode failed: \(error)", category: "soniox")
         }
+    }
+}
+
+// MARK: - STT provider abstraction
+
+/// The runtime surface every speech-to-text provider exposes, so the audio
+/// pipeline can drive Soniox, AssemblyAI, or a future/local engine
+/// interchangeably. Construction is provider-specific (see `STTProviders`); this
+/// protocol covers only the live streaming lifecycle. Words, failures, and
+/// health stay shared value types (`SonioxWord` / `SonioxFailure` /
+/// `TranscriptionHealth`) so every provider maps into one model and the rest of
+/// the app is unchanged.
+protocol STTClient: AnyObject, Sendable {
+    var onWords: (([SonioxWord]) -> Void)? { get set }
+    var onError: ((SonioxFailure, _ didOpen: Bool) -> Void)? { get set }
+    var onStatus: ((TranscriptionHealth) -> Void)? { get set }
+    func connect()
+    func disconnect()
+    func sendAudio(_ data: Data)
+    func finalize()
+}
+
+/// One selectable speech-to-text backend. Mirrors `LLMProviderConfig`: a stable
+/// id + display name + a factory that builds a live client. Kept as computed
+/// literals (no stored shared state) so it stays `Sendable`.
+struct STTProviderConfig: Sendable {
+    let id: String
+    let displayName: String
+    let makeClient: @Sendable (_ translationConfig: TranslationConfig?, _ contextTerms: [String]) -> STTClient
+}
+
+/// Registry + active-selection for STT providers. The active provider is stored
+/// in UserDefaults (`rti.stt.activeProviderId`) and surfaced in Settings,
+/// exactly like `LLMProviders`. Add a new provider by adding a config here.
+enum STTProviders {
+    static var soniox: STTProviderConfig {
+        STTProviderConfig(id: "soniox", displayName: "Soniox") { tc, terms in
+            SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL,
+                         translationConfig: tc, contextTerms: terms)
+        }
+    }
+
+    static var assemblyai: STTProviderConfig {
+        STTProviderConfig(id: "assemblyai", displayName: "AssemblyAI") { _, _ in
+            // AssemblyAI streaming handles diarization/translation differently
+            // from Soniox; translation + context terms are not forwarded here.
+            AssemblyAIClient(apiKey: Secrets.assemblyAIKey)
+        }
+    }
+
+    static var all: [STTProviderConfig] { [soniox, assemblyai] }
+
+    static let activeIdKey = "rti.stt.activeProviderId"
+    static var activeId: String {
+        get { UserDefaults.standard.string(forKey: activeIdKey) ?? soniox.id }
+        set { UserDefaults.standard.set(newValue, forKey: activeIdKey) }
+    }
+    static var active: STTProviderConfig { all.first { $0.id == activeId } ?? soniox }
+
+    /// Whether the provider that will actually run has a key. AssemblyAI counts
+    /// only if its own key is set; otherwise Soniox is the default and the
+    /// fallback, so a Soniox key suffices.
+    static var activeHasKey: Bool {
+        if active.id == "assemblyai", !Secrets.assemblyAIKey.isEmpty { return true }
+        return !Secrets.sonioxAPIKey.isEmpty
+    }
+
+    /// Build a live client for the active provider, falling back to Soniox if the
+    /// selected provider has no API key set (so a half-configured switch can't
+    /// silently break capture).
+    static func makeActiveClient(translationConfig: TranslationConfig?, contextTerms: [String]) -> STTClient {
+        let choice = active
+        if choice.id == "assemblyai", Secrets.assemblyAIKey.isEmpty {
+            return soniox.makeClient(translationConfig, contextTerms)
+        }
+        return choice.makeClient(translationConfig, contextTerms)
+    }
+}
+
+// MARK: - AssemblyAI Universal-Streaming (v3) client
+
+/// STT client for AssemblyAI's Universal-Streaming v3 API
+/// (`wss://streaming.assemblyai.com/v3/ws`), an alternative to Soniox selectable
+/// in Settings. Mirrors `SonioxClient`'s lifecycle and retry/drop semantics, and
+/// maps AssemblyAI's `Turn` messages into the shared `SonioxWord` model so the
+/// rest of the app is provider-agnostic.
+///
+/// Differences from Soniox: auth is the raw key in the `?token=` query param
+/// (the v3 WS handshake takes no custom header); audio is sent as RAW BINARY
+/// frames; results arrive as one `Turn` message type whose `end_of_turn` flag
+/// distinguishes interim from final; end-of-stream is a `{"type":"Terminate"}`
+/// TEXT frame (required — unterminated sessions bill for the full window).
+/// Speaker diarization is requested live via `speaker_labels=true`.
+final class AssemblyAIClient: WebSocketDelegate, STTClient, @unchecked Sendable {
+    static let baseURL = "wss://streaming.assemblyai.com/v3/ws"
+
+    var onWords: (([SonioxWord]) -> Void)?
+    var onError: ((SonioxFailure, _ didOpen: Bool) -> Void)?
+    var onStatus: ((TranscriptionHealth) -> Void)?
+
+    private func emitStatus(_ health: TranscriptionHealth) {
+        DispatchQueue.main.async { [weak self] in self?.onStatus?(health) }
+    }
+
+    private let apiKey: String
+    private let lock = NSLock()
+    private var socket: WebSocket?
+    private var isConnected = false
+    private var didOpen = false
+    private var intentionalDisconnect = false
+    private var retryCount = 0
+    private var retryWorkItem: DispatchWorkItem?
+
+    private static let maxRetries = 5
+    private static let retryDelays: [TimeInterval] = [1, 2, 4, 8, 8]
+
+    init(apiKey: String) {
+        self.apiKey = apiKey
+    }
+
+    private func makeURL() -> URL? {
+        var comps = URLComponents(string: Self.baseURL)
+        comps?.queryItems = [
+            URLQueryItem(name: "speech_model", value: "u3-rt-pro"),
+            URLQueryItem(name: "encoding", value: "pcm_s16le"),
+            URLQueryItem(name: "sample_rate", value: "16000"),
+            URLQueryItem(name: "format_turns", value: "true"),
+            URLQueryItem(name: "speaker_labels", value: "true"),
+            URLQueryItem(name: "token", value: apiKey)
+        ]
+        return comps?.url
+    }
+
+    func connect() {
+        lock.lock()
+        intentionalDisconnect = false
+        retryCount = 0
+        didOpen = false
+        lock.unlock()
+        emitStatus(.connecting)
+        openSocket()
+    }
+
+    private func openSocket() {
+        guard !apiKey.isEmpty, let url = makeURL() else {
+            emitStatus(.failed)
+            DispatchQueue.main.async { [weak self] in self?.onError?(.auth, false) }
+            return
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        let ws = WebSocket(request: request)
+        ws.delegate = self
+        lock.lock()
+        socket = ws
+        lock.unlock()
+        ws.connect()
+    }
+
+    func disconnect() {
+        lock.lock()
+        intentionalDisconnect = true
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        let ws = socket
+        socket = nil
+        isConnected = false
+        lock.unlock()
+        ws?.disconnect()
+    }
+
+    func sendAudio(_ data: Data) {
+        lock.lock()
+        let s = socket
+        lock.unlock()
+        s?.write(data: data)  // raw binary PCM16 frame
+    }
+
+    func finalize() {
+        lock.lock()
+        guard let s = socket, isConnected else {
+            lock.unlock()
+            return
+        }
+        intentionalDisconnect = true
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        lock.unlock()
+        // Required: cleanly end the session so AssemblyAI stops billing and
+        // flushes the final Turn. The server replies with a Termination message.
+        s.write(string: #"{"type":"Terminate"}"#)
+    }
+
+    func didReceive(event: WebSocketEvent, client: WebSocketClient) {
+        switch event {
+        case .connected:
+            lock.lock()
+            isConnected = true
+            didOpen = true
+            retryCount = 0
+            lock.unlock()
+            RTILog.log("assemblyai connected", category: "soniox")
+            emitStatus(.live)
+
+        case .text(let string):
+            handleMessage(string)
+
+        case .binary:
+            break  // v3 sends results as text frames only
+
+        case .disconnected(let reason, let code):
+            handleDrop(SonioxFailure.fromTransport(reason: "disconnected code=\(code) reason=\(reason)"))
+
+        case .error(let error):
+            handleDrop(SonioxFailure.fromTransport(reason: "transport error \(String(describing: error))"))
+
+        case .cancelled:
+            handleDrop(SonioxFailure.fromTransport(reason: "cancelled"))
+
+        default:
+            break
+        }
+    }
+
+    private func handleMessage(_ string: String) {
+        guard let data = string.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = obj["type"] as? String else { return }
+
+        switch type {
+        case "Turn":
+            let words = parseTurn(obj)
+            guard !words.isEmpty else { return }
+            DispatchQueue.main.async { [weak self] in self?.onWords?(words) }
+        case "Begin", "Termination", "SpeakerRevision":
+            break
+        default:
+            break
+        }
+    }
+
+    /// Map an AssemblyAI `Turn` (its word array) into shared `SonioxWord`s.
+    /// `end_of_turn` marks the turn final; per-word `word_is_final` marks stable
+    /// words within a growing partial turn. AssemblyAI word timestamps are
+    /// already in milliseconds and words carry no trailing space, so we add one.
+    private func parseTurn(_ obj: [String: Any]) -> [SonioxWord] {
+        let endOfTurn = obj["end_of_turn"] as? Bool ?? false
+        let turnSpeaker = obj["speaker_label"] as? String
+        let language = obj["language_code"] as? String
+        guard let rawWords = obj["words"] as? [[String: Any]], !rawWords.isEmpty else {
+            return []
+        }
+        return rawWords.map { w in
+            let raw = (w["text"] as? String) ?? ""
+            return SonioxWord(
+                text: raw.isEmpty ? "" : raw + " ",
+                startMs: w["start"] as? Int ?? 0,
+                endMs: w["end"] as? Int ?? 0,
+                speaker: speakerIndex(w["speaker"] as? String ?? turnSpeaker),
+                confidence: w["confidence"] as? Double ?? 1.0,
+                isFinal: (w["word_is_final"] as? Bool ?? false) || endOfTurn,
+                translationStatus: "none",
+                language: language,
+                sourceLanguage: nil
+            )
+        }
+    }
+
+    /// "A" → 0, "B" → 1, … Matches Soniox's integer speaker ids. Unknown/short
+    /// turns ("UNKNOWN" / nil) collapse to 0.
+    private func speakerIndex(_ label: String?) -> Int {
+        guard let first = label?.uppercased().first,
+              let ascii = first.asciiValue, first.isLetter else { return 0 }
+        return Int(ascii) - Int(Character("A").asciiValue!)
+    }
+
+    // MARK: - Drop / reconnect (mirrors SonioxClient)
+
+    private func handleDrop(_ failure: SonioxFailure) {
+        lock.lock()
+        isConnected = false
+        let blocked = intentionalDisconnect
+        let phaseDidOpen = didOpen
+        lock.unlock()
+        RTILog.log("assemblyai dropped — \(failure)", category: "soniox")
+        guard !blocked else { return }
+        if failure.shouldRetry {
+            scheduleReconnect(after: failure)
+        } else {
+            emitStatus(.failed)
+            DispatchQueue.main.async { [weak self] in self?.onError?(failure, phaseDidOpen) }
+        }
+    }
+
+    private func scheduleReconnect(after failure: SonioxFailure) {
+        lock.lock()
+        let phaseDidOpen = didOpen
+        retryWorkItem?.cancel()
+        guard !intentionalDisconnect else {
+            retryWorkItem = nil
+            lock.unlock()
+            return
+        }
+        guard retryCount < Self.maxRetries else {
+            retryWorkItem = nil
+            lock.unlock()
+            RTILog.log("assemblyai: max retries reached", category: "soniox")
+            emitStatus(.failed)
+            DispatchQueue.main.async { [weak self] in self?.onError?(failure, phaseDidOpen) }
+            return
+        }
+        let delay = Self.retryDelays[min(retryCount, Self.retryDelays.count - 1)]
+        retryCount += 1
+        let attempt = retryCount
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let blocked = self.intentionalDisconnect
+            self.lock.unlock()
+            guard !blocked else { return }
+            self.openSocket()
+        }
+        retryWorkItem = item
+        lock.unlock()
+        RTILog.log("assemblyai: reconnect attempt \(attempt) in \(delay)s", category: "soniox")
+        emitStatus(.reconnecting)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 }

@@ -129,12 +129,15 @@ enum KeychainStore {
 enum CredentialStore {
     private static let deepseekAccount = "deepseek"
     private static let sonioxAccount = "soniox"
+    private static let assemblyaiAccount = "assemblyai"
 
     static var deepseek: String? { KeychainStore.get(deepseekAccount) }
     static var soniox: String? { KeychainStore.get(sonioxAccount) }
+    static var assemblyai: String? { KeychainStore.get(assemblyaiAccount) }
 
     static func setDeepSeek(_ value: String) { KeychainStore.set(value, for: deepseekAccount) }
     static func setSoniox(_ value: String) { KeychainStore.set(value, for: sonioxAccount) }
+    static func setAssemblyAI(_ value: String) { KeychainStore.set(value, for: assemblyaiAccount) }
 
     /// One-time migration of any plaintext keys still living in Secrets.swift.
     /// Earlier versions also wrote into the macOS Keychain; we no longer touch

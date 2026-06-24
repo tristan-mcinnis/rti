@@ -5,6 +5,7 @@ import SwiftUI
 struct KeysTab: View {
     @State private var deepseek = ""
     @State private var soniox = ""
+    @State private var assemblyai = ""
     @State private var saved = false
     @State private var saveError: String?
 
@@ -39,6 +40,11 @@ struct KeysTab: View {
 
             field("\(providerName) API key", "sk-…", $deepseek)
             field("Soniox API key", "…", $soniox)
+            field("AssemblyAI API key (optional)", "…", $assemblyai)
+            Text("AssemblyAI is optional — only needed if you pick it as the transcription provider in General. Soniox stays the default.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if hasMissingKey {
                 Text("Both keys are required for RTI to work.")
@@ -67,6 +73,7 @@ struct KeysTab: View {
         .onAppear {
             deepseek = CredentialStore.deepseek ?? ""
             soniox = CredentialStore.soniox ?? ""
+            assemblyai = CredentialStore.assemblyai ?? ""
         }
     }
 
@@ -92,6 +99,9 @@ struct KeysTab: View {
         saveError = nil
         CredentialStore.setDeepSeek(k)
         CredentialStore.setSoniox(s)
+        // AssemblyAI is optional; an empty value clears it (CredentialStore.set
+        // removes the entry on empty).
+        CredentialStore.setAssemblyAI(assemblyai.trimmingCharacters(in: .whitespacesAndNewlines))
         // Verify the write actually landed in the keychain store. If
         // CredentialStore returns nil after set, surface a real error
         // instead of flashing a misleading green check.
