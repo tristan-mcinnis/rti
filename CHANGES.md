@@ -1,5 +1,45 @@
 # RTI Change Log
 
+## 2026-06-25 — Editable prompts (Settings → Prompts) + single-source registry
+
+Every prompt RTI sends is now editable in the app, with reset-to-defaults, and
+lives in one registry instead of scattered `static let` literals.
+
+### Architecture
+
+- **New prompt registry (`RTICore`).** `PromptID` + `PromptDefaults` are the
+  single source of every prompt's default text (the 16 on-demand/system prompts
+  plus the 5 background controller prompts: findings, auto-assist cards,
+  DG parse, DG match, live notes). `PromptComposer` holds the parameterized
+  composition (recap depth + language rule, listener/speaker, summary-by-mode)
+  behind an injected resolver, so the same logic serves both pure defaults and
+  app overrides.
+- **New `PromptStore` (app).** `@Observable @MainActor`, UserDefaults-backed
+  override layer mirroring `GlossaryStore`. Resolves override-or-default, records
+  the default's hash at edit time to detect when a shipped default later drifts
+  from a saved override, and validates edits against required tokens.
+- `PromptCatalogue` kept as the pure default-resolved facade (its API and tests
+  unchanged); the four analysis controllers and `LLMController` now resolve their
+  prompts through `PromptStore`, and the dead `static let` prompt bodies were
+  removed.
+
+### Features
+
+- **Settings → Prompts tab.** Sidebar of all prompts grouped by area, a
+  monospace editor per prompt, per-prompt Reset / Revert / Save, a global
+  "Reset all", an "edited" / "default changed" badge, a JSON-contract warning
+  when an edit drops a load-bearing token, and an assembled-prompt preview for
+  the composed recap leaves.
+- **Export defaults → offline lab.** "Export defaults…" writes the shipped
+  prompts as JSON; `scripts/prompt-lab` now reads that file instead of its
+  hand-maintained Python copy, ending the Swift↔Python drift.
+
+### Verification
+
+- `xcodegen generate && xcodebuild … test` — **174 tests passed, 0 failures**
+  (8 new `PromptRegistryTests`). Release/Debug build succeeds. `swiftformat` run
+  on all touched files; prompt-lab loader round-trip verified.
+
 ## 2026-06-23 — UI layer refactor, accessibility, and overlay type-checker fix
 
 Addressed the issues surfaced by a multi-angle static review of the SwiftUI overlay layer.

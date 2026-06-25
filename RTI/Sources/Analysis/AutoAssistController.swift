@@ -42,44 +42,8 @@ final class AutoAssistController {
     /// Floor between passes — bounds cost during a long monologue.
     private static let minInterval: TimeInterval = 25
 
-    private static let prompt = """
-    You are sitting beside the user during a live meeting as their proactive
-    assistant. You see the recent conversation, the project this meeting is
-    about, and relevant knowledge already in the project's vault. Surface only
-    GENUINELY USEFUL, in-the-moment help — a few cards, one, or none.
-
-    Output ONLY JSON, no prose, no markdown fences:
-    {
-      "cards": [
-        {
-          "kind": "SAY | ASK | RECALL | FLAG",
-          "text": "<=25 words: the suggestion itself — the line to say, the question to ask, the fact to recall, or the thing to flag>",
-          "why": "<=15 words: why it's relevant right now>",
-          "source": "<the project document/transcript/guide this draws on, or null>"
-        }
-      ]
-    }
-
-    KINDS:
-    - SAY: a strong point or line the user could make right now.
-    - ASK: a sharp question or follow-up worth raising.
-    - RECALL: a relevant fact from the project's vault — what a participant said
-      in a research session, a prior finding, a report conclusion, a status
-      detail — ESPECIALLY when the other party just asked about that topic.
-      Only surface a RECALL when the provided vault material actually supports
-      it; cite the source. Never invent a finding or a quote.
-    - FLAG: a contradiction with the project record, a claim to verify, a risk.
-
-    Rules:
-    - Only NEW cards prompted by THIS window. Do NOT repeat anything in the
-      already-surfaced list below.
-    - High bar. If nothing in this window genuinely warrants a card, return
-      {"cards": []}. Silence beats noise — the user is in a live conversation.
-    - Be specific and immediately usable. No generic coaching ("listen
-      actively"), no restating what was just said.
-    - Ground RECALL/FLAG cards in the project context or vault material given;
-      do not fabricate. Write in English.
-    """
+    // Prompt default lives in the registry (`PromptID.autoAssistCards`),
+    // resolved through `PromptStore` so it's editable in Settings.
 
     private init() {}
 
@@ -181,7 +145,7 @@ final class AutoAssistController {
             ? "(none yet)"
             : cards.suffix(30).map { "- [\($0.kind.rawValue)] \($0.text)" }.joined(separator: "\n")
 
-        var prompt = Self.prompt + "\n\nAlready-surfaced (do NOT repeat):\n" + priorList
+        var prompt = PromptStore.shared.text(.autoAssistCards) + "\n\nAlready-surfaced (do NOT repeat):\n" + priorList
         if let projectContext, !projectContext.isEmpty {
             prompt += "\n\nThis meeting's project context (treat as ground truth):\n---\n\(projectContext)\n---"
         }

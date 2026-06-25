@@ -22,72 +22,10 @@ final class DiscussionGuideController {
     private let request = LLMRequest()
     private var sessionId: String?
 
-    // MARK: - Parsing prompts
-
-    private static let parsePrompt = """
-    You convert a raw moderated-interview discussion guide into a structured JSON outline. Output ONLY JSON.
-
-    Shape:
-    {
-      "objectives": [
-        {
-          "id": "obj_1",
-          "title": "Objective title",
-          "description": "Optional short description, or null.",
-          "sections": [
-            {
-              "id": "obj_1_sec_1",
-              "title": "Section title",
-              "questions": [
-                { "id": "obj_1_sec_1_q1", "text": "Question text" }
-              ]
-            }
-          ]
-        }
-      ]
-    }
-
-    Rules:
-    - Preserve the author's wording for question text — do not paraphrase.
-    - Use stable, hierarchical IDs as shown.
-    - If the document has no explicit objective grouping, create a single objective titled "Discussion guide" containing all sections.
-    - If the document has no section grouping, create a single section titled the same as its parent objective.
-    - Skip preamble, methodology notes, and timing instructions that aren't questions.
-    - Output JSON only — no markdown fences, no commentary.
-
-    Raw guide document:
-    """
-
-    private static let matchPrompt = """
-    You match unanswered questions from a discussion guide against the live transcript window. Output ONLY JSON.
-
-    Shape:
-    {
-      "matches": [
-        {
-          "questionId": "obj_1_sec_1_q1",
-          "summary": "One-line summary of what the participant said.",
-          "quotes": [
-            { "text": "Verbatim quote.", "speaker": "self|them_1|…", "timestampMs": 123456 }
-          ],
-          "confidence": "high|medium|low",
-          "status": "partial|answered"
-        }
-      ]
-    }
-
-    Rules:
-    - Match SEMANTICALLY, not by wording. The moderator paraphrases and often asks in Chinese; a question counts as touched whenever its MEANING or topic comes up, regardless of exact phrasing or language. Each guide question is given in English and 中文 (separated by " / ") — match against either.
-    - Emit a match whenever the transcript meaningfully touches a question. Use "partial" generously for a topic that came up but wasn't fully resolved; use "answered" only when the response is substantive and complete.
-    - Skip a question ONLY if its topic genuinely has not come up at all.
-    - Each questionId MUST be copied EXACTLY from the bracketed id in the list below (e.g. "obj_2_sec_1_q3"). Never invent or alter an id.
-    - Quote text MUST be verbatim from the transcript, in its original language.
-    - Compute timestampMs from the `[mm:ss]` prefix (mm*60000 + ss*1000).
-    - confidence = "high" only when the quote leaves no ambiguity.
-    - Output JSON only.
-
-    Unanswered questions (format: "- [id] English / 中文"):
-    """
+    // Parsing prompts: defaults live in the registry (`PromptID.dgParse`,
+    // `PromptID.dgMatch`), resolved through `PromptStore` so they're editable in
+    // Settings. The "Raw guide document:" / "Unanswered questions…:" tails are
+    // part of those default strings.
 
     private init() {}
 
@@ -173,7 +111,7 @@ final class DiscussionGuideController {
     /// LLM fallback parser with one repair retry. Logs the raw model output on
     /// failure so a bad parse is diagnosable instead of a blind red line.
     private func llmParse(_ text: String, fileName: String) async -> DiscussionGuide? {
-        let base = [LLMMessage(role: "user", content: Self.parsePrompt + "\n" + text)]
+        let base = [LLMMessage(role: "user", content: PromptStore.shared.text(.dgParse) + "\n" + text)]
         guard let response = await request.collectAsync(messages: base, smart: true) else {
             RTILog.log("guide: LLM parse returned no response", category: "guide")
             return nil
@@ -188,7 +126,8 @@ final class DiscussionGuideController {
             LLMMessage(role: "user", content: "That was not valid JSON in the required shape. Output ONLY the JSON object — no prose, no markdown fences."),
         ]
         guard let retry = await request.collectAsync(messages: repair, smart: true),
-              let guide = Self.parseGuide(retry, fileName: fileName) else {
+              let guide = Self.parseGuide(retry, fileName: fileName)
+        else {
             RTILog.log("guide: LLM parse failed after repair retry", category: "guide")
             return nil
         }
@@ -244,6 +183,8 @@ final class DiscussionGuideController {
         }.joined(separator: "\n")
         RTILog.log("guide: matching \(unanswered.count) unanswered questions", category: "guide")
 
+        // Resolve on the actor; the closure may run off the main actor.
+        let matchPrompt = PromptStore.shared.text(.dgMatch)
         guard let result = await TranscriptAnalysis.runLenientArray(
             sessionId: sessionId,
             sinceMs: sinceMs,
@@ -254,7 +195,7 @@ final class DiscussionGuideController {
             key: "matches",
             as: GuideMatch.self,
             buildPrompt: {
-                Self.matchPrompt + "\n" + questionsList
+                matchPrompt + "\n" + questionsList
                     + "\n\nTranscript window (with [mm:ss] timestamps):\n" + $0
             }
         ) else {
@@ -264,7 +205,7 @@ final class DiscussionGuideController {
 
         let returned = result.payload
         let allIds = Set(guide.objectives.flatMap { $0.sections.flatMap { $0.questions.map(\.id) } })
-        let validCount = returned.filter { allIds.contains($0.questionId) }.count
+        let validCount = returned.count(where: { allIds.contains($0.questionId) })
         RTILog.log("guide: LLM returned \(returned.count) matches, \(validCount) map to known ids", category: "guide")
         if returned.count > 0, validCount == 0 {
             let sample = returned.prefix(3).map(\.questionId).joined(separator: ", ")
@@ -311,5 +252,4 @@ final class DiscussionGuideController {
             objectives: stripped
         )
     }
-
 }

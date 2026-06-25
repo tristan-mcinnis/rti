@@ -4,7 +4,7 @@ import SwiftUI
 /// (`KeysTab.swift`, `ModesTab.swift`, …) so changes to one section
 /// don't drag the whole 1k-line monolith into review.
 struct SettingsView: View {
-    var onClose: (() -> Void)? = nil
+    var onClose: (() -> Void)?
 
     var body: some View {
         TabView {
@@ -12,6 +12,8 @@ struct SettingsView: View {
                 .tabItem { Label("Keys", systemImage: "key.fill") }
             ModesTab()
                 .tabItem { Label("Modes", systemImage: "square.stack.3d.up") }
+            PromptsTab()
+                .tabItem { Label("Prompts", systemImage: "text.bubble") }
             GlossaryTab()
                 .tabItem { Label("Glossary", systemImage: "character.book.closed") }
             GeneralTab()

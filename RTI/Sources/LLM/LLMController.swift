@@ -117,21 +117,21 @@ final class LLMController {
     /// on the reasoning ("smart") model — the wrap-up is worth the extra latency.
     func sendSummary() {
         let kind = ModeStore.shared.activeMode?.kind ?? .other
-        performSend(userInput: PromptCatalogue.summary(for: kind), action: "Summary", fullTranscript: true, forceSmart: true)
+        performSend(userInput: PromptStore.shared.summary(for: kind), action: "Summary", fullTranscript: true, forceSmart: true)
     }
 
     /// Listener research actions — surface tensions / what's unsaid / themes for
     /// a fieldwork observer instead of "what should I say".
     func sendKeyTensions() {
-        performSend(userInput: PromptCatalogue.keyTensions, action: "Key tensions")
+        performSend(userInput: PromptStore.shared.text(.keyTensions), action: "Key tensions")
     }
 
     func sendProbe() {
-        performSend(userInput: PromptCatalogue.probe, action: "Probe")
+        performSend(userInput: PromptStore.shared.text(.probe), action: "Probe")
     }
 
     func sendThemes() {
-        performSend(userInput: PromptCatalogue.themes, action: "Themes")
+        performSend(userInput: PromptStore.shared.text(.themes), action: "Themes")
     }
 
     func sendAskAnything(_ input: String) {
@@ -141,21 +141,21 @@ final class LLMController {
     }
 
     func sendAssist() {
-        performSend(userInput: PromptCatalogue.assist(listener: listenerMode), action: "Assist")
+        performSend(userInput: PromptStore.shared.assist(listener: listenerMode), action: "Assist")
     }
 
     func sendSaySomething() {
-        performSend(userInput: PromptCatalogue.sayNext, action: "Say next")
+        performSend(userInput: PromptStore.shared.text(.sayNext), action: "Say next")
     }
 
     func sendFollowupQuestions() {
-        performSend(userInput: PromptCatalogue.followups(listener: listenerMode), action: "Follow-ups")
+        performSend(userInput: PromptStore.shared.followups(listener: listenerMode), action: "Follow-ups")
     }
 
     /// Recap at the given depth, or the user's sticky default when unspecified
     /// (⌘⌥R and the ⌘⏎ primary action both take the default).
     func sendRecap(depth: RecapDepth? = nil) {
-        performSend(userInput: PromptCatalogue.recap(depth ?? recapDepth), action: "Recap")
+        performSend(userInput: PromptStore.shared.recap(depth ?? recapDepth), action: "Recap")
     }
 
     /// Re-run the turn that produced `assistantID`: drop that assistant reply
@@ -264,10 +264,10 @@ final class LLMController {
             {
                 return prompt
             }
-            return PromptCatalogue.system
+            return PromptStore.shared.text(.systemDefault)
         }()
         let effectivePrompt = listenerMode
-            ? basePrompt + "\n\nThe user is a PASSIVE LISTENER in this meeting — observing, not speaking. Never draft lines for them to say; frame help as observations, flags, and questions they could pass to whoever is leading."
+            ? basePrompt + "\n\n" + PromptStore.shared.text(.listenerSystemSuffix)
             : basePrompt
 
         // The auto-matched prep brief is for active meeting participation, not

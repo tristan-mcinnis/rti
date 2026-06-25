@@ -27,12 +27,23 @@ term must be written as `中文 (pīnyīn, English)`. Output:
 clean runs: 6/8 | term compliance: 92/100 (92%)
 ```
 
+## Single source — no hand-syncing
+The real shipping prompts live in the Swift registry
+(`RTI/Core/LLM/PromptID.swift`). To tune the EXACT prompts the app runs:
+1. In RTI, open **Settings → Prompts → "Export defaults…"** and save the JSON as
+   `rti-prompt-defaults.json` next to this README. The lab loads it
+   automatically (it prints `[prompts] using exported registry`).
+2. Without that file, the lab falls back to the inline copies in `prompts.py`
+   (which are no longer kept in sync — they're just a default).
+
 ## Workflow
-1. Edit the prompt in `prompts.py`.
-2. Re-run; compare `clean runs` + `term compliance` across variants.
-3. When a variant is reliably high, port it back to the Swift source
-   (`NotesGenerationController.notesPrompt`, `LLMController.meetingSummaryPrompt`,
-   `FindingsController.prompt`) and rebuild.
+1. Export defaults (above) so you're tuning the live prompts.
+2. Edit a candidate — either in the exported JSON, or inline in `prompts.py`.
+3. Re-run; compare `clean runs` + `term compliance` across variants.
+4. When a variant is reliably high, put it back into the registry default
+   (`PromptID`/`PromptDefaults`) — or just paste it into Settings → Prompts for
+   a runtime override (no rebuild). The registry is the source the app, the
+   Settings editor, and this lab all read.
 
 `RTI_LAB_MODEL` env overrides the model (default `deepseek-chat`); set it to the
 exact flash model RTI runs to tune against the real target.

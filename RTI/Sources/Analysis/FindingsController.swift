@@ -26,38 +26,8 @@ final class FindingsController {
     /// manual button so neither re-covers old ground.
     private var lastFindingMs = 0
 
-    private static let prompt = """
-    You are a research observer keeping a running LEDGER of findings from a live
-    moderated session. From THIS transcript window, surface every genuinely new,
-    significant observation — there may be several, one, or none.
-
-    Output ONLY JSON, no prose, no markdown fences:
-    {
-      "findings": [
-        {
-          "tag": "FINDING | TENSION | CONTRADICTION | NEW_THREAD | MISSED",
-          "headline": "<=20 words: what was said or revealed; include the key verbatim if there is one>",
-          "matters": "<=20 words: why this matters for the research objective>",
-          "quote": "<short verbatim quote, or null>",
-          "speaker": "<speaker label if clear, or null>",
-          "timestampMs": <ms from the [mm:ss] prefix: mm*60000 + ss*1000, or null>
-        }
-      ]
-    }
-
-    TAGS: FINDING (a clear insight or need), TENSION (views split within the
-    group), CONTRADICTION (someone contradicts themselves or earlier consensus),
-    NEW_THREAD (an unexpected topic worth attention), MISSED (the discussion
-    moved past something important without probing it).
-
-    Rules:
-    - Only NEW findings from THIS window. Do NOT restate anything in the
-      already-logged list below.
-    - Be specific and concrete. Skip greetings, logistics, and side-chatter.
-    - Write in ENGLISH. Keep an essential original-language term ONLY as
-      term (pinyin, English meaning) — never bare Chinese.
-    - If nothing in this window is significant and new, return {"findings": []}.
-    """
+    // Prompt default lives in the registry (`PromptID.findingsLedger`), resolved
+    // through `PromptStore` so it's editable in Settings.
 
     private init() {}
 
@@ -97,7 +67,7 @@ final class FindingsController {
             : findings.suffix(40).map { "- [\($0.tag.rawValue)] \($0.headline)" }.joined(separator: "\n")
         // Assemble the static head once, with an explicit type, so the closure
         // below stays a trivial 3-string concatenation for the type-checker.
-        let promptHead: String = Self.prompt + "\n\nAlready-logged findings (do NOT repeat):\n" + priorList
+        let promptHead: String = PromptStore.shared.text(.findingsLedger) + "\n\nAlready-logged findings (do NOT repeat):\n" + priorList
 
         guard let result = await TranscriptAnalysis.runLenientArray(
             sessionId: sessionId,

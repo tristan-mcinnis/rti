@@ -1,11 +1,40 @@
 """
-Candidate prompts to tune in the lab. Keep these in sync with the Swift source
-(NotesGenerationController.notesPrompt, LLMController.meetingSummaryPrompt,
-FindingsController.prompt). Tune here, port the winner back to Swift.
+Candidate prompts to tune in the lab.
 
-These mirror the current (post-2026-06-14) prompts with the strengthened pinyin
-rule. Edit, re-run run.py, compare compliance, then update the .swift files.
+SINGLE SOURCE: the real shipping prompts live in the Swift registry
+(RTI/Core/LLM/PromptID.swift). Export them with Settings → Prompts → "Export
+defaults…" and save the JSON as `rti-prompt-defaults.json` next to this file;
+the lab then tunes the EXACT prompts the app runs. The inline copies below are
+only a fallback for when no export is present, so they no longer have to be
+hand-synced.
 """
+
+import json as _json
+import os as _os
+
+
+def _load_exported():
+    """Real prompts from the exported registry JSON, mapped to lab keys.
+    Returns None when no export file is present (fall back to inline copies)."""
+    here = _os.path.dirname(_os.path.abspath(__file__))
+    for name in ("rti-prompt-defaults.json", "defaults.json"):
+        path = _os.path.join(here, name)
+        if _os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                reg = _json.load(fh)
+            key_map = {
+                "notes": "liveNotes",
+                "summary": "meetingSummary",
+                "interview": "interviewSummary",
+                "findings": "findingsLedger",
+                "cards": "autoAssistCards",
+                "dg_match": "dgMatch",
+            }
+            out = {lab: reg[rid] for lab, rid in key_map.items() if rid in reg}
+            if out:
+                print(f"[prompts] using exported registry: {name}")
+                return out
+    return None
 
 PINYIN_RULE = (
     "⚠️ CRITICAL FORMAT RULE — applies to EVERY Chinese term: write it as "
@@ -55,4 +84,6 @@ new significant observations as JSON: {{"findings":[{{"tag":"FINDING|TENSION|...
 Output ONLY JSON.
 """
 
-PROMPTS = {"notes": NOTES, "summary": SUMMARY, "findings": FINDINGS}
+# Prefer the exported registry (the exact shipping prompts); fall back to the
+# inline copies above when no export file is present.
+PROMPTS = _load_exported() or {"notes": NOTES, "summary": SUMMARY, "findings": FINDINGS}
