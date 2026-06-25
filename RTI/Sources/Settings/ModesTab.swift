@@ -12,15 +12,27 @@ struct ModesTab: View {
     @State private var saved = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 4) {
+        HSplitView {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Modes")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+
                 List(selection: $selection) {
                     ForEach(store.modes) { mode in
-                        HStack {
+                        HStack(spacing: 8) {
                             Text(mode.name)
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
                             if mode.id == store.activeModeId {
-                                Spacer()
-                                Text("Active").font(.system(size: 10)).foregroundStyle(.blue)
+                                Text("Active")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.blue)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.blue.opacity(0.10)))
                             }
                         }
                         .tag(Optional(mode.id))
@@ -56,47 +68,51 @@ struct ModesTab: View {
                 .padding(.horizontal, 4)
                 .padding(.bottom, 4)
             }
-            .frame(width: 160)
+            .frame(minWidth: 190, idealWidth: 210, maxWidth: 260)
+            .background(Color(nsColor: .controlBackgroundColor))
 
-            VStack(alignment: .leading, spacing: 10) {
+            SettingsPage(maxWidth: 720) {
                 if selection != nil {
-                    Text("Name").font(.system(size: 12, weight: .medium))
-                    TextField("Mode name", text: $name)
-                        .textFieldStyle(.roundedBorder)
-
-                    Text("System prompt").font(.system(size: 12, weight: .medium))
-                    TextEditor(text: $prompt)
-                        .font(.system(size: 12, design: .monospaced))
-                        .frame(minHeight: 100)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
-
-                    Text("Reference text (prepended to every turn, capped at 8k chars)")
-                        .font(.system(size: 12, weight: .medium))
-                    TextEditor(text: $reference)
-                        .font(.system(size: 12, design: .monospaced))
-                        .frame(minHeight: 80)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
-
-                    HStack {
-                        Button("Set Active") {
-                            if let id = selection { store.activeModeId = id }
-                        }
-                        .disabled(selection == store.activeModeId)
-
-                        Spacer()
-
-                        if saved {
-                            Label("Saved", systemImage: "checkmark.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.green)
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsCard("Mode Identity", detail: "The name appears in the overlay and command surfaces.") {
+                            TextField("Mode name", text: $name)
+                                .textFieldStyle(.roundedBorder)
                         }
 
-                        Button("Save") { save() }
-                            .keyboardShortcut(.defaultAction)
+                        SettingsCard("System Prompt", detail: "Baseline behavior for this mode. Keep it short, specific, and operational.") {
+                            TextEditor(text: $prompt)
+                                .font(.system(size: 12, design: .monospaced))
+                                .frame(minHeight: 150)
+                                .settingsEditorBorder()
+                        }
+
+                        SettingsCard("Reference Text", detail: "Prepended to every turn and capped at 8k characters. Useful for stable project or client context.") {
+                            TextEditor(text: $reference)
+                                .font(.system(size: 12, design: .monospaced))
+                                .frame(minHeight: 110)
+                                .settingsEditorBorder()
+                        }
+
+                        HStack {
+                            Button("Set Active") {
+                                if let id = selection { store.activeModeId = id }
+                            }
+                            .disabled(selection == store.activeModeId)
+
+                            Spacer()
+
+                            if saved {
+                                SettingsStatusLabel(text: "Saved", systemImage: "checkmark.circle.fill", color: .green)
+                            }
+
+                            Button("Save Mode") { save() }
+                                .keyboardShortcut(.defaultAction)
+                        }
                     }
                 } else {
-                    Text("Select a mode to edit.")
-                        .foregroundStyle(.secondary)
+                    SettingsCard {
+                        ContentUnavailableView("Select a Mode", systemImage: "square.stack.3d.up", description: Text("Choose a mode from the list to edit its behavior."))
+                    }
                 }
             }
         }
@@ -123,4 +139,3 @@ struct ModesTab: View {
         Task { try? await Task.sleep(for: .seconds(1.2)); await MainActor.run { saved = false } }
     }
 }
-

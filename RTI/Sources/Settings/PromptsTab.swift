@@ -13,38 +13,54 @@ struct PromptsTab: View {
     private var store = PromptStore.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            header
-            HSplitView {
+        HSplitView {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Prompt Library")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if store.hasAnyOverride {
+                        SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: .blue)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
+
                 promptList
-                    .frame(minWidth: 200, idealWidth: 220, maxWidth: 280)
-                PromptEditorView(id: selection)
-                    .frame(minWidth: 320, maxWidth: .infinity)
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.25))
-            )
+            .frame(minWidth: 230, idealWidth: 250, maxWidth: 310)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 14)
+                Divider()
+                PromptEditorView(id: selection)
+                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .windowBackgroundColor))
+            }
         }
-        .padding(8)
     }
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Prompts")
-                    .font(.headline)
-                Text("The instructions RTI sends the model for each action. Edits take effect on the next call; everything resets to the shipped default.")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Edits take effect on the next call. Reset returns a prompt to the shipped default.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Button("Export defaults…", action: exportDefaults)
+            Button("Export Defaults…", action: exportDefaults)
                 .help("Write the shipped default prompts to a JSON file (keeps the offline prompt-lab in sync).")
             Button(role: .destructive) {
                 showResetAllConfirm = true
             } label: {
-                Text("Reset all")
+                Text("Reset All")
             }
             .disabled(!store.hasAnyOverride)
             .confirmationDialog(
@@ -121,65 +137,55 @@ private struct PromptEditorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(id.title).font(.system(size: 13, weight: .semibold))
-                Text(id.help).font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        SettingsPage(maxWidth: 820) {
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsCard(id.title, detail: id.help) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if store.defaultChangedSinceEdit(id) {
+                            SettingsStatusLabel(text: "The shipped default changed since you edited this.", systemImage: "exclamationmark.triangle.fill", color: .orange)
+                        }
 
-            if store.defaultChangedSinceEdit(id) {
-                Label("The shipped default changed since you edited this. Reset to adopt the new default, or keep your version.", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+                        TextEditor(text: $text)
+                            .font(.system(.callout, design: .monospaced))
+                            .frame(minHeight: 280)
+                            .settingsEditorBorder()
 
-            TextEditor(text: $text)
-                .font(.system(.callout, design: .monospaced))
-                .frame(minHeight: 200)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
-
-            ForEach(warnings, id: \.self) { w in
-                Label(w, systemImage: "exclamationmark.octagon.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let assembled = assembledPreview {
-                DisclosureGroup("Preview assembled prompt") {
-                    Text(assembled)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 4).fill(Color.secondary.opacity(0.06)))
+                        ForEach(warnings, id: \.self) { w in
+                            SettingsStatusLabel(text: w, systemImage: "exclamationmark.octagon.fill", color: .red)
+                        }
+                    }
                 }
-                .font(.caption)
-            }
 
-            HStack {
-                if store.isOverridden(id) {
-                    Text("Edited").font(.caption).foregroundStyle(.blue)
-                } else {
-                    Text("Default").font(.caption).foregroundStyle(.secondary)
+                if let assembled = assembledPreview {
+                    SettingsCard("Preview Assembled Prompt") {
+                        Text(assembled)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                Spacer()
-                Button("Reset to default") {
-                    store.reset(id)
-                    text = store.text(id)
+
+                HStack {
+                    if store.isOverridden(id) {
+                        SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: .blue)
+                    } else {
+                        SettingsStatusLabel(text: "Default", systemImage: "checkmark.circle", color: .secondary)
+                    }
+                    Spacer()
+                    Button("Reset to Default") {
+                        store.reset(id)
+                        text = store.text(id)
+                    }
+                    .disabled(!store.isOverridden(id))
+                    Button("Revert Edits") { text = store.text(id) }
+                        .disabled(!isDirty)
+                    Button("Save") { store.setOverride(id, text) }
+                        .keyboardShortcut("s", modifiers: .command)
+                        .disabled(!isDirty)
                 }
-                .disabled(!store.isOverridden(id))
-                Button("Revert edits") { text = store.text(id) }
-                    .disabled(!isDirty)
-                Button("Save") { store.setOverride(id, text) }
-                    .keyboardShortcut("s", modifiers: .command)
-                    .disabled(!isDirty)
             }
         }
-        .padding(10)
         .onAppear { text = store.text(id) }
         .onChange(of: id) { _, newID in text = store.text(newID) }
     }

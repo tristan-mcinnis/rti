@@ -7,40 +7,18 @@ import SwiftUI
 /// this tab invalidated every other section.
 struct GeneralTab: View {
     var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
+        SettingsPage {
             VStack(alignment: .leading, spacing: 14) {
-                Text("General")
-                    .font(.system(size: 16, weight: .semibold))
-
-                LaunchAtLoginSection()
-
-                Divider().padding(.vertical, 8)
-                AssistantSection()
-
-                Divider().padding(.vertical, 8)
-                TranscriptionSection()
-
-                Divider().padding(.vertical, 8)
-                AudioInputSection()
-
-                Divider().padding(.vertical, 8)
-                RealTimeAnalysisSection()
-
-                Divider().padding(.vertical, 8)
-                OverlayAppearanceSection()
-
-                Divider().padding(.vertical, 8)
-                HotkeysSection()
-
-                Divider().padding(.vertical, 8)
-                DataAndSupportSection()
-
-                Divider().padding(.vertical, 8)
-                DiagnosticsSection()
-
-                Spacer()
+                SettingsCard { LaunchAtLoginSection() }
+                SettingsCard { AssistantSection() }
+                SettingsCard { TranscriptionSection() }
+                SettingsCard { AudioInputSection() }
+                SettingsCard { RealTimeAnalysisSection() }
+                SettingsCard { OverlayAppearanceSection() }
+                SettingsCard { HotkeysSection() }
+                SettingsCard { DataAndSupportSection() }
+                SettingsCard { DiagnosticsSection() }
             }
-            .padding(.bottom, 4)
         }
     }
 }
@@ -82,7 +60,7 @@ private struct AssistantSection: View {
             Text("Assistant")
                 .font(.system(size: 13, weight: .medium))
             llmProviderRow
-            Text("Provider is selected in code (`LLMProviders.activeId`). All providers must speak OpenAI-compatible streaming chat. Add your API key in the Keys tab.")
+            Text("Provider is selected in code (`LLMProviders.activeId`). All providers must speak OpenAI-compatible streaming chat. Add its API key in Keys.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -127,7 +105,7 @@ private struct TranscriptionSection: View {
                 }
             }
             .pickerStyle(.menu)
-            Text("Which engine transcribes live audio. Soniox is the default (best multilingual + diarization). AssemblyAI uses Universal-Streaming v3 — add its key in the Keys tab first. Falls back to Soniox if the selected provider has no key. Applies on the next session.")
+            Text("Applies on the next session. If the selected provider has no key, RTI falls back to Soniox.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -158,7 +136,7 @@ private struct AudioInputSection: View {
             .onChange(of: selectedInputUID) { _, newValue in
                 AudioInputDeviceStore.preferredUID = newValue
             }
-            Text("Pick BlackHole (or an aggregate device that combines mic + BlackHole) to capture system audio from calls. The change applies the next time you start a session.")
+            Text("Pick BlackHole or an aggregate device to capture system audio from calls. Applies on the next session.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -172,7 +150,7 @@ private struct AudioInputSection: View {
 
             Toggle("Protect Bluetooth headphone volume", isOn: $protectBluetoothVolume)
                 .padding(.top, 4)
-            Text("While recording, if your mic is a Bluetooth headset, RTI captures from the built-in mic instead so the headphones stay at full volume. Your original mic is restored when recording stops.")
+            Text("Keeps Bluetooth headphones at full volume by using the built-in mic while recording, then restores your original mic on stop.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -180,12 +158,17 @@ private struct AudioInputSection: View {
             Divider().padding(.vertical, 6)
             Text("Live levels")
                 .font(.system(size: 13, weight: .medium))
-            Text("During a session, confirm both sides are being captured. Also a floating panel: menubar → Toggle Audio I/O Monitor.")
+            Text("During a session, confirm both sides are being captured. The same monitor is available from the menubar.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             AudioMonitorContent()
-                .padding(.top, 4)
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.06))
+                )
+                .padding(.top, 6)
         }
         .onAppear {
             inputDevices = AudioInputDeviceStore.availableInputDevices()
@@ -222,7 +205,7 @@ private struct RealTimeAnalysisSection: View {
             .disabled(!notesEnabled)
             .opacity(notesEnabled ? 1 : 0.5)
 
-            Text("Notes and discussion-guide matching run automatically while recording.")
+            Text("Runs automatically while recording.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -349,7 +332,7 @@ private struct HotkeysSection: View {
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
 
-            Text("⌘⏎ is the remappable primary action (set it from the menu → \"Set ⌘⏎ to:\"). Tab switching (Assist / Transcript / Notes / Guide) has no hotkey — the tabs are one click in the overlay top bar. Quick AI actions (recap ⌘⌥R, summary ⌘⌥M, say-next ⌘⌥S, follow-ups ⌘⌥F) still have hotkeys and are also in the command palette.")
+            Text("⌘⏎ is the remappable primary action. Quick AI actions are also available from the command palette.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
@@ -373,7 +356,7 @@ private struct DataAndSupportSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Data & Support")
                 .font(.system(size: 13, weight: .medium))
-            Text("Live audio is streamed to your transcription provider (Soniox by default, or AssemblyAI) for transcription. Transcripts and prompts are sent to your configured LLM provider (DeepSeek by default) to generate answers. The full meeting is saved as m4a in your vault recordings folder (kept for backup and high-quality re-transcription); the working 16 kHz WAV is still deleted on stop. The session record (transcript, notes, chat, auto-summary) is written to your vault on stop — and checkpointed every 5 minutes during recording — where it syncs and becomes searchable. API keys stay in an owner-only file on this Mac.")
+            Text("Audio is streamed to your transcription provider. Transcripts and prompts are sent to your configured LLM provider. Session records are written to your vault on stop and checkpointed every 5 minutes while recording.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

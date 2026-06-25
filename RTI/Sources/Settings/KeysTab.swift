@@ -20,60 +20,68 @@ struct KeysTab: View {
 
     var body: some View {
         let providerName = LLMProviders.active.displayName
-        VStack(alignment: .leading, spacing: 16) {
-            if isFirstRun {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Welcome to RTI")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("RTI needs two API keys to work: \(providerName) for the assistant, and Soniox for live transcription. Both stay in an owner-only file on this Mac (~/Library/Application Support/RTI/credentials.json).")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        SettingsPage(maxWidth: 640) {
+            VStack(alignment: .leading, spacing: 14) {
+                if isFirstRun {
+                    SettingsCard("Welcome to RTI", detail: "Add the two required keys to start live transcription and assistant responses. Keys stay in an owner-only file on this Mac.") {
+                        storageLocation
+                    }
+                } else {
+                    SettingsCard("Credential Storage", detail: "API keys are stored locally and are required before RTI can start a session.") {
+                        storageLocation
+                    }
                 }
-            } else {
-                Text("API Keys")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("Stored on this Mac in ~/Library/Application Support/RTI/credentials.json (mode 0600). Required to use RTI.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
 
-            field("\(providerName) API key", "sk-…", $deepseek)
-            field("Soniox API key", "…", $soniox)
-            field("AssemblyAI API key (optional)", "…", $assemblyai)
-            Text("AssemblyAI is optional — only needed if you pick it as the transcription provider in General. Soniox stays the default.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if hasMissingKey {
-                Text("Both keys are required for RTI to work.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
-            }
-            if let saveError {
-                Text(saveError)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
-            }
-
-            HStack {
-                if saved {
-                    Label("Saved", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.green)
+                SettingsCard("Required Keys", detail: "\(providerName) powers assistant responses. Soniox powers live transcription.") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        field("\(providerName) API key", "sk-…", $deepseek)
+                        field("Soniox API key", "…", $soniox)
+                    }
                 }
-                Spacer()
-                Button("Save") { save() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(hasMissingKey)
+
+                SettingsCard("Optional Provider", detail: "Only needed if you pick AssemblyAI as the transcription provider in General. Soniox remains the default.") {
+                    field("AssemblyAI API key", "…", $assemblyai)
+                }
+
+                if hasMissingKey {
+                    SettingsStatusLabel(text: "Both required keys are needed before RTI can run.", systemImage: "exclamationmark.triangle.fill", color: .orange)
+                }
+                if let saveError {
+                    SettingsStatusLabel(text: saveError, systemImage: "xmark.octagon.fill", color: .red)
+                }
+
+                HStack {
+                    if saved {
+                        SettingsStatusLabel(text: "Saved", systemImage: "checkmark.circle.fill", color: .green)
+                    }
+                    Spacer()
+                    Button("Save Keys") { save() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(hasMissingKey)
+                }
             }
-            Spacer()
         }
         .onAppear {
             deepseek = CredentialStore.deepseek ?? ""
             soniox = CredentialStore.soniox ?? ""
             assemblyai = CredentialStore.assemblyai ?? ""
+        }
+    }
+
+    private var storageLocation: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.doc")
+                .foregroundStyle(.secondary)
+            Text("~/Library/Application Support/RTI/credentials.json")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            Text("0600")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.secondary.opacity(0.10)))
         }
     }
 
@@ -113,4 +121,3 @@ struct KeysTab: View {
         Task { try? await Task.sleep(for: .seconds(1.2)); await MainActor.run { saved = false } }
     }
 }
-
