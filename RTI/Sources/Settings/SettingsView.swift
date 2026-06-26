@@ -65,7 +65,7 @@ struct SettingsView: View {
                 .listStyle(.sidebar)
             }
             .frame(minWidth: 178, idealWidth: 188, maxWidth: 220)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(.thinMaterial)
 
             VStack(alignment: .leading, spacing: 0) {
                 SettingsHeader(tab: section, onClose: onClose)
@@ -82,7 +82,7 @@ struct SettingsView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(SettingsSurfaceBackground())
             }
         }
         .frame(minWidth: 720, idealWidth: 860, maxWidth: .infinity,
@@ -126,6 +126,22 @@ private struct SettingsHeader: View {
     }
 }
 
+struct SettingsSurfaceBackground: View {
+    var body: some View {
+        Color(nsColor: .windowBackgroundColor)
+            .overlay(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.35),
+                        Color.secondary.opacity(0.025)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+    }
+}
+
 struct SettingsPage<Content: View>: View {
     let maxWidth: CGFloat
     private let content: Content
@@ -142,8 +158,10 @@ struct SettingsPage<Content: View>: View {
                     .frame(maxWidth: maxWidth, alignment: .leading)
                 Spacer(minLength: 0)
             }
-            .padding(22)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 22)
         }
+        .background(SettingsSurfaceBackground())
     }
 }
 
@@ -181,11 +199,12 @@ struct SettingsCard<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color(nsColor: .textBackgroundColor).opacity(0.96))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+                        .stroke(Color.secondary.opacity(0.13), lineWidth: 1)
                 )
+                .shadow(color: .black.opacity(0.035), radius: 8, y: 2)
         )
     }
 }

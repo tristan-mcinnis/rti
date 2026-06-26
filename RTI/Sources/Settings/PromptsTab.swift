@@ -30,39 +30,44 @@ struct PromptsTab: View {
                 promptList
             }
             .frame(minWidth: 230, idealWidth: 250, maxWidth: 310)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(.thinMaterial)
 
             VStack(alignment: .leading, spacing: 0) {
                 header
                     .padding(.horizontal, 22)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 16)
                 Divider()
                 PromptEditorView(id: selection)
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .windowBackgroundColor))
+                    .background(SettingsSurfaceBackground())
             }
         }
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Prompts")
                     .font(.system(size: 14, weight: .semibold))
-                Text("Edits take effect on the next call. Reset returns a prompt to the shipped default.")
+                Text("Edits take effect on the next call. Reset returns to the shipped default.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: false)
             }
             Spacer()
-            Button("Export Defaults…", action: exportDefaults)
-                .help("Write the shipped default prompts to a JSON file (keeps the offline prompt-lab in sync).")
-            Button(role: .destructive) {
-                showResetAllConfirm = true
-            } label: {
-                Text("Reset All")
+
+            HStack(spacing: 8) {
+                Button("Export Defaults…", action: exportDefaults)
+                    .help("Write the shipped default prompts to a JSON file (keeps the offline prompt-lab in sync).")
+                Button(role: .destructive) {
+                    showResetAllConfirm = true
+                } label: {
+                    Text("Reset All")
+                }
+                .disabled(!store.hasAnyOverride)
             }
-            .disabled(!store.hasAnyOverride)
+            .controlSize(.small)
             .confirmationDialog(
                 "Reset every prompt to its shipped default? Your edits will be lost.",
                 isPresented: $showResetAllConfirm, titleVisibility: .visible

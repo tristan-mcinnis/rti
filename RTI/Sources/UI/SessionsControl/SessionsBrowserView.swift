@@ -24,18 +24,23 @@ struct SessionsBrowserView: View {
     var body: some View {
         HSplitView {
             sessionList
-                .frame(minWidth: 170, idealWidth: 200, maxWidth: 300)
+                .frame(minWidth: 190, idealWidth: 220, maxWidth: 320)
 
             VStack(alignment: .leading, spacing: 0) {
                 if let selected {
                     detailToolbar(for: selected)
                     Divider()
                     ScrollView {
-                        RTIMarkdown(fileText, style: .panel)
-                            .frame(maxWidth: 680, alignment: .leading)
-                            .padding(20)
+                        HStack(alignment: .top, spacing: 0) {
+                            RTIMarkdown(fileText, style: .panel)
+                                .frame(maxWidth: 700, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 22)
+                            Spacer(minLength: 0)
+                        }
                     }
                     .frame(maxWidth: .infinity)
+                    .background(SessionReadingBackground())
                 } else {
                     emptyState
                 }
@@ -60,6 +65,8 @@ struct SessionsBrowserView: View {
             }
         }
         .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(.thinMaterial)
     }
 
     /// One row: AI-generated title as the primary label, the start time as a
@@ -94,42 +101,49 @@ struct SessionsBrowserView: View {
     /// toolbar header instead of controls floating inside the content pane.
     @ViewBuilder
     private func detailToolbar(for session: SessionArchive.ArchivedSession) -> some View {
-        HStack(spacing: 10) {
-            Picker("", selection: $selectedFile) {
-                ForEach(files) { file in
-                    Text(file.name).tag(Optional(file))
+        ZStack {
+            HStack {
+                Spacer()
+                Picker("", selection: $selectedFile) {
+                    ForEach(files) { file in
+                        Text(file.name).tag(Optional(file))
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(minWidth: 180, idealWidth: min(CGFloat(files.count) * 86, 440), maxWidth: 460)
+                Spacer()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 360)
 
-            Spacer()
+            HStack(spacing: 8) {
+                Spacer()
 
-            Button {
-                NSPasteboard.copyMarkdownRich(fileText)
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+                Button {
+                    NSPasteboard.copyMarkdownRich(fileText)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Copy as Markdown")
+                .disabled(fileText.isEmpty)
+
+                Menu {
+                    Button("Save as Markdown…") { exportMarkdown() }
+                    Button("Save as PDF…") { exportPDF() }
+                    Divider()
+                    Button("Reveal in Finder") { NSWorkspace.shared.open(session.url) }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .menuStyle(.borderlessButton)
+                .frame(width: 34)
+                .help("Export or reveal this session")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Copy as Markdown")
-            .disabled(fileText.isEmpty)
-
-            Menu {
-                Button("Save as Markdown…") { exportMarkdown() }
-                Button("Save as PDF…") { exportPDF() }
-                Divider()
-                Button("Reveal in Finder") { NSWorkspace.shared.open(session.url) }
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-            }
-            .menuStyle(.borderlessButton)
-            .frame(width: 34)
-            .help("Export or reveal this session")
         }
+        .frame(height: 44)
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     private var emptyState: some View {
@@ -296,5 +310,21 @@ struct SessionsBrowserView: View {
             text = String(text[end.upperBound...])
         }
         fileText = text
+    }
+}
+
+private struct SessionReadingBackground: View {
+    var body: some View {
+        Color(nsColor: .textBackgroundColor)
+            .overlay(
+                LinearGradient(
+                    colors: [
+                        Color.secondary.opacity(0.018),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
     }
 }
