@@ -60,26 +60,37 @@ struct AudioMonitorContent: View {
                 Capsule().fill(accent).frame(width: max(2, geo.size.width * min(1, level)))
             }
         }
-        .frame(height: 8)
+        .frame(height: 12)
         .animation(.linear(duration: 0.08), value: level)
     }
 
     @ViewBuilder
     private func status(running: Bool, active: Bool, flowing: Bool) -> some View {
         if !running {
-            badge("Idle", .secondary, "circle")
+            statusBadge("Idle", .secondary, dotColor: .secondary.opacity(0.5), pulsing: false)
         } else if !active {
-            badge("Off", .secondary, "circle")
+            statusBadge("Off", .secondary, dotColor: .secondary.opacity(0.5), pulsing: false)
         } else if !flowing {
-            badge("No audio", .red, "exclamationmark.triangle.fill")
+            statusBadge("No audio", .red, dotColor: .red, pulsing: false, icon: "exclamationmark.triangle.fill")
         } else {
-            badge("Live", .green, "circle.fill")
+            statusBadge("Live", .green, dotColor: .green, pulsing: true)
         }
     }
 
-    private func badge(_ text: String, _ color: Color, _ icon: String) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon).font(.system(size: 8))
+    private func statusBadge(_ text: String, _ color: Color, dotColor: Color, pulsing: Bool, icon: String? = nil) -> some View {
+        HStack(spacing: 4) {
+            if pulsing {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 7, height: 7)
+                    .modifier(PulsingDot())
+            } else if let icon {
+                Image(systemName: icon).font(.system(size: 9))
+            } else {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 7, height: 7)
+            }
             Text(text).font(.system(size: 10, weight: .medium))
         }
         .foregroundStyle(color)
@@ -89,5 +100,18 @@ struct AudioMonitorContent: View {
         let names = SessionCoordinator.shared.audioDeviceNames()
         inputName = names.input
         outputName = names.output
+    }
+}
+
+/// Slow opacity pulse for the "Live" status dot — gives an at-a-glance
+/// "we're recording" signal without the noise of a flashing indicator.
+private struct PulsingDot: ViewModifier {
+    @State private var pulse = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(pulse ? 0.35 : 1.0)
+            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
+            .onAppear { pulse = true }
     }
 }

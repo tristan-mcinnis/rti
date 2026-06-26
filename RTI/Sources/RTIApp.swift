@@ -20,6 +20,9 @@ struct RTIApp: App {
     }
 
     var body: some Scene {
-        Settings { EmptyView() }
+        // ⌘, opens the standard macOS Settings window. Populate it with the
+        // same SettingsView the Sessions Control panel's Settings tab uses, so
+        // the shortcut lands on real settings instead of an empty window.
+        Settings { SettingsView(onClose: nil) }
     }
 }

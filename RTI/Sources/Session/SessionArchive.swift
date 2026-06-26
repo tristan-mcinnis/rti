@@ -110,7 +110,14 @@ enum SessionArchive {
         // interviews, minutes otherwise) and run it on the reasoning ("smart")
         // model — the end-of-session summary is worth the extra latency.
         let kind = ModeStore.shared.activeMode?.kind ?? .other
-        let prompt = PromptCatalogue.summary(for: kind) + "\n\nTranscript:\n" + transcript
+        // Piggyback a short session-title on the summary call (one model call,
+        // no extra latency). The instruction is appended AFTER the user's
+        // editable summary prompt so it never mutates the stored prompt; the
+        // model emits a `TITLE:` first line that we parse out and persist as
+        // `title.txt` for the Sessions browser to surface as the row label.
+        let prompt = PromptCatalogue.summary(for: kind)
+            + "\n\n" + titleInstruction
+            + "\n\nTranscript:\n" + transcript
         guard let payloadRaw = await LLMRequest().collectAsync(
             messages: [LLMMessage(role: "user", content: prompt)],
             smart: true,
@@ -124,18 +131,69 @@ enum SessionArchive {
             RTILog.log("auto-summary: empty response for \(dir.lastPathComponent)", category: "summary")
             return nil
         }
+        // Pull the `TITLE:` first line out of the response (best-effort — if
+        // the model didn't follow the format, we just get no title and the
+        // browser falls back to "Untitled session"). Strip it (and any blank
+        // lines after) from the summary body so it doesn't leak into summary.md.
+        let (sessionTitle, remainder) = extractTitle(payload)
+        if let sessionTitle, !sessionTitle.isEmpty {
+            writeOwnerOnly(sessionTitle, to: dir.appendingPathComponent("title.txt"))
+        }
         // Title by mode: an interview produces a research debrief, not minutes.
         // Also strip any H1 the model prepended (the debrief prompt makes it
         // title the section "# QUALITATIVE RESEARCH DEBRIEF" itself) so the
         // archive doesn't stack two headings.
         let title = kind == .interview ? "# Research debrief" : "# Meeting summary"
-        let body = stripLeadingH1(payload)
+        let body = stripLeadingH1(remainder)
         let md = (frontmatter(kind: "Summary", startedAt: startedAt) + [title, "", body, ""]).joined(separator: "\n")
         let url = dir.appendingPathComponent("summary.md")
         writeOwnerOnly(md, to: url)
-        RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)", category: "summary")
+        RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)" + (sessionTitle.map { ", title: \($0)" } ?? ""), category: "summary")
         notifySummaryReady(sessionFolder: dir.lastPathComponent)
         return url
+    }
+
+    /// Instruction appended to the summary prompt asking for a 4–7 word
+    /// session title. Leads with the highest-value cue — the format/type
+    /// (Briefing, Research, Interview, Review, …) and the subject or brand
+    /// when one is discernible — so the Sessions list reads at a glance
+    /// ("Acme Sportswear Retail Zone Briefing", not "Meeting at 11:13").
+    private static let titleInstruction = """
+    SESSION TITLE — on the VERY FIRST LINE of your response, output exactly:
+    TITLE: <a 4–7 word title for this session>
+
+    The title names what this session actually IS. Lead with the format/type — \
+    Briefing, Research, Interview, Review, Demo, Standup, 1:1, Planning, Debrief, \
+    Strategy — then the subject, and the brand or organisation if one is \
+    discernible from the transcript (e.g. "Acme Sportswear Retail Zone Briefing", \
+    "Q3 Pipeline Review with Timberland", "Athleisure Wear Research Debrief"). \
+    No trailing punctuation, no quotes, no prefix other than "TITLE: ". Then a \
+    blank line, then the summary.
+    """
+
+    /// Pull a leading `TITLE: <text>` line off the model response. Returns the
+    /// cleaned title and the remainder (with the TITLE line and the blank
+    /// lines immediately after it removed). Case-insensitive on the marker;
+    /// tolerates leading whitespace. If the first non-blank line isn't a
+    /// TITLE line, returns `(nil, payload)` unchanged so summary.md is
+    /// unaffected.
+    private static func extractTitle(_ payload: String) -> (String?, String) {
+        var lines = payload.components(separatedBy: "\n")
+        // Skip leading blanks to find the real first line.
+        var lead = 0
+        while lead < lines.count, lines[lead].trimmingCharacters(in: .whitespaces).isEmpty {
+            lead += 1
+        }
+        guard lead < lines.count else { return (nil, payload) }
+        let candidate = lines[lead].trimmingCharacters(in: .whitespaces)
+        guard candidate.lowercased().hasPrefix("title:") else { return (nil, payload) }
+        let title = candidate.dropFirst("title:".count).trimmingCharacters(in: .whitespaces)
+        // Drop the TITLE line + any blank lines right after it.
+        lines.removeSubrange(0...lead)
+        while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
+            lines.removeFirst()
+        }
+        return (title.isEmpty ? nil : title, lines.joined(separator: "\n"))
     }
 
     /// Drop a single leading H1 (and the blank lines after it) from a model
@@ -525,6 +583,13 @@ extension SessionArchive {
         }
 
         let url: URL
+        /// Parsed from the `yyyy-MM-dd HHmmss` folder name. Nil if the folder
+        /// isn't a recognised stamp (falls back to a flat list under "Earlier").
+        let date: Date?
+        /// Short AI-generated title (from `title.txt`, written alongside the
+        /// auto-summary). Nil until the summary lands, or if it failed — the
+        /// browser then shows "Untitled session".
+        let title: String?
         /// Pretty label, e.g. "Jun 8 · 16:13".
         let displayName: String
     }
@@ -554,7 +619,20 @@ extension SessionArchive {
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
             .sorted { $0.lastPathComponent > $1.lastPathComponent }
             .prefix(limit)
-            .map { ArchivedSession(url: $0, displayName: prettyName($0.lastPathComponent)) }
+            .map { ArchivedSession(
+                url: $0,
+                date: folderStamp.date(from: $0.lastPathComponent),
+                title: titleFile(at: $0),
+                displayName: prettyName($0.lastPathComponent)
+            ) }
+    }
+
+    /// Read the one-line title written by `writeAutoSummary` (best-effort:
+    /// missing or unreadable ⇒ nil, never throws).
+    private static func titleFile(at dir: URL) -> String? {
+        let title = (try? String(contentsOf: dir.appendingPathComponent("title.txt"), encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (title?.isEmpty == false) ? title : nil
     }
 
     /// "2026-06-08 161305" → "Jun 8 · 16:13"; falls back to the raw name.

@@ -23,56 +23,21 @@ struct SessionsBrowserView: View {
 
     var body: some View {
         HSplitView {
-            List(selection: $selected) {
-                ForEach(sessions) { session in
-                    Label(session.displayName, systemImage: "clock.arrow.circlepath")
-                        .tag(session)
-                }
-            }
-            .frame(minWidth: 170, maxWidth: 240)
+            sessionList
+                .frame(minWidth: 170, idealWidth: 200, maxWidth: 300)
 
             VStack(alignment: .leading, spacing: 0) {
                 if let selected {
-                    HStack(spacing: 8) {
-                        Picker("", selection: $selectedFile) {
-                            ForEach(files) { file in
-                                Text(file.name).tag(Optional(file))
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        Spacer()
-                        Menu {
-                            Button("Copy as Markdown") {
-                                NSPasteboard.copyMarkdownRich(fileText)
-                            }
-                            Button("Save as Markdown…") { exportMarkdown() }
-                            Button("Save as PDF…") { exportPDF() }
-                            Divider()
-                            Button("Reveal in Finder") { NSWorkspace.shared.open(selected.url) }
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        .menuStyle(.borderlessButton)
-                        .frame(width: 40)
-                        .help("Copy or export this file")
-                    }
-                    .padding(10)
-
+                    detailToolbar(for: selected)
                     Divider()
-
                     ScrollView {
                         RTIMarkdown(fileText, style: .panel)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
+                            .frame(maxWidth: 680, alignment: .leading)
+                            .padding(20)
                     }
+                    .frame(maxWidth: .infinity)
                 } else {
-                    VStack(spacing: 6) {
-                        Image(systemName: "clock.arrow.circlepath").font(.system(size: 28)).foregroundStyle(.tertiary)
-                        Text(sessions.isEmpty ? "No saved sessions yet" : "Select a session")
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    emptyState
                 }
             }
             .frame(minWidth: 380)
@@ -81,6 +46,185 @@ struct SessionsBrowserView: View {
         .onChange(of: selected) { _, _ in loadFiles() }
         .onChange(of: selectedFile) { _, _ in loadText() }
     }
+
+    // MARK: - Session list
+
+    private var sessionList: some View {
+        List(selection: $selected) {
+            ForEach(groupedSessions, id: \.label) { group in
+                Section(group.label) {
+                    ForEach(group.sessions) { session in
+                        sessionRow(session).tag(session)
+                    }
+                }
+            }
+        }
+        .listStyle(.inset)
+    }
+
+    /// One row: AI-generated title as the primary label, the start time as a
+    /// quiet secondary. No redundant clock icon — every row is a past session,
+    /// so the icon was just clutter. A small dot marks sessions whose
+    /// auto-summary hasn't landed yet (still "Untitled").
+    private func sessionRow(_ session: SessionArchive.ArchivedSession) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(session.title ?? "Untitled session")
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(2)
+                .foregroundStyle(session.title == nil ? .secondary : .primary)
+            HStack(spacing: 6) {
+                Text(timeString(for: session))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                if session.title == nil {
+                    Circle()
+                        .fill(Color.secondary.opacity(0.5))
+                        .frame(width: 4, height: 4)
+                        .help("No summary yet — the title appears once the end-of-session summary finishes.")
+                }
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    // MARK: - Detail toolbar
+
+    /// File picker (summary / notes / transcript / …) on the left, grouped
+    /// contextual actions (Copy, Save, Reveal) on the right — a single clean
+    /// toolbar header instead of controls floating inside the content pane.
+    @ViewBuilder
+    private func detailToolbar(for session: SessionArchive.ArchivedSession) -> some View {
+        HStack(spacing: 10) {
+            Picker("", selection: $selectedFile) {
+                ForEach(files) { file in
+                    Text(file.name).tag(Optional(file))
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 360)
+
+            Spacer()
+
+            Button {
+                NSPasteboard.copyMarkdownRich(fileText)
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Copy as Markdown")
+            .disabled(fileText.isEmpty)
+
+            Menu {
+                Button("Save as Markdown…") { exportMarkdown() }
+                Button("Save as PDF…") { exportPDF() }
+                Divider()
+                Button("Reveal in Finder") { NSWorkspace.shared.open(session.url) }
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 34)
+            .help("Export or reveal this session")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "tray")
+                .font(.system(size: 30))
+                .foregroundStyle(.tertiary)
+            Text(sessions.isEmpty ? "No saved sessions yet" : "Select a session")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+            if !sessions.isEmpty {
+                Text("Sessions appear here once they're saved on stop.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Date grouping
+
+    /// Buckets sessions into native macOS-style date sections: Today,
+    /// Yesterday, This Week, then one section per older month
+    /// ("June 2026"). Sessions with an unparseable folder stamp fall into
+    /// "Earlier". Removes the repetitive month/day text from individual rows
+    /// — the section header carries the date, the row carries just the time.
+    private var groupedSessions: [(label: String, sessions: [SessionArchive.ArchivedSession])] {
+        let cal = Calendar.current
+        let now = Date()
+        var today: [SessionArchive.ArchivedSession] = []
+        var yesterday: [SessionArchive.ArchivedSession] = []
+        var thisWeek: [SessionArchive.ArchivedSession] = []
+        var byMonth: [(label: String, key: String, sessions: [SessionArchive.ArchivedSession])] = []
+        var earlier: [SessionArchive.ArchivedSession] = []
+
+        for session in sessions {
+            guard let date = session.date else {
+                earlier.append(session)
+                continue
+            }
+            if cal.isDateInToday(date) {
+                today.append(session)
+            } else if cal.isDateInYesterday(date) {
+                yesterday.append(session)
+            } else if let days = cal.dateComponents([.day], from: date, to: now).day, days < 7 {
+                thisWeek.append(session)
+            } else {
+                let key = monthKey(date)
+                let label = monthLabel(date)
+                if let idx = byMonth.firstIndex(where: { $0.key == key }) {
+                    byMonth[idx].sessions.append(session)
+                } else {
+                    byMonth.append((label, key, [session]))
+                }
+            }
+        }
+
+        var out: [(label: String, sessions: [SessionArchive.ArchivedSession])] = []
+        if !today.isEmpty { out.append(("Today", today)) }
+        if !yesterday.isEmpty { out.append(("Yesterday", yesterday)) }
+        if !thisWeek.isEmpty { out.append(("This Week", thisWeek)) }
+        // Months are newest-first because `sessions` is newest-first.
+        for m in byMonth.sorted(by: { $0.key > $1.key }) {
+            out.append((m.label, m.sessions))
+        }
+        if !earlier.isEmpty { out.append(("Earlier", earlier)) }
+        return out
+    }
+
+    /// "16:13" for the row's quiet secondary text. Falls back to the pretty
+    /// name when the folder stamp can't be parsed.
+    private func timeString(for session: SessionArchive.ArchivedSession) -> String {
+        guard let date = session.date else { return session.displayName }
+        return Self.rowTimeStamp.string(from: date)
+    }
+
+    private static let rowTimeStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private func monthKey(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM"
+        return f.string(from: date)
+    }
+
+    private func monthLabel(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM yyyy"
+        return f.string(from: date)
+    }
+
+    // MARK: - Loading
 
     private func reload() {
         sessions = SessionArchive.recentSessions(limit: 100)

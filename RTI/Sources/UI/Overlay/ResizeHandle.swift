@@ -63,6 +63,10 @@ private final class ResizeHandleNSView: NSView {
         guard let window else { return }
         initialMouseLocation = NSEvent.mouseLocation
         initialWindowFrame = window.frame
+        // The clear-background panel has no fixed content shape, so AppKit
+        // recomputes the window shadow mask on every setFrame during the drag.
+        // Suppress it for the duration of the live resize; restored on mouseUp.
+        window.hasShadow = false
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -88,11 +92,20 @@ private final class ResizeHandleNSView: NSView {
             height: newHeight
         )
 
-        window.setFrame(newFrame, display: true, animate: false)
+        // display: false — don't force a synchronous full-tree SwiftUI relayout
+        // on every drag event. AppKit coalesces the redraw on the next run-loop
+        // tick instead, which is what makes the live resize feel smooth.
+        window.setFrame(newFrame, display: false)
     }
 
     override func mouseUp(with event: NSEvent) {
         guard let window else { return }
+        // Restore the shadow suppressed in mouseDown and do one final synchronous
+        // display pass so the panel settles cleanly at its new size.
+        window.hasShadow = true
+        window.invalidateShadow()
+        window.displayIfNeeded()
+
         let frame = window.frame
 
         // Sync size defaults so Settings sliders reflect the new size.
