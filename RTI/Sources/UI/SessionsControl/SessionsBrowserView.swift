@@ -96,53 +96,52 @@ struct SessionsBrowserView: View {
 
     // MARK: - Detail toolbar
 
-    /// File picker (summary / notes / transcript / …) on the left, grouped
-    /// contextual actions (Copy, Save, Reveal) on the right — a single clean
-    /// toolbar header instead of controls floating inside the content pane.
+    /// File picker (summary / notes / transcript / …) aligned with the
+    /// reading column, with contextual actions trailing in the titlebar-style
+    /// header.
     @ViewBuilder
     private func detailToolbar(for session: SessionArchive.ArchivedSession) -> some View {
-        ZStack {
-            HStack {
-                Spacer()
-                Picker("", selection: $selectedFile) {
-                    ForEach(files) { file in
-                        Text(file.name).tag(Optional(file))
-                    }
+        HStack(alignment: .center, spacing: 12) {
+            Picker("", selection: $selectedFile) {
+                ForEach(files) { file in
+                    Text(file.name).tag(Optional(file))
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(minWidth: 180, idealWidth: min(CGFloat(files.count) * 86, 440), maxWidth: 460)
-                Spacer()
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(
+                minWidth: min(CGFloat(files.count) * 74, 180),
+                idealWidth: min(CGFloat(files.count) * 90, 480),
+                maxWidth: min(CGFloat(files.count) * 104, 560),
+                alignment: .leading
+            )
 
-            HStack(spacing: 8) {
-                Spacer()
+            Spacer(minLength: 12)
 
-                Button {
-                    NSPasteboard.copyMarkdownRich(fileText)
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Copy as Markdown")
-                .disabled(fileText.isEmpty)
-
-                Menu {
-                    Button("Save as Markdown…") { exportMarkdown() }
-                    Button("Save as PDF…") { exportPDF() }
-                    Divider()
-                    Button("Reveal in Finder") { NSWorkspace.shared.open(session.url) }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .menuStyle(.borderlessButton)
-                .frame(width: 34)
-                .help("Export or reveal this session")
+            Button {
+                NSPasteboard.copyMarkdownRich(fileText)
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Copy as Markdown")
+            .disabled(fileText.isEmpty)
+
+            Menu {
+                Button("Save as Markdown…") { exportMarkdown() }
+                Button("Save as PDF…") { exportPDF() }
+                Divider()
+                Button("Reveal in Finder") { NSWorkspace.shared.open(session.url) }
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 34)
+            .help("Export or reveal this session")
         }
         .frame(height: 44)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 20)
         .background(.bar)
     }
 
