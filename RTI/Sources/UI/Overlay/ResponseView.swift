@@ -1,6 +1,16 @@
 import RTICore
 import SwiftUI
 
+/// Carries the y of the scroll content's bottom edge (in the ScrollView's
+/// coordinate space) up to the parent, so a streaming reply can tell whether
+/// the user is parked at the bottom before it follows the tokens down.
+private struct ResponseBottomEdgeKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct ResponseView: View {
     let entries: [ChatEntry]
     let streaming: Bool
@@ -10,6 +20,13 @@ struct ResponseView: View {
 
     private let llm = LLMController.shared
     private let sessionCoord = SessionCoordinator.shared
+
+    // True while the view is parked at (or near) the bottom. Drives whether a
+    // streaming reply follows the tokens down. Recomputed from the content's
+    // bottom edge vs the viewport so scrolling up detaches the follow and
+    // scrolling back down re-attaches it — the standard ChatGPT/Granola feel.
+    @State private var pinnedToBottom = true
+    private let scrollSpace = "rtiResponseScroll"
 
     private var streamingPlaceholderLabel: String {
         if let toolStatus = llm.toolStatus, !toolStatus.isEmpty { return toolStatus }
@@ -26,48 +43,77 @@ struct ResponseView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if entries.isEmpty, !streaming, error == nil {
-                        emptyStateBody
-                    }
+            GeometryReader { outer in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if entries.isEmpty, !streaming, error == nil {
+                            emptyStateBody
+                        }
 
-                    ForEach(entries) { entry in
-                        entryRow(entry)
-                            .id(entry.id)
-                    }
+                        ForEach(entries) { entry in
+                            entryRow(entry)
+                                .id(entry.id)
+                        }
 
-                    if let displayedError, !displayedError.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(displayedError)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.red.opacity(0.9))
-                                .textSelection(.enabled)
-                            if errorIsAuth {
-                                Button("Open Settings…", action: onOpenSettings)
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
+                        if let displayedError, !displayedError.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(displayedError)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.red.opacity(0.9))
+                                    .textSelection(.enabled)
+                                if errorIsAuth {
+                                    Button("Open Settings…", action: onOpenSettings)
+                                        .buttonStyle(.borderedProminent)
+                                        .controlSize(.small)
+                                }
                             }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Report the content's bottom edge, measured in the
+                    // ScrollView's own coordinate space, so we can tell whether
+                    // the user is parked at the bottom or has scrolled up.
+                    .background(
+                        GeometryReader { inner in
+                            SwiftUI.Color.clear.preference(
+                                key: ResponseBottomEdgeKey.self,
+                                value: inner.frame(in: .named(scrollSpace)).maxY
+                            )
+                        }
+                    )
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .coordinateSpace(name: scrollSpace)
+                // contentBottom ≈ viewport height when parked at the bottom; a
+                // growing gap means the user scrolled up to read. 80pt of slack
+                // keeps the follow attached through normal streaming growth
+                // while still detaching on a deliberate scroll-up.
+                .onPreferenceChange(ResponseBottomEdgeKey.self) { contentBottom in
+                    pinnedToBottom = contentBottom - outer.size.height < 80
+                }
+                // A new turn (user+assistant append, or a fresh assistant stream
+                // starting) always re-pins and scrolls down. Defer one runloop
+                // tick so SwiftUI has laid out the new row before we seek to it.
+                // Returning to this tab re-instantiates at the top — jump back
+                // to the latest turn.
+                .onAppear {
+                    if let lastId = entries.last?.id { proxy.scrollTo(lastId, anchor: .bottom) }
+                }
+                .onChange(of: entries.count) { _, _ in
+                    pinnedToBottom = true
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: entries.last?.id) { _, _ in
+                    pinnedToBottom = true
+                    scrollToBottom(proxy: proxy)
+                }
+                // Follow the stream token-by-token, but only while parked at the
+                // bottom — scroll up to read earlier turns and the follow lets
+                // go; scroll back down and it re-attaches.
+                .onChange(of: entries.last?.text) { _, _ in
+                    guard streaming, pinnedToBottom else { return }
+                    scrollToBottom(proxy: proxy, animated: false)
+                }
             }
-            // Drive scroll-to-bottom when a new turn lands. We watch
-            // entries.count (catches batched user+assistant appends) and
-            // entries.last?.id (catches a new assistant stream starting),
-            // then defer one runloop tick so SwiftUI has measured the new row
-            // before we ask the ScrollViewReader to seek to it.
-            // We intentionally do NOT scroll on entries.last?.text changes:
-            // if the user has scrolled up to read earlier turns, a streaming
-            // response should not yank them back down on every token.
-            // Returning to this tab re-instantiates the view at the top —
-            // jump straight back to the latest turn.
-            .onAppear {
-                if let lastId = entries.last?.id { proxy.scrollTo(lastId, anchor: .bottom) }
-            }
-            .onChange(of: entries.count) { _, _ in scrollToBottom(proxy: proxy) }
-            .onChange(of: entries.last?.id) { _, _ in scrollToBottom(proxy: proxy) }
         }
     }
 
@@ -123,18 +169,21 @@ struct ResponseView: View {
     /// Defer the scroll by one runloop tick so SwiftUI has actually laid out
     /// the newly-appended row before we ask the proxy to seek to it. Without
     /// this, hitting Assist on a long conversation often left the new turn
-    /// off-screen because onChange fired before layout completed.
-    private func scrollToBottom(proxy: ScrollViewProxy) {
+    /// off-screen because onChange fired before layout completed. New turns
+    /// animate; per-token streaming follow does not (an animation per token
+    /// stutters and lags behind the text).
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
         DispatchQueue.main.async {
             guard let lastId = entries.last?.id else { return }
-            withAnimation(.easeOut(duration: 0.18)) {
+            if animated {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(lastId, anchor: .bottom)
+                }
+            } else {
                 proxy.scrollTo(lastId, anchor: .bottom)
             }
         }
     }
-
-    // Streaming responses no longer auto-scroll on every token so the user can
-    // read earlier turns uninterrupted. New turns still scroll into view.
 
     @ViewBuilder
     private func entryRow(_ entry: ChatEntry) -> some View {

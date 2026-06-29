@@ -1,6 +1,7 @@
 import AppKit
 import RTICore
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
@@ -100,6 +101,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
         registerNotificationObservers()
 
+        // Route "summary ready" notification taps to the in-app Sessions browser.
+        UNUserNotificationCenter.current().delegate = self
+
         if CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
             // First run (or keys cleared): guide setup instead of cold-dropping
             // into Settings.
@@ -171,5 +175,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             windows.showOverlay()
         }
         return true
+    }
+}
+
+// MARK: - Notification taps
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    /// Present the "summary ready" banner even while RTI is frontmost, so its
+    /// tap affordance is available without first backgrounding the app.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list])
+    }
+
+    /// Tapping a "summary ready" notification opens that session in the in-app
+    /// Sessions browser (read it in RTI, not in an external Markdown editor).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let folder = response.notification.request.content.userInfo["sessionFolder"] as? String
+        Task { @MainActor in
+            NSApp.activate(ignoringOtherApps: true)
+            if let folder {
+                WindowCoordinator.shared.showSession(folder: folder)
+            } else {
+                WindowCoordinator.shared.showSessionsControl(tab: .sessions)
+            }
+        }
+        completionHandler()
     }
 }

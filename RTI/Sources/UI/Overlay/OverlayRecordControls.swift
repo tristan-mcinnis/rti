@@ -45,13 +45,19 @@ struct OverlayRecordButton: View {
         case .paused: "Finish and summarize paused recording"
         case .finishing: "Saving session"
         case .summarizing: "Generating summary"
-        case .done: "Start a new recording"
+        case .done: coordinator.summaryURL != nil ? "Open notes in Sessions" : "Start a new recording"
         }
     }
 
     private func primaryAction() {
-        // toggleSession knows the phase: start from idle/done/summarizing,
-        // finish from recording/paused, no-op while finishing.
+        // Once the summary has landed, the "Notes ready" control reads as a
+        // notes button — so it opens the notes in the Sessions browser rather
+        // than starting a new recording (that moved to the aux button beside
+        // it). Every other phase: toggleSession handles start/finish.
+        if coordinator.phase == .done, let url = coordinator.summaryURL {
+            WindowCoordinator.shared.showSession(folder: url.deletingLastPathComponent().lastPathComponent)
+            return
+        }
         coordinator.toggleSession()
     }
 
@@ -145,7 +151,7 @@ struct OverlayRecordButton: View {
         case .finishing: "Saving the session…"
         case .summarizing: "Generating the summary in the background — click to start a new recording"
         case .done: coordinator.summaryURL != nil
-            ? "Session saved, notes ready. Click to start a new recording (⌘⇧R)"
+            ? "Notes ready — click to open them in Sessions. Start a new recording with the button beside this (⌘⇧R)"
             : "Session saved. Click to start a new recording (⌘⇧R)"
         }
     }
@@ -158,13 +164,15 @@ struct OverlaySessionAuxButton: View {
     private let coordinator = SessionCoordinator.shared
     @State private var hovering = false
 
-    private enum Kind { case pause, resume, openSummary, none }
+    private enum Kind { case pause, resume, newRecording, none }
 
     private var kind: Kind {
         switch coordinator.phase {
         case .recording: .pause
         case .paused: .resume
-        case .summarizing, .done: coordinator.summaryURL != nil ? .openSummary : .none
+        // Notes are ready: the primary control now opens them, so this companion
+        // becomes the way to start the next recording.
+        case .done: coordinator.summaryURL != nil ? .newRecording : .none
         default: .none
         }
     }
@@ -201,7 +209,7 @@ struct OverlaySessionAuxButton: View {
         switch kind {
         case .pause: "Pause recording"
         case .resume: "Resume recording"
-        case .openSummary: "Open meeting summary"
+        case .newRecording: "Start a new recording"
         case .none: ""
         }
     }
@@ -210,7 +218,7 @@ struct OverlaySessionAuxButton: View {
         switch kind {
         case .pause: "pause.fill"
         case .resume: "play.fill"
-        case .openSummary: "doc.text"
+        case .newRecording: "record.circle"
         case .none: ""
         }
     }
@@ -218,7 +226,7 @@ struct OverlaySessionAuxButton: View {
     private var tint: Color {
         switch kind {
         case .resume: Color.green.opacity(0.9)
-        case .openSummary: Color.green.opacity(0.9)
+        case .newRecording: Color(red: 1.0, green: 0.27, blue: 0.27).opacity(0.9)
         default: Color.overlayInk.opacity(0.7)
         }
     }
@@ -228,14 +236,18 @@ struct OverlaySessionAuxButton: View {
     /// tiny resume glyph. Labelling it (and the ⌘⇧P hint below) makes getting
     /// going again obvious. Pause/openSummary stay compact icons.
     private var labelText: String? {
-        kind == .resume ? "Resume" : nil
+        switch kind {
+        case .resume: "Resume"
+        case .newRecording: "New"
+        default: nil
+        }
     }
 
     private var help: String {
         switch kind {
         case .pause: "Pause (⌘⇧P) — stops transcribing, keeps the connection live so resume is instant"
         case .resume: "Resume recording (⌘⇧P)"
-        case .openSummary: "Open the meeting summary"
+        case .newRecording: "Start a new recording (⌘⇧R)"
         case .none: ""
         }
     }
@@ -243,8 +255,7 @@ struct OverlaySessionAuxButton: View {
     private func act() {
         switch kind {
         case .pause, .resume: coordinator.togglePause()
-        case .openSummary:
-            if let url = coordinator.summaryURL { NSWorkspace.shared.open(url) }
+        case .newRecording: coordinator.toggleSession()
         case .none: break
         }
     }

@@ -11,6 +11,10 @@ extension Notification.Name {
     static let rtiShowLiveTranscript = Notification.Name("rti.showLiveTranscript")
     static let rtiShowLogs = Notification.Name("rti.showLogs")
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
+    /// Posted (object = session folder name String) to focus the Sessions
+    /// browser on a specific archived session — e.g. tapping the "summary
+    /// ready" notification or the overlay's "Notes ready" control.
+    static let rtiOpenSessionInBrowser = Notification.Name("rti.openSessionInBrowser")
     /// Posted after a "Clear Current Chat" action so any open auxiliary
     /// panel windows dismiss themselves.
     static let rtiHideAuxiliaryPanels = Notification.Name("rti.hideAuxiliaryPanels")

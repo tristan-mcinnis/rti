@@ -73,6 +73,18 @@ final class WindowCoordinator {
         sessionsControl?.show(tab: tab)
     }
 
+    /// Open the Sessions browser focused on one archived session folder (e.g.
+    /// from the "summary ready" notification or the overlay's "Notes ready"
+    /// control). Shows the window on the Sessions tab, then tells the browser
+    /// which folder to select. The post is deferred a tick so a freshly-created
+    /// browser has mounted its observer before the selection lands.
+    func showSession(folder: String) {
+        showSessionsControl(tab: .sessions)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            NotificationCenter.default.post(name: .rtiOpenSessionInBrowser, object: folder)
+        }
+    }
+
     /// Open the read-only pre-meeting brief browser (Hermes-authored briefs).
     func showMeetingBrief() {
         meetingBrief?.show()

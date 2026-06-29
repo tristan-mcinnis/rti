@@ -50,6 +50,21 @@ struct SessionsBrowserView: View {
         .onAppear(perform: reload)
         .onChange(of: selected) { _, _ in loadFiles() }
         .onChange(of: selectedFile) { _, _ in loadText() }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiOpenSessionInBrowser)) { notif in
+            guard let folder = notif.object as? String else { return }
+            selectSession(folder: folder)
+        }
+    }
+
+    /// Deep-link target for the "summary ready" notification and the overlay's
+    /// "Notes ready" control: refresh the list, select the matching session
+    /// folder, and land on its summary. Re-selecting the same session still
+    /// snaps the reader back to summary.md (loadFiles picks files.first).
+    private func selectSession(folder: String) {
+        sessions = SessionArchive.recentSessions(limit: 100)
+        guard let match = sessions.first(where: { $0.url.lastPathComponent == folder }) else { return }
+        selected = match
+        loadFiles()
     }
 
     // MARK: - Session list

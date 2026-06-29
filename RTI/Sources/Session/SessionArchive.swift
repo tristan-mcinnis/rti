@@ -222,7 +222,9 @@ enum SessionArchive {
             guard granted else { return }
             let content = UNMutableNotificationContent()
             content.title = "Session summary ready"
-            content.body = "Meeting summary for \(sessionFolder) is in the session archive."
+            content.body = "Tap to read the summary in RTI's Sessions browser."
+            // Carried back on tap so the delegate can open this exact session.
+            content.userInfo = ["sessionFolder": sessionFolder]
             let request = UNNotificationRequest(identifier: "rti.summary.\(sessionFolder)", content: content, trigger: nil)
             center.add(request)
         }
