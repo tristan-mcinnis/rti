@@ -250,15 +250,24 @@ enum CommandBuilder {
             ),
             RTICommand(
                 id: "note.toggle",
-                title: "Note Mode (type into transcript)",
+                title: "Toggle Note Entry",
                 subtitle: "⌘⌥N",
-                keywords: ["note", "annotate", "inline", "mark"],
-                isAvailable: { SessionCoordinator.shared.isRunning },
+                keywords: ["note", "annotate", "inline", "prep", "mark"],
                 perform: {
-                    guard SessionCoordinator.shared.isRunning else { return }
-                    OverlayInputState.shared.isNoteMode.toggle()
+                    let state = OverlayInputState.shared
+                    state.mode = state.isNoteMode
+                        ? .chat
+                        : (SessionCoordinator.shared.isRunning ? .liveNote : .prepNote)
                 },
                 menuSection: .actions,
+                menuTitleProvider: {
+                    let state = OverlayInputState.shared
+                    if state.mode == .liveNote { return "Transcript Note Mode  ⌘⌥N" }
+                    if state.mode == .prepNote { return "Prep Note Mode  ⌘⌥N" }
+                    return SessionCoordinator.shared.isRunning
+                        ? "Transcript Note Mode  ⌘⌥N"
+                        : "Prep Note Mode  ⌘⌥N"
+                },
                 hotkeyKeyCode: UInt32(kVK_ANSI_N),
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),

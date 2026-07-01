@@ -24,6 +24,9 @@ public struct PromptContext {
     public var referenceModeName: String?
     /// OCR text from an attached screenshot.
     public var screenContext: String?
+    /// Full text of any vault documents the user explicitly referenced with
+    /// `@...` in the composer for this one turn.
+    public var referencedDocuments: String?
 
     public init(
         baseSystemPrompt: String = "",
@@ -33,7 +36,8 @@ public struct PromptContext {
         glossaryFragment: String? = nil,
         referenceText: String? = nil,
         referenceModeName: String? = nil,
-        screenContext: String? = nil
+        screenContext: String? = nil,
+        referencedDocuments: String? = nil
     ) {
         self.baseSystemPrompt = baseSystemPrompt
         self.meetingContext = meetingContext
@@ -43,6 +47,7 @@ public struct PromptContext {
         self.referenceText = referenceText
         self.referenceModeName = referenceModeName
         self.screenContext = screenContext
+        self.referencedDocuments = referencedDocuments
     }
 
     public var hasContent: Bool {
@@ -52,6 +57,7 @@ public struct PromptContext {
             || glossaryFragment != nil
             || referenceText != nil
             || screenContext != nil
+            || referencedDocuments != nil
     }
 }
 
@@ -140,6 +146,20 @@ public enum PromptBuilder {
             msgs.append(LLMMessage(
                 role: "system",
                 content: "User attached a screenshot. OCR text from the screen follows. Treat it as what the user is looking at.\n---\n\(screenContext)\n---"
+            ))
+        }
+
+        if let referencedDocuments = context.referencedDocuments?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !referencedDocuments.isEmpty {
+            msgs.append(LLMMessage(
+                role: "system",
+                content: """
+                The user explicitly referenced the following vault document(s) for this turn with @mentions. \
+                Treat them as the primary source material for answering the question.
+                ---
+                \(referencedDocuments)
+                ---
+                """
             ))
         }
 

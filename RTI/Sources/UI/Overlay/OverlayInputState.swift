@@ -7,9 +7,17 @@ import Observation
 /// LLM. A singleton so the flag survives view rebuilds.
 @Observable @MainActor
 final class OverlayInputState {
+    enum Mode {
+        case chat
+        case liveNote
+        case prepNote
+    }
+
     static let shared = OverlayInputState()
 
-    var isNoteMode: Bool = false
+    var mode: Mode = .chat
+
+    var isNoteMode: Bool { mode != .chat }
 
     private init() {}
 }

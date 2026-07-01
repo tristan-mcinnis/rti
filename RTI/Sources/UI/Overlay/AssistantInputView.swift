@@ -34,9 +34,7 @@ struct AssistantInputView: View {
             HStack(spacing: 6) {
                 actionsMenu
                 moreDots
-                if session.isRunning {
-                    noteModeToggle
-                }
+                noteModeToggle
 
                 ZStack(alignment: .leading) {
                     if input.isEmpty {
@@ -87,6 +85,9 @@ struct AssistantInputView: View {
         // an accidental ⏎ would send stale text into the wrong conversation.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
             input = ""
+            if inputState.mode == .liveNote {
+                inputState.mode = .chat
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
             // Defer so the focus change lands after the panel finishes its
@@ -393,15 +394,15 @@ struct AssistantInputView: View {
 
     private var noteModeToggle: some View {
         Button {
-            inputState.isNoteMode.toggle()
+            inputState.mode = inputState.isNoteMode ? .chat : preferredNoteMode
             DispatchQueue.main.async {
                 isInputFocused = true
             }
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: inputState.isNoteMode ? "note.text" : "text.cursor")
+                Image(systemName: noteModeSymbol)
                     .font(.system(size: 10, weight: .semibold))
-                Text(inputState.isNoteMode ? "Note" : "Chat")
+                Text(noteModeLabel)
                     .font(.system(size: 11, weight: .semibold))
             }
             .foregroundStyle(inputState.isNoteMode ? Color.yellow.opacity(0.95) : Color.overlayInk.opacity(0.7))
@@ -425,8 +426,8 @@ struct AssistantInputView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(inputState.isNoteMode ? "Switch to chat mode" : "Switch to note mode")
-        .help(inputState.isNoteMode ? "Note mode on — next Enter inserts inline into the transcript" : "Chat mode on — toggle to drop a quick note into the transcript")
+        .accessibilityLabel(inputState.isNoteMode ? "Switch to chat mode" : noteToggleAccessibilityLabel)
+        .help(noteModeHelpText)
     }
 
     /// Saved session records — opens the in-app read-only browser (Sessions
@@ -513,13 +514,11 @@ struct AssistantInputView: View {
                 }
             }
 
-            if session.isRunning {
-                Button { inputState.isNoteMode.toggle() } label: {
-                    if inputState.isNoteMode {
-                        Label("Note mode", systemImage: "checkmark")
-                    } else {
-                        Label("Note mode", systemImage: "note.text")
-                    }
+            Button { inputState.mode = inputState.isNoteMode ? .chat : preferredNoteMode } label: {
+                if inputState.isNoteMode {
+                    Label(noteMenuTitle, systemImage: "checkmark")
+                } else {
+                    Label(noteMenuTitle, systemImage: "note.text")
                 }
             }
         } label: {
@@ -575,10 +574,14 @@ struct AssistantInputView: View {
     }
 
     private var textFieldPrompt: String {
-        if inputState.isNoteMode {
+        switch inputState.mode {
+        case .liveNote:
             return "Quick note — Enter inserts inline, then returns to chat"
+        case .prepNote:
+            return "Prep note — Enter saves to Setup note, then returns to chat"
+        case .chat:
+            return "Ask, @file, drop an image, or ⌘↵ for Assist"
         }
-        return "Ask, drop an image, or ⌘↵ for Assist"
     }
 
     /// Menu label for a quick action: append "⌘⏎" when it's the bound primary,
@@ -625,15 +628,20 @@ struct AssistantInputView: View {
     private func submit() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        if inputState.isNoteMode {
-            if SessionCoordinator.shared.insertNote(text) {
+        switch inputState.mode {
+        case .liveNote:
+            if submitLiveNote(text) {
                 input = ""
-                inputState.isNoteMode = false
-                DispatchQueue.main.async {
-                    isInputFocused = true
-                }
+                inputState.mode = .chat
+                DispatchQueue.main.async { isInputFocused = true }
             }
-        } else {
+        case .prepNote:
+            if MeetingContextStore.shared.appendPrepNote(text) {
+                input = ""
+                inputState.mode = .chat
+                DispatchQueue.main.async { isInputFocused = true }
+            }
+        case .chat:
             if text.hasPrefix("/") {
                 if performSlashSubmit(String(text.dropFirst())) {
                     input = ""
@@ -651,9 +659,7 @@ struct AssistantInputView: View {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.lowercased().hasPrefix("note ") {
             let noteText = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard SessionCoordinator.shared.insertNote(noteText) else { return false }
-            inputState.isNoteMode = false
-            return true
+            return submitInlineNote(noteText)
         }
 
         if showSlashCommands, let command = visibleSlashCommands[safe: selectedSlashIndex] {
@@ -677,7 +683,7 @@ struct AssistantInputView: View {
         case "summary", "summarize":
             llm.sendSummary()
         case "note":
-            inputState.isNoteMode = true
+            inputState.mode = preferredNoteMode
         case "screen":
             ScreenshotManager.shared.captureAndAttach()
         case "recent":
@@ -686,6 +692,64 @@ struct AssistantInputView: View {
             return false
         }
         return true
+    }
+
+    private var preferredNoteMode: OverlayInputState.Mode {
+        session.isRunning ? .liveNote : .prepNote
+    }
+
+    private var noteModeLabel: String {
+        switch inputState.mode {
+        case .liveNote: return "Note"
+        case .prepNote: return "Prep"
+        case .chat: return session.isRunning ? "Chat" : "Prep"
+        }
+    }
+
+    private var noteModeSymbol: String {
+        switch inputState.mode {
+        case .chat: return session.isRunning ? "text.cursor" : "square.and.pencil"
+        case .liveNote, .prepNote: return "note.text"
+        }
+    }
+
+    private var noteToggleAccessibilityLabel: String {
+        session.isRunning ? "Switch to transcript note mode" : "Switch to prep note mode"
+    }
+
+    private var noteMenuTitle: String {
+        session.isRunning ? "Transcript note mode" : "Prep note mode"
+    }
+
+    private var noteModeHelpText: String {
+        switch inputState.mode {
+        case .liveNote:
+            return "Transcript note mode on — next Enter inserts inline, then returns to chat"
+        case .prepNote:
+            return "Prep note mode on — next Enter appends to the Setup note, then returns to chat"
+        case .chat:
+            return session.isRunning
+                ? "Chat mode on — toggle to drop a quick note into the transcript"
+                : "No live session — toggle to append a quick prep note to Setup"
+        }
+    }
+
+    private func submitInlineNote(_ text: String) -> Bool {
+        switch preferredNoteMode {
+        case .liveNote:
+            return submitLiveNote(text)
+        case .prepNote:
+            return MeetingContextStore.shared.appendPrepNote(text)
+        case .chat:
+            return false
+        }
+    }
+
+    private func submitLiveNote(_ text: String) -> Bool {
+        if SessionCoordinator.shared.insertNote(text) {
+            return true
+        }
+        return MeetingContextStore.shared.appendPrepNote(text)
     }
 }
 

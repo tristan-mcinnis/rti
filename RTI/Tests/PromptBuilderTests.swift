@@ -71,6 +71,25 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertFalse(ref.contains(String(repeating: "a", count: 8001)))
     }
 
+    func test_systemMessages_referencedDocumentsComeLast() {
+        let ctx = PromptContext(
+            baseSystemPrompt: "BASE",
+            screenContext: "SCREEN",
+            referencedDocuments: "## projects/acme/discussion-guide.md\n\nGUIDE"
+        )
+        let msgs = PromptBuilder.buildSystemMessages(context: ctx)
+        XCTAssertEqual(msgs.count, 3)
+        XCTAssertEqual(msgs[0].content, "BASE")
+        XCTAssertTrue(msgs[1].content?.contains("SCREEN") ?? false)
+        XCTAssertTrue(msgs[2].content?.contains("explicitly referenced") ?? false)
+        XCTAssertTrue(msgs[2].content?.contains("discussion-guide.md") ?? false)
+        XCTAssertTrue(msgs[2].content?.contains("GUIDE") ?? false)
+    }
+
+    func test_promptContext_hasContentWhenReferencedDocumentsPresent() {
+        XCTAssertTrue(PromptContext(referencedDocuments: "doc").hasContent)
+    }
+
     func test_conversation_latestUserTurnUsesFullContent() {
         let entries = [entry("user", "first"), entry("assistant", "reply"), entry("user", "raw latest")]
         let msgs = PromptBuilder.buildConversationMessages(entries: entries, fullContent: "AUGMENTED")

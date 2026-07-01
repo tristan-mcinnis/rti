@@ -42,4 +42,20 @@ final class VaultFilesTests: XCTestCase {
     func testReadRefusesEscape() {
         XCTAssertTrue(VaultFiles.read(relativePath: "../../.ssh/id_rsa").hasPrefix("Refused:"))
     }
+
+    func testResolveMention_emptyQueryIsMissing() {
+        if case let .missing(query) = VaultFiles.resolveMention("   ", scopeRelativePath: nil) {
+            XCTAssertEqual(query, "   ")
+        } else {
+            XCTFail("Expected empty mention to be reported missing")
+        }
+    }
+
+    func testResolveMention_nonexistentQueryIsMissing() {
+        if case let .missing(query) = VaultFiles.resolveMention("__definitely_not_a_real_rti_doc__", scopeRelativePath: nil) {
+            XCTAssertEqual(query, "__definitely_not_a_real_rti_doc__")
+        } else {
+            XCTFail("Expected unknown mention to be reported missing")
+        }
+    }
 }

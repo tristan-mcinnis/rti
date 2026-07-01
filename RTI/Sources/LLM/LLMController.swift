@@ -4,6 +4,11 @@ import RTICore
 
 @Observable @MainActor
 final class LLMController {
+    private struct ReferencedDocument {
+        let path: String
+        let content: String
+    }
+
     static let shared = LLMController()
 
     private(set) var entries: [ChatEntry] = []
@@ -137,7 +142,13 @@ final class LLMController {
     func sendAskAnything(_ input: String) {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        performSend(userInput: trimmed, action: "Ask")
+        let prepared = prepareAskInput(trimmed)
+        guard let userInput = prepared.userInput else {
+            lastError = prepared.error
+            lastErrorIsAuth = false
+            return
+        }
+        performSend(userInput: userInput, action: "Ask", referencedDocuments: prepared.references)
     }
 
     func sendAssist() {
@@ -222,7 +233,13 @@ final class LLMController {
         resetMemory()
     }
 
-    private func performSend(userInput: String, action: String, fullTranscript: Bool = false, forceSmart: Bool = false) {
+    private func performSend(
+        userInput: String,
+        action: String,
+        fullTranscript: Bool = false,
+        forceSmart: Bool = false,
+        referencedDocuments: [ReferencedDocument] = []
+    ) {
         guard !streaming else { return }
         request.cancel()
         let effectiveSmart = smartMode || forceSmart
@@ -287,7 +304,8 @@ final class LLMController {
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
             referenceText: activeMode?.referenceText,
             referenceModeName: activeMode?.name,
-            screenContext: manualScreenContext
+            screenContext: manualScreenContext,
+            referencedDocuments: referencedDocumentsText(referencedDocuments)
         )
 
         var apiMessages = PromptBuilder.buildSystemMessages(context: promptContext)
@@ -455,6 +473,64 @@ final class LLMController {
         guard let id = streamingEntryID,
               let idx = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[idx].text += delta
+    }
+
+    private func prepareAskInput(_ input: String) -> (userInput: String?, references: [ReferencedDocument], error: String?) {
+        let mentionResult = Self.extractMentionTokens(from: input)
+        guard !mentionResult.tokens.isEmpty else {
+            return (input, [], nil)
+        }
+
+        var references: [ReferencedDocument] = []
+        for token in mentionResult.tokens {
+            switch VaultFiles.resolveMention(token, scopeRelativePath: MeetingContextStore.shared.workstreamScopePath) {
+            case let .resolved(path, content):
+                references.append(ReferencedDocument(path: path, content: content))
+            case let .ambiguous(query, candidates):
+                let joined = candidates.map { "`\($0)`" }.joined(separator: ", ")
+                return (nil, [], "Multiple files match @\(query): \(joined). Use a more specific path.")
+            case let .missing(query):
+                return (nil, [], "Couldn't find a vault document matching @\(query).")
+            }
+        }
+
+        let cleaned = mentionResult.cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userInput = cleaned.isEmpty ? "Summarize the referenced document(s)." : cleaned
+        return (userInput, references, nil)
+    }
+
+    private func referencedDocumentsText(_ documents: [ReferencedDocument]) -> String? {
+        guard !documents.isEmpty else { return nil }
+        return documents.map { doc in
+            "## \(doc.path)\n\n\(doc.content)"
+        }.joined(separator: "\n\n")
+    }
+
+    private static func extractMentionTokens(from input: String) -> (tokens: [String], cleaned: String) {
+        let pattern = #"@"([^"]+)"|@([^\s@]+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return ([], input)
+        }
+
+        let ns = input as NSString
+        let matches = regex.matches(in: input, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return ([], input) }
+
+        var tokens: [String] = []
+        var cleaned = input
+        for match in matches.reversed() {
+            let quoted = match.range(at: 1)
+            let bare = match.range(at: 2)
+            let tokenRange = quoted.location != NSNotFound ? quoted : bare
+            if tokenRange.location != NSNotFound {
+                tokens.append(ns.substring(with: tokenRange))
+            }
+            let swiftRange = Range(match.range, in: cleaned)!
+            cleaned.removeSubrange(swiftRange)
+        }
+
+        cleaned = cleaned.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        return (tokens.reversed(), cleaned)
     }
 
     /// Build the recent diarized transcript from the in-memory live entries,

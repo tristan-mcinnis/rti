@@ -57,6 +57,20 @@ final class MeetingContextStore {
         workstreamItem = nil
     }
 
+    /// Append a quick prep note from the overlay composer. Keeps any existing
+    /// setup note and adds the new line below it.
+    @discardableResult
+    func appendPrepNote(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            note = trimmed
+        } else {
+            note += "\n" + trimmed
+        }
+        return true
+    }
+
     /// Best-effort: when a session is linked to a Sentinel meeting, pre-select
     /// the vault workstream whose name appears in the meeting name. No-ops if
     /// the user already picked one or nothing matches — a wrong guess just shows

@@ -11,6 +11,12 @@ import Foundation
 /// so untrusted transcript/meeting content can never steer a read to `~/.ssh`
 /// or anywhere outside the knowledge base. Read-only; RTI never writes the vault.
 enum VaultFiles {
+    enum MentionResolution {
+        case resolved(path: String, content: String)
+        case ambiguous(query: String, candidates: [String])
+        case missing(query: String)
+    }
+
     private static let maxReadChars = 16000
     private static let maxGrepFiles = 50
     private static let maxLinesPerFile = 4
@@ -50,6 +56,37 @@ enum VaultFiles {
                 + "\n\n…[truncated — \(text.count) chars total. Grep within it or ask about a specific section.]"
         }
         return text
+    }
+
+    /// Resolve an inline `@file` mention to one readable vault document.
+    /// Prefers an exact path inside the current project/client scope, then a
+    /// fuzzy filename/path match within that scope, finally broadening vault-wide.
+    static func resolveMention(_ mention: String, scopeRelativePath: String?) -> MentionResolution {
+        let query = mention.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return .missing(query: mention) }
+
+        if let exact = exactMentionPath(query, scopeRelativePath: scopeRelativePath),
+           let content = rawRead(relativePath: exact)
+        {
+            return .resolved(path: exact, content: content)
+        }
+
+        let scopedMatches = matchingPaths(for: query, scopeRelativePath: scopeRelativePath)
+        if let unique = uniqueMatch(scopedMatches), let content = rawRead(relativePath: unique) {
+            return .resolved(path: unique, content: content)
+        }
+        if scopedMatches.count > 1 {
+            return .ambiguous(query: query, candidates: Array(scopedMatches.prefix(5)))
+        }
+
+        let globalMatches = matchingPaths(for: query, scopeRelativePath: nil)
+        if let unique = uniqueMatch(globalMatches), let content = rawRead(relativePath: unique) {
+            return .resolved(path: unique, content: content)
+        }
+        if globalMatches.count > 1 {
+            return .ambiguous(query: query, candidates: Array(globalMatches.prefix(5)))
+        }
+        return .missing(query: query)
     }
 
     // MARK: - grep
@@ -116,5 +153,78 @@ enum VaultFiles {
         let full = url.standardizedFileURL.path
         let basePath = base.standardizedFileURL.path + "/"
         return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : url.lastPathComponent
+    }
+
+    private static func rawRead(relativePath: String) -> String? {
+        guard let url = resolve(relativePath),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        if text.count > maxReadChars {
+            return String(text.prefix(maxReadChars)) + "\n\n…[truncated]"
+        }
+        return text
+    }
+
+    private static func exactMentionPath(_ query: String, scopeRelativePath: String?) -> String? {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let candidates: [String] = {
+            guard let scope = scopeRelativePath, !trimmed.hasPrefix(scope + "/") else { return [trimmed] }
+            return [trimmed, scope + "/" + trimmed]
+        }()
+
+        for candidate in candidates {
+            guard let url = resolve(candidate),
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+            guard let dbs = VaultWorkstreamStore.databasesDir() else { return nil }
+            return relativePath(of: url, under: dbs)
+        }
+        return nil
+    }
+
+    private static func matchingPaths(for query: String, scopeRelativePath: String?) -> [String] {
+        guard let dbs = VaultWorkstreamStore.databasesDir() else { return [] }
+        let root = scopeRelativePath.flatMap { resolve($0) } ?? dbs
+        let needle = query.lowercased()
+        guard let en = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return [] }
+
+        var scored: [(path: String, score: Int)] = []
+        for case let url as URL in en {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  url.pathExtension.lowercased() == "md" else { continue }
+            let rel = relativePath(of: url, under: dbs)
+            let relLower = rel.lowercased()
+            let basename = url.lastPathComponent.lowercased()
+            let stem = url.deletingPathExtension().lastPathComponent.lowercased()
+            let score: Int
+            if relLower == needle || basename == needle {
+                score = 100
+            } else if stem == needle {
+                score = 90
+            } else if relLower.hasSuffix("/" + needle) {
+                score = 80
+            } else if basename.contains(needle) {
+                score = 60
+            } else if stem.contains(needle) {
+                score = 55
+            } else if relLower.contains(needle) {
+                score = 40
+            } else {
+                continue
+            }
+            scored.append((rel, score))
+        }
+
+        return scored
+            .sorted { lhs, rhs in
+                lhs.score != rhs.score ? lhs.score > rhs.score : lhs.path < rhs.path
+            }
+            .map(\.path)
+    }
+
+    private static func uniqueMatch(_ paths: [String]) -> String? {
+        guard paths.count == 1 else { return nil }
+        return paths[0]
     }
 }
