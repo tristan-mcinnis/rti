@@ -54,11 +54,12 @@ enum CommandBuilder {
     /// meeting, so we don't hot-swap a live recording.
     @MainActor
     private static func transcriptionCommands() -> [RTICommand] {
-        STTProviders.all.map { provider in
+        guard STTProviders.all.count > 1 else { return [] }
+        return STTProviders.all.map { provider in
             RTICommand(
                 id: "stt.provider.\(provider.id)",
                 title: "Transcription: \(provider.displayName)",
-                keywords: ["transcription", "stt", "provider", "engine", "soniox", "assemblyai", "model", "switch"],
+                keywords: ["transcription", "stt", "provider", "engine", "soniox", "model", "switch"],
                 perform: { STTProviders.activeId = provider.id },
                 menuSection: .panels,
                 menuParent: "Transcription model",

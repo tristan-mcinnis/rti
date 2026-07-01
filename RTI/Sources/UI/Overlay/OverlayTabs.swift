@@ -624,16 +624,76 @@ struct AutoTabView: View {
 /// you go live; the guide can be attached now and is auto-bound when the
 /// session starts.
 struct SetupTabView: View {
+    private enum ScopeFilter: String, CaseIterable, Identifiable {
+        case all
+        case projects
+        case clients
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .all: "All"
+            case .projects: "Projects"
+            case .clients: "Clients"
+            }
+        }
+    }
+
+    private enum LiveOption: Equatable, Identifiable {
+        case notes
+        case guide
+        case findings
+        case autoAssist
+
+        var id: String {
+            switch self {
+            case .notes: "notes"
+            case .guide: "guide"
+            case .findings: "findings"
+            case .autoAssist: "autoAssist"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .notes: "Notes"
+            case .guide: "Guide"
+            case .findings: "Findings"
+            case .autoAssist: "Auto"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .notes: "Capture running notes as the call develops"
+            case .guide: "Match questions from an attached guide"
+            case .findings: "Keep a live ledger of observations"
+            case .autoAssist: "Surface suggestions during the call"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .notes: "note.text"
+            case .guide: "checklist"
+            case .findings: "tag"
+            case .autoAssist: "sparkles"
+            }
+        }
+    }
+
     private let store = MeetingContextStore.shared
     private let guideController = DiscussionGuideController.shared
+    private let visibleResultLimit = 8
     // These also gate the live tabs (Notes / Guide) — see OverlayPanelView.
-    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = false
-    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
-    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = false
-    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = false
-    @AppStorage(STTProviders.activeIdKey) private var sttProviderId = "soniox"
+    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
+    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
+    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
+    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
+    @State private var scopeFilter: ScopeFilter = .all
     @State private var pickerOpen = false
     @State private var query = ""
     @State private var pasteOpen = false
@@ -642,29 +702,10 @@ struct SetupTabView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Who is this meeting about?")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.85))
-                Text("Pick a client or project from your vault — RTI grounds every suggestion in it until you clear it.")
-                    .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if store.workstreamName != nil {
-                    usingBanner
-                    workstreamPreview
-                } else {
-                    picker
-                }
-
-                Divider().overlay(Color.overlayInk.opacity(0.08)).padding(.vertical, 2)
-                livePanelsSection
-
-                Divider().overlay(Color.overlayInk.opacity(0.08)).padding(.vertical, 2)
-                transcriptionModelSection
-
-                Divider().overlay(Color.overlayInk.opacity(0.08)).padding(.vertical, 2)
+            VStack(alignment: .leading, spacing: 14) {
+                meetingFocusSection
+                liveCallSection
                 discussionGuideSection
-
                 noteEditor
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -673,71 +714,164 @@ struct SetupTabView: View {
         .onAppear(perform: load)
     }
 
-    // MARK: - Transcription model
+    // MARK: - Meeting focus
 
-    private var transcriptionModelSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Transcription model")
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.85))
-            Picker("", selection: $sttProviderId) {
-                ForEach(STTProviders.all, id: \.id) { provider in
-                    Text(provider.displayName).tag(provider.id)
-                }
+    private var meetingFocusSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("Focus", detail: "Client or project")
+            if store.workstreamName != nil {
+                usingBanner
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            Text("Which engine transcribes live audio. Soniox is the default (best multilingual + diarization); AssemblyAI needs its key in Settings → Providers. Changing this during a live session reconnects transcription with a short gap.")
-                .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
-                .fixedSize(horizontal: false, vertical: true)
+            picker
         }
     }
 
-    // MARK: - One combined client/project picker
+    private func sectionHeader(_ title: String, detail: String? = nil) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.overlayInk.opacity(0.86))
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.overlayInk.opacity(0.42))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            content()
+        }
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.overlayInk.opacity(0.050)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.overlayInk.opacity(0.075), lineWidth: 1))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Combined client/project picker
 
     private var picker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                pickerOpen.toggle()
-                if pickerOpen { searchFocused = true }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 10))
-                    Text("Pick client or project").font(.system(size: 12, weight: .medium))
-                    Spacer()
-                    Image(systemName: pickerOpen ? "chevron.up" : "chevron.down").font(.system(size: 9))
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.overlayInk.opacity(0.45))
+                TextField(store.workstreamName == nil ? "Search client or project" : "Change client or project", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.overlayInk)
+                    .focused($searchFocused)
+                    .onTapGesture { pickerOpen = true }
+                    .onSubmit {
+                        if let first = filteredItems.first {
+                            pick(first)
+                            query = ""
+                            pickerOpen = false
+                        }
+                    }
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.overlayInk.opacity(0.35))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .foregroundStyle(Color.overlayInk.opacity(0.85))
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.overlayInk.opacity(0.1)))
+                Button {
+                    pickerOpen.toggle()
+                    if pickerOpen { searchFocused = true }
+                } label: {
+                    Image(systemName: pickerOpen ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.overlayInk.opacity(0.55))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.09)))
 
-            if pickerOpen { pickerList }
+            HStack(spacing: 8) {
+                Picker("", selection: $scopeFilter) {
+                    ForEach(ScopeFilter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 194)
+                if let hint = scopeHint {
+                    Text(hint)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.overlayInk.opacity(0.38))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if pickerOpen || searchFocused || !query.isEmpty {
+                pickerList
+            }
         }
     }
 
     private var pickerList: some View {
         VStack(spacing: 0) {
-            TextField("Type to filter…", text: $query)
-                .textFieldStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.overlayInk)
-                .focused($searchFocused)
-                .padding(.horizontal, 10).padding(.vertical, 7)
-            Divider().overlay(Color.overlayInk.opacity(0.1))
             if filteredItems.isEmpty {
-                Text(allItems.isEmpty ? "Nothing found in your vault." : "No match for “\(query)”.")
-                    .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.4))
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                Text(emptyPickerMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.overlayInk.opacity(0.4))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(filteredItems) { pickerRow($0) }
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if !visibleProjects.isEmpty {
+                            pickerSection("Projects", items: visibleProjects)
+                        }
+                        if !visibleClients.isEmpty {
+                            pickerSection("Clients", items: visibleClients)
+                        }
                     }
+                    .padding(.vertical, 4)
                 }
-                .frame(maxHeight: 200)
+                .frame(maxHeight: 178)
+                if scopeFilter == .all, !query.isEmpty, !filteredProjects.isEmpty, filteredClients.isEmpty {
+                    Text("Showing individual projects for “\(query)”.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.overlayInk.opacity(0.42))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 10)
+                }
             }
         }
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.overlayInk.opacity(0.06)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.overlayInk.opacity(0.1), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.overlayInk.opacity(0.10), lineWidth: 1))
+    }
+
+    private func pickerSection(_ title: String, items: [VaultItem]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.overlayInk.opacity(0.48))
+                Spacer()
+                Text("\(items.count)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.overlayInk.opacity(0.30))
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+            ForEach(items) { pickerRow($0) }
+        }
     }
 
     private func pickerRow(_ item: VaultItem) -> some View {
@@ -745,49 +879,73 @@ struct SetupTabView: View {
             pick(item)
             pickerOpen = false
             query = ""
+            searchFocused = false
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
                 Image(systemName: item.isProject ? "folder" : "person.crop.circle")
-                    .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.55)).frame(width: 16)
-                Text(item.name).font(.system(size: 12)).foregroundStyle(Color.overlayInk.opacity(0.9))
-                Spacer()
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.overlayInk.opacity(0.48))
+                    .frame(width: 16)
+                Text(item.name)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.overlayInk.opacity(0.9))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
                 Text(item.isProject ? "Project" : "Client")
-                    .font(.system(size: 9, weight: .medium)).foregroundStyle(Color.overlayInk.opacity(0.4))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.overlayInk.opacity(0.36))
             }
-            .padding(.horizontal, 10).padding(.vertical, 7)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.overlayInk.opacity(store.workstreamItem == item ? 0.10 : 0.0001))
+            )
         }
         .buttonStyle(.plain)
     }
 
     private var usingBanner: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 11)).foregroundStyle(.green.opacity(0.85))
-            Text("RTI is using:").font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.6))
-            Text(store.workstreamName ?? "").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk)
-            Spacer()
-            Button { store.clearWorkstream() } label: {
-                Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(Color.overlayInk.opacity(0.45))
+        HStack(spacing: 7) {
+            Image(systemName: store.workstreamItem?.isProject == false ? "person.crop.circle.fill" : "folder.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.green.opacity(0.85))
+                .frame(width: 16)
+            Text(store.workstreamName ?? "")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.overlayInk)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if let item = store.workstreamItem {
+                Text(item.isProject ? "Project scope" : "Client note")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.overlayInk.opacity(0.42))
             }
-            .buttonStyle(.plain).help("Clear — stop grounding answers in this workstream")
+            Spacer(minLength: 8)
+            Button { store.clearWorkstream() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.overlayInk.opacity(0.38))
+            }
+            .buttonStyle(.plain)
+            .help("Clear meeting focus")
         }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.12)))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.green.opacity(0.10)))
     }
 
-    private var workstreamPreview: some View {
-        ScrollView {
-            RTIMarkdown(store.workstreamContext ?? "", style: .overlay).frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxHeight: 150)
-        .scrollContentBackground(.hidden)
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.05)))
-    }
-
-    /// Projects first, then clients — the combined list the picker filters.
     private var allItems: [VaultItem] {
-        projects + clients
+        switch scopeFilter {
+        case .all:
+            projects + clients
+        case .projects:
+            projects
+        case .clients:
+            clients
+        }
     }
 
     private var filteredItems: [VaultItem] {
@@ -796,40 +954,136 @@ struct SetupTabView: View {
         return allItems.filter { $0.name.lowercased().contains(q) }
     }
 
-    /// Opt-in live panels. These flags also gate the Notes/Guide tabs, so
-    /// flipping one here makes its tab appear (and starts the live analysis).
-    private var livePanelsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Live panels")
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.85))
-            Text("Off by default. Turn one on to add its tab and run it live during the call.")
-                .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
-                .fixedSize(horizontal: false, vertical: true)
-            livePanelToggle($notesEnabled, "Notes", "Periodic AI notes as the conversation develops")
-            livePanelToggle($guideEnabled, "Guide", "Track which discussion-guide questions get answered")
-            livePanelToggle($findingsEnabled, "Findings", "Running ledger of tagged findings, tensions & missed threads")
-            livePanelToggle($autoAssistEnabled, "Auto", "Proactively surface things to say, ask & recall from this project — live")
+    private var filteredProjects: [VaultItem] {
+        filteredItems.filter(\.isProject)
+    }
+
+    private var filteredClients: [VaultItem] {
+        filteredItems.filter { !$0.isProject }
+    }
+
+    private var visibleProjects: [VaultItem] {
+        Array(filteredProjects.prefix(scopeFilter == .all ? visibleResultLimit : visibleResultLimit + 2))
+    }
+
+    private var visibleClients: [VaultItem] {
+        Array(filteredClients.prefix(scopeFilter == .all ? max(2, visibleResultLimit - visibleProjects.count) : visibleResultLimit + 2))
+    }
+
+    private var scopeHint: String? {
+        switch scopeFilter {
+        case .all:
+            nil
+        case .projects:
+            "searches project files"
+        case .clients:
+            "uses one client note"
         }
     }
 
-    private func livePanelToggle(_ isOn: Binding<Bool>, _ title: String, _ detail: String) -> some View {
-        Toggle(isOn: isOn) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.overlayInk.opacity(0.9))
-                Text(detail).font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.45))
+    private var emptyPickerMessage: String {
+        if allItems.isEmpty {
+            return "Nothing found in your vault."
+        }
+        if scopeFilter == .clients {
+            return "No client note matches “\(query)”."
+        }
+        return "No match for “\(query)”."
+    }
+
+    // MARK: - Live call
+
+    private var liveCallSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("Live", detail: "Soniox realtime")
+            settingsGroup {
+                liveTranscriptionRow
+                settingsRowDivider
+                livePanelToggle(.notes, $notesEnabled)
+                settingsRowDivider
+                livePanelToggle(.guide, $guideEnabled)
+                settingsRowDivider
+                livePanelToggle(.findings, $findingsEnabled)
+                settingsRowDivider
+                livePanelToggle(.autoAssist, $autoAssistEnabled)
             }
         }
-        .toggleStyle(.switch).controlSize(.mini).tint(.blue)
+    }
+
+    private var liveTranscriptionRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "waveform")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.overlayInk.opacity(0.55))
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Transcription")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.overlayInk.opacity(0.88))
+                Text("Realtime capture and translation")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.overlayInk.opacity(0.42))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 12)
+            Text("Soniox")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.overlayInk.opacity(0.50))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var settingsRowDivider: some View {
+        Divider()
+            .overlay(Color.overlayInk.opacity(0.07))
+            .padding(.leading, 42)
+    }
+
+    private func livePanelToggle(_ option: LiveOption, _ isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            HStack(spacing: 10) {
+                Image(systemName: option.icon)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.overlayInk.opacity(0.50))
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(option.title)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.overlayInk.opacity(0.88))
+                        if option == .notes {
+                            Text("Default")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.overlayInk.opacity(0.42))
+                        }
+                    }
+                    Text(option.detail)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.overlayInk.opacity(0.42))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 12)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .tint(.blue)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var noteEditor: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Your note").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("Prep note", detail: "Optional")
             ZStack(alignment: .topLeading) {
                 TextEditor(text: Binding(get: { store.note }, set: { store.note = $0 }))
                     .font(.system(size: 12)).foregroundStyle(Color.overlayInk).scrollContentBackground(.hidden)
-                    .frame(height: 56).padding(6)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.08)))
+                    .frame(height: 64).padding(6)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.overlayInk.opacity(0.075)))
                 if store.note.isEmpty {
                     Text("Anything extra for the assistant…")
                         .font(.system(size: 12)).foregroundStyle(Color.overlayInk.opacity(0.35))
@@ -854,10 +1108,9 @@ struct SetupTabView: View {
     }
 
     private var discussionGuideSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Text("Discussion guide")
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.85))
+                sectionHeader("Guide", detail: guideController.guide == nil ? "Optional" : nil)
                 if guideController.isImporting {
                     ProgressView().scaleEffect(0.55).progressViewStyle(.circular)
                 }
@@ -939,10 +1192,6 @@ struct SetupTabView: View {
 
     @ViewBuilder
     private var guideInputs: some View {
-        Text("Attach the guide for this call — RTI tracks which questions get answered live.")
-            .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
-            .fixedSize(horizontal: false, vertical: true)
-
         HStack(spacing: 8) {
             guideInputButton("Paste", "doc.on.clipboard") {
                 pasteOpen.toggle()

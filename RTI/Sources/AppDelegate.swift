@@ -39,6 +39,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     @MainActor private func continueLaunch() {
         _ = ModeStore.shared
+        UserDefaults.standard.register(defaults: [
+            AnalysisSettingsDefaults.notesEnabledKey: AnalysisSettingsDefaults.defaultNotesEnabled,
+            AnalysisSettingsDefaults.guideEnabledKey: AnalysisSettingsDefaults.defaultGuideEnabled,
+            AnalysisSettingsDefaults.findingsEnabledKey: AnalysisSettingsDefaults.defaultFindingsEnabled,
+            AnalysisSettingsDefaults.autoAssistEnabledKey: AnalysisSettingsDefaults.defaultAutoAssistEnabled,
+            AnalysisSettingsDefaults.notesIntervalKey: AnalysisSettingsDefaults.defaultInterval,
+        ])
 
         // Clear any phantom system-audio aggregate devices left by a prior
         // crash before the first tap-based capture runs.

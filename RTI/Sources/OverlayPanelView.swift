@@ -6,12 +6,12 @@ struct OverlayPanelView: View {
 
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
     @AppStorage(OverlayAppearanceDefaults.lightModeKey) private var lightMode = false
-    // Notes/Guide are opt-in: their tabs only show when their live analysis is
-    // enabled (toggled in Setup). Default tabs are Setup · Assist · Transcript.
-    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = false
-    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = false
-    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = false
-    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = false
+    // Live-analysis tabs only show when their tasks are enabled in Setup.
+    // Notes defaults on; Guide/Findings/Auto stay opt-in.
+    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
+    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
+    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
+    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
     @State private var tab: OverlayTab = .assist
 
     // Setup is the pre-call surface, not a live tab — it's pulled out of the

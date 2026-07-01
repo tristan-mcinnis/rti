@@ -312,9 +312,8 @@ struct AsyncTranscriptProviderOption: Identifiable, Sendable {
     }
 }
 
-/// Registry + active-selection for STT providers. The active provider is stored
-/// in UserDefaults (`rti.stt.activeProviderId`) and surfaced in Settings,
-/// exactly like `LLMProviders`. Add a new provider by adding a config here.
+/// Registry + active-selection for real-time STT. RTI's live lane is Soniox
+/// only; the separate async transcript-upgrade lane is modeled below.
 enum STTProviders {
     static var soniox: STTProviderConfig {
         STTProviderConfig(id: "soniox", displayName: "Soniox") { tc, terms in
@@ -323,40 +322,21 @@ enum STTProviders {
         }
     }
 
-    static var assemblyai: STTProviderConfig {
-        STTProviderConfig(id: "assemblyai", displayName: "AssemblyAI") { _, _ in
-            // AssemblyAI streaming handles diarization/translation differently
-            // from Soniox; translation + context terms are not forwarded here.
-            AssemblyAIClient(apiKey: Secrets.assemblyAIKey)
-        }
-    }
-
-    static var all: [STTProviderConfig] { [soniox, assemblyai] }
+    static var all: [STTProviderConfig] { [soniox] }
 
     static let activeIdKey = "rti.stt.activeProviderId"
     static var activeId: String {
         get { UserDefaults.standard.string(forKey: activeIdKey) ?? soniox.id }
-        set { UserDefaults.standard.set(newValue, forKey: activeIdKey) }
+        set { UserDefaults.standard.set(soniox.id, forKey: activeIdKey) }
     }
     static var active: STTProviderConfig { all.first { $0.id == activeId } ?? soniox }
 
-    /// Whether the provider that will actually run has a key. AssemblyAI counts
-    /// only if its own key is set; otherwise Soniox is the default and the
-    /// fallback, so a Soniox key suffices.
     static var activeHasKey: Bool {
-        if active.id == "assemblyai", !Secrets.assemblyAIKey.isEmpty { return true }
         return !Secrets.sonioxAPIKey.isEmpty
     }
 
-    /// Build a live client for the active provider, falling back to Soniox if the
-    /// selected provider has no API key set (so a half-configured switch can't
-    /// silently break capture).
     static func makeActiveClient(translationConfig: TranslationConfig?, contextTerms: [String]) -> STTClient {
-        let choice = active
-        if choice.id == "assemblyai", Secrets.assemblyAIKey.isEmpty {
-            return soniox.makeClient(translationConfig, contextTerms)
-        }
-        return choice.makeClient(translationConfig, contextTerms)
+        soniox.makeClient(translationConfig, contextTerms)
     }
 }
 

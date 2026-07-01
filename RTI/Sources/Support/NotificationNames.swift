@@ -70,6 +70,10 @@ enum AnalysisSettingsDefaults {
     static let findingsEnabledKey = "rti.analysis.findingsEnabled"
     /// Auto mode: proactively surface project-grounded suggestion cards live.
     static let autoAssistEnabledKey = "rti.analysis.autoAssistEnabled"
+    static let defaultNotesEnabled = true
+    static let defaultGuideEnabled = false
+    static let defaultFindingsEnabled = false
+    static let defaultAutoAssistEnabled = false
     static let defaultInterval: Double = 120
     static let intervalRange: ClosedRange<Double> = 60...600
 }

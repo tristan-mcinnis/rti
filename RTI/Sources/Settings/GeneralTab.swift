@@ -116,9 +116,9 @@ private struct AudioInputSection: View {
 // MARK: - Real-Time Analysis
 
 private struct RealTimeAnalysisSection: View {
-    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = false
+    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = AnalysisSettingsDefaults.defaultNotesEnabled
     @AppStorage(AnalysisSettingsDefaults.notesIntervalKey) private var notesInterval: Double = AnalysisSettingsDefaults.defaultInterval
-    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = false
+    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = AnalysisSettingsDefaults.defaultGuideEnabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -150,8 +150,8 @@ private struct RealTimeAnalysisSection: View {
             HStack {
                 Spacer()
                 Button("Reset to Defaults") {
-                    notesEnabled = false
-                    guideEnabled = false
+                    notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
+                    guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
                     notesInterval = AnalysisSettingsDefaults.defaultInterval
                 }
                 .controlSize(.small)

@@ -4,7 +4,6 @@ import SwiftUI
 
 struct ProvidersTab: View {
     @State private var selectedLLMProviderId = LLMProviders.activeId
-    @State private var selectedRealtimeSTTProviderId = STTProviders.activeId
     @State private var selectedAsyncTranscriptProviderId = AsyncTranscriptProviders.activeId
     @State private var keyValues: [String: String] = [:]
     @State private var saved = false
@@ -12,10 +11,6 @@ struct ProvidersTab: View {
 
     private var activeLLMOption: LLMProviderOption {
         LLMProviders.option(id: selectedLLMProviderId)
-    }
-
-    private var activeRealtimeSTTOption: STTProviderConfig {
-        STTProviders.all.first { $0.id == selectedRealtimeSTTProviderId } ?? STTProviders.soniox
     }
 
     private var activeAsyncTranscriptOption: AsyncTranscriptProviderOption {
@@ -29,14 +24,9 @@ struct ProvidersTab: View {
     }
 
     private var activeRealtimeSTTHasKey: Bool {
-        switch activeRealtimeSTTOption.id {
-        case "assemblyai":
-            let raw = (keyValues["assemblyai"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !raw.isEmpty { return true }
-            return !(keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        default:
-            return !(keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
+        !(keyValues["soniox"] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
     }
 
     private var activeAsyncTranscriptHasKey: Bool {
@@ -50,7 +40,7 @@ struct ProvidersTab: View {
     var body: some View {
         SettingsPage(maxWidth: 720) {
             VStack(alignment: .leading, spacing: 14) {
-                SettingsCard("Provider Routing", detail: "Pick providers per lane: assistant, live speech-to-text, and transcript upgrade. LLM swaps take effect on the next turn; live STT swaps reconnect if a session is already running.") {
+                SettingsCard("Provider Routing", detail: "Pick providers per lane: assistant and transcript upgrade. Live speech-to-text is fixed to Soniox.") {
                     VStack(alignment: .leading, spacing: 12) {
                         providerPicker(
                             title: "Assistant",
@@ -58,13 +48,10 @@ struct ProvidersTab: View {
                             options: LLMProviders.all.map { ($0.id, $0.displayName) },
                             detail: "\(activeLLMOption.model) • \(activeLLMOption.config.baseURL.host ?? activeLLMOption.config.baseURL.absoluteString)"
                         )
-                        providerPicker(
+                        staticProviderRow(
                             title: "Real-time speech-to-text",
-                            selection: $selectedRealtimeSTTProviderId,
-                            options: STTProviders.all.map { ($0.id, $0.displayName) },
-                            detail: selectedRealtimeSTTProviderId == "assemblyai"
-                                ? "AssemblyAI if configured; otherwise falls back to Soniox."
-                                : "Soniox, with live translation support."
+                            value: "Soniox",
+                            detail: "Fixed for live transcription, with live translation support."
                         )
                         providerPicker(
                             title: "Default transcript upgrade choice",
@@ -91,10 +78,9 @@ struct ProvidersTab: View {
                     }
                 }
 
-                SettingsCard("Speech-to-Text Provider Keys", detail: "Soniox is the default live-transcription backend. AssemblyAI is optional and can be swapped in at any time.") {
+                SettingsCard("Speech-to-Text Provider Keys", detail: "Soniox powers RTI's live transcription lane.") {
                     VStack(alignment: .leading, spacing: 12) {
                         field("Soniox API key", "soniox-...", binding(for: "soniox"))
-                        field("AssemblyAI API key", "...", binding(for: "assemblyai"))
                     }
                 }
 
@@ -125,7 +111,7 @@ struct ProvidersTab: View {
                 }
                 if !activeRealtimeSTTHasKey {
                     SettingsStatusLabel(
-                        text: "The selected real-time speech-to-text path needs a Soniox key or a configured AssemblyAI key.",
+                        text: "Live transcription needs a Soniox key.",
                         systemImage: "exclamationmark.triangle.fill",
                         color: .orange
                     )
@@ -135,15 +121,6 @@ struct ProvidersTab: View {
                         text: "The selected transcript-upgrade provider (\(activeAsyncTranscriptOption.displayName)) is missing one or more required credentials.",
                         systemImage: "exclamationmark.triangle.fill",
                         color: .orange
-                    )
-                }
-                if selectedRealtimeSTTProviderId == "assemblyai",
-                   (keyValues["assemblyai"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   !(keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    SettingsStatusLabel(
-                        text: "AssemblyAI is selected but not configured yet, so RTI will keep using Soniox until you add an AssemblyAI key.",
-                        systemImage: "arrow.triangle.branch",
-                        color: .secondary
                     )
                 }
                 if let saveError {
@@ -207,6 +184,30 @@ struct ProvidersTab: View {
         }
     }
 
+    private func staticProviderRow(title: String, value: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                Spacer()
+                Text(detail)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+            }
+            Text(value)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.08))
+                )
+        }
+    }
+
     private func binding(for account: String) -> Binding<String> {
         Binding(
             get: { keyValues[account] ?? "" },
@@ -225,7 +226,6 @@ struct ProvidersTab: View {
 
     private func load() {
         selectedLLMProviderId = LLMProviders.activeId
-        selectedRealtimeSTTProviderId = STTProviders.activeId
         selectedAsyncTranscriptProviderId = AsyncTranscriptProviders.activeId
         var next: [String: String] = [:]
         for provider in LLMProviders.all {
@@ -237,7 +237,6 @@ struct ProvidersTab: View {
             }
         }
         next["soniox"] = CredentialStore.soniox ?? ""
-        next["assemblyai"] = CredentialStore.assemblyai ?? ""
         keyValues = next
     }
 
@@ -251,13 +250,12 @@ struct ProvidersTab: View {
             )
         }
         CredentialStore.setSoniox((keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
-        CredentialStore.setAssemblyAI((keyValues["assemblyai"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
         CredentialStore.setAliyunAccessKeyID((keyValues["aliyun_access_key_id"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
         CredentialStore.setAliyunAccessKeySecret((keyValues["aliyun_access_key_secret"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
         CredentialStore.setAliyunNLSAppKey((keyValues["aliyun_nls_app_key"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
 
         LLMProviders.activeId = selectedLLMProviderId
-        STTProviders.activeId = selectedRealtimeSTTProviderId
+        STTProviders.activeId = STTProviders.soniox.id
         AsyncTranscriptProviders.activeId = selectedAsyncTranscriptProviderId
 
         let llmKey = (keyValues[activeLLMOption.keychainAccount] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -267,12 +265,10 @@ struct ProvidersTab: View {
         }
 
         let soniox = (keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let assembly = (keyValues["assemblyai"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let aliyunAccessKeyID = (keyValues["aliyun_access_key_id"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let aliyunAccessKeySecret = (keyValues["aliyun_access_key_secret"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let aliyunNLSAppKey = (keyValues["aliyun_nls_app_key"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard CredentialStore.soniox == (soniox.isEmpty ? nil : soniox),
-              CredentialStore.assemblyai == (assembly.isEmpty ? nil : assembly),
               CredentialStore.aliyunAccessKeyID == (aliyunAccessKeyID.isEmpty ? nil : aliyunAccessKeyID),
               CredentialStore.aliyunAccessKeySecret == (aliyunAccessKeySecret.isEmpty ? nil : aliyunAccessKeySecret),
               CredentialStore.aliyunNLSAppKey == (aliyunNLSAppKey.isEmpty ? nil : aliyunNLSAppKey) else {
