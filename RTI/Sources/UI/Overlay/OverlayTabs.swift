@@ -764,12 +764,12 @@ struct SetupTabView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.overlayInk)
                     .focused($searchFocused)
-                    .onTapGesture { pickerOpen = true }
+                    .onTapGesture { openPicker() }
                     .onSubmit {
                         if let first = filteredItems.first {
                             pick(first)
                             query = ""
-                            pickerOpen = false
+                            closePicker()
                         }
                     }
                 if !query.isEmpty {
@@ -783,8 +783,7 @@ struct SetupTabView: View {
                     .buttonStyle(.plain)
                 }
                 Button {
-                    pickerOpen.toggle()
-                    if pickerOpen { searchFocused = true }
+                    togglePicker()
                 } label: {
                     Image(systemName: pickerOpen ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
@@ -815,10 +814,24 @@ struct SetupTabView: View {
                 Spacer(minLength: 0)
             }
 
-            if pickerOpen || searchFocused || !query.isEmpty {
+            if pickerOpen {
                 pickerList
             }
         }
+    }
+
+    private func openPicker() {
+        pickerOpen = true
+        searchFocused = true
+    }
+
+    private func closePicker() {
+        pickerOpen = false
+        searchFocused = false
+    }
+
+    private func togglePicker() {
+        pickerOpen ? closePicker() : openPicker()
     }
 
     private var pickerList: some View {
@@ -877,9 +890,8 @@ struct SetupTabView: View {
     private func pickerRow(_ item: VaultItem) -> some View {
         Button {
             pick(item)
-            pickerOpen = false
             query = ""
-            searchFocused = false
+            closePicker()
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: item.isProject ? "folder" : "person.crop.circle")
