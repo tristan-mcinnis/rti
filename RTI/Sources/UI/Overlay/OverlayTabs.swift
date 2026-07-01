@@ -696,6 +696,7 @@ struct SetupTabView: View {
     @State private var scopeFilter: ScopeFilter = .all
     @State private var pickerOpen = false
     @State private var query = ""
+    @State private var suppressNextQueryDisclosure = false
     @State private var pasteOpen = false
     @State private var pasteText = ""
     @FocusState private var searchFocused: Bool
@@ -765,10 +766,16 @@ struct SetupTabView: View {
                     .foregroundStyle(Color.overlayInk)
                     .focused($searchFocused)
                     .onTapGesture { openPicker() }
+                    .onChange(of: query) { _, _ in
+                        if suppressNextQueryDisclosure {
+                            suppressNextQueryDisclosure = false
+                        } else {
+                            pickerOpen = true
+                        }
+                    }
                     .onSubmit {
                         if let first = filteredItems.first {
                             pick(first)
-                            query = ""
                             closePicker()
                         }
                     }
@@ -804,6 +811,9 @@ struct SetupTabView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 194)
+                .onChange(of: scopeFilter) { _, _ in
+                    pickerOpen = true
+                }
                 if let hint = scopeHint {
                     Text(hint)
                         .font(.system(size: 10))
@@ -846,10 +856,10 @@ struct SetupTabView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if !visibleProjects.isEmpty {
-                            pickerSection("Projects", items: visibleProjects)
+                            pickerSection("Projects", items: visibleProjects, total: filteredProjects.count)
                         }
                         if !visibleClients.isEmpty {
-                            pickerSection("Clients", items: visibleClients)
+                            pickerSection("Clients", items: visibleClients, total: filteredClients.count)
                         }
                     }
                     .padding(.vertical, 4)
@@ -869,14 +879,14 @@ struct SetupTabView: View {
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.overlayInk.opacity(0.10), lineWidth: 1))
     }
 
-    private func pickerSection(_ title: String, items: [VaultItem]) -> some View {
+    private func pickerSection(_ title: String, items: [VaultItem], total: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text(title)
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Color.overlayInk.opacity(0.48))
                 Spacer()
-                Text("\(items.count)")
+                Text("\(total)")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Color.overlayInk.opacity(0.30))
             }
@@ -890,7 +900,6 @@ struct SetupTabView: View {
     private func pickerRow(_ item: VaultItem) -> some View {
         Button {
             pick(item)
-            query = ""
             closePicker()
         } label: {
             HStack(spacing: 8) {
@@ -1109,6 +1118,10 @@ struct SetupTabView: View {
         store.workstreamName = item.name
         store.workstreamContext = VaultWorkstreamStore.context(for: item)
         store.workstreamItem = item
+        if !query.isEmpty {
+            suppressNextQueryDisclosure = true
+            query = ""
+        }
     }
 
     // MARK: - Discussion guide
