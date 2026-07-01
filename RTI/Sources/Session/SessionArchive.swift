@@ -7,7 +7,8 @@ import UserNotifications
 /// This is the one deliberate exception to the build's "ephemeral by design"
 /// rule: when a session ends we keep a record of the real-time transcript
 /// (including user-authored notes, which live inline as `speakerId == "note"`
-/// entries) and the chat log with the assistant. Audio is still discarded.
+/// entries), the chat log with the assistant, and session-local audio legs used
+/// only by the narrow Upgrade Transcript workflow.
 ///
 /// Layout: <vault>/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
 /// (falls back to ~/Library/Application Support/RTI/sessions/ if the vault
@@ -16,7 +17,16 @@ import UserNotifications
 ///   chat.md               — the assistant chat log (only written if non-empty)
 ///   notes.md              — generated meeting notes (only if any)
 ///   discussion-guide.md   — discussion-guide coverage (only if a guide loaded)
+///   audio-mic.m4a         — retained mic audio for Upgrade Transcript
+///   audio-system.m4a      — retained system audio for Upgrade Transcript
 enum SessionArchive {
+    struct ArchiveMetadata: Codable {
+        let sessionId: String?
+        let systemAudioStartOffsetMs: Int?
+        let micAudioFile: String?
+        let systemAudioFile: String?
+    }
+
     /// The real-time-analysis artifacts produced during a session. Bundled
     /// into one value so the call site in `SessionCoordinator` (and the
     /// linked-meeting hand-off) stay tidy. Everything in here is ephemeral
@@ -46,6 +56,10 @@ enum SessionArchive {
         transcript: [LiveEntry],
         chat: [ChatEntry],
         analysis: Analysis = Analysis(),
+        sessionId: String? = nil,
+        micRecordingURL: URL? = nil,
+        systemRecordingURL: URL? = nil,
+        systemAudioStartOffsetMs: Int? = nil,
         workstreamSlug: String? = nil,
         linkedMeeting: String? = nil
     ) -> URL? {
@@ -85,6 +99,17 @@ enum SessionArchive {
             let md = (fm("Findings") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("findings.md"))
         }
+        let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.m4a", in: dir)
+        let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.m4a", in: dir)
+        writeMetadata(
+            ArchiveMetadata(
+                sessionId: sessionId,
+                systemAudioStartOffsetMs: systemAudioStartOffsetMs,
+                micAudioFile: micName,
+                systemAudioFile: systemName
+            ),
+            to: dir
+        )
         return dir
     }
 
@@ -267,6 +292,33 @@ enum SessionArchive {
     private static func writeOwnerOnly(_ string: String, to url: URL) {
         guard (try? string.write(to: url, atomically: true, encoding: .utf8)) != nil else { return }
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    /// Move a kept session-audio artifact into the archive folder so the
+    /// transcript, chat, summary, and retained audio live together. If the file
+    /// is already in place or missing, quietly no-op.
+    private static func stageRecordingIfPresent(_ sourceURL: URL?, as fileName: String, in dir: URL) -> String? {
+        guard let sourceURL else { return nil }
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else { return nil }
+        let destination = dir.appendingPathComponent(fileName)
+        if sourceURL.standardizedFileURL == destination.standardizedFileURL { return fileName }
+        try? FileManager.default.removeItem(at: destination)
+        do {
+            try FileManager.default.moveItem(at: sourceURL, to: destination)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+            return fileName
+        } catch {
+            // Best-effort archive: if move fails (e.g. cross-volume edge case),
+            // leave the source in place rather than failing the stop path.
+            return nil
+        }
+    }
+
+    private static func writeMetadata(_ metadata: ArchiveMetadata, to dir: URL) {
+        let url = dir.appendingPathComponent("session.json")
+        guard let data = try? JSONEncoder().encode(metadata),
+              let string = String(data: data, encoding: .utf8) else { return }
+        writeOwnerOnly(string, to: url)
     }
 
     // MARK: - Rendering
@@ -527,6 +579,10 @@ enum SessionArchive {
             "",
         ]
         return lines
+    }
+
+    static func frontmatterForUpgrade(kind: String, startedAt: Date) -> [String] {
+        frontmatter(kind: kind, startedAt: startedAt)
     }
 
     private static let frontmatterStamp: DateFormatter = {

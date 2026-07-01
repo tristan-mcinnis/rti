@@ -189,6 +189,10 @@ final class LLMController {
         lastErrorIsAuth = false
     }
 
+    func clearPendingScreenContext() {
+        pendingScreenContext = nil
+    }
+
     func setScreenAttachError(_ message: String) {
         lastError = message
         lastErrorIsAuth = false
@@ -515,5 +519,39 @@ extension LLMController {
             if let modes = action.modes, !modes.contains(kind) { return false }
             return true
         }
+    }
+
+    /// Compact, user-facing description of the context the next assistant turn
+    /// can see. Mirrors `performSend` without exposing prompt internals.
+    func contextPreviewLabels() -> [String] {
+        var labels: [String] = []
+        let hasTranscript = SessionCoordinator.shared.liveEntries.contains {
+            $0.translationStatus != "translation"
+                && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if hasTranscript { labels.append("Live transcript") }
+        if let workstream = MeetingContextStore.shared.workstreamName, !workstream.isEmpty {
+            labels.append(workstream)
+        }
+        if !MeetingContextStore.shared.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            labels.append("Meeting note")
+        }
+        if MeetingContextStore.shared.briefContext != nil {
+            labels.append("Brief")
+        }
+        if DiscussionGuideController.shared.guide != nil {
+            labels.append("Guide")
+        }
+        if !GlossaryStore.shared.entries.isEmpty {
+            labels.append("Glossary")
+        }
+        if pendingScreenContext != nil {
+            labels.append("Screen OCR")
+        }
+        return labels
+    }
+
+    func toolPreviewLabels() -> [String] {
+        ["Screen", "Vault", "Recent", "Docs", "Grep", "Files"]
     }
 }

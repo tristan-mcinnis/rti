@@ -7,6 +7,7 @@ struct AssistantInputView: View {
 
     @State private var input: String = ""
     @State private var isDropTargeted = false
+    @State private var selectedSlashIndex = 0
     @FocusState private var isInputFocused: Bool
     @AppStorage(OverlayAppearanceDefaults.invisibilityKey) private var isHiddenFromCapture: Bool = true
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
@@ -20,51 +21,62 @@ struct AssistantInputView: View {
     private let opacityPresets: [Double] = [0.20, 0.40, 0.60, 0.75, 0.85, 0.95, 1.00]
 
     var body: some View {
-        // One composer pill: leading actions, flexible field, trailing send —
-        // no separate control row ("chin"). Recording state lives on the
-        // top-bar Record button, so there's no inline badge here.
-        HStack(spacing: 6) {
-            actionsMenu
-            moreDots
+        VStack(alignment: .leading, spacing: 6) {
+            if showSlashCommands {
+                slashCommandBar
+            }
 
-            ZStack(alignment: .leading) {
-                if input.isEmpty {
-                    Text(textFieldPrompt)
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.overlayInk.opacity(0.45))
-                        .allowsHitTesting(false)
+            if shouldShowContextDashboard {
+                contextDashboard
+            }
+
+            // One composer pill: leading actions, flexible field, trailing send.
+            HStack(spacing: 6) {
+                actionsMenu
+                moreDots
+                if session.isRunning {
+                    noteModeToggle
                 }
-                TextField("", text: $input)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.overlayInk.opacity(0.95))
-                    .focused($isInputFocused)
-                    .onSubmit(submit)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.leading, 2)
 
-            if llm.streaming {
-                stopButton
-            } else {
-                sendButton
+                ZStack(alignment: .leading) {
+                    if input.isEmpty {
+                        Text(textFieldPrompt)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.overlayInk.opacity(0.45))
+                            .allowsHitTesting(false)
+                    }
+                    TextField("", text: $input)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.overlayInk.opacity(0.95))
+                        .focused($isInputFocused)
+                        .onSubmit(submit)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.leading, 2)
+
+                if llm.streaming {
+                    stopButton
+                } else {
+                    sendButton
+                }
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.overlayInk.opacity(isDropTargeted ? 0.12 : 0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(isDropTargeted
+                                ? Color.blue.opacity(0.7)
+                                : (inputState.isNoteMode
+                                    ? Color.yellow.opacity(0.55)
+                                    : Color.overlayInk.opacity(0.10)),
+                                lineWidth: isDropTargeted ? 1.5 : 1)
+                    )
+            )
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color.overlayInk.opacity(isDropTargeted ? 0.12 : 0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(isDropTargeted
-                            ? Color.blue.opacity(0.7)
-                            : (inputState.isNoteMode
-                                ? Color.yellow.opacity(0.55)
-                                : Color.overlayInk.opacity(0.10)),
-                            lineWidth: isDropTargeted ? 1.5 : 1)
-                )
-        )
         // Drop an image here → it's OCR'd on-device and attached as context for
         // the next message (same path as ⌘⇧H screen capture; no image is sent
         // to the model, only the extracted text).
@@ -83,6 +95,161 @@ struct AssistantInputView: View {
                 isInputFocused = true
             }
         }
+        .onChange(of: input) { _, _ in
+            selectedSlashIndex = 0
+        }
+        .onMoveCommand { direction in
+            guard showSlashCommands else { return }
+            switch direction {
+            case .down, .right:
+                moveSlashSelection(1)
+            case .up, .left:
+                moveSlashSelection(-1)
+            default:
+                break
+            }
+        }
+    }
+
+    private var contextDashboard: some View {
+        HStack(spacing: 6) {
+            let labels = llm.contextPreviewLabels().filter { $0 != "Screen OCR" }
+            if !labels.isEmpty {
+                Menu {
+                    Section("Context") {
+                        ForEach(labels, id: \.self) { label in
+                            Label(label, systemImage: "checkmark")
+                        }
+                    }
+                    Section("Tools") {
+                        ForEach(llm.toolPreviewLabels(), id: \.self) { label in
+                            Text(label)
+                        }
+                    }
+                } label: {
+                    miniPill(contextSummary(labels), icon: "scope", active: true)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .help("Context and tools available to the next message")
+            }
+
+            if llm.pendingScreenContext != nil {
+                Button {
+                    llm.clearPendingScreenContext()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera.viewfinder")
+                        Text("Screen · once")
+                        Image(systemName: "xmark")
+                    }
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.blue.opacity(0.95))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.blue.opacity(0.16)))
+                }
+                .buttonStyle(.plain)
+                .help("Remove screen OCR from the next message")
+            }
+
+            if llm.smartMode {
+                miniPill("Smart", icon: "sparkles", active: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .lineLimit(1)
+    }
+
+    private var shouldShowContextDashboard: Bool {
+        !llm.contextPreviewLabels().filter { $0 != "Screen OCR" }.isEmpty
+            || llm.pendingScreenContext != nil
+            || llm.smartMode
+    }
+
+    private func contextSummary(_ labels: [String]) -> String {
+        guard let first = labels.first else { return "Context" }
+        if labels.count == 1 { return first }
+        return "\(first) +\(labels.count - 1)"
+    }
+
+    private var showSlashCommands: Bool {
+        input.hasPrefix("/") && !input.contains(" ") && !input.contains("\n")
+    }
+
+    private var slashCommandBar: some View {
+        HStack(spacing: 5) {
+            ForEach(Array(visibleSlashCommands.enumerated()), id: \.element.id) { idx, command in
+                Button {
+                    performSlashCommand(command.id)
+                    input = ""
+                    DispatchQueue.main.async { isInputFocused = true }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: command.symbol)
+                        Text(command.label)
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.overlayInk.opacity(idx == selectedSlashIndex ? 0.92 : 0.68))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(Color.overlayInk.opacity(idx == selectedSlashIndex ? 0.12 : 0.06)))
+                    .overlay(
+                        Capsule().stroke(Color.overlayInk.opacity(idx == selectedSlashIndex ? 0.16 : 0), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help(command.help)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var visibleSlashCommands: [SlashCommand] {
+        Array(filteredSlashCommands.prefix(6))
+    }
+
+    private var filteredSlashCommands: [SlashCommand] {
+        let q = input.dropFirst().lowercased()
+        guard !q.isEmpty else { return slashCommands }
+        return slashCommands.filter { $0.id.contains(q) || $0.label.lowercased().contains(q) }
+    }
+
+    private var slashCommands: [SlashCommand] {
+        [
+            SlashCommand(id: "assist", label: "Assist", symbol: "sparkles", help: "Suggest what to do next"),
+            SlashCommand(id: "say", label: "Say next", symbol: "wand.and.rays", help: "Draft a quick reply"),
+            SlashCommand(id: "followups", label: "Follow-ups", symbol: "bubble.left.and.text.bubble.right", help: "Generate follow-up questions"),
+            SlashCommand(id: "recap", label: "Recap", symbol: "arrow.clockwise", help: "Recap the recent conversation"),
+            SlashCommand(id: "summary", label: "Summary", symbol: "doc.text", help: "Summarize the full session"),
+            SlashCommand(id: "note", label: "Note", symbol: "note.text", help: "Insert a live note"),
+            SlashCommand(id: "screen", label: "Screen", symbol: "camera.viewfinder", help: "Attach screen OCR to the next message"),
+            SlashCommand(id: "recent", label: "Recent", symbol: "calendar", help: "Ask about recent project meetings"),
+        ]
+    }
+
+    private func moveSlashSelection(_ delta: Int) {
+        let count = visibleSlashCommands.count
+        guard count > 0 else { return }
+        selectedSlashIndex = (selectedSlashIndex + delta + count) % count
+    }
+
+    private func miniPill(_ text: String, icon: String?, active: Bool) -> some View {
+        HStack(spacing: 4) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            Text(text)
+                .truncationMode(.tail)
+        }
+        .font(.system(size: 11, weight: .medium))
+        .foregroundStyle(active ? Color.overlayInk.opacity(0.58) : Color.overlayInk.opacity(0.38))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.overlayInk.opacity(active ? 0.055 : 0.035)))
     }
 
     private var moreDots: some View {
@@ -134,6 +301,38 @@ struct AssistantInputView: View {
                     Label("Clear chat", systemImage: "eraser")
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+            }
+
+            Menu {
+                ForEach(LLMProviders.all) { provider in
+                    Button {
+                        LLMProviders.activeId = provider.id
+                    } label: {
+                        if provider.id == LLMProviders.activeId {
+                            Label(provider.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(provider.displayName)
+                        }
+                    }
+                }
+            } label: {
+                Label("Assistant provider", systemImage: "sparkles.rectangle.stack")
+            }
+
+            Menu {
+                ForEach(STTProviders.all, id: \.id) { provider in
+                    Button {
+                        STTProviders.activeId = provider.id
+                    } label: {
+                        if provider.id == STTProviders.activeId {
+                            Label(provider.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(provider.displayName)
+                        }
+                    }
+                }
+            } label: {
+                Label("Transcription provider", systemImage: "waveform.badge.mic")
             }
 
             Menu {
@@ -190,6 +389,44 @@ struct AssistantInputView: View {
         .accessibilityLabel("More actions")
         .accessibilityHint("Quick actions and settings")
         .help("Quick actions and settings")
+    }
+
+    private var noteModeToggle: some View {
+        Button {
+            inputState.isNoteMode.toggle()
+            DispatchQueue.main.async {
+                isInputFocused = true
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: inputState.isNoteMode ? "note.text" : "text.cursor")
+                    .font(.system(size: 10, weight: .semibold))
+                Text(inputState.isNoteMode ? "Note" : "Chat")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(inputState.isNoteMode ? Color.yellow.opacity(0.95) : Color.overlayInk.opacity(0.7))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(
+                    inputState.isNoteMode
+                        ? Color.yellow.opacity(0.14)
+                        : Color.overlayInk.opacity(0.06)
+                )
+            )
+            .overlay(
+                Capsule()
+                    .stroke(
+                        inputState.isNoteMode
+                            ? Color.yellow.opacity(0.4)
+                            : Color.overlayInk.opacity(0.08),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(inputState.isNoteMode ? "Switch to chat mode" : "Switch to note mode")
+        .help(inputState.isNoteMode ? "Note mode on — next Enter inserts inline into the transcript" : "Chat mode on — toggle to drop a quick note into the transcript")
     }
 
     /// Saved session records — opens the in-app read-only browser (Sessions
@@ -339,7 +576,7 @@ struct AssistantInputView: View {
 
     private var textFieldPrompt: String {
         if inputState.isNoteMode {
-            return "Type a note — Enter inserts inline into the transcript"
+            return "Quick note — Enter inserts inline, then returns to chat"
         }
         return "Ask, drop an image, or ⌘↵ for Assist"
     }
@@ -391,10 +628,76 @@ struct AssistantInputView: View {
         if inputState.isNoteMode {
             if SessionCoordinator.shared.insertNote(text) {
                 input = ""
+                inputState.isNoteMode = false
+                DispatchQueue.main.async {
+                    isInputFocused = true
+                }
             }
         } else {
+            if text.hasPrefix("/") {
+                if performSlashSubmit(String(text.dropFirst())) {
+                    input = ""
+                }
+                DispatchQueue.main.async { isInputFocused = true }
+                return
+            }
             llm.sendAskAnything(text)
             input = ""
         }
+    }
+
+    @discardableResult
+    private func performSlashSubmit(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("note ") {
+            let noteText = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard SessionCoordinator.shared.insertNote(noteText) else { return false }
+            inputState.isNoteMode = false
+            return true
+        }
+
+        if showSlashCommands, let command = visibleSlashCommands[safe: selectedSlashIndex] {
+            return performSlashCommand(command.id)
+        }
+
+        return performSlashCommand(trimmed)
+    }
+
+    @discardableResult
+    private func performSlashCommand(_ raw: String) -> Bool {
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "assist":
+            llm.sendAssist()
+        case "say", "saynext":
+            llm.sendSaySomething()
+        case "followups", "followup":
+            llm.sendFollowupQuestions()
+        case "recap":
+            llm.sendRecap()
+        case "summary", "summarize":
+            llm.sendSummary()
+        case "note":
+            inputState.isNoteMode = true
+        case "screen":
+            ScreenshotManager.shared.captureAndAttach()
+        case "recent":
+            llm.sendAskAnything("What were the most recent meetings or sessions for this project? Use the recent meetings tool if project context is available.")
+        default:
+            return false
+        }
+        return true
+    }
+}
+
+private struct SlashCommand: Identifiable {
+    let id: String
+    let label: String
+    let symbol: String
+    let help: String
+}
+
+private extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

@@ -48,6 +48,7 @@ final class OverlayWindowController {
             defer: false
         )
         panel.isFloatingPanel = true
+        panel.becomesKeyOnlyIfNeeded = true
         panel.level = .floating
         panel.backgroundColor = .clear
         panel.isOpaque = false
@@ -166,9 +167,13 @@ final class OverlayWindowController {
         window.sharingType = invisible ? .none : .readOnly
     }
 
-    func show() {
+    func show(initialLaunch: Bool = false) {
         window.alphaValue = 0
-        window.orderFrontRegardless()
+        if initialLaunch {
+            window.orderFront(nil)
+        } else {
+            window.orderFrontRegardless()
+        }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
             window.animator().alphaValue = 1

@@ -29,7 +29,7 @@ final class WindowCoordinator {
 
         let controller = OverlayWindowController(onOpenSettings: onOpenSettings)
         overlayController = controller
-        controller.show()
+        controller.show(initialLaunch: true)
 
         for id in FloatingPanelID.allCases {
             floatingPanels[id] = FloatingPanelWindowController(spec: id.spec)
@@ -93,7 +93,7 @@ final class WindowCoordinator {
     // MARK: - Convenience wrappers used by AppDelegate / menu
 
     func showLiveTranscript() { showSessionsControl(tab: .liveTranscript) }
-    func openSettings() { showSessionsControl(tab: .settings) }
+    func openSettings() { showSessionsControl(tab: .providers) }
 
     // MARK: - Floating panels
 

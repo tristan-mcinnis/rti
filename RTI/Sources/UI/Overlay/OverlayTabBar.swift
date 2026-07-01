@@ -104,8 +104,8 @@ private struct OverlayTabButton: View {
 
 /// Leading icon button that opens the Setup surface. Setup is a pre-call
 /// surface (project, discussion guide, live-analysis toggles), so it sits to
-/// the left of the live tabs as a compact icon rather than competing with them
-/// for equal weight. Click toggles into Setup and back to where you were.
+/// the left of the live tabs as a dedicated pill rather than competing with
+/// them for equal weight. Click toggles into Setup and back to where you were.
 struct OverlaySetupButton: View {
     @Binding var selection: OverlayTab
     @State private var lastNonSetup: OverlayTab = .assist
@@ -119,15 +119,25 @@ struct OverlaySetupButton: View {
                 selection = .setup
             }
         } label: {
-            Image(systemName: OverlayTab.setup.icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(selection == .setup ? Color.overlayInk : Color.overlayInk.opacity(0.5))
-                .frame(width: 26, height: 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(selection == .setup ? Color.overlayInk.opacity(0.14) : Color.clear)
-                )
-                .contentShape(Rectangle())
+            HStack(spacing: 5) {
+                Image(systemName: OverlayTab.setup.icon)
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Setup")
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selection == .setup ? Color.overlayInk : Color.overlayInk.opacity(0.6))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(selection == .setup ? Color.overlayInk.opacity(0.14) : Color.overlayInk.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(selection == .setup ? Color.overlayInk.opacity(0.12) : Color.clear, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Setup")

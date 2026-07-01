@@ -135,17 +135,58 @@ This is the definitive both-sides-recorded test. Open the **Audio I/O Monitor**
 ## E. Auto-update
 - [ ] After publishing a release whose tag is **newer** than the running build, menubar → **Check for Updates…** offers a Download button to the release page. (Up-to-date shows "You're up to date".)
 
-## F. Signing + notarization (needs your Apple Developer ID)
+## F. Upgrade Transcript (archived-session exception)
+This verifies the narrow post-hoc exception: a finished RTI archive with retained
+audio can be upgraded without creating a corpus, import flow, database, or
+cross-session search surface.
+
+1. Build and launch RTI.
+2. Ensure Settings → Providers has credentials for the provider you intend to
+   test. Soniox is suitable for the public English fixture; Aliyun is intended
+   for Chinese-heavy sessions.
+3. Create or select an archived session folder that contains:
+   - `transcript.md`
+   - `audio-mic.m4a` and/or `audio-system.m4a`
+   - optional `session.json` with `micAudioFile`, `systemAudioFile`, and
+     `systemAudioStartOffsetMs`
+4. For a disposable public fixture, download an Open Speech Repository sample
+   and convert it:
+
+   ```bash
+   curl -L -o /tmp/OSR_us_000_0010_8k.wav \
+     https://www.voiptroubleshooter.com/open_speech/american/OSR_us_000_0010_8k.wav
+   ffmpeg -y -i /tmp/OSR_us_000_0010_8k.wav -ac 1 -ar 16000 -c:a aac /tmp/audio-mic.m4a
+   ```
+
+5. Open **Past Sessions**, select the archived session, click
+   **Upgrade Transcript**, then choose **Soniox** or **Aliyun
+   (Chinese-heavy)** in the provider prompt.
+6. Expected UI behavior:
+   - Button disables while the job runs.
+   - Status reports provider selection, per-file transcription, note
+     preservation, write, summary regeneration, and final success/failure.
+   - Missing audio, missing credentials, script failures, timeouts, and empty
+     provider transcripts are shown without replacing the original transcript.
+7. Expected files after success:
+   - `transcript.md` contains the upgraded transcript.
+   - `transcript.upgraded.md` contains the same upgraded output.
+   - `transcript.backup-<stamp>.md` preserves the prior rough transcript.
+   - Existing `summary.md` is backed up as `summary.backup-<stamp>.md`.
+   - `summary.md` is regenerated from the upgraded transcript.
+   - Inline `📝 Note:` rows from the old transcript are preserved at their
+     approximate timestamps/order.
+
+## G. Signing + notarization (needs your Apple Developer ID)
 - [ ] `export DEVELOPMENT_TEAM=…`, set up `notarytool` profile `rti-notary` (see RELEASE.md), then `./scripts/release.sh <version>`.
 - [ ] `spctl --assess --type open --context context:primary-signature -v RTI-<version>.dmg` → accepted.
 - [ ] Install from the DMG on a Mac that's never run RTI → launches without right-click-Open; onboarding works.
 - [ ] `gh release create v<version> RTI-<version>.dmg` (the tag is what the updater reads).
 
-## G. Context (client/project/status)
+## H. Context (client/project/status)
 - [ ] Open the **Context panel** (menubar → Toggle Context Panel). Type a note ("Client: Acme, status: behind"). ⌘↵ Assist → the suggestion reflects it.
 - [ ] If your Hermes vault has a pre-meeting brief, it auto-loads in the panel (picker if several).
 
-## H. Real meeting (the final gate)
+## I. Real meeting (the final gate)
 - [ ] Join a real call. Both sides transcribe (Live Transcript shows "self" + "them").
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
 - [ ] Notes / Dossiers / Discussion-guide panels populate.

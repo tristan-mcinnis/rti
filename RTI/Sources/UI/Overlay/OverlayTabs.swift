@@ -686,7 +686,7 @@ struct SetupTabView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text("Which engine transcribes live audio. Soniox is the default (best multilingual + diarization); AssemblyAI needs its key in Settings → Keys. Applies on the next session.")
+            Text("Which engine transcribes live audio. Soniox is the default (best multilingual + diarization); AssemblyAI needs its key in Settings → Providers. Changing this during a live session reconnects transcription with a short gap.")
                 .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.45))
                 .fixedSize(horizontal: false, vertical: true)
         }

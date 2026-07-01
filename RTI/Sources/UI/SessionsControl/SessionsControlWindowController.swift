@@ -32,8 +32,28 @@ final class SessionsControlWindowController {
         w.appearance = NSAppearance(named: .aqua)
         w.contentView = NSHostingView(rootView: SessionsControlView(initialTab: tab))
         w.center()
+        keepWindowVisible(w)
         w.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.async {
+            self.keepWindowVisible(w)
+        }
         NSApp.activate(ignoringOtherApps: true)
         window = w
+    }
+
+    private func keepWindowVisible(_ window: NSWindow) {
+        let currentFrame = window.frame
+        if NSScreen.screens.contains(where: { screen in
+            screen.visibleFrame.intersects(currentFrame)
+        }) {
+            return
+        }
+
+        let visibleFrame = NSScreen.main?.visibleFrame ?? NSScreen.screens.first?.visibleFrame
+        guard let visibleFrame else { return }
+
+        let x = visibleFrame.midX - currentFrame.width / 2
+        let y = visibleFrame.midY - currentFrame.height / 2
+        window.setFrameOrigin(NSPoint(x: x, y: y))
     }
 }

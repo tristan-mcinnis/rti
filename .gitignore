@@ -6,6 +6,7 @@ RTI/Sources/Secrets.swift
 
 # Xcode
 DerivedData/
+.deriveddata/
 build/
 *.xcuserdatad/
 xcuserdata/

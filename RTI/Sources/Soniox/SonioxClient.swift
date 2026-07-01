@@ -285,6 +285,33 @@ struct STTProviderConfig: Sendable {
     let makeClient: @Sendable (_ translationConfig: TranslationConfig?, _ contextTerms: [String]) -> STTClient
 }
 
+/// A separate provider lane for offline / post-hoc transcript upgrade. This is
+/// intentionally distinct from `STTProviders`: the best provider for low-latency
+/// live diarization is not necessarily the best provider for a slower, more
+/// accurate async pass over the session-local retained audio legs.
+struct AsyncTranscriptProviderOption: Identifiable, Sendable {
+    struct CredentialField: Identifiable, Sendable {
+        let account: String
+        let label: String
+        let placeholder: String
+
+        var id: String { account }
+    }
+
+    let id: String
+    let displayName: String
+    let credentialFields: [CredentialField]
+    let summary: String
+
+    var hasKey: Bool {
+        credentialFields.allSatisfy {
+            !(CredentialStore.value(for: $0.account) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        }
+    }
+}
+
 /// Registry + active-selection for STT providers. The active provider is stored
 /// in UserDefaults (`rti.stt.activeProviderId`) and surfaced in Settings,
 /// exactly like `LLMProviders`. Add a new provider by adding a config here.
@@ -330,6 +357,48 @@ enum STTProviders {
             return soniox.makeClient(translationConfig, contextTerms)
         }
         return choice.makeClient(translationConfig, contextTerms)
+    }
+}
+
+/// Provider selection for the "Upgrade Transcript" path: a slower async
+/// pass over the archived session's retained `.m4a` legs that can replace the rough
+/// live transcript and then regenerate the summary from the upgraded text.
+///
+/// This setting does not affect the live transcript today. It exists now so the
+/// provider model and user-facing settings reflect the real architectural split:
+/// live capture vs post-hoc upgrade are different jobs with different provider
+/// tradeoffs.
+enum AsyncTranscriptProviders {
+    static let soniox = AsyncTranscriptProviderOption(
+        id: "soniox_file",
+        displayName: "Soniox",
+        credentialFields: [
+            .init(account: "soniox", label: "Soniox API key", placeholder: "soniox-...")
+        ],
+        summary: "Reuse Soniox for offline file transcription when you want consistency with the live lane."
+    )
+
+    static let aliyun = AsyncTranscriptProviderOption(
+        id: "aliyun_file",
+        displayName: "Aliyun",
+        credentialFields: [
+            .init(account: "aliyun_access_key_id", label: "Aliyun Access Key ID", placeholder: "LTAI..."),
+            .init(account: "aliyun_access_key_secret", label: "Aliyun Access Key Secret", placeholder: "secret..."),
+            .init(account: "aliyun_nls_app_key", label: "Aliyun NLS App Key", placeholder: "appkey...")
+        ],
+        summary: "Preferred for Chinese-heavy async transcript upgrades."
+    )
+
+    static let all: [AsyncTranscriptProviderOption] = [soniox, aliyun]
+
+    static let activeIdKey = "rti.stt.asyncProviderId"
+    static var activeId: String {
+        get { UserDefaults.standard.string(forKey: activeIdKey) ?? soniox.id }
+        set { UserDefaults.standard.set(newValue, forKey: activeIdKey) }
+    }
+
+    static var active: AsyncTranscriptProviderOption {
+        all.first { $0.id == activeId } ?? soniox
     }
 }
 

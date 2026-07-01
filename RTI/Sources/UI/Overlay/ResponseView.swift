@@ -119,7 +119,7 @@ struct ResponseView: View {
 
     @ViewBuilder
     private var emptyStateBody: some View {
-        if CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
+        if !LLMProviders.activeHasKey || !STTProviders.activeHasKey {
             missingKeysBody
         } else {
             readyBody
@@ -317,9 +317,12 @@ private struct AssistantMessageRow: View {
                                 .controlSize(.small)
                                 .scaleEffect(0.6)
                             Text(toolStatus)
-                                .font(.system(size: 12))
-                                .foregroundStyle(Color.overlayInk.opacity(0.55))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.overlayInk.opacity(0.68))
                         }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.overlayInk.opacity(0.06)))
                     }
 
                     // Hover actions on a settled (non-streaming) reply. The bar

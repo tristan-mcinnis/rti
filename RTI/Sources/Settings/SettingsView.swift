@@ -9,13 +9,13 @@ import SwiftUI
 /// section-level controls.
 struct SettingsView: View {
     enum SettingsTab: String, CaseIterable, Identifiable {
-        case keys, modes, prompts, glossary, general
+        case providers, modes, prompts, glossary, general
 
         var id: String { rawValue }
 
         var label: String {
             switch self {
-            case .keys: "Keys"
+            case .providers: "Providers"
             case .modes: "Modes"
             case .prompts: "Prompts"
             case .glossary: "Glossary"
@@ -25,7 +25,7 @@ struct SettingsView: View {
 
         var systemImage: String {
             switch self {
-            case .keys: "key.fill"
+            case .providers: "server.rack"
             case .modes: "square.stack.3d.up"
             case .prompts: "text.bubble"
             case .glossary: "character.book.closed"
@@ -35,7 +35,7 @@ struct SettingsView: View {
 
         var description: String {
             switch self {
-            case .keys: "Connect RTI to your transcription and assistant providers."
+            case .providers: "Choose providers, store keys, and swap LLM or STT backends."
             case .modes: "Tune the assistant persona and reference context."
             case .prompts: "Edit the action prompts RTI sends to the model."
             case .glossary: "Keep names, acronyms, and domain terms consistent."
@@ -46,26 +46,22 @@ struct SettingsView: View {
 
     var onClose: (() -> Void)?
 
-    @State private var section: SettingsTab = .keys
+    @State private var section: SettingsTab = .providers
 
     var body: some View {
         HSplitView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Settings")
-                    .font(.system(size: 20, weight: .semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.top, 18)
-
-                List(selection: $section) {
-                    ForEach(SettingsTab.allCases) { tab in
-                        Label(tab.label, systemImage: tab.systemImage)
-                            .tag(tab)
-                    }
-                }
-                .listStyle(.sidebar)
-            }
-            .frame(minWidth: 178, idealWidth: 188, maxWidth: 220)
-            .background(.thinMaterial)
+            SettingsSidebar(selection: $section)
+                .frame(minWidth: 210, idealWidth: 224, maxWidth: 250)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(nsColor: .controlBackgroundColor),
+                            Color(nsColor: .windowBackgroundColor)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
 
             VStack(alignment: .leading, spacing: 0) {
                 SettingsHeader(tab: section, onClose: onClose)
@@ -74,7 +70,7 @@ struct SettingsView: View {
 
                 Group {
                     switch section {
-                    case .keys: KeysTab()
+                    case .providers: ProvidersTab()
                     case .modes: ModesTab()
                     case .prompts: PromptsTab()
                     case .glossary: GlossaryTab()
@@ -90,6 +86,63 @@ struct SettingsView: View {
     }
 }
 
+private struct SettingsSidebar: View {
+    @Binding var selection: SettingsView.SettingsTab
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.black.opacity(0.06))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "waveform.path.ecg.rectangle")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("RTI")
+                        .font(.system(size: 22, weight: .semibold))
+                    Text("Preferences")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 22)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(SettingsView.SettingsTab.allCases) { tab in
+                    Button {
+                        selection = tab
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: tab.systemImage)
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(width: 18)
+                            Text(tab.label)
+                                .font(.system(size: 15, weight: .medium))
+                            Spacer(minLength: 0)
+                        }
+                        .foregroundStyle(selection == tab ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(selection == tab ? Color.black.opacity(0.07) : Color.clear)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+
+            Spacer(minLength: 0)
+        }
+    }
+}
+
 private struct SettingsHeader: View {
     let tab: SettingsView.SettingsTab
     let onClose: (() -> Void)?
@@ -98,16 +151,20 @@ private struct SettingsHeader: View {
         HStack(spacing: 12) {
             Image(systemName: tab.systemImage)
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 32, height: 32)
+                .foregroundStyle(Color.primary.opacity(0.75))
+                .frame(width: 36, height: 36)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.10))
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.black.opacity(0.05))
                 )
 
             VStack(alignment: .leading, spacing: 2) {
+                Text(tab.label.uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
                 Text(tab.label)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 23, weight: .semibold))
                 Text(tab.description)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -121,8 +178,16 @@ private struct SettingsHeader: View {
             }
         }
         .padding(.horizontal, 22)
-        .padding(.vertical, 16)
-        .background(.bar)
+        .padding(.vertical, 18)
+        .background(
+            Color(nsColor: .windowBackgroundColor)
+                .overlay(
+                    Rectangle()
+                        .fill(Color.black.opacity(0.03))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+        )
     }
 }
 

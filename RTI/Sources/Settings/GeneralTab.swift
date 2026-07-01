@@ -10,8 +10,6 @@ struct GeneralTab: View {
         SettingsPage {
             VStack(alignment: .leading, spacing: 14) {
                 SettingsCard { LaunchAtLoginSection() }
-                SettingsCard { AssistantSection() }
-                SettingsCard { TranscriptionSection() }
                 SettingsCard { AudioInputSection() }
                 SettingsCard { RealTimeAnalysisSection() }
                 SettingsCard { OverlayAppearanceSection() }
@@ -48,67 +46,6 @@ private struct LaunchAtLoginSection: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
             }
-        }
-    }
-}
-
-// MARK: - Assistant
-
-private struct AssistantSection: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Assistant")
-                .font(.system(size: 13, weight: .medium))
-            llmProviderRow
-            Text("Provider is selected in code (`LLMProviders.activeId`). All providers must speak OpenAI-compatible streaming chat. Add its API key in Keys.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    @ViewBuilder
-    private var llmProviderRow: some View {
-        let active = LLMProviders.active
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(active.displayName)
-                    .font(.system(size: 12, weight: .medium))
-                Text(active.model)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text(active.baseURL.host ?? "")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.06))
-        )
-    }
-}
-
-// MARK: - Transcription (speech-to-text provider)
-
-private struct TranscriptionSection: View {
-    @AppStorage(STTProviders.activeIdKey) private var providerId = "soniox"
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Transcription")
-                .font(.system(size: 13, weight: .medium))
-            Picker("Speech-to-text", selection: $providerId) {
-                ForEach(STTProviders.all, id: \.id) { provider in
-                    Text(provider.displayName).tag(provider.id)
-                }
-            }
-            .pickerStyle(.menu)
-            Text("Applies on the next session. If the selected provider has no key, RTI falls back to Soniox.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -407,7 +344,8 @@ private struct DiagnosticsSection: View {
             Text("Diagnostics")
                 .font(.system(size: 13, weight: .medium))
             diagRow("Version", "RTI \(version) (\(build))")
-            diagRow("Provider", "\(LLMProviders.active.displayName) · \(LLMProviders.active.model)")
+            diagRow("Assistant", "\(LLMProviders.active.displayName) · \(LLMProviders.active.model)")
+            diagRow("Transcribe", STTProviders.active.displayName)
             HStack {
                 Spacer()
                 Button("Copy diagnostics") { copyDiagnostics() }
@@ -440,7 +378,8 @@ private struct DiagnosticsSection: View {
         let lines = [
             "RTI \(version) (\(build))",
             "Platform: \(ProcessInfo.processInfo.operatingSystemVersionString)",
-            "Provider: \(provider.displayName) · \(provider.model) · \(provider.baseURL.absoluteString)"
+            "Assistant: \(provider.displayName) · \(provider.model) · \(provider.baseURL.absoluteString)",
+            "Transcription: \(STTProviders.active.displayName)"
         ]
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)

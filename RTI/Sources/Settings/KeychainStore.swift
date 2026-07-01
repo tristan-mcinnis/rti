@@ -128,16 +128,39 @@ enum KeychainStore {
 
 enum CredentialStore {
     private static let deepseekAccount = "deepseek"
+    private static let openAIAccount = "openai"
+    private static let openRouterAccount = "openrouter"
     private static let sonioxAccount = "soniox"
     private static let assemblyaiAccount = "assemblyai"
+    private static let aliyunAccessKeyIDAccount = "aliyun_access_key_id"
+    private static let aliyunAccessKeySecretAccount = "aliyun_access_key_secret"
+    private static let aliyunNLSAppKeyAccount = "aliyun_nls_app_key"
 
     static var deepseek: String? { KeychainStore.get(deepseekAccount) }
+    static var openai: String? { KeychainStore.get(openAIAccount) }
+    static var openrouter: String? { KeychainStore.get(openRouterAccount) }
     static var soniox: String? { KeychainStore.get(sonioxAccount) }
     static var assemblyai: String? { KeychainStore.get(assemblyaiAccount) }
+    static var aliyunAccessKeyID: String? { KeychainStore.get(aliyunAccessKeyIDAccount) }
+    static var aliyunAccessKeySecret: String? { KeychainStore.get(aliyunAccessKeySecretAccount) }
+    static var aliyunNLSAppKey: String? { KeychainStore.get(aliyunNLSAppKeyAccount) }
 
     static func setDeepSeek(_ value: String) { KeychainStore.set(value, for: deepseekAccount) }
+    static func setOpenAI(_ value: String) { KeychainStore.set(value, for: openAIAccount) }
+    static func setOpenRouter(_ value: String) { KeychainStore.set(value, for: openRouterAccount) }
     static func setSoniox(_ value: String) { KeychainStore.set(value, for: sonioxAccount) }
     static func setAssemblyAI(_ value: String) { KeychainStore.set(value, for: assemblyaiAccount) }
+    static func setAliyunAccessKeyID(_ value: String) { KeychainStore.set(value, for: aliyunAccessKeyIDAccount) }
+    static func setAliyunAccessKeySecret(_ value: String) { KeychainStore.set(value, for: aliyunAccessKeySecretAccount) }
+    static func setAliyunNLSAppKey(_ value: String) { KeychainStore.set(value, for: aliyunNLSAppKeyAccount) }
+
+    static func value(for account: String) -> String? {
+        KeychainStore.get(account)
+    }
+
+    static func setValue(_ value: String, for account: String) {
+        KeychainStore.set(value, for: account)
+    }
 
     /// One-time migration of any plaintext keys still living in Secrets.swift.
     /// Earlier versions also wrote into the macOS Keychain; we no longer touch

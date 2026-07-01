@@ -6,8 +6,8 @@ struct OnboardingView: View {
     var onDone: () -> Void
 
     @State private var soniox = ""
-    @State private var deepseek = ""
-    @State private var keysConfigured = CredentialStore.deepseek != nil && CredentialStore.soniox != nil
+    @State private var llmKey = ""
+    @State private var keysConfigured = LLMProviders.activeHasKey && STTProviders.activeHasKey
     @State private var justSaved = false
     @State private var saveError: String?
     @State private var micState = AppPermissions.microphone
@@ -19,7 +19,7 @@ struct OnboardingView: View {
 
     private var canSave: Bool {
         !soniox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !deepseek.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !llmKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var isReady: Bool {
@@ -45,7 +45,7 @@ struct OnboardingView: View {
         }
         .onAppear {
             soniox = CredentialStore.soniox ?? ""
-            deepseek = CredentialStore.deepseek ?? ""
+            llmKey = CredentialStore.value(for: LLMProviders.activeOption.keychainAccount) ?? ""
         }
     }
 
@@ -74,17 +74,17 @@ struct OnboardingView: View {
             )
             keyField(
                 "\(providerName) API key",
-                placeholder: "sk-…",
-                text: $deepseek,
+                placeholder: LLMProviders.activeOption.apiKeyPlaceholder,
+                text: $llmKey,
                 help: "The assistant.",
                 linkTitle: "Get a key",
-                linkURL: "https://platform.deepseek.com"
+                linkURL: LLMProviders.activeOption.consoleURL
             )
             if let saveError {
                 Text(saveError).font(.system(size: 11)).foregroundStyle(.red)
             }
             HStack(spacing: 10) {
-                Button("Save keys") { saveKeys() }
+                Button("Save provider keys") { saveKeys() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
                 if justSaved || keysConfigured {
@@ -206,11 +206,12 @@ struct OnboardingView: View {
 
     private func saveKeys() {
         let s = soniox.trimmingCharacters(in: .whitespacesAndNewlines)
-        let k = deepseek.trimmingCharacters(in: .whitespacesAndNewlines)
+        let k = llmKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty, !k.isEmpty else { saveError = "Both keys are required."; return }
         CredentialStore.setSoniox(s)
-        CredentialStore.setDeepSeek(k)
-        guard CredentialStore.soniox == s, CredentialStore.deepseek == k else {
+        CredentialStore.setValue(k, for: LLMProviders.activeOption.keychainAccount)
+        guard CredentialStore.soniox == s,
+              CredentialStore.value(for: LLMProviders.activeOption.keychainAccount) == k else {
             saveError = "Couldn't save keys. Check that ~/Library/Application Support/RTI is writable."
             return
         }

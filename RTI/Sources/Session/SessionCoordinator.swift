@@ -82,18 +82,20 @@ final class SessionCoordinator {
     /// Non-fatal notice when the system-audio (other-party) leg drops while
     /// the mic leg keeps recording. nil when system audio is fine/absent.
     private(set) var systemAudioNotice: String?
+    private(set) var systemAudioStartOffsetMs: Int?
     /// When non-nil, Soniox will stream translation tokens alongside
     /// the regular transcript. Bound to UserDefaults and the live
     /// transcript toggle.
     var translationConfig: TranslationConfig? {
         didSet {
+            guard translationConfig != oldValue else { return }
             audioPipeline.translationConfig = translationConfig
             if isRunning {
                 // Keep the transcript across the Soniox reconnect and continue
                 // the timeline, so toggling translation never wipes preceding
                 // entries or drops the next ones.
                 transcriptPipeline.prepareForReconnect()
-                audioPipeline.reconfigureTranslation()
+                audioPipeline.reconfigureStreamingClients()
                 publishState()
             }
         }
@@ -107,6 +109,7 @@ final class SessionCoordinator {
     private var delayedCompleteTask: Task<Void, Never>?
     private var checkpointTask: Task<Void, Never>?
     private var translationDefaultsObserver: NSObjectProtocol?
+    private var activeSTTProviderId = STTProviders.activeId
     /// When the last session was stopped — used to reject a phantom restart
     /// fired immediately after a manual stop (the stop→start race).
     private var lastStopAt: Date?
@@ -165,7 +168,16 @@ final class SessionCoordinator {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.translationConfig = TranslationStore.currentConfig()
+                guard let self else { return }
+                let nextTranslation = TranslationStore.currentConfig()
+                if self.translationConfig != nextTranslation {
+                    self.translationConfig = nextTranslation
+                }
+                let nextSTTProviderId = STTProviders.activeId
+                if self.activeSTTProviderId != nextSTTProviderId {
+                    self.activeSTTProviderId = nextSTTProviderId
+                    self.handleActiveSTTProviderChanged()
+                }
             }
         }
 
@@ -176,6 +188,7 @@ final class SessionCoordinator {
             self?.handleSystemWords(words)
         }
         audioPipeline.onSystemAudioStarted = { [weak self] offsetMs in
+            self?.systemAudioStartOffsetMs = offsetMs
             self?.transcriptPipeline.setSystemStartOffset(ms: offsetMs)
         }
         audioPipeline.onError = { [weak self] message, isAuth in
@@ -196,6 +209,13 @@ final class SessionCoordinator {
                 break
             }
         }
+    }
+
+    private func handleActiveSTTProviderChanged() {
+        guard isRunning else { return }
+        transcriptPipeline.prepareForReconnect()
+        audioPipeline.reconfigureStreamingClients()
+        publishState()
     }
 
     /// Insert a user-authored note into the live transcript at the current
@@ -339,6 +359,7 @@ final class SessionCoordinator {
         currentSessionId = sessionId
         startedAt = now
         endedAt = nil
+        systemAudioStartOffsetMs = nil
         pausedAt = nil
         pausedAccumulated = 0
         audioPipeline.suspended = false
@@ -454,9 +475,9 @@ final class SessionCoordinator {
         BluetoothMicGuard.shared.release()
         self.endedAt = endedAt
 
-        // Persist a Markdown record of the transcript (notes inline) and chat
-        // before the WAV is dropped. This is the one intentional break from the
-        // ephemeral rule — audio is still discarded, only the text is kept.
+        // Persist a Markdown record of the transcript (notes inline), chat, and
+        // retained m4a legs. The audio is used only by Upgrade Transcript; this
+        // does not revive the old corpus/import/search architecture.
         if let startedAt {
             let transcript = transcriptPipeline.liveEntries
             let chat = LLMController.shared.entries
@@ -478,6 +499,10 @@ final class SessionCoordinator {
                 transcript: transcript,
                 chat: chat,
                 analysis: analysis,
+                sessionId: sessionId,
+                micRecordingURL: audioPipeline.micRecordingURL,
+                systemRecordingURL: audioPipeline.systemRecordingURL,
+                systemAudioStartOffsetMs: systemAudioStartOffsetMs,
                 workstreamSlug: workstreamSlug,
                 linkedMeeting: linkedMeeting?.name
             )
@@ -604,6 +629,10 @@ final class SessionCoordinator {
                 guide: DiscussionGuideController.shared.guide,
                 findings: FindingsController.shared.findings
             ),
+            sessionId: currentSessionId,
+            micRecordingURL: audioPipeline.micRecordingURL,
+            systemRecordingURL: audioPipeline.systemRecordingURL,
+            systemAudioStartOffsetMs: systemAudioStartOffsetMs,
             workstreamSlug: workstreamSlug,
             linkedMeeting: linkedMeeting?.name
         )

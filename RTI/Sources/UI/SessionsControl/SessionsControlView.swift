@@ -7,7 +7,11 @@ struct SessionsControlView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case liveTranscript = "Live Transcript"
         case sessions = "Sessions"
-        case settings = "Settings"
+        case providers = "Providers"
+        case modes = "Modes"
+        case prompts = "Prompts"
+        case glossary = "Glossary"
+        case general = "General"
         case logs = "Logs"
 
         var id: String { rawValue }
@@ -16,7 +20,11 @@ struct SessionsControlView: View {
             switch self {
             case .liveTranscript: return "text.bubble.fill"
             case .sessions:       return "clock.arrow.circlepath"
-            case .settings:       return "gearshape.fill"
+            case .providers:      return "server.rack"
+            case .modes:          return "square.stack.3d.up"
+            case .prompts:        return "text.bubble"
+            case .glossary:       return "character.book.closed"
+            case .general:        return "gearshape.fill"
             case .logs:           return "doc.text.magnifyingglass"
             }
         }
@@ -30,23 +38,7 @@ struct SessionsControlView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedTab) {
-                Section("Now") {
-                    sidebarRow(.liveTranscript)
-                }
-                Section("Library") {
-                    sidebarRow(.sessions)
-                }
-                Section("App") {
-                    sidebarRow(.settings)
-                    sidebarRow(.logs)
-                }
-            }
-            .listStyle(.sidebar)
-            .frame(minWidth: 180)
-            .safeAreaInset(edge: .bottom) {
-                versionFooter
-            }
+            sessionsSidebar
         } detail: {
             contentForTab
                 .safeAreaInset(edge: .top) {
@@ -65,9 +57,73 @@ struct SessionsControlView: View {
         }
     }
 
-    private func sidebarRow(_ tab: Tab) -> some View {
-        Label(tab.rawValue, systemImage: tab.icon)
-            .tag(tab)
+    private var sessionsSidebar: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Workspace")
+                    .font(.system(size: 24, weight: .semibold))
+                Text("Live transcript, saved sessions, settings, and logs in one place.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+
+            sidebarSection("Now", tabs: [.liveTranscript])
+            sidebarSection("Library", tabs: [.sessions])
+            sidebarSection("Settings", tabs: [.providers, .modes, .prompts, .glossary, .general])
+            sidebarSection("Diagnostics", tabs: [.logs])
+
+            Spacer(minLength: 0)
+            versionFooter
+        }
+        .frame(minWidth: 210, idealWidth: 224, maxWidth: 250, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(nsColor: .controlBackgroundColor),
+                    Color(nsColor: .windowBackgroundColor)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    private func sidebarSection(_ title: String, tabs: [Tab]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 18)
+
+            VStack(spacing: 8) {
+                ForEach(tabs) { tab in
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(width: 18)
+                            Text(tab.rawValue)
+                                .font(.system(size: 15, weight: .medium))
+                            Spacer(minLength: 0)
+                        }
+                        .foregroundStyle(selectedTab == tab ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(selectedTab == tab ? Color.black.opacity(0.07) : Color.clear)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+        }
     }
 
     @ViewBuilder
@@ -80,8 +136,16 @@ struct SessionsControlView: View {
         case .sessions:
             SessionsBrowserView()
 
-        case .settings:
-            SettingsView(onClose: nil)
+        case .providers:
+            ProvidersTab()
+        case .modes:
+            ModesTab()
+        case .prompts:
+            PromptsTab()
+        case .glossary:
+            GlossaryTab()
+        case .general:
+            GeneralTab()
 
         case .logs:
             LogsView()
@@ -90,13 +154,14 @@ struct SessionsControlView: View {
 
     /// Build / version footer pinned to the bottom of the sidebar.
     private var versionFooter: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 6) {
             Divider()
             Text(versionString)
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 10)
         }
     }
 

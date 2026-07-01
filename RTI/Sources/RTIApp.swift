@@ -20,9 +20,18 @@ struct RTIApp: App {
     }
 
     var body: some Scene {
-        // ⌘, opens the standard macOS Settings window. Populate it with the
-        // same SettingsView the Sessions Control panel's Settings tab uses, so
-        // the shortcut lands on real settings instead of an empty window.
+        // Keep a real Settings scene so the app remains resident normally, but
+        // route the actual Settings command to RTI's own settings window below.
+        // That avoids stale scene-restoration state from the SwiftUI Settings
+        // scene being the primary user path.
         Settings { SettingsView(onClose: nil) }
+            .commands {
+                CommandGroup(replacing: .appSettings) {
+                    Button("Settings…") {
+                        WindowCoordinator.shared.openSettings()
+                    }
+                    .keyboardShortcut(",", modifiers: .command)
+                }
+            }
     }
 }

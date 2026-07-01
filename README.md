@@ -2,11 +2,11 @@
 
 A menubar-only macOS assistant that listens to your meetings, transcribes in real time, and streams answers over a translucent overlay that doesn't show up in other apps' screen captures.
 
-Personal build: **real-time first, audio never kept** — the live transcript and chat live in memory during the session; on stop RTI saves a plain-Markdown record and discards the audio. No database, no searchable history, no corpus. macOS 14+. Bring your own [Soniox](https://console.soniox.com) and LLM provider keys ([DeepSeek](https://platform.deepseek.com) by default; the LLM layer is provider-agnostic — see [`Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift)).
+Personal build: **real-time first, no corpus** — the live transcript and chat live in memory during the session; on stop RTI saves a plain-Markdown record plus the session-local audio legs needed for the narrow **Upgrade Transcript** workflow. No database, no searchable history, no cross-session Q&A. macOS 14+. Bring your own [Soniox](https://console.soniox.com) and LLM provider keys ([DeepSeek](https://platform.deepseek.com) by default; the LLM layer is provider-agnostic — see [`Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift)).
 
 ## What it does
 
-- **Live transcription.** `AVAudioEngine` → 16 kHz PCM → Soniox WebSocket, both sides of the call, held in memory with rolling context for the assistant.
+- **Live transcription.** `AVAudioEngine` → 16 kHz PCM → realtime STT provider, both sides of the call, held in memory with rolling context for the assistant. RTI models realtime STT separately from post-hoc transcript-upgrade providers.
 - **Clear recording lifecycle.** The record control names every phase — **Recording → Paused → Saving → Summarizing → Notes ready** — so you always know what RTI is doing. **Pause/resume** (⌘⇧P) suspends transcription while holding the Soniox socket warm, so resume is instant (no re-handshake). On finish you watch the end-of-session summary generate (Granola-style "Summarizing…"), then **start a new recording with one click** — the previous session is saved, not cleared, and the new one can begin even while the last summary is still being written.
 - **Streaming assistant, mode-aware.** ⌘↵ runs the primary action over the last few minutes of transcript. The quick-action set follows the active mode + listener state: meeting/participant gets Assist / Say next / Follow-ups; fieldwork observer (Interview + Listener) gets Assist / Follow-ups / Key tensions / What's unsaid / Emerging themes. You can also drop an image into the composer (on-device OCR → text). OpenAI-compatible streaming chat.
 - **Invisible overlay.** Borderless `NSPanel` with `sharingType = .none` — excluded from QuickTime, Zoom local recording, and `screencapture`. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
@@ -17,7 +17,7 @@ Personal build: **real-time first, audio never kept** — the live transcript an
 - **Translation.** Optional live translation alongside the transcript (one-way or two-way), in the Live Transcript window.
 - **Modes.** Built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text. Stored as a small JSON file.
 
-The only things written to disk are config (API keys in the Keychain-style store, modes in `~/Library/Application Support/RTI/modes.json`) and a write-only Markdown record of each finished session — transcript, chat, and any generated notes/dossiers/guide — under `~/Library/Application Support/RTI/sessions/`. There's no in-app reader for it; you open it in Finder. The WAV is streamed to a temp file while recording and deleted on stop — audio is never kept.
+The only things written to disk are config (API keys in the Keychain-style store, modes in `~/Library/Application Support/RTI/modes.json`), a write-only Markdown record of each finished session, and the session-local audio files (`audio-mic.m4a` / `audio-system.m4a`) used only by **Upgrade Transcript**. There's no database, no in-app search, and no corpus reader.
 
 ## Build & run
 
@@ -68,6 +68,28 @@ The ✦ menu shows the **mode-aware** action set: in a meeting you get Assist / 
 ## Capturing both sides of a call
 
 Soniox transcribes whatever audio device you select for the mic; system audio (the other party) is captured automatically via a CoreAudio process tap (ScreenCaptureKit fallback). If you prefer an aggregate-device setup, install [BlackHole](https://existential.audio/blackhole/), build an aggregate of your mic + BlackHole in **Audio MIDI Setup**, and pick it under **Settings → General → Audio Input**.
+
+## Real-time vs transcript-upgrade providers
+
+RTI now treats these as separate lanes:
+
+- `Real-time transcription` is the low-latency overlay transcript used during a meeting.
+- `Transcript upgrade (async)` is the post-hoc lane that re-transcribes the session-local retained audio legs and then regenerates the summary from the upgraded text. Soniox is the default choice; choose Aliyun from the Upgrade Transcript prompt for Chinese-heavy sessions.
+
+Recommended defaults follow the local `transcribe` skill:
+
+- `Realtime`: Soniox
+- `Chinese-heavy async file upgrade`: Aliyun
+- `English or mixed-language async file upgrade`: Soniox
+
+For Aliyun async upgrades, RTI tracks the full credential set the file
+transcription script actually needs:
+
+- `Aliyun Access Key ID`
+- `Aliyun Access Key Secret`
+- `Aliyun NLS App Key`
+
+See [docs/transcript-upgrade-providers.md](docs/transcript-upgrade-providers.md).
 
 ## Switching LLM providers
 

@@ -7,12 +7,12 @@ import RTICore
 /// one-line change in `LLMProviders` rather than edits here.
 final class LLMClient: @unchecked Sendable {
     /// Shared instance bound to the active provider. Every LLM-using
-    /// controller routes through this. `apiKey` is resolved at call time,
-    /// so key edits in Settings take effect on the next request without
-    /// rebinding the singleton.
-    static let shared = LLMClient(provider: LLMProviders.active)
+    /// controller routes through this. Provider resolution happens at call
+    /// time, so switching providers or keys in Settings takes effect on the
+    /// next request without rebuilding the singleton.
+    static let shared = LLMClient()
 
-    let provider: LLMProviderConfig
+    private let providerResolver: @Sendable () -> LLMProviderConfig
     private let session: URLSession
 
     /// Hard ceiling on output tokens per completion. Set to DeepSeek's maximum
@@ -29,11 +29,16 @@ final class LLMClient: @unchecked Sendable {
         return URLSession(configuration: config)
     }()
 
-    init(provider: LLMProviderConfig) {
-        self.provider = provider
+    init(providerResolver: @escaping @Sendable () -> LLMProviderConfig = { LLMProviders.active }) {
+        self.providerResolver = providerResolver
         self.session = Self.sharedSession
     }
 
+    convenience init(provider: LLMProviderConfig) {
+        self.init(providerResolver: { provider })
+    }
+
+    private var provider: LLMProviderConfig { providerResolver() }
     private var apiKey: String { provider.apiKey() }
 
     // MARK: - Stream result

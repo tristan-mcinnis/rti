@@ -24,6 +24,7 @@ enum CommandBuilder {
             + navigationCommands(windows: windows)
             + tabCommands(windows: windows)
             + actionCommands(llm: llm)
+            + assistantProviderCommands()
             + transcriptionCommands()
             + panelCommands(windows: windows, llm: llm)
             + appCommands(windows: windows)
@@ -31,6 +32,21 @@ enum CommandBuilder {
     }
 
     // MARK: - Transcription provider (menu quick-switch)
+
+    @MainActor
+    private static func assistantProviderCommands() -> [RTICommand] {
+        LLMProviders.all.map { provider in
+            RTICommand(
+                id: "llm.provider.\(provider.id)",
+                title: "Assistant: \(provider.displayName)",
+                keywords: ["assistant", "llm", "provider", "model", "openai", "deepseek", "openrouter", "switch"],
+                perform: { LLMProviders.activeId = provider.id },
+                menuSection: .panels,
+                menuParent: "Assistant model",
+                menuStateProvider: { LLMProviders.activeId == provider.id }
+            )
+        }
+    }
 
     /// Quick-switch the live speech-to-text engine from the menubar, with a
     /// checkmark on the active one. Applies to the next session — a mid-session

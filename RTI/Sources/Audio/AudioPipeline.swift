@@ -62,7 +62,7 @@ final class AudioPipeline {
     private var soniox: STTClient?
     private var systemSoniox: STTClient?
 
-    /// URLs of the kept meeting recordings once the session has finished, for
+    /// URLs of the retained audio legs once the session has finished, for
     /// the session archive / re-transcribe lane. nil until `finish()`/`abort()`,
     /// or for a leg that captured no audio.
     var micRecordingURL: URL? { recorder.micURL }
@@ -103,7 +103,7 @@ final class AudioPipeline {
         // key would otherwise let the user "record" silently for 5 retries
         // before any error surfaces, leaving an orphan WAV behind.
         guard STTProviders.activeHasKey else {
-            throw AudioPipelineError.missingSonioxKey
+            throw AudioPipelineError.missingSTTKey
         }
 
         let wavURL = WAVWriter.defaultURL(for: sessionId)
@@ -303,12 +303,12 @@ final class AudioPipeline {
         recorder.close()
     }
 
-    /// Swap the Soniox transcription clients to apply a new translation
-    /// config mid-session, without interrupting audio capture or losing the
-    /// WAV file. Old clients are disconnected; new ones are created with
-    /// the current `translationConfig` and immediately receive incoming
+    /// Swap the live transcription clients to apply a new provider and/or
+    /// translation config mid-session, without interrupting audio capture or
+    /// losing the WAV file. Old clients are disconnected; new ones are created
+    /// with the current `translationConfig` and immediately receive incoming
     /// PCM buffers via the existing `onPCMBuffer` closures.
-    func reconfigureTranslation() {
+    func reconfigureStreamingClients() {
         guard STTProviders.activeHasKey else { return }
 
         // Mic leg.
@@ -363,11 +363,11 @@ final class AudioPipeline {
 }
 
 enum AudioPipelineError: LocalizedError {
-    case missingSonioxKey
+    case missingSTTKey
 
     var errorDescription: String? {
         switch self {
-        case .missingSonioxKey:
+        case .missingSTTKey:
             "No speech-to-text API key set for the selected provider. Open Settings to paste a key, then start the session again."
         }
     }

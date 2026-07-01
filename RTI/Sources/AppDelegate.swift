@@ -104,7 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // Route "summary ready" notification taps to the in-app Sessions browser.
         UNUserNotificationCenter.current().delegate = self
 
-        if CredentialStore.deepseek == nil || CredentialStore.soniox == nil {
+        if !LLMProviders.activeHasKey || !STTProviders.activeHasKey {
             // First run (or keys cleared): guide setup instead of cold-dropping
             // into Settings.
             onboarding.show()
