@@ -17,15 +17,12 @@ import UserNotifications
 ///   chat.md               — the assistant chat log (only written if non-empty)
 ///   notes.md              — generated meeting notes (only if any)
 ///   discussion-guide.md   — discussion-guide coverage (only if a guide loaded)
+///   live-intelligence.md  — decisions/actions/questions/risks (only if any)
+///   screen-context.md     — timestamped active-screen OCR changes (only if any)
 ///   audio-mic.m4a         — retained mic audio for Upgrade Transcript
 ///   audio-system.m4a      — retained system audio for Upgrade Transcript
 enum SessionArchive {
-    struct ArchiveMetadata: Codable {
-        let sessionId: String?
-        let systemAudioStartOffsetMs: Int?
-        let micAudioFile: String?
-        let systemAudioFile: String?
-    }
+    typealias ArchiveMetadata = SessionArchiveMetadata
 
     /// The real-time-analysis artifacts produced during a session. Bundled
     /// into one value so the call site in `SessionCoordinator` (and the
@@ -36,10 +33,16 @@ enum SessionArchive {
         var notes: [GeneratedNote] = []
         var guide: DiscussionGuide?
         var findings: [FindingEntry] = []
+        var visualContext: [VisualContextEvent] = []
 
         var isEmpty: Bool {
-            notes.isEmpty && guide == nil && findings.isEmpty
+            notes.isEmpty && guide == nil && findings.isEmpty && visualContext.isEmpty
         }
+    }
+
+    struct CanonicalMeetingExport {
+        let transcriptURL: URL
+        let sidecarURL: URL?
     }
 
     /// Persist a session. Silently no-ops if there's nothing to save or the
@@ -61,7 +64,9 @@ enum SessionArchive {
         systemRecordingURL: URL? = nil,
         systemAudioStartOffsetMs: Int? = nil,
         workstreamSlug: String? = nil,
-        linkedMeeting: String? = nil
+        linkedMeeting: String? = nil,
+        mode: String? = nil,
+        workstreamName: String? = nil
     ) -> URL? {
         guard !transcript.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return nil }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
@@ -95,9 +100,14 @@ enum SessionArchive {
             writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
         }
         if !analysis.findings.isEmpty {
-            let body = (["# Findings", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderFindings(analysis.findings)]).joined(separator: "\n")
-            let md = (fm("Findings") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("findings.md"))
+            let body = (["# Live intelligence", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderFindings(analysis.findings)]).joined(separator: "\n")
+            let md = (fm("Live intelligence") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("live-intelligence.md"))
+        }
+        if !analysis.visualContext.isEmpty {
+            let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(analysis.visualContext)]).joined(separator: "\n")
+            let md = (fm("Screen context") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md"))
         }
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.m4a", in: dir)
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.m4a", in: dir)
@@ -106,7 +116,11 @@ enum SessionArchive {
                 sessionId: sessionId,
                 systemAudioStartOffsetMs: systemAudioStartOffsetMs,
                 micAudioFile: micName,
-                systemAudioFile: systemName
+                systemAudioFile: systemName,
+                mode: mode,
+                workstream: workstreamName,
+                durationSeconds: Int(max(0, endedAt.timeIntervalSince(startedAt))),
+                linkedMeeting: linkedMeeting
             ),
             to: dir
         )
@@ -125,7 +139,13 @@ enum SessionArchive {
     ///   to summarise or the model call failed (a quiet, non-blocking no-op).
     @MainActor
     @discardableResult
-    static func writeAutoSummary(transcriptText: String, to dir: URL, startedAt: Date) async -> URL? {
+    static func writeAutoSummary(
+        transcriptText: String,
+        to dir: URL,
+        startedAt: Date,
+        speakerNames: [String: String] = [:],
+        referenceContext: String? = nil
+    ) async -> URL? {
         let transcript = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty else { return nil }
         // Full-meeting summaries routinely outlive the default 60s stream
@@ -140,8 +160,22 @@ enum SessionArchive {
         // editable summary prompt so it never mutates the stored prompt; the
         // model emits a `TITLE:` first line that we parse out and persist as
         // `title.txt` for the Sessions browser to surface as the row label.
+        let knownSpeakers = speakerNames
+            .filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key) is \($0.value.trimmingCharacters(in: .whitespacesAndNewlines))" }
+            .joined(separator: "; ")
+        let speakerContext = knownSpeakers.isEmpty
+            ? ""
+            : "\n\nKnown speaker identities (use these names, not the anonymous labels): \(knownSpeakers)."
+        let reference = referenceContext?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let referenceBlock = reference.isEmpty
+            ? ""
+            : "\n\nReference context: use it to normalize project vocabulary and likely name misspellings. Treat calendar invitees as invitees, not proof that they attended or spoke. Do not invent facts beyond the transcript and this context.\n\(reference)"
         let prompt = PromptCatalogue.summary(for: kind)
             + "\n\n" + titleInstruction
+            + speakerContext
+            + referenceBlock
             + "\n\nTranscript:\n" + transcript
         guard let payloadRaw = await LLMRequest().collectAsync(
             messages: [LLMMessage(role: "user", content: prompt)],
@@ -161,7 +195,8 @@ enum SessionArchive {
         // browser falls back to "Untitled session"). Strip it (and any blank
         // lines after) from the summary body so it doesn't leak into summary.md.
         let (sessionTitle, remainder) = extractTitle(payload)
-        if let sessionTitle, !sessionTitle.isEmpty {
+        let hasManualTitle = FileManager.default.fileExists(atPath: dir.appendingPathComponent("title-manual.txt").path)
+        if let sessionTitle, !sessionTitle.isEmpty, !hasManualTitle {
             writeOwnerOnly(sessionTitle, to: dir.appendingPathComponent("title.txt"))
         }
         // Title by mode: an interview produces a research debrief, not minutes.
@@ -271,6 +306,261 @@ enum SessionArchive {
         proc.arguments = [script.path, sessionDir.path]
         try? proc.run()
     }
+
+    /// Export RTI's live transcript into the same raw-transcript lane Meeting
+    /// Sentinel used, then the existing `/meeting` pipeline can turn it into
+    /// the canonical meeting note + Neon-indexed vault document. This copies
+    /// out of the RTI archive; it does not move or delete the archive.
+    @discardableResult
+    static func writeCanonicalMeetingExport(
+        startedAt: Date,
+        transcript: [LiveEntry],
+        chat: [ChatEntry],
+        analysis: Analysis,
+        archiveDir: URL?,
+        linkedMeeting: String?
+    ) -> CanonicalMeetingExport? {
+        let raw = CanonicalMeetingTranscript.render(entries: transcript)
+        return writeCanonicalMeetingExport(
+            startedAt: startedAt,
+            rawTranscript: raw,
+            chat: chat,
+            analysis: analysis,
+            archiveDir: archiveDir,
+            linkedMeeting: linkedMeeting
+        )
+    }
+
+    /// Refresh the canonical transcript from the archived `transcript.md`.
+    /// Used after the Upgrade Transcript lane replaces the rough live transcript
+    /// with an offline provider's better pass.
+    @discardableResult
+    static func refreshCanonicalMeetingTranscript(fromArchiveDir archiveDir: URL, startedAt: Date) -> URL? {
+        let transcriptURL = archiveDir.appendingPathComponent("transcript.md")
+        guard let markdown = try? String(contentsOf: transcriptURL, encoding: .utf8) else { return nil }
+        let raw = CanonicalMeetingTranscript.render(markdownTranscript: markdown)
+        return writeCanonicalMeetingExport(
+            startedAt: startedAt,
+            rawTranscript: raw,
+            chat: [],
+            analysis: Analysis(),
+            archiveDir: archiveDir,
+            linkedMeeting: nil,
+            writeSidecar: false
+        )?.transcriptURL
+    }
+
+    static func runMeetingProcessor(transcriptURL: URL) {
+        guard let claude = claudeExecutableURL() else {
+            RTILog.log("meeting processor: claude CLI not found; skipped \(transcriptURL.lastPathComponent)", category: "archive")
+            return
+        }
+        let workdir = vaultRoot(startingAt: transcriptURL.deletingLastPathComponent())
+            ?? transcriptURL.deletingLastPathComponent()
+        let prompt = meetingProcessorPrompt(transcriptURL: transcriptURL)
+        let args = meetingProcessorPermissionArguments()
+
+        let logURL = meetingProcessorLogURL(stem: transcriptURL.deletingPathExtension().lastPathComponent)
+        try? FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        let logHandle = try? FileHandle(forWritingTo: logURL)
+
+        let proc = Process()
+        proc.executableURL = claude
+        proc.currentDirectoryURL = workdir
+        proc.arguments = ["-p", prompt] + args
+        proc.standardInput = FileHandle.nullDevice
+        if let logHandle {
+            proc.standardOutput = logHandle
+            proc.standardError = logHandle
+            proc.terminationHandler = { _ in try? logHandle.close() }
+        }
+        do {
+            try proc.run()
+            RTILog.log("meeting processor started for \(transcriptURL.lastPathComponent)", category: "archive")
+        } catch {
+            try? logHandle?.close()
+            RTILog.log("meeting processor failed to start: \(error.localizedDescription)", category: "archive")
+        }
+    }
+
+    @discardableResult
+    private static func writeCanonicalMeetingExport(
+        startedAt: Date,
+        rawTranscript: String,
+        chat: [ChatEntry],
+        analysis: Analysis,
+        archiveDir: URL?,
+        linkedMeeting: String?,
+        writeSidecar: Bool = true
+    ) -> CanonicalMeetingExport? {
+        let text = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let transcriptsRaw = meetingTranscriptsRawDirectory() else { return nil }
+        try? FileManager.default.createDirectory(at: transcriptsRaw, withIntermediateDirectories: true)
+
+        let stem = canonicalMeetingStem(startedAt: startedAt)
+        let transcriptURL = transcriptsRaw.appendingPathComponent("\(stem)-transcript.txt")
+        writeOwnerOnly(text + "\n", to: transcriptURL)
+
+        let sidecarURL: URL?
+        if writeSidecar {
+            let sidecar = renderCanonicalSidecar(
+                stem: stem,
+                startedAt: startedAt,
+                chat: chat,
+                analysis: analysis,
+                archiveDir: archiveDir,
+                linkedMeeting: linkedMeeting
+            )
+            if sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                sidecarURL = nil
+            } else {
+                let url = transcriptsRaw.appendingPathComponent("\(stem)-rti.md")
+                writeOwnerOnly(sidecar, to: url)
+                sidecarURL = url
+            }
+        } else {
+            sidecarURL = nil
+        }
+
+        RTILog.log("canonical meeting transcript exported: \(transcriptURL.path)", category: "archive")
+        return CanonicalMeetingExport(transcriptURL: transcriptURL, sidecarURL: sidecarURL)
+    }
+
+    private static func meetingTranscriptsRawDirectory() -> URL? {
+        if let transcriptsRaw = SentinelPaths.meetingTranscriptsRawDirectory() { return transcriptsRaw }
+        return VaultLogStore.rtiDirectory()?
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("meetings/transcripts-raw", isDirectory: true)
+    }
+
+    private static func canonicalMeetingStem(startedAt: Date) -> String {
+        "rti-session-\(canonicalStamp.string(from: startedAt))"
+    }
+
+    private static func renderCanonicalSidecar(
+        stem: String,
+        startedAt: Date,
+        chat: [ChatEntry],
+        analysis: Analysis,
+        archiveDir: URL?,
+        linkedMeeting: String?
+    ) -> String {
+        var lines = [
+            "---",
+            "source: rti-live",
+            "meeting: \(yamlQuoted(stem))",
+            "generated: \(ISO8601DateFormatter().string(from: Date()))",
+            "---",
+            "",
+            "# RTI live notes — \(stem)",
+            "",
+            "_Canonical transcript: `\(stem)-transcript.txt`_",
+        ]
+        if let archiveDir {
+            lines.append("_RTI archive: `\(archiveDir.path)`_")
+        }
+        if let linkedMeeting, !linkedMeeting.isEmpty {
+            lines.append("_Linked meeting: \(linkedMeeting)_")
+        }
+        lines.append("")
+
+        if let archiveDir,
+           let summary = try? String(contentsOf: archiveDir.appendingPathComponent("summary.md"), encoding: .utf8),
+           !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append("## RTI session summary")
+            lines.append("")
+            lines.append(bodyAfterFrontmatter(summary).trimmingCharacters(in: .whitespacesAndNewlines))
+            lines.append("")
+        }
+        if !analysis.notes.isEmpty {
+            lines.append("## Generated notes")
+            lines.append("")
+            lines.append(renderNotes(analysis.notes))
+            lines.append("")
+        }
+        if let guide = analysis.guide {
+            lines.append("## Discussion guide")
+            lines.append("")
+            lines.append(renderGuide(guide))
+            lines.append("")
+        }
+        if !analysis.findings.isEmpty {
+            lines.append("## Live intelligence")
+            lines.append("")
+            lines.append(renderFindings(analysis.findings))
+            lines.append("")
+        }
+        if !analysis.visualContext.isEmpty {
+            lines.append("## Screen context")
+            lines.append("")
+            lines.append(renderVisualContext(analysis.visualContext))
+            lines.append("")
+        }
+        if !chat.isEmpty {
+            lines.append("## Assistant chat")
+            lines.append("")
+            lines += chatBlock(chat)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func bodyAfterFrontmatter(_ text: String) -> String {
+        guard text.hasPrefix("---"),
+              let end = text.range(of: "\n---", range: text.index(text.startIndex, offsetBy: 3)..<text.endIndex) else {
+            return text
+        }
+        return String(text[end.upperBound...]).trimmingCharacters(in: .newlines)
+    }
+
+    private static func claudeExecutableURL() -> URL? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let candidates = [
+            home.appendingPathComponent(".local/bin/claude"),
+            home.appendingPathComponent(".claude/local/claude"),
+            URL(fileURLWithPath: "/opt/homebrew/bin/claude"),
+            URL(fileURLWithPath: "/usr/local/bin/claude"),
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    }
+
+    private static func vaultRoot(startingAt dir: URL) -> URL? {
+        SentinelPaths.vaultRoot(startingAt: dir)
+    }
+
+    private static func meetingProcessorPrompt(transcriptURL: URL) -> String {
+        let template = sentinelConfig()["auto_process_prompt"] as? String
+            ?? defaultMeetingProcessorPrompt
+        return template.replacingOccurrences(of: "{transcript}", with: transcriptURL.path)
+    }
+
+    private static func meetingProcessorPermissionArguments() -> [String] {
+        let yolo = (sentinelConfig()["auto_process_yolo"] as? Bool) ?? true
+        return yolo
+            ? ["--dangerously-skip-permissions"]
+            : ["--permission-mode", "acceptEdits"]
+    }
+
+    private static func sentinelConfig() -> [String: Any] {
+        SentinelPaths.configDictionary()
+    }
+
+    private static func sentinelConfigURL() -> URL {
+        SentinelPaths.configURL()
+    }
+
+    private static func meetingProcessorLogURL(stem: String) -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
+            .appendingPathComponent("meeting-process-\(stem).log")
+    }
+
+    private static let defaultMeetingProcessorPrompt = """
+    /meeting {transcript}
+
+    IMPORTANT — this run is UNATTENDED (fired automatically after an RTI session), so be conservative: (1) Always write the meeting note. (2) Set 'projects:' ONLY to an existing project you are confident about. (3) Do NOT create any new vault project folder, do NOT create a Todoist project, and do NOT push Todoist tasks. (4) If the project is new, ambiguous, or you are unsure, set 'projects: [unsorted]' and add a '## Needs routing' section with your best guess and reasoning for Tristan to confirm. Never guess a project into existence.
+    """
 
     private static func sessionDirectory(startedAt: Date) -> URL? {
         guard let base = sessionsBaseDirectory() else { return nil }
@@ -394,6 +684,13 @@ enum SessionArchive {
             let suffix = tags.isEmpty ? "" : " _(\(tags.joined(separator: ", ")))_"
             lines.append("**\(speaker)**\(suffix)")
             lines.append("")
+            if !entry.referencedPaths.isEmpty {
+                lines.append("Referenced files:")
+                for path in entry.referencedPaths {
+                    lines.append("- `\(path)`")
+                }
+                lines.append("")
+            }
             lines.append(entry.text)
             lines.append("")
         }
@@ -411,18 +708,26 @@ enum SessionArchive {
         }.joined(separator: "\n\n")
     }
 
-    /// Findings ledger: one bullet per tagged finding, in the order logged,
-    /// with its `[mm:ss]`, why-it-matters line, and any verbatim quote.
+    /// Live intelligence ledger: one bullet per tagged work object, in the
+    /// order logged, with its `[mm:ss]`, why line, and any source quote.
     private static func renderFindings(_ findings: [FindingEntry]) -> String {
         findings.map { f in
             var line = "- **[\(f.tag.label)]** `\(offset(f.rangeMs))` \(f.headline)"
-            if !f.matters.isEmpty { line += "\n  - _Matters:_ \(f.matters)" }
+            if !f.matters.isEmpty { line += "\n  - _Why:_ \(f.matters)" }
             if let quote = f.quote, !quote.isEmpty {
                 let who = f.speaker.map { "\($0): " } ?? ""
                 line += "\n  - > \(who)\(quote)"
             }
             return line
         }.joined(separator: "\n")
+    }
+
+    /// Materially changed active-screen OCR frames. Images never enter the
+    /// archive; this compact evidence trail is what the vault and agent keep.
+    private static func renderVisualContext(_ events: [VisualContextEvent]) -> String {
+        events.map { event in
+            "### `\(VisualContextText.timestamp(event.offsetSeconds))`\n\n\(event.text)"
+        }.joined(separator: "\n\n---\n\n")
     }
 
     /// Discussion-guide coverage: a header line plus each question with its
@@ -472,14 +777,12 @@ enum SessionArchive {
         let notes = transcript.filter { $0.speakerId == "note" }
         guard !notes.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return }
 
-        let recordingsDir = URL(fileURLWithPath: meeting.audioFilePath).deletingLastPathComponent()
-        let transcriptsRaw = recordingsDir.deletingLastPathComponent()
-            .appendingPathComponent("transcripts-raw", isDirectory: true)
+        let file = SentinelPaths.linkedMeetingNotesURL(audioFilePath: meeting.audioFilePath, meetingName: meeting.name)
+        let transcriptsRaw = file.deletingLastPathComponent()
         // Only write if Sentinel's transcripts dir already exists — never
         // create stray folders if the path derivation is ever wrong.
         guard FileManager.default.fileExists(atPath: transcriptsRaw.path) else { return }
 
-        let file = transcriptsRaw.appendingPathComponent("\(meeting.name)-rti.md")
         let md = renderLinkedMeeting(meeting: meeting, userNotes: notes, chat: chat, analysis: analysis)
         writeOwnerOnly(md, to: file)
     }
@@ -521,9 +824,15 @@ enum SessionArchive {
             lines.append("")
         }
         if !analysis.findings.isEmpty {
-            lines.append("## Findings")
+            lines.append("## Live intelligence")
             lines.append("")
             lines.append(renderFindings(analysis.findings))
+            lines.append("")
+        }
+        if !analysis.visualContext.isEmpty {
+            lines.append("## Screen context")
+            lines.append("")
+            lines.append(renderVisualContext(analysis.visualContext))
             lines.append("")
         }
         if !chat.isEmpty {
@@ -608,6 +917,12 @@ enum SessionArchive {
     private static let folderStamp: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HHmmss"
+        return f
+    }()
+
+    private static let canonicalStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd-HHmmss"
         return f
     }()
 

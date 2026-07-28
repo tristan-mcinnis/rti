@@ -85,6 +85,10 @@ enum TranscriptUpgradeService {
         } catch {
             throw mapPipelineError(error)
         }
+        if let startedAt = session.date,
+           let canonicalURL = SessionArchive.refreshCanonicalMeetingTranscript(fromArchiveDir: session.url, startedAt: startedAt) {
+            SessionArchive.runMeetingProcessor(transcriptURL: canonicalURL)
+        }
         progress(.done(pipelineResult.summaryURL == nil
             ? "Upgraded with \(provider.displayName); summary regeneration failed"
             : "Upgraded with \(provider.displayName); summary regenerated"))
@@ -102,10 +106,9 @@ enum TranscriptUpgradeService {
         case AsyncTranscriptProviders.soniox.id:
             return try makeSonioxProvider()
         case AsyncTranscriptProviders.aliyun.id:
-            let hasAll = [CredentialStore.aliyunAccessKeyID, CredentialStore.aliyunAccessKeySecret, CredentialStore.aliyunNLSAppKey]
-                .allSatisfy { ($0 ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
-            guard hasAll else {
-                throw TranscriptUpgradeError.missingCredentials(AsyncTranscriptProviders.aliyun.displayName)
+            let missing = aliyunMissingCredentials()
+            guard missing.isEmpty else {
+                throw TranscriptUpgradeError.missingCredentials("Aliyun (\(missing.joined(separator: ", ")))")
             }
             return AliyunScriptTranscriptProvider(
                 accessKeyId: CredentialStore.aliyunAccessKeyID ?? "",
@@ -122,6 +125,17 @@ enum TranscriptUpgradeService {
             throw TranscriptUpgradeError.missingCredentials(AsyncTranscriptProviders.soniox.displayName)
         }
         return SonioxScriptTranscriptProvider(apiKey: CredentialStore.soniox ?? "")
+    }
+
+    private static func aliyunMissingCredentials() -> [String] {
+        [
+            ("Access Key ID", CredentialStore.aliyunAccessKeyID),
+            ("Access Key Secret", CredentialStore.aliyunAccessKeySecret),
+            ("NLS App Key", CredentialStore.aliyunNLSAppKey),
+        ].compactMap { label, value in
+            let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? label : nil
+        }
     }
 
     static func audioInputs(in dir: URL) -> [TranscriptUpgradeAudioInput] {

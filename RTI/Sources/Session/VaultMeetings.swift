@@ -24,11 +24,15 @@ enum VaultMeetings {
     }
 
     /// The project's meetings + session notes, newest first. `scopeRelativePath`
-    /// is the project directory under `databases/` (e.g. `projects/foo`); nil
-    /// returns empty — recency needs a project to scope to.
+    /// is the project directory under `databases/` (e.g. `projects/foo`); when
+    /// nil (no workstream set), falls back to the newest meeting notes across
+    /// the whole vault so an unscoped "what was my meeting this morning" still
+    /// answers instead of returning empty.
     static func recent(scopeRelativePath: String?, limit: Int = 6) -> [Meeting] {
-        guard let scope = scopeRelativePath, !scope.isEmpty,
-              let dbs = VaultWorkstreamStore.databasesDir() else { return [] }
+        guard let dbs = VaultWorkstreamStore.databasesDir() else { return [] }
+        guard let scope = scopeRelativePath, !scope.isEmpty else {
+            return recentGlobal(under: dbs, limit: limit)
+        }
         let slug = (scope as NSString).lastPathComponent
         var found: [Meeting] = []
 
@@ -60,14 +64,16 @@ enum VaultMeetings {
 
     /// Format the recency list as the string the model sees.
     static func recentFormatted(scopeRelativePath: String?, limit: Int = 6) -> String {
-        guard scopeRelativePath != nil else {
-            return "No project is set for this meeting, so there's no project to list recent meetings for. Pick a project in Setup, or use search_vault for a topic-based lookup."
-        }
         let items = recent(scopeRelativePath: scopeRelativePath, limit: limit)
+        let scoped = scopeRelativePath?.isEmpty == false
         guard !items.isEmpty else {
-            return "No meetings or session notes found for this project yet."
+            return scoped
+                ? "No meetings or session notes found for this project yet."
+                : "No meetings found in the vault yet."
         }
-        var out = "This project's most recent meetings and sessions, newest first (the latest is #1):\n"
+        var out = scoped
+            ? "This project's most recent meetings and sessions, newest first (the latest is #1):\n"
+            : "No project is set for this meeting, so this is the vault's most recent meetings overall, newest first (the latest is #1). Pick a project in Setup for a project-scoped list, or use search_vault for a topic-based lookup:\n"
         for (i, m) in items.enumerated() {
             out += "\n\(i + 1). \(m.title) — \(m.displayDate) (\(m.kind), \(m.relativePath))"
             // The most recent meeting gets its full summary so "what did we
@@ -83,6 +89,23 @@ enum VaultMeetings {
     }
 
     // MARK: - Helpers
+
+    /// Newest meeting notes across the whole vault, unfiltered by project —
+    /// used when no workstream is set. Project session notes live per-project
+    /// under `<project>/transcripts/notes/`, so there's no single dir to scan
+    /// for those without a project to scope to; this covers `databases/meetings/`.
+    private static func recentGlobal(under dbs: URL, limit: Int) -> [Meeting] {
+        var found: [Meeting] = []
+        let meetingsDir = dbs.appendingPathComponent("meetings", isDirectory: true)
+        if let urls = try? FileManager.default.contentsOfDirectory(
+            at: meetingsDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+            for url in urls where url.pathExtension == "md" {
+                guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                if let m = make(url: url, under: dbs, text: text, kind: "meeting") { found.append(m) }
+            }
+        }
+        return Array(found.sorted { $0.stamp > $1.stamp }.prefix(limit))
+    }
 
     private static func make(url: URL, under base: URL, text: String, kind: String) -> Meeting? {
         guard let stamp = parseStamp(url.lastPathComponent) else { return nil }

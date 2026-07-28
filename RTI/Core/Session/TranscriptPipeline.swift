@@ -51,9 +51,13 @@ public final class TranscriptPipeline {
 
     private static func dedupedAcrossChannels(_ entries: [LiveEntry]) -> [LiveEntry] {
         guard entries.count > 1 else { return entries }
+        let echoMicIndices = Set(entries.indices.filter { index in
+            micEntryIsCoveredBySystemContext(entries[index], in: entries)
+        })
         var out: [LiveEntry] = []
         out.reserveCapacity(entries.count)
-        for entry in entries {
+        for (index, entry) in entries.enumerated() {
+            if echoMicIndices.contains(index) { continue }
             guard isDedupCandidate(entry) else { out.append(entry); continue }
             var matchedIndex: Int? = nil
             var i = out.count - 1
@@ -90,8 +94,41 @@ public final class TranscriptPipeline {
         return out
     }
 
+    /// A single mic echo can span two or more Soniox final batches from the
+    /// direct system-audio leg. Pairwise comparison misses that shape and
+    /// leaves alternating, repeated "speakers" in the transcript. Compare
+    /// each mic fragment with the nearby direct-system context for one remote
+    /// speaker before the existing pairwise fallback.
+    private static func micEntryIsCoveredBySystemContext(
+        _ entry: LiveEntry,
+        in entries: [LiveEntry]
+    ) -> Bool {
+        guard isMicEntry(entry), isDedupCandidate(entry) else { return false }
+        let needle = normalizeForSequenceMatch(entry.text)
+        guard needle.count >= dedupMinChars else { return false }
+
+        var systemContextBySpeaker: [String: [String]] = [:]
+        for candidate in entries where isSystemEntry(candidate) && isDedupCandidate(candidate) {
+            guard abs(candidate.startMs - entry.startMs) <= dedupWindowMs else { continue }
+            systemContextBySpeaker[candidate.speakerId, default: []].append(candidate.text)
+        }
+
+        return systemContextBySpeaker.values.contains { fragments in
+            let context = normalizeForSequenceMatch(fragments.joined(separator: " "))
+            return context.contains(needle)
+        }
+    }
+
     private static func isDedupCandidate(_ e: LiveEntry) -> Bool {
         e.speakerId != "note" && e.translationStatus != "translation"
+    }
+
+    private static func isMicEntry(_ entry: LiveEntry) -> Bool {
+        entry.speakerId == "self" || entry.speakerId.hasPrefix("room_")
+    }
+
+    private static func isSystemEntry(_ entry: LiveEntry) -> Bool {
+        entry.speakerId.hasPrefix("remote_")
     }
 
     private static func nearDuplicate(_ a: String, _ b: String) -> Bool {
@@ -104,6 +141,16 @@ public final class TranscriptPipeline {
         let inter = setA.intersection(setB).count
         let union = setA.union(setB).count
         return union > 0 && Double(inter) / Double(union) >= dedupJaccard
+    }
+
+    private static func normalizeForSequenceMatch(_ text: String) -> String {
+        let lowered = text.lowercased()
+        let scalars = lowered.unicodeScalars.map { scalar -> Character in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(String(scalar)) : " "
+        }
+        return String(scalars)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     private static func normalizeForDedup(_ s: String) -> String {

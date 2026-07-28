@@ -1,6 +1,101 @@
 import RTICore
 import SwiftUI
 
+// MARK: - Visual context control
+
+/// Quiet but explicit ambient-capture state. It appears only while a session
+/// is live: Littlebird's low-friction context should never become invisible
+/// surveillance. One click stops or resumes the screen trail immediately.
+struct OverlayVisualContextButton: View {
+    private let session = SessionCoordinator.shared
+    private let trail = VisualContextTrail.shared
+    @State private var hovering = false
+
+    var body: some View {
+        if session.isRunning {
+            Button(action: act) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 30, height: 28)
+                    .background(Capsule(style: .continuous).fill(background))
+                    .overlay(Capsule(style: .continuous).stroke(border, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .hoverHighlight($hovering)
+            .accessibilityLabel("Screen context")
+            .accessibilityValue(statusText)
+            .accessibilityHint(actionHint)
+            .help("\(statusText) — \(actionHint)")
+        }
+    }
+
+    private var icon: String {
+        switch trail.state {
+        case .disabled: "eye.slash"
+        case .permissionRequired, .failed: "exclamationmark.triangle.fill"
+        case .paused: "eye.slash.fill"
+        default: trail.events.isEmpty ? "eye" : "eye.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch trail.state {
+        case .permissionRequired, .failed, .paused: .orange
+        case .disabled: Color.overlayInk.opacity(0.38)
+        case .capturing, .active: .blue
+        default: Color.overlayInk.opacity(0.52)
+        }
+    }
+
+    private var background: Color {
+        switch trail.state {
+        case .permissionRequired, .failed, .paused: Color.orange.opacity(0.12)
+        case .capturing, .active: Color.blue.opacity(0.12)
+        default: Color.overlayInk.opacity(hovering ? 0.08 : 0.045)
+        }
+    }
+
+    private var border: Color {
+        switch trail.state {
+        case .permissionRequired, .failed, .paused: Color.orange.opacity(0.45)
+        case .capturing, .active: Color.blue.opacity(0.35)
+        default: Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
+        }
+    }
+
+    private var statusText: String {
+        switch trail.state {
+        case .disabled: "Screen context off"
+        case .idle, .waiting: "Screen context ready"
+        case .capturing: "Reading the active screen"
+        case .active:
+            "Screen context on · \(trail.events.count) visual \(trail.events.count == 1 ? "change" : "changes") captured"
+        case .paused: "Screen context paused with the recording"
+        case .permissionRequired: "Screen Recording access required"
+        case .failed: trail.lastError ?? "Screen context unavailable"
+        }
+    }
+
+    private var actionHint: String {
+        switch trail.state {
+        case .disabled: "Turn on one-minute active-screen OCR; images are discarded"
+        case .permissionRequired: "Open Screen Recording settings"
+        case .paused: "Resumes automatically with the recording"
+        default: "Turn off screen context"
+        }
+    }
+
+    private func act() {
+        if trail.state == .permissionRequired {
+            trail.retryPermissionOrOpenSettings(sessionStartedAt: session.startedAt)
+        } else {
+            trail.setEnabled(!trail.isEnabled, sessionStartedAt: trail.isEnabled ? nil : session.startedAt)
+            if session.isPaused { trail.setPaused(true) }
+        }
+    }
+}
+
 // MARK: - Record control
 
 /// Inline record control in the overlay header. Now phase-aware: instead of a
@@ -14,18 +109,10 @@ struct OverlayRecordButton: View {
 
     @State private var hovering = false
 
-    /// No Combine timer here: a per-instance Timer.publish subscription was the
-    /// crash site of a SIGSEGV (stale SubscriptionView firing during view
-    /// teardown, 2026-06-10 crash report). The elapsed label uses TimelineView
-    /// instead — SwiftUI owns the clock and its lifecycle.
     var body: some View {
         Button(action: primaryAction) {
-            HStack(spacing: 6) {
-                glyph
-                label
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 26)
+            glyph
+                .frame(width: 30, height: 28)
             .background(background)
             .overlay(Capsule(style: .continuous).stroke(borderColor, lineWidth: 1))
             .clipShape(Capsule(style: .continuous))
@@ -86,49 +173,14 @@ struct OverlayRecordButton: View {
         }
     }
 
-    @ViewBuilder
-    private var label: some View {
-        switch coordinator.phase {
-        case .recording, .paused:
-            // Live elapsed (captured time — paused spans excluded). Monospaced
-            // digits so it doesn't jitter.
-            // Just the timer — the amber pause glyph + colour (and the resume
-            // button beside) already say "paused", so we don't spend header
-            // width on the word and squeeze the tab bar.
-            TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                Text(TimeFormat.elapsed(coordinator.elapsed(at: context.date)))
-                    .font(.system(size: 11, weight: .medium).monospacedDigit())
-                    .foregroundStyle(coordinator.phase == .paused ? Color.orange.opacity(0.95) : Color.overlayInk.opacity(0.85))
-                    .kerning(0.2)
-                    .fixedSize()
-            }
-        case .finishing:
-            labelText("Saving…", opacity: 0.6)
-        case .summarizing:
-            labelText("Summarizing…", opacity: 0.7)
-        case .done:
-            labelText(coordinator.summaryURL != nil ? "Notes ready" : "Done", opacity: 0.6)
-        case .idle:
-            labelText("Record", opacity: 0.75)
-        }
-    }
-
-    private func labelText(_ text: String, opacity: Double) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(Color.overlayInk.opacity(opacity))
-            .kerning(0.2)
-            .fixedSize()
-    }
-
     private var background: some View {
         ZStack {
-            Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.14 : 0.08))
+            Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.08 : 0.045))
             switch coordinator.phase {
             case .recording:
-                Capsule(style: .continuous).fill(Color(red: 1.0, green: 0.20, blue: 0.20).opacity(0.18))
+                Capsule(style: .continuous).fill(Color(red: 1.0, green: 0.20, blue: 0.20).opacity(0.12))
             case .paused:
-                Capsule(style: .continuous).fill(Color.orange.opacity(0.14))
+                Capsule(style: .continuous).fill(Color.orange.opacity(0.10))
             default:
                 EmptyView()
             }
@@ -139,7 +191,7 @@ struct OverlayRecordButton: View {
         switch coordinator.phase {
         case .recording: Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
         case .paused: Color.orange.opacity(0.5)
-        default: Color.overlayInk.opacity(hovering ? 0.22 : 0.12)
+        default: Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
         }
     }
 
@@ -180,22 +232,12 @@ struct OverlaySessionAuxButton: View {
     var body: some View {
         if kind != .none {
             Button(action: act) {
-                HStack(spacing: 4) {
-                    Image(systemName: icon)
-                        .font(.system(size: 10, weight: .bold))
-                    if let labelText {
-                        Text(labelText)
-                            .font(.system(size: 11, weight: .medium))
-                            .kerning(0.2)
-                            .fixedSize()
-                    }
-                }
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(tint)
-                .frame(height: 26)
-                .padding(.horizontal, labelText == nil ? 0 : 9)
-                .frame(minWidth: 26)
-                .background(Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.14 : 0.08)))
-                .overlay(Capsule(style: .continuous).stroke(Color.overlayInk.opacity(0.14), lineWidth: 1))
+                .frame(width: 30, height: 28)
+                .background(Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.08 : 0.045)))
+                .overlay(Capsule(style: .continuous).stroke(Color.overlayInk.opacity(0.08), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .hoverHighlight($hovering)
@@ -228,18 +270,6 @@ struct OverlaySessionAuxButton: View {
         case .resume: Color.green.opacity(0.9)
         case .newRecording: Color(red: 1.0, green: 0.27, blue: 0.27).opacity(0.9)
         default: Color.overlayInk.opacity(0.7)
-        }
-    }
-
-    /// Resume is the one aux action worth spelling out: pausing is reversible
-    /// and low-stakes, but a paused session reads as "stuck" until you spot the
-    /// tiny resume glyph. Labelling it (and the ⌘⇧P hint below) makes getting
-    /// going again obvious. Pause/openSummary stay compact icons.
-    private var labelText: String? {
-        switch kind {
-        case .resume: "Resume"
-        case .newRecording: "New"
-        default: nil
         }
     }
 

@@ -5,9 +5,13 @@ struct OverlayPanelView: View {
     var onOpenSettings: () -> Void = {}
 
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
-    @AppStorage(OverlayAppearanceDefaults.lightModeKey) private var lightMode = false
+    @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
+    @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
+    @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
+    @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel: Bool = OverlayAppearanceDefaults.defaultTranslucentPanel
+    @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     // Live-analysis tabs only show when their tasks are enabled in Setup.
-    // Notes defaults on; Guide/Findings/Auto stay opt-in.
+    // Notes defaults on; Guide/Intel/Auto stay opt-in.
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
     @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
@@ -29,18 +33,14 @@ struct OverlayPanelView: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.overlayPanel.opacity(backgroundOpacity))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.overlayBorder, lineWidth: 1.5)
-                )
+            panelBackground
 
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
                     OverlaySetupButton(selection: $tab)
                     OverlayTabBar(selection: $tab, tabs: visibleTabs)
                     OverlayMicControl()
+                    OverlayVisualContextButton()
                     OverlayRecordButton()
                     OverlaySessionAuxButton()
                 }
@@ -86,7 +86,51 @@ struct OverlayPanelView: View {
                 .padding([.bottom, .trailing], 6)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .preferredColorScheme(lightMode ? .light : .dark)
+        .font(.system(size: CGFloat(uiFontSize), weight: .regular))
+        .tint(Color.overlayAccent)
+        .accentColor(Color.overlayAccent)
+        .preferredColorScheme(preferredColorScheme)
+        .overlay(themeRefreshToken)
+    }
+
+    @ViewBuilder
+    private var panelBackground: some View {
+        if translucentPanel {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.regularMaterial)
+                .opacity(backgroundOpacity)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.overlayPanel.opacity(backgroundOpacity * 0.72))
+                )
+                .overlay(panelStroke)
+                .shadow(color: Color.black.opacity(0.10), radius: 24, x: 0, y: 10)
+        } else {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.overlayPanel.opacity(backgroundOpacity))
+                .overlay(panelStroke)
+                .shadow(color: Color.black.opacity(0.10), radius: 24, x: 0, y: 10)
+        }
+    }
+
+    private var panelStroke: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(Color.overlayBorder, lineWidth: 1)
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch RTIAppearanceMode(rawValue: appearanceMode) ?? .system {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    private var themeRefreshToken: some View {
+        Color.clear
+            .opacity((accentColorHex.isEmpty || contrast < 0) ? 0 : 0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
     }
 
     private func normalizeSelection() {

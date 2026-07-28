@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Single source of truth for mapping Soniox speaker IDs (`self`, `them_1`, …)
+/// Single source of truth for mapping Soniox speaker IDs (`self`, `room_1`,
+/// `remote_1`, legacy `them_1`, …)
 /// to human-readable labels and stable per-speaker chip colors.
 ///
 /// Used by `LiveTranscriptView` so the label format stays consistent.
@@ -9,12 +10,20 @@ enum SpeakerLabels {
     /// Convert a raw speaker ID to a display label.
     /// - `self` → "You"
     /// - `note` → "Note"
-    /// - `them_1`, `them_2`, … → "Speaker 1", "Speaker 2", …
+    /// - `room_1`, `room_2`, … → "Room speaker 1", "Room speaker 2", …
+    /// - `remote_1`, `remote_2`, … → "Remote speaker 1", "Remote speaker 2", …
+    /// - legacy `them_1`, `them_2`, … → "Speaker 1", "Speaker 2", …
     /// - anything else → passthrough capitalized
     static func displayName(for raw: String) -> String {
         switch raw {
         case "self": return "You"
         case "note": return "Note"
+        case let other where other.hasPrefix("room_"):
+            let n = String(other.dropFirst("room_".count))
+            return "Room speaker \(n)"
+        case let other where other.hasPrefix("remote_"):
+            let n = String(other.dropFirst("remote_".count))
+            return "Remote speaker \(n)"
         case let other where other.hasPrefix("them_"):
             let n = String(other.dropFirst("them_".count))
             return "Speaker \(n)"
@@ -32,8 +41,15 @@ enum SpeakerLabels {
         if raw == "self" {
             return RTIDesign.Color.speakerPalette[0]
         }
-        if raw.hasPrefix("them_"),
-           let n = Int(raw.dropFirst("them_".count)),
+        let numbered = raw.hasPrefix("them_")
+            ? raw.dropFirst("them_".count)
+            : raw.hasPrefix("room_")
+                ? raw.dropFirst("room_".count)
+                : raw.hasPrefix("remote_")
+                    ? raw.dropFirst("remote_".count)
+                    : nil
+        if let numbered,
+           let n = Int(numbered),
            n >= 1 {
             // Reserve index 0 for "self"; them_1 → palette[1], them_2 → palette[2]…
             let palette = RTIDesign.Color.speakerPalette

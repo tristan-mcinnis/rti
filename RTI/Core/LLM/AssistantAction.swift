@@ -97,6 +97,13 @@ public extension AssistantAction {
             symbol: "sparkles", keywords: ["help", "suggestion"]
         ),
         AssistantAction(
+            id: "answerLatest", label: "Answer latest",
+            paletteTitle: "Answer Latest Question",
+            symbol: "quote.bubble",
+            keywords: ["answer", "latest", "question", "client", "rag", "vault", "project"],
+            hotkey: ActionHotkey(key: "Q", modifiers: cmdOpt)
+        ),
+        AssistantAction(
             id: "sayNext", label: "Say next",
             paletteTitle: "Say Next (one-line draft reply)",
             symbol: "wand.and.rays", keywords: ["respond", "reply"],

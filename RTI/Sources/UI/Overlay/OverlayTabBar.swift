@@ -19,19 +19,19 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         case .transcript: "Transcript"
         case .notes: "Notes"
         case .guide: "Guide"
-        case .findings: "Findings"
+        case .findings: "Intel"
         }
     }
 
     var icon: String {
         switch self {
-        case .setup: "checklist"
+        case .setup: "slider.horizontal.3"
         case .assist: "sparkles"
         case .auto: "wand.and.stars"
-        case .transcript: "text.bubble"
+        case .transcript: "bubble.left.and.text.bubble.right"
         case .notes: "note.text"
         case .guide: "list.bullet.clipboard"
-        case .findings: "flag"
+        case .findings: "checklist.checked"
         }
     }
 }
@@ -49,7 +49,7 @@ struct OverlayTabBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 1) {
+        HStack(spacing: 2) {
             ForEach(tabs) { tab in
                 OverlayTabButton(
                     tab: tab,
@@ -71,28 +71,22 @@ private struct OverlayTabButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: tab.icon).font(.system(size: 10, weight: .medium))
-                // Single line so a wide record pill never wraps a tab
-                // label to two rows; if space is tight the label
-                // truncates gracefully rather than squishing.
-                Text(tab.title).font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 13, weight: .regular))
+                    .frame(width: 30, height: 28)
                 // Unread badge: Auto surfaced cards the user hasn't seen.
                 if tab == .auto, !isSelected, autoUnseen > 0 {
-                    Text("\(autoUnseen)")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Capsule().fill(Color.blue))
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 6, height: 6)
+                        .offset(x: -3, y: 5)
                 }
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 5)
-            .foregroundStyle(isSelected ? Color.overlayInk : Color.overlayInk.opacity(0.5))
+            .foregroundStyle(isSelected ? Color.overlayInk.opacity(0.9) : Color.overlayInk.opacity(0.46))
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(isSelected ? Color.overlayInk.opacity(0.14) : Color.clear)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? Color.overlayInk.opacity(0.07) : Color.clear)
             )
             .contentShape(Rectangle())
         }
@@ -119,29 +113,19 @@ struct OverlaySetupButton: View {
                 selection = .setup
             }
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: OverlayTab.setup.icon)
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Setup")
-                    .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(selection == .setup ? Color.overlayInk : Color.overlayInk.opacity(0.6))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
+            Image(systemName: OverlayTab.setup.icon)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(selection == .setup ? Color.overlayInk.opacity(0.9) : Color.overlayInk.opacity(0.46))
+                .frame(width: 30, height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(selection == .setup ? Color.overlayInk.opacity(0.14) : Color.overlayInk.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(selection == .setup ? Color.overlayInk.opacity(0.12) : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(selection == .setup ? Color.overlayInk.opacity(0.07) : Color.clear)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Setup")
-        .accessibilityHint("Project, discussion guide, and live-analysis toggles")
-        .help("Setup — project, discussion guide, and live-analysis toggles (⌘⌥0)")
+        .accessibilityHint("Project, screen context, discussion guide, and live-analysis toggles")
+        .help("Setup — project, screen context, discussion guide, and live-analysis toggles (⌘⌥0)")
     }
 }

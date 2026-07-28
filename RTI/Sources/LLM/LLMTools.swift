@@ -9,7 +9,7 @@ enum LLMToolRegistry {
     /// All tools the chat-overlay LLM can call. Keep this small: too many
     /// tools dilutes the model's tool-choice signal.
     static var all: [LLMToolDefinition] {
-        [captureScreen, searchVault, recentMeetings, readDocument, grepVault, listFiles]
+        [captureScreen, highlightScreenText, searchVault, recentMeetings, readDocument, grepVault, listFiles]
     }
 
     static func tool(named name: String) -> LLMToolDefinition? {
@@ -40,8 +40,9 @@ enum LLMToolRegistry {
     private static let captureScreen = LLMToolDefinition(
         name: "capture_screen",
         description: """
-        Capture what the user is currently looking at on screen. Runs OCR \
-        to return any visible text. \
+        Capture the user's connected screens. Runs OCR to return visible text \
+        grouped by display, with the screen containing the mouse cursor listed \
+        first as the primary screen. \
         Use this whenever the user asks about their screen, what they're \
         looking at, what's visible, what an app is showing, or asks you to \
         read or summarise something on their display. Do not ask the user \
@@ -58,6 +59,34 @@ enum LLMToolRegistry {
         runningStatus: "📷 Looking at your screen…"
     )
 
+    private static let highlightScreenText = LLMToolDefinition(
+        name: "highlight_screen_text",
+        description: """
+        Briefly highlight a visible text region from the most recent screen \
+        capture. Use after capture_screen when the user asks where something \
+        is, what to click, or asks you to point out a visible label. Pass a \
+        short exact phrase from the OCR result, such as a button label, menu \
+        item, heading, or field label. This only works for text that appeared \
+        in the last capture_screen result.
+        """,
+        parameters: [
+            "type": "object",
+            "properties": [
+                "text": [
+                    "type": "string",
+                    "description": "A short exact phrase from the most recent screen OCR to highlight.",
+                ] as [String: Any],
+            ] as [String: Any],
+            "required": ["text"],
+            "additionalProperties": false,
+        ],
+        execute: { argumentsJSON in
+            let text = decodeField("text", from: argumentsJSON)
+            return ScreenshotManager.shared.highlightTextOnLastCapture(text)
+        },
+        runningStatus: "Highlighting the screen…"
+    )
+
     private static let searchVault = LLMToolDefinition(
         name: "search_vault",
         description: """
@@ -66,14 +95,16 @@ enum LLMToolRegistry {
         the project's research transcripts (what consumers or experts said in \
         specific groups and interviews). When a project is set for this meeting, \
         the search is automatically focused on that project first. \
-        Use this when the conversation raises a question whose answer lives in \
-        the knowledge base rather than the live transcript: project status, a \
-        past decision ("what did we decide about…"), what was agreed, client or \
-        stakeholder background, prior research findings, or what a participant \
-        said in a research session ("what did Group 1 say about their favourite \
-        store"). Do NOT use it for questions about the current conversation — \
-        the transcript already covers those. Returns the most relevant \
-        documents with short excerpts.
+        Use this when the conversation raises a question whose answer may live \
+        in the knowledge base rather than only the live transcript: project \
+        status, a past decision ("what did we decide about…"), what was agreed, \
+        client or stakeholder background, prior research findings, or what a \
+        participant said in a research session ("what did Group 1 say about \
+        their favourite store"). If the user asks "answer that", "what do we \
+        know about that", or a client asks a factual question tied to the \
+        selected project, search first, then answer from transcript + hits. Do \
+        NOT use it for questions only about what just happened in the current \
+        conversation. Returns the most relevant documents with short excerpts.
         """,
         parameters: [
             "type": "object",
@@ -90,13 +121,11 @@ enum LLMToolRegistry {
             let query = decodeQuery(from: argumentsJSON)
             // Focus on the meeting's project when one is picked (nil = whole vault).
             let scope = MeetingContextStore.shared.workstreamScopePath
-            let start = Date()
-            let result = await VaultSearch.searchFormatted(query: query, scopeRelativePath: scope)
-            let ms = Int(Date().timeIntervalSince(start) * 1000)
-            RTILog.log("search_vault '\(query)' took \(ms)ms", category: "vault")
-            return result
+            let response = await VaultRetrieval.search(query: query, scopeRelativePath: scope)
+            RTILog.log("search_vault '\(query)' took \(response.elapsedMS)ms", category: "vault")
+            return response.formattedResults
         },
-        runningStatus: "🔎 Searching the vault…"
+        runningStatus: "Searching the vault…"
     )
 
     private static let recentMeetings = LLMToolDefinition(
@@ -233,4 +262,11 @@ enum LLMToolRegistry {
 
 }
 
-
+extension ToolExecutor {
+    static var production: ToolExecutor {
+        // The model otherwise fires several refining vault searches in one turn
+        // (observed: 5), each a full query. Allow one, then make it answer from
+        // what it already got.
+        ToolExecutor(tools: LLMToolRegistry.all, maxCallsPerTurn: ["search_vault": 1])
+    }
+}

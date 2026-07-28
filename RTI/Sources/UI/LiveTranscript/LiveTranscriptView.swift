@@ -7,7 +7,7 @@ struct LiveTranscriptView: View {
     private let modes = ModeStore.shared
     @State private var copiedFlash: String?
     @State private var hoveredId: UUID?
-    @State private var paragraphs: [LiveParagraph] = []
+    @State private var paragraphs: [LiveTranscriptPresentation.Row] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,6 +30,7 @@ struct LiveTranscriptView: View {
         }
         .onAppear { paragraphs = makeParagraphs() }
         .onChange(of: coordinator.liveEntries.count) { _, _ in paragraphs = makeParagraphs() }
+        .onChange(of: translationEnabled) { _, _ in paragraphs = makeParagraphs() }
     }
 
     // MARK: - Translation state
@@ -242,50 +243,21 @@ struct LiveTranscriptView: View {
         }
     }
 
-    private struct LiveParagraph: Identifiable {
-        let id: UUID
-        let speakerId: String
-        let startMs: Int
-        let text: String
-        let isTranslation: Bool
-        let language: String?
-    }
-
     /// Soniox finalizes in 1–3s windows so the raw stream is dozens of tiny
     /// fragments. Coalesce consecutive same-speaker entries into paragraphs
     /// for a readable live view. Cached in `@State` and rebuilt only when
     /// `liveEntries` changes, so long transcripts don't re-coalesce on every
     /// SwiftUI render.
-    private func makeParagraphs() -> [LiveParagraph] {
-        var out: [LiveParagraph] = []
-        for entry in coordinator.liveEntries {
-            let isTranslation = entry.translationStatus == "translation"
-            if let last = out.last,
-               last.speakerId == entry.speakerId,
-               last.isTranslation == isTranslation
-            {
-                let merged = LiveParagraph(
-                    id: last.id,
-                    speakerId: last.speakerId,
-                    startMs: last.startMs,
-                    text: last.text + " " + entry.text,
-                    isTranslation: last.isTranslation,
-                    language: last.language
-                )
-                out.removeLast()
-                out.append(merged)
-            } else {
-                out.append(LiveParagraph(
-                    id: entry.id,
-                    speakerId: entry.speakerId,
-                    startMs: entry.startMs,
-                    text: entry.text,
-                    isTranslation: isTranslation,
-                    language: entry.language
-                ))
-            }
+    private func makeParagraphs() -> [LiveTranscriptPresentation.Row] {
+        var names: [String: String] = [:]
+        for entry in coordinator.liveEntries where names[entry.speakerId] == nil {
+            names[entry.speakerId] = speakerDisplayName(entry.speakerId)
         }
-        return out
+        return LiveTranscriptPresentation.rows(
+            from: coordinator.liveEntries,
+            showTranslations: translationEnabled,
+            speakerLabelStyle: .displayNames(names)
+        )
     }
 
     private var transcriptList: some View {
@@ -328,9 +300,10 @@ struct LiveTranscriptView: View {
     }
 
     @ViewBuilder
-    private func paragraphRow(_ p: LiveParagraph) -> some View {
+    private func paragraphRow(_ p: LiveTranscriptPresentation.Row) -> some View {
         let isNote = p.speakerId == "note"
-        let isTranslation = p.isTranslation
+        let original = p.original.trimmingCharacters(in: .whitespacesAndNewlines)
+        let translation = p.translation.trimmingCharacters(in: .whitespacesAndNewlines)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 if isNote {
@@ -338,19 +311,17 @@ struct LiveTranscriptView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.yellow)
                 }
-                if isTranslation {
+                if translationEnabled, !translation.isEmpty {
                     Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.blue)
                 }
-                Text(isTranslation ? translationLabel(p) : speakerDisplayName(p.speakerId))
+                Text(p.speakerLabel)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(isNote ? Color.yellow : isTranslation ? Color.blue : .secondary)
-                if !isTranslation {
-                    Text(timeLabel(ms: p.startMs))
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                }
+                    .foregroundStyle(isNote ? Color.yellow : .secondary)
+                Text(timeLabel(ms: p.startMs))
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.tertiary)
                 Spacer()
                 if hoveredId == p.id {
                     Button(action: { copyParagraph(p) }) {
@@ -363,7 +334,7 @@ struct LiveTranscriptView: View {
                 }
             }
             if isNote {
-                Text(p.text.trimmingCharacters(in: .whitespaces))
+                Text(original)
                     .font(.system(size: 14))
                     .italic()
                     .lineSpacing(3)
@@ -377,39 +348,35 @@ struct LiveTranscriptView: View {
                             .fill(Color.yellow.opacity(0.5))
                             .frame(width: 2)
                     }
-            } else if isTranslation {
-                Text(p.text.trimmingCharacters(in: .whitespaces))
-                    .font(.system(size: 14))
-                    .italic()
-                    .lineSpacing(3)
-                    .foregroundStyle(Color.blue.opacity(0.85))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(0.06)))
-                    .overlay(alignment: .leading) {
-                        Rectangle()
-                            .fill(Color.blue.opacity(0.4))
-                            .frame(width: 2)
-                    }
             } else {
-                Text(p.text.trimmingCharacters(in: .whitespaces))
-                    .font(.system(size: 14))
-                    .lineSpacing(3)
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !original.isEmpty {
+                    Text(original)
+                        .font(.system(size: 14))
+                        .lineSpacing(3)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if translationEnabled, !translation.isEmpty {
+                    Text(translation)
+                        .font(.system(size: 14))
+                        .italic()
+                        .lineSpacing(3)
+                        .foregroundStyle(Color.blue.opacity(0.85))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(0.06)))
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(Color.blue.opacity(0.4))
+                                .frame(width: 2)
+                        }
+                }
             }
         }
         .contentShape(Rectangle())
         .hoverHighlight($hoveredId, id: p.id)
-    }
-
-    private func translationLabel(_ p: LiveParagraph) -> String {
-        if let lang = p.language {
-            return "→ \(lang.uppercased())"
-        }
-        return "Translation"
     }
 
     private func timeLabel(ms: Int) -> String {
@@ -417,17 +384,15 @@ struct LiveTranscriptView: View {
     }
 
     private func copyAll() {
-        let text = paragraphs.map {
-            "[\(timeLabel(ms: $0.startMs))] \(speakerDisplayName($0.speakerId)): \($0.text.trimmingCharacters(in: .whitespaces))"
-        }.joined(separator: "\n\n")
+        let text = LiveTranscriptPresentation.copyText(rows: paragraphs, showTranslations: translationEnabled)
         guard !text.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         flashCopied("all")
     }
 
-    private func copyParagraph(_ p: LiveParagraph) {
-        let text = "[\(timeLabel(ms: p.startMs))] \(speakerDisplayName(p.speakerId)): \(p.text.trimmingCharacters(in: .whitespaces))"
+    private func copyParagraph(_ p: LiveTranscriptPresentation.Row) {
+        let text = LiveTranscriptPresentation.copyText(row: p, showTranslations: translationEnabled)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         flashCopied(p.id.uuidString)

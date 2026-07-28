@@ -90,6 +90,21 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(p.liveEntries.count, 2, "matches outside the echo window are not deduped")
     }
 
+    func test_crossChannel_echoSplitAcrossFinalBatches_collapsesMicFragment() {
+        let p = TranscriptPipeline()
+        // This is the shape seen in the live transcript: the direct system leg
+        // splits one utterance into two finals while the mic echo spans both.
+        p.process(words: [word("So like, they keep", speaker: 0, start: 1000, end: 1800)], channel: "system")
+        p.process(words: [word("like, they keep adding more stuff.", speaker: 2, start: 1300, end: 2300)], channel: "mic")
+        p.process(words: [word(" adding more stuff.", speaker: 0, start: 1800, end: 2400)], channel: "system")
+
+        XCTAssertEqual(
+            p.liveEntries.map(\.text),
+            ["So like, they keep", " adding more stuff."],
+            "one mic echo spanning multiple system finals should not become a fake speaker turn"
+        )
+    }
+
     func test_reset_clearsEverything() {
         let p = TranscriptPipeline()
         p.process(words: [word("x", speaker: 0, start: 0, end: 100)], channel: "mic")

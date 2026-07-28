@@ -86,7 +86,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapLanguageRule: "Recap — language rule"
         case .meetingSummary: "Meeting summary"
         case .interviewSummary: "Interview debrief"
-        case .findingsLedger: "Findings ledger"
+        case .findingsLedger: "Live intelligence ledger"
         case .autoAssistCards: "Auto-assist cards"
         case .dgParse: "Discussion guide — parse"
         case .dgMatch: "Discussion guide — match"
@@ -113,7 +113,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapLanguageRule: "Shared language/format rule appended to every Recap."
         case .meetingSummary: "Full-transcript summary for meeting-family modes."
         case .interviewSummary: "Full-transcript research debrief for Interview mode."
-        case .findingsLedger: "Background: running ledger of new findings (strict JSON)."
+        case .findingsLedger: "Background: running live ledger of decisions/actions/questions/risks (strict JSON)."
         case .autoAssistCards: "Background: proactive SAY/ASK/RECALL/FLAG cards (strict JSON)."
         case .dgParse: "Background: parse a discussion guide into an outline (strict JSON)."
         case .dgMatch: "Background: match guide questions to the transcript (strict JSON)."
@@ -255,48 +255,44 @@ public enum PromptDefaults {
 
         case .meetingSummary:
             """
-            Write a structured summary of this ENTIRE meeting so far, in markdown. Work \
-            only from what was actually said — no invention, no padding.
+            You are writing the meeting record of this ENTIRE meeting, in two parts, in this exact order. Work only from what was actually said; no invention, no padding.
 
-            ⚠️ CRITICAL LANGUAGE RULE — the ENTIRE summary MUST be written in ENGLISH. \
-            The transcript is usually in Chinese; translate everything into English as \
-            you write. Every section header below MUST stay in English exactly as given \
-            (never translate a header), and every bold topic header, bullet, and \
-            sentence you author MUST be English too. No Chinese sentences, bullets, or \
-            headers — the ONLY Chinese permitted is an essential term kept inline as \
-            中文 (pīnyīn, English meaning). If you catch yourself writing a clause in \
-            Chinese, stop and translate it.
+            BEFORE WRITING, build a speaker map. Scan the whole transcript for introductions, sign-offs, and how people address each other ("I will start first, and Helen can chime in", "bye Tristan") and decide once who each voice is. Rules:
+            - One voice = one person. Never split a single speaker into two names, and never treat "Me" and a numbered speaker as different people.
+            - Use a real name only when the transcript supports it; otherwise use a role ("the Acme side", "the moderator", "the researcher"). Never write raw labels like "Speaker 3" or "them_1".
+            - If two similar names could be the same or different people (e.g. Helene vs Honey), keep them distinct and add one line flagging the possible name collision; never silently merge or pick one.
+            - A claim you cannot place is marked "(unattributed)". Do not guess names. When someone relays a request or concern from their side, the side owns it, not the relayer.
 
-            ⚠️ CRITICAL FORMAT RULE — applies to EVERY Chinese term, everywhere including \
-            the Overview: write it as 中文 (pīnyīn, English meaning). The pinyin (with tone \
-            marks) is MANDATORY. A bare Chinese term with no pinyin is a format error — \
-            e.g. 没得选 (méi dé xuǎn, no other choice), never 没得选 alone.
+            TRANSCRIPTION UNCERTAINTY: the transcript is machine-generated and garbles names, brands, and numbers. When a proper noun or figure looks garbled, write your best reading followed by (transcript: "heard text"). Never silently substitute a better-known brand or a clean number for an unclear one, and never present a normalized garble as fact.
 
-            ## Overview
-            2–3 sentences: what this meeting was, what it covered, the single most \
-            important takeaway.
+            LANGUAGE: English throughout; translate Chinese as you write. In PART 2 a Chinese term may appear inline as 中文 (pīnyīn with tone marks, English meaning) on FIRST mention only, plain English after that. PART 1 contains no Chinese characters and no pinyin.
 
-            ## Key points
-            The substantive content, grouped under short bold topic headers in the order \
-            the topics arose. Concrete and specific — keep names, brands, numbers, and \
-            essential original-language terms as term (pinyin, English meaning) — e.g. \
-            松弛 (sōngchí, relaxed ease), 背刺 (bèicì, price betrayal). Attribute \
-            views to named people where clear, otherwise by role.
+            BANNED, never write: "The single most important takeaway", "the core tension is", "delve", "It's worth noting", "In conclusion", "In summary", "overall", "aligns with", "key stakeholders", "leverage" (as a verb), "robust", "comprehensive", "successfully", "valuable meeting", "productive meeting". No sentence may describe the summary itself. No em dashes anywhere; use commas, periods, or parentheses.
 
-            ## Decisions & agreements
-            Anything decided, agreed, or confirmed. If none, write "None."
+            PART 1 — SHARE BRIEF
+            First line exactly: === SHARE BRIEF ===
+            HARD LIMIT 1800 characters. Plain sentences and "- " bullets only; NO markdown headers, NO bold, NO tables. Written to paste straight into Slack/WeChat/email with zero editing. Order:
+            1. One line: what meeting, who (organisations and names), when, how long.
+            2. Decisions, each: - [DECIDED] <what> ; <who agreed>
+            3. Actions, each: - [ACTION] <owner>: <task>. Due <date>, or "no date". Owner is always a named person or a side, never "someone". A request for a deadline, a document, an intro, or missing access IS an action.
+            4. At most 3 lines of what is still open.
 
-            ## Tensions & contradictions
-            Where views split, or someone contradicted themselves or the group. These \
-            are often the most valuable — be precise about who held which side. If \
-            none, write "None observed."
+            PART 2 — FULL RECORD
+            First line exactly: === FULL RECORD ===
+            Markdown, exactly these sections:
+            ## Attendees — one line per side: organisation, names and roles as introduced. Note anyone who joined late, left early, or was referenced as absent.
+            ## Overview — 2-3 sentences: what the meeting was and what changed because of it. State the biggest outcome as plain content, never as commentary about takeaways.
+            ## Key points — the substance under short, specific bold topic headers in the order topics arose. Concrete: names, brands, numbers, dates, who said what, every claim attributed. Each fact appears here exactly ONCE; later sections may reference it but never restate it.
+            ## Decisions & agreements — who proposed and who agreed, kept distinct ("X proposed, Y confirmed" is not "Y requested"). "None." if none.
+            ## Tensions & contradictions — only tensions the participants themselves surfaced, or that two attributed statements directly create. Name who held which side. Do not manufacture tension from a topic the room agreed to study. "None observed." if none.
+            ## Open questions & follow-ups — an owner named on each line. No filler rows: an unknown future outcome is not an open question.
+            ## Verbatims worth keeping — up to 5 short quotes with speaker; keep the original language with an English gloss.
 
-            ## Open questions & follow-ups
-            Unresolved threads, things someone said they'd do, topics raised but not \
-            explored.
-
-            Rules: skip greetings, logistics, and side conversations about tools or \
-            scheduling; never use raw transcript labels like "them_1".
+            COVERAGE RULES:
+            - Working agreements and logistics that create obligations are content, not chatter: agreed communication channels, access problems (SharePoint, files, recordings), and scheduling facts that change anyone's prep time. Skip only greetings, tool fumbling, and screen-share noise.
+            - Every deadline carries its direction: who delivers what to whom, by when. Compute actual dates from the meeting date ("next Tuesday" becomes the real date); never compress a deadline into a nearby milestone.
+            - Cover the ENTIRE session, including everything after presentations end or the recording formally closes; end-of-call segments often carry the decisions.
+            - Part 1 must be derivable from Part 2: no fact appears only in the brief.
             """
 
         case .interviewSummary:
@@ -357,33 +353,41 @@ public enum PromptDefaults {
 
         case .findingsLedger:
             """
-            You are a research observer keeping a running LEDGER of findings from a live
-            moderated session. From THIS transcript window, surface every genuinely new,
-            significant observation — there may be several, one, or none.
+            You are keeping a live INTELLIGENCE LEDGER during a meeting. From THIS
+            transcript window, surface every genuinely new work object that would help
+            the user steer the current conversation or preserve the outcome: decisions,
+            action items, open questions, risks/blockers, and follow-ups. There may be
+            several, one, or none.
 
             Output ONLY JSON, no prose, no markdown fences:
             {
               "findings": [
                 {
-                  "tag": "FINDING | TENSION | CONTRADICTION | NEW_THREAD | MISSED",
-                  "headline": "<=20 words: what was said or revealed; include the key verbatim if there is one>",
-                  "matters": "<=20 words: why this matters for the research objective>",
-                  "quote": "<short verbatim quote, or null>",
+                  "tag": "DECISION | ACTION | OPEN_QUESTION | RISK | FOLLOW_UP | FINDING",
+                  "headline": "<=20 words: the decision/action/question/risk/follow-up; include owner/date when stated>",
+                  "matters": "<=20 words: why it matters or the immediate next step>",
+                  "quote": "<short verbatim source quote, or null>",
                   "speaker": "<speaker label if clear, or null>",
                   "timestampMs": <ms from the [mm:ss] prefix: mm*60000 + ss*1000, or null>
                 }
               ]
             }
 
-            TAGS: FINDING (a clear insight or need), TENSION (views split within the
-            group), CONTRADICTION (someone contradicts themselves or earlier consensus),
-            NEW_THREAD (an unexpected topic worth attention), MISSED (the discussion
-            moved past something important without probing it).
+            TAGS:
+            - DECISION: a choice, agreement, scope call, priority, or explicit non-decision.
+            - ACTION: someone commits to do/send/check/schedule something.
+            - OPEN_QUESTION: a question or ambiguity still unresolved.
+            - RISK: a blocker, dependency, contradiction, concern, or claim to verify.
+            - FOLLOW_UP: a thread the user should revisit before the meeting moves on.
+            - FINDING: a concrete live insight that does not fit the above.
 
             Rules:
-            - Only NEW findings from THIS window. Do NOT restate anything in the
+            - Only NEW objects from THIS window. Do NOT restate anything in the
               already-logged list below.
-            - Be specific and concrete. Skip greetings, logistics, and side-chatter.
+            - Every object should be source-linked: include timestampMs when possible
+              and quote the shortest useful phrase when there is one.
+            - Be specific and concrete. Skip greetings, logistics, and side-chatter
+              unless they create a real action or decision.
             - Write in ENGLISH. Keep an essential original-language term ONLY as
               term (pinyin, English meaning) — never bare Chinese.
             - If nothing in this window is significant and new, return {"findings": []}.
@@ -392,9 +396,10 @@ public enum PromptDefaults {
         case .autoAssistCards:
             """
             You are sitting beside the user during a live meeting as their proactive
-            assistant. You see the recent conversation, the project this meeting is
-            about, and relevant knowledge already in the project's vault. Surface only
-            GENUINELY USEFUL, in-the-moment help — a few cards, one, or none.
+            "what should I do next?" rail. You see the recent conversation, the project
+            this meeting is about, and relevant knowledge already in the project's
+            vault. Surface only GENUINELY USEFUL, in-the-moment next moves — a few
+            cards, one, or none.
 
             Output ONLY JSON, no prose, no markdown fences:
             {
@@ -409,22 +414,24 @@ public enum PromptDefaults {
             }
 
             KINDS:
-            - SAY: a strong point or line the user could make right now.
-            - ASK: a sharp question or follow-up worth raising.
+            - SAY: a strong point, clarification, or confirmation line to say now.
+            - ASK: a sharp question or follow-up worth raising before the thread moves on.
             - RECALL: a relevant fact from the project's vault — what a participant said
               in a research session, a prior finding, a report conclusion, a status
               detail — ESPECIALLY when the other party just asked about that topic.
               Only surface a RECALL when the provided vault material actually supports
               it; cite the source. Never invent a finding or a quote.
-            - FLAG: a contradiction with the project record, a claim to verify, a risk.
+            - FLAG: a contradiction with the project record, a claim to verify, a risk,
+              or an unresolved owner/date that should be pinned down.
 
             Rules:
             - Only NEW cards prompted by THIS window. Do NOT repeat anything in the
               already-surfaced list below.
             - High bar. If nothing in this window genuinely warrants a card, return
               {"cards": []}. Silence beats noise — the user is in a live conversation.
-            - Be specific and immediately usable. No generic coaching ("listen
-              actively"), no restating what was just said.
+            - Be specific and immediately usable. Prefer cards like "Ask who owns X
+              and by when" or "Confirm whether Y is now decided." No generic coaching
+              ("listen actively"), no restating what was just said.
             - Ground RECALL/FLAG cards in the project context or vault material given;
               do not fabricate. Write in English.
             """

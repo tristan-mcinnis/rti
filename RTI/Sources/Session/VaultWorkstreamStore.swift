@@ -17,15 +17,7 @@ enum VaultWorkstreamStore {
     /// `<vault>/databases` — derived from Sentinel's `recordings_dir`
     /// (`<vault>/databases/meetings/recordings` → up two levels).
     static func databasesDir() -> URL? {
-        let configURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/meeting-sentinel/config.json")
-        guard let data = try? Data(contentsOf: configURL),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let recordings = obj["recordings_dir"] as? String, !recordings.isEmpty
-        else { return nil }
-        return URL(fileURLWithPath: (recordings as NSString).expandingTildeInPath)
-            .deletingLastPathComponent() // recordings → meetings
-            .deletingLastPathComponent() // meetings → databases
+        SentinelPaths.databasesDirectory()
     }
 
     static func clients() -> [VaultItem] {
@@ -107,6 +99,18 @@ enum VaultWorkstreamStore {
     /// be located.
     static func scopeRelativePath(for item: VaultItem) -> String? {
         guard item.isProject, let base = databasesDir() else { return nil }
+        return relativePath(for: item, under: base)
+    }
+
+    /// Path for either a project directory or a client note, relative to
+    /// `databases/`. Used by direct file access (`@...`) where a selected client
+    /// should narrow to its one note, not broaden to the whole vault.
+    static func fileAccessRelativePath(for item: VaultItem) -> String? {
+        guard let base = databasesDir() else { return nil }
+        return relativePath(for: item, under: base)
+    }
+
+    private static func relativePath(for item: VaultItem, under base: URL) -> String? {
         let full = item.url.standardizedFileURL.path
         let basePath = base.standardizedFileURL.path + "/"
         return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : nil

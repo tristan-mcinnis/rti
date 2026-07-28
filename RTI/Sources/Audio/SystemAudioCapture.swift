@@ -8,16 +8,34 @@ enum SystemAudioError: Error {
     case alreadyRunning
 }
 
+/// Runtime health for a system-audio backend. `duration` tracks delivered
+/// buffer time; `audibleDuration` tracks buffers above a low RMS floor, so the
+/// pipeline can distinguish "buffers are flowing but silent" from a dead leg.
+struct SystemAudioCaptureHealth: Sendable, Equatable {
+    let duration: TimeInterval
+    let audibleDuration: TimeInterval
+    let lastBufferAt: Date?
+    let lastAudibleBufferAt: Date?
+    let lastRMSLevel: Float
+    let peakRMSLevel: Float
+}
+
 /// A system-audio capture backend. Two conformers exist: the CoreAudio
 /// process-tap (`CoreAudioTapCapture`, preferred on macOS 14.2+) and the
 /// ScreenCaptureKit fallback (`SystemAudioCapture`). Both emit 16 kHz mono
 /// Int16 `AVAudioPCMBuffer`s on `onPCMBuffer`. `AudioPipeline` tries the tap
 /// first and falls back to SCK if it's unavailable.
-protocol SystemAudioCapturing: AnyObject {
+protocol SystemAudioCapturing: AnyObject, Sendable {
     var onPCMBuffer: ((AVAudioPCMBuffer) -> Void)? { get set }
     var onError: ((String) -> Void)? { get set }
     func start() async throws
     func stop()
+    func captureHealth() -> SystemAudioCaptureHealth
+    func recoverFromSilentAudio() async -> Bool
+}
+
+extension SystemAudioCapturing {
+    func recoverFromSilentAudio() async -> Bool { false }
 }
 
 final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, SystemAudioCapturing, @unchecked Sendable {
@@ -30,9 +48,19 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
     private var isRunning = false
     private var sourceFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
+    private let healthLock = NSLock()
+    private var framesCaptured: AVAudioFramePosition = 0
+    private var audibleFramesCaptured: AVAudioFramePosition = 0
+    private var captureSampleRate: Double = SystemAudioCapture.targetFormat.sampleRate
+    private var lastBufferAt: Date?
+    private var lastAudibleBufferAt: Date?
+    private var lastRMSLevel: Float = 0
+    private var peakRMSLevel: Float = 0
+    private static let audibleRMSThreshold: Float = 0.0005
 
     func start() async throws {
         guard !isRunning else { return }
+        resetCaptureHealth()
 
         let content: SCShareableContent
         do {
@@ -77,6 +105,22 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         converter = nil
         sourceFormat = nil
         RTILog.log("stopped", category: "audio")
+    }
+
+    func captureHealth() -> SystemAudioCaptureHealth {
+        healthLock.lock()
+        let duration = captureSampleRate > 0 ? Double(framesCaptured) / captureSampleRate : 0
+        let audibleDuration = captureSampleRate > 0 ? Double(audibleFramesCaptured) / captureSampleRate : 0
+        let snapshot = SystemAudioCaptureHealth(
+            duration: duration,
+            audibleDuration: audibleDuration,
+            lastBufferAt: lastBufferAt,
+            lastAudibleBufferAt: lastAudibleBufferAt,
+            lastRMSLevel: lastRMSLevel,
+            peakRMSLevel: peakRMSLevel
+        )
+        healthLock.unlock()
+        return snapshot
     }
 
     // MARK: - SCStreamOutput
@@ -170,5 +214,46 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         }
 
         onPCMBuffer?(outputBuffer)
+        noteCaptured(outputBuffer)
+    }
+
+    private func resetCaptureHealth() {
+        healthLock.lock()
+        framesCaptured = 0
+        audibleFramesCaptured = 0
+        captureSampleRate = Self.targetFormat.sampleRate
+        lastBufferAt = nil
+        lastAudibleBufferAt = nil
+        lastRMSLevel = 0
+        peakRMSLevel = 0
+        healthLock.unlock()
+    }
+
+    private func noteCaptured(_ buffer: AVAudioPCMBuffer) {
+        guard buffer.frameLength > 0 else { return }
+        let rms = Self.rmsLevel(of: buffer)
+        let now = Date()
+        healthLock.lock()
+        captureSampleRate = buffer.format.sampleRate
+        framesCaptured += AVAudioFramePosition(buffer.frameLength)
+        lastBufferAt = now
+        lastRMSLevel = rms
+        peakRMSLevel = max(peakRMSLevel, rms)
+        if rms >= Self.audibleRMSThreshold {
+            audibleFramesCaptured += AVAudioFramePosition(buffer.frameLength)
+            lastAudibleBufferAt = now
+        }
+        healthLock.unlock()
+    }
+
+    private static func rmsLevel(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let channel = buffer.int16ChannelData, buffer.frameLength > 0 else { return 0 }
+        let count = Int(buffer.frameLength)
+        var sumSquares: Float = 0
+        for index in 0..<count {
+            let sample = Float(channel[0][index]) / 32768.0
+            sumSquares += sample * sample
+        }
+        return (sumSquares / Float(count)).squareRoot()
     }
 }

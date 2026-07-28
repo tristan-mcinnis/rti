@@ -28,7 +28,7 @@ enum CommandBuilder {
             + transcriptionCommands()
             + panelCommands(windows: windows, llm: llm)
             + appCommands(windows: windows)
-            + modeSwitchCommands(modes: modes)
+            + modeSwitchCommands(modes: modes, llm: llm)
     }
 
     // MARK: - Transcription provider (menu quick-switch)
@@ -93,7 +93,7 @@ enum CommandBuilder {
             tabCmd("transcript", "Go to Transcript"),
             tabCmd("notes", "Go to Notes"),
             tabCmd("guide", "Go to Guide"),
-            tabCmd("findings", "Go to Findings"),
+            tabCmd("findings", "Go to Intel"),
         ]
     }
 
@@ -253,21 +253,15 @@ enum CommandBuilder {
                 id: "note.toggle",
                 title: "Toggle Note Entry",
                 subtitle: "⌘⌥N",
-                keywords: ["note", "annotate", "inline", "prep", "mark"],
+                keywords: ["note", "annotate", "inline", "mark"],
                 perform: {
+                    guard SessionCoordinator.shared.isRunning else { return }
                     let state = OverlayInputState.shared
-                    state.mode = state.isNoteMode
-                        ? .chat
-                        : (SessionCoordinator.shared.isRunning ? .liveNote : .prepNote)
+                    state.mode = state.isNoteMode ? .chat : .liveNote
                 },
                 menuSection: .actions,
                 menuTitleProvider: {
-                    let state = OverlayInputState.shared
-                    if state.mode == .liveNote { return "Transcript Note Mode  ⌘⌥N" }
-                    if state.mode == .prepNote { return "Prep Note Mode  ⌘⌥N" }
-                    return SessionCoordinator.shared.isRunning
-                        ? "Transcript Note Mode  ⌘⌥N"
-                        : "Prep Note Mode  ⌘⌥N"
+                    "Note Mode  ⌘⌥N"
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_N),
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
@@ -410,7 +404,8 @@ enum CommandBuilder {
 
     @MainActor
     private static func modeSwitchCommands(
-        modes: ModeStore
+        modes: ModeStore,
+        llm: LLMController
     ) -> [RTICommand] {
         modes.modes.map { mode in
             RTICommand(
@@ -418,7 +413,17 @@ enum CommandBuilder {
                 title: "Switch to: \(mode.name)",
                 keywords: ["mode", "preset"],
                 isAvailable: { modes.activeMode?.id != mode.id },
-                perform: { modes.activeModeId = mode.id }
+                perform: {
+                    modes.activeModeId = mode.id
+                    // Per-mode ⌘⏎ binding: meeting mode defaults to
+                    // Answer-latest, fieldwork/interview mode keeps the
+                    // Assist template (see applyFieldworkPreset above).
+                    switch mode.kind {
+                    case .meeting: llm.primaryActionID = "answerLatest"
+                    case .interview: llm.primaryActionID = "assist"
+                    case .coding, .other: break
+                    }
+                }
             )
         }
     }

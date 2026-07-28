@@ -30,16 +30,7 @@ final class MeetingSentinelMonitor {
     private let stateURL: URL
 
     private init() {
-        // Mirror meet.py's path resolution: honour MEETING_SENTINEL_HOME,
-        // else ~/.config/meeting-sentinel.
-        let home: URL
-        if let override = ProcessInfo.processInfo.environment["MEETING_SENTINEL_HOME"], !override.isEmpty {
-            home = URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)
-        } else {
-            home = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".config/meeting-sentinel", isDirectory: true)
-        }
-        stateURL = home.appendingPathComponent("state.json")
+        stateURL = SentinelPaths.stateURL()
     }
 
     func start() {

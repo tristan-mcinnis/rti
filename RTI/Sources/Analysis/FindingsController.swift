@@ -1,11 +1,11 @@
 import Foundation
 import Observation
 
-/// Builds the live Findings ledger: each scheduler tick asks the LLM for any
-/// genuinely new, significant observations in the latest transcript window and
-/// appends them (deduped against what's already logged). Distinct from the
-/// one-shot ⌘↵ listener-assist flag — that surfaces a single ephemeral note;
-/// this accumulates the running record across the whole session.
+/// Builds the live intelligence ledger: each scheduler tick asks the LLM for
+/// genuinely new decisions, actions, open questions, risks, and follow-ups in
+/// the latest transcript window and appends them (deduped against what's
+/// already logged). User-marked `/note decision: ...` style entries flow into
+/// this same ledger.
 ///
 /// Runs on the same `AnalysisScheduler` rail as Notes/Guide (so it's strictly
 /// timer-driven and never touches the per-frame audio path), gated by its own
@@ -48,6 +48,15 @@ final class FindingsController {
         isGenerating = false
         lastFindingMs = 0
         sessionStartedAt = nil
+    }
+
+    /// Add an explicit user-marked note to the ledger. The note still remains
+    /// inline in the transcript; this adds the structured work-object view.
+    func recordUserMarkedNote(_ text: String, startMs: Int) {
+        guard let entry = FindingEntry.markedNote(from: text, startMs: startMs) else { return }
+        let existing = Set(findings.map { Self.norm($0.headline) })
+        guard !existing.contains(Self.norm(entry.headline)) else { return }
+        findings.append(entry)
     }
 
     /// Generate findings over the transcript since the last pass and append the

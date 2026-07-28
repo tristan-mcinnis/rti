@@ -74,6 +74,45 @@ final class VaultSearchTests: XCTestCase {
         XCTAssertTrue(excerpt.contains("store format"))
     }
 
+    func testDailyDriverAcmeProjectQuestionPrefersProjectStatus() {
+        let terms = VaultSearch.tokenize("tell me about the Acme projects I have done this year")
+        let acmeStatus = VaultSearch.rank(
+            terms: terms,
+            title: "AcmeBrand status",
+            relativePath: "projects/acmebrand/00-status.md",
+            content: "AcmeBrand project status for this year covering fieldwork, mass consumers, and retail concept decisions."
+        ).score
+        let genericMeeting = VaultSearch.rank(
+            terms: terms,
+            title: "Generic client meeting",
+            relativePath: "meetings/2026-06-01-client.md",
+            content: "We mentioned Acme once in a broader conversation."
+        ).score
+
+        XCTAssertGreaterThan(acmeStatus, genericMeeting)
+    }
+
+    func testDailyDriverAcmeBrandCityComparisonFindsComparisonEvidence() {
+        let terms = VaultSearch.tokenize("difference between mass consumers in Shanghai and Beijing for AcmeBrand")
+        let cityEvidence = VaultSearch.rank(
+            terms: terms,
+            title: "AcmeBrand City Nuances",
+            relativePath: "projects/acmebrand/analysis/36-evidence-deck.md",
+            content: """
+            Shanghai mass consumers showed higher awareness, more cosmopolitan retail expectations, and more openness to authentic brand expression.
+            Beijing mass consumers were more traditional and practical, wanting localisation, staff guidance, and visible Acme performance proof.
+            """
+        ).score
+        let offTopicAcme = VaultSearch.rank(
+            terms: terms,
+            title: "Acme store logistics",
+            relativePath: "projects/acme-running/00-status.md",
+            content: "Acme store logistics and project timing."
+        ).score
+
+        XCTAssertGreaterThan(cityEvidence, offTopicAcme)
+    }
+
     // MARK: project scoping
 
     private func result(_ path: String) -> VaultSearch.Result {

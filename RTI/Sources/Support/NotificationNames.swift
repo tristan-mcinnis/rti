@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 extension Notification.Name {
@@ -24,23 +25,98 @@ extension Notification.Name {
     /// Posted (object = OverlayTab rawValue String) to switch the overlay's
     /// active tab from a global hotkey or command.
     static let rtiSelectTab = Notification.Name("rti.selectTab")
+    /// Posted (object = vault-relative path String, under `databases/`) to
+    /// seed the overlay chat composer with an `@file` mention — e.g. the
+    /// Sessions browser's "Ask about this session" action.
+    static let rtiSeedChatMention = Notification.Name("rti.seedChatMention")
 }
 
 enum OverlayAppearanceDefaults {
     static let widthKey = "rti.overlay.width"
     static let heightKey = "rti.overlay.height"
     static let opacityKey = "rti.overlay.opacity"
-    /// When true, the overlay renders in light mode (white panel, black text).
+    /// `system`, `light`, or `dark`. Replaces the older light-mode bool.
+    static let appearanceModeKey = "rti.overlay.appearanceMode"
     static let lightModeKey = "rti.overlay.lightMode"
+    static let accentColorKey = "rti.overlay.accentColor"
+    static let contrastKey = "rti.overlay.contrast"
+    static let translucentPanelKey = "rti.overlay.translucentPanel"
+    static let uiFontSizeKey = "rti.overlay.uiFontSize"
+    static let reduceMotionKey = "rti.overlay.reduceMotion"
     /// When true (the default), every RTI panel sets `sharingType = .none` so it
     /// is excluded from screen capture.
     static let invisibilityKey = "rti.invisible"
     static let defaultWidth: Double = 700
     static let defaultHeight: Double = 440
-    static let defaultOpacity: Double = 0.90
+    static let defaultOpacity: Double = 1.00
+    static let defaultAppearanceMode = RTIAppearanceMode.system.rawValue
+    static let defaultAccentColor = "#339CFF"
+    static let defaultContrast: Double = 60
+    static let defaultTranslucentPanel = true
+    static let defaultUIFontSize: Double = 14
+    static let defaultReduceMotion = RTIReduceMotionMode.system.rawValue
     static let widthRange: ClosedRange<Double> = 320...800
     static let heightRange: ClosedRange<Double> = 400...900
     static let opacityRange: ClosedRange<Double> = 0.10...1.00
+    static let contrastRange: ClosedRange<Double> = 35...85
+    static let uiFontSizeRange: ClosedRange<Double> = 12...18
+
+    static func effectiveAppearanceMode() -> RTIAppearanceMode {
+        let defaults = UserDefaults.standard
+        if let raw = defaults.string(forKey: appearanceModeKey),
+           let mode = RTIAppearanceMode(rawValue: raw) {
+            return mode
+        }
+        if defaults.object(forKey: lightModeKey) != nil {
+            return defaults.bool(forKey: lightModeKey) ? .light : .dark
+        }
+        return .system
+    }
+
+    static func effectiveReduceMotion() -> Bool {
+        let raw = UserDefaults.standard.string(forKey: reduceMotionKey) ?? defaultReduceMotion
+        let mode = RTIReduceMotionMode(rawValue: raw) ?? .system
+        switch mode {
+        case .system:
+            return NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        case .on:
+            return true
+        case .off:
+            return false
+        }
+    }
+}
+
+enum RTIAppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+}
+
+enum RTIReduceMotionMode: String, CaseIterable, Identifiable {
+    case system
+    case on
+    case off
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: "System"
+        case .on: "On"
+        case .off: "Off"
+        }
+    }
 }
 
 enum AudioSettingsDefaults {
@@ -76,4 +152,22 @@ enum AnalysisSettingsDefaults {
     static let defaultAutoAssistEnabled = false
     static let defaultInterval: Double = 120
     static let intervalRange: ClosedRange<Double> = 60...600
+}
+
+enum VisualContextSettingsDefaults {
+    static let enabledKey = "rti.visualContext.enabled"
+    static let defaultEnabled = true
+    static let captureIntervalNanoseconds: UInt64 = 60 * 1_000_000_000
+    static let maximumEventCount = 240
+
+    static var isEnabled: Bool {
+        get {
+            let defaults = UserDefaults.standard
+            guard defaults.object(forKey: enabledKey) != nil else { return defaultEnabled }
+            return defaults.bool(forKey: enabledKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: enabledKey)
+        }
+    }
 }

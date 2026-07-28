@@ -81,7 +81,8 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertEqual(msgs.count, 3)
         XCTAssertEqual(msgs[0].content, "BASE")
         XCTAssertTrue(msgs[1].content?.contains("SCREEN") ?? false)
-        XCTAssertTrue(msgs[2].content?.contains("explicitly referenced") ?? false)
+        XCTAssertTrue(msgs[2].content?.contains("explicitly attached or @mentioned") ?? false)
+        XCTAssertTrue(msgs[2].content?.contains("Do not search the vault") ?? false)
         XCTAssertTrue(msgs[2].content?.contains("discussion-guide.md") ?? false)
         XCTAssertTrue(msgs[2].content?.contains("GUIDE") ?? false)
     }

@@ -79,6 +79,7 @@ This is the **personal fork** of RTI: a single-user, real-time meeting copilot. 
 Layout:
 
 - `RTI/` — Xcode project. Generated via `xcodegen` from `RTI/project.yml`. Build with `xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug build`. Runtime artifact at `~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app`. Bundle id `com.tristan.rti.personal`, macOS 14+, menubar-accessory app (`LSUIElement=YES`).
+- **Run/install reality:** Tristan normally launches the installed app at `/Applications/RTI.app`, not the DerivedData build product. When a change needs to be tested in the running Mac app, do not stop after `xcodebuild`: confirm whether `/Applications/RTI.app` should be replaced, then install the fresh DerivedData bundle there (for example with `ditto <DerivedData>/RTI.app /Applications/RTI.app`) and relaunch it. Check binary timestamps for both paths when behavior still looks stale.
 - `RTI/Sources/` — all Swift sources (overlay, audio, Soniox, LLM, screenshot, session, modes, panels, widgets, settings, UI).
 - `RTI/Tests/` — XCTest unit tests.
 - `RTI/POC*-findings.md` — historical per-POC validation logs. Reference for "why was this built this way?" — but note much of what they describe (persistence, corpus) is gone.

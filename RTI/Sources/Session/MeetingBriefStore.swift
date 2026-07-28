@@ -34,13 +34,7 @@ struct MeetingBrief: Identifiable, Hashable {
 /// `briefs/`) so the vault path is never hardcoded here.
 enum MeetingBriefStore {
     static func briefsDirectory() -> URL? {
-        guard let data = try? Data(contentsOf: sentinelConfigURL()),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let recordings = obj["recordings_dir"] as? String, !recordings.isEmpty
-        else { return nil }
-        let recordingsURL = URL(fileURLWithPath: (recordings as NSString).expandingTildeInPath)
-        return recordingsURL.deletingLastPathComponent()
-            .appendingPathComponent("briefs", isDirectory: true)
+        SentinelPaths.briefsDirectory()
     }
 
     /// Recent briefs, newest first. Filenames are date-prefixed
@@ -126,12 +120,4 @@ enum MeetingBriefStore {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func sentinelConfigURL() -> URL {
-        if let override = ProcessInfo.processInfo.environment["MEETING_SENTINEL_HOME"], !override.isEmpty {
-            return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
-                .appendingPathComponent("config.json")
-        }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/meeting-sentinel/config.json")
-    }
 }

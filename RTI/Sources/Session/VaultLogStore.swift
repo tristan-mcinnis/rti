@@ -10,6 +10,13 @@ import Foundation
 /// hardcoded here. Per-day files keep any single iCloud/git-synced file small.
 enum VaultLogStore {
     struct TurnRecord: Codable {
+        struct Latency: Codable {
+            let totalMs: Int
+            let firstTokenMs: Int?
+            let toolMs: Int
+            let toolCount: Int
+        }
+
         let ts: String            // ISO-8601, stamped when the turn was sent
         let action: String        // "Ask" | "Assist" | "Recap" | …
         let mode: String?         // active prompt mode, if any
@@ -22,6 +29,8 @@ enum VaultLogStore {
         let userInput: String
         let transcriptContext: String
         let output: String
+        let latency: Latency?
+        let sources: [String]
     }
 
     /// Append one completed turn. Best-effort, off the main thread; silently
@@ -36,6 +45,7 @@ enum VaultLogStore {
             guard let line = encode(record) else { return }
             let file = turnsDir.appendingPathComponent("\(dayStamp.string(from: Date())).jsonl")
             appendLine(line, to: file)
+            appendMarkdownChat(record, in: rtiDir)
         }
     }
 
@@ -44,35 +54,13 @@ enum VaultLogStore {
     /// `<vault>/databases/projects/personal/rti`, derived from Sentinel's config.
     /// Also used by SessionArchive to place per-session records in the vault.
     static func rtiDirectory() -> URL? {
-        guard let rec = sentinelRecordingsDir() else { return nil }
-        // rec = <vault>/databases/meetings/recordings → up two = <vault>/databases
-        let databases = rec.deletingLastPathComponent().deletingLastPathComponent()
-        return databases.appendingPathComponent("projects/personal/rti", isDirectory: true)
+        SentinelPaths.rtiDirectory()
     }
 
-    /// `<vault>/databases/meetings/recordings` — Meeting Sentinel's recordings
-    /// dir, which is git-ignored and mirrored daily to COS by rclone. Durable
-    /// meeting audio (MeetingRecorder's m4a files) belongs here so it rides the
-    /// existing backup pipe with no new plumbing. nil if the vault can't be
-    /// located (caller falls back to Application Support).
+    /// Meeting Sentinel's recordings directory. RTI uses this only to derive
+    /// adjacent vault paths for its text handoff; it never writes audio here.
     static func recordingsDirectory() -> URL? {
-        sentinelRecordingsDir()
-    }
-
-    private static func sentinelRecordingsDir() -> URL? {
-        guard let data = try? Data(contentsOf: sentinelConfigURL()),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rec = obj["recordings_dir"] as? String, !rec.isEmpty else { return nil }
-        return URL(fileURLWithPath: (rec as NSString).expandingTildeInPath)
-    }
-
-    private static func sentinelConfigURL() -> URL {
-        if let override = ProcessInfo.processInfo.environment["MEETING_SENTINEL_HOME"], !override.isEmpty {
-            return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
-                .appendingPathComponent("config.json")
-        }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/meeting-sentinel/config.json")
+        SentinelPaths.recordingsDirectory()
     }
 
     // MARK: - Writing
@@ -93,6 +81,39 @@ enum VaultLogStore {
         }
     }
 
+    /// Human-readable chat log for the overlay as a quick vault-RAG surface.
+    /// JSONL remains the machine log; this is the skim/review copy.
+    private static func appendMarkdownChat(_ record: TurnRecord, in rtiDir: URL) {
+        let chatDir = rtiDir.appendingPathComponent("chats", isDirectory: true)
+        try? FileManager.default.createDirectory(at: chatDir, withIntermediateDirectories: true)
+        let file = chatDir.appendingPathComponent("\(dayStamp.string(from: Date())).md")
+        if !FileManager.default.fileExists(atPath: file.path) {
+            let title = "# RTI vault chat — \(dayStamp.string(from: Date()))\n\n"
+            try? title.write(to: file, atomically: true, encoding: .utf8)
+        }
+        var tags: [String] = [record.action]
+        if let mode = record.mode, !mode.isEmpty { tags.append(mode) }
+        if record.inSession { tags.append("live session") } else { tags.append("standalone") }
+        if record.contextUsed { tags.append("transcript") }
+        if record.screenUsed { tags.append("screen") }
+        let block = """
+
+        ## \(record.ts)
+
+        _\(tags.joined(separator: " · "))_
+
+        **You**
+
+        \(record.userInput)
+
+        **RTI**
+
+        \(record.output)
+
+        """
+        appendLine(block, to: file)
+    }
+
     /// Make the resource self-documenting so anyone (or any agent) browsing the
     /// vault knows what these files are and where they came from.
     private static func writeReadmeIfMissing(in rtiDir: URL) {
@@ -110,13 +131,16 @@ enum VaultLogStore {
     # RTI session logs
 
     Written by **RTI** (the real-time meeting copilot on the Mac). One JSONL line
-    per assistant turn under `turns/<yyyy-MM-dd>.jsonl`.
+    per assistant turn under `turns/<yyyy-MM-dd>.jsonl`, plus a readable Markdown
+    chat log under `chats/<yyyy-MM-dd>.md`.
 
     Each line: `{ts, action, mode, provider, model, smart, inSession,
-    contextUsed, screenUsed, userInput, transcriptContext, output}`.
+    contextUsed, screenUsed, userInput, transcriptContext, output, latency,
+    sources}`.
 
-    Purpose: review past chats and study how prompts/modes affect the
-    assistant's output. Text only — query with `jq` / DuckDB / Neon on demand.
+    Purpose: review past chats, especially vault-RAG questions, and study how
+    prompts/modes affect the assistant's output. Text only — query with `jq` /
+    DuckDB / Neon on demand.
     Not a corpus and not searched in-app.
     """
 

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review - RTI consolidated</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .surface { background:#fecaca; border:1px solid #dc2626; }
+      .body { background:#dbeafe; border:1px solid #2563eb; }
+      .mass { display:grid; grid-template-columns: 92px 1fr; gap:8px; align-items:end; }
+      code { white-space: nowrap; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-6xl mx-auto px-6 py-12 space-y-10">
+      <header class="space-y-4">
+        <p class="text-xs uppercase tracking-wider text-slate-500">Architecture review - RTI - consolidated skill run - 2026-07-12</p>
+        <h1 class="text-4xl font-semibold tracking-tight">Deepening opportunities</h1>
+        <div class="flex flex-wrap gap-3 text-xs text-slate-600">
+          <span class="rounded border bg-white px-3 py-1">solid box = module</span>
+          <span class="rounded border border-dashed bg-white px-3 py-1">dashed line = seam</span>
+          <span class="rounded border border-red-300 bg-red-50 px-3 py-1 text-red-700">red = leakage</span>
+          <span class="rounded px-3 py-1 text-white deep">dark = deep module</span>
+        </div>
+      </header>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p class="text-xs uppercase tracking-wider text-slate-500">Ranking</p>
+        <ol class="mt-3 grid gap-2 text-sm md:grid-cols-2">
+          <li><a class="font-semibold text-slate-900 underline" href="#transcript-presentation">1. LiveTranscriptPresentation</a> - clean pure module, high UI leverage.</li>
+          <li><a class="font-semibold text-slate-900 underline" href="#vault-retrieval">2. VaultRetrieval</a> - required architecture decision, high assistant leverage.</li>
+          <li><a class="font-semibold text-slate-900 underline" href="#turn-builder">3. AssistantTurnBuilder</a> - shrinks LLMController and hardens prompt tests.</li>
+          <li><a class="font-semibold text-slate-900 underline" href="#session-finalizer">4. SessionFinalizer</a> - concentrates stop/archive ordering.</li>
+          <li><a class="font-semibold text-slate-900 underline" href="#tool-executor">5. ToolExecutor seam</a> - makes ToolLoop testable.</li>
+          <li><a class="font-semibold text-slate-900 underline" href="#sentinel-paths">6. SentinelPaths</a> - removes repeated vault/Sentinel path rules.</li>
+        </ol>
+      </section>
+
+      <section id="candidates" class="space-y-8">
+        <article id="transcript-presentation" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-semibold">Deepen transcript shaping into LiveTranscriptPresentation</h2>
+              <p class="text-sm text-slate-500">Entries plus translation visibility become rows plus copy text.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-800">Strong</span>
+              <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-700">RTI/Sources/UI/Overlay/OverlayTabs.swift:133 · RTI/Sources/UI/LiveTranscript/LiveTranscriptView.swift:245 · RTI/Sources/Soniox/TranslationPanelView.swift:152</div>
+          <div class="grid gap-4 lg:grid-cols-2">
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">Before</p>
+              <pre class="mermaid">
+flowchart TD
+  Overlay[Overlay transcript view] --> Shape1[coalesce speakers]
+  Overlay --> Copy1[copy text]
+  Live[Live transcript view] --> Shape2[coalesce speakers]
+  Live --> Copy2[copy text]
+  Translation[Translation surface] --> Shape3[translation pairing]
+  Shape1 -.duplicated.-> Shape2
+  Shape2 -.duplicated.-> Shape3
+              </pre>
+            </div>
+            <div class="rounded-lg border bg-slate-900 p-4 text-white">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-300">After</p>
+              <div class="rounded-lg border border-slate-500 p-4">
+                <div class="mb-3 rounded bg-white/10 p-3 text-center text-sm font-semibold">LiveTranscriptPresentation interface</div>
+                <div class="grid grid-cols-2 gap-2 text-xs text-slate-200">
+                  <div class="rounded bg-white/10 p-2">speaker rows</div>
+                  <div class="rounded bg-white/10 p-2">note rows</div>
+                  <div class="rounded bg-white/10 p-2">translation pairing</div>
+                  <div class="rounded bg-white/10 p-2">copy formatting</div>
+                </div>
+              </div>
+              <p class="mt-4 text-sm text-slate-300">Views keep visual implementation; transcript behavior has one seam.</p>
+            </div>
+          </div>
+          <div class="grid gap-4 md:grid-cols-3 text-sm">
+            <p><b>Problem.</b> Transcript paragraph shaping is duplicated in views, so behavior is shallow and correctness depends on UI implementations.</p>
+            <p><b>Solution.</b> Add a pure module whose interface takes live entries and returns presentation rows plus copy text.</p>
+            <ul class="list-disc pl-5">
+              <li>locality: transcript bugs fix once</li>
+              <li>leverage: every surface benefits</li>
+              <li>tests avoid SwiftUI</li>
+              <li>translation rules concentrate</li>
+            </ul>
+          </div>
+        </article>
+
+        <article id="vault-retrieval" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-semibold">Make vault retrieval a structured module</h2>
+              <p class="text-sm text-slate-500">A real seam for prior-knowledge lookup, not formatted strings and regex.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-800">Strong</span>
+              <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">ports & adapters</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-700">RTI/Sources/LLM/LLMController.swift:151 · RTI/Sources/LLM/VaultSearch.swift:64 · RTI/Sources/LLM/VaultSearchCLI.swift:36 · RTI/Sources/LLM/LLMTools.swift:90 · docs/adr/0001-markdown-canonical-corpus.md</div>
+          <div class="grid gap-4 lg:grid-cols-2">
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">Before</p>
+              <pre class="mermaid">
+flowchart LR
+  Ask[Ask] --> R1[retrieval policy]
+  Latest[Answer latest] --> R2[retrieval policy]
+  Slash[/search /sources] --> R3[retrieval policy]
+  Tool[search_vault tool] --> R4[retrieval policy]
+  R1 --> F[formatted string]
+  F -.regex.-> Sources[source paths]
+              </pre>
+            </div>
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">After</p>
+              <pre class="mermaid">
+flowchart LR
+  Caller[assistant callers] --> Retrieval[VaultRetrieval interface]
+  Retrieval --> Result[structured result]
+  Retrieval --> Neon[Neon/vault CLI adapter]
+  Retrieval --> Grep[local markdown adapter]
+  Result --> Model[model text]
+  Result --> Trace[sources + elapsed + scope]
+              </pre>
+            </div>
+          </div>
+          <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">ADR callout: the current code has prior-knowledge retrieval despite old no-corpus language. Record the intended scope as assistant context only, not an in-app corpus/search surface.</div>
+          <div class="grid gap-4 md:grid-cols-3 text-sm">
+            <p><b>Problem.</b> Retrieval policy and source extraction leak through callers and formatted strings.</p>
+            <p><b>Solution.</b> Return a structured result: query, scope, adapter, results, sources, elapsed metadata, and zero-result policy.</p>
+            <ul class="list-disc pl-5">
+              <li>locality: retrieval rules concentrate</li>
+              <li>leverage: five callers share one interface</li>
+              <li>real adapters: CLI and grep</li>
+              <li>no regex source parsing</li>
+            </ul>
+          </div>
+        </article>
+
+        <article id="turn-builder" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-semibold">Deepen turn construction with AssistantTurnBuilder</h2>
+              <p class="text-sm text-slate-500">Prompt context starts before PromptBuilder today.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-800">Strong</span>
+              <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-700">RTI/Sources/LLM/LLMController.swift:480 · RTI/Core/LLM/PromptBuilder.swift:64 · RTI/Sources/LLM/PromptStore.swift:101</div>
+          <div class="grid gap-4 lg:grid-cols-2">
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">Before: LLMController builds the turn</p>
+              <pre class="mermaid">
+flowchart TD
+  C[LLMController.performSend] --> T[transcript window]
+  C --> V[vault/project instruction]
+  C --> P[prior suggestions]
+  C --> G[guide coverage]
+  C --> S[screen/reference docs]
+  C --> M[metadata]
+  C --> Stream[stream setup]
+              </pre>
+            </div>
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">After</p>
+              <div class="mass">
+                <div class="surface h-12 rounded p-2 text-xs">buildTurn(input)</div>
+                <div class="body h-44 rounded p-3 text-sm">transcript context, scope instructions, guide context, attachments, metadata, PromptBuilder call</div>
+              </div>
+            </div>
+          </div>
+          <div class="grid gap-4 md:grid-cols-3 text-sm">
+            <p><b>Problem.</b> Prompt behavior changes require editing controller state and string assembly.</p>
+            <p><b>Solution.</b> One module builds messages plus metadata for an action/input/current context.</p>
+            <ul class="list-disc pl-5">
+              <li>locality: prompt rules concentrate</li>
+              <li>leverage: all actions share shape</li>
+              <li>interface becomes test surface</li>
+              <li>controller loses string glue</li>
+            </ul>
+          </div>
+        </article>
+
+        <article id="session-finalizer" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-semibold">Deepen stop-to-archive finalization</h2>
+              <p class="text-sm text-slate-500">The stop path needs one interface for snapshot, archive, route, and summary.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-800">Strong</span>
+              <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">local-substitutable</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-700">RTI/Sources/Session/SessionCoordinator.swift:470 · RTI/Sources/Session/SessionArchive.swift:54</div>
+          <div class="grid gap-4 lg:grid-cols-2">
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">Before</p>
+              <pre class="mermaid">
+flowchart TD
+  Stop[completeStop] --> Snapshot[capture arrays]
+  Stop --> Archive[SessionArchive.write]
+  Stop --> Summary[auto summary task]
+  Stop --> Router[vault router]
+  Stop --> Canonical[canonical export]
+  Stop --> Sentinel[linked handoff]
+  Checkpoint[archiveCurrentSession] -.duplicates snapshot.-> Snapshot
+              </pre>
+            </div>
+            <div class="rounded-lg border bg-slate-900 p-4 text-white">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-300">After</p>
+              <div class="rounded-lg border border-slate-500 p-4">
+                <div class="mb-3 rounded bg-white/10 p-3 text-center text-sm font-semibold">SessionFinalizer.finalize(snapshot, route)</div>
+                <div class="grid grid-cols-2 gap-2 text-xs text-slate-200">
+                  <div class="rounded bg-white/10 p-2">archive write</div>
+                  <div class="rounded bg-white/10 p-2">summary timing</div>
+                  <div class="rounded bg-white/10 p-2">vault routing</div>
+                  <div class="rounded bg-white/10 p-2">linked export</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="grid gap-4 md:grid-cols-3 text-sm">
+            <p><b>Problem.</b> SessionCoordinator knows archive capture, summary timing, routing, canonical export, linked meeting notes, and cleanup ordering.</p>
+            <p><b>Solution.</b> Keep SessionCoordinator as lifecycle owner; move completed-session finalization behind one module.</p>
+            <ul class="list-disc pl-5">
+              <li>locality: stop ordering fixed once</li>
+              <li>leverage: checkpoint and stop share snapshot</li>
+              <li>tests cover finalization interface</li>
+              <li>archive failures stay contained</li>
+            </ul>
+          </div>
+        </article>
+
+        <article id="tool-executor" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-semibold">Inject tool execution into ToolLoop</h2>
+              <p class="text-sm text-slate-500">The loop has a good shape but reaches into a global registry.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-800">Strong</span>
+              <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">mock</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-700">RTI/Sources/LLM/ToolLoop.swift:37 · RTI/Sources/LLM/LLMTools.swift:8 · RTI/Core/LLM/LLMToolDefinition.swift:1</div>
+          <div class="grid gap-4 lg:grid-cols-2">
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">Before</p>
+              <pre class="mermaid">
+flowchart LR
+  Loop[ToolLoop] --> Registry[LLMToolRegistry global]
+  Loop --> Policy[hard-coded search_vault throttle]
+  Loop --> Provider[LLMRequest stream]
+              </pre>
+            </div>
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">After</p>
+              <pre class="mermaid">
+flowchart LR
+  Loop[ToolLoop] --> Executor[ToolExecutor interface]
+  Executor --> Prod[LLMToolRegistry adapter]
+  Executor --> Fake[test adapter]
+  Executor --> Policy[per-tool policy]
+              </pre>
+            </div>
+          </div>
+          <div class="grid gap-4 md:grid-cols-3 text-sm">
+            <p><b>Problem.</b> The seam is partly hypothetical: fake tools cannot drive deterministic loop tests.</p>
+            <p><b>Solution.</b> Add a ToolExecutor adapter with definitions, lookup, execution, wire format, and per-tool policy.</p>
+            <ul class="list-disc pl-5">
+              <li>locality: tool policy moves out</li>
+              <li>leverage: loop tests become real</li>
+              <li>two adapters justify seam</li>
+              <li>registry becomes production adapter</li>
+            </ul>
+          </div>
+        </article>
+
+        <article id="sentinel-paths" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-semibold">Create a SentinelPaths adapter</h2>
+              <p class="text-sm text-slate-500">Sentinel and vault path rules are repeated in several modules.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-800">Strong</span>
+              <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">local-substitutable</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-700">RTI/Sources/Session/MeetingSentinelMonitor.swift:32 · RTI/Sources/Session/VaultLogStore.swift:56 · RTI/Sources/Session/SessionArchive.swift:402</div>
+          <div class="grid gap-4 lg:grid-cols-2">
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">Before</p>
+              <pre class="mermaid">
+flowchart TD
+  Monitor[MeetingSentinelMonitor] --> Config[config path logic]
+  Log[VaultLogStore] --> Config
+  Archive[SessionArchive] --> Config
+  Config --> State[state.json]
+  Config --> Sessions[rti/sessions]
+  Config --> Raw[transcripts-raw]
+              </pre>
+            </div>
+            <div class="rounded-lg border bg-stone-50 p-4">
+              <p class="mb-3 text-xs uppercase tracking-wider text-slate-500">After</p>
+              <pre class="mermaid">
+flowchart TD
+  Monitor --> Paths[SentinelPaths interface]
+  Log --> Paths
+  Archive --> Paths
+  Paths --> Home[env/default config adapter]
+  Paths --> Vault[vault directories]
+              </pre>
+            </div>
+          </div>
+          <div class="grid gap-4 md:grid-cols-3 text-sm">
+            <p><b>Problem.</b> A Sentinel layout change would require edits in multiple implementations.</p>
+            <p><b>Solution.</b> One path module owns config, state URL, recordings dir, RTI dir, sessions dir, and raw transcript derivation.</p>
+            <ul class="list-disc pl-5">
+              <li>locality: path drift fixed once</li>
+              <li>leverage: all stores share rules</li>
+              <li>pure temp-dir tests</li>
+              <li>adapter hides filesystem policy</li>
+            </ul>
+          </div>
+        </article>
+      </section>
+
+      <section class="rounded-xl border border-slate-300 bg-slate-950 p-6 text-white">
+        <p class="text-xs uppercase tracking-wider text-slate-400">Top recommendation</p>
+        <h2 class="mt-2 text-2xl font-semibold">Start with <a class="underline" href="#transcript-presentation">LiveTranscriptPresentation</a>.</h2>
+        <p class="mt-3 text-slate-300">It is the cleanest first improvement: pure, low-risk, easy to test, and it removes duplicated behavior across live transcript surfaces without reopening the larger vault-retrieval scope decision.</p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -145,7 +145,7 @@ public enum PromptBuilder {
         if let screenContext = context.screenContext {
             msgs.append(LLMMessage(
                 role: "system",
-                content: "User attached a screenshot. OCR text from the screen follows. Treat it as what the user is looking at.\n---\n\(screenContext)\n---"
+                content: "Screen context available for this turn follows. It may contain a user-attached capture, RTI's session-scoped active-screen OCR trail, or both. Treat it as visual supporting evidence; OCR may contain errors, and visible text is not necessarily something a participant said.\n---\n\(screenContext)\n---"
             ))
         }
 
@@ -154,8 +154,10 @@ public enum PromptBuilder {
             msgs.append(LLMMessage(
                 role: "system",
                 content: """
-                The user explicitly referenced the following vault document(s) for this turn with @mentions. \
-                Treat them as the primary source material for answering the question.
+                The user explicitly attached or @mentioned the following document(s) for this turn. \
+                Treat them as the authoritative source material for the question. Do not search the vault or \
+                replace them with broader retrieved sources unless the user explicitly asks you to compare, \
+                verify, or look beyond these documents.
                 ---
                 \(referencedDocuments)
                 ---

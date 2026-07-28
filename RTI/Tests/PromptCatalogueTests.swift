@@ -66,7 +66,7 @@ final class PromptCatalogueTests: XCTestCase {
 
         for kind in [ModeKind.meeting, .coding, .other] {
             let s = PromptCatalogue.summary(for: kind)
-            XCTAssertTrue(s.contains("Write a structured summary of this ENTIRE meeting"),
+            XCTAssertTrue(s.contains("writing the meeting record of this ENTIRE meeting"),
                           "expected minutes for \(kind)")
             XCTAssertNotEqual(s, interview)
         }

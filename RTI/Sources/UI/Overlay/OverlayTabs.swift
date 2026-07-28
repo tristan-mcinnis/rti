@@ -11,7 +11,7 @@ struct TranscriptTabView: View {
     @AppStorage(TranslationDefaults.targetLanguageKey) private var targetLanguage = "en"
     @AppStorage(TranslationDefaults.languageAKey) private var languageA = "en"
     @AppStorage(TranslationDefaults.languageBKey) private var languageB = "zh"
-    @State private var paragraphs: [Paragraph] = []
+    @State private var paragraphs: [LiveTranscriptPresentation.Row] = []
 
     private static let languageOptions: [(code: String, label: String)] = [
         ("en", "English"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French"),
@@ -38,7 +38,7 @@ struct TranscriptTabView: View {
                 let paras = paragraphs
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 8) {
+                        LazyVStack(alignment: .leading, spacing: 12) {
                             ForEach(paras) { para in
                                 paragraphRow(para).id(para.id)
                             }
@@ -130,14 +130,6 @@ struct TranscriptTabView: View {
 
     // MARK: - Speaker turns (one stream, coalesced by speaker)
 
-    private struct Paragraph: Identifiable {
-        let id: UUID
-        let speakerId: String
-        let speakerLabel: String
-        var original: String
-        var translation: String
-    }
-
     /// Build the transcript as speaker turns, merging each speaker's consecutive
     /// fragments into one flowing line. Each turn keeps BOTH its original and its
     /// translation text; the row then shows the translation when translating and
@@ -151,73 +143,59 @@ struct TranscriptTabView: View {
     ///
     /// Cached in `@State` and rebuilt only when `liveEntries` changes, so long
     /// transcripts don't re-coalesce on every SwiftUI render.
-    private func makeParagraphs() -> [Paragraph] {
-        var result: [Paragraph] = []
-        var speakerNumber: [String: Int] = [:]
-        var nextNumber = 1
-        func label(for id: String) -> String {
-            if id == "note" { return "📝 Note" }
-            if let n = speakerNumber[id] { return "Speaker \(n)" }
-            let n = nextNumber
-            speakerNumber[id] = n
-            nextNumber += 1
-            return "Speaker \(n)"
-        }
-
-        for entry in session.liveEntries {
-            let isTranslation = entry.translationStatus == "translation"
-            let isNote = entry.speakerId == "note"
-            if !isNote, !result.isEmpty, result[result.count - 1].speakerId == entry.speakerId {
-                let i = result.count - 1
-                if isTranslation {
-                    result[i].translation += (result[i].translation.isEmpty ? "" : " ") + entry.text
-                } else {
-                    result[i].original += (result[i].original.isEmpty ? "" : " ") + entry.text
-                }
-            } else {
-                result.append(Paragraph(
-                    id: entry.id,
-                    speakerId: entry.speakerId,
-                    speakerLabel: label(for: entry.speakerId),
-                    original: isTranslation ? "" : entry.text,
-                    translation: isTranslation ? entry.text : ""
-                ))
-            }
-        }
-        // Keep a turn if it has spoken text, or a translation to show. Crucially
-        // the original is ALWAYS kept — turning translation on never hides the
-        // transcript you already have.
-        return result.filter { para in
-            !para.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                || (translationEnabled && !para.translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
+    private func makeParagraphs() -> [LiveTranscriptPresentation.Row] {
+        LiveTranscriptPresentation.rows(
+            from: session.liveEntries,
+            showTranslations: translationEnabled,
+            speakerLabelStyle: .neutral
+        )
     }
 
     /// Show the original always; when translating, show the translation as a
     /// second line beneath it. So toggling translation mid-session is purely
     /// additive — it never wipes the preceding transcript.
-    private func paragraphRow(_ para: Paragraph) -> some View {
+    private func paragraphRow(_ para: LiveTranscriptPresentation.Row) -> some View {
+        let isNote = para.speakerId == "note"
+        let speakerColor = SpeakerLabels.chipColor(for: para.speakerId)
         let original = para.original.trimmingCharacters(in: .whitespacesAndNewlines)
         let translation = para.translation.trimmingCharacters(in: .whitespacesAndNewlines)
-        return VStack(alignment: .leading, spacing: 2) {
-            Text(para.speakerLabel)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(para.speakerId == "note" ? Color.yellow.opacity(0.8) : Color.overlayInk.opacity(0.5))
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                if isNote {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(speakerColor)
+                } else {
+                    Circle()
+                        .fill(speakerColor)
+                        .frame(width: 6, height: 6)
+                }
+                Text(para.speakerLabel)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(isNote ? speakerColor : Color.overlayInk.opacity(0.65))
+                Text(TimeFormat.elapsedMs(para.startMs))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(Color.overlayInk.opacity(0.38))
+            }
             if !original.isEmpty {
                 Text(original)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.overlayInk.opacity(0.9))
+                    .font(.system(size: 13))
+                    .lineSpacing(2)
+                    .foregroundStyle(Color.overlayInk.opacity(0.92))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if translationEnabled, !translation.isEmpty {
                 Text(translation)
-                    .font(.system(size: 12))
+                    .font(.system(size: 13))
+                    .italic()
+                    .lineSpacing(2)
                     .foregroundStyle(Color.blue.opacity(0.95))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .padding(.vertical, 1)
     }
 
     private func languageLabel(_ code: String) -> String {
@@ -225,12 +203,7 @@ struct TranscriptTabView: View {
     }
 
     private func transcriptText() -> String {
-        paragraphs.map { para in
-            var line = "\(para.speakerLabel): \(para.original)"
-            let t = para.translation.trimmingCharacters(in: .whitespacesAndNewlines)
-            if translationEnabled, !t.isEmpty { line += "\n  ↳ \(para.translation)" }
-            return line
-        }.joined(separator: "\n")
+        LiveTranscriptPresentation.copyText(rows: paragraphs, showTranslations: translationEnabled)
     }
 
     private var healthColor: Color {
@@ -378,28 +351,28 @@ struct NotesTabView: View {
     }
 }
 
-// MARK: - Findings ledger
+// MARK: - Intelligence ledger
 
-/// Accumulating ledger of tagged findings across the session — the passive
-/// counterpart to the one-shot ⌘↵ listener flag. Mirrors NotesTabView's shape:
-/// chronological list, newest last, auto-scrolled, copy/export in the toolbar.
+/// Accumulating ledger of live decisions/actions/questions/risks across the
+/// session. Mirrors NotesTabView's shape: chronological list, newest last,
+/// auto-scrolled, copy/export in the toolbar.
 struct FindingsTabView: View {
     private let controller = FindingsController.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Findings").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
+                Text("Intelligence").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
                 if controller.isGenerating {
                     ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
                 }
                 Spacer()
-                OverlayToolbarButton(icon: "arrow.clockwise", help: "Scan for findings now",
+                OverlayToolbarButton(icon: "arrow.clockwise", help: "Scan for live intelligence now",
                                      disabled: controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
                 {
                     if let sid = SessionCoordinator.shared.currentSessionId { Task { _ = await controller.generate(sessionId: sid) } }
                 }
-                OverlayToolbarButton(icon: "doc.on.doc", help: "Copy all findings", disabled: controller.findings.isEmpty) {
+                OverlayToolbarButton(icon: "doc.on.doc", help: "Copy all intelligence", disabled: controller.findings.isEmpty) {
                     NSPasteboard.copyMarkdownRich(combinedMarkdown())
                 }
                 OverlayToolbarButton(icon: "square.and.arrow.down", help: "Export as .md", disabled: controller.findings.isEmpty, action: export)
@@ -408,7 +381,7 @@ struct FindingsTabView: View {
                 Text(error).font(.system(size: 10)).foregroundStyle(.red)
             }
             if controller.findings.isEmpty {
-                overlayEmptyState("flag", "No findings yet", "Tagged findings, tensions, and missed threads appear here as the session develops.")
+                overlayEmptyState("checklist.checked", "No intelligence yet", "Decisions, actions, open questions, risks, and marked notes appear here.")
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -454,7 +427,7 @@ struct FindingsTabView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
             if !f.matters.isEmpty {
-                Text("Matters: \(f.matters)")
+                Text("Why: \(f.matters)")
                     .font(.system(size: 11))
                     .foregroundStyle(Color.overlayInk.opacity(0.6))
                     .fixedSize(horizontal: false, vertical: true)
@@ -478,6 +451,11 @@ struct FindingsTabView: View {
 
     private func tagColor(_ tag: FindingTag) -> Color {
         switch tag {
+        case .decision: .green
+        case .action: .blue
+        case .openQuestion: .teal
+        case .risk: .orange
+        case .followUp: .purple
         case .finding: .green
         case .tension: .orange
         case .contradiction: .red
@@ -493,7 +471,7 @@ struct FindingsTabView: View {
 
     private func findingMarkdown(_ f: FindingEntry) -> String {
         var out = "- **[\(f.tag.label)]** `\(mmss(f.rangeMs))` \(f.headline)"
-        if !f.matters.isEmpty { out += "\n  - _Matters:_ \(f.matters)" }
+        if !f.matters.isEmpty { out += "\n  - _Why:_ \(f.matters)" }
         if let quote = f.quote, !quote.isEmpty {
             let who = f.speaker.map { "\($0): " } ?? ""
             out += "\n  - > \(who)\(quote)"
@@ -507,7 +485,7 @@ struct FindingsTabView: View {
 
     private func export() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "rti-findings-\(Date().formatted(.iso8601.year().month().day())).md"
+        panel.nameFieldStringValue = "rti-intelligence-\(Date().formatted(.iso8601.year().month().day())).md"
         panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
         let content = combinedMarkdown()
         panel.begin { response in
@@ -641,6 +619,7 @@ struct SetupTabView: View {
     }
 
     private enum LiveOption: Equatable, Identifiable {
+        case visualContext
         case notes
         case guide
         case findings
@@ -648,6 +627,7 @@ struct SetupTabView: View {
 
         var id: String {
             switch self {
+            case .visualContext: "visualContext"
             case .notes: "notes"
             case .guide: "guide"
             case .findings: "findings"
@@ -657,33 +637,37 @@ struct SetupTabView: View {
 
         var title: String {
             switch self {
+            case .visualContext: "Screen context"
             case .notes: "Notes"
             case .guide: "Guide"
-            case .findings: "Findings"
+            case .findings: "Intel"
             case .autoAssist: "Auto"
             }
         }
 
         var detail: String {
             switch self {
+            case .visualContext: "Read the active screen every minute; images discarded"
             case .notes: "Capture running notes as the call develops"
             case .guide: "Match questions from an attached guide"
-            case .findings: "Keep a live ledger of observations"
+            case .findings: "Decisions, actions, questions, risks"
             case .autoAssist: "Surface suggestions during the call"
             }
         }
 
         var icon: String {
             switch self {
+            case .visualContext: "eye"
             case .notes: "note.text"
             case .guide: "checklist"
-            case .findings: "tag"
+            case .findings: "checklist.checked"
             case .autoAssist: "sparkles"
             }
         }
     }
 
     private let store = MeetingContextStore.shared
+    private let calendarStore = CalendarMeetingStore.shared
     private let guideController = DiscussionGuideController.shared
     private let visibleResultLimit = 8
     // These also gate the live tabs (Notes / Guide) — see OverlayPanelView.
@@ -691,6 +675,7 @@ struct SetupTabView: View {
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
     @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
     @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
+    @AppStorage(VisualContextSettingsDefaults.enabledKey) private var visualContextEnabled = VisualContextSettingsDefaults.defaultEnabled
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
     @State private var scopeFilter: ScopeFilter = .all
@@ -705,6 +690,7 @@ struct SetupTabView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 meetingFocusSection
+                calendarMeetingSection
                 liveCallSection
                 discussionGuideSection
                 noteEditor
@@ -712,7 +698,18 @@ struct SetupTabView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            calendarStore.refresh()
+        }
+        .onChange(of: visualContextEnabled) { _, enabled in
+            let session = SessionCoordinator.shared
+            VisualContextTrail.shared.setEnabled(
+                enabled,
+                sessionStartedAt: session.isRunning ? session.startedAt : nil
+            )
+            if session.isPaused { VisualContextTrail.shared.setPaused(true) }
+        }
     }
 
     // MARK: - Meeting focus
@@ -726,6 +723,137 @@ struct SetupTabView: View {
             picker
         }
     }
+
+    // MARK: - Confirmed calendar meeting
+
+    private var calendarMeetingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("Meeting", detail: "Calendar (optional)")
+            settingsGroup {
+                switch calendarStore.accessState {
+                case .notDetermined:
+                    HStack(spacing: 9) {
+                        Image(systemName: "calendar")
+                            .foregroundStyle(Color.overlayInk.opacity(0.55))
+                        Text("Use a calendar event for the title and invitees")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.overlayInk.opacity(0.62))
+                        Spacer(minLength: 6)
+                        Button("Allow access") { calendarStore.requestAccess() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                    .padding(10)
+                case .denied:
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.exclamationmark")
+                            .foregroundStyle(.orange.opacity(0.9))
+                        Text("Calendar access is off. Enable it in System Settings to choose a meeting.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.overlayInk.opacity(0.62))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                case .available:
+                    calendarPicker
+                }
+            }
+        }
+    }
+
+    private var calendarPicker: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if let selected = store.calendarMeeting {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green.opacity(0.9))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(selected.title)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.overlayInk)
+                            .lineLimit(1)
+                        Text(calendarDetail(selected))
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.overlayInk.opacity(0.5))
+                    }
+                    Spacer(minLength: 4)
+                    Button { store.clearCalendarMeeting() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Color.overlayInk.opacity(0.38))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove calendar meeting context")
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 9)
+            } else if let suggestion = calendarStore.suggestion {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.clock")
+                        .foregroundStyle(.blue.opacity(0.85))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Suggested: \(suggestion.title)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.overlayInk)
+                            .lineLimit(1)
+                        Text(calendarDetail(suggestion))
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.overlayInk.opacity(0.5))
+                    }
+                    Spacer(minLength: 4)
+                    Button("Use") { store.selectCalendarMeeting(suggestion) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 9)
+            } else {
+                Text("No event overlaps the current time.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.overlayInk.opacity(0.52))
+                    .padding(.horizontal, 10)
+                    .padding(.top, 9)
+            }
+
+            if !calendarStore.events.isEmpty {
+                Menu {
+                    ForEach(calendarStore.events) { event in
+                        Button("\(calendarTime(event))  \(event.title)  ·  \(calendarSourceLabel(event))") {
+                            store.selectCalendarMeeting(event)
+                        }
+                    }
+                } label: {
+                    Label("Choose calendar event", systemImage: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .menuStyle(.borderlessButton)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 9)
+            }
+        }
+    }
+
+    private func calendarDetail(_ event: CalendarMeeting) -> String {
+        let count = event.attendees.count
+        return "\(calendarTime(event)) · \(calendarSourceLabel(event)) · \(count == 0 ? "no invitees" : "\(count) invitee\(count == 1 ? "" : "s")")"
+    }
+
+    private func calendarTime(_ event: CalendarMeeting) -> String {
+        Self.calendarTimeFormatter.string(from: event.startDate)
+    }
+
+    private func calendarSourceLabel(_ event: CalendarMeeting) -> String {
+        let labels = [event.calendarSource, event.calendarName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return labels.isEmpty ? "Calendar" : labels.joined(separator: " / ")
+    }
+
+    private static let calendarTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
 
     private func sectionHeader(_ title: String, detail: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -1016,9 +1144,11 @@ struct SetupTabView: View {
 
     private var liveCallSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Live", detail: "Soniox realtime")
+            sectionHeader("Live", detail: "Capture & analysis")
             settingsGroup {
                 liveTranscriptionRow
+                settingsRowDivider
+                livePanelToggle(.visualContext, $visualContextEnabled)
                 settingsRowDivider
                 livePanelToggle(.notes, $notesEnabled)
                 settingsRowDivider

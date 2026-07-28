@@ -87,7 +87,7 @@ final class OverlayWindowController {
             MainActor.assumeIsolated { self?.applyConfiguredSize() }
         }
 
-        // Settings → "Light mode" toggle posts this so the panel re-themes live.
+        // Settings → Appearance posts this so the panel re-themes live.
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .rtiOverlayAppearanceChanged,
             object: nil,
@@ -109,10 +109,16 @@ final class OverlayWindowController {
         if let o = appearanceObserver { NotificationCenter.default.removeObserver(o) }
     }
 
-    /// The NSAppearance the overlay should use, per the Settings light-mode flag.
+    /// The NSAppearance the overlay should use, per the Settings theme mode.
     private static func configuredAppearance() -> NSAppearance? {
-        let light = UserDefaults.standard.bool(forKey: OverlayAppearanceDefaults.lightModeKey)
-        return NSAppearance(named: light ? .aqua : .darkAqua)
+        switch OverlayAppearanceDefaults.effectiveAppearanceMode() {
+        case .system:
+            return nil
+        case .light:
+            return NSAppearance(named: .aqua)
+        case .dark:
+            return NSAppearance(named: .darkAqua)
+        }
     }
 
     private static func configuredSize() -> NSSize {
@@ -168,19 +174,32 @@ final class OverlayWindowController {
     }
 
     func show(initialLaunch: Bool = false) {
-        window.alphaValue = 0
         if initialLaunch {
             window.orderFront(nil)
         } else {
             window.orderFrontRegardless()
         }
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.18
-            window.animator().alphaValue = 1
+        window.makeKey()
+        if OverlayAppearanceDefaults.effectiveReduceMotion() {
+            window.alphaValue = 1
+        } else {
+            window.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.18
+                window.animator().alphaValue = 1
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
         }
     }
 
     func hide() {
+        if OverlayAppearanceDefaults.effectiveReduceMotion() {
+            window.orderOut(nil)
+            window.alphaValue = 1
+            return
+        }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.15
             window.animator().alphaValue = 0

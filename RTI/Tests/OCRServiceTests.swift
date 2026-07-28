@@ -8,6 +8,10 @@ import CoreGraphics
 /// Renders known strings to a bitmap and asserts OCRService reads them back.
 final class OCRServiceTests: XCTestCase {
 
+    func testLanguageCorrectionIsDisabledForScreenText() {
+        XCTAssertFalse(OCRService.usesLanguageCorrection)
+    }
+
     /// Render `text` as black-on-white at a legible size and return a CGImage.
     private func image(_ text: String, fontSize: CGFloat = 48) -> CGImage {
         let size = NSSize(width: 700, height: 140)

@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import RTICore
 
 /// Read-only browser for archived session records (the Markdown folders
 /// SessionArchive writes to the vault on stop). Browse and read — never
@@ -16,6 +17,15 @@ struct SessionsBrowserView: View {
     @State private var upgradingSessionID: URL?
     @State private var pendingUpgradeSession: SessionArchive.ArchivedSession?
     @State private var showingUpgradeProviderChoice = false
+    @State private var showingTitleEditor = false
+    @State private var titleDraft = ""
+    @State private var editingSummary = false
+    @State private var summaryDraft = ""
+    @State private var showingSpeakerEditor = false
+    @State private var speakerNames: [String: String] = [:]
+    @State private var regeneratingSummaryID: URL?
+    @State private var editingTranscript = false
+    @State private var transcriptTurns: [SessionTranscriptTurn] = []
 
     struct SessionFile: Identifiable, Hashable {
         var id: URL { url }
@@ -24,7 +34,7 @@ struct SessionsBrowserView: View {
     }
 
     /// Preferred reading order when a session folder is opened.
-    private static let fileOrder = ["summary.md", "notes.md", "transcript.md", "chat.md", "discussion-guide.md"]
+    private static let fileOrder = ["summary.md", "live-intelligence.md", "notes.md", "transcript.md", "chat.md", "discussion-guide.md"]
 
     var body: some View {
         HSplitView {
@@ -40,10 +50,22 @@ struct SessionsBrowserView: View {
                     Divider()
                     ScrollView {
                         HStack(alignment: .top, spacing: 0) {
-                            RTIMarkdown(fileText, style: .panel)
-                                .frame(maxWidth: 700, alignment: .leading)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 22)
+                            VStack(alignment: .leading, spacing: 18) {
+                                if editingSummary {
+                                    summaryEditor
+                                } else if editingTranscript {
+                                    transcriptEditor
+                                } else if let split = summarySplit {
+                                    RTIMarkdown(split.brief, style: .panel)
+                                    Divider()
+                                    RTIMarkdown(split.record, style: .panel)
+                                } else {
+                                    RTIMarkdown(fileText, style: .panel)
+                                }
+                            }
+                            .frame(maxWidth: 700, alignment: .leading)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 22)
                             Spacer(minLength: 0)
                         }
                     }
@@ -56,11 +78,20 @@ struct SessionsBrowserView: View {
             .frame(minWidth: 380)
         }
         .onAppear(perform: reload)
-        .onChange(of: selected) { _, _ in loadFiles() }
+        .onChange(of: selected) { _, _ in
+            loadFiles()
+            loadSpeakerNames()
+        }
         .onChange(of: selectedFile) { _, _ in loadText() }
         .onReceive(NotificationCenter.default.publisher(for: .rtiOpenSessionInBrowser)) { notif in
             guard let folder = notif.object as? String else { return }
             selectSession(folder: folder)
+        }
+        .sheet(isPresented: $showingTitleEditor) {
+            titleEditor
+        }
+        .sheet(isPresented: $showingSpeakerEditor) {
+            speakerEditor
         }
         .confirmationDialog(
             "Upgrade transcript with",
@@ -181,14 +212,10 @@ struct SessionsBrowserView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(
-                minWidth: min(CGFloat(files.count) * 74, 180),
-                idealWidth: min(CGFloat(files.count) * 90, 480),
-                maxWidth: min(CGFloat(files.count) * 104, 560),
-                alignment: .leading
-            )
+            .frame(width: min(max(CGFloat(files.count) * 76, 220), 340), alignment: .leading)
+            .layoutPriority(1)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 0)
 
             Button {
                 NSPasteboard.copyMarkdownRich(fileText)
@@ -200,6 +227,57 @@ struct SessionsBrowserView: View {
             .help("Copy as Markdown")
             .disabled(fileText.isEmpty)
 
+            if selectedFile?.name == "summary" {
+                Button(editingSummary ? "Cancel" : "Edit") {
+                    if editingSummary {
+                        editingSummary = false
+                    } else {
+                        summaryDraft = fileText
+                        editingSummary = true
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(fileText.isEmpty)
+                .help("Correct this saved summary")
+
+                if editingSummary {
+                    Button("Save", action: saveSummary)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                } else {
+                    Button(regeneratingSummaryID == session.id ? "Regenerating" : "Regenerate") {
+                        regenerateSummary(for: session)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(regeneratingSummaryID != nil || !hasTranscript(session))
+                    .help("Regenerate using this session's transcript and named speakers")
+                }
+            }
+
+            if selectedFile?.name == "transcript" {
+                Button(editingTranscript ? "Cancel" : "Edit transcript") {
+                    if editingTranscript {
+                        editingTranscript = false
+                    } else {
+                        loadTranscriptTurns()
+                        editingTranscript = true
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(fileText.isEmpty)
+                .help("Correct transcript turns and reassign speakers")
+
+                if editingTranscript {
+                    Button("Save", action: saveTranscript)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(transcriptTurns.isEmpty)
+                }
+            }
+
             Button {
                 promptTranscriptUpgrade(for: session)
             } label: {
@@ -210,7 +288,30 @@ struct SessionsBrowserView: View {
             .disabled(upgradingSessionID != nil || !canUpgrade(session))
             .help(canUpgrade(session) ? "Run the configured async transcript provider over this session's retained audio." : "No retained session audio was found.")
 
+            Button {
+                askAboutSession(session)
+            } label: {
+                Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(vaultRelativePath(for: session, file: "transcript.md") == nil)
+            .help("Ask the overlay chat about this session's transcript.")
+
             Menu {
+                Button("Edit title…") { beginTitleEdit(for: session) }
+                if selectedFile?.name == "summary" {
+                    Button(editingSummary ? "Discard summary edits" : "Edit summary…") {
+                        if editingSummary {
+                            editingSummary = false
+                        } else {
+                            summaryDraft = fileText
+                            editingSummary = true
+                        }
+                    }
+                }
+                Button("Name speakers…") { showingSpeakerEditor = true }
+                Divider()
                 Button("Save as Markdown…") { exportMarkdown() }
                 Button("Save as PDF…") { exportPDF() }
                 Divider()
@@ -344,6 +445,7 @@ struct SessionsBrowserView: View {
     private func reload() {
         sessions = SessionArchive.recentSessions(limit: 100)
         if selected == nil { selected = sessions.first }
+        loadSpeakerNames()
     }
 
     private func loadFiles() {
@@ -358,6 +460,33 @@ struct SessionsBrowserView: View {
 
     private func canUpgrade(_ session: SessionArchive.ArchivedSession) -> Bool {
         !TranscriptUpgradeService.audioInputs(in: session.url).isEmpty
+    }
+
+    private func hasTranscript(_ session: SessionArchive.ArchivedSession) -> Bool {
+        FileManager.default.fileExists(atPath: session.url.appendingPathComponent("transcript.md").path)
+    }
+
+    /// This session's `transcript.md` as a path relative to `databases/`, the
+    /// shape the chat's `@mention` / vault tools resolve. Nil if the file is
+    /// missing or the vault can't be located.
+    private func vaultRelativePath(for session: SessionArchive.ArchivedSession, file: String) -> String? {
+        guard let dbs = VaultWorkstreamStore.databasesDir() else { return nil }
+        let fileURL = session.url.appendingPathComponent(file)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        let base = dbs.standardizedFileURL.path
+        let path = fileURL.standardizedFileURL.path
+        guard path.hasPrefix(base + "/") else { return nil }
+        return String(path.dropFirst(base.count + 1))
+    }
+
+    /// Bring up the overlay's Assist tab with this session's transcript
+    /// pre-attached as an `@mention` so the user can ask about it — read-only,
+    /// the browser itself never analyzes or answers.
+    private func askAboutSession(_ session: SessionArchive.ArchivedSession) {
+        guard let path = vaultRelativePath(for: session, file: "transcript.md") else { return }
+        WindowCoordinator.shared.showOverlay()
+        NotificationCenter.default.post(name: .rtiSelectTab, object: "assist")
+        NotificationCenter.default.post(name: .rtiSeedChatMention, object: path)
     }
 
     private var upgradeProviderChoices: [AsyncTranscriptProviderOption] {
@@ -469,7 +598,291 @@ struct SessionsBrowserView: View {
         if text.hasPrefix("---"), let end = text.range(of: "\n---\n") {
             text = String(text[end.upperBound...])
         }
-        fileText = text
+        fileText = applyingSpeakerNames(to: text)
+    }
+
+    private func loadTranscriptTurns() {
+        guard let selectedFile, selectedFile.name == "transcript",
+              let text = try? String(contentsOf: selectedFile.url, encoding: .utf8)
+        else {
+            transcriptTurns = []
+            return
+        }
+        transcriptTurns = SessionTranscriptReview.turns(from: text)
+    }
+
+    private func saveTranscript() {
+        guard let selectedFile, selectedFile.name == "transcript",
+              let original = try? String(contentsOf: selectedFile.url, encoding: .utf8)
+        else { return }
+        let updated = SessionTranscriptReview.replacingTurns(in: original, with: transcriptTurns)
+        try? updated.write(to: selectedFile.url, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: selectedFile.url.path)
+        editingTranscript = false
+        loadText()
+    }
+
+    private func loadSpeakerNames() {
+        guard let selected else {
+            speakerNames = [:]
+            return
+        }
+        let url = selected.url.appendingPathComponent("speaker-names.json")
+        guard let data = try? Data(contentsOf: url),
+              let names = try? JSONDecoder().decode([String: String].self, from: data)
+        else {
+            speakerNames = [:]
+            return
+        }
+        speakerNames = names
+        loadText()
+    }
+
+    private func applyingSpeakerNames(to text: String) -> String {
+        speakerNames
+            .filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted { $0.key.count > $1.key.count }
+            .reduce(text) { result, pair in
+                result.replacingOccurrences(of: pair.key, with: pair.value.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+    }
+
+    private var speakerLabels: [String] {
+        guard let selected else { return [] }
+        let transcript = selected.url.appendingPathComponent("transcript.md")
+        let text = (try? String(contentsOf: transcript, encoding: .utf8)) ?? ""
+        let pattern = #"Speaker [0-9]+"#
+        let range = NSRange(text.startIndex..., in: text)
+        let matches = try? NSRegularExpression(pattern: pattern).matches(in: text, range: range)
+        return Array(Set((matches ?? []).compactMap { match in
+            Range(match.range, in: text).map { String(text[$0]) }
+        })).sorted {
+            Int($0.dropFirst("Speaker ".count)) ?? 0 < Int($1.dropFirst("Speaker ".count)) ?? 0
+        }
+    }
+
+    private func beginTitleEdit(for session: SessionArchive.ArchivedSession) {
+        titleDraft = session.title ?? ""
+        showingTitleEditor = true
+    }
+
+    private func saveTitle() {
+        guard let selected else { return }
+        let title = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = selected.url.appendingPathComponent("title.txt")
+        if title.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: selected.url.appendingPathComponent("title-manual.txt"))
+        } else {
+            try? title.write(to: url, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            FileManager.default.createFile(atPath: selected.url.appendingPathComponent("title-manual.txt").path, contents: nil)
+        }
+        showingTitleEditor = false
+        let id = selected.id
+        reload()
+        self.selected = sessions.first(where: { $0.id == id })
+    }
+
+    private func saveSummary() {
+        guard let selectedFile, selectedFile.name == "summary" else { return }
+        let original = (try? String(contentsOf: selectedFile.url, encoding: .utf8)) ?? ""
+        let frontmatter: String
+        if original.hasPrefix("---"), let end = original.range(of: "\n---\n") {
+            frontmatter = String(original[..<end.upperBound])
+        } else {
+            frontmatter = ""
+        }
+        let content = frontmatter + summaryDraft.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+        try? content.write(to: selectedFile.url, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: selectedFile.url.path)
+        editingSummary = false
+        loadText()
+    }
+
+    private func regenerateSummary(for session: SessionArchive.ArchivedSession) {
+        let transcriptURL = session.url.appendingPathComponent("transcript.md")
+        guard var transcript = try? String(contentsOf: transcriptURL, encoding: .utf8) else { return }
+        if transcript.hasPrefix("---"), let end = transcript.range(of: "\n---\n") {
+            transcript = String(transcript[end.upperBound...])
+        }
+        regeneratingSummaryID = session.id
+        Task {
+            let summaryURL = await SessionArchive.writeAutoSummary(
+                transcriptText: transcript,
+                to: session.url,
+                startedAt: session.date ?? Date(),
+                speakerNames: speakerNames
+            )
+            await MainActor.run {
+                regeneratingSummaryID = nil
+                guard summaryURL != nil else { return }
+                let id = session.id
+                reload()
+                selected = sessions.first(where: { $0.id == id })
+                loadFiles()
+            }
+        }
+    }
+
+    private var titleEditor: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Edit session title")
+                .font(.system(size: 18, weight: .semibold))
+            Text("Use the real study or meeting name. This replaces the AI-generated label in the Sessions list.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            TextField("Session title", text: $titleDraft)
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                Spacer()
+                Button("Cancel") { showingTitleEditor = false }
+                Button("Save", action: saveTitle)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(22)
+        .frame(width: 420)
+    }
+
+    private var summaryEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Edit summary")
+                .font(.system(size: 18, weight: .semibold))
+            TextEditor(text: $summaryDraft)
+                .font(.system(size: 13))
+                .frame(minHeight: 440)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(Color.secondary.opacity(0.25))
+                }
+        }
+    }
+
+    private var transcriptEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Edit transcript")
+                .font(.system(size: 18, weight: .semibold))
+            Text("Correct text or assign each turn to a named speaker. Notes stay distinct from spoken turns.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            ForEach($transcriptTurns) { $turn in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(turn.timestamp)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        if turn.isNote {
+                            Label("Note", systemImage: "note.text")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.orange)
+                        } else {
+                            TextField("Speaker", text: $turn.speaker)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 150)
+                            Menu("Assign") {
+                                ForEach(transcriptSpeakerOptions, id: \.self) { speaker in
+                                    Button(speaker) { turn.speaker = speaker }
+                                }
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                    TextEditor(text: $turn.text)
+                        .font(.system(size: 13))
+                        .frame(minHeight: 58)
+                        .padding(4)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.2))
+                        }
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.05)))
+            }
+        }
+    }
+
+    private var transcriptSpeakerOptions: [String] {
+        let directNames = speakerNames.values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return Array(Set(transcriptTurns.filter { !$0.isNote }.map(\.speaker) + directNames))
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private var speakerEditor: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Name speakers")
+                .font(.system(size: 18, weight: .semibold))
+            Text("These names are saved only for this session and replace anonymous speaker labels in its transcript and summary.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            if speakerLabels.isEmpty {
+                Text("No anonymous speakers found in this transcript.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            } else {
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                    ForEach(speakerLabels, id: \.self) { label in
+                        GridRow {
+                            Text(label)
+                                .font(.system(size: 13, weight: .medium))
+                            TextField("Name", text: speakerBinding(for: label))
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { showingSpeakerEditor = false }
+                Button("Save", action: saveSpeakerNames)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(22)
+        .frame(width: 470)
+    }
+
+    private func speakerBinding(for label: String) -> Binding<String> {
+        Binding(
+            get: { speakerNames[label, default: ""] },
+            set: { speakerNames[label] = $0 }
+        )
+    }
+
+    private func saveSpeakerNames() {
+        guard let selected else { return }
+        let names = speakerNames.reduce(into: [String: String]()) { result, pair in
+            let name = pair.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { result[pair.key] = name }
+        }
+        let url = selected.url.appendingPathComponent("speaker-names.json")
+        if names.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+        } else if let data = try? JSONEncoder().encode(names) {
+            try? data.write(to: url, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        }
+        speakerNames = names
+        showingSpeakerEditor = false
+        loadText()
+    }
+
+    /// The two-part summary format (`=== SHARE BRIEF ===` / `=== FULL RECORD
+    /// ===`): split so the brief renders as a plain preformatted block (it's
+    /// meant to paste verbatim) and the record as markdown. Falls back to
+    /// rendering `fileText` unsplit, exactly as before, when the marker is
+    /// absent — legacy summaries and every other file type are unaffected.
+    private var summarySplit: (brief: String, record: String)? {
+        guard let recordRange = fileText.range(of: "=== FULL RECORD ===") else { return nil }
+        var brief = String(fileText[..<recordRange.lowerBound])
+        if let briefMarkerRange = brief.range(of: "=== SHARE BRIEF ===") {
+            brief = String(brief[briefMarkerRange.upperBound...])
+        }
+        brief = brief.trimmingCharacters(in: .whitespacesAndNewlines)
+        let record = String(fileText[recordRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !brief.isEmpty else { return nil }
+        return (brief, record)
     }
 }
 

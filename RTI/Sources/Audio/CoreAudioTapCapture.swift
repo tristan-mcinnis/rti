@@ -30,6 +30,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
     private let deviceIOQueue = DispatchQueue(label: "com.tristan.rti.system-audio-tap.io", qos: .userInitiated)
     private let processingQueue = DispatchQueue(label: "com.tristan.rti.system-audio-tap")
     private var defaultOutputDeviceListenerBlock: AudioObjectPropertyListenerBlock?
+    private var tappedProcessObjects: Set<AudioObjectID> = []
 
     private let recordingFlag = OSAllocatedUnfairLock(initialState: false)
     private var isRecording: Bool {
@@ -46,6 +47,14 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
     private var resampler: AVAudioConverter?
     private var resamplerInputFormat: AVAudioFormat?
     private var resamplerOutputFormat: AVAudioFormat?
+    private var framesCaptured: AVAudioFramePosition = 0
+    private var audibleFramesCaptured: AVAudioFramePosition = 0
+    private var captureSampleRate: Double = CoreAudioTapCapture.targetFormat.sampleRate
+    private var lastBufferAt: Date?
+    private var lastAudibleBufferAt: Date?
+    private var lastRMSLevel: Float = 0
+    private var peakRMSLevel: Float = 0
+    private static let audibleRMSThreshold: Float = 0.0005
 
     deinit {
         if isRecording || aggregateDeviceID != kAudioObjectUnknown || tapID != kAudioObjectUnknown {
@@ -56,6 +65,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
     func start() async throws {
         guard !isRecording else { return }
         isRecording = true
+        processingQueue.sync { resetCaptureHealth() }
         do {
             try createTapAndAggregateDevice()
             try setupAndStartAudioDevice()
@@ -78,6 +88,43 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         RTILog.log("CoreAudio tap capture stopped", category: "audio")
     }
 
+    func captureHealth() -> SystemAudioCaptureHealth {
+        processingQueue.sync {
+            SystemAudioCaptureHealth(
+                duration: captureSampleRate > 0 ? Double(framesCaptured) / captureSampleRate : 0,
+                audibleDuration: captureSampleRate > 0 ? Double(audibleFramesCaptured) / captureSampleRate : 0,
+                lastBufferAt: lastBufferAt,
+                lastAudibleBufferAt: lastAudibleBufferAt,
+                lastRMSLevel: lastRMSLevel,
+                peakRMSLevel: peakRMSLevel
+            )
+        }
+    }
+
+    func recoverFromSilentAudio() async -> Bool {
+        await withCheckedContinuation { continuation in
+            processingQueue.async { [weak self] in
+                guard let self, self.isRecording else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                guard self.shouldRebuildForSilentAudio() else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                do {
+                    try self.rebuildTap(reason: "system audio silent")
+                    continuation.resume(returning: true)
+                } catch {
+                    let msg = "System audio tap rebuild failed after silence: \(error.localizedDescription)"
+                    RTILog.log(msg, category: "audio")
+                    self.onError?(msg)
+                    continuation.resume(returning: false)
+                }
+            }
+        }
+    }
+
     // MARK: - Tap + Aggregate Device Setup
 
     private func createTapAndAggregateDevice() throws {
@@ -90,12 +137,14 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         if !selectedApp.isEmpty {
             let objects = AudioInputDeviceStore.processObjects(forAppBundleID: selectedApp)
             if objects.isEmpty {
+                tappedProcessObjects = []
                 RTILog.log("per-app capture: '\(selectedApp)' has no audio processes — falling back to all apps", category: "audio")
                 tapDesc = Self.makeGlobalTapDescription(
                     excludingProcessID: Self.currentProcessAudioObjectID(),
                     name: "RTI System Audio Tap"
                 )
             } else {
+                tappedProcessObjects = Set(objects)
                 tapDesc = CATapDescription(stereoMixdownOfProcesses: objects)
                 tapDesc.name = "RTI App Audio Tap (\(selectedApp))"
                 tapDesc.isPrivate = true
@@ -103,6 +152,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
                 RTILog.log("per-app capture: tapping \(objects.count) process(es) of \(selectedApp)", category: "audio")
             }
         } else {
+            tappedProcessObjects = []
             tapDesc = Self.makeGlobalTapDescription(
                 excludingProcessID: Self.currentProcessAudioObjectID(),
                 name: "RTI System Audio Tap"
@@ -224,7 +274,44 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         int16Samples.withUnsafeBufferPointer { src in
             channel[0].update(from: src.baseAddress!, count: src.count)
         }
+        noteCaptured(out)
         onPCMBuffer?(out)
+    }
+
+    private func noteCaptured(_ buffer: AVAudioPCMBuffer) {
+        guard buffer.frameLength > 0 else { return }
+        let rms = Self.rmsLevel(of: buffer)
+        let now = Date()
+        captureSampleRate = buffer.format.sampleRate
+        framesCaptured += AVAudioFramePosition(buffer.frameLength)
+        lastBufferAt = now
+        lastRMSLevel = rms
+        peakRMSLevel = max(peakRMSLevel, rms)
+        if rms >= Self.audibleRMSThreshold {
+            audibleFramesCaptured += AVAudioFramePosition(buffer.frameLength)
+            lastAudibleBufferAt = now
+        }
+    }
+
+    private func resetCaptureHealth() {
+        framesCaptured = 0
+        audibleFramesCaptured = 0
+        captureSampleRate = Self.targetFormat.sampleRate
+        lastBufferAt = nil
+        lastAudibleBufferAt = nil
+        lastRMSLevel = 0
+        peakRMSLevel = 0
+    }
+
+    private static func rmsLevel(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let channel = buffer.int16ChannelData, buffer.frameLength > 0 else { return 0 }
+        let count = Int(buffer.frameLength)
+        var sumSquares: Float = 0
+        for index in 0..<count {
+            let sample = Float(channel[0][index]) / 32768.0
+            sumSquares += sample * sample
+        }
+        return (sumSquares / Float(count)).squareRoot()
     }
 
     private func resampleMonoFloatToInt16(_ samples: [Float], sourceSampleRate: Double) -> [Int16]? {
@@ -478,13 +565,8 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
 
     private func restartTapForDefaultOutputDeviceChange() {
         guard isRecording else { return }
-        RTILog.log("default output device changed; rebuilding tap", category: "audio")
-        teardownTapAndAudioDevice()
-        guard isRecording else { return }
         do {
-            try createTapAndAggregateDevice()
-            try setupAndStartAudioDevice()
-            RTILog.log("CoreAudio tap restarted for new output device", category: "audio")
+            try rebuildTap(reason: "default output device changed")
         } catch {
             teardownTapAndAudioDevice()
             isRecording = false
@@ -492,6 +574,31 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
             RTILog.log(msg, category: "audio")
             onError?(msg)
         }
+    }
+
+    private func shouldRebuildForSilentAudio() -> Bool {
+        let selectedApp = AudioInputDeviceStore.captureAppBundleID
+        if !selectedApp.isEmpty {
+            let currentObjects = Set(AudioInputDeviceStore.processObjects(forAppBundleID: selectedApp))
+            if currentObjects != tappedProcessObjects {
+                RTILog.log("system audio target changed; old=\(tappedProcessObjects.count) new=\(currentObjects.count)", category: "audio")
+                return true
+            }
+        }
+        // If the tap has never produced audible samples, one rebuild can clear
+        // a stale aggregate/tap setup even when the process set appears stable.
+        return audibleFramesCaptured == 0
+    }
+
+    private func rebuildTap(reason: String) throws {
+        guard isRecording else { return }
+        RTILog.log("\(reason); rebuilding tap", category: "audio")
+        teardownTapAndAudioDevice()
+        guard isRecording else { return }
+        resetCaptureHealth()
+        try createTapAndAggregateDevice()
+        try setupAndStartAudioDevice()
+        RTILog.log("CoreAudio tap rebuilt", category: "audio")
     }
 
     // MARK: - Teardown
@@ -516,6 +623,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
             AudioHardwareDestroyProcessTap(tapID)
             tapID = kAudioObjectUnknown
         }
+        tappedProcessObjects = []
     }
 
     private func cleanupFailedStart() {

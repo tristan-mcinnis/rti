@@ -35,8 +35,8 @@ struct OverlayMicControl: View {
         } label: {
             ZStack(alignment: .bottom) {
                 Image(systemName: session.micMuted ? "mic.slash.fill" : "mic.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(session.micMuted ? Color.orange : Color.overlayInk.opacity(0.75))
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(session.micMuted ? Color.orange : Color.overlayInk.opacity(0.52))
                 // Zoom-style reassurance: a faint green level bar under the
                 // mic while recording, so you can SEE it's hearing you.
                 if session.isRunning, !session.micMuted {
@@ -50,7 +50,7 @@ struct OverlayMicControl: View {
                     .padding(.bottom, 3)
                 }
             }
-            .frame(width: 24, height: 26)
+            .frame(width: 24, height: 28)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(session.micMuted ? "Unmute microphone" : "Mute microphone")
@@ -110,8 +110,8 @@ struct OverlayMicControl: View {
         } label: {
             Image(systemName: "chevron.down")
                 .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(Color.overlayInk.opacity(0.55))
-                .frame(width: 14, height: 26)
+                .foregroundStyle(Color.overlayInk.opacity(0.40))
+                .frame(width: 14, height: 28)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -154,12 +154,12 @@ struct OverlayMicControl: View {
 
     private var backgroundColor: Color {
         if session.micMuted { return Color.orange.opacity(0.16) }
-        return Color.overlayInk.opacity(hovering ? 0.14 : 0.08)
+        return Color.overlayInk.opacity(hovering ? 0.08 : 0.045)
     }
 
     private var borderColor: Color {
         session.micMuted
             ? Color.orange.opacity(0.5)
-            : Color.overlayInk.opacity(hovering ? 0.22 : 0.12)
+            : Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
     }
 }

@@ -66,11 +66,14 @@ private extension Theme {
         }
         .paragraph { config in
             config.label
-                .lineSpacing(3)
-                .markdownMargin(top: 0, bottom: 8)
+                .fixedSize(horizontal: false, vertical: true)
+                .relativeLineSpacing(.em(0.22))
+                .markdownMargin(top: 0, bottom: 10)
         }
         .listItem { config in
-            config.label.markdownMargin(top: 2, bottom: 2)
+            config.label
+                .fixedSize(horizontal: false, vertical: true)
+                .markdownMargin(top: .em(0.22))
         }
         .codeBlock { config in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -97,14 +100,38 @@ private extension Theme {
                 .foregroundStyle(RTIDesign.Color.textSecondary)
         }
         .table { config in
+            ScrollView(.horizontal, showsIndicators: false) {
+                config.label
+                    .fixedSize(horizontal: false, vertical: true)
+                    .markdownTableBorderStyle(.init(.horizontalBorders, color: RTIDesign.Color.border.opacity(0.65)))
+                    .markdownTableBackgroundStyle(
+                        .alternatingRows(Color.clear, Color.clear)
+                    )
+            }
+            .markdownMargin(top: 8, bottom: 14)
+        }
+        .tableCell { config in
             config.label
-                .markdownTableBorderStyle(.init(color: RTIDesign.Color.border))
+                .markdownTextStyle {
+                    if config.row == 0 {
+                        FontWeight(.semibold)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .relativeLineSpacing(.em(0.22))
+                .padding(.vertical, 9)
+                .padding(.horizontal, 13)
+        }
+        .thematicBreak {
+            Color.clear
+                .frame(height: 8)
+                .markdownMargin(top: 0, bottom: 0)
         }
 
     static let rtiOverlay: Theme = Theme()
         .text {
             ForegroundColor(Color.overlayInk.opacity(0.92))
-            FontSize(14)
+            FontSize(13.5)
         }
         .code {
             FontFamilyVariant(.monospaced)
@@ -117,36 +144,39 @@ private extension Theme {
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(18)
+                    FontSize(16)
                     ForegroundColor(Color.overlayInk)
                 }
-                .markdownMargin(top: 10, bottom: 4)
+                .markdownMargin(top: 12, bottom: 5)
         }
         .heading2 { config in
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(16)
+                    FontSize(14.5)
                     ForegroundColor(Color.overlayInk)
                 }
-                .markdownMargin(top: 8, bottom: 4)
+                .markdownMargin(top: 10, bottom: 4)
         }
         .heading3 { config in
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(14)
+                    FontSize(13.5)
                     ForegroundColor(Color.overlayInk)
                 }
-                .markdownMargin(top: 6, bottom: 2)
+                .markdownMargin(top: 8, bottom: 2)
         }
         .paragraph { config in
             config.label
-                .lineSpacing(2)
-                .markdownMargin(top: 0, bottom: 6)
+                .fixedSize(horizontal: false, vertical: true)
+                .relativeLineSpacing(.em(0.24))
+                .markdownMargin(top: 0, bottom: 9)
         }
         .listItem { config in
-            config.label.markdownMargin(top: 2, bottom: 2)
+            config.label
+                .fixedSize(horizontal: false, vertical: true)
+                .markdownMargin(top: .em(0.22))
         }
         .codeBlock { config in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -171,5 +201,33 @@ private extension Theme {
                         .frame(width: 2)
                 }
                 .foregroundStyle(Color.overlayInk.opacity(0.75))
+        }
+        .table { config in
+            ScrollView(.horizontal, showsIndicators: false) {
+                config.label
+                    .fixedSize(horizontal: false, vertical: true)
+                    .markdownTableBorderStyle(.init(.horizontalBorders, color: Color.overlayInk.opacity(0.14)))
+                    .markdownTableBackgroundStyle(
+                        .alternatingRows(Color.clear, Color.clear)
+                    )
+            }
+            .markdownMargin(top: 8, bottom: 14)
+        }
+        .tableCell { config in
+            config.label
+                .markdownTextStyle {
+                    if config.row == 0 {
+                        FontWeight(.semibold)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .relativeLineSpacing(.em(0.22))
+                .padding(.vertical, 9)
+                .padding(.horizontal, 13)
+        }
+        .thematicBreak {
+            Color.clear
+                .frame(height: 8)
+                .markdownMargin(top: 0, bottom: 0)
         }
 }

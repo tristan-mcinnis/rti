@@ -112,7 +112,15 @@ enum KeychainStore {
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno == 0 ? EIO : errno))
         }
         do {
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
+            // `replaceItemAt` requires an existing destination, so the very
+            // first onboarding save must move the owner-only temp file into
+            // place instead. Calls are serialized by `queue`, avoiding a
+            // concurrent first-write race.
+            if FileManager.default.fileExists(atPath: url.path) {
+                _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
+            } else {
+                try FileManager.default.moveItem(at: temp, to: url)
+            }
         } catch {
             try? FileManager.default.removeItem(at: temp)
             throw error
@@ -141,9 +149,15 @@ enum CredentialStore {
     static var openrouter: String? { KeychainStore.get(openRouterAccount) }
     static var soniox: String? { KeychainStore.get(sonioxAccount) }
     static var assemblyai: String? { KeychainStore.get(assemblyaiAccount) }
-    static var aliyunAccessKeyID: String? { KeychainStore.get(aliyunAccessKeyIDAccount) }
-    static var aliyunAccessKeySecret: String? { KeychainStore.get(aliyunAccessKeySecretAccount) }
-    static var aliyunNLSAppKey: String? { KeychainStore.get(aliyunNLSAppKeyAccount) }
+    static var aliyunAccessKeyID: String? {
+        firstCredential([aliyunAccessKeyIDAccount, "aliyun_access_key", "alibaba_cloud_access_key_id"], env: ["ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIYUN_ACCESS_KEY_ID"])
+    }
+    static var aliyunAccessKeySecret: String? {
+        firstCredential([aliyunAccessKeySecretAccount, "aliyun_access_secret", "alibaba_cloud_access_key_secret"], env: ["ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALIYUN_ACCESS_KEY_SECRET"])
+    }
+    static var aliyunNLSAppKey: String? {
+        firstCredential([aliyunNLSAppKeyAccount, "aliyun_app_key", "nls_app_key"], env: ["NLS_APP_KEY", "ALIYUN_NLS_APPKEY", "ALIYUN_NLS_APP_KEY"])
+    }
 
     static func setDeepSeek(_ value: String) { KeychainStore.set(value, for: deepseekAccount) }
     static func setOpenAI(_ value: String) { KeychainStore.set(value, for: openAIAccount) }
@@ -162,6 +176,20 @@ enum CredentialStore {
         KeychainStore.set(value, for: account)
     }
 
+    private static func firstCredential(_ accounts: [String], env names: [String]) -> String? {
+        for account in accounts {
+            if let value = KeychainStore.get(account)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
+                return value
+            }
+        }
+        for name in names {
+            if let value = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
     /// One-time migration of any plaintext keys still living in Secrets.swift.
     /// Earlier versions also wrote into the macOS Keychain; we no longer touch
     /// the system Keychain at all (see KeychainStore comment). Any orphaned
@@ -178,6 +206,15 @@ enum CredentialStore {
         }
         if soniox == nil, !Secrets._legacySonioxKey.isEmpty, !Secrets._legacySonioxKey.hasPrefix("<") {
             setSoniox(Secrets._legacySonioxKey)
+        }
+        if KeychainStore.get(aliyunAccessKeyIDAccount) == nil, let value = aliyunAccessKeyID {
+            setAliyunAccessKeyID(value)
+        }
+        if KeychainStore.get(aliyunAccessKeySecretAccount) == nil, let value = aliyunAccessKeySecret {
+            setAliyunAccessKeySecret(value)
+        }
+        if KeychainStore.get(aliyunNLSAppKeyAccount) == nil, let value = aliyunNLSAppKey {
+            setAliyunNLSAppKey(value)
         }
         defaults.set(true, forKey: flag)
     }

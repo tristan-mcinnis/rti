@@ -87,7 +87,6 @@ public struct SonioxConfigMessage: Codable {
     let num_channels: Int
     let language_hints: [String]
     let enable_speaker_diarization: Bool
-    let speaker_diarization_max_speakers: Int
     let translation: TranslationConfig?
     let context: SonioxContext?
 
@@ -112,7 +111,6 @@ public struct SonioxConfigMessage: Codable {
             num_channels: 1,
             language_hints: Array(hints),
             enable_speaker_diarization: true,
-            speaker_diarization_max_speakers: 8,
             translation: translation,
             context: contextTerms.isEmpty ? nil : SonioxContext(terms: contextTerms)
         )

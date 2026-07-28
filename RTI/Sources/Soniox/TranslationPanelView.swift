@@ -245,6 +245,14 @@ struct TranslationPanelView: View {
 
         private func speakerLabel(_ id: String) -> String {
             if id == "self" { return "You" }
+            if id.hasPrefix("room_") {
+                let n = id.replacingOccurrences(of: "room_", with: "")
+                return "Room speaker \(n)"
+            }
+            if id.hasPrefix("remote_") {
+                let n = id.replacingOccurrences(of: "remote_", with: "")
+                return "Remote speaker \(n)"
+            }
             if id.hasPrefix("them_") {
                 let n = id.replacingOccurrences(of: "them_", with: "")
                 return "Speaker \(n)"

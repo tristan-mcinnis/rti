@@ -1,16 +1,229 @@
+import AppKit
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
 
+@MainActor
+private final class MentionSuggestionStore: ObservableObject {
+    @Published var candidates: [String] = []
+
+    private var task: Task<Void, Never>?
+    private var activeQuery: String?
+    private var activeScope: String?
+    private var cachedResults: [String: [String]] = [:]
+    private var cachedResultKeys: [String] = []
+
+    func update(query: String?, scopeRelativePath: String?) {
+        let normalizedQuery = query?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedScope = scopeRelativePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedQuery != activeQuery || normalizedScope != activeScope else { return }
+
+        activeQuery = normalizedQuery
+        activeScope = normalizedScope
+        task?.cancel()
+
+        guard let normalizedQuery else {
+            candidates = []
+            return
+        }
+
+        let cacheKey = Self.cacheKey(query: normalizedQuery, scope: normalizedScope)
+        if let cached = cachedResults[cacheKey] {
+            candidates = cached
+        }
+
+        task = Task { [normalizedQuery, normalizedScope] in
+            try? await Task.sleep(nanoseconds: 35_000_000)
+            guard !Task.isCancelled else { return }
+            let results = await Task.detached(priority: .userInitiated) {
+                VaultFiles.mentionCandidates(normalizedQuery, scopeRelativePath: normalizedScope, limit: 6)
+            }.value
+            guard !Task.isCancelled else { return }
+            candidates = results
+            remember(results, for: cacheKey)
+        }
+    }
+
+    func prewarm() {
+        Task.detached(priority: .utility) {
+            VaultFiles.prewarmMentionIndex()
+        }
+    }
+
+    private func remember(_ results: [String], for key: String) {
+        if cachedResults[key] == nil {
+            cachedResultKeys.append(key)
+            if cachedResultKeys.count > 40 {
+                let stale = cachedResultKeys.removeFirst()
+                cachedResults.removeValue(forKey: stale)
+            }
+        }
+        cachedResults[key] = results
+    }
+
+    private static func cacheKey(query: String, scope: String?) -> String {
+        "\(scope ?? "*")\n\(query)"
+    }
+
+    deinit {
+        task?.cancel()
+    }
+}
+
+private struct ComposerTextView: NSViewRepresentable {
+    static let fontSize: CGFloat = 14
+    static let verticalTextInset: CGFloat = 3
+
+    @Binding var text: String
+    var placeholder: String
+    var fontSize: CGFloat = Self.fontSize
+    var onSubmit: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, onSubmit: onSubmit)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.verticalScrollElasticity = .automatic
+
+        let textView = ReturnHandlingTextView()
+        textView.delegate = context.coordinator
+        textView.onSubmit = onSubmit
+        textView.placeholder = placeholder
+        textView.string = text
+        textView.font = .systemFont(ofSize: fontSize)
+        textView.placeholderFont = .systemFont(ofSize: fontSize)
+        textView.placeholderColor = NSColor.labelColor.withAlphaComponent(0.45)
+        textView.textColor = NSColor.labelColor.withAlphaComponent(0.95)
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainerInset = NSSize(width: 0, height: Self.verticalTextInset)
+        textView.insertionPointColor = .systemBlue
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? ReturnHandlingTextView else { return }
+        context.coordinator.text = $text
+        context.coordinator.onSubmit = onSubmit
+        textView.onSubmit = onSubmit
+        textView.placeholder = placeholder
+        if textView.string != text {
+            textView.string = text
+        }
+        textView.font = .systemFont(ofSize: fontSize)
+        textView.placeholderFont = .systemFont(ofSize: fontSize)
+        textView.placeholderColor = NSColor.labelColor.withAlphaComponent(0.45)
+        textView.textColor = NSColor.labelColor.withAlphaComponent(0.95)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var text: Binding<String>
+        var onSubmit: () -> Void
+
+        init(text: Binding<String>, onSubmit: @escaping () -> Void) {
+            self.text = text
+            self.onSubmit = onSubmit
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text.wrappedValue = textView.string
+        }
+    }
+
+    final class ReturnHandlingTextView: NSTextView {
+        var onSubmit: (() -> Void)?
+        var placeholder: String = "" {
+            didSet { needsDisplay = true }
+        }
+        var placeholderFont: NSFont = .systemFont(ofSize: 14) {
+            didSet { needsDisplay = true }
+        }
+        var placeholderColor: NSColor = NSColor.labelColor.withAlphaComponent(0.45) {
+            didSet { needsDisplay = true }
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+
+            guard string.isEmpty, !placeholder.isEmpty else { return }
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.lineBreakMode = .byTruncatingTail
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: placeholderFont,
+                .foregroundColor: placeholderColor,
+                .paragraphStyle: paragraphStyle,
+            ]
+            let x = textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0)
+            let y = textContainerInset.height
+            let rect = NSRect(
+                x: x,
+                y: y,
+                width: max(0, bounds.width - x),
+                height: placeholderFont.ascender - placeholderFont.descender + placeholderFont.leading
+            )
+            placeholder.draw(in: rect, withAttributes: attributes)
+        }
+
+        override func keyDown(with event: NSEvent) {
+            let isReturn = event.keyCode == 36 || event.keyCode == 76
+            if isReturn && !event.modifierFlags.contains(.shift) {
+                onSubmit?()
+                return
+            }
+            super.keyDown(with: event)
+        }
+    }
+}
+
 struct AssistantInputView: View {
     var onOpenSettings: () -> Void = {}
+
+    private enum ComposerMetrics {
+        static let fontSize: CGFloat = 14
+        static let iconFontSize: CGFloat = 14
+        static let controlSize: CGFloat = 30
+        static let sendSize: CGFloat = 30
+        static let rowSpacing: CGFloat = 6
+        static let rowHorizontalPadding: CGFloat = 8
+        static let rowVerticalPadding: CGFloat = 7
+        static let minRowHeight: CGFloat = 46
+        static let textLeadingPadding: CGFloat = 4
+        static let textVerticalInset: CGFloat = 3
+        static let minTextHeight: CGFloat = 24
+        static let maxTextHeight: CGFloat = 128
+    }
 
     @State private var input: String = ""
     @State private var isDropTargeted = false
     @State private var selectedSlashIndex = 0
+    @State private var selectedMentionIndex = 0
+    @State private var selectedMentionPaths: [String] = []
+    @State private var selectedAttachments: [ExternalDocumentAttachment] = []
+    @State private var attachmentError: String?
+    @State private var fileImporterPresented = false
+    @State private var inputFieldWidth: CGFloat = 360
+    @StateObject private var mentionSuggestions = MentionSuggestionStore()
     @FocusState private var isInputFocused: Bool
     @AppStorage(OverlayAppearanceDefaults.invisibilityKey) private var isHiddenFromCapture: Bool = true
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
+    @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     private let llm = LLMController.shared
     private let modes = ModeStore.shared
     private let session = SessionCoordinator.shared
@@ -26,32 +239,38 @@ struct AssistantInputView: View {
                 slashCommandBar
             }
 
+            if showMentionSuggestions {
+                mentionBar
+            }
+
             if shouldShowContextDashboard {
                 contextDashboard
             }
 
-            // One composer pill: leading actions, flexible field, trailing send.
-            HStack(spacing: 6) {
-                actionsMenu
-                moreDots
-                noteModeToggle
+            if !selectedMentionPaths.isEmpty || !selectedAttachments.isEmpty {
+                selectedMentionChips
+            }
 
-                ZStack(alignment: .leading) {
-                    if input.isEmpty {
-                        Text(textFieldPrompt)
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.overlayInk.opacity(0.45))
-                            .allowsHitTesting(false)
-                    }
-                    TextField("", text: $input)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.overlayInk.opacity(0.95))
-                        .focused($isInputFocused)
-                        .onSubmit(submit)
+            // One composer pill: leading actions, flexible field, trailing send.
+            HStack(alignment: .center, spacing: ComposerMetrics.rowSpacing) {
+                actionsMenu
+                noteModeToggle
+                moreDots
+
+                ComposerTextView(text: $input, placeholder: textFieldPrompt, fontSize: CGFloat(uiFontSize)) {
+                    submit()
                 }
+                .focused($isInputFocused)
+                .frame(height: composerInputHeight)
                 .frame(maxWidth: .infinity)
-                .padding(.leading, 2)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { updateInputFieldWidth(proxy.size.width) }
+                            .onChange(of: proxy.size.width) { _, width in updateInputFieldWidth(width) }
+                    }
+                )
+                .padding(.leading, ComposerMetrics.textLeadingPadding)
 
                 if llm.streaming {
                     stopButton
@@ -59,56 +278,128 @@ struct AssistantInputView: View {
                     sendButton
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
+            .padding(.horizontal, ComposerMetrics.rowHorizontalPadding)
+            .padding(.vertical, ComposerMetrics.rowVerticalPadding)
+            .frame(minHeight: ComposerMetrics.minRowHeight)
             .background(
                 RoundedRectangle(cornerRadius: 14)
-                    .fill(Color.overlayInk.opacity(isDropTargeted ? 0.12 : 0.06))
+                    .fill(Color.overlayInput)
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
                             .stroke(isDropTargeted
                                 ? Color.blue.opacity(0.7)
                                 : (inputState.isNoteMode
-                                    ? Color.yellow.opacity(0.55)
-                                    : Color.overlayInk.opacity(0.10)),
+                                    ? Color.yellow.opacity(0.45)
+                                    : Color.overlayInk.opacity(0.08)),
                                 lineWidth: isDropTargeted ? 1.5 : 1)
                     )
             )
+            .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: 6)
         }
         // Drop an image here → it's OCR'd on-device and attached as context for
         // the next message (same path as ⌘⇧H screen capture; no image is sent
         // to the model, only the extracted text).
-        .onDrop(of: [.image], isTargeted: $isDropTargeted) { providers in
-            handleImageDrop(providers)
+        .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers)
         }
+        .fileImporter(
+            isPresented: $fileImporterPresented,
+            allowedContentTypes: [.pdf, .plainText, .utf8PlainText, .text,
+                                  UTType(filenameExtension: "md") ?? .plainText,
+                                  UTType(filenameExtension: "markdown") ?? .plainText],
+            allowsMultipleSelection: true,
+            onCompletion: handleFileImport
+        )
         // A draft typed during one meeting must not survive into the next —
         // an accidental ⏎ would send stale text into the wrong conversation.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
             input = ""
+            selectedAttachments = []
             if inputState.mode == .liveNote {
                 inputState.mode = .chat
             }
+        }
+        // "Ask about this session" (Sessions browser) hands us a vault-relative
+        // path to seed as an @mention, same shape as picking one from the
+        // mention bar.
+        .onReceive(NotificationCenter.default.publisher(for: .rtiSeedChatMention)) { notif in
+            guard let path = notif.object as? String, !selectedMentionPaths.contains(path) else { return }
+            selectedMentionPaths.append(path)
+            inputState.mode = .chat
+            DispatchQueue.main.async { isInputFocused = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
             // Defer so the focus change lands after the panel finishes its
             // becomeKey transition; otherwise SwiftUI sometimes drops it.
             DispatchQueue.main.async {
                 isInputFocused = true
+                mentionSuggestions.prewarm()
+                refreshMentionSuggestions()
             }
         }
         .onChange(of: input) { _, _ in
             selectedSlashIndex = 0
+            selectedMentionIndex = 0
+            refreshMentionSuggestions()
+        }
+        .onAppear {
+            mentionSuggestions.prewarm()
+            refreshMentionSuggestions()
         }
         .onMoveCommand { direction in
-            guard showSlashCommands else { return }
-            switch direction {
-            case .down, .right:
-                moveSlashSelection(1)
-            case .up, .left:
-                moveSlashSelection(-1)
-            default:
-                break
+            if showMentionSuggestions {
+                switch direction {
+                case .down, .right: moveMentionSelection(1)
+                case .up, .left: moveMentionSelection(-1)
+                default: break
+                }
+            } else if showSlashCommands {
+                switch direction {
+                case .right: moveSlashSelection(1)
+                case .left: moveSlashSelection(-1)
+                default: break
+                }
             }
+        }
+        .onKeyPress(.return) {
+            submit()
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            if showMentionSuggestions {
+                moveMentionSelection(1)
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.upArrow) {
+            if showMentionSuggestions {
+                moveMentionSelection(-1)
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.rightArrow) {
+            if showMentionSuggestions {
+                moveMentionSelection(1)
+                return .handled
+            }
+            if showSlashCommands {
+                moveSlashSelection(1)
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.leftArrow) {
+            if showMentionSuggestions {
+                moveMentionSelection(-1)
+                return .handled
+            }
+            if showSlashCommands {
+                moveSlashSelection(-1)
+                return .handled
+            }
+            return .ignored
         }
     }
 
@@ -118,8 +409,30 @@ struct AssistantInputView: View {
             if !labels.isEmpty {
                 Menu {
                     Section("Context") {
-                        ForEach(labels, id: \.self) { label in
-                            Label(label, systemImage: "checkmark")
+                        if let name = MeetingContextStore.shared.workstreamName {
+                            Label(name, systemImage: "checkmark")
+                            Button("Clear project/client") {
+                                MeetingContextStore.shared.clearWorkstream()
+                                refreshMentionSuggestions()
+                            }
+                        } else {
+                            Text("Vault-wide")
+                        }
+                    }
+                    Section("Projects") {
+                        ForEach(VaultWorkstreamStore.projects().prefix(8), id: \.id) { item in
+                            Button(item.name) {
+                                MeetingContextStore.shared.selectWorkstream(item)
+                                refreshMentionSuggestions()
+                            }
+                        }
+                    }
+                    Section("Clients") {
+                        ForEach(VaultWorkstreamStore.clients().prefix(6), id: \.id) { item in
+                            Button(item.name) {
+                                MeetingContextStore.shared.selectWorkstream(item)
+                                refreshMentionSuggestions()
+                            }
                         }
                     }
                     Section("Tools") {
@@ -128,7 +441,7 @@ struct AssistantInputView: View {
                         }
                     }
                 } label: {
-                    miniPill(contextSummary(labels), icon: "scope", active: true)
+                    miniPill(contextSummary(labels), icon: "text.bubble", active: true)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -152,10 +465,18 @@ struct AssistantInputView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Remove screen OCR from the next message")
+            } else if let status = llm.screenCaptureStatus {
+                miniPill(status, icon: "camera.viewfinder", active: true)
+                    .foregroundStyle(screenStatusColor(status))
             }
 
             if llm.smartMode {
                 miniPill("Smart", icon: "sparkles", active: true)
+            }
+
+            if let attachmentError {
+                miniPill(attachmentError, icon: "exclamationmark.triangle", active: true)
+                    .foregroundStyle(Color.orange.opacity(0.92))
             }
 
             Spacer(minLength: 0)
@@ -167,7 +488,30 @@ struct AssistantInputView: View {
     private var shouldShowContextDashboard: Bool {
         !llm.contextPreviewLabels().filter { $0 != "Screen OCR" }.isEmpty
             || llm.pendingScreenContext != nil
-            || llm.smartMode
+            || llm.screenCaptureStatus != nil
+            || attachmentError != nil
+    }
+
+    private var composerInputHeight: CGFloat {
+        let text = input.isEmpty ? " " : input
+        let width = max(120, inputFieldWidth - 8)
+        let attr = NSAttributedString(
+            string: text,
+            attributes: [.font: NSFont.systemFont(ofSize: CGFloat(uiFontSize))]
+        )
+        let rect = attr.boundingRect(
+            with: NSSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let fittedHeight = ceil(rect.height) + (ComposerMetrics.textVerticalInset * 2)
+        return min(max(ComposerMetrics.minTextHeight, fittedHeight), ComposerMetrics.maxTextHeight)
+    }
+
+    private func updateInputFieldWidth(_ width: CGFloat) {
+        guard abs(inputFieldWidth - width) > 1 else { return }
+        DispatchQueue.main.async {
+            inputFieldWidth = width
+        }
     }
 
     private func contextSummary(_ labels: [String]) -> String {
@@ -176,8 +520,126 @@ struct AssistantInputView: View {
         return "\(first) +\(labels.count - 1)"
     }
 
+    private func screenStatusColor(_ status: String) -> Color {
+        status.lowercased().contains("permission") || status.lowercased().contains("failed")
+            ? Color.orange.opacity(0.92)
+            : Color.blue.opacity(0.92)
+    }
+
     private var showSlashCommands: Bool {
         input.hasPrefix("/") && !input.contains(" ") && !input.contains("\n")
+    }
+
+    private var currentMentionQuery: String? {
+        guard let at = input.lastIndex(of: "@") else { return nil }
+        let after = input[input.index(after: at)...]
+        guard !after.contains("@"),
+              !after.contains("\n"),
+              after.first != "\"" else { return nil }
+        return String(after).trimmingCharacters(in: .whitespaces)
+    }
+
+    private var showMentionSuggestions: Bool {
+        currentMentionQuery != nil && !mentionSuggestions.candidates.isEmpty
+    }
+
+    private var visibleMentionCandidates: [String] {
+        currentMentionQuery == nil ? [] : mentionSuggestions.candidates
+    }
+
+    private var mentionBar: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(visibleMentionCandidates.enumerated()), id: \.element) { idx, path in
+                Button {
+                    applyMention(path)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 10, weight: .medium))
+                        Text(path)
+                            .font(.system(size: 11, weight: .medium))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .foregroundStyle(Color.overlayInk.opacity(idx == selectedMentionIndex ? 0.90 : 0.62))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.overlayInk.opacity(idx == selectedMentionIndex ? 0.08 : 0.035))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private var selectedMentionChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(selectedMentionPaths, id: \.self) { path in
+                    HStack(spacing: 5) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(displayName(forMentionPath: path))
+                            .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Button {
+                            selectedMentionPaths.removeAll { $0 == path }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .frame(width: 14, height: 14)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove file")
+                    }
+                    .foregroundStyle(Color.overlayInk.opacity(0.72))
+                    .padding(.leading, 8)
+                    .padding(.trailing, 5)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(Color.overlayInk.opacity(0.055))
+                            .overlay(Capsule().stroke(Color.overlayInk.opacity(0.08), lineWidth: 1))
+                    )
+                    .help(path)
+                }
+                ForEach(selectedAttachments) { attachment in
+                    HStack(spacing: 5) {
+                        Image(systemName: "paperclip")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(attachment.name)
+                            .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Button {
+                            selectedAttachments.removeAll { $0.id == attachment.id }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .frame(width: 14, height: 14)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove attachment")
+                    }
+                    .foregroundStyle(Color.blue.opacity(0.82))
+                    .padding(.leading, 8)
+                    .padding(.trailing, 5)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(Color.blue.opacity(0.08))
+                            .overlay(Capsule().stroke(Color.blue.opacity(0.15), lineWidth: 1))
+                    )
+                    .help("Attached for this message only")
+                }
+            }
+            .padding(.horizontal, 2)
+        }
     }
 
     private var slashCommandBar: some View {
@@ -221,13 +683,20 @@ struct AssistantInputView: View {
     private var slashCommands: [SlashCommand] {
         [
             SlashCommand(id: "assist", label: "Assist", symbol: "sparkles", help: "Suggest what to do next"),
+            SlashCommand(id: "answer", label: "Answer latest", symbol: "quote.bubble", help: "Answer the latest live question using project context"),
             SlashCommand(id: "say", label: "Say next", symbol: "wand.and.rays", help: "Draft a quick reply"),
             SlashCommand(id: "followups", label: "Follow-ups", symbol: "bubble.left.and.text.bubble.right", help: "Generate follow-up questions"),
             SlashCommand(id: "recap", label: "Recap", symbol: "arrow.clockwise", help: "Recap the recent conversation"),
             SlashCommand(id: "summary", label: "Summary", symbol: "doc.text", help: "Summarize the full session"),
-            SlashCommand(id: "note", label: "Note", symbol: "note.text", help: "Insert a live note"),
+            SlashCommand(id: "note", label: "Note", symbol: "note.text", help: "Toggle live note mode, or use /note <text>"),
+            SlashCommand(id: "chat", label: "Chat", symbol: "text.bubble", help: "Exit note mode and return to chat"),
             SlashCommand(id: "screen", label: "Screen", symbol: "camera.viewfinder", help: "Attach screen OCR to the next message"),
             SlashCommand(id: "recent", label: "Recent", symbol: "calendar", help: "Ask about recent project meetings"),
+            SlashCommand(id: "search", label: "Search", symbol: "doc.text", help: "Search the vault or selected project/client"),
+            SlashCommand(id: "sources", label: "Sources", symbol: "text.page", help: "Show source hits for a query or last question"),
+            SlashCommand(id: "project", label: "Project", symbol: "folder", help: "Show, set, or clear project/client context"),
+            SlashCommand(id: "help", label: "Help", symbol: "questionmark.circle", help: "Show slash commands"),
+            SlashCommand(id: "new", label: "New chat", symbol: "plus.message", help: "Clear the current chat"),
         ]
     }
 
@@ -235,6 +704,42 @@ struct AssistantInputView: View {
         let count = visibleSlashCommands.count
         guard count > 0 else { return }
         selectedSlashIndex = (selectedSlashIndex + delta + count) % count
+    }
+
+    private func moveMentionSelection(_ delta: Int) {
+        let count = visibleMentionCandidates.count
+        guard count > 0 else { return }
+        selectedMentionIndex = (selectedMentionIndex + delta + count) % count
+    }
+
+    private func refreshMentionSuggestions() {
+        mentionSuggestions.update(
+            query: currentMentionQuery,
+            scopeRelativePath: MeetingContextStore.shared.fileAccessScopePath
+        )
+    }
+
+    private func applyMention(_ path: String) {
+        guard let at = input.lastIndex(of: "@") else { return }
+        let prefix = input[..<at]
+        input = String(prefix).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !selectedMentionPaths.contains(path) {
+            selectedMentionPaths.append(path)
+        }
+        mentionSuggestions.update(query: nil, scopeRelativePath: nil)
+        DispatchQueue.main.async { isInputFocused = true }
+    }
+
+    private func inputWithSelectedMentions(_ text: String) -> String {
+        guard !selectedMentionPaths.isEmpty else { return text }
+        let mentions = selectedMentionPaths.map { "@\"\($0)\"" }.joined(separator: " ")
+        return text.isEmpty ? mentions : "\(mentions) \(text)"
+    }
+
+    private func displayName(forMentionPath path: String) -> String {
+        let file = path.split(separator: "/").last.map(String.init) ?? path
+        if file.count <= 34 { return file }
+        return String(file.prefix(15)) + "…" + String(file.suffix(14))
     }
 
     private func miniPill(_ text: String, icon: String?, active: Bool) -> some View {
@@ -246,7 +751,7 @@ struct AssistantInputView: View {
             Text(text)
                 .truncationMode(.tail)
         }
-        .font(.system(size: 11, weight: .medium))
+        .font(.system(size: 10, weight: .medium))
         .foregroundStyle(active ? Color.overlayInk.opacity(0.58) : Color.overlayInk.opacity(0.38))
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -291,10 +796,15 @@ struct AssistantInputView: View {
                 Button {
                     ScreenshotManager.shared.captureAndAttach()
                 } label: {
-                    Label("Capture screen under cursor", systemImage: "camera.viewfinder")
+                    Label("Capture screens", systemImage: "camera.viewfinder")
                 }
                 .keyboardShortcut("h", modifiers: .command)
-                .help("Reads the whole display your mouse is on (not a single window) via on-device OCR, then attaches the text to your next message.")
+                .help("Reads all connected displays via on-device OCR, prioritizes the screen under your mouse, then attaches the text to your next message.")
+
+                Button { fileImporterPresented = true } label: {
+                    Label("Attach file…", systemImage: "paperclip")
+                }
+                .help("Attach a PDF, Markdown, or text file to the next message. RTI reads it in memory only.")
 
                 Button {
                     NotificationCenter.default.post(name: .rtiClearChat, object: nil)
@@ -378,15 +888,14 @@ struct AssistantInputView: View {
             // pin the surrounding Menu's tint so it doesn't override us.
             Image(systemName: "ellipsis")
                 .symbolRenderingMode(.monochrome)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Color.overlayInk.opacity(0.7))
-                .frame(width: 28, height: 26)
-                .background(Capsule().fill(Color.overlayInk.opacity(0.06)))
+                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
+                .foregroundColor(Color.overlayInk.opacity(0.45))
+                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .tint(Color.overlayInk.opacity(0.7))
-        .frame(width: 28)
+        .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
         .accessibilityLabel("More actions")
         .accessibilityHint("Quick actions and settings")
         .help("Quick actions and settings")
@@ -394,25 +903,21 @@ struct AssistantInputView: View {
 
     private var noteModeToggle: some View {
         Button {
-            inputState.mode = inputState.isNoteMode ? .chat : preferredNoteMode
+            guard session.isRunning else { return }
+            inputState.mode = inputState.isNoteMode ? .chat : .liveNote
             DispatchQueue.main.async {
                 isInputFocused = true
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: noteModeSymbol)
-                    .font(.system(size: 10, weight: .semibold))
-                Text(noteModeLabel)
-                    .font(.system(size: 11, weight: .semibold))
-            }
+            Image(systemName: noteModeSymbol)
+                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
+                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
             .foregroundStyle(inputState.isNoteMode ? Color.yellow.opacity(0.95) : Color.overlayInk.opacity(0.7))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
             .background(
                 Capsule().fill(
                     inputState.isNoteMode
-                        ? Color.yellow.opacity(0.14)
-                        : Color.overlayInk.opacity(0.06)
+                        ? Color.yellow.opacity(0.12)
+                        : Color.clear
                 )
             )
             .overlay(
@@ -420,13 +925,13 @@ struct AssistantInputView: View {
                     .stroke(
                         inputState.isNoteMode
                             ? Color.yellow.opacity(0.4)
-                            : Color.overlayInk.opacity(0.08),
+                            : Color.clear,
                         lineWidth: 1
                     )
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(inputState.isNoteMode ? "Switch to chat mode" : noteToggleAccessibilityLabel)
+        .accessibilityLabel(inputState.isNoteMode ? "Switch to chat mode" : "Switch to note mode")
         .help(noteModeHelpText)
     }
 
@@ -514,43 +1019,44 @@ struct AssistantInputView: View {
                 }
             }
 
-            Button { inputState.mode = inputState.isNoteMode ? .chat : preferredNoteMode } label: {
+            Button {
+                guard session.isRunning else { return }
+                inputState.mode = inputState.isNoteMode ? .chat : .liveNote
+            } label: {
                 if inputState.isNoteMode {
                     Label(noteMenuTitle, systemImage: "checkmark")
                 } else {
                     Label(noteMenuTitle, systemImage: "note.text")
                 }
             }
+            .disabled(!session.isRunning)
         } label: {
             Image(systemName: "sparkles")
                 .symbolRenderingMode(.monochrome)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(llm.smartMode ? Color.blue : Color.overlayInk.opacity(0.7))
-                .frame(width: 28, height: 26)
-                .background(Capsule().fill(llm.smartMode
-                        ? Color.blue.opacity(0.16)
-                        : Color.overlayInk.opacity(0.06)))
+                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
+                .foregroundColor(llm.smartMode ? Color.blue.opacity(0.9) : Color.overlayInk.opacity(0.50))
+                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
+                .background(Capsule().fill(llm.smartMode ? Color.blue.opacity(0.10) : Color.clear))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .tint(Color.overlayInk.opacity(0.7))
-        .frame(width: 28)
+        .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
         .accessibilityLabel("Assist actions")
         .accessibilityHint(llm.smartMode ? "Assist actions. Smart mode is on." : "Assist actions")
         .help(llm.smartMode ? "Assist actions · Smart on" : "Assist actions")
     }
 
     private var sendButton: some View {
-        let isEmpty = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isEmpty = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedMentionPaths.isEmpty && selectedAttachments.isEmpty
         return Button(action: submit) {
             Image(systemName: "arrow.up")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Color.overlayInk.opacity(isEmpty ? 0.45 : 1.0))
-                .frame(width: 34, height: 30)
+                .frame(width: ComposerMetrics.sendSize, height: ComposerMetrics.sendSize)
                 .background(
-                    Capsule().fill(Color.overlayInk.opacity(isEmpty ? 0.06 : 0.10))
+                    Circle().fill(Color.overlayInk.opacity(isEmpty ? 0.045 : 0.10))
                 )
-                .liquidMetalBorder(Capsule(), lineWidth: 1.2, period: 4.0, glow: 5, active: !isEmpty)
         }
         .buttonStyle(.plain)
         .disabled(isEmpty || llm.streaming)
@@ -564,8 +1070,8 @@ struct AssistantInputView: View {
             Image(systemName: "stop.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 34, height: 30)
-                .background(Capsule().fill(Color.red.opacity(0.85)))
+                .frame(width: ComposerMetrics.sendSize, height: ComposerMetrics.sendSize)
+                .background(Circle().fill(Color.red.opacity(0.85)))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Stop streaming")
@@ -576,11 +1082,9 @@ struct AssistantInputView: View {
     private var textFieldPrompt: String {
         switch inputState.mode {
         case .liveNote:
-            return "Quick note — Enter inserts inline, then returns to chat"
-        case .prepNote:
-            return "Prep note — Enter saves to Setup note, then returns to chat"
+            return "Quick note"
         case .chat:
-            return "Ask, @file, drop an image, or ⌘↵ for Assist"
+            return "Ask the vault, @file, or attach a PDF/text file"
         }
     }
 
@@ -614,6 +1118,11 @@ struct AssistantInputView: View {
 
     /// Load the first dropped image and hand it to ScreenshotManager for
     /// on-device OCR → attach as pending context. Returns true if we took it.
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        if handleImageDrop(providers) { return true }
+        return handleFileDrop(providers)
+    }
+
     private func handleImageDrop(_ providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSImage.self) }) else {
             return false
@@ -625,55 +1134,91 @@ struct AssistantInputView: View {
         return true
     }
 
+    private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            guard let data = item as? Data,
+                  let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+            Task { @MainActor in addAttachment(url) }
+        }
+        return true
+    }
+
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        guard case let .success(urls) = result else { return }
+        urls.forEach(addAttachment)
+    }
+
+    private func addAttachment(_ url: URL) {
+        do {
+            let attachment = try ExternalDocumentLoader.load(url: url)
+            guard !selectedAttachments.contains(where: { $0.name == attachment.name && $0.text == attachment.text }) else { return }
+            selectedAttachments.append(attachment)
+            attachmentError = nil
+        } catch {
+            attachmentError = error.localizedDescription
+        }
+    }
+
     private func submit() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || (inputState.mode == .chat && (!selectedMentionPaths.isEmpty || !selectedAttachments.isEmpty)) else { return }
         switch inputState.mode {
         case .liveNote:
             if submitLiveNote(text) {
                 input = ""
-                inputState.mode = .chat
-                DispatchQueue.main.async { isInputFocused = true }
-            }
-        case .prepNote:
-            if MeetingContextStore.shared.appendPrepNote(text) {
-                input = ""
+                selectedMentionPaths = []
+                selectedAttachments = []
                 inputState.mode = .chat
                 DispatchQueue.main.async { isInputFocused = true }
             }
         case .chat:
+            if showMentionSuggestions, let path = visibleMentionCandidates[safe: selectedMentionIndex] {
+                applyMention(path)
+                return
+            }
             if text.hasPrefix("/") {
                 if performSlashSubmit(String(text.dropFirst())) {
                     input = ""
+                    selectedMentionPaths = []
+                    selectedAttachments = []
                 }
                 DispatchQueue.main.async { isInputFocused = true }
                 return
             }
-            llm.sendAskAnything(text)
+            llm.sendAskAnything(inputWithSelectedMentions(text), attachments: selectedAttachments)
             input = ""
+            selectedMentionPaths = []
+            selectedAttachments = []
         }
     }
 
     @discardableResult
     private func performSlashSubmit(_ raw: String) -> Bool {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.lowercased().hasPrefix("note ") {
-            let noteText = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return submitInlineNote(noteText)
+        let split = splitSlash(trimmed)
+        if split.command == "note", !split.argument.isEmpty {
+            if applyNoteModeArgument(split.argument) {
+                return true
+            }
+            let noteText = split.argument
+            return submitLiveNote(noteText)
         }
 
         if showSlashCommands, let command = visibleSlashCommands[safe: selectedSlashIndex] {
             return performSlashCommand(command.id)
         }
 
-        return performSlashCommand(trimmed)
+        return performSlashCommand(split.command, argument: split.argument)
     }
 
     @discardableResult
-    private func performSlashCommand(_ raw: String) -> Bool {
+    private func performSlashCommand(_ raw: String, argument: String = "") -> Bool {
         switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "assist":
             llm.sendAssist()
+        case "answer", "latest":
+            llm.sendAnswerLatest()
         case "say", "saynext":
             llm.sendSaySomething()
         case "followups", "followup":
@@ -683,73 +1228,84 @@ struct AssistantInputView: View {
         case "summary", "summarize":
             llm.sendSummary()
         case "note":
-            inputState.mode = preferredNoteMode
+            if argument.isEmpty {
+                if session.isRunning {
+                    inputState.mode = inputState.isNoteMode ? .chat : .liveNote
+                }
+            } else if !applyNoteModeArgument(argument), session.isRunning {
+                inputState.mode = .liveNote
+            }
+        case "chat":
+            inputState.mode = .chat
         case "screen":
             ScreenshotManager.shared.captureAndAttach()
         case "recent":
             llm.sendAskAnything("What were the most recent meetings or sessions for this project? Use the recent meetings tool if project context is available.")
+        case "search", "grep", "rag":
+            llm.sendVaultSearchCommand(argument)
+        case "sources", "source":
+            llm.sendVaultSourcesCommand(argument.isEmpty ? nil : argument)
+        case "project", "client", "context":
+            llm.runProjectCommand(argument)
+        case "help", "?":
+            llm.showSlashHelp()
+        case "new", "clear":
+            AppDelegate.clearChatNow()
         default:
             return false
         }
         return true
     }
 
-    private var preferredNoteMode: OverlayInputState.Mode {
-        session.isRunning ? .liveNote : .prepNote
+    private func splitSlash(_ raw: String) -> (command: String, argument: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let space = trimmed.firstIndex(where: { $0.isWhitespace }) else {
+            return (trimmed.lowercased(), "")
+        }
+        let command = String(trimmed[..<space]).lowercased()
+        let argument = String(trimmed[space...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (command, argument)
     }
 
-    private var noteModeLabel: String {
-        switch inputState.mode {
-        case .liveNote: return "Note"
-        case .prepNote: return "Prep"
-        case .chat: return session.isRunning ? "Chat" : "Prep"
+    @discardableResult
+    private func applyNoteModeArgument(_ argument: String) -> Bool {
+        switch argument.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "meeting", "meet", "live", "transcript", "on":
+            if session.isRunning {
+                inputState.mode = .liveNote
+            }
+        case "off", "exit", "cancel", "chat":
+            inputState.mode = .chat
+        default:
+            return false
         }
+        return true
     }
 
     private var noteModeSymbol: String {
         switch inputState.mode {
-        case .chat: return session.isRunning ? "text.cursor" : "square.and.pencil"
-        case .liveNote, .prepNote: return "note.text"
+        case .chat: return session.isRunning ? "text.cursor" : "note.text"
+        case .liveNote: return "note.text"
         }
     }
 
-    private var noteToggleAccessibilityLabel: String {
-        session.isRunning ? "Switch to transcript note mode" : "Switch to prep note mode"
-    }
-
     private var noteMenuTitle: String {
-        session.isRunning ? "Transcript note mode" : "Prep note mode"
+        "Note mode  ⌘⌥N"
     }
 
     private var noteModeHelpText: String {
         switch inputState.mode {
         case .liveNote:
             return "Transcript note mode on — next Enter inserts inline, then returns to chat"
-        case .prepNote:
-            return "Prep note mode on — next Enter appends to the Setup note, then returns to chat"
         case .chat:
             return session.isRunning
                 ? "Chat mode on — toggle to drop a quick note into the transcript"
-                : "No live session — toggle to append a quick prep note to Setup"
-        }
-    }
-
-    private func submitInlineNote(_ text: String) -> Bool {
-        switch preferredNoteMode {
-        case .liveNote:
-            return submitLiveNote(text)
-        case .prepNote:
-            return MeetingContextStore.shared.appendPrepNote(text)
-        case .chat:
-            return false
+                : "Start a live session to add transcript notes"
         }
     }
 
     private func submitLiveNote(_ text: String) -> Bool {
-        if SessionCoordinator.shared.insertNote(text) {
-            return true
-        }
-        return MeetingContextStore.shared.appendPrepNote(text)
+        SessionCoordinator.shared.insertNote(text)
     }
 }
 

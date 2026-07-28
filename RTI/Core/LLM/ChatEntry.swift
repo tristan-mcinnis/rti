@@ -10,18 +10,21 @@ public struct ChatEntry: Identifiable, Equatable {
     public let action: String? // "Ask" | "Assist" — user entries only
     public let contextUsed: Bool // user entries only — transcript attached
     public let screenContextUsed: Bool // user entries only — OCR screen attached
+    public let referencedPaths: [String] // user entries only — vault docs attached with @mentions
 
     public init(
         role: String,
         text: String,
         action: String?,
         contextUsed: Bool,
-        screenContextUsed: Bool
+        screenContextUsed: Bool,
+        referencedPaths: [String] = []
     ) {
         self.role = role
         self.text = text
         self.action = action
         self.contextUsed = contextUsed
         self.screenContextUsed = screenContextUsed
+        self.referencedPaths = referencedPaths
     }
 }

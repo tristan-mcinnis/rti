@@ -58,4 +58,55 @@ final class VaultFilesTests: XCTestCase {
             XCTFail("Expected unknown mention to be reported missing")
         }
     }
+
+    func testMentionCandidates_matchMultiTokenAbbreviation() {
+        let paths = [
+            "projects/personal/rti/sessions/2026-06-18 190213/discussion-guide.md",
+            "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md",
+            "projects/acmebrand/analysis/archive/pre-redo-20260620/artifacts/04-language-bank.md",
+            "projects/other-brand/discussion-guide.md",
+        ]
+
+        let matches = VaultFiles.mentionCandidatesForTesting("brand dg", paths: paths)
+
+        XCTAssertEqual(matches.first, "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md")
+        XCTAssertFalse(matches.contains("projects/personal/rti/sessions/2026-06-18 190213/discussion-guide.md"))
+    }
+
+    func testMentionCandidates_scopeRestrictsThenFallsBackWhenEmpty() {
+        let paths = [
+            "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md",
+            "projects/acmebrand/00-status.md",
+            "projects/other-brand/discussion-guide.md",
+        ]
+
+        let scoped = VaultFiles.mentionCandidatesForTesting(
+            "dg",
+            paths: paths,
+            scopeRelativePath: "projects/acmebrand"
+        )
+        XCTAssertEqual(scoped.first, "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md")
+        XCTAssertFalse(scoped.contains("projects/other-brand/discussion-guide.md"))
+
+        let broadened = VaultFiles.mentionCandidatesForTesting(
+            "other dg",
+            paths: paths,
+            scopeRelativePath: "projects/acmebrand"
+        )
+        XCTAssertEqual(broadened.first, "projects/other-brand/discussion-guide.md")
+    }
+
+    func testMentionCandidates_largePathSetStaysResponsive() {
+        var paths = (0..<12_000).map { idx in
+            "projects/archive-\(idx)/discussion-guide.md"
+        }
+        paths.append("projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md")
+
+        let start = ContinuousClock.now
+        let matches = VaultFiles.mentionCandidatesForTesting("brand dg", paths: paths)
+        let elapsed = start.duration(to: .now)
+
+        XCTAssertEqual(matches.first, "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md")
+        XCTAssertLessThan(elapsed.components.seconds, 1)
+    }
 }

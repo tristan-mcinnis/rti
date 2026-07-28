@@ -10,6 +10,81 @@ final class TranscriptUpgradeTests: XCTestCase {
         }
     }
 
+    func testSessionTranscriptReviewReassignsAndEditsTurnsWithoutChangingProvenance() {
+        let markdown = """
+        ---
+        title: "RTI session"
+        ---
+
+        # Transcript
+
+        _Upgraded with Soniox._
+
+        `0:04` **Speaker 1:** rough live text
+
+        `0:07` **📝 Note:** Preserve this note.
+
+        `1:02` **Speaker 2:** follow-up
+
+        _Footer stays put._
+        """
+
+        var turns = SessionTranscriptReview.turns(from: markdown)
+        XCTAssertEqual(turns.map(\.speaker), ["Speaker 1", "📝 Note", "Speaker 2"])
+        turns[0].speaker = "Rossi"
+        turns[0].text = "Corrected opening."
+
+        let updated = SessionTranscriptReview.replacingTurns(in: markdown, with: turns)
+
+        XCTAssertTrue(updated.contains("`0:04` **Rossi:** Corrected opening."))
+        XCTAssertTrue(updated.contains("`0:07` **📝 Note:** Preserve this note."))
+        XCTAssertTrue(updated.contains("_Upgraded with Soniox._"))
+        XCTAssertTrue(updated.contains("_Footer stays put._"))
+    }
+
+    func testCanonicalMeetingTranscriptRendersLiveEntriesLikeSentinelRawTranscript() {
+        let entries = [
+            LiveEntry(speakerId: "self", text: "Opening note.", startMs: 1_000, confidence: 0.9, translationStatus: "original", language: "en", sourceLanguage: nil),
+            LiveEntry(speakerId: "note", text: "This is a typed note.", startMs: 2_000, confidence: 1, translationStatus: "none", language: nil, sourceLanguage: nil),
+            LiveEntry(speakerId: "remote_1", text: "Let's begin.", startMs: 61_000, confidence: 0.9, translationStatus: "original", language: "en", sourceLanguage: nil),
+            LiveEntry(speakerId: "remote_1", text: "Empecemos.", startMs: 61_000, confidence: 0.9, translationStatus: "translation", language: "es", sourceLanguage: "en")
+        ]
+
+        let text = CanonicalMeetingTranscript.render(entries: entries)
+
+        XCTAssertEqual(text, """
+        [00:01] Speaker 1: Opening note.
+
+        [01:01] Speaker 2: Let's begin.
+        """)
+    }
+
+    func testCanonicalMeetingTranscriptConvertsArchivedMarkdownAndSkipsNotes() {
+        let markdown = """
+        ---
+        title: "RTI session"
+        ---
+
+        # Transcript
+
+        _Jul 6, 2026_
+
+        `0:04` **Speaker 1:** rough live text
+
+        `0:07` **📝 Note:** Preserve this only in sidecar.
+
+        `1:02` **Speaker 2:** follow-up
+        """
+
+        let text = CanonicalMeetingTranscript.render(markdownTranscript: markdown)
+
+        XCTAssertEqual(text, """
+        [00:04] Speaker 1: rough live text
+
+        [01:02] Speaker 2: follow-up
+        """)
+    }
+
     func testExtractsInlineNotesFromArchivedTranscript() {
         let markdown = """
         # Transcript

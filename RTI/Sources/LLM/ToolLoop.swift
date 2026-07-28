@@ -19,15 +19,19 @@ struct ToolLoop {
         case reasoningStarted
         case reasoningEnded
         case toolStatus(String)
+        case toolStarted(name: String, status: String)
+        case toolFinished(name: String, elapsedMS: Int, result: String)
         case toolStatusDone
         case done(String)   // final assistant text
         case error(String, isAuth: Bool)
     }
 
     private let request: LLMRequest
+    private let makeToolExecutor: @MainActor () -> ToolExecutor
 
-    init(request: LLMRequest = LLMRequest()) {
+    init(request: LLMRequest = LLMRequest(), makeToolExecutor: @escaping @MainActor () -> ToolExecutor = { .production }) {
         self.request = request
+        self.makeToolExecutor = makeToolExecutor
     }
 
     /// Run the tool loop to completion. Emits events via `onEvent` on each
@@ -40,10 +44,8 @@ struct ToolLoop {
     ) async {
         var messages = conversation
         let maxIterations = 4
-        // The model otherwise fires several refining vault searches in one turn
-        // (observed: 5), each a full query — so it stalls. Allow one, then make
-        // it answer from what it got.
-        var vaultSearches = 0
+        var latestAssistantText = ""
+        var toolExecutor = makeToolExecutor()
 
         for _ in 0..<maxIterations {
             let turnBuffer = TurnBuffer()
@@ -72,49 +74,43 @@ struct ToolLoop {
 
             // No tools → terminal turn.
             guard !result.toolCalls.isEmpty else {
-                onEvent(.done(turnBuffer.snapshot()))
+                let finalText = turnBuffer.snapshot()
+                onEvent(.done(finalText.isEmpty ? latestAssistantText : finalText))
                 return
+            }
+
+            let assistantText = turnBuffer.snapshot()
+            if !assistantText.isEmpty {
+                latestAssistantText = assistantText
             }
 
             // Append assistant message with tool_calls to wire history.
             messages.append(LLMMessage(
                 role: "assistant",
-                content: turnBuffer.snapshot().nilIfEmpty,
+                content: assistantText.nilIfEmpty,
                 tool_calls: result.toolCalls
             ))
 
             // Execute each tool, append results.
             for call in result.toolCalls {
-                guard let tool = LLMToolRegistry.tool(named: call.function.name) else {
-                    let resultText = "Tool '\(call.function.name)' is not available."
-                    messages.append(LLMMessage(role: "tool", content: resultText, tool_call_id: call.id, name: call.function.name))
-                    continue
+                let result = await toolExecutor.execute(call)
+                if let status = result.status {
+                    onEvent(.toolStatus(status))
+                    onEvent(.toolStarted(name: result.toolName, status: status))
                 }
-                // One vault search per turn: further searches return a nudge to
-                // answer instead of running, keeping the reply snappy.
-                if call.function.name == "search_vault" {
-                    vaultSearches += 1
-                    if vaultSearches > 1 {
-                        let nudge = "You already searched the vault this turn. Do not search again — answer the user now from the results already returned above."
-                        messages.append(LLMMessage(role: "tool", content: nudge, tool_call_id: call.id, name: call.function.name))
-                        continue
-                    }
+                if result.executed {
+                    onEvent(.toolFinished(name: result.toolName, elapsedMS: result.elapsedMS, result: result.resultText))
+                    onEvent(.toolStatusDone)
                 }
-                onEvent(.toolStatus(tool.runningStatus ?? "Running \(tool.name)…"))
-                let resultText: String
-                do {
-                    resultText = try await tool.execute(call.function.arguments)
-                } catch {
-                    resultText = "Tool '\(tool.name)' failed: \(error.localizedDescription)"
-                }
-                onEvent(.toolStatusDone)
-                messages.append(LLMMessage(role: "tool", content: resultText, tool_call_id: call.id, name: call.function.name))
+                messages.append(LLMMessage(role: "tool", content: result.resultText, tool_call_id: call.id, name: result.toolName))
             }
             // Loop back: model sees its tool results and may emit more content or more tools.
         }
 
-        // Hit iteration cap — emit what we have.
-        onEvent(.done(messages.last(where: { $0.role == "assistant" })?.content ?? ""))
+        // A tool-call-only assistant message has no text. Never surface a
+        // blank reply after visible tool activity when the iteration cap hits.
+        let fallback = "I reached RTI's tool limit before a final answer. Please try a narrower question."
+        onEvent(.done(latestAssistantText.isEmpty ? fallback : latestAssistantText))
     }
 }
 

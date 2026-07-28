@@ -15,18 +15,35 @@ public enum OCRServiceError: Error, LocalizedError {
 }
 
 public enum OCRService {
+    public static let usesLanguageCorrection = false
+
+    public struct RecognizedTextRegion: Sendable, Equatable {
+        public let text: String
+        public let boundingBox: CGRect
+
+        public init(text: String, boundingBox: CGRect) {
+            self.text = text
+            self.boundingBox = boundingBox
+        }
+    }
+
     /// Runs Vision text recognition on `cgImage` and returns observations sorted
     /// top→bottom, left→right. Races the Vision request against a 30-second
     /// timeout so a hung Vision completion handler doesn't stall the caller
     /// indefinitely. Off-main; call from a background task.
     public static func recognizeText(in cgImage: CGImage) async throws -> String {
-        try await withThrowingTaskGroup(of: String.self) { group in
+        let regions = try await recognizeTextRegions(in: cgImage)
+        return regions.map(\.text).joined(separator: "\n")
+    }
+
+    public static func recognizeTextRegions(in cgImage: CGImage) async throws -> [RecognizedTextRegion] {
+        try await withThrowingTaskGroup(of: [RecognizedTextRegion].self) { group in
             group.addTask {
                 try await Task.sleep(nanoseconds: 30_000_000_000)
                 throw OCRServiceError.timedOut
             }
             group.addTask {
-                try await _recognizeText(in: cgImage)
+                try await _recognizeTextRegions(in: cgImage)
             }
             let result = try await group.next()!
             group.cancelAll()
@@ -34,7 +51,7 @@ public enum OCRService {
         }
     }
 
-    private static func _recognizeText(in cgImage: CGImage) async throws -> String {
+    private static func _recognizeTextRegions(in cgImage: CGImage) async throws -> [RecognizedTextRegion] {
         try await withCheckedThrowingContinuation { continuation in
             // The Vision callback and the dispatched perform() may race; this
             // flag is set once by whichever finishes first. Class storage so
@@ -51,13 +68,14 @@ public enum OCRService {
                     }
                     return a.boundingBox.origin.x < b.boundingBox.origin.x
                 }
-                let text = sorted
-                    .compactMap { $0.topCandidates(1).first?.string }
-                    .joined(separator: "\n")
-                continuation.resume(returning: text)
+                let regions = sorted.compactMap { observation -> RecognizedTextRegion? in
+                    guard let text = observation.topCandidates(1).first?.string else { return nil }
+                    return RecognizedTextRegion(text: text, boundingBox: observation.boundingBox)
+                }
+                continuation.resume(returning: regions)
             }
             request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
+            request.usesLanguageCorrection = usesLanguageCorrection
 
             let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
             DispatchQueue.global(qos: .userInitiated).async {

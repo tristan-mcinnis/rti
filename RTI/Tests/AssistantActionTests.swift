@@ -12,7 +12,7 @@ final class AssistantActionTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, ids.count, "ids must be unique")
         XCTAssertEqual(
             Set(ids),
-            ["assist", "sayNext", "followups", "keyTensions", "probe", "themes", "recap", "summary"]
+            ["assist", "answerLatest", "sayNext", "followups", "keyTensions", "probe", "themes", "recap", "summary"]
         )
     }
 
@@ -33,6 +33,7 @@ final class AssistantActionTests: XCTestCase {
         let expected: [String: String] = [
             "sayNext": "⌘⌥S", "followups": "⌘⌥F", "keyTensions": "⌘⌥T",
             "probe": "⌘⌥U", "themes": "⌘⌥E", "recap": "⌘⌥R", "summary": "⌘⌥M",
+            "answerLatest": "⌘⌥Q",
         ]
         for (id, hint) in expected {
             XCTAssertEqual(AssistantAction.byID(id)?.hotkey?.display, hint, "hotkey for \(id)")

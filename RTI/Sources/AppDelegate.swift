@@ -10,6 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private let hotkeys = HotkeyCoordinator()
     private let onboarding = OnboardingWindowController()
     private var sessionObservationTask: Task<Void, Never>?
+    /// Only the primary process may update the shared clean-exit marker. A
+    /// duplicate launch exits immediately after activating the existing app;
+    /// if it wrote this marker on the way out, the primary instance's crash
+    /// watchdog would mistake a later crash for a deliberate quit.
+    private var isPrimaryInstance = false
 
     /// Marker the crash watchdog reads: present = last exit was a clean quit
     /// (don't relaunch); absent while not running = crash (relaunch).
@@ -21,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         try? FileManager.default.removeItem(atPath: Self.cleanExitFlag)
 
         guard ensureSingleInstance() else { return }
+        isPrimaryInstance = true
 
         // Route RTICore's logs (CoreLog) into the app's log buffer via RTILog.
         CoreLog.installSink { message, category in
@@ -171,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        guard isPrimaryInstance else { return }
         SessionCoordinator.shared.emergencyShutdown()
         let dir = (Self.cleanExitFlag as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)

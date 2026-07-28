@@ -9,12 +9,28 @@ final class ScreenshotManager {
     static let shared = ScreenshotManager()
 
     private static let maxOCRChars = 12_000
+    private static let perScreenOCRChars = 6_000
+    private struct CapturedScreenOCR {
+        let label: String
+        let isPrimary: Bool
+        let text: String
+        let regions: [ScreenTextRegion]
+    }
+
+    private struct ScreenTextRegion {
+        let text: String
+        let rect: CGRect
+        let screenLabel: String
+    }
+
+    private var lastCapturedRegions: [ScreenTextRegion] = []
 
     private init() {}
 
-    /// Capture the display under the mouse cursor, OCR it, and attach the text
-    /// to `LLMController` as pending screen context for the next turn.
+    /// Capture connected displays, OCR them, and attach the text to
+    /// `LLMController` as pending screen context for the next turn.
     func captureAndAttach() {
+        LLMController.shared.setScreenCaptureStatus("Reading all screens…")
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -65,17 +81,45 @@ final class ScreenshotManager {
     /// Used by the LLM `capture_screen` tool so the result flows directly
     /// back into the model rather than into pending-context state.
     func captureAndDescribe() async throws -> String {
-        let cgImage = try await captureActiveDisplay()
-
-        let ocrResult = try await OCRService.recognizeText(in: cgImage)
-        let trimmedOCR = truncate(ocrResult)
-
-        guard !trimmedOCR.isEmpty else {
-            throw ScreenshotError.empty
+        LLMController.shared.setScreenCaptureStatus("Reading all screens…")
+        do {
+            let screens = try await captureAllDisplaysWithOCR()
+            let nonEmpty = screens.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            guard !nonEmpty.isEmpty else {
+                throw ScreenshotError.empty
+            }
+            lastCapturedRegions = nonEmpty.flatMap(\.regions)
+            let combined = formatScreenContext(nonEmpty)
+            LLMController.shared.setScreenCaptureStatus(nil)
+            RTILog.log("Screenshot: screens=\(nonEmpty.count) OCR=\(combined.count) chars.", category: "screenshot")
+            return combined
+        } catch {
+            LLMController.shared.setScreenCaptureStatus(errorDescription(for: error))
+            throw error
         }
+    }
 
-        RTILog.log("Screenshot: OCR=\(trimmedOCR.count) chars.", category: "screenshot")
-        return "Text visible on screen:\n\(trimmedOCR)"
+    /// Capture only the display containing the pointer and return its OCR.
+    /// Used by the live Visual Context Trail: no UI status is changed and the
+    /// image is released as soon as on-device Vision OCR completes.
+    func captureActiveDisplayDescription() async throws -> String {
+        let screens = try await captureDisplaysWithOCR(activeOnly: true)
+        guard let screen = screens.first else { throw ScreenshotError.noDisplay }
+        let text = screen.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw ScreenshotError.empty }
+        return text
+    }
+
+    func highlightTextOnLastCapture(_ query: String) -> String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "No highlight text was provided."
+        }
+        guard let match = bestRegionMatch(for: trimmed) else {
+            return "I couldn't find `\(trimmed)` in the most recent screen OCR. Capture the screen again if the visible content changed."
+        }
+        ScreenHighlightOverlay.flash(rect: match.rect)
+        return "Highlighted `\(match.text)` on \(match.screenLabel)."
     }
 
     private static func isScreenRecordingDenied(_ error: Error) -> Bool {
@@ -98,40 +142,129 @@ final class ScreenshotManager {
         }
     }
 
-    private func captureActiveDisplay() async throws -> CGImage {
-        let content = try await SCShareableContent.current
-        let targetDisplay = pickActiveDisplay(from: content.displays)
-        guard let display = targetDisplay else {
+    private func captureAllDisplaysWithOCR() async throws -> [CapturedScreenOCR] {
+        try await captureDisplaysWithOCR(activeOnly: false)
+    }
+
+    private func captureDisplaysWithOCR(activeOnly: Bool) async throws -> [CapturedScreenOCR] {
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard !content.displays.isEmpty else {
             throw ScreenshotError.noDisplay
         }
 
-        let filter = SCContentFilter(display: display, excludingWindows: [])
-        let config = SCStreamConfiguration()
-        config.width = Int(display.width)
-        config.height = Int(display.height)
-        config.pixelFormat = kCVPixelFormatType_32BGRA
-        config.showsCursor = false
-        config.capturesAudio = false
+        let displays = displaysWithCursorFirst(content.displays)
+        let ownBundleIdentifier = Bundle.main.bundleIdentifier
+        let ownWindows = content.windows.filter {
+            $0.owningApplication?.bundleIdentifier == ownBundleIdentifier
+        }
 
-        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        var captured: [CapturedScreenOCR] = []
+        let selectedDisplays = activeOnly ? Array(displays.prefix(1)) : displays
+        for (index, display) in selectedDisplays.enumerated() {
+            let frame = appKitFrame(for: display)
+            let isPrimary = frame.contains(NSEvent.mouseLocation)
+            let filter = SCContentFilter(display: display, excludingWindows: ownWindows)
+            let config = SCStreamConfiguration()
+            config.width = Int(display.width)
+            config.height = Int(display.height)
+            config.pixelFormat = kCVPixelFormatType_32BGRA
+            config.showsCursor = false
+            config.capturesAudio = false
+
+            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            let ocrRegions = try await OCRService.recognizeTextRegions(in: image)
+            let label = screenLabel(index: index, total: selectedDisplays.count, isPrimary: isPrimary)
+            let text = ocrRegions.map(\.text).joined(separator: "\n")
+            let regions = ocrRegions.map {
+                ScreenTextRegion(
+                    text: $0.text,
+                    rect: screenRect(for: $0.boundingBox, in: frame),
+                    screenLabel: label
+                )
+            }
+            captured.append(CapturedScreenOCR(label: label, isPrimary: isPrimary, text: text, regions: regions))
+        }
+        return captured
     }
 
-    private func pickActiveDisplay(from displays: [SCDisplay]) -> SCDisplay? {
+    private func displaysWithCursorFirst(_ displays: [SCDisplay]) -> [SCDisplay] {
         let mouse = NSEvent.mouseLocation
+        return displays.sorted { a, b in
+            let aContains = appKitFrame(for: a).contains(mouse)
+            let bContains = appKitFrame(for: b).contains(mouse)
+            if aContains != bContains { return aContains }
+            return a.displayID < b.displayID
+        }
+    }
+
+    private func appKitFrame(for display: SCDisplay) -> CGRect {
         for screen in NSScreen.screens {
-            if screen.frame.contains(mouse) {
-                let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
-                if let displayID, let match = displays.first(where: { $0.displayID == displayID }) {
-                    return match
-                }
+            let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            if screenNumber?.uint32Value == display.displayID {
+                return screen.frame
             }
         }
-        return displays.first
+        return CGRect(x: display.frame.origin.x, y: display.frame.origin.y, width: CGFloat(display.width), height: CGFloat(display.height))
     }
 
-    private func truncate(_ text: String) -> String {
-        guard text.count > Self.maxOCRChars else { return text }
-        let idx = text.index(text.startIndex, offsetBy: Self.maxOCRChars)
+    private func screenRect(for normalizedBox: CGRect, in screenFrame: CGRect) -> CGRect {
+        CGRect(
+            x: screenFrame.minX + normalizedBox.minX * screenFrame.width,
+            y: screenFrame.minY + normalizedBox.minY * screenFrame.height,
+            width: normalizedBox.width * screenFrame.width,
+            height: normalizedBox.height * screenFrame.height
+        )
+    }
+
+    private func screenLabel(index: Int, total: Int, isPrimary: Bool) -> String {
+        if total == 1 { return "Primary screen" }
+        return isPrimary
+            ? "Screen \(index + 1) of \(total) — cursor is here"
+            : "Screen \(index + 1) of \(total) — secondary"
+    }
+
+    private func formatScreenContext(_ screens: [CapturedScreenOCR]) -> String {
+        var sections: [String] = []
+        for screen in screens {
+            let text = truncate(screen.text, maxChars: Self.perScreenOCRChars)
+            guard !text.isEmpty else { continue }
+            sections.append("## \(screen.label)\n\(text)")
+        }
+        let body = sections.joined(separator: "\n\n")
+        return "Text visible on the user's screens. The primary screen is the one containing the mouse cursor.\n\n" + truncate(body)
+    }
+
+    private func bestRegionMatch(for query: String) -> ScreenTextRegion? {
+        let needle = normalize(query)
+        guard !needle.isEmpty else { return nil }
+        return lastCapturedRegions
+            .map { region -> (ScreenTextRegion, Int)? in
+                let haystack = normalize(region.text)
+                guard !haystack.isEmpty else { return nil }
+                if haystack == needle { return (region, 0) }
+                if haystack.contains(needle) { return (region, 1) }
+                if needle.contains(haystack), haystack.count >= 4 { return (region, 2) }
+                return nil
+            }
+            .compactMap { $0 }
+            .sorted { lhs, rhs in
+                if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
+                return lhs.0.text.count < rhs.0.text.count
+            }
+            .first?.0
+    }
+
+    private func normalize(_ text: String) -> String {
+        text.lowercased()
+            .filter { $0.isLetter || $0.isNumber || $0.isWhitespace }
+            .split(separator: " ")
+            .joined(separator: " ")
+    }
+
+    private func truncate(_ text: String, maxChars: Int? = nil) -> String {
+        let limit = maxChars ?? ScreenshotManager.maxOCRChars
+        guard text.count > limit else { return text }
+        let idx = text.index(text.startIndex, offsetBy: limit)
         return String(text[..<idx]) + "\n…[truncated]"
     }
 

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - General
@@ -119,6 +120,8 @@ private struct RealTimeAnalysisSection: View {
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = AnalysisSettingsDefaults.defaultNotesEnabled
     @AppStorage(AnalysisSettingsDefaults.notesIntervalKey) private var notesInterval: Double = AnalysisSettingsDefaults.defaultInterval
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = AnalysisSettingsDefaults.defaultGuideEnabled
+    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled: Bool = AnalysisSettingsDefaults.defaultFindingsEnabled
+    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled: Bool = AnalysisSettingsDefaults.defaultAutoAssistEnabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -127,6 +130,8 @@ private struct RealTimeAnalysisSection: View {
 
             Toggle("Enable notes generation", isOn: $notesEnabled)
             Toggle("Enable discussion guide matching", isOn: $guideEnabled)
+            Toggle("Enable live intelligence ledger", isOn: $findingsEnabled)
+            Toggle("Enable auto next-move cards", isOn: $autoAssistEnabled)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -152,6 +157,8 @@ private struct RealTimeAnalysisSection: View {
                 Button("Reset to Defaults") {
                     notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
                     guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
+                    findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
+                    autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
                     notesInterval = AnalysisSettingsDefaults.defaultInterval
                 }
                 .controlSize(.small)
@@ -166,21 +173,75 @@ private struct OverlayAppearanceSection: View {
     @AppStorage(OverlayAppearanceDefaults.widthKey) private var overlayWidth: Double = OverlayAppearanceDefaults.defaultWidth
     @AppStorage(OverlayAppearanceDefaults.heightKey) private var overlayHeight: Double = OverlayAppearanceDefaults.defaultHeight
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var overlayOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
-    @AppStorage(OverlayAppearanceDefaults.lightModeKey) private var lightMode: Bool = false
+    @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
+    @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
+    @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
+    @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel: Bool = OverlayAppearanceDefaults.defaultTranslucentPanel
+    @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
+    @AppStorage(OverlayAppearanceDefaults.reduceMotionKey) private var reduceMotion: String = OverlayAppearanceDefaults.defaultReduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Overlay Appearance")
                 .font(.system(size: 13, weight: .medium))
 
-            Toggle("Light mode", isOn: $lightMode)
-                .onChange(of: lightMode) { _, _ in
-                    NotificationCenter.default.post(name: .rtiOverlayAppearanceChanged, object: nil)
+            Picker("Theme", selection: $appearanceMode) {
+                ForEach(RTIAppearanceMode.allCases) { mode in
+                    Text(mode.label).tag(mode.rawValue)
                 }
-            Text("White panel, dark text. Off keeps the dark glass overlay.")
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: appearanceMode) { _, _ in postAppearanceChanged() }
+
+            HStack {
+                ColorPicker("Accent", selection: accentBinding, supportsOpacity: false)
+                    .labelsHidden()
+                    .frame(width: 36)
+                Text("Accent")
+                    .font(.system(size: 12))
+                Spacer()
+                Text(accentColorHex.uppercased())
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .onChange(of: accentColorHex) { _, _ in postAppearanceChanged() }
+
+            Toggle("Translucent panel", isOn: $translucentPanel)
+                .onChange(of: translucentPanel) { _, _ in postAppearanceChanged() }
+            Text("A softer live surface for meetings. Turn it off for a flatter, higher-contrast panel.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 2)
+
+            sliderRow(
+                label: "Contrast",
+                value: $contrast,
+                range: OverlayAppearanceDefaults.contrastRange,
+                step: 1,
+                format: "%.0f",
+                postsResize: false,
+                postsAppearance: true
+            )
+
+            sliderRow(
+                label: "UI font size",
+                value: $uiFontSize,
+                range: OverlayAppearanceDefaults.uiFontSizeRange,
+                step: 1,
+                format: "%.0f pt",
+                postsResize: false,
+                postsAppearance: true
+            )
+
+            Picker("Reduce motion", selection: $reduceMotion) {
+                ForEach(RTIReduceMotionMode.allCases) { mode in
+                    Text(mode.label).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: reduceMotion) { _, _ in postAppearanceChanged() }
+
+            Divider().padding(.vertical, 4)
 
             sliderRow(
                 label: "Width",
@@ -213,14 +274,37 @@ private struct OverlayAppearanceSection: View {
             HStack {
                 Spacer()
                 Button("Reset to Defaults") {
+                    appearanceMode = OverlayAppearanceDefaults.defaultAppearanceMode
+                    accentColorHex = OverlayAppearanceDefaults.defaultAccentColor
+                    contrast = OverlayAppearanceDefaults.defaultContrast
+                    translucentPanel = OverlayAppearanceDefaults.defaultTranslucentPanel
+                    uiFontSize = OverlayAppearanceDefaults.defaultUIFontSize
+                    reduceMotion = OverlayAppearanceDefaults.defaultReduceMotion
                     overlayWidth = OverlayAppearanceDefaults.defaultWidth
                     overlayHeight = OverlayAppearanceDefaults.defaultHeight
                     overlayOpacity = OverlayAppearanceDefaults.defaultOpacity
+                    UserDefaults.standard.removeObject(forKey: OverlayAppearanceDefaults.lightModeKey)
                     NotificationCenter.default.post(name: .rtiOverlaySizeChanged, object: nil)
+                    postAppearanceChanged()
                 }
                 .controlSize(.small)
             }
         }
+    }
+
+    private var accentBinding: Binding<Color> {
+        Binding(
+            get: {
+                Color(nsColor: NSColor.rtiColor(hex: accentColorHex) ?? NSColor.systemBlue)
+            },
+            set: { newValue in
+                accentColorHex = NSColor(newValue).rtiHexString
+            }
+        )
+    }
+
+    private func postAppearanceChanged() {
+        NotificationCenter.default.post(name: .rtiOverlayAppearanceChanged, object: nil)
     }
 
     @ViewBuilder
@@ -231,6 +315,7 @@ private struct OverlayAppearanceSection: View {
         step: Double,
         format: String,
         postsResize: Bool,
+        postsAppearance: Bool = false,
         displayTransform: ((Double) -> Double)? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -245,6 +330,9 @@ private struct OverlayAppearanceSection: View {
             Slider(value: value, in: range, step: step) { editing in
                 if !editing && postsResize {
                     NotificationCenter.default.post(name: .rtiOverlaySizeChanged, object: nil)
+                }
+                if !editing && postsAppearance {
+                    postAppearanceChanged()
                 }
             }
         }

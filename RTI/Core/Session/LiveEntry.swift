@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single committed row of the live in-memory transcript. Speaker rows use
-/// the labels from `SpeakerLabelMapping` (`"self"`, `"them"`, `"them_1"`, …);
+/// the labels from `SpeakerLabelMapping` (`"self"`, `"room_1"`, `"remote_1"`, …);
 /// user notes use `speakerId == "note"`. `startMs` is an offset on the
 /// session timeline. Ephemeral build: these live in memory for the duration
 /// of a session only.

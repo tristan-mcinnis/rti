@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import RTICore
 
 /// Ephemeral, in-memory context for the current meeting — fed to the assistant
 /// so its suggestions are grounded. Two sources, both optional:
@@ -20,6 +21,10 @@ final class MeetingContextStore {
     /// project's discussion guides. nil when nothing is picked.
     var workstreamItem: VaultItem?
 
+    /// Calendar meeting explicitly selected in Setup. This is read-only context
+    /// for the current session; RTI never changes the source calendar event.
+    private(set) var calendarMeeting: CalendarMeeting?
+
     /// Content of the pre-meeting prep brief auto-matched to this session
     /// (authored by Ava's Meeting Prep job, read from `<meetings>/briefs/`).
     /// Separate from `combined` so it's injected only for active-participant
@@ -37,6 +42,9 @@ final class MeetingContextStore {
         if let workstream = workstreamContext?.trimmingCharacters(in: .whitespacesAndNewlines), !workstream.isEmpty {
             parts.append(workstream)
         }
+        if let calendar = calendarContext {
+            parts.append(calendar)
+        }
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedNote.isEmpty { parts.append(trimmedNote) }
         return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
@@ -51,24 +59,80 @@ final class MeetingContextStore {
         return VaultWorkstreamStore.scopeRelativePath(for: item)
     }
 
+    var fileAccessScopePath: String? {
+        guard let item = workstreamItem else { return nil }
+        return VaultWorkstreamStore.fileAccessRelativePath(for: item)
+    }
+
     func clearWorkstream() {
         workstreamName = nil
         workstreamContext = nil
         workstreamItem = nil
     }
 
-    /// Append a quick prep note from the overlay composer. Keeps any existing
-    /// setup note and adds the new line below it.
-    @discardableResult
-    func appendPrepNote(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        if note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            note = trimmed
-        } else {
-            note += "\n" + trimmed
+    func selectCalendarMeeting(_ meeting: CalendarMeeting) {
+        calendarMeeting = meeting
+    }
+
+    func clearCalendarMeeting() {
+        calendarMeeting = nil
+    }
+
+    /// Compact, authoritative context for Assist and generated summaries. A
+    /// participant is an invitee, not evidence they actually spoke or attended.
+    var calendarContext: String? {
+        guard let meeting = calendarMeeting else { return nil }
+        var lines = ["Confirmed calendar meeting: \(meeting.title)"]
+        if !meeting.attendees.isEmpty {
+            lines.append("Invited participants (not proof of attendance):")
+            lines += meeting.attendees.map { attendee in
+                attendee.email.map { "- \(attendee.name) <\($0)>" } ?? "- \(attendee.name)"
+            }
         }
-        return true
+        return lines.joined(separator: "\n")
+    }
+
+    /// Reference material for end-of-session summaries. Project context gives
+    /// the model the correct vocabulary and spellings; the confirmed calendar
+    /// event provides names that are safe to label as invitees.
+    var summaryContext: String? {
+        var parts: [String] = []
+        if let workstream = workstreamContext?.trimmingCharacters(in: .whitespacesAndNewlines), !workstream.isEmpty {
+            parts.append("Selected project/wiki context:\n\(String(workstream.prefix(8_000)))")
+        }
+        if let calendar = calendarContext { parts.append(calendar) }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+    }
+
+    func selectWorkstream(_ item: VaultItem) {
+        workstreamName = item.name
+        workstreamContext = VaultWorkstreamStore.context(for: item)
+        workstreamItem = item
+    }
+
+    @discardableResult
+    func selectWorkstream(matching query: String) -> VaultItem? {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let needle = VaultWorkstreamStore.normalize(trimmed)
+        let compactNeedle = trimmed.lowercased().filter { $0.isLetter || $0.isNumber }
+        let items = VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()
+        let match = items
+            .filter { item in
+                let normalized = VaultWorkstreamStore.normalize(item.name)
+                let compactName = item.name.lowercased().filter { $0.isLetter || $0.isNumber }
+                return normalized.contains(needle)
+                    || needle.contains(normalized)
+                    || compactName.contains(compactNeedle)
+                    || compactNeedle.contains(compactName)
+            }
+            .max { a, b in
+                if a.isProject != b.isProject { return !a.isProject }
+                return a.name.count < b.name.count
+            }
+        guard let match else { return nil }
+        selectWorkstream(match)
+        return match
     }
 
     /// Best-effort: when a session is linked to a Sentinel meeting, pre-select
@@ -79,9 +143,7 @@ final class MeetingContextStore {
         guard workstreamName == nil else { return }
         let items = VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()
         guard let match = VaultWorkstreamStore.match(meetingName: meetingName, in: items) else { return }
-        workstreamName = match.name
-        workstreamContext = VaultWorkstreamStore.context(for: match)
-        workstreamItem = match
+        selectWorkstream(match)
     }
 
     /// At session start, match a same-day prep brief to this session and load

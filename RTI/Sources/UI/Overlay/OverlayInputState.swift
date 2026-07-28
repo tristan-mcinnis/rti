@@ -10,7 +10,6 @@ final class OverlayInputState {
     enum Mode {
         case chat
         case liveNote
-        case prepNote
     }
 
     static let shared = OverlayInputState()

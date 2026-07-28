@@ -143,7 +143,7 @@ final class SessionCoordinator {
         AnalysisScheduler.shared.register(
             id: "findings",
             task: .init(enabledKey: AnalysisSettingsDefaults.findingsEnabledKey) { _ in
-                // Findings own their own watermark (so the manual Generate button
+                // Intel owns its own watermark (so the manual Generate button
                 // can't duplicate) — ignore the scheduler's sinceMs.
                 await FindingsController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
             }
@@ -223,8 +223,12 @@ final class SessionCoordinator {
     @discardableResult
     func insertNote(_ text: String) -> Bool {
         guard let startedAt else { return false }
+        let startMs = Int(Date().timeIntervalSince(startedAt) * 1000)
         let ok = transcriptPipeline.insertNote(text, startedAt: startedAt)
-        if ok { publishState() }
+        if ok {
+            FindingsController.shared.recordUserMarkedNote(text, startMs: startMs)
+            publishState()
+        }
         return ok
     }
 
@@ -272,6 +276,7 @@ final class SessionCoordinator {
         guard phase == .recording else { return }
         pausedAt = Date()
         audioPipeline.suspended = true
+        VisualContextTrail.shared.setPaused(true)
         phase = .paused
         publishState()
     }
@@ -281,6 +286,7 @@ final class SessionCoordinator {
         if let pausedAt { pausedAccumulated += Date().timeIntervalSince(pausedAt) }
         pausedAt = nil
         audioPipeline.suspended = false
+        VisualContextTrail.shared.setPaused(false)
         phase = .recording
         publishState()
     }
@@ -424,12 +430,14 @@ final class SessionCoordinator {
         publishState()
         micMuted = false
         phase = .recording
+        VisualContextTrail.shared.start(sessionStartedAt: now)
         startCheckpointLoop()
     }
 
     func stopSession() {
         guard isRunning, let sessionId = currentSessionId else { return }
         lastStopAt = Date()
+        VisualContextTrail.shared.stopCapturing()
 
         // Settle any in-progress pause so the frozen duration excludes it.
         if phase == .paused, let pausedAt {
@@ -479,40 +487,20 @@ final class SessionCoordinator {
         // retained m4a legs. The audio is used only by Upgrade Transcript; this
         // does not revive the old corpus/import/search architecture.
         if let startedAt {
-            let transcript = transcriptPipeline.liveEntries
-            let chat = LLMController.shared.entries
-            let analysis = SessionArchive.Analysis(
-                notes: NotesGenerationController.shared.notes,
-                guide: DiscussionGuideController.shared.guide,
-                findings: FindingsController.shared.findings
-            )
-            // Declare (not decide): the matched project workstream slug and any
-            // linked Sentinel meeting go into the archive frontmatter, then the
-            // vault-side router applies the routing policy.
-            let workstreamItem = MeetingContextStore.shared.workstreamItem
-            let workstreamSlug = (workstreamItem?.isProject == true)
-                ? workstreamItem?.url.lastPathComponent
-                : nil
-            let archiveDir = SessionArchive.write(
-                startedAt: startedAt,
-                endedAt: endedAt,
-                transcript: transcript,
-                chat: chat,
-                analysis: analysis,
-                sessionId: sessionId,
-                micRecordingURL: audioPipeline.micRecordingURL,
-                systemRecordingURL: audioPipeline.systemRecordingURL,
-                systemAudioStartOffsetMs: systemAudioStartOffsetMs,
-                workstreamSlug: workstreamSlug,
-                linkedMeeting: linkedMeeting?.name
-            )
+            let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt, sessionId: sessionId)
+            let archiveResult = SessionFinalizer(snapshot: snapshot).archive()
+            let archiveDir = archiveResult.archiveDir
+            let transcript = snapshot.transcript
+            let chat = snapshot.chat
+            let analysis = snapshot.analysis
+            let linkedMeetingName = archiveResult.linkedMeetingName
+            let summaryContext = archiveResult.summaryContext
             // Render the transcript NOW and hand it to the summary call. The old
             // path re-read the live transcript inside the async summary, so
             // starting a new recording before it finished would summarise the
             // wrong (empty) session. Capturing it here makes "finish → start
             // again immediately" safe.
-            let transcriptText = TranscriptContext.format(transcript)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let transcriptText = archiveResult.transcriptText
 
             if let archiveDir, !transcriptText.isEmpty {
                 // Granola-style: show the user we're working ("Generating
@@ -523,9 +511,18 @@ final class SessionCoordinator {
                     let url = await SessionArchive.writeAutoSummary(
                         transcriptText: transcriptText,
                         to: archiveDir,
-                        startedAt: startedAt
+                        startedAt: startedAt,
+                        referenceContext: summaryContext
                     )
                     SessionArchive.runVaultRouter(sessionDir: archiveDir)
+                    self?.exportCanonicalMeeting(
+                        startedAt: startedAt,
+                        transcript: transcript,
+                        chat: chat,
+                        analysis: analysis,
+                        archiveDir: archiveDir,
+                        linkedMeetingName: linkedMeetingName
+                    )
                     guard let self else { return }
                     // Only resolve to `done` if this is still the session the
                     // user is looking at — a new recording may already be live.
@@ -542,11 +539,19 @@ final class SessionCoordinator {
                 phase = .done
                 resetWorkspaceForDone()
                 if let archiveDir { SessionArchive.runVaultRouter(sessionDir: archiveDir) }
+                exportCanonicalMeeting(
+                    startedAt: startedAt,
+                    transcript: transcript,
+                    chat: chat,
+                    analysis: analysis,
+                    archiveDir: archiveDir,
+                    linkedMeetingName: linkedMeetingName
+                )
             }
             // If this session was overlaid on a Sentinel-recorded meeting, also
             // drop the notes + chat + generated analysis into that meeting's
             // vault record so the downstream workflow can fold them in.
-            if let linkedMeeting {
+            if let linkedMeeting = snapshot.linkedMeeting {
                 SessionArchive.writeLinkedMeetingNotes(
                     meeting: linkedMeeting,
                     transcript: transcript,
@@ -571,7 +576,7 @@ final class SessionCoordinator {
 
     /// When a session reaches `done`, reset the interactive Assist chat back to
     /// its "ready" state. The meeting's substance is already saved (summary +
-    /// transcript on disk; transcript/notes/findings tabs stay reviewable until
+    /// transcript on disk; transcript/notes/intel tabs stay reviewable until
     /// the next recording) — leaving the live chat hanging around just reads as
     /// stale. Fixes the "why is the old chat still there after Done?" confusion.
     private func resetWorkspaceForDone() {
@@ -587,6 +592,7 @@ final class SessionCoordinator {
     func emergencyShutdown() {
         // Restore the default mic even on an abrupt quit (no-op if not switched).
         BluetoothMicGuard.shared.release()
+        VisualContextTrail.shared.stopCapturing()
 
         let stopPending = delayedCompleteTask != nil
         guard isRunning || stopPending else { return }
@@ -615,11 +621,33 @@ final class SessionCoordinator {
     @discardableResult
     private func archiveCurrentSession(endedAt: Date, route: Bool = true) -> URL? {
         guard let startedAt else { return nil }
-        let workstreamItem = MeetingContextStore.shared.workstreamItem
-        let workstreamSlug = (workstreamItem?.isProject == true)
-            ? workstreamItem?.url.lastPathComponent
-            : nil
-        let dir = SessionArchive.write(
+        let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt, sessionId: currentSessionId)
+        let result = SessionFinalizer(snapshot: snapshot).archive()
+        let dir = result.archiveDir
+        if route, let dir { SessionArchive.runVaultRouter(sessionDir: dir) }
+        if route {
+            exportCanonicalMeeting(
+                startedAt: startedAt,
+                transcript: snapshot.transcript,
+                chat: snapshot.chat,
+                analysis: snapshot.analysis,
+                archiveDir: dir,
+                linkedMeetingName: result.linkedMeetingName
+            )
+        }
+        return dir
+    }
+
+    private func finalizerSnapshot(startedAt: Date, endedAt: Date, sessionId: String?) -> SessionFinalizer.Snapshot {
+        let summaryContext = [
+            MeetingContextStore.shared.summaryContext,
+            VisualContextTrail.shared.summaryReferenceContext(),
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n\n")
+
+        return SessionFinalizer.Snapshot(
             startedAt: startedAt,
             endedAt: endedAt,
             transcript: transcriptPipeline.liveEntries,
@@ -627,17 +655,37 @@ final class SessionCoordinator {
             analysis: SessionArchive.Analysis(
                 notes: NotesGenerationController.shared.notes,
                 guide: DiscussionGuideController.shared.guide,
-                findings: FindingsController.shared.findings
+                findings: FindingsController.shared.findings,
+                visualContext: VisualContextTrail.shared.events
             ),
-            sessionId: currentSessionId,
+            sessionId: sessionId,
             micRecordingURL: audioPipeline.micRecordingURL,
             systemRecordingURL: audioPipeline.systemRecordingURL,
             systemAudioStartOffsetMs: systemAudioStartOffsetMs,
-            workstreamSlug: workstreamSlug,
-            linkedMeeting: linkedMeeting?.name
+            workstreamItem: MeetingContextStore.shared.workstreamItem,
+            linkedMeeting: linkedMeeting,
+            modeName: ModeStore.shared.activeMode?.name,
+            summaryContext: summaryContext.isEmpty ? nil : summaryContext
         )
-        if route, let dir { SessionArchive.runVaultRouter(sessionDir: dir) }
-        return dir
+    }
+
+    private func exportCanonicalMeeting(
+        startedAt: Date,
+        transcript: [LiveEntry],
+        chat: [ChatEntry],
+        analysis: SessionArchive.Analysis,
+        archiveDir: URL?,
+        linkedMeetingName: String?
+    ) {
+        guard let export = SessionArchive.writeCanonicalMeetingExport(
+            startedAt: startedAt,
+            transcript: transcript,
+            chat: chat,
+            analysis: analysis,
+            archiveDir: archiveDir,
+            linkedMeeting: linkedMeetingName
+        ) else { return }
+        SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL)
     }
 
     /// Crash-safety checkpoint: while a session runs, re-write the archive

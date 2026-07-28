@@ -358,6 +358,96 @@ public enum TranscriptUpgradeMerge {
     }()
 }
 
+public enum CanonicalMeetingTranscript {
+    public static func render(entries: [LiveEntry]) -> String {
+        let spoken = entries
+            .filter { $0.speakerId != "note" && $0.translationStatus != "translation" }
+            .sorted { $0.startMs < $1.startMs }
+        guard !spoken.isEmpty else { return "" }
+
+        let label = speakerLabeler(for: spoken)
+        return spoken.map { entry in
+            "[\(offset(entry.startMs))] \(label(entry.speakerId)): \(entry.text)"
+        }.joined(separator: "\n\n")
+    }
+
+    public static func render(markdownTranscript: String) -> String {
+        bodyAfterFrontmatter(markdownTranscript)
+            .components(separatedBy: .newlines)
+            .compactMap(canonicalLine(fromMarkdownLine:))
+            .joined(separator: "\n\n")
+    }
+
+    private static func speakerLabeler(for entries: [LiveEntry]) -> (String) -> String {
+        var numbers: [String: Int] = [:]
+        var next = 1
+        for entry in entries where numbers[entry.speakerId] == nil {
+            numbers[entry.speakerId] = next
+            next += 1
+        }
+        return { id in
+            if let n = numbers[id] { return "Speaker \(n)" }
+            return "Speaker ?"
+        }
+    }
+
+    private static func canonicalLine(fromMarkdownLine raw: String) -> String? {
+        let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard line.hasPrefix("`"),
+              let closeTick = line[line.index(after: line.startIndex)...].firstIndex(of: "`") else {
+            return nil
+        }
+        let rawStamp = String(line[line.index(after: line.startIndex)..<closeTick])
+        let rest = line[line.index(after: closeTick)...].trimmingCharacters(in: .whitespaces)
+        guard rest.hasPrefix("**"),
+              let endMarker = rest.range(of: ":**") else {
+            return nil
+        }
+        let speakerStart = rest.index(rest.startIndex, offsetBy: 2)
+        let speaker = rest[speakerStart..<endMarker.lowerBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !speaker.isEmpty,
+              !speaker.localizedCaseInsensitiveContains("note"),
+              !speaker.contains("📝") else {
+            return nil
+        }
+        let text = rest[endMarker.upperBound...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+
+        let stamp = milliseconds(from: rawStamp).map(offset) ?? rawStamp
+        return "[\(stamp)] \(speaker): \(text)"
+    }
+
+    private static func bodyAfterFrontmatter(_ text: String) -> String {
+        guard text.hasPrefix("---"),
+              let end = text.range(of: "\n---", range: text.index(text.startIndex, offsetBy: 3)..<text.endIndex) else {
+            return text
+        }
+        return String(text[end.upperBound...]).trimmingCharacters(in: .newlines)
+    }
+
+    private static func milliseconds(from stamp: String) -> Int? {
+        let cleaned = stamp.trimmingCharacters(in: CharacterSet(charactersIn: "[]` "))
+        let parts = cleaned.split(separator: ":").map(String.init)
+        guard parts.count == 2 || parts.count == 3 else { return nil }
+        let secondsPart = parts.last ?? ""
+        let wholeSeconds = secondsPart.split(separator: ".").first.map(String.init) ?? secondsPart
+        guard let seconds = Int(wholeSeconds),
+              let minutes = Int(parts[parts.count - 2]) else { return nil }
+        let hours = parts.count == 3 ? (Int(parts[0]) ?? 0) : 0
+        return ((hours * 3600) + (minutes * 60) + seconds) * 1000
+    }
+
+    private static func offset(_ ms: Int) -> String {
+        let total = max(0, ms / 1000)
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
+    }
+}
+
 public enum TranscriptUpgradeArtifacts {
     public struct WriteResult: Equatable, Sendable {
         public let upgradedURL: URL
