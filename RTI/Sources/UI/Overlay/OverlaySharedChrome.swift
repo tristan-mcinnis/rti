@@ -10,16 +10,22 @@ struct OverlayToolbarButton: View {
     let help: String
     var disabled = false
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.overlayInk.opacity(disabled ? 0.25 : 0.6))
-                .frame(width: 22, height: 18)
+                .foregroundStyle(Color.overlayInk.opacity(disabled ? 0.25 : hovering ? 0.82 : 0.6))
+                .frame(width: 24, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.overlayInk.opacity(hovering && !disabled ? 0.06 : 0))
+                )
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+        .hoverHighlight($hovering)
         .accessibilityLabel(help)
         .accessibilityHint("Double-click or press VO-Space to activate")
         .help(help)

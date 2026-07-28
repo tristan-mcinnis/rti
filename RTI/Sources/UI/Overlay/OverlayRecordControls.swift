@@ -152,11 +152,13 @@ struct OverlayRecordButton: View {
     private var glyph: some View {
         switch coordinator.phase {
         case .recording:
-            PulsingRecordDot()
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
+                .frame(width: 8, height: 8)
         case .paused:
-            Image(systemName: "pause.fill")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Color.orange)
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(Color.orange)
+                .frame(width: 8, height: 8)
         case .finishing, .summarizing:
             ProgressView()
                 .controlSize(.small)
@@ -288,23 +290,5 @@ struct OverlaySessionAuxButton: View {
         case .newRecording: coordinator.toggleSession()
         case .none: break
         }
-    }
-}
-
-/// Pulsing red indicator for the live record control. Owns its animation so it
-/// restarts cleanly each time recording begins (onAppear → repeatForever).
-private struct PulsingRecordDot: View {
-    @State private var on = false
-
-    var body: some View {
-        Circle()
-            .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
-            .frame(width: 7, height: 7)
-            .shadow(color: Color(red: 1.0, green: 0.27, blue: 0.27).opacity(on ? 0.85 : 0.20), radius: on ? 4 : 1)
-            .scaleEffect(on ? 1.0 : 0.65)
-            .opacity(on ? 1.0 : 0.55)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) { on = true }
-            }
     }
 }

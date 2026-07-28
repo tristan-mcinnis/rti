@@ -275,7 +275,7 @@ struct LiveTranscriptView: View {
                             .id(p.id)
                     }
                     if let interim = coordinator.interimLine, !interim.isEmpty {
-                        Text(interim)
+                        Text(LiveTranscriptPresentation.displayInterim(interim))
                             .font(.system(size: 14))
                             .italic()
                             .foregroundStyle(.secondary)

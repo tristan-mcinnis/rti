@@ -68,6 +68,7 @@ private struct OverlayTabButton: View {
     let isSelected: Bool
     let autoUnseen: Int
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -83,16 +84,20 @@ private struct OverlayTabButton: View {
                         .offset(x: -3, y: 5)
                 }
             }
-            .foregroundStyle(isSelected ? Color.overlayInk.opacity(0.9) : Color.overlayInk.opacity(0.46))
+            .foregroundStyle(isSelected ? Color.overlayAccent : Color.overlayInk.opacity(hovering ? 0.68 : 0.46))
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.overlayInk.opacity(0.07) : Color.clear)
+                    .fill(isSelected
+                        ? Color.overlayAccent.opacity(0.12)
+                        : Color.overlayInk.opacity(hovering ? 0.055 : 0))
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverHighlight($hovering)
         .accessibilityLabel(tab.title)
         .accessibilityValue(isSelected ? "Selected" : "")
+        .help(tab.title)
     }
 }
 
@@ -103,6 +108,7 @@ private struct OverlayTabButton: View {
 struct OverlaySetupButton: View {
     @Binding var selection: OverlayTab
     @State private var lastNonSetup: OverlayTab = .assist
+    @State private var hovering = false
 
     var body: some View {
         Button {
@@ -115,15 +121,18 @@ struct OverlaySetupButton: View {
         } label: {
             Image(systemName: OverlayTab.setup.icon)
                 .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(selection == .setup ? Color.overlayInk.opacity(0.9) : Color.overlayInk.opacity(0.46))
+                .foregroundStyle(selection == .setup ? Color.overlayAccent : Color.overlayInk.opacity(hovering ? 0.68 : 0.46))
                 .frame(width: 30, height: 28)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(selection == .setup ? Color.overlayInk.opacity(0.07) : Color.clear)
+                    .fill(selection == .setup
+                        ? Color.overlayAccent.opacity(0.12)
+                        : Color.overlayInk.opacity(hovering ? 0.055 : 0))
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverHighlight($hovering)
         .accessibilityLabel("Setup")
         .accessibilityHint("Project, screen context, discussion guide, and live-analysis toggles")
         .help("Setup — project, screen context, discussion guide, and live-analysis toggles (⌘⌥0)")

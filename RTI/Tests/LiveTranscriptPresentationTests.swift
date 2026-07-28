@@ -90,4 +90,20 @@ final class LiveTranscriptPresentationTests: XCTestCase {
             "[01:01] Client: bonjour\n[01:01] Translation EN: hello"
         )
     }
+
+    func test_displayInterimHidesRawSpeakerIDs() {
+        XCTAssertEqual(
+            LiveTranscriptPresentation.displayInterim(
+                "remote_2: mockup is going to be  self: based on the study"
+            ),
+            "mockup is going to be  based on the study"
+        )
+    }
+
+    func test_displayInterimPreservesOrdinaryColons() {
+        XCTAssertEqual(
+            LiveTranscriptPresentation.displayInterim("Decision: validate phase one"),
+            "Decision: validate phase one"
+        )
+    }
 }

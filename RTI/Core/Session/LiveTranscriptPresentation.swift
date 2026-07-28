@@ -95,6 +95,32 @@ public enum LiveTranscriptPresentation {
         return parts.joined(separator: "\n")
     }
 
+    /// Strip transport-facing speaker IDs from the rapidly changing interim
+    /// line before it reaches user-facing transcript surfaces. Final rows have
+    /// stable neutral/display labels; the partial line should read like speech,
+    /// not expose implementation details such as `remote_2`.
+    public static func displayInterim(_ raw: String) -> String {
+        raw.components(separatedBy: "  ")
+            .map { part in
+                let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let colon = trimmed.firstIndex(of: ":") else { return trimmed }
+                let speaker = String(trimmed[..<colon])
+                guard isRawSpeakerID(speaker) else { return trimmed }
+                return String(trimmed[trimmed.index(after: colon)...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: "  ")
+    }
+
+    private static func isRawSpeakerID(_ value: String) -> Bool {
+        if value == "self" || value == "note" { return true }
+        return ["room_", "remote_", "them_"].contains { prefix in
+            guard value.hasPrefix(prefix) else { return false }
+            return Int(value.dropFirst(prefix.count)) != nil
+        }
+    }
+
     private static func append(_ text: String, to target: inout String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

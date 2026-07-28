@@ -23,6 +23,14 @@ struct TranscriptTabView: View {
             HStack(spacing: 8) {
                 Circle().fill(healthColor).frame(width: 8, height: 8)
                 Text(healthLabel).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.overlayInk.opacity(0.75))
+                if session.isRunning, let startedAt = session.startedAt {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(TimeFormat.elapsed(context.date.timeIntervalSince(startedAt)))
+                            .font(.system(size: 10))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.overlayInk.opacity(0.38))
+                    }
+                }
                 Spacer()
                 translateControl
                 OverlayToolbarButton(icon: "doc.on.doc", help: "Copy transcript", disabled: session.liveEntries.isEmpty) {
@@ -43,7 +51,8 @@ struct TranscriptTabView: View {
                                 paragraphRow(para).id(para.id)
                             }
                             if let interim = session.interimLine {
-                                Text(interim).font(.system(size: 12)).foregroundStyle(Color.overlayInk.opacity(0.45)).italic()
+                                interimRow(interim)
+                                    .id("interim")
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -51,6 +60,9 @@ struct TranscriptTabView: View {
                     .scrollContentBackground(.hidden)
                     .onChange(of: paragraphs.last?.id) { _, _ in
                         if let last = paras.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                    }
+                    .onChange(of: session.interimLine) { _, interim in
+                        if interim != nil { proxy.scrollTo("interim", anchor: .bottom) }
                     }
                     // Returning to this tab re-instantiates the view at the
                     // top — jump straight back to the latest line.
@@ -196,6 +208,24 @@ struct TranscriptTabView: View {
             }
         }
         .padding(.vertical, 1)
+    }
+
+    private func interimRow(_ raw: String) -> some View {
+        let displayText = LiveTranscriptPresentation.displayInterim(raw)
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle()
+                .fill(Color.overlayAccent)
+                .frame(width: 5, height: 5)
+            Text(displayText)
+                .font(.system(size: 12))
+                .italic()
+                .lineSpacing(2)
+                .foregroundStyle(Color.overlayInk.opacity(0.52))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Live transcription: \(displayText)")
     }
 
     private func languageLabel(_ code: String) -> String {

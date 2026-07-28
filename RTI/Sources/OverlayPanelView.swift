@@ -39,6 +39,10 @@ struct OverlayPanelView: View {
                 HStack(spacing: 6) {
                     OverlaySetupButton(selection: $tab)
                     OverlayTabBar(selection: $tab, tabs: visibleTabs)
+                    Divider()
+                        .frame(height: 18)
+                        .opacity(0.55)
+                        .padding(.horizontal, 2)
                     OverlayMicControl()
                     OverlayVisualContextButton()
                     OverlayRecordButton()
@@ -47,6 +51,12 @@ struct OverlayPanelView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
                 .padding(.bottom, 8)
+                .background(Color.overlayInk.opacity(0.018))
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(Color.overlayBorder.opacity(0.65))
+                        .frame(height: 1)
+                }
                 // If the active tab gets turned off in Setup, fall back to Assist.
                 .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
                 .onChange(of: guideEnabled) { _, _ in normalizeSelection() }
