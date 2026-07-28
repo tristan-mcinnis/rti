@@ -18,7 +18,7 @@ final class SessionsControlWindowController {
         }
 
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
+            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 760),
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -27,7 +27,7 @@ final class SessionsControlWindowController {
         w.titlebarAppearsTransparent = true
         w.setFrameAutosaveName("rti.sessionscontrol")
         w.isReleasedWhenClosed = false
-        w.minSize = NSSize(width: 720, height: 480)
+        w.minSize = NSSize(width: 860, height: 560)
         w.backgroundColor = NSColor(red: 0.969, green: 0.969, blue: 0.973, alpha: 1)
         w.appearance = NSAppearance(named: .aqua)
         w.contentView = NSHostingView(rootView: SessionsControlView(initialTab: tab))

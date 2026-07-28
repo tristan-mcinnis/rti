@@ -39,7 +39,7 @@ struct SessionsBrowserView: View {
     var body: some View {
         HSplitView {
             sessionList
-                .frame(minWidth: 190, idealWidth: 220, maxWidth: 320)
+                .frame(minWidth: 228, idealWidth: 260, maxWidth: 320)
 
             VStack(alignment: .leading, spacing: 0) {
                 if let selected {
@@ -50,22 +50,10 @@ struct SessionsBrowserView: View {
                     Divider()
                     ScrollView {
                         HStack(alignment: .top, spacing: 0) {
-                            VStack(alignment: .leading, spacing: 18) {
-                                if editingSummary {
-                                    summaryEditor
-                                } else if editingTranscript {
-                                    transcriptEditor
-                                } else if let split = summarySplit {
-                                    RTIMarkdown(split.brief, style: .panel)
-                                    Divider()
-                                    RTIMarkdown(split.record, style: .panel)
-                                } else {
-                                    RTIMarkdown(fileText, style: .panel)
-                                }
-                            }
-                            .frame(maxWidth: 700, alignment: .leading)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 22)
+                            readerContent
+                                .frame(maxWidth: 760, alignment: .leading)
+                                .padding(.horizontal, 32)
+                                .padding(.vertical, 28)
                             Spacer(minLength: 0)
                         }
                     }
@@ -127,25 +115,25 @@ struct SessionsBrowserView: View {
 
     private var sessionList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Sessions")
                         .font(.system(size: 24, weight: .semibold))
-                    Text("Read saved meeting records and open the files RTI wrote on stop.")
+                    Text("\(sessions.count) saved meeting\(sessions.count == 1 ? "" : "s")")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
                 }
                 .padding(.horizontal, 18)
-                .padding(.top, 18)
+                .padding(.top, 20)
 
                 ForEach(groupedSessions, id: \.label) { group in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(group.label.uppercased())
                             .font(.system(size: 11, weight: .bold))
                             .tracking(0.8)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RTIDesign.Color.textTertiary)
                             .padding(.horizontal, 18)
-                        VStack(spacing: 8) {
+                        VStack(spacing: 5) {
                             ForEach(group.sessions) { session in
                                 sessionRow(session)
                             }
@@ -168,15 +156,19 @@ struct SessionsBrowserView: View {
             selected = session
         } label: {
             HStack(alignment: .center, spacing: 10) {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(selected == session ? RTIDesign.Color.accent : Color.clear)
+                    .frame(width: 3, height: 30)
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text(session.title ?? "Untitled session")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 13, weight: selected == session ? .semibold : .medium))
                         .lineLimit(2)
-                        .foregroundStyle(session.title == nil ? .secondary : .primary)
+                        .foregroundStyle(session.title == nil ? RTIDesign.Color.textSecondary : RTIDesign.Color.textPrimary)
                     HStack(spacing: 6) {
                         Text(timeString(for: session))
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(RTIDesign.Color.textTertiary)
                         if session.title == nil {
                             Circle()
                                 .fill(Color.secondary.opacity(0.5))
@@ -187,11 +179,16 @@ struct SessionsBrowserView: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(selected == session ? Color.black.opacity(0.07) : Color.clear)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(selected == session ? RTIDesign.Color.cardBackground : Color.clear)
+                    .shadow(
+                        color: selected == session ? .black.opacity(0.05) : .clear,
+                        radius: 3,
+                        y: 1
+                    )
             )
         }
         .buttonStyle(.plain)
@@ -204,104 +201,85 @@ struct SessionsBrowserView: View {
     /// header.
     @ViewBuilder
     private func detailToolbar(for session: SessionArchive.ArchivedSession) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            Picker("", selection: $selectedFile) {
-                ForEach(files) { file in
-                    Text(file.name).tag(Optional(file))
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(session.title ?? "Untitled session")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(RTIDesign.Color.textPrimary)
+                        .lineLimit(1)
+                    Text(sessionDetailLine(for: session))
+                        .font(.system(size: 11))
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
                 }
+
+                Spacer(minLength: 12)
+
+                Menu {
+                    Button("Edit title…") { beginTitleEdit(for: session) }
+                    Button("Name speakers…") { showingSpeakerEditor = true }
+                    Divider()
+                    Button("Save as Markdown…") { exportMarkdown() }
+                    Button("Save as PDF…") { exportPDF() }
+                    Divider()
+                    Button("Reveal in Finder") { NSWorkspace.shared.open(session.url) }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 26, height: 26)
+                }
+                .menuStyle(.borderlessButton)
+                .help("More session actions")
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: min(max(CGFloat(files.count) * 76, 220), 340), alignment: .leading)
-            .layoutPriority(1)
 
-            Spacer(minLength: 0)
-
-            Button {
-                NSPasteboard.copyMarkdownRich(fileText)
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Copy as Markdown")
-            .disabled(fileText.isEmpty)
-
-            if selectedFile?.name == "summary" {
-                Button(editingSummary ? "Cancel" : "Edit") {
-                    if editingSummary {
-                        editingSummary = false
-                    } else {
-                        summaryDraft = fileText
-                        editingSummary = true
+            HStack(alignment: .center, spacing: 10) {
+                HStack(spacing: 3) {
+                    ForEach(files) { file in
+                        Button {
+                            selectedFile = file
+                        } label: {
+                            Text(displayName(for: file))
+                                .font(.system(size: 12, weight: selectedFile == file ? .semibold : .medium))
+                                .foregroundStyle(
+                                    selectedFile == file
+                                        ? RTIDesign.Color.textPrimary
+                                        : RTIDesign.Color.textSecondary
+                                )
+                                .padding(.horizontal, 11)
+                                .frame(height: 28)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(selectedFile == file ? RTIDesign.Color.cardBackground : Color.clear)
+                                        .shadow(
+                                            color: selectedFile == file ? .black.opacity(0.06) : .clear,
+                                            radius: 2,
+                                            y: 1
+                                        )
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
+                }
+                .padding(3)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(RTIDesign.Color.trackBackground)
+                )
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    NSPasteboard.copyMarkdownRich(fileText)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .help("Copy as Markdown")
                 .disabled(fileText.isEmpty)
-                .help("Correct this saved summary")
 
-                if editingSummary {
-                    Button("Save", action: saveSummary)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                } else {
-                    Button(regeneratingSummaryID == session.id ? "Regenerating" : "Regenerate") {
-                        regenerateSummary(for: session)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(regeneratingSummaryID != nil || !hasTranscript(session))
-                    .help("Regenerate using this session's transcript and named speakers")
-                }
-            }
-
-            if selectedFile?.name == "transcript" {
-                Button(editingTranscript ? "Cancel" : "Edit transcript") {
-                    if editingTranscript {
-                        editingTranscript = false
-                    } else {
-                        loadTranscriptTurns()
-                        editingTranscript = true
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(fileText.isEmpty)
-                .help("Correct transcript turns and reassign speakers")
-
-                if editingTranscript {
-                    Button("Save", action: saveTranscript)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(transcriptTurns.isEmpty)
-                }
-            }
-
-            Button {
-                promptTranscriptUpgrade(for: session)
-            } label: {
-                Label(upgradingSessionID == session.id ? "Upgrading" : "Upgrade Transcript", systemImage: "waveform.badge.magnifyingglass")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(upgradingSessionID != nil || !canUpgrade(session))
-            .help(canUpgrade(session) ? "Run the configured async transcript provider over this session's retained audio." : "No retained session audio was found.")
-
-            Button {
-                askAboutSession(session)
-            } label: {
-                Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(vaultRelativePath(for: session, file: "transcript.md") == nil)
-            .help("Ask the overlay chat about this session's transcript.")
-
-            Menu {
-                Button("Edit title…") { beginTitleEdit(for: session) }
                 if selectedFile?.name == "summary" {
-                    Button(editingSummary ? "Discard summary edits" : "Edit summary…") {
+                    Button(editingSummary ? "Cancel" : "Edit") {
                         if editingSummary {
                             editingSummary = false
                         } else {
@@ -309,24 +287,158 @@ struct SessionsBrowserView: View {
                             editingSummary = true
                         }
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(fileText.isEmpty)
+                    .help("Correct this saved summary")
+
+                    if editingSummary {
+                        Button("Save", action: saveSummary)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                    } else {
+                        Button(regeneratingSummaryID == session.id ? "Regenerating" : "Regenerate") {
+                            regenerateSummary(for: session)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(regeneratingSummaryID != nil || !hasTranscript(session))
+                        .help("Regenerate using this session's transcript and named speakers")
+                    }
                 }
-                Button("Name speakers…") { showingSpeakerEditor = true }
-                Divider()
-                Button("Save as Markdown…") { exportMarkdown() }
-                Button("Save as PDF…") { exportPDF() }
-                Divider()
-                Button("Reveal in Finder") { NSWorkspace.shared.open(session.url) }
-            } label: {
-                Image(systemName: "square.and.arrow.up")
+
+                if selectedFile?.name == "transcript" {
+                    Button(editingTranscript ? "Cancel" : "Edit transcript") {
+                        if editingTranscript {
+                            editingTranscript = false
+                        } else {
+                            loadTranscriptTurns()
+                            editingTranscript = true
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(fileText.isEmpty)
+                    .help("Correct transcript turns and reassign speakers")
+
+                    if editingTranscript {
+                        Button("Save", action: saveTranscript)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .disabled(transcriptTurns.isEmpty)
+                    }
+
+                    Button {
+                        promptTranscriptUpgrade(for: session)
+                    } label: {
+                        Label(upgradingSessionID == session.id ? "Upgrading" : "Upgrade", systemImage: "waveform.badge.magnifyingglass")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(upgradingSessionID != nil || !canUpgrade(session))
+                    .help(canUpgrade(session) ? "Run the configured async transcript provider over this session's retained audio." : "No retained session audio was found.")
+                }
+
+                Button {
+                    askAboutSession(session)
+                } label: {
+                    Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(vaultRelativePath(for: session, file: "transcript.md") == nil)
+                .help("Ask the overlay chat about this session's transcript.")
             }
-            .menuStyle(.borderlessButton)
-            .frame(width: 34)
-            .help("Export or reveal this session")
         }
-        .frame(height: 44)
         .padding(.horizontal, 20)
-        .background(.bar)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+        .background(
+            Color(nsColor: .windowBackgroundColor)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(RTIDesign.Color.divider)
+                        .frame(height: 1)
+                }
+        )
     }
+
+    @ViewBuilder
+    private var readerContent: some View {
+        if editingSummary {
+            summaryEditor
+        } else if editingTranscript {
+            transcriptEditor
+        } else {
+            switch selectedFile?.name {
+            case "transcript":
+                SessionTranscriptReader(turns: SessionTranscriptReview.turns(from: fileText))
+            case "live-intelligence":
+                LiveIntelligenceReader(items: ArchivedFinding.parse(fileText))
+            case "summary":
+                if let split = summarySplit {
+                    VStack(alignment: .leading, spacing: 28) {
+                        SessionDocumentSection(title: "Share brief", systemImage: "paperplane") {
+                            RTIMarkdown(split.brief, style: .panel)
+                        }
+                        Divider()
+                        SessionDocumentSection(title: "Full record", systemImage: "doc.text") {
+                            RTIMarkdown(split.record, style: .panel)
+                        }
+                    }
+                } else {
+                    RTIMarkdown(fileText, style: .panel)
+                }
+            default:
+                RTIMarkdown(fileText, style: .panel)
+            }
+        }
+    }
+
+    private func displayName(for file: SessionFile) -> String {
+        switch file.name {
+        case "summary": "Summary"
+        case "live-intelligence": "Intelligence"
+        case "notes": "Notes"
+        case "transcript": "Transcript"
+        case "chat": "Chat"
+        case "discussion-guide": "Guide"
+        default: file.name.capitalized
+        }
+    }
+
+    private func sessionDetailLine(for session: SessionArchive.ArchivedSession) -> String {
+        var parts: [String] = []
+        if let date = session.date {
+            parts.append(Self.detailDateStamp.string(from: date))
+        }
+        if let duration = sessionMetadata(for: session)?.durationSeconds {
+            parts.append(durationString(duration))
+        }
+        return parts.isEmpty ? session.displayName : parts.joined(separator: "  ·  ")
+    }
+
+    private func sessionMetadata(for session: SessionArchive.ArchivedSession) -> SessionArchiveMetadata? {
+        let url = session.url.appendingPathComponent("session.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data)
+    }
+
+    private func durationString(_ seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        let remainder = seconds % 60
+        if hours > 0 {
+            return "\(hours) hr \(minutes) min"
+        }
+        return remainder > 0 ? "\(minutes) min \(remainder) sec" : "\(minutes) min"
+    }
+
+    private static let detailDateStamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy 'at' HH:mm"
+        return formatter
+    }()
 
     private func upgradeStatusLine(_ text: String) -> some View {
         HStack(spacing: 8) {
@@ -899,5 +1011,224 @@ private struct SessionReadingBackground: View {
                     endPoint: .bottom
                 )
             )
+    }
+}
+
+private struct SessionDocumentSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    let content: Content
+
+    init(title: String, systemImage: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.systemImage = systemImage
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+            content
+        }
+    }
+}
+
+private struct SessionTranscriptReader: View {
+    let turns: [SessionTranscriptTurn]
+
+    var body: some View {
+        if turns.isEmpty {
+            Text("No transcript turns found.")
+                .font(RTIDesign.Font.body)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+        } else {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(turns.enumerated()), id: \.element.id) { index, turn in
+                    HStack(alignment: .top, spacing: 18) {
+                        HStack(alignment: .firstTextBaseline, spacing: 7) {
+                            Circle()
+                                .fill(speakerColor(turn.speaker, isNote: turn.isNote))
+                                .frame(width: 7, height: 7)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(turn.isNote ? "Note" : turn.speaker)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                                    .lineLimit(1)
+                                Text(turn.timestamp)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(RTIDesign.Color.textTertiary)
+                            }
+                        }
+                        .frame(width: 118, alignment: .leading)
+
+                        Text(turn.text)
+                            .font(.system(size: 14))
+                            .foregroundStyle(turn.isNote ? RTIDesign.Color.textSecondary : RTIDesign.Color.textPrimary)
+                            .italic(turn.isNote)
+                            .lineSpacing(4)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.vertical, 15)
+
+                    if index < turns.count - 1 {
+                        Divider()
+                            .padding(.leading, 136)
+                    }
+                }
+            }
+        }
+    }
+
+    private func speakerColor(_ speaker: String, isNote: Bool) -> Color {
+        if isNote { return .orange }
+        let digits = speaker.reversed().prefix { $0.isNumber }.reversed()
+        guard let number = Int(String(digits)), !RTIDesign.Color.speakerPalette.isEmpty else {
+            return RTIDesign.Color.accent
+        }
+        return RTIDesign.Color.speakerPalette[(max(number, 1) - 1) % RTIDesign.Color.speakerPalette.count]
+    }
+}
+
+private struct ArchivedFinding: Identifiable {
+    let id = UUID()
+    let tag: String
+    let timestamp: String
+    let headline: String
+    var matters: String = ""
+    var quote: String?
+    var speaker: String?
+
+    static func parse(_ markdown: String) -> [ArchivedFinding] {
+        let headlinePattern = #"^- \*\*\[([^\]]+)\]\*\* `([^`]+)` (.+)$"#
+        guard let regex = try? NSRegularExpression(pattern: headlinePattern) else { return [] }
+        var result: [ArchivedFinding] = []
+        var current: ArchivedFinding?
+
+        for line in markdown.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let range = NSRange(trimmed.startIndex..., in: trimmed)
+            if let match = regex.firstMatch(in: trimmed, range: range),
+               let tagRange = Range(match.range(at: 1), in: trimmed),
+               let timeRange = Range(match.range(at: 2), in: trimmed),
+               let headlineRange = Range(match.range(at: 3), in: trimmed) {
+                if let current { result.append(current) }
+                current = ArchivedFinding(
+                    tag: String(trimmed[tagRange]),
+                    timestamp: String(trimmed[timeRange]),
+                    headline: String(trimmed[headlineRange])
+                )
+            } else if trimmed.hasPrefix("- _Why:_ "), current != nil {
+                current?.matters = String(trimmed.dropFirst("- _Why:_ ".count))
+            } else if trimmed.hasPrefix("- > "), current != nil {
+                let evidence = String(trimmed.dropFirst("- > ".count))
+                if let split = evidence.range(of: ": ") {
+                    current?.speaker = String(evidence[..<split.lowerBound])
+                    current?.quote = String(evidence[split.upperBound...])
+                } else {
+                    current?.quote = evidence
+                }
+            }
+        }
+
+        if let current { result.append(current) }
+        return result
+    }
+}
+
+private struct LiveIntelligenceReader: View {
+    let items: [ArchivedFinding]
+
+    var body: some View {
+        if items.isEmpty {
+            Text("No intelligence items found.")
+                .font(RTIDesign.Font.body)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
+        } else {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline, spacing: 9) {
+                            Label(item.tag, systemImage: icon(for: item.tag))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(color(for: item.tag))
+                                .padding(.horizontal, 8)
+                                .frame(height: 23)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(color(for: item.tag).opacity(0.10))
+                                )
+                            Text(item.timestamp)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(RTIDesign.Color.textTertiary)
+                            Spacer(minLength: 0)
+                        }
+
+                        Text(item.headline)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(RTIDesign.Color.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if !item.matters.isEmpty {
+                            Text(item.matters)
+                                .font(.system(size: 13))
+                                .foregroundStyle(RTIDesign.Color.textSecondary)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        if let quote = item.quote {
+                            HStack(alignment: .top, spacing: 9) {
+                                Image(systemName: "quote.opening")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(RTIDesign.Color.accentText)
+                                    .padding(.top, 2)
+                                Text(([item.speaker, quote].compactMap { $0 }).joined(separator: ": "))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                                    .italic()
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(RTIDesign.Color.accentBg.opacity(0.55))
+                            )
+                        }
+                    }
+                    .padding(.vertical, 17)
+
+                    if index < items.count - 1 {
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+
+    private func color(for tag: String) -> Color {
+        switch tag.lowercased() {
+        case "decision": return Color(red: 0.10, green: 0.48, blue: 0.28)
+        case "action", "follow-up": return RTIDesign.Color.accentText
+        case "open question": return Color(red: 0.45, green: 0.28, blue: 0.68)
+        case "risk", "tension", "contradiction": return Color(red: 0.72, green: 0.36, blue: 0.08)
+        default: return Color(red: 0.12, green: 0.45, blue: 0.52)
+        }
+    }
+
+    private func icon(for tag: String) -> String {
+        switch tag.lowercased() {
+        case "decision": return "checkmark.circle.fill"
+        case "action": return "checklist"
+        case "open question": return "questionmark.circle"
+        case "risk": return "exclamationmark.triangle"
+        case "follow-up": return "arrowshape.turn.up.right"
+        default: return "lightbulb"
+        }
     }
 }

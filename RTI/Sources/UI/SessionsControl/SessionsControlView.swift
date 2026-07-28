@@ -58,16 +58,27 @@ struct SessionsControlView: View {
     }
 
     private var sessionsSidebar: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Workspace")
-                    .font(.system(size: 24, weight: .semibold))
-                Text("Live transcript, saved sessions, settings, and logs in one place.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 11) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(RTIDesign.Color.accentBg)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "waveform.path.ecg.rectangle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(RTIDesign.Color.accentText)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("RTI")
+                        .font(.system(size: 20, weight: .semibold))
+                    Text("Meeting workspace")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
+                }
             }
             .padding(.horizontal, 18)
-            .padding(.top, 18)
+            .padding(.top, 20)
 
             sidebarSection("Now", tabs: [.liveTranscript])
             sidebarSection("Library", tabs: [.sessions])
@@ -77,7 +88,7 @@ struct SessionsControlView: View {
             Spacer(minLength: 0)
             versionFooter
         }
-        .frame(minWidth: 210, idealWidth: 224, maxWidth: 250, maxHeight: .infinity, alignment: .topLeading)
+        .frame(minWidth: 196, idealWidth: 212, maxWidth: 232, maxHeight: .infinity, alignment: .topLeading)
         .background(
             LinearGradient(
                 colors: [
@@ -91,14 +102,14 @@ struct SessionsControlView: View {
     }
 
     private func sidebarSection(_ title: String, tabs: [Tab]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
             Text(title.uppercased())
                 .font(.system(size: 11, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RTIDesign.Color.textTertiary)
                 .padding(.horizontal, 18)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
                 ForEach(tabs) { tab in
                     Button {
                         selectedTab = tab
@@ -108,15 +119,20 @@ struct SessionsControlView: View {
                                 .font(.system(size: 15, weight: .semibold))
                                 .frame(width: 18)
                             Text(tab.rawValue)
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.system(size: 14, weight: selectedTab == tab ? .semibold : .medium))
                             Spacer(minLength: 0)
                         }
-                        .foregroundStyle(selectedTab == tab ? Color.primary : Color.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
+                        .foregroundStyle(selectedTab == tab ? RTIDesign.Color.textPrimary : RTIDesign.Color.textSecondary)
+                        .padding(.horizontal, 12)
+                        .frame(height: 36)
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(selectedTab == tab ? Color.black.opacity(0.07) : Color.clear)
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(selectedTab == tab ? RTIDesign.Color.cardBackground : Color.clear)
+                                .shadow(
+                                    color: selectedTab == tab ? .black.opacity(0.05) : .clear,
+                                    radius: 3,
+                                    y: 1
+                                )
                         )
                     }
                     .buttonStyle(.plain)
