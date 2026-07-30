@@ -12,6 +12,7 @@ extension Notification.Name {
     /// Posted when the light/dark setting flips so the live panel re-applies its
     /// NSAppearance immediately.
     static let rtiOverlayAppearanceChanged = Notification.Name("rti.overlayAppearanceChanged")
+    static let rtiShowLiveTranscript = Notification.Name("rti.showLiveTranscript")
     static let rtiShowLogs = Notification.Name("rti.showLogs")
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
     /// Posted (object = session folder name String) to focus the Sessions
