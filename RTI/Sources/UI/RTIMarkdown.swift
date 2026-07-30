@@ -6,7 +6,7 @@ import MarkdownUI
 ///
 /// Two contexts:
 ///   - `.overlay` — dark translucent panel, white text (AssistantInputView,
-///     ResponseView, floating panels).
+///     ResponseView and overlay surfaces).
 ///   - `.panel`   — light Sessions UI, RTIDesign foreground colors.
 struct RTIMarkdown: View {
     enum Style { case overlay, panel }

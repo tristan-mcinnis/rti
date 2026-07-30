@@ -4,7 +4,7 @@ import SwiftUI
 /// glance mid-call, whether your mic ("You") and the other party ("Them") are
 /// actually being captured — a flat bar while that side is talking means the
 /// wrong device is selected (the classic AirPods / one-side-recorded trap).
-/// Reused by the floating panel and the Settings audio section.
+/// Used by the Settings audio section.
 struct AudioMonitorContent: View {
     @State private var inputName = "—"
     @State private var outputName = "—"

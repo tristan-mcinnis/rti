@@ -22,7 +22,6 @@
 		1236CD374427F0DA4F04A552 /* VaultMeetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B20DB255A217F610C84F5BB /* VaultMeetings.swift */; };
 		135DBA60EC3D73871E1594CA /* AutoAssistCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BADBF0FF4D33A449AEBDA6 /* AutoAssistCard.swift */; };
 		13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */; };
-		1553EA36199944A44D017067 /* TranslationPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4246C29C2263B8291AC810EB /* TranslationPanelView.swift */; };
 		169F8B2909216CC79B83DEDA /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F82DA748662ECAE4C0101F /* LLMProvider.swift */; };
 		1ADD667141DC1FDE6C452215 /* AutoAssistCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BADBF0FF4D33A449AEBDA6 /* AutoAssistCard.swift */; };
 		1C7B1BF51DC28387503CD1D5 /* ModesTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B73FEF0D62A6679A9B1B2D9 /* ModesTab.swift */; };
@@ -94,7 +93,6 @@
 		7315644A3C3A9DCECD6554BF /* AssistantTurnBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE4A11B0F3C9BB21EC5BFE82 /* AssistantTurnBuilderTests.swift */; };
 		77E9C87A07B0E0A4DA8AB7A4 /* libRTICore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A2EDE12AAA4B6961C42456B /* libRTICore.a */; };
 		78A2DF27A12949059393117E /* AssistantAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20C4C710F8B45BFBB6E71514 /* AssistantAction.swift */; };
-		78E4899C67D71F980859F6B3 /* FloatingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F71367C5B955DF6CF913A6C3 /* FloatingPanel.swift */; };
 		7951A52278F1D71633ED4C02 /* VisualContextEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04858CDD0D44DB9F749DDBA9 /* VisualContextEvent.swift */; };
 		7963FE3CDE9D60FA2ECA2E6B /* VaultRetrieval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BC3AA735B78507E8B4F169 /* VaultRetrieval.swift */; };
 		7AB888AD4119A88B4C5A3A87 /* LLMWireShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BA5CAD60E682182E71AFB7 /* LLMWireShapes.swift */; };
@@ -102,7 +100,6 @@
 		7B3DCEC4936B70BE290EF00B /* LiveTranscriptPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD3198914F84B57D788E8F27 /* LiveTranscriptPresentation.swift */; };
 		7B41507509C47C6176A46C90 /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 193C6721989EBF7E550F424A /* Yams */; };
 		7E050E501C975495A2B672BD /* FindingEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B6A5CDEF576AB9218493D8 /* FindingEntry.swift */; };
-		804E0C350689F583746A705B /* FloatingPanelChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9813148AB83248A2A68A94BF /* FloatingPanelChrome.swift */; };
 		807CF4F7B4714747A5B8438D /* PromptBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509A39C86FD52EB3F522B733 /* PromptBuilderTests.swift */; };
 		81BC2CEA2DC6EFAF94287BA0 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9114E8D3196B7C35E323929 /* OnboardingView.swift */; };
 		825E92884AE10BC255F6991F /* CommandRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */; };
@@ -122,7 +119,6 @@
 		9421B9781A59E76C30C2AF34 /* HotkeyCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94121B6360402223C2126D9 /* HotkeyCoordinator.swift */; };
 		947E731369EA00C951D87DF4 /* VaultWorkstreamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784039F6D2FA89F0F58553A8 /* VaultWorkstreamStore.swift */; };
 		9590F51FF0C794DFCBED74B5 /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790AD9982261EEE5DF6AD6DE /* Mode.swift */; };
-		9597DC1D4F880ADBC3B5D50D /* LiveTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA3BBCAD491F3A9C8312E3E8 /* LiveTranscriptView.swift */; };
 		9A0AF0AF433343865805B5F7 /* CalendarMeetingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F00D3192F09E1F572181680 /* CalendarMeetingStore.swift */; };
 		9ABA0CB623C5FA35D9012D00 /* VaultWorkstreamMatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F44CF42C17468829798FD28 /* VaultWorkstreamMatchTests.swift */; };
 		9CE129198AA6573BDBBC1D18 /* LLMError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AD9E48AF9E7AB7C50500B25 /* LLMError.swift */; };
@@ -151,7 +147,6 @@
 		C4A19E69783DCFE4951BDAC2 /* MenuCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */; };
 		C4A4927BA9EB63D787161998 /* ResizeHandle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5BF77DB9113B6E6B8E56C9A /* ResizeHandle.swift */; };
 		C7AF7D6EA798FC415F002E2C /* VaultWorkstreamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784039F6D2FA89F0F58553A8 /* VaultWorkstreamStore.swift */; };
-		C81F949329409B2D1BB6260E /* RTIPanelDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFBA0189543CEBE06C92DAF7 /* RTIPanelDefaults.swift */; };
 		C9B5D4C1DCC3635A79EDCB66 /* DiscussionGuideController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1456E03914BAD3E5A701143B /* DiscussionGuideController.swift */; };
 		CADDD147CFF93E3D1FFB977C /* WindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA4C9DA72BD19BF5E5E060C /* WindowCoordinator.swift */; };
 		CB4D4D8CAAA3C1785A037F8D /* CommandPaletteFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A949A2717D3CA48DD7A09479 /* CommandPaletteFactory.swift */; };
@@ -266,7 +261,6 @@
 		3CDBC78AF9955D7D60DC319B /* DiscussionGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuide.swift; sourceTree = "<group>"; };
 		3D2AA8703B1A3BE7A1FFFDBB /* VisualContextEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContextEventTests.swift; sourceTree = "<group>"; };
 		411EDD7A2C3166286A52B232 /* SonioxFailureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxFailureTests.swift; sourceTree = "<group>"; };
-		4246C29C2263B8291AC810EB /* TranslationPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationPanelView.swift; sourceTree = "<group>"; };
 		43EE87A75E81FCC371ADBB93 /* VaultSearchCLITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearchCLITests.swift; sourceTree = "<group>"; };
 		43F39A932B903AE4601A00E9 /* RetrievalHeuristics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetrievalHeuristics.swift; sourceTree = "<group>"; };
 		44E0526464D9A6EA2EC16549 /* CalendarMeetingMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarMeetingMatcherTests.swift; sourceTree = "<group>"; };
@@ -324,7 +318,6 @@
 		8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		8F9ABFFEC08880B61CD99AED /* VaultMeetingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultMeetingsTests.swift; sourceTree = "<group>"; };
 		90F82DA748662ECAE4C0101F /* LLMProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMProvider.swift; sourceTree = "<group>"; };
-		9813148AB83248A2A68A94BF /* FloatingPanelChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPanelChrome.swift; sourceTree = "<group>"; };
 		982A704E0126F8142A9D4574 /* PromptRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptRegistryTests.swift; sourceTree = "<group>"; };
 		9AD2D289259AD477B911940D /* LLMController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMController.swift; sourceTree = "<group>"; };
 		9C48267D7243F07E859FF17B /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
@@ -379,7 +372,6 @@
 		D9114E8D3196B7C35E323929 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D929744F84265097DB100BCC /* ModeStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStorageTests.swift; sourceTree = "<group>"; };
 		D97A133FDA46631B3978EA60 /* TranscriptAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptAggregatorTests.swift; sourceTree = "<group>"; };
-		DA3BBCAD491F3A9C8312E3E8 /* LiveTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptView.swift; sourceTree = "<group>"; };
 		DAE824069FBC2ACAA2A93203 /* LiveTranscriptPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptPresentationTests.swift; sourceTree = "<group>"; };
 		DB71861243647D9F61A27921 /* SentinelPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentinelPaths.swift; sourceTree = "<group>"; };
 		DCE9839BBDA43C2E5038E526 /* LLMRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMRequest.swift; sourceTree = "<group>"; };
@@ -400,13 +392,11 @@
 		EC9B66DB5C8A2C473FD51AC1 /* MarkdownRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRender.swift; sourceTree = "<group>"; };
 		ED9728ECF45900D6C1D26CD7 /* TranslationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationStore.swift; sourceTree = "<group>"; };
 		EEABD1BAE63B2784CF6F677D /* OverlayMicControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayMicControl.swift; sourceTree = "<group>"; };
-		EFBA0189543CEBE06C92DAF7 /* RTIPanelDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIPanelDefaults.swift; sourceTree = "<group>"; };
 		F0232A6827F5D8C0C5056320 /* CrashLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashLog.swift; sourceTree = "<group>"; };
 		F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStore.swift; sourceTree = "<group>"; };
 		F36B529563B4EAE6F3281194 /* SessionsControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsControlView.swift; sourceTree = "<group>"; };
 		F669AF6E63C8DB76F75D4E8E /* DiscussionGuideTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscussionGuideTests.swift; sourceTree = "<group>"; };
 		F6E1F0DC59DEB434AAD37C32 /* VaultFilesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFilesTests.swift; sourceTree = "<group>"; };
-		F71367C5B955DF6CF913A6C3 /* FloatingPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPanel.swift; sourceTree = "<group>"; };
 		F88EA5A5405F40A4AF56C7C5 /* SpeakerLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabels.swift; sourceTree = "<group>"; };
 		FA159B350466B311F95C6E82 /* RTIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIApp.swift; sourceTree = "<group>"; };
 		FAA4C9DA72BD19BF5E5E060C /* WindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowCoordinator.swift; sourceTree = "<group>"; };
@@ -573,7 +563,6 @@
 		418F06E2D4D9890194D0AD2B /* LiveTranscript */ = {
 			isa = PBXGroup;
 			children = (
-				DA3BBCAD491F3A9C8312E3E8 /* LiveTranscriptView.swift */,
 				ED9728ECF45900D6C1D26CD7 /* TranslationStore.swift */,
 			);
 			path = LiveTranscript;
@@ -796,7 +785,6 @@
 			isa = PBXGroup;
 			children = (
 				DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */,
-				4246C29C2263B8291AC810EB /* TranslationPanelView.swift */,
 			);
 			path = Soniox;
 			sourceTree = "<group>";
@@ -805,13 +793,10 @@
 			isa = PBXGroup;
 			children = (
 				FD66419CB55DD2F36238313A /* DotMatrixText.swift */,
-				F71367C5B955DF6CF913A6C3 /* FloatingPanel.swift */,
-				9813148AB83248A2A68A94BF /* FloatingPanelChrome.swift */,
 				C94121B6360402223C2126D9 /* HotkeyCoordinator.swift */,
 				74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */,
 				73922AAADA102ECEF611A7B6 /* RTIDesign.swift */,
 				73D64733E271DE5F43A278DD /* RTIMarkdown.swift */,
-				EFBA0189543CEBE06C92DAF7 /* RTIPanelDefaults.swift */,
 				F88EA5A5405F40A4AF56C7C5 /* SpeakerLabels.swift */,
 				FAA4C9DA72BD19BF5E5E060C /* WindowCoordinator.swift */,
 				5E59A1E4E4BF986CE3DC44FC /* AudioMonitor */,
@@ -1136,8 +1121,6 @@
 				0ABBE9B45EFEFFE5FE58CAE6 /* ExternalDocumentAttachment.swift in Sources */,
 				7E050E501C975495A2B672BD /* FindingEntry.swift in Sources */,
 				6C1D5386A8BFB22122D04DD7 /* FindingsController.swift in Sources */,
-				78E4899C67D71F980859F6B3 /* FloatingPanel.swift in Sources */,
-				804E0C350689F583746A705B /* FloatingPanelChrome.swift in Sources */,
 				5E325A98D8F551443D7F7BFC /* GeneralTab.swift in Sources */,
 				D253A7FFD3604561DFC4AA62 /* GeneratedNote.swift in Sources */,
 				10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */,
@@ -1155,7 +1138,6 @@
 				F681F197B10FF96085265B05 /* LLMTools.swift in Sources */,
 				3CF7BA318F9E008AB26485A5 /* LaunchAtLogin.swift in Sources */,
 				4B993F0BB848A2D8D64CB14F /* LiquidMetalBorder.swift in Sources */,
-				9597DC1D4F880ADBC3B5D50D /* LiveTranscriptView.swift in Sources */,
 				DD002A1A86822A2E66AAC847 /* LogsView.swift in Sources */,
 				58E96549ED84DD54336096A8 /* MarkdownRender.swift in Sources */,
 				2B61DB745EF157484A8E57AA /* MeetingBriefStore.swift in Sources */,
@@ -1186,7 +1168,6 @@
 				CB82055FF93F65006B55C5C7 /* RTIApp.swift in Sources */,
 				F0A855E54187ADA60C7AB9D0 /* RTIDesign.swift in Sources */,
 				3AF3B6537EBE56DFB18295E6 /* RTIMarkdown.swift in Sources */,
-				C81F949329409B2D1BB6260E /* RTIPanelDefaults.swift in Sources */,
 				C43C4E3A1CED3BC8D8CEC047 /* RegistryMenu.swift in Sources */,
 				C4A4927BA9EB63D787161998 /* ResizeHandle.swift in Sources */,
 				45702D4E7A2DEF80C47A4F10 /* ResponseView.swift in Sources */,
@@ -1212,7 +1193,6 @@
 				1F06EBC88F4FECDA1E14A9D9 /* TranscriptAnalysis.swift in Sources */,
 				6DE7863B9496A49105CB8675 /* TranscriptContext.swift in Sources */,
 				90076CDC07F8D62759464C7F /* TranscriptUpgradeService.swift in Sources */,
-				1553EA36199944A44D017067 /* TranslationPanelView.swift in Sources */,
 				0D067267688A36C3EB151BFF /* TranslationStore.swift in Sources */,
 				619B28DBD89BCB95E40EDA31 /* UpdateChecker.swift in Sources */,
 				EEE00342FECAD3711D3F905A /* VaultFiles.swift in Sources */,

@@ -4,7 +4,7 @@ import RTICore
 /// Single source of truth for live-translation settings.
 ///
 /// Previously every translation-capable view (`TranscriptTabView`,
-/// `LiveTranscriptView`, `TranslationPanelView`) owned its own `@AppStorage`
+/// transcript surfaces owned their own `@AppStorage`
 /// copies and pushed the resulting `TranslationConfig` into
 /// `SessionCoordinator.translationConfig` from `.onAppear` and `.onChange`.
 /// That caused races: the last view to appear or change would overwrite the

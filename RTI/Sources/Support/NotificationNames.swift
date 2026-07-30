@@ -4,15 +4,11 @@ import Foundation
 extension Notification.Name {
     static let rtiToggleOverlay = Notification.Name("rti.toggleOverlay")
     static let rtiClearChat = Notification.Name("rti.clearChat")
-    /// Keeps the existing floating-panel coordinator compatible while that
-    /// surface is being retired separately.
-    static let rtiHideAuxiliaryPanels = Notification.Name("rti.hideAuxiliaryPanels")
     static let rtiOverlayDidBecomeKey = Notification.Name("rti.overlayDidBecomeKey")
     static let rtiOverlaySizeChanged = Notification.Name("rti.overlaySizeChanged")
     /// Posted when the light/dark setting flips so the live panel re-applies its
     /// NSAppearance immediately.
     static let rtiOverlayAppearanceChanged = Notification.Name("rti.overlayAppearanceChanged")
-    static let rtiShowLiveTranscript = Notification.Name("rti.showLiveTranscript")
     static let rtiShowLogs = Notification.Name("rti.showLogs")
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
     /// Posted (object = session folder name String) to focus the Sessions

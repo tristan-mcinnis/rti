@@ -1,14 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// Owns the single NSWindow that hosts the tabbed SessionsControlView,
-/// replacing the five separate windows (Live Transcript, Session History,
-/// Session Detail, Settings, Logs).
+/// Owns the Library & Preferences window: completed meetings, durable
+/// configuration, and diagnostics. The live meeting belongs in the overlay.
 @MainActor
 final class SessionsControlWindowController {
     private var window: NSWindow?
 
-    func show(tab: SessionsControlView.Tab = .liveTranscript) {
+    func show(tab: SessionsControlView.Tab = .sessions) {
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -23,7 +22,7 @@ final class SessionsControlWindowController {
             backing: .buffered,
             defer: false
         )
-        w.title = "RTI Sessions Control"
+        w.title = "RTI Library & Preferences"
         w.titlebarAppearsTransparent = true
         w.setFrameAutosaveName("rti.sessionscontrol")
         w.isReleasedWhenClosed = false

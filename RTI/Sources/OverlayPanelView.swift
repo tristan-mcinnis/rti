@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OverlayPanelView: View {
     private let llm = LLMController.shared
+    private let session = SessionCoordinator.shared
     var onOpenSettings: () -> Void = {}
 
     @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
@@ -10,15 +11,17 @@ struct OverlayPanelView: View {
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel: Bool = OverlayAppearanceDefaults.defaultTranslucentPanel
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
-    // Live-analysis tabs only show when their tasks are enabled in Setup.
+    // Live-analysis tabs only show when their tasks are enabled in Prepare.
     // Notes defaults on; Guide/Intel/Auto stay opt-in.
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
     @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
     @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
     @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
-    @State private var tab: OverlayTab = .assist
+    // RTI opens at the beginning of the user's journey: preparing this
+    // meeting. Starting the recording moves the user into the live workspace.
+    @State private var tab: OverlayTab = .setup
 
-    // Setup is the pre-call surface, not a live tab — it's pulled out of the
+    // Prepare is the pre-call surface, not a live tab — it's pulled out of the
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
     // top bar gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
@@ -57,7 +60,7 @@ struct OverlayPanelView: View {
                         .fill(Color.overlayBorder.opacity(0.65))
                         .frame(height: 1)
                 }
-                // If the active tab gets turned off in Setup, fall back to Assist.
+                // If the active tab gets turned off in Prepare, fall back to Assist.
                 .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
                 .onChange(of: guideEnabled) { _, _ in normalizeSelection() }
                 .onChange(of: findingsEnabled) { _, _ in normalizeSelection() }
@@ -68,6 +71,14 @@ struct OverlayPanelView: View {
                     guard let raw = note.object as? String,
                           let target = OverlayTab(rawValue: raw) else { return }
                     if target == .setup || visibleTabs.contains(target) { tab = target }
+                }
+                .onChange(of: session.phase) { previous, current in
+                    // Prepare → Live is the primary hand-off in RTI. Do not
+                    // interrupt someone who has deliberately navigated away
+                    // from Prepare after the recording is already underway.
+                    if previous == .idle, current == .recording, tab == .setup {
+                        tab = .assist
+                    }
                 }
 
                 Group {
@@ -144,7 +155,7 @@ struct OverlayPanelView: View {
     }
 
     private func normalizeSelection() {
-        // Setup lives outside visibleTabs but is always reachable, so don't
+        // Prepare lives outside visibleTabs but is always reachable, so don't
         // kick the user out of it when a live-analysis toggle flips.
         if tab != .setup, !visibleTabs.contains(tab) { tab = .assist }
     }

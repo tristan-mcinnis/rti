@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// Tabbed hub view that hosts Live Transcript, Settings, and Logs. Ephemeral
-/// build: there's no session library / corpus, so the only "Now" surface is
-/// the live transcript.
+/// RTI's durable workspace: completed meetings, preferences, and diagnostics.
+/// The live transcript intentionally lives only in the overlay, avoiding two
+/// competing places to follow an active meeting.
 struct SessionsControlView: View {
     enum Tab: String, CaseIterable, Identifiable {
-        case liveTranscript = "Live Transcript"
         case sessions = "Sessions"
         case providers = "Providers"
         case modes = "Modes"
@@ -18,7 +17,6 @@ struct SessionsControlView: View {
 
         var icon: String {
             switch self {
-            case .liveTranscript: return "text.bubble.fill"
             case .sessions:       return "clock.arrow.circlepath"
             case .providers:      return "server.rack"
             case .modes:          return "square.stack.3d.up"
@@ -32,7 +30,7 @@ struct SessionsControlView: View {
 
     @State private var selectedTab: Tab
 
-    init(initialTab: Tab = .liveTranscript) {
+    init(initialTab: Tab = .sessions) {
         _selectedTab = State(initialValue: initialTab)
     }
 
@@ -44,9 +42,6 @@ struct SessionsControlView: View {
                 .safeAreaInset(edge: .top) {
                     SentinelMeetingBanner()
                 }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .rtiShowLiveTranscript)) { _ in
-            selectedTab = .liveTranscript
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiShowLogs)) { _ in
             selectedTab = .logs
@@ -72,7 +67,7 @@ struct SessionsControlView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("RTI")
                         .font(.system(size: 20, weight: .semibold))
-                    Text("Meeting workspace")
+                    Text("Library & preferences")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(RTIDesign.Color.textSecondary)
                 }
@@ -80,10 +75,9 @@ struct SessionsControlView: View {
             .padding(.horizontal, 18)
             .padding(.top, 20)
 
-            sidebarSection("Now", tabs: [.liveTranscript])
-            sidebarSection("Library", tabs: [.sessions])
-            sidebarSection("Settings", tabs: [.providers, .modes, .prompts, .glossary, .general])
-            sidebarSection("Diagnostics", tabs: [.logs])
+            sidebarSection("Meetings", tabs: [.sessions])
+            sidebarSection("Preferences", tabs: [.providers, .modes, .prompts, .glossary, .general])
+            sidebarSection("Support", tabs: [.logs])
 
             Spacer(minLength: 0)
             versionFooter
@@ -145,10 +139,6 @@ struct SessionsControlView: View {
     @ViewBuilder
     private var contentForTab: some View {
         switch selectedTab {
-        case .liveTranscript:
-            LiveTranscriptView()
-                .environment(SessionCoordinator.shared)
-
         case .sessions:
             SessionsBrowserView()
 

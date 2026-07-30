@@ -13,15 +13,8 @@ final class WindowCoordinator {
     private var overlayController: OverlayWindowController?
     private var sessionsControl: SessionsControlWindowController?
     private var meetingBrief: MeetingBriefWindowController?
-    /// Singleton floating panels. One entry per `FloatingPanelID` once
-    /// `install(_:)` has run; adding a new panel kind is just a new enum
-    /// case + spec rather than another stored property here.
-    private var floatingPanels: [FloatingPanelID: FloatingPanelWindowController] = [:]
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
-    func isPanelVisible(_ id: FloatingPanelID) -> Bool {
-        floatingPanels[id]?.isVisible ?? false
-    }
 
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
         sessionsControl = SessionsControlWindowController()
@@ -31,25 +24,10 @@ final class WindowCoordinator {
         overlayController = controller
         controller.show(initialLaunch: true)
 
-        for id in FloatingPanelID.allCases {
-            floatingPanels[id] = FloatingPanelWindowController(spec: id.spec)
-        }
-
-        NotificationCenter.default.addObserver(
-            forName: .rtiHideAuxiliaryPanels,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                for controller in self.floatingPanels.values { controller.hide() }
-            }
-        }
     }
 
     func setSharingInvisible(_ invisible: Bool) {
         overlayController?.setSharingInvisible(invisible)
-        for controller in floatingPanels.values { controller.setSharingInvisible(invisible) }
     }
 
     /// Toggle the persisted invisibility flag and apply it to every panel.
@@ -67,9 +45,9 @@ final class WindowCoordinator {
     func hideOverlay() { overlayController?.hide() }
     func toggleOverlay() { overlayController?.toggle() }
 
-    // MARK: - Sessions Control (unified: Live Transcript, Sessions, Settings, Logs)
+    // MARK: - Library & Preferences
 
-    func showSessionsControl(tab: SessionsControlView.Tab = .liveTranscript) {
+    func showSessionsControl(tab: SessionsControlView.Tab = .sessions) {
         sessionsControl?.show(tab: tab)
     }
 
@@ -92,14 +70,7 @@ final class WindowCoordinator {
 
     // MARK: - Convenience wrappers used by AppDelegate / menu
 
-    func showLiveTranscript() { showSessionsControl(tab: .liveTranscript) }
     func openSettings() { showSessionsControl(tab: .providers) }
-
-    // MARK: - Floating panels
-
-    func show(_ id: FloatingPanelID) { floatingPanels[id]?.show() }
-    func hide(_ id: FloatingPanelID) { floatingPanels[id]?.hide() }
-    func toggle(_ id: FloatingPanelID) { floatingPanels[id]?.toggle() }
 
     // MARK: - About
 
