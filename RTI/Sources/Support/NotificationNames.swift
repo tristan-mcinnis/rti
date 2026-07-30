@@ -4,6 +4,9 @@ import Foundation
 extension Notification.Name {
     static let rtiToggleOverlay = Notification.Name("rti.toggleOverlay")
     static let rtiClearChat = Notification.Name("rti.clearChat")
+    /// Keeps the existing floating-panel coordinator compatible while that
+    /// surface is being retired separately.
+    static let rtiHideAuxiliaryPanels = Notification.Name("rti.hideAuxiliaryPanels")
     static let rtiOverlayDidBecomeKey = Notification.Name("rti.overlayDidBecomeKey")
     static let rtiOverlaySizeChanged = Notification.Name("rti.overlaySizeChanged")
     /// Posted when the light/dark setting flips so the live panel re-applies its
@@ -132,6 +135,7 @@ enum AudioSettingsDefaults {
 
 enum TranslationDefaults {
     static let enabledKey = "rti.translation.enabled"
+    static let showOriginalKey = "rti.translation.showOriginal"
     static let modeKey = "rti.translation.mode"
     static let targetLanguageKey = "rti.translation.targetLanguage"
     static let languageAKey = "rti.translation.languageA"
