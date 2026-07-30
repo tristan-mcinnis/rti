@@ -66,6 +66,10 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 This file also provides project-specific guidance to Claude Code (claude.ai/code) when working with this repository.
 
+## Release workflow
+
+When making a change to RTI, verify it, commit the intended changes to `main`, and push `main`. For a change that should be used in the installed app, build from that committed revision and replace `/Applications/RTI.app` with that exact build.
+
 ## Project identity
 
 **Project name:** RTI (Real Time Intelligence). Use only this name in code, UI copy, bundle identifiers, and docs.

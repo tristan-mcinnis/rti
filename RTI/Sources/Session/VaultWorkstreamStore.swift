@@ -14,10 +14,11 @@ struct VaultItem: Identifiable, Hashable {
 /// here. The vault is located via Meeting Sentinel's config — the same
 /// mechanism `MeetingBriefStore` uses — so no path is hardcoded.
 enum VaultWorkstreamStore {
-    /// `<vault>/databases` — derived from Sentinel's `recordings_dir`
-    /// (`<vault>/databases/meetings/recordings` → up two levels).
+    /// `<vault>/databases` — resolved from Sentinel's configured recordings
+    /// path, with a nearby moved `kb/databases` tree preferred when the
+    /// configured path is stale.
     static func databasesDir() -> URL? {
-        SentinelPaths.databasesDirectory()
+        SentinelPaths.preferredDatabasesDirectory()
     }
 
     static func clients() -> [VaultItem] {

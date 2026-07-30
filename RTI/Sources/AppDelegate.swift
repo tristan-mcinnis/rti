@@ -91,10 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CommandRegistry.shared.replaceAll(commands)
 
         // Menu: dynamic state providers for items whose titles change.
-        menu.currentSessionIdProvider = { SessionCoordinator.shared.currentSessionId }
         menu.isRunningProvider = { SessionCoordinator.shared.isRunning }
-        menu.smartModeProvider = { LLMController.shared.smartMode }
-        menu.invisibilityProvider = { UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true }
         menu.install(commands: commands)
 
         hotkeys.registerAll(commands: commands)
@@ -151,7 +148,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     /// reference it without a live AppDelegate instance.
     static func clearChatNow() {
         LLMController.shared.clear()
-        NotificationCenter.default.post(name: .rtiHideAuxiliaryPanels, object: nil)
     }
 
     private func ensureSingleInstance() -> Bool {

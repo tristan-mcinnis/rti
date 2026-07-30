@@ -11,6 +11,7 @@ struct GeneralTab: View {
         SettingsPage {
             VStack(alignment: .leading, spacing: 14) {
                 SettingsCard { LaunchAtLoginSection() }
+                SettingsCard { CaptureAccessSection() }
                 SettingsCard { AudioInputSection() }
                 SettingsCard { RealTimeAnalysisSection() }
                 SettingsCard { OverlayAppearanceSection() }
@@ -51,6 +52,78 @@ private struct LaunchAtLoginSection: View {
     }
 }
 
+// MARK: - Capture Access
+
+private struct CaptureAccessSection: View {
+    @State private var microphonePermission = AppPermissions.microphone
+    @State private var screenPermission = AppPermissions.screenRecording
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Capture Setup")
+                .font(.system(size: 13, weight: .medium))
+            accessRow(
+                title: "Microphone",
+                detail: "Required for live transcription.",
+                state: microphonePermission,
+                grant: { AppPermissions.requestMicrophone { _ in refreshPermissions() } },
+                openSettings: AppPermissions.openMicrophoneSettings
+            )
+            Divider()
+            accessRow(
+                title: "Screen & OCR",
+                detail: "Optional — reads the active screen and attached images; images are discarded.",
+                state: screenPermission,
+                grant: {
+                    _ = AppPermissions.requestScreenRecording()
+                    refreshPermissions()
+                },
+                openSettings: AppPermissions.openScreenRecordingSettings
+            )
+        }
+        .onAppear(perform: refreshPermissions)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshPermissions()
+        }
+    }
+
+    private func accessRow(
+        title: String,
+        detail: String,
+        state: AppPermissions.State,
+        grant: @escaping () -> Void,
+        openSettings: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12, weight: .medium))
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            switch state {
+            case .granted:
+                Label("Ready", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.green)
+            case .notDetermined:
+                Button("Allow", action: grant)
+                    .controlSize(.small)
+            case .denied:
+                Button("Open Settings", action: openSettings)
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private func refreshPermissions() {
+        microphonePermission = AppPermissions.microphone
+        screenPermission = AppPermissions.screenRecording
+    }
+}
+
 // MARK: - Audio Input
 
 private struct AudioInputSection: View {
@@ -58,6 +131,7 @@ private struct AudioInputSection: View {
     @State private var selectedInputUID: String = AudioInputDeviceStore.preferredUID
     @AppStorage(AudioSettingsDefaults.echoCancellationKey) private var echoCancellation: Bool = false
     @AppStorage(AudioSettingsDefaults.protectBluetoothVolumeKey) private var protectBluetoothVolume: Bool = true
+    private let session = SessionCoordinator.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -96,17 +170,21 @@ private struct AudioInputSection: View {
             Divider().padding(.vertical, 6)
             Text("Live levels")
                 .font(.system(size: 13, weight: .medium))
-            Text("During a session, confirm both sides are being captured. The same monitor is available from the menubar.")
+            Text(session.isRunning
+                ? "Confirm both sides are being captured. The same monitor is available from the menubar."
+                : "Levels are available only while a session is recording.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            AudioMonitorContent()
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.06))
-                )
-                .padding(.top, 6)
+            if session.isRunning {
+                AudioMonitorContent()
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.secondary.opacity(0.06))
+                    )
+                    .padding(.top, 6)
+            }
         }
         .onAppear {
             inputDevices = AudioInputDeviceStore.availableInputDevices()
@@ -177,6 +255,7 @@ private struct OverlayAppearanceSection: View {
     @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel: Bool = OverlayAppearanceDefaults.defaultTranslucentPanel
+    @AppStorage(OverlayAppearanceDefaults.alwaysOnTopKey) private var alwaysOnTop: Bool = OverlayAppearanceDefaults.defaultAlwaysOnTop
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     @AppStorage(OverlayAppearanceDefaults.reduceMotionKey) private var reduceMotion: String = OverlayAppearanceDefaults.defaultReduceMotion
 
@@ -208,7 +287,14 @@ private struct OverlayAppearanceSection: View {
 
             Toggle("Translucent panel", isOn: $translucentPanel)
                 .onChange(of: translucentPanel) { _, _ in postAppearanceChanged() }
-            Text("A softer live surface for meetings. Turn it off for a flatter, higher-contrast panel.")
+            Text("Off keeps the panel and composer pure white; their separation comes from a subtle edge and shadow.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 2)
+
+            Toggle("Keep overlay above other windows", isOn: $alwaysOnTop)
+                .onChange(of: alwaysOnTop) { _, _ in postAppearanceChanged() }
+            Text("Turn this off when you want RTI to behave like a regular window that can sit behind the app you are using.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 2)
@@ -278,6 +364,7 @@ private struct OverlayAppearanceSection: View {
                     accentColorHex = OverlayAppearanceDefaults.defaultAccentColor
                     contrast = OverlayAppearanceDefaults.defaultContrast
                     translucentPanel = OverlayAppearanceDefaults.defaultTranslucentPanel
+                    alwaysOnTop = OverlayAppearanceDefaults.defaultAlwaysOnTop
                     uiFontSize = OverlayAppearanceDefaults.defaultUIFontSize
                     reduceMotion = OverlayAppearanceDefaults.defaultReduceMotion
                     overlayWidth = OverlayAppearanceDefaults.defaultWidth

@@ -47,9 +47,9 @@ final class OverlayWindowController {
             backing: .buffered,
             defer: false
         )
-        panel.isFloatingPanel = true
+        panel.isFloatingPanel = Self.keepsOverlayAboveOtherWindows
         panel.becomesKeyOnlyIfNeeded = true
-        panel.level = .floating
+        panel.level = Self.keepsOverlayAboveOtherWindows ? .floating : .normal
         panel.backgroundColor = .clear
         panel.isOpaque = false
         // A window shadow separates the panel from the desktop — important in
@@ -93,7 +93,10 @@ final class OverlayWindowController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.window.appearance = Self.configuredAppearance() }
+            MainActor.assumeIsolated {
+                self?.window.appearance = Self.configuredAppearance()
+                self?.applyConfiguredWindowLevel()
+            }
         }
 
         if let saved = Self.loadSavedFrame() {
@@ -119,6 +122,17 @@ final class OverlayWindowController {
         case .dark:
             return NSAppearance(named: .darkAqua)
         }
+    }
+
+    private static var keepsOverlayAboveOtherWindows: Bool {
+        UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.alwaysOnTopKey) as? Bool
+            ?? OverlayAppearanceDefaults.defaultAlwaysOnTop
+    }
+
+    private func applyConfiguredWindowLevel() {
+        let keepAbove = Self.keepsOverlayAboveOtherWindows
+        window.isFloatingPanel = keepAbove
+        window.level = keepAbove ? .floating : .normal
     }
 
     private static func configuredSize() -> NSSize {

@@ -60,7 +60,8 @@ enum VaultLogStore {
     /// Meeting Sentinel's recordings directory. RTI uses this only to derive
     /// adjacent vault paths for its text handoff; it never writes audio here.
     static func recordingsDirectory() -> URL? {
-        SentinelPaths.recordingsDirectory()
+        SentinelPaths.preferredDatabasesDirectory()?
+            .appendingPathComponent("meetings/recordings", isDirectory: true)
     }
 
     // MARK: - Writing

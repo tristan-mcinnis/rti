@@ -193,8 +193,6 @@ private struct ComposerTextView: NSViewRepresentable {
 }
 
 struct AssistantInputView: View {
-    var onOpenSettings: () -> Void = {}
-
     private enum ComposerMetrics {
         static let fontSize: CGFloat = 14
         static let iconFontSize: CGFloat = 14
@@ -221,17 +219,11 @@ struct AssistantInputView: View {
     @State private var inputFieldWidth: CGFloat = 360
     @StateObject private var mentionSuggestions = MentionSuggestionStore()
     @FocusState private var isInputFocused: Bool
-    @AppStorage(OverlayAppearanceDefaults.invisibilityKey) private var isHiddenFromCapture: Bool = true
-    @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     private let llm = LLMController.shared
     private let modes = ModeStore.shared
     private let session = SessionCoordinator.shared
     private let inputState = OverlayInputState.shared
-
-    /// Discrete opacity presets — SwiftUI's `Menu` does not render `Slider`
-    /// interactively, so we expose a submenu of fixed steps instead.
-    private let opacityPresets: [Double] = [0.20, 0.40, 0.60, 0.75, 0.85, 0.95, 1.00]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -251,11 +243,11 @@ struct AssistantInputView: View {
                 selectedMentionChips
             }
 
-            // One composer pill: leading actions, flexible field, trailing send.
+            // One composer pill: ask for help, compose, choose an explicit
+            // attachment or live-note target, then send. It deliberately has
+            // no miscellaneous overflow menu.
             HStack(alignment: .center, spacing: ComposerMetrics.rowSpacing) {
                 actionsMenu
-                noteModeToggle
-                moreDots
 
                 ComposerTextView(text: $input, placeholder: textFieldPrompt, fontSize: CGFloat(uiFontSize)) {
                     submit()
@@ -271,6 +263,12 @@ struct AssistantInputView: View {
                     }
                 )
                 .padding(.leading, ComposerMetrics.textLeadingPadding)
+
+                attachmentButton
+
+                if session.isRunning {
+                    noteModeToggle
+                }
 
                 if llm.streaming {
                     stopButton
@@ -294,7 +292,7 @@ struct AssistantInputView: View {
                                 lineWidth: isDropTargeted ? 1.5 : 1)
                     )
             )
-            .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: 6)
+            .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 5)
         }
         // Drop an image here → it's OCR'd on-device and attached as context for
         // the next message (same path as ⌘⇧H screen capture; no image is sent
@@ -758,149 +756,6 @@ struct AssistantInputView: View {
         .background(Capsule().fill(Color.overlayInk.opacity(active ? 0.055 : 0.035)))
     }
 
-    private var moreDots: some View {
-        Menu {
-            Menu("Opacity — \(Int(backgroundOpacity * 100))%") {
-                ForEach(opacityPresets, id: \.self) { value in
-                    Button {
-                        backgroundOpacity = value
-                    } label: {
-                        if abs(value - backgroundOpacity) < 0.01 {
-                            Label("\(Int(value * 100))%", systemImage: "checkmark")
-                        } else {
-                            Text("\(Int(value * 100))%")
-                        }
-                    }
-                }
-            }
-
-            Divider()
-
-            // Panel housekeeping only — AI actions live in the ✦ menu.
-            Section("Panel") {
-                Button {
-                    NotificationCenter.default.post(name: .rtiToggleOverlay, object: nil)
-                } label: {
-                    Label("Show / hide overlay", systemImage: "rectangle.dashed")
-                }
-                .keyboardShortcut("\\", modifiers: .command)
-
-                Button {
-                    SessionCoordinator.shared.toggleSession()
-                } label: {
-                    Label(session.isRunning ? "Stop session" : "Start session",
-                          systemImage: session.isRunning ? "stop.circle" : "mic")
-                }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-
-                Button {
-                    ScreenshotManager.shared.captureAndAttach()
-                } label: {
-                    Label("Capture screens", systemImage: "camera.viewfinder")
-                }
-                .keyboardShortcut("h", modifiers: .command)
-                .help("Reads all connected displays via on-device OCR, prioritizes the screen under your mouse, then attaches the text to your next message.")
-
-                Button { fileImporterPresented = true } label: {
-                    Label("Attach file…", systemImage: "paperclip")
-                }
-                .help("Attach a PDF, Markdown, or text file to the next message. RTI reads it in memory only.")
-
-                Button {
-                    NotificationCenter.default.post(name: .rtiClearChat, object: nil)
-                } label: {
-                    Label("Clear chat", systemImage: "eraser")
-                }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
-            }
-
-            Menu {
-                ForEach(LLMProviders.all) { provider in
-                    Button {
-                        LLMProviders.activeId = provider.id
-                    } label: {
-                        if provider.id == LLMProviders.activeId {
-                            Label(provider.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(provider.displayName)
-                        }
-                    }
-                }
-            } label: {
-                Label("Assistant provider", systemImage: "sparkles.rectangle.stack")
-            }
-
-            Menu {
-                ForEach(STTProviders.all, id: \.id) { provider in
-                    Button {
-                        STTProviders.activeId = provider.id
-                    } label: {
-                        if provider.id == STTProviders.activeId {
-                            Label(provider.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(provider.displayName)
-                        }
-                    }
-                }
-            } label: {
-                Label("Transcription provider", systemImage: "waveform.badge.mic")
-            }
-
-            Menu {
-                ForEach(modes.modes) { mode in
-                    Button {
-                        modes.activeModeId = mode.id
-                    } label: {
-                        if mode.id == modes.activeModeId {
-                            Label(mode.name, systemImage: "checkmark")
-                        } else {
-                            Text(mode.name)
-                        }
-                    }
-                }
-            } label: {
-                Label("Modes", systemImage: "square.stack.3d.up")
-            }
-
-            recentSessionsSection
-
-            Divider()
-
-            Button(action: toggleHiddenFromCapture) {
-                if isHiddenFromCapture {
-                    Label("Hidden from Screen Capture", systemImage: "checkmark")
-                } else {
-                    Text("Hidden from Screen Capture")
-                }
-            }
-
-            Divider()
-
-            Button(action: onOpenSettings) {
-                Label("Settings…", systemImage: "gearshape")
-            }
-            .keyboardShortcut(",", modifiers: .command)
-        } label: {
-            // Menu's .borderlessButton style was recoloring the SF Symbol back
-            // to the system label color (black on the dark overlay), which made
-            // the dots invisible even though the hit target still worked. Force
-            // the symbol to render monochrome with an explicit white tint, and
-            // pin the surrounding Menu's tint so it doesn't override us.
-            Image(systemName: "ellipsis")
-                .symbolRenderingMode(.monochrome)
-                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
-                .foregroundColor(Color.overlayInk.opacity(0.45))
-                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .tint(Color.overlayInk.opacity(0.7))
-        .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
-        .accessibilityLabel("More actions")
-        .accessibilityHint("Quick actions and settings")
-        .help("Quick actions and settings")
-    }
-
     private var noteModeToggle: some View {
         Button {
             guard session.isRunning else { return }
@@ -909,9 +764,11 @@ struct AssistantInputView: View {
                 isInputFocused = true
             }
         } label: {
-            Image(systemName: noteModeSymbol)
-                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
-                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
+            Label("Note", systemImage: noteModeSymbol)
+                .font(.system(size: 11, weight: .medium))
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 8)
+                .frame(height: ComposerMetrics.controlSize)
             .foregroundStyle(inputState.isNoteMode ? Color.yellow.opacity(0.95) : Color.overlayInk.opacity(0.7))
             .background(
                 Capsule().fill(
@@ -931,27 +788,14 @@ struct AssistantInputView: View {
             )
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .accessibilityLabel(inputState.isNoteMode ? "Switch to chat mode" : "Switch to note mode")
         .help(noteModeHelpText)
     }
 
-    /// Saved session records — opens the in-app read-only browser (Sessions
-    /// tab of the control window). Finder stays available from inside the
-    /// browser for anyone who wants the raw folders.
-    @ViewBuilder
-    private var recentSessionsSection: some View {
-        Divider()
-        Button {
-            WindowCoordinator.shared.showSessionsControl(tab: .sessions)
-        } label: {
-            Label("Past sessions…", systemImage: "clock.arrow.circlepath")
-        }
-    }
-
-    /// Leading "✦" button — folds the prompt actions (Assist / What should I
-    /// say? / Follow-ups / Recap), the Smart toggle, and Note mode into one
-    /// menu so the composer reclaims the whole action row. The glyph tints blue
-    /// when Smart is on, preserving at-a-glance state without a permanent pill.
+    /// Leading "✦" button contains assistant behavior only. Composer target
+    /// (chat versus note) remains visible beside Send instead of hiding inside
+    /// a second competing menu.
     private var actionsMenu: some View {
         Menu {
             // Mode-aware: the visible actions follow the active mode + listener
@@ -1019,17 +863,6 @@ struct AssistantInputView: View {
                 }
             }
 
-            Button {
-                guard session.isRunning else { return }
-                inputState.mode = inputState.isNoteMode ? .chat : .liveNote
-            } label: {
-                if inputState.isNoteMode {
-                    Label(noteMenuTitle, systemImage: "checkmark")
-                } else {
-                    Label(noteMenuTitle, systemImage: "note.text")
-                }
-            }
-            .disabled(!session.isRunning)
         } label: {
             Image(systemName: "sparkles")
                 .symbolRenderingMode(.monochrome)
@@ -1045,6 +878,19 @@ struct AssistantInputView: View {
         .accessibilityLabel("Assist actions")
         .accessibilityHint(llm.smartMode ? "Assist actions. Smart mode is on." : "Assist actions")
         .help(llm.smartMode ? "Assist actions · Smart on" : "Assist actions")
+    }
+
+    private var attachmentButton: some View {
+        Button { fileImporterPresented = true } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
+                .foregroundStyle(Color.overlayInk.opacity(0.58))
+                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Attach file")
+        .accessibilityHint("Attach a PDF, Markdown, or text file to the next message")
+        .help("Attach file")
     }
 
     private var sendButton: some View {
@@ -1098,16 +944,9 @@ struct AssistantInputView: View {
         return hint.isEmpty ? action.label : "\(action.label)  \(hint)"
     }
 
-    /// Route through the registered command so the menubar item and command
-    /// palette share one toggle path that both persists the flag and applies
-    /// sharingType to every panel.
-    private func toggleHiddenFromCapture() {
-        CommandRegistry.shared.commands.first { $0.id == "invisibility.toggle" }?.perform()
-    }
-
     /// One-click setup for sitting in on fieldwork (FGD/IDI as an observer):
     /// Interview mode + listener mode + ⌘⏎ bound to Assist. The workstream
-    /// (project) still gets picked in Setup — that's a per-meeting fact.
+    /// (project) still gets picked in Prepare — that's a per-meeting fact.
     private func applyFieldworkPreset() {
         if let interview = modes.modes.first(where: { $0.name.localizedCaseInsensitiveContains("interview") }) {
             modes.activeModeId = interview.id
@@ -1284,13 +1123,9 @@ struct AssistantInputView: View {
 
     private var noteModeSymbol: String {
         switch inputState.mode {
-        case .chat: return session.isRunning ? "text.cursor" : "note.text"
-        case .liveNote: return "note.text"
+        case .chat: return "note.text"
+        case .liveNote: return "checkmark"
         }
-    }
-
-    private var noteMenuTitle: String {
-        "Note mode  ⌘⌥N"
     }
 
     private var noteModeHelpText: String {

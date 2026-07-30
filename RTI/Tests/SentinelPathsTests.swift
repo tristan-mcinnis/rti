@@ -29,6 +29,30 @@ final class SentinelPathsTests: XCTestCase {
         )
     }
 
+    func testPrefersCompleteNearbyKnowledgeBaseWhenConfiguredRecordingsMoved() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let retiredRecordings = root.appendingPathComponent("vault/databases/meetings/recordings", isDirectory: true)
+        let activeDatabases = root.appendingPathComponent("kb/databases", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: retiredRecordings.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("projects"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(at: activeDatabases.appendingPathComponent("projects"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: activeDatabases.appendingPathComponent("meetings/recordings"), withIntermediateDirectories: true)
+
+        let config = writeConfig(retiredRecordings.path)
+
+        XCTAssertEqual(
+            SentinelPaths.preferredDatabasesDirectory(configURL: config)?.path,
+            activeDatabases.path
+        )
+        XCTAssertEqual(
+            SentinelPaths.rtiDirectory(configURL: config)?.path,
+            activeDatabases.appendingPathComponent("projects/personal/rti").path
+        )
+    }
+
     func testLinkedMeetingNotesURLUsesAudioSiblingTranscriptsRaw() {
         let url = SentinelPaths.linkedMeetingNotesURL(
             audioFilePath: "/vault/databases/meetings/recordings/client-sync.m4a",

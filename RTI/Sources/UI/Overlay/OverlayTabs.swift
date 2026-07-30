@@ -1,3 +1,4 @@
+import AppKit
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -627,10 +628,9 @@ struct AutoTabView: View {
 
 // MARK: - Setup
 
-/// The pre-call surface: who the meeting is about (vault workstream + note +
-/// brief) and the discussion guide. Everything here is meant to be set before
-/// you go live; the guide can be attached now and is auto-bound when the
-/// session starts.
+/// The meeting home: establish context and choose the live aids before going
+/// live. The guide can be attached now and is auto-bound when the session
+/// starts.
 struct SetupTabView: View {
     private enum ScopeFilter: String, CaseIterable, Identifiable {
         case all
@@ -699,6 +699,7 @@ struct SetupTabView: View {
     private let store = MeetingContextStore.shared
     private let calendarStore = CalendarMeetingStore.shared
     private let guideController = DiscussionGuideController.shared
+    private let session = SessionCoordinator.shared
     private let visibleResultLimit = 8
     // These also gate the live tabs (Notes / Guide) — see OverlayPanelView.
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
@@ -719,6 +720,7 @@ struct SetupTabView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                prepareHeader
                 meetingFocusSection
                 calendarMeetingSection
                 liveCallSection
@@ -740,6 +742,19 @@ struct SetupTabView: View {
             )
             if session.isPaused { VisualContextTrail.shared.setPaused(true) }
         }
+    }
+
+    private var prepareHeader: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Prepare this meeting")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.overlayInk)
+            Text("Set context and choose the live help you want. Start recording when you're ready.")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.overlayInk.opacity(0.58))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 2)
     }
 
     // MARK: - Meeting focus
@@ -1201,19 +1216,27 @@ struct SetupTabView: View {
                 Text("Transcription")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.overlayInk.opacity(0.88))
-                Text("Realtime capture and translation")
+                Text(captureReadiness)
                     .font(.system(size: 10))
                     .foregroundStyle(Color.overlayInk.opacity(0.42))
                     .lineLimit(1)
             }
             Spacer(minLength: 12)
-            Text("Soniox")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.overlayInk.opacity(0.50))
+            Button("Configure") {
+                WindowCoordinator.shared.showSessionsControl(tab: .general)
+            }
+            .buttonStyle(.borderless)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Color.overlayAccent)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var captureReadiness: String {
+        let devices = session.audioDeviceNames()
+        return "Mic: \(devices.input) · call audio follows: \(devices.output)"
     }
 
     private var settingsRowDivider: some View {

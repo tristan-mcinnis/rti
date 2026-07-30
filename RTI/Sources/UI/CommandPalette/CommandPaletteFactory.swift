@@ -88,7 +88,7 @@ enum CommandBuilder {
             )
         }
         return [
-            tabCmd("setup", "Go to Setup"),
+            tabCmd("setup", "Go to Prepare meeting"),
             tabCmd("assist", "Go to Assist"),
             tabCmd("transcript", "Go to Transcript"),
             tabCmd("notes", "Go to Notes"),
@@ -155,7 +155,7 @@ enum CommandBuilder {
         [
             RTICommand(
                 id: "overlay.toggle",
-                title: "Show Chat Panel  ⌘\\",
+                title: "Show RTI  ⌘\\",
                 subtitle: "⌘\\",
                 keywords: ["panel", "show", "hide"],
                 perform: { [weak windows] in windows?.toggleOverlay() },
@@ -341,27 +341,6 @@ enum CommandBuilder {
                 menuStateProvider: {
                     UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
                 }
-            ),
-            // On/off the translation feature itself. SessionCoordinator observes
-            // this default and reconfigures the live transcription clients, so it
-            // applies mid-session. (The translation config/panel lives in
-            // Settings + the palette's "Toggle Translation Panel".)
-            RTICommand(
-                id: "translation.toggle",
-                title: "Translation",
-                keywords: ["translation", "translate", "language", "bilingual"],
-                perform: {
-                    let d = UserDefaults.standard
-                    d.set(!d.bool(forKey: TranslationDefaults.enabledKey), forKey: TranslationDefaults.enabledKey)
-                },
-                menuSection: .panels,
-                menuStateProvider: { UserDefaults.standard.bool(forKey: TranslationDefaults.enabledKey) }
-            ),
-            RTICommand(
-                id: "panel.translation.toggle",
-                title: "Toggle Translation Panel",
-                keywords: ["translation", "translate", "panel"],
-                perform: { [weak windows] in windows?.toggle(.translation) }
             ),
         ]
     }

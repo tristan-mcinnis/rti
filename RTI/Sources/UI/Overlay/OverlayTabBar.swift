@@ -4,8 +4,7 @@ import SwiftUI
 /// The tabs of the consolidated overlay. One window, one toggle (⌘\), tabs
 /// across the top — instead of a constellation of floating panels.
 enum OverlayTab: String, CaseIterable, Identifiable {
-    // Setup is leftmost — it's the pre-call surface (who the meeting is about +
-    // the discussion guide). The rest are live.
+    // Prepare is the meeting home; the rest are live surfaces.
     case setup, assist, auto, transcript, notes, guide, findings
     var id: String {
         rawValue
@@ -13,7 +12,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .setup: "Setup"
+        case .setup: "Prepare"
         case .assist: "Assist"
         case .auto: "Auto"
         case .transcript: "Transcript"
@@ -38,7 +37,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
 
 struct OverlayTabBar: View {
     @Binding var selection: OverlayTab
-    /// Which tabs to show. Notes/Guide are opt-in (toggled in Setup), so the
+    /// Which tabs to show. Notes/Guide are opt-in (toggled in Prepare), so the
     /// bar only renders the ones currently enabled.
     var tabs: [OverlayTab] = OverlayTab.allCases
 
@@ -101,10 +100,10 @@ private struct OverlayTabButton: View {
     }
 }
 
-/// Leading icon button that opens the Setup surface. Setup is a pre-call
-/// surface (project, discussion guide, live-analysis toggles), so it sits to
+/// Leading icon button that opens the Prepare surface. It is the meeting home
+/// (context, capture readiness, and live aids), so it sits to
 /// the left of the live tabs as a dedicated pill rather than competing with
-/// them for equal weight. Click toggles into Setup and back to where you were.
+/// them for equal weight. Click toggles into Prepare and back to where you were.
 struct OverlaySetupButton: View {
     @Binding var selection: OverlayTab
     @State private var lastNonSetup: OverlayTab = .assist
@@ -133,8 +132,8 @@ struct OverlaySetupButton: View {
         }
         .buttonStyle(.plain)
         .hoverHighlight($hovering)
-        .accessibilityLabel("Setup")
-        .accessibilityHint("Project, screen context, discussion guide, and live-analysis toggles")
-        .help("Setup — project, screen context, discussion guide, and live-analysis toggles (⌘⌥0)")
+        .accessibilityLabel("Prepare meeting")
+        .accessibilityHint("Project, calendar, screen context, discussion guide, and live-analysis toggles")
+        .help("Prepare meeting — project, calendar, screen context, discussion guide, and live-analysis toggles (⌘⌥0)")
     }
 }
