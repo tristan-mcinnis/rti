@@ -8,13 +8,14 @@ struct SentinelMeeting: Equatable {
     let name: String
     let startedAt: Date
     let audioFilePath: String
+    let project: String?
 
     var elapsed: TimeInterval { max(0, Date().timeIntervalSince(startedAt)) }
 }
 
-/// Step 1 of the RTI ⇄ Meeting Sentinel bridge: RTI is a *follower*. Sentinel
-/// owns recording and the accurate post-meeting transcript; RTI just needs to
-/// know when a meeting is live so it can overlay live intelligence.
+/// Meeting Sentinel owns recording and the accurate post-meeting transcript.
+/// RTI observes that state whether Sentinel was started from the terminal or
+/// through MeetingControlCoordinator.
 ///
 /// Sentinel writes `~/.config/meeting-sentinel/state.json` on `meet start` and
 /// deletes it on `meet stop`. We poll that file (no changes to meet.py) and,
@@ -42,6 +43,10 @@ final class MeetingSentinelMonitor {
         self.timer = timer
     }
 
+    func refresh() {
+        poll()
+    }
+
     private func poll() {
         liveMeeting = readLiveMeeting()
     }
@@ -62,7 +67,8 @@ final class MeetingSentinelMonitor {
         return SentinelMeeting(
             name: name,
             startedAt: Self.parseTimestamp(startedAtRaw) ?? Date(),
-            audioFilePath: audioFile
+            audioFilePath: audioFile,
+            project: obj["project"] as? String
         )
     }
 

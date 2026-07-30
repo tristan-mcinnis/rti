@@ -98,14 +98,10 @@ struct OverlayVisualContextButton: View {
 
 // MARK: - Record control
 
-/// Inline record control in the overlay header. Now phase-aware: instead of a
-/// binary record/stop, it names every step of the lifecycle so the user always
-/// knows what the app is doing — recording, paused, saving, generating the
-/// summary, or done (Granola-style). Click is the forward action for the
-/// current phase (start / finish / start-new); pause/resume and "open summary"
-/// live in the small aux button beside it (`OverlaySessionAuxButton`).
+/// Sentinel is the default meeting path. RTI live intelligence is an explicit
+/// escalation exposed by the companion button once the durable recording runs.
 struct OverlayRecordButton: View {
-    private let coordinator = SessionCoordinator.shared
+    private let control = MeetingControlCoordinator.shared
 
     @State private var hovering = false
 
@@ -118,7 +114,7 @@ struct OverlayRecordButton: View {
             .clipShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(coordinator.phase == .finishing)
+        .disabled(control.isBusy)
         .hoverHighlight($hovering)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(helpText)
@@ -126,49 +122,25 @@ struct OverlayRecordButton: View {
     }
 
     private var accessibilityLabel: String {
-        switch coordinator.phase {
-        case .idle: "Start recording"
-        case .recording: "Finish and summarize recording"
-        case .paused: "Finish and summarize paused recording"
-        case .finishing: "Saving session"
-        case .summarizing: "Generating summary"
-        case .done: coordinator.summaryURL != nil ? "Open notes in Sessions" : "Start a new recording"
-        }
+        control.isRecording ? "Stop recording and process" : "Record meeting with Sentinel"
     }
 
     private func primaryAction() {
-        // Once the summary has landed, the "Notes ready" control reads as a
-        // notes button — so it opens the notes in the Sessions browser rather
-        // than starting a new recording (that moved to the aux button beside
-        // it). Every other phase: toggleSession handles start/finish.
-        if coordinator.phase == .done, let url = coordinator.summaryURL {
-            WindowCoordinator.shared.showSession(folder: url.deletingLastPathComponent().lastPathComponent)
-            return
-        }
-        coordinator.toggleSession()
+        control.toggleRecording()
     }
 
     @ViewBuilder
     private var glyph: some View {
-        switch coordinator.phase {
-        case .recording:
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
-                .frame(width: 8, height: 8)
-        case .paused:
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(Color.orange)
-                .frame(width: 8, height: 8)
-        case .finishing, .summarizing:
+        if control.isBusy {
             ProgressView()
                 .controlSize(.small)
                 .scaleEffect(0.62)
                 .frame(width: 9, height: 9)
-        case .done:
-            Image(systemName: coordinator.summaryURL != nil ? "checkmark.circle.fill" : "checkmark")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(coordinator.summaryURL != nil ? Color.green.opacity(0.9) : Color.overlayInk.opacity(0.55))
-        case .idle:
+        } else if control.isRecording {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
+                .frame(width: 8, height: 8)
+        } else {
             Circle()
                 .fill(Color(red: 1.0, green: 0.27, blue: 0.27).opacity(0.85))
                 .frame(width: 7, height: 7)
@@ -178,36 +150,23 @@ struct OverlayRecordButton: View {
     private var background: some View {
         ZStack {
             Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.08 : 0.045))
-            switch coordinator.phase {
-            case .recording:
+            if control.isRecording {
                 Capsule(style: .continuous).fill(Color(red: 1.0, green: 0.20, blue: 0.20).opacity(0.12))
-            case .paused:
-                Capsule(style: .continuous).fill(Color.orange.opacity(0.10))
-            default:
-                EmptyView()
             }
         }
     }
 
     private var borderColor: Color {
-        switch coordinator.phase {
-        case .recording: Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
-        case .paused: Color.orange.opacity(0.5)
-        default: Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
-        }
+        control.isRecording
+            ? Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
+            : Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
     }
 
     private var helpText: String {
-        switch coordinator.phase {
-        case .idle: "Start recording (⌘⇧R)"
-        case .recording: "Finish & summarize (⌘⇧R)"
-        case .paused: "Finish & summarize (⌘⇧R) — currently paused"
-        case .finishing: "Saving the session…"
-        case .summarizing: "Generating the summary in the background — click to start a new recording"
-        case .done: coordinator.summaryURL != nil
-            ? "Notes ready — click to open them in Sessions. Start a new recording with the button beside this (⌘⇧R)"
-            : "Session saved. Click to start a new recording (⌘⇧R)"
-        }
+        if control.isBusy { return control.statusMessage ?? "Meeting Sentinel is working…" }
+        return control.isRecording
+            ? "Stop Sentinel recording and process the definitive transcript (⌘⇧R)"
+            : "Record this meeting with Sentinel (⌘⇧R)"
     }
 }
 
@@ -215,19 +174,18 @@ struct OverlayRecordButton: View {
 /// session is live; "open summary" once notes are ready. Only shown when it has
 /// something to do, so the header stays uncluttered when idle.
 struct OverlaySessionAuxButton: View {
-    private let coordinator = SessionCoordinator.shared
+    private let session = SessionCoordinator.shared
+    private let control = MeetingControlCoordinator.shared
     @State private var hovering = false
 
-    private enum Kind { case pause, resume, newRecording, none }
+    private enum Kind { case goLive, pause, resume, none }
 
     private var kind: Kind {
-        switch coordinator.phase {
+        switch session.phase {
         case .recording: .pause
         case .paused: .resume
-        // Notes are ready: the primary control now opens them, so this companion
-        // becomes the way to start the next recording.
-        case .done: coordinator.summaryURL != nil ? .newRecording : .none
-        default: .none
+        case .finishing, .summarizing: .none
+        default: control.isRecording ? .goLive : .none
         }
     }
 
@@ -251,43 +209,43 @@ struct OverlaySessionAuxButton: View {
 
     private var accessibilityLabel: String {
         switch kind {
+        case .goLive: "Go live with RTI"
         case .pause: "Pause recording"
         case .resume: "Resume recording"
-        case .newRecording: "Start a new recording"
         case .none: ""
         }
     }
 
     private var icon: String {
         switch kind {
+        case .goLive: "sparkles"
         case .pause: "pause.fill"
         case .resume: "play.fill"
-        case .newRecording: "record.circle"
         case .none: ""
         }
     }
 
     private var tint: Color {
         switch kind {
+        case .goLive: Color.blue.opacity(0.9)
         case .resume: Color.green.opacity(0.9)
-        case .newRecording: Color(red: 1.0, green: 0.27, blue: 0.27).opacity(0.9)
         default: Color.overlayInk.opacity(0.7)
         }
     }
 
     private var help: String {
         switch kind {
-        case .pause: "Pause (⌘⇧P) — stops transcribing, keeps the connection live so resume is instant"
-        case .resume: "Resume recording (⌘⇧P)"
-        case .newRecording: "Start a new recording (⌘⇧R)"
+        case .goLive: "Add RTI's provisional live transcript and intelligence"
+        case .pause: "Pause RTI live intelligence (⌘⇧P); Sentinel keeps recording"
+        case .resume: "Resume RTI live intelligence (⌘⇧P)"
         case .none: ""
         }
     }
 
     private func act() {
         switch kind {
-        case .pause, .resume: coordinator.togglePause()
-        case .newRecording: coordinator.toggleSession()
+        case .goLive: control.toggleLiveIntelligence()
+        case .pause, .resume: session.togglePause()
         case .none: break
         }
     }

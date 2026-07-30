@@ -700,6 +700,7 @@ struct SetupTabView: View {
     private let calendarStore = CalendarMeetingStore.shared
     private let guideController = DiscussionGuideController.shared
     private let session = SessionCoordinator.shared
+    private let meetingControl = MeetingControlCoordinator.shared
     private let visibleResultLimit = 8
     // These also gate the live tabs (Notes / Guide) — see OverlayPanelView.
     @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
@@ -723,6 +724,7 @@ struct SetupTabView: View {
                 prepareHeader
                 meetingFocusSection
                 calendarMeetingSection
+                recordingSection
                 liveCallSection
                 discussionGuideSection
                 noteEditor
@@ -749,12 +751,86 @@ struct SetupTabView: View {
             Text("Prepare this meeting")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.overlayInk)
-            Text("Set context and choose the live help you want. Start recording when you're ready.")
+            Text("Sentinel records every meeting by default. Add RTI live intelligence only when you need it.")
                 .font(.system(size: 11))
                 .foregroundStyle(Color.overlayInk.opacity(0.58))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 2)
+    }
+
+    // MARK: - Recording
+
+    private var recordingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("Recording", detail: "Meeting Sentinel")
+            settingsGroup {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 8) {
+                        Button {
+                            meetingControl.toggleRecording()
+                        } label: {
+                            Label(
+                                meetingControl.isRecording ? "Stop & process" : "Record meeting",
+                                systemImage: meetingControl.isRecording ? "stop.fill" : "record.circle"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(meetingControl.isRecording ? .red : .blue)
+                        .disabled(meetingControl.isBusy)
+
+                        if meetingControl.isRecording {
+                            Button {
+                                meetingControl.toggleLiveIntelligence()
+                            } label: {
+                                Label(
+                                    session.isRunning ? "Stop RTI live" : "Go live with RTI",
+                                    systemImage: session.isRunning ? "xmark" : "sparkles"
+                                )
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        } else {
+                            Button("Import audio…") {
+                                meetingControl.importAudio()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(meetingControl.isBusy)
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    if let meeting = meetingControl.sentinelMeeting {
+                        Text(
+                            "Recording \(meeting.name)"
+                                + (meeting.project.map { " · project: \($0)" } ?? "")
+                                + ". Sentinel will produce the definitive transcript."
+                        )
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.overlayInk.opacity(0.58))
+                    } else {
+                        Text("Uses dual-channel capture for better diarization and learned speaker identity.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.overlayInk.opacity(0.58))
+                    }
+
+                    if let status = meetingControl.statusMessage {
+                        Text(status)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.green.opacity(0.9))
+                    }
+                    if let error = meetingControl.lastError {
+                        Text(error)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.red.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(10)
+            }
+        }
     }
 
     // MARK: - Meeting focus

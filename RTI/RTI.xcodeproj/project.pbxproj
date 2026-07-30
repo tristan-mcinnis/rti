@@ -67,6 +67,7 @@
 		5719B398067FDBB3209E0CC6 /* CalendarMeeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0EB9E3D3960E8C07F3C0BF3 /* CalendarMeeting.swift */; };
 		57346D2EB677C793CE82ABE7 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C5E72582098B8BF3192383E /* AudioPipeline.swift */; };
 		58E96549ED84DD54336096A8 /* MarkdownRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC9B66DB5C8A2C473FD51AC1 /* MarkdownRender.swift */; };
+		59451E9E8273F37F95C04FF1 /* MeetingControlCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2323ECFD43D43B6344B3C81 /* MeetingControlCoordinator.swift */; };
 		5B830A47326BAFC69FB9213D /* SemanticVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = B17C79A36714DC24DE5BBB9D /* SemanticVersion.swift */; };
 		5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F122E3AADFBBEE1BC67DC666 /* ModeStore.swift */; };
 		5D36DAF9EFA0A07A35B88768 /* RetrievalHeuristics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F39A932B903AE4601A00E9 /* RetrievalHeuristics.swift */; };
@@ -108,6 +109,7 @@
 		82C3660C16403F069F36F24A /* GlossaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B29D84DC8C16CB9AF6512C9 /* GlossaryStore.swift */; };
 		82F74BC018A0542E6EA9E945 /* ScreenHighlightOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8009D436197C00A2FC4F2B67 /* ScreenHighlightOverlay.swift */; };
 		8359AD8D3FA917C65A060B8F /* AutoAssistController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F8CB45FCCD388DEE7E3A42 /* AutoAssistController.swift */; };
+		84AB62DF57368926F73C227C /* SentinelCommandBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733EFC384E886E100E610076 /* SentinelCommandBuilderTests.swift */; };
 		88A5F181BB28DD7C48AD1BD8 /* PromptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E782AE3D7185571A1C3D5DA /* PromptStore.swift */; };
 		896922E4FF96F5870FA14895 /* VisualContextTrail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7557921BD570C3347CF5972 /* VisualContextTrail.swift */; };
 		89A9FDEA99D4D51B30C1E452 /* MeetingBriefView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E55E7E809BEFA879CDB0EF /* MeetingBriefView.swift */; };
@@ -179,6 +181,7 @@
 		E5385D0176DDD268C1AF9A1A /* NotesGenerationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E938720C8D72A2A78950C66 /* NotesGenerationController.swift */; };
 		E5E7C4C3CBCBE8C7765D50D4 /* LLMProviderConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD5AE51C62E2123FA407743 /* LLMProviderConfig.swift */; };
 		E67512F7A2BD700093E20387 /* VaultSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14596BF8078F9F2029A29B65 /* VaultSearchTests.swift */; };
+		E6EAE4F96B75DCCA8B0884CA /* SentinelCommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BE2658351B26C4F840E56E /* SentinelCommandBuilder.swift */; };
 		E71EB78C66EB5F8EC9567482 /* OverlayRecordControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4896C4F9AFE3F5C5D42E1F00 /* OverlayRecordControls.swift */; };
 		E92049EAD0BFA8D1483E3DC4 /* SentinelPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB71861243647D9F61A27921 /* SentinelPaths.swift */; };
 		E99A2E3907A22BFFDAA70011 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1739AC4265146BE278C238F /* KeychainStore.swift */; };
@@ -296,6 +299,7 @@
 		6E938720C8D72A2A78950C66 /* NotesGenerationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesGenerationController.swift; sourceTree = "<group>"; };
 		70BF29F58CC613A81C10A4E8 /* SessionsBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsBrowserView.swift; sourceTree = "<group>"; };
 		7104F2A4B593908F81C592F9 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
+		733EFC384E886E100E610076 /* SentinelCommandBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentinelCommandBuilderTests.swift; sourceTree = "<group>"; };
 		73922AAADA102ECEF611A7B6 /* RTIDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIDesign.swift; sourceTree = "<group>"; };
 		73D64733E271DE5F43A278DD /* RTIMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIMarkdown.swift; sourceTree = "<group>"; };
 		74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuCoordinator.swift; sourceTree = "<group>"; };
@@ -368,6 +372,7 @@
 		CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayPanelView.swift; sourceTree = "<group>"; };
 		D0BADBF0FF4D33A449AEBDA6 /* AutoAssistCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoAssistCard.swift; sourceTree = "<group>"; };
 		D0EB9E3D3960E8C07F3C0BF3 /* CalendarMeeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarMeeting.swift; sourceTree = "<group>"; };
+		D2323ECFD43D43B6344B3C81 /* MeetingControlCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingControlCoordinator.swift; sourceTree = "<group>"; };
 		D402CDD1E9B3EC6E1BCB848D /* AudioInputDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputDevice.swift; sourceTree = "<group>"; };
 		D420B4688E416E5509DE1C22 /* JSONExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONExtractor.swift; sourceTree = "<group>"; };
 		D55E2800C1107C6FF8493D47 /* VaultSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearch.swift; sourceTree = "<group>"; };
@@ -385,6 +390,7 @@
 		DF9CD22BA63BCD171E6C20BD /* AnalysisScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisScheduler.swift; sourceTree = "<group>"; };
 		E40BB4C92619D7841AA334B2 /* CommandRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandRegistry.swift; sourceTree = "<group>"; };
 		E5BA84476B0498B93A04A5C8 /* TranscriptUpgrade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptUpgrade.swift; sourceTree = "<group>"; };
+		E5BE2658351B26C4F840E56E /* SentinelCommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentinelCommandBuilder.swift; sourceTree = "<group>"; };
 		E68E2F7C2CAF4B4B57821F53 /* JSONExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONExtractorTests.swift; sourceTree = "<group>"; };
 		E6B379A03F030C79DEFC9BB2 /* SessionTranscriptReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTranscriptReview.swift; sourceTree = "<group>"; };
 		E6F8CB45FCCD388DEE7E3A42 /* AutoAssistController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoAssistController.swift; sourceTree = "<group>"; };
@@ -521,6 +527,14 @@
 			path = Overlay;
 			sourceTree = "<group>";
 		};
+		2733C24ECFB72D46BDE5F0A2 /* Meeting */ = {
+			isa = PBXGroup;
+			children = (
+				E5BE2658351B26C4F840E56E /* SentinelCommandBuilder.swift */,
+			);
+			path = Meeting;
+			sourceTree = "<group>";
+		};
 		2984C9878C0D67254BE6A172 /* Session */ = {
 			isa = PBXGroup;
 			children = (
@@ -608,6 +622,7 @@
 				EA5DD7D9DF3E60B90ADF8190 /* PromptCatalogueTests.swift */,
 				982A704E0126F8142A9D4574 /* PromptRegistryTests.swift */,
 				FB8680E2F035967E31E804B3 /* SemanticVersionTests.swift */,
+				733EFC384E886E100E610076 /* SentinelCommandBuilderTests.swift */,
 				B6BF78EA478789802FC0377D /* SentinelPathsTests.swift */,
 				070B2611981ADC2FBB83B222 /* SessionArchiveMetadataTests.swift */,
 				411EDD7A2C3166286A52B232 /* SonioxFailureTests.swift */,
@@ -688,6 +703,7 @@
 				9F00D3192F09E1F572181680 /* CalendarMeetingStore.swift */,
 				9F265BD3BA7963BC1BB43898 /* MeetingBriefStore.swift */,
 				45F4CB08A2BD518C92FFB15F /* MeetingContextStore.swift */,
+				D2323ECFD43D43B6344B3C81 /* MeetingControlCoordinator.swift */,
 				49CCEC4B67C17CAC80C1BCF0 /* MeetingSentinelMonitor.swift */,
 				DB71861243647D9F61A27921 /* SentinelPaths.swift */,
 				5AA81161755C386E2B4F91AF /* SessionArchive.swift */,
@@ -756,6 +772,7 @@
 			children = (
 				D5858D915128AC93DA74B192 /* Analysis */,
 				A947B655D24BC9B61DA1610F /* LLM */,
+				2733C24ECFB72D46BDE5F0A2 /* Meeting */,
 				072415D0D4A5CCCFA8976D52 /* Modes */,
 				0C194BEC3A3F49FE0AB86B6E /* Screenshot */,
 				2984C9878C0D67254BE6A172 /* Session */,
@@ -1022,6 +1039,7 @@
 				5D36DAF9EFA0A07A35B88768 /* RetrievalHeuristics.swift in Sources */,
 				F0617591740F88E7EADB8566 /* SSEStreamParserTests.swift in Sources */,
 				ED3A1AA673F8618F309EDC88 /* SemanticVersionTests.swift in Sources */,
+				84AB62DF57368926F73C227C /* SentinelCommandBuilderTests.swift in Sources */,
 				1CE19D393211FFA0721161F7 /* SentinelPaths.swift in Sources */,
 				4B41950951D77188B54B3581 /* SentinelPathsTests.swift in Sources */,
 				F694316760600CAC58141257 /* SessionArchiveMetadata.swift in Sources */,
@@ -1075,6 +1093,7 @@
 				25D24EF2DDB5292A2AA4CCA7 /* PromptID.swift in Sources */,
 				8F80BA43EB6C566FDA7761F3 /* SSEStreamParser.swift in Sources */,
 				5B830A47326BAFC69FB9213D /* SemanticVersion.swift in Sources */,
+				E6EAE4F96B75DCCA8B0884CA /* SentinelCommandBuilder.swift in Sources */,
 				DCCD6AAD62EC36A67539A999 /* SessionTranscriptReview.swift in Sources */,
 				F652990DB1E58795DB10217D /* SonioxFailure.swift in Sources */,
 				4A167E7379DE71C0A5E766D5 /* SonioxProtocol.swift in Sources */,
@@ -1143,6 +1162,7 @@
 				89A9FDEA99D4D51B30C1E452 /* MeetingBriefView.swift in Sources */,
 				8DEE483B23E4702C74BE1D0A /* MeetingBriefWindowController.swift in Sources */,
 				C422AB2FB995AE53CDDD7066 /* MeetingContextStore.swift in Sources */,
+				59451E9E8273F37F95C04FF1 /* MeetingControlCoordinator.swift in Sources */,
 				F59AC67EA857D0C8AB30E14A /* MeetingSentinelMonitor.swift in Sources */,
 				C4A19E69783DCFE4951BDAC2 /* MenuCoordinator.swift in Sources */,
 				5CADD8F4EC8D5F2A65CA6C8A /* ModeStore.swift in Sources */,

@@ -101,10 +101,39 @@ enum CommandBuilder {
 
     @MainActor
     private static func sessionCommands(
-        windows _: WindowCoordinator,
+        windows: WindowCoordinator,
         session: SessionCoordinator
     ) -> [RTICommand] {
-        [
+        let control = MeetingControlCoordinator.shared
+        return [
+            RTICommand(
+                id: "meeting.project",
+                title: "Choose Meeting Project",
+                keywords: ["project", "client", "route", "context", "meeting"],
+                perform: {
+                    windows.showOverlay()
+                    NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.setup.rawValue)
+                },
+                menuTitleProvider: {
+                    control.selectedProjectName.map { "Project: \($0)" } ?? "Choose Project…"
+                }
+            ),
+            RTICommand(
+                id: "sentinel.record",
+                title: "Record Meeting with Sentinel",
+                subtitle: "⌘⇧R",
+                keywords: ["record", "sentinel", "meeting", "transcribe", "stop", "process"],
+                isAvailable: { !control.isBusy },
+                perform: { control.toggleRecording() },
+                menuSection: .session,
+                menuTitleProvider: {
+                    control.isRecording
+                        ? "Stop Recording & Process  ⌘⇧R"
+                        : "Record Meeting  ⌘⇧R"
+                },
+                hotkeyKeyCode: UInt32(kVK_ANSI_R),
+                hotkeyModifiers: UInt32(cmdKey | shiftKey)
+            ),
             RTICommand(
                 id: "mic.mute.toggle",
                 title: "Mute / Unmute My Mic",
@@ -115,32 +144,33 @@ enum CommandBuilder {
             ),
             RTICommand(
                 id: "session.start",
-                title: "Start Recording",
-                subtitle: "⌘⇧R",
-                keywords: ["record", "begin", "transcribe", "finish", "stop", "new"],
-                perform: { session.toggleSession() },
+                title: "Go Live with RTI",
+                keywords: ["live", "intelligence", "assist", "transcript", "rti"],
+                isAvailable: { control.isRecording || session.isRunning },
+                perform: { control.toggleLiveIntelligence() },
                 menuSection: .session,
                 menuTitleProvider: {
-                    switch session.phase {
-                    case .recording, .paused: "Finish Recording  ⌘⇧R"
-                    case .summarizing, .done: "New Recording  ⌘⇧R"
-                    case .finishing: "Saving…"
-                    case .idle: "Start Recording  ⌘⇧R"
-                    }
-                },
-                hotkeyKeyCode: UInt32(kVK_ANSI_R),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
+                    session.isRunning ? "Stop RTI Live" : "Go Live with RTI"
+                }
+            ),
+            RTICommand(
+                id: "meeting.import",
+                title: "Import Audio…",
+                keywords: ["import", "audio", "file", "transcribe", "sentinel"],
+                isAvailable: { !control.isBusy && !control.isRecording },
+                perform: { control.importAudio() },
+                menuSection: .session
             ),
             RTICommand(
                 id: "session.pause",
-                title: "Pause / Resume Recording",
+                title: "Pause / Resume RTI Live",
                 subtitle: "⌘⇧P",
                 keywords: ["pause", "resume", "hold", "suspend"],
                 isAvailable: { session.phase == .recording || session.phase == .paused },
                 perform: { session.togglePause() },
                 menuSection: .session,
                 menuTitleProvider: {
-                    session.isPaused ? "Resume Recording  ⌘⇧P" : "Pause Recording  ⌘⇧P"
+                    session.isPaused ? "Resume RTI Live  ⌘⇧P" : "Pause RTI Live  ⌘⇧P"
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_P),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)

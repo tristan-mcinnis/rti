@@ -27,8 +27,11 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         menu.delegate = self
 
         addCommand("overlay.toggle", to: menu)
+        addCommand("meeting.project", to: menu)
+        addCommand("sentinel.record", to: menu)
         addCommand("session.start", to: menu)
         addCommand("session.pause", to: menu)
+        addCommand("meeting.import", to: menu)
 
         menu.addItem(NSMenuItem.separator())
         addCommand("settings.open", to: menu)

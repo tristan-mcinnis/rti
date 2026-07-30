@@ -1,6 +1,16 @@
 import Foundation
 
 enum SentinelPaths {
+    static func executableURL(fileManager: FileManager = .default) -> URL? {
+        let home = fileManager.homeDirectoryForCurrentUser
+        let candidates = [
+            home.appendingPathComponent(".local/bin/meet"),
+            URL(fileURLWithPath: "/opt/homebrew/bin/meet"),
+            URL(fileURLWithPath: "/usr/local/bin/meet"),
+        ]
+        return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
+    }
+
     static func homeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         if let override = environment["MEETING_SENTINEL_HOME"], !override.isEmpty {
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)

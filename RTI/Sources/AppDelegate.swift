@@ -91,7 +91,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CommandRegistry.shared.replaceAll(commands)
 
         // Menu: dynamic state providers for items whose titles change.
-        menu.isRunningProvider = { SessionCoordinator.shared.isRunning }
+        menu.isRunningProvider = {
+            SessionCoordinator.shared.isRunning
+                || MeetingSentinelMonitor.shared.liveMeeting != nil
+        }
         menu.install(commands: commands)
 
         hotkeys.registerAll(commands: commands)
@@ -101,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                     withObservationTracking {
                         _ = SessionCoordinator.shared.isRunning
+                        _ = MeetingSentinelMonitor.shared.liveMeeting
                     } onChange: {
                         continuation.resume()
                     }
