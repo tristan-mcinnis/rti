@@ -60,15 +60,13 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         button?.contentTintColor = running ? .systemRed : nil
     }
 
-    /// Generated mirrored conversation waves, used as a template image so
-    /// macOS supplies the correct light/dark menubar colour. A red tint is the
-    /// single recording state signal; the mark itself never changes shape.
+    /// A compact filled circle keeps the menu bar state legible at a glance:
+    /// neutral when idle, red while either Sentinel or RTI is recording.
     private static func statusImage() -> NSImage? {
-        let source = NSImage(named: NSImage.Name("MenuBarMark"))
-            ?? NSImage(systemSymbolName: "waveform", accessibilityDescription: "RTI")
+        let source = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "RTI")
         guard let image = source?.copy() as? NSImage else { return nil }
         image.isTemplate = true
-        image.size = NSSize(width: 18, height: 14)
+        image.size = NSSize(width: 12, height: 12)
         return image
     }
 

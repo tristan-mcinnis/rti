@@ -128,7 +128,7 @@ enum CommandBuilder {
                 menuSection: .session,
                 menuTitleProvider: {
                     control.isRecording
-                        ? "Stop Recording & Process  ⌘⇧R"
+                        ? "Stop Meeting Recording  ⌘⇧R"
                         : "Record Meeting  ⌘⇧R"
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_R),
