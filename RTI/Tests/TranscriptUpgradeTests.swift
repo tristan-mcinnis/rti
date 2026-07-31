@@ -42,6 +42,20 @@ final class TranscriptUpgradeTests: XCTestCase {
         XCTAssertTrue(updated.contains("_Footer stays put._"))
     }
 
+    func testSessionTranscriptReviewParsesSentinelRawTurns() {
+        let transcript = """
+        [00:00] Speaker 1: 开始讨论。
+
+        [01:47] Speaker 2: Follow-up.
+        """
+
+        let turns = SessionTranscriptReview.turns(from: transcript)
+
+        XCTAssertEqual(turns.map(\.timestamp), ["00:00", "01:47"])
+        XCTAssertEqual(turns.map(\.speaker), ["Speaker 1", "Speaker 2"])
+        XCTAssertEqual(turns.map(\.text), ["开始讨论。", "Follow-up."])
+    }
+
     func testCanonicalMeetingTranscriptRendersLiveEntriesLikeSentinelRawTranscript() {
         let entries = [
             LiveEntry(speakerId: "self", text: "Opening note.", startMs: 1_000, confidence: 0.9, translationStatus: "original", language: "en", sourceLanguage: nil),

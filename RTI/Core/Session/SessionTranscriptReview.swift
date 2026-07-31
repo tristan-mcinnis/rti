@@ -66,12 +66,17 @@ public enum SessionTranscriptReview {
     }
 
     private static func turn(from line: String) -> SessionTranscriptTurn? {
-        let pattern = #"^`([^`]+)` \*\*(.+?):\*\*\s*(.*)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
-              let timestampRange = Range(match.range(at: 1), in: line),
-              let speakerRange = Range(match.range(at: 2), in: line),
-              let textRange = Range(match.range(at: 3), in: line)
+        let patterns = [
+            #"^`([^`]+)` \*\*(.+?):\*\*\s*(.*)$"#,
+            #"^\[([^\]]+)\]\s+([^:]+):\s*(.*)$"#,
+        ]
+        guard let match = patterns.lazy.compactMap({ pattern -> NSTextCheckingResult? in
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+            return regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line))
+        }).first,
+        let timestampRange = Range(match.range(at: 1), in: line),
+        let speakerRange = Range(match.range(at: 2), in: line),
+        let textRange = Range(match.range(at: 3), in: line)
         else { return nil }
 
         let speaker = String(line[speakerRange])
