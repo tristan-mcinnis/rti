@@ -62,6 +62,31 @@ final class SentinelPathsTests: XCTestCase {
         XCTAssertEqual(url.path, "/vault/databases/meetings/transcripts-raw/client-sync-rti.md")
     }
 
+    func testCompletedSessionsIncludesOnlyTranscribedSidecarsWithExistingTranscript() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let recordings = root.appendingPathComponent("databases/meetings/recordings", isDirectory: true)
+        let transcripts = root.appendingPathComponent("databases/meetings/transcripts-raw", isDirectory: true)
+        try FileManager.default.createDirectory(at: recordings, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: transcripts, withIntermediateDirectories: true)
+        let transcript = transcripts.appendingPathComponent("client-sync-transcript.txt")
+        try "hello".write(to: transcript, atomically: true, encoding: .utf8)
+        let completed = recordings.appendingPathComponent("client-sync.meeting.json")
+        try """
+        {"name":"Client sync","started_at":"2026-07-31T11:40:53.562270","status":"transcribed","transcript_file":"\(transcript.path)"}
+        """.write(to: completed, atomically: true, encoding: .utf8)
+        try """
+        {"name":"Still processing","started_at":"2026-07-31T12:00:00.000000","status":"processing"}
+        """.write(to: recordings.appendingPathComponent("processing.meeting.json"), atomically: true, encoding: .utf8)
+
+        let sessions = SentinelPaths.completedSessions(configURL: writeConfig(recordings.path))
+
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.name, "Client sync")
+        XCTAssertEqual(sessions.first?.transcriptURL, transcript)
+        XCTAssertNotNil(sessions.first?.startedAt)
+    }
+
     func testVaultRootWalksUpToMarker() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

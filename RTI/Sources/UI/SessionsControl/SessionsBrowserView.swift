@@ -216,13 +216,17 @@ struct SessionsBrowserView: View {
                 Spacer(minLength: 12)
 
                 Menu {
-                    Button("Edit title…") { beginTitleEdit(for: session) }
-                    Button("Name speakers…") { showingSpeakerEditor = true }
-                    Divider()
+                    if session.isRTIArchive {
+                        Button("Edit title…") { beginTitleEdit(for: session) }
+                        Button("Name speakers…") { showingSpeakerEditor = true }
+                        Divider()
+                    }
                     Button("Save as Markdown…") { exportMarkdown() }
                     Button("Save as PDF…") { exportPDF() }
                     Divider()
-                    Button("Reveal in Finder") { NSWorkspace.shared.open(session.url) }
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([session.url])
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .frame(width: 26, height: 26)
@@ -308,35 +312,37 @@ struct SessionsBrowserView: View {
                 }
 
                 if selectedFile?.name == "transcript" {
-                    Button(editingTranscript ? "Cancel" : "Edit transcript") {
-                        if editingTranscript {
-                            editingTranscript = false
-                        } else {
-                            loadTranscriptTurns()
-                            editingTranscript = true
+                    if session.isRTIArchive {
+                        Button(editingTranscript ? "Cancel" : "Edit transcript") {
+                            if editingTranscript {
+                                editingTranscript = false
+                            } else {
+                                loadTranscriptTurns()
+                                editingTranscript = true
+                            }
                         }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(fileText.isEmpty)
-                    .help("Correct transcript turns and reassign speakers")
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(fileText.isEmpty)
+                        .help("Correct transcript turns and reassign speakers")
 
-                    if editingTranscript {
-                        Button("Save", action: saveTranscript)
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .disabled(transcriptTurns.isEmpty)
-                    }
+                        if editingTranscript {
+                            Button("Save", action: saveTranscript)
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(transcriptTurns.isEmpty)
+                        }
 
-                    Button {
-                        promptTranscriptUpgrade(for: session)
-                    } label: {
-                        Label(upgradingSessionID == session.id ? "Upgrading" : "Upgrade", systemImage: "waveform.badge.magnifyingglass")
+                        Button {
+                            promptTranscriptUpgrade(for: session)
+                        } label: {
+                            Label(upgradingSessionID == session.id ? "Upgrading" : "Upgrade", systemImage: "waveform.badge.magnifyingglass")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(upgradingSessionID != nil || !canUpgrade(session))
+                        .help(canUpgrade(session) ? "Run the configured async transcript provider over this session's retained audio." : "No retained session audio was found.")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(upgradingSessionID != nil || !canUpgrade(session))
-                    .help(canUpgrade(session) ? "Run the configured async transcript provider over this session's retained audio." : "No retained session audio was found.")
                 }
 
                 Button {
@@ -419,6 +425,7 @@ struct SessionsBrowserView: View {
     }
 
     private func sessionMetadata(for session: SessionArchive.ArchivedSession) -> SessionArchiveMetadata? {
+        guard session.isRTIArchive else { return nil }
         let url = session.url.appendingPathComponent("session.json")
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data)
@@ -562,6 +569,11 @@ struct SessionsBrowserView: View {
 
     private func loadFiles() {
         guard let selected else { files = []; selectedFile = nil; return }
+        guard selected.isRTIArchive else {
+            files = [SessionFile(url: selected.transcriptURL, name: "transcript")]
+            selectedFile = files.first
+            return
+        }
         let present = (try? FileManager.default.contentsOfDirectory(at: selected.url, includingPropertiesForKeys: nil)) ?? []
         let byName = Dictionary(uniqueKeysWithValues: present.map { ($0.lastPathComponent, $0) })
         files = Self.fileOrder.compactMap { name in
@@ -571,11 +583,11 @@ struct SessionsBrowserView: View {
     }
 
     private func canUpgrade(_ session: SessionArchive.ArchivedSession) -> Bool {
-        !TranscriptUpgradeService.audioInputs(in: session.url).isEmpty
+        session.isRTIArchive && !TranscriptUpgradeService.audioInputs(in: session.url).isEmpty
     }
 
     private func hasTranscript(_ session: SessionArchive.ArchivedSession) -> Bool {
-        FileManager.default.fileExists(atPath: session.url.appendingPathComponent("transcript.md").path)
+        FileManager.default.fileExists(atPath: session.transcriptURL.path)
     }
 
     /// This session's `transcript.md` as a path relative to `databases/`, the
@@ -583,7 +595,9 @@ struct SessionsBrowserView: View {
     /// missing or the vault can't be located.
     private func vaultRelativePath(for session: SessionArchive.ArchivedSession, file: String) -> String? {
         guard let dbs = VaultWorkstreamStore.databasesDir() else { return nil }
-        let fileURL = session.url.appendingPathComponent(file)
+        let fileURL = file == "transcript.md"
+            ? session.transcriptURL
+            : session.url.appendingPathComponent(file)
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
         let base = dbs.standardizedFileURL.path
         let path = fileURL.standardizedFileURL.path
@@ -739,6 +753,11 @@ struct SessionsBrowserView: View {
             speakerNames = [:]
             return
         }
+        guard selected.isRTIArchive else {
+            speakerNames = [:]
+            loadText()
+            return
+        }
         let url = selected.url.appendingPathComponent("speaker-names.json")
         guard let data = try? Data(contentsOf: url),
               let names = try? JSONDecoder().decode([String: String].self, from: data)
@@ -761,7 +780,7 @@ struct SessionsBrowserView: View {
 
     private var speakerLabels: [String] {
         guard let selected else { return [] }
-        let transcript = selected.url.appendingPathComponent("transcript.md")
+        let transcript = selected.transcriptURL
         let text = (try? String(contentsOf: transcript, encoding: .utf8)) ?? ""
         let pattern = #"Speaker [0-9]+"#
         let range = NSRange(text.startIndex..., in: text)
@@ -779,7 +798,7 @@ struct SessionsBrowserView: View {
     }
 
     private func saveTitle() {
-        guard let selected else { return }
+        guard let selected, selected.isRTIArchive else { return }
         let title = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         let url = selected.url.appendingPathComponent("title.txt")
         if title.isEmpty {
@@ -813,7 +832,8 @@ struct SessionsBrowserView: View {
     }
 
     private func regenerateSummary(for session: SessionArchive.ArchivedSession) {
-        let transcriptURL = session.url.appendingPathComponent("transcript.md")
+        guard session.isRTIArchive else { return }
+        let transcriptURL = session.transcriptURL
         guard var transcript = try? String(contentsOf: transcriptURL, encoding: .utf8) else { return }
         if transcript.hasPrefix("---"), let end = transcript.range(of: "\n---\n") {
             transcript = String(transcript[end.upperBound...])

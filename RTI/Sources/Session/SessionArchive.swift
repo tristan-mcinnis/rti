@@ -956,6 +956,10 @@ extension SessionArchive {
         }
 
         let url: URL
+        /// Sentinel-only sessions point directly at Sentinel's definitive
+        /// transcript. RTI archives point at their per-session directory.
+        let transcriptURL: URL
+        let isRTIArchive: Bool
         /// Parsed from the `yyyy-MM-dd HHmmss` folder name. Nil if the folder
         /// isn't a recognised stamp (falls back to a flat list under "Earlier").
         let date: Date?
@@ -983,21 +987,56 @@ extension SessionArchive {
     /// prefixed, so reverse lexicographic = newest-first). Backs a convenience
     /// launcher only — returns folders to reveal in Finder, not content to read.
     static func recentSessions(limit: Int = 10) -> [ArchivedSession] {
-        guard let base = sessionsBaseDirectory(),
-              let urls = try? FileManager.default.contentsOfDirectory(
+        let rtiSessions: [ArchivedSession]
+        if let base = sessionsBaseDirectory(),
+           let urls = try? FileManager.default.contentsOfDirectory(
                   at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
-              )
-        else { return [] }
-        return urls
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+           ) {
+            rtiSessions = urls
+                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+                .map { ArchivedSession(
+                    url: $0,
+                    transcriptURL: $0.appendingPathComponent("transcript.md"),
+                    isRTIArchive: true,
+                    date: folderStamp.date(from: $0.lastPathComponent),
+                    title: titleFile(at: $0),
+                    displayName: prettyName($0.lastPathComponent)
+                ) }
+        } else {
+            rtiSessions = []
+        }
+
+        return (rtiSessions + sentinelSessions())
+            .sorted {
+                ($0.date ?? .distantPast) > ($1.date ?? .distantPast)
+            }
             .prefix(limit)
-            .map { ArchivedSession(
-                url: $0,
-                date: folderStamp.date(from: $0.lastPathComponent),
-                title: titleFile(at: $0),
-                displayName: prettyName($0.lastPathComponent)
-            ) }
+            .map { $0 }
+    }
+
+    /// Completed Sentinel recordings are meetings too, even when RTI live
+    /// intelligence was never enabled. Read their sidecars rather than
+    /// guessing from loose files, and keep the transcript at its Sentinel-owned
+    /// location instead of copying it into RTI's archive.
+    static func sentinelSessions(
+        configURL: URL = SentinelPaths.configURL(),
+        fileManager: FileManager = .default
+    ) -> [ArchivedSession] {
+        SentinelPaths.completedSessions(configURL: configURL, fileManager: fileManager).map { record in
+            let title = genericSentinelName(record.name) ? "Recorded meeting" : record.name
+            return ArchivedSession(
+                url: record.transcriptURL,
+                transcriptURL: record.transcriptURL,
+                isRTIArchive: false,
+                date: record.startedAt,
+                title: title,
+                displayName: record.startedAt.map { sessionListStamp.string(from: $0) } ?? record.name
+            )
+        }
+    }
+
+    private static func genericSentinelName(_ name: String) -> Bool {
+        name.range(of: #"^meeting-\d{8}-\d{4}$"#, options: .regularExpression) != nil
     }
 
     /// Read the one-line title written by `writeAutoSummary` (best-effort:

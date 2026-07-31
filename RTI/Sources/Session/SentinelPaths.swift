@@ -1,5 +1,11 @@
 import Foundation
 
+struct SentinelCompletedSession: Equatable {
+    let name: String
+    let startedAt: Date?
+    let transcriptURL: URL
+}
+
 enum SentinelPaths {
     static func executableURL(fileManager: FileManager = .default) -> URL? {
         let home = fileManager.homeDirectoryForCurrentUser
@@ -103,6 +109,38 @@ enum SentinelPaths {
             .appendingPathComponent("meetings/briefs", isDirectory: true)
     }
 
+    /// Discover completed keeper-of-record sessions from Sentinel's sidecars.
+    /// Sidecars are authoritative; loose transcript files may be partial,
+    /// imported from an older install, or already represented by an RTI archive.
+    static func completedSessions(
+        configURL: URL = configURL(),
+        fileManager: FileManager = .default
+    ) -> [SentinelCompletedSession] {
+        guard let recordings = recordingsDirectory(configURL: configURL),
+              let sidecars = try? fileManager.contentsOfDirectory(
+                  at: recordings,
+                  includingPropertiesForKeys: nil,
+                  options: [.skipsHiddenFiles]
+              )
+        else { return [] }
+
+        return sidecars.compactMap { sidecar in
+            guard sidecar.lastPathComponent.hasSuffix(".meeting.json"),
+                  let data = try? Data(contentsOf: sidecar),
+                  let record = try? JSONDecoder().decode(CompletedSessionRecord.self, from: data),
+                  record.status == "transcribed",
+                  let transcriptPath = record.transcriptFile
+            else { return nil }
+            let transcript = URL(fileURLWithPath: (transcriptPath as NSString).expandingTildeInPath)
+            guard fileManager.fileExists(atPath: transcript.path) else { return nil }
+            return SentinelCompletedSession(
+                name: record.name,
+                startedAt: parseTimestamp(record.startedAt),
+                transcriptURL: transcript
+            )
+        }
+    }
+
     static func linkedMeetingNotesURL(audioFilePath: String, meetingName: String) -> URL {
         let recordingsDir = URL(fileURLWithPath: audioFilePath).deletingLastPathComponent()
         return recordingsDir.deletingLastPathComponent()
@@ -148,5 +186,25 @@ enum SentinelPaths {
     private static func isCompleteDatabasesDirectory(_ directory: URL, fileManager: FileManager) -> Bool {
         fileManager.fileExists(atPath: directory.appendingPathComponent("projects", isDirectory: true).path)
             && fileManager.fileExists(atPath: directory.appendingPathComponent("meetings/recordings", isDirectory: true).path)
+    }
+
+    private struct CompletedSessionRecord: Decodable {
+        let name: String
+        let startedAt: String
+        let status: String
+        let transcriptFile: String?
+
+        enum CodingKeys: String, CodingKey {
+            case name, status
+            case startedAt = "started_at"
+            case transcriptFile = "transcript_file"
+        }
+    }
+
+    private static func parseTimestamp(_ raw: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+        return formatter.date(from: raw)
     }
 }
