@@ -32,6 +32,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         addCommand("session.start", to: menu)
         addCommand("session.pause", to: menu)
         addCommand("meeting.import", to: menu)
+        addCommand("view.sessions", to: menu)
 
         menu.addItem(NSMenuItem.separator())
         addCommand("settings.open", to: menu)
