@@ -19,6 +19,18 @@ final class SentinelCommandBuilderTests: XCTestCase {
         )
     }
 
+    func testStopCarriesMidRecordingProjectPick() {
+        XCTAssertEqual(
+            SentinelCommandBuilder.stop(project: "acme-redesign"),
+            ["stop", "--project", "acme-redesign"]
+        )
+    }
+
+    func testStopOmitsMissingOrBlankProject() {
+        XCTAssertEqual(SentinelCommandBuilder.stop(), ["stop"])
+        XCTAssertEqual(SentinelCommandBuilder.stop(project: "  "), ["stop"])
+    }
+
     func testImportPreservesLiteralFilePathAsOneArgument() {
         XCTAssertEqual(
             SentinelCommandBuilder.transcribe(

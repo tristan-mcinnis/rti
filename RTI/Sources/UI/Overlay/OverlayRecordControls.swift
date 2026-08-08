@@ -96,6 +96,104 @@ struct OverlayVisualContextButton: View {
     }
 }
 
+// MARK: - Project routing picker
+
+/// Compact project dropdown beside the record button, so a recording is routed
+/// to its vault project at the moment of capture instead of orphaned in the
+/// generic meetings pool. The selection flows through the existing pipe:
+/// MeetingContextStore → SentinelCommandBuilder start/stop --project →
+/// `<stem>.meeting.json` → the /meeting skill. Picking mid-recording works;
+/// the slug is passed again at stop.
+struct OverlayProjectPicker: View {
+    private let context = MeetingContextStore.shared
+    private let control = MeetingControlCoordinator.shared
+    @State private var hovering = false
+
+    private var selectedName: String? {
+        context.workstreamItem?.isProject == true ? context.workstreamName : nil
+    }
+
+    /// Recording with no project selected is the failure mode this control
+    /// exists to prevent — surface it.
+    private var unrouted: Bool { control.isRecording && selectedName == nil }
+
+    var body: some View {
+        let projects = VaultWorkstreamStore.projects()
+        Menu {
+            if projects.isEmpty {
+                Text("No projects found in the vault")
+            }
+            ForEach(projects) { item in
+                Button {
+                    context.selectWorkstream(item)
+                } label: {
+                    if item.id == context.workstreamItem?.id {
+                        Label(item.name, systemImage: "checkmark")
+                    } else {
+                        Text(item.name)
+                    }
+                }
+            }
+            if selectedName != nil {
+                Divider()
+                Button("No project") { context.clearWorkstream() }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: selectedName == nil ? "folder.badge.questionmark" : "folder.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                if let name = selectedName {
+                    Text(name)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 96, alignment: .leading)
+                }
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, selectedName == nil ? 0 : 7)
+            .frame(minWidth: 30)
+            .frame(height: 28)
+            .background(Capsule(style: .continuous).fill(background))
+            .overlay(Capsule(style: .continuous).stroke(border, lineWidth: 1))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .hoverHighlight($hovering)
+        .accessibilityLabel("Meeting project")
+        .accessibilityValue(selectedName ?? "No project selected")
+        .help(helpText)
+    }
+
+    private var tint: Color {
+        if unrouted { return .orange }
+        return selectedName == nil ? Color.overlayInk.opacity(0.52) : Color.blue.opacity(0.9)
+    }
+
+    private var background: Color {
+        if unrouted { return Color.orange.opacity(0.12) }
+        if selectedName != nil { return Color.blue.opacity(0.10) }
+        return Color.overlayInk.opacity(hovering ? 0.08 : 0.045)
+    }
+
+    private var border: Color {
+        if unrouted { return Color.orange.opacity(0.45) }
+        if selectedName != nil { return Color.blue.opacity(0.30) }
+        return Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
+    }
+
+    private var helpText: String {
+        if let name = selectedName {
+            return "This recording files to \(name) — click to change"
+        }
+        return unrouted
+            ? "Recording has NO project — pick one so it files itself"
+            : "Pick the project this meeting belongs to"
+    }
+}
+
 // MARK: - Record control
 
 /// Sentinel is the default meeting path. RTI live intelligence is an explicit

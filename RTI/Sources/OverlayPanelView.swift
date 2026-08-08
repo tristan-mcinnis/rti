@@ -48,6 +48,7 @@ struct OverlayPanelView: View {
                         .padding(.horizontal, 2)
                     OverlayMicControl()
                     OverlayVisualContextButton()
+                    OverlayProjectPicker()
                     OverlayRecordButton()
                     OverlaySessionAuxButton()
                 }

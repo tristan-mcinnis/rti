@@ -38,3 +38,4 @@ Scripts/license-private.key
 # Python bytecode
 __pycache__/
 *.pyc
+build-test/

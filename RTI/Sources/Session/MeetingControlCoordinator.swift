@@ -58,8 +58,10 @@ final class MeetingControlCoordinator {
         if SessionCoordinator.shared.isRunning {
             SessionCoordinator.shared.stopSession()
         }
+        // Pass the project again at stop: a mid-recording pick would otherwise
+        // be lost, since start already wrote the manifest (or wrote no project).
         run(
-            SentinelCommandBuilder.stop(),
+            SentinelCommandBuilder.stop(project: currentDescriptor().projectSlug),
             progress: "Stopping and sending for transcription…"
         ) { [weak self] result in
             self?.finish(result, success: "Recording stopped. Transcription is running.")

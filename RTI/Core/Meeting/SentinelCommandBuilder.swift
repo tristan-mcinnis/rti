@@ -9,8 +9,12 @@ public enum SentinelCommandBuilder {
         return arguments
     }
 
-    public static func stop() -> [String] {
-        ["stop"]
+    public static func stop(project: String? = nil) -> [String] {
+        var arguments = ["stop"]
+        if let project = nonempty(project) {
+            arguments += ["--project", project]
+        }
+        return arguments
     }
 
     public static func transcribe(file: String, project: String?) -> [String] {
