@@ -19,7 +19,7 @@ struct OverlayPanelView: View {
     @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
     // RTI opens at the beginning of the user's journey: preparing this
     // meeting. Starting the recording moves the user into the live workspace.
-    @State private var tab: OverlayTab = .setup
+    @State private var tab: OverlayTab = .assist
 
     // Prepare is the pre-call surface, not a live tab — it's pulled out of the
     // equal-weight row into a leading icon button (OverlaySetupButton) so the

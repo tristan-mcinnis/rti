@@ -104,7 +104,6 @@ enum CommandBuilder {
         windows: WindowCoordinator,
         session: SessionCoordinator
     ) -> [RTICommand] {
-        let control = MeetingControlCoordinator.shared
         return [
             RTICommand(
                 id: "meeting.project",
@@ -115,21 +114,19 @@ enum CommandBuilder {
                     NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.setup.rawValue)
                 },
                 menuTitleProvider: {
-                    control.selectedProjectName.map { "Project: \($0)" } ?? "Choose Project…"
+                    MeetingContextStore.shared.workstreamName.map { "Context: \($0)" } ?? "Add Context…"
                 }
             ),
             RTICommand(
-                id: "sentinel.record",
-                title: "Record Meeting with Sentinel",
+                id: "session.start",
+                title: "Start Recording",
                 subtitle: "⌘⇧R",
-                keywords: ["record", "sentinel", "meeting", "transcribe", "stop", "process"],
-                isAvailable: { !control.isBusy },
-                perform: { control.toggleRecording() },
+                keywords: ["record", "meeting", "transcribe", "stop", "finish"],
+                isAvailable: { session.phase != .finishing },
+                perform: { session.toggleSession() },
                 menuSection: .session,
                 menuTitleProvider: {
-                    control.isRecording
-                        ? "Stop Meeting Recording  ⌘⇧R"
-                        : "Record Meeting  ⌘⇧R"
+                    session.isRunning ? "Finish Recording  ⌘⇧R" : "Start Recording  ⌘⇧R"
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_R),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)
@@ -143,34 +140,15 @@ enum CommandBuilder {
                 menuStateProvider: { session.micMuted }
             ),
             RTICommand(
-                id: "session.start",
-                title: "Go Live with RTI",
-                keywords: ["live", "intelligence", "assist", "transcript", "rti"],
-                isAvailable: { control.isRecording || session.isRunning },
-                perform: { control.toggleLiveIntelligence() },
-                menuSection: .session,
-                menuTitleProvider: {
-                    session.isRunning ? "Stop RTI Live" : "Go Live with RTI"
-                }
-            ),
-            RTICommand(
-                id: "meeting.import",
-                title: "Import Audio…",
-                keywords: ["import", "audio", "file", "transcribe", "sentinel"],
-                isAvailable: { !control.isBusy && !control.isRecording },
-                perform: { control.importAudio() },
-                menuSection: .session
-            ),
-            RTICommand(
                 id: "session.pause",
-                title: "Pause / Resume RTI Live",
+                title: "Pause / Resume Recording",
                 subtitle: "⌘⇧P",
                 keywords: ["pause", "resume", "hold", "suspend"],
                 isAvailable: { session.phase == .recording || session.phase == .paused },
                 perform: { session.togglePause() },
                 menuSection: .session,
                 menuTitleProvider: {
-                    session.isPaused ? "Resume RTI Live  ⌘⇧P" : "Pause RTI Live  ⌘⇧P"
+                    session.isPaused ? "Resume Recording  ⌘⇧P" : "Pause Recording  ⌘⇧P"
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_P),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey)

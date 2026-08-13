@@ -52,17 +52,17 @@ final class AudioPipeline {
     /// leg starts so its timestamps can be aligned to the mic timeline.
     private var captureStartWall: Date?
     private let wav = WAVWriter()
+    private let recorder = MeetingRecorder()
     /// The active speech-to-text client (Soniox / AssemblyAI / future), built by
     /// STTProviders from the user's Settings choice. `soniox` is a historical
     /// name; it is whichever provider is active.
     private var soniox: STTClient?
     private var systemSoniox: STTClient?
 
-    /// RTI intentionally discards meeting audio. These compatibility accessors
-    /// keep the text-archive call sites explicit about that invariant while
-    /// older archives remain readable.
-    var micRecordingURL: URL? { nil }
-    var systemRecordingURL: URL? { nil }
+    /// The two retained capture legs. SessionArchive moves them out of temp at
+    /// stop so the automatic second-pass transcript can diarize and align them.
+    var micRecordingURL: URL? { recorder.micURL }
+    var systemRecordingURL: URL? { recorder.systemURL }
 
     /// Live capture levels for the Audio I/O monitor. Written from the PCM
     /// callbacks; read on main by the monitor. `systemAudioActive` reflects
@@ -114,7 +114,7 @@ final class AudioPipeline {
     /// to bias recognition of names/brands/orgs. Set before `prepare`.
     var contextTerms: [String] = []
 
-    func prepare(sessionId: String) throws -> URL {
+    func prepare(sessionId: String, recordingDirectory: URL) throws -> URL {
         // Fast-fail before opening a WAV on disk: a missing/empty Soniox
         // key would otherwise let the user "record" silently for 5 retries
         // before any error surfaces, leaving an orphan WAV behind.
@@ -124,6 +124,10 @@ final class AudioPipeline {
 
         let wavURL = WAVWriter.defaultURL(for: sessionId)
         try wav.open(at: wavURL)
+        try recorder.open(in: recordingDirectory)
+        recorder.onWriteFailure = { [weak self] message in
+            Task { @MainActor [weak self] in self?.onError?(message, false) }
+        }
 
         let client = STTProviders.makeActiveClient(
             translationConfig: translationConfig,
@@ -145,11 +149,14 @@ final class AudioPipeline {
             let byteCount = frameLength * MemoryLayout<Int16>.size
             if suspended {
                 // Paused: don't keep the audio (no WAV append) and don't
-                // transcribe it — just feed silence so Soniox doesn't idle-out.
+                // transcribe it. Preserve matching silence in the durable leg
+                // so offline timestamps stay aligned with notes after resume.
+                recorder.appendMicSilence(matching: buffer)
                 soniox?.sendAudio(Data(count: byteCount))
                 return
             }
             wav.append(buffer)
+            recorder.appendMic(buffer)
             let data = Data(bytes: int16[0], count: byteCount)
             soniox?.sendAudio(data)
         }
@@ -205,9 +212,11 @@ final class AudioPipeline {
                 let frameLength = Int(buffer.frameLength)
                 let byteCount = frameLength * MemoryLayout<Int16>.size
                 if suspended {
+                    recorder.appendSystemSilence(matching: buffer)
                     systemSoniox?.sendAudio(Data(count: byteCount))
                     return
                 }
+                recorder.appendSystem(buffer)
                 let data = Data(bytes: int16[0], count: byteCount)
                 systemSoniox?.sendAudio(data)
             }
@@ -443,6 +452,7 @@ final class AudioPipeline {
         systemSoniox?.disconnect()
         systemSoniox = nil
         wav.close()
+        recorder.close()
     }
 
     /// Swap the live transcription clients to apply a new provider and/or
@@ -501,16 +511,20 @@ final class AudioPipeline {
         systemSoniox?.disconnect()
         systemSoniox = nil
         wav.close()
+        recorder.close()
     }
 }
 
 enum AudioPipelineError: LocalizedError {
     case missingSTTKey
+    case recordingArchiveUnavailable
 
     var errorDescription: String? {
         switch self {
         case .missingSTTKey:
             "No speech-to-text API key set for the selected provider. Open Settings to paste a key, then start the session again."
+        case .recordingArchiveUnavailable:
+            "RTI couldn't create a durable meeting folder. Recording was not started."
         }
     }
 }

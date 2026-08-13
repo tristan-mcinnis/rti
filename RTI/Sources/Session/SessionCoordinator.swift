@@ -57,6 +57,8 @@ final class SessionCoordinator {
     /// can offer "Summary ready" (open it) vs. a quiet failure.
     private(set) var summaryURL: URL?
     private(set) var summaryFailed = false
+    /// Short status shown by the recording HUD while the offline pass runs.
+    private(set) var postProcessingStatus: String?
     private(set) var liveEntries: [LiveEntry] = []
     /// When the session was started to overlay a meeting that the external
     /// Meeting Sentinel tool is recording, the linked meeting. Lets Step 3
@@ -371,12 +373,23 @@ final class SessionCoordinator {
         audioPipeline.suspended = false
         summaryURL = nil
         summaryFailed = false
+        postProcessingStatus = nil
 
         // Don't let "passive listener" framing bleed across sessions: a fieldwork
         // session leaves listenerMode on, which then mis-frames the next meeting
         // ("I never speak") where the user is actually a participant. Reconcile
         // to the active mode at every start.
         LLMController.shared.reconcileListenerModeForSessionStart()
+
+        // Use a conservative current-calendar suggestion as optional context.
+        // A manual choice made in Meeting options always wins.
+        let calendar = CalendarMeetingStore.shared
+        calendar.refresh(at: now)
+        if MeetingContextStore.shared.calendarMeeting == nil,
+           let suggestion = calendar.suggestion {
+            MeetingContextStore.shared.selectCalendarMeeting(suggestion)
+            MeetingContextStore.shared.autoLink(toMeetingNamed: suggestion.title)
+        }
 
         // Auto-attach a same-day prep brief for this meeting (if one matches),
         // so Meeting-mode Assist works against "what we said we needed from this
@@ -410,7 +423,12 @@ final class SessionCoordinator {
         BluetoothMicGuard.shared.engage()
 
         do {
-            _ = try audioPipeline.prepare(sessionId: sessionId)
+            guard let recordingDirectory = SessionArchive.sessionDirectory(startedAt: now) else {
+                throw AudioPipelineError.recordingArchiveUnavailable
+            }
+            _ = try audioPipeline.prepare(sessionId: sessionId, recordingDirectory: recordingDirectory)
+            SessionArchive.seedTranscriptForAutomaticUpgrade(in: recordingDirectory, startedAt: now)
+            SessionArchive.markAutomaticUpgradePending(in: recordingDirectory)
         } catch {
             lastError = "Couldn't create audio file: \(error)"
             audioPipeline.abort()
@@ -423,6 +441,9 @@ final class SessionCoordinator {
         } catch {
             lastError = "Audio start failed: \(error)"
             audioPipeline.abort()
+            if let directory = SessionArchive.sessionDirectory(startedAt: now) {
+                SessionArchive.clearAutomaticUpgradePending(in: directory)
+            }
             BluetoothMicGuard.shared.release()
             return
         }
@@ -502,33 +523,58 @@ final class SessionCoordinator {
             // again immediately" safe.
             let transcriptText = archiveResult.transcriptText
 
-            if let archiveDir, !transcriptText.isEmpty {
-                // Granola-style: show the user we're working ("Generating
-                // summary…") and flip to `done` when it lands. Routing runs
-                // regardless — a failed/slow summary never blocks it.
+            if let archiveDir {
+                // Preserve chat/analysis in the sidecar without writing a
+                // provisional raw transcript. Only upgraded text becomes the
+                // canonical transcript and reaches meeting processing.
+                SessionArchive.writeCanonicalMeetingSidecar(
+                    startedAt: startedAt,
+                    chat: chat,
+                    analysis: analysis,
+                    archiveDir: archiveDir,
+                    linkedMeeting: linkedMeetingName
+                )
                 phase = .summarizing
+                SessionArchive.markAutomaticUpgradePending(in: archiveDir)
+                postProcessingStatus = TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty
+                    ? "Writing notes…"
+                    : "Improving transcript…"
                 Task { @MainActor [weak self] in
-                    let url = await SessionArchive.writeAutoSummary(
-                        transcriptText: transcriptText,
-                        to: archiveDir,
-                        startedAt: startedAt,
-                        referenceContext: summaryContext
-                    )
-                    SessionArchive.runVaultRouter(sessionDir: archiveDir)
-                    self?.exportCanonicalMeeting(
-                        startedAt: startedAt,
-                        transcript: transcript,
-                        chat: chat,
-                        analysis: analysis,
-                        archiveDir: archiveDir,
-                        linkedMeetingName: linkedMeetingName
-                    )
+                    let url: URL?
+                    if !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty {
+                        do {
+                            let result = try await TranscriptUpgradeService.upgrade(
+                                sessionDirectory: archiveDir,
+                                startedAt: startedAt,
+                                provider: AsyncTranscriptProviders.soniox,
+                                referenceContext: summaryContext
+                            ) { progress in
+                                Task { @MainActor in
+                                    let coordinator = SessionCoordinator.shared
+                                    guard coordinator.currentSessionId == sessionId else { return }
+                                    coordinator.postProcessingStatus = progress.message
+                                }
+                            }
+                            SessionArchive.clearAutomaticUpgradePending(in: archiveDir)
+                            url = result.summaryURL
+                        } catch {
+                            RTILog.log("automatic Soniox transcript upgrade failed; retained audio is available for retry: \(error.localizedDescription)", category: "archive")
+                            self?.postProcessingStatus = "Upgrade failed · audio retained"
+                            url = nil
+                        }
+                    } else {
+                        self?.postProcessingStatus = "Upgrade unavailable · audio retained"
+                        url = nil
+                    }
                     guard let self else { return }
                     // Only resolve to `done` if this is still the session the
                     // user is looking at — a new recording may already be live.
                     if currentSessionId == sessionId, phase == .summarizing {
                         summaryURL = url
                         summaryFailed = (url == nil)
+                        if postProcessingStatus != "Upgrade failed · audio retained" {
+                            postProcessingStatus = url == nil ? "Session saved" : "Notes ready"
+                        }
                         phase = .done
                         resetWorkspaceForDone()
                     }
@@ -559,12 +605,14 @@ final class SessionCoordinator {
                     analysis: analysis
                 )
             }
+            MeetingContextStore.shared.resetAfterSession()
         } else {
             phase = .done
             resetWorkspaceForDone()
         }
 
-        // Ephemeral: discard the WAV recording — nothing is kept on disk.
+        // Discard the live pipeline's temporary WAV. The compact mic/system
+        // recordings have already moved into the session archive.
         if let path = activeWavPath {
             try? FileManager.default.removeItem(atPath: path)
         }
@@ -602,7 +650,9 @@ final class SessionCoordinator {
         if isRunning {
             audioPipeline.abort()
         }
-        archiveCurrentSession(endedAt: endedAt ?? Date())
+        // Retain the closed audio and checkpoint transcript, but leave routing
+        // to the resumable automatic upgrade on the next launch.
+        archiveCurrentSession(endedAt: endedAt ?? Date(), route: false)
 
         if let path = activeWavPath {
             try? FileManager.default.removeItem(atPath: path)
@@ -621,7 +671,12 @@ final class SessionCoordinator {
     @discardableResult
     private func archiveCurrentSession(endedAt: Date, route: Bool = true) -> URL? {
         guard let startedAt else { return nil }
-        let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt, sessionId: currentSessionId)
+        let snapshot = finalizerSnapshot(
+            startedAt: startedAt,
+            endedAt: endedAt,
+            sessionId: currentSessionId,
+            includeAudio: route
+        )
         let result = SessionFinalizer(snapshot: snapshot).archive()
         let dir = result.archiveDir
         if route, let dir { SessionArchive.runVaultRouter(sessionDir: dir) }
@@ -638,7 +693,12 @@ final class SessionCoordinator {
         return dir
     }
 
-    private func finalizerSnapshot(startedAt: Date, endedAt: Date, sessionId: String?) -> SessionFinalizer.Snapshot {
+    private func finalizerSnapshot(
+        startedAt: Date,
+        endedAt: Date,
+        sessionId: String?,
+        includeAudio: Bool = true
+    ) -> SessionFinalizer.Snapshot {
         let summaryContext = [
             MeetingContextStore.shared.summaryContext,
             VisualContextTrail.shared.summaryReferenceContext(),
@@ -659,8 +719,8 @@ final class SessionCoordinator {
                 visualContext: VisualContextTrail.shared.events
             ),
             sessionId: sessionId,
-            micRecordingURL: audioPipeline.micRecordingURL,
-            systemRecordingURL: audioPipeline.systemRecordingURL,
+            micRecordingURL: includeAudio ? audioPipeline.micRecordingURL : nil,
+            systemRecordingURL: includeAudio ? audioPipeline.systemRecordingURL : nil,
             systemAudioStartOffsetMs: systemAudioStartOffsetMs,
             workstreamItem: MeetingContextStore.shared.workstreamItem,
             linkedMeeting: linkedMeeting,
@@ -675,7 +735,8 @@ final class SessionCoordinator {
         chat: [ChatEntry],
         analysis: SessionArchive.Analysis,
         archiveDir: URL?,
-        linkedMeetingName: String?
+        linkedMeetingName: String?,
+        process: Bool = true
     ) {
         guard let export = SessionArchive.writeCanonicalMeetingExport(
             startedAt: startedAt,
@@ -685,7 +746,7 @@ final class SessionCoordinator {
             archiveDir: archiveDir,
             linkedMeeting: linkedMeetingName
         ) else { return }
-        SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL)
+        if process { SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL) }
     }
 
     /// Crash-safety checkpoint: while a session runs, re-write the archive

@@ -40,7 +40,6 @@ struct SessionsControlView: View {
         } detail: {
             contentForTab
                 .safeAreaInset(edge: .top) {
-                    SentinelMeetingBanner()
                 }
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiShowLogs)) { _ in

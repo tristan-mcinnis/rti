@@ -55,8 +55,31 @@ enum TranscriptUpgradeService {
     }
 
     static func upgrade(
+        sessionDirectory: URL,
+        startedAt: Date,
+        provider option: AsyncTranscriptProviderOption? = nil,
+        referenceContext: String? = nil,
+        progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
+    ) async throws -> Result {
+        try await upgrade(
+            session: SessionArchive.ArchivedSession(
+                url: sessionDirectory,
+                transcriptURL: sessionDirectory.appendingPathComponent("transcript.md"),
+                isRTIArchive: true,
+                date: startedAt,
+                title: nil,
+                displayName: sessionDirectory.lastPathComponent
+            ),
+            provider: option,
+            referenceContext: referenceContext,
+            progress: progress
+        )
+    }
+
+    static func upgrade(
         session: SessionArchive.ArchivedSession,
         provider option: AsyncTranscriptProviderOption? = nil,
+        referenceContext: String? = nil,
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
         let provider = try makeProvider(option ?? AsyncTranscriptProviders.active)
@@ -76,7 +99,12 @@ enum TranscriptUpgradeService {
                 },
                 writeSummary: { transcriptText in
                     guard let startedAt = session.date else { return nil }
-                    return await SessionArchive.writeAutoSummary(transcriptText: transcriptText, to: session.url, startedAt: startedAt)
+                    return await SessionArchive.writeAutoSummary(
+                        transcriptText: transcriptText,
+                        to: session.url,
+                        startedAt: startedAt,
+                        referenceContext: referenceContext
+                    )
                 },
                 runRouter: {
                     SessionArchive.runVaultRouter(sessionDir: session.url)

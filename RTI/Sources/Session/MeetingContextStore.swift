@@ -78,6 +78,17 @@ final class MeetingContextStore {
         calendarMeeting = nil
     }
 
+    /// Session context is intentionally one-meeting-only. Clearing it after a
+    /// finished archive prevents a project or invite from silently leaking
+    /// into the next unrelated recording.
+    func resetAfterSession() {
+        note = ""
+        clearWorkstream()
+        clearCalendarMeeting()
+        briefContext = nil
+        briefTitle = nil
+    }
+
     /// Compact, authoritative context for Assist and generated summaries. A
     /// participant is an invitee, not evidence they actually spoke or attended.
     var calendarContext: String? {

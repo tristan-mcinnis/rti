@@ -134,6 +134,22 @@ final class TranscriptUpgradeTests: XCTestCase {
         ])
     }
 
+    func testSystemLegNamespacesProviderSpeakerLabels() {
+        let segments = TranscriptUpgradeMerge.segments(
+            from: "[00:03] Speaker 1: Remote participant speaking.",
+            defaultSpeaker: "Remote speaker",
+            offsetMs: 2_000
+        )
+
+        XCTAssertEqual(segments, [
+            TranscriptUpgradeSegment(
+                speaker: "Remote speaker 1",
+                startMs: 5_000,
+                text: "Remote participant speaking."
+            )
+        ])
+    }
+
     func testRenderPlacesNotesInTimestampOrder() {
         let startedAt = Date(timeIntervalSince1970: 0)
         let body = TranscriptUpgradeMerge.renderBody(
@@ -199,7 +215,11 @@ final class TranscriptUpgradeTests: XCTestCase {
 
         XCTAssertEqual(inputs, [
             TranscriptUpgradeAudioInput(url: dir.appendingPathComponent("mic-retained.m4a"), offsetMs: 0),
-            TranscriptUpgradeAudioInput(url: dir.appendingPathComponent("system-retained.m4a"), offsetMs: 4_500)
+            TranscriptUpgradeAudioInput(
+                url: dir.appendingPathComponent("system-retained.m4a"),
+                offsetMs: 4_500,
+                defaultSpeaker: "Remote speaker"
+            )
         ])
     }
 
@@ -242,6 +262,22 @@ final class TranscriptUpgradeTests: XCTestCase {
         ])
     }
 
+    func testAudioDiscoveryIgnoresHeaderOnlyWAVLeg() throws {
+        let dir = try makeTemporarySessionDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var header = Data(repeating: 0, count: 44)
+        header.replaceSubrange(0..<4, with: Data("RIFF".utf8))
+        header.replaceSubrange(36..<40, with: Data("data".utf8))
+        try header.write(to: dir.appendingPathComponent("audio-system.wav"))
+        header[40] = 2
+        try header.write(to: dir.appendingPathComponent("audio-mic.wav"))
+
+        XCTAssertEqual(
+            TranscriptUpgradeAudioDiscovery.inputs(in: dir),
+            [TranscriptUpgradeAudioInput(url: dir.appendingPathComponent("audio-mic.wav"), offsetMs: 0)]
+        )
+    }
+
     func testPipelineUpgradesArchivedSessionEndToEndWithFakeProvider() async throws {
         let dir = try makeTemporarySessionDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -280,7 +316,7 @@ final class TranscriptUpgradeTests: XCTestCase {
             transcribe: { audioURL, _ in
                 transcribed.value.append(audioURL.lastPathComponent)
                 if audioURL.lastPathComponent == "audio-system.m4a" {
-                    return "[00:01] Speaker 2: System audio upgraded."
+                    return "[00:01] System audio upgraded."
                 }
                 return "[00:01] Speaker 1: Mic audio upgraded."
             },
@@ -306,7 +342,7 @@ final class TranscriptUpgradeTests: XCTestCase {
         XCTAssertTrue(transcript.contains("Source audio: audio-mic.m4a, audio-system.m4a"))
         XCTAssertTrue(transcript.contains("`0:01` **Speaker 1:** Mic audio upgraded."))
         XCTAssertTrue(transcript.contains("`0:03` **📝 Note:** Preserve this user note."))
-        XCTAssertTrue(transcript.contains("`0:05` **Speaker 2:** System audio upgraded."))
+        XCTAssertTrue(transcript.contains("`0:05` **Remote speaker:** System audio upgraded."))
 
         let mic = transcript.range(of: "Mic audio upgraded.")!.lowerBound
         let note = transcript.range(of: "Preserve this user note.")!.lowerBound

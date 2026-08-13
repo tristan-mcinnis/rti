@@ -107,6 +107,8 @@ targets:
       - path: Sources/Session/VaultMeetings.swift
       - path: Sources/Session/VaultFiles.swift
       - path: Sources/Session/SessionArchiveMetadata.swift
+      - path: Sources/Audio/WAVWriter.swift
+      - path: Sources/Support/AppLog.swift
       - path: Sources/LLM/RetrievalHeuristics.swift
     dependencies:
       - target: RTICore

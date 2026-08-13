@@ -28,10 +28,8 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
 
         addCommand("overlay.toggle", to: menu)
         addCommand("meeting.project", to: menu)
-        addCommand("sentinel.record", to: menu)
         addCommand("session.start", to: menu)
         addCommand("session.pause", to: menu)
-        addCommand("meeting.import", to: menu)
         addCommand("view.sessions", to: menu)
 
         menu.addItem(NSMenuItem.separator())
@@ -49,25 +47,31 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
 
     func refreshTitle() {
         let running = isRunningProvider?() ?? false
-        applyStatusAppearance(to: statusItem?.button, running: running)
+        statusItem?.button?.image = Self.statusImage(running: running)
         statusItem?.button?.toolTip = running
             ? "RTI — recording in progress"
             : "RTI — click for menu (⌘\\ to toggle overlay)"
     }
 
     private func applyStatusAppearance(to button: NSStatusBarButton?, running: Bool) {
-        button?.image = Self.statusImage()
+        button?.image = Self.statusImage(running: running)
         button?.imagePosition = .imageOnly
-        button?.contentTintColor = running ? .systemRed : nil
+        button?.contentTintColor = nil
     }
 
-    /// A compact filled circle keeps the menu bar state legible at a glance:
-    /// neutral when idle, red while either Sentinel or RTI is recording.
-    private static func statusImage() -> NSImage? {
-        let source = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "RTI")
-        guard let image = source?.copy() as? NSImage else { return nil }
-        image.isTemplate = true
-        image.size = NSSize(width: 12, height: 12)
+    private static func statusImage(running: Bool) -> NSImage? {
+        let symbol = running ? "r.circle.fill" : "r.circle"
+        let base = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        if running {
+            let palette = base.applying(.init(paletteColors: [.white, .systemRed]))
+            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "RTI recording")?
+                .withSymbolConfiguration(palette)
+            image?.isTemplate = false
+            return image
+        }
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "RTI")?
+            .withSymbolConfiguration(base)
+        image?.isTemplate = true
         return image
     }
 

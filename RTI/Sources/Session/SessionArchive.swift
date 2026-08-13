@@ -19,8 +19,8 @@ import UserNotifications
 ///   discussion-guide.md   — discussion-guide coverage (only if a guide loaded)
 ///   live-intelligence.md  — decisions/actions/questions/risks (only if any)
 ///   screen-context.md     — timestamped active-screen OCR changes (only if any)
-///   audio-mic.m4a         — retained mic audio for Upgrade Transcript
-///   audio-system.m4a      — retained system audio for Upgrade Transcript
+///   audio-mic.wav         — retained mic audio for automatic transcript upgrade
+///   audio-system.wav      — retained system audio for automatic transcript upgrade
 enum SessionArchive {
     typealias ArchiveMetadata = SessionArchiveMetadata
 
@@ -43,6 +43,37 @@ enum SessionArchive {
     struct CanonicalMeetingExport {
         let transcriptURL: URL
         let sidecarURL: URL?
+    }
+
+    private static let automaticUpgradeMarker = "automatic-upgrade.pending"
+
+    static func markAutomaticUpgradePending(in dir: URL) {
+        writeOwnerOnly(ISO8601DateFormatter().string(from: Date()), to: dir.appendingPathComponent(automaticUpgradeMarker))
+    }
+
+    static func seedTranscriptForAutomaticUpgrade(in dir: URL, startedAt: Date) {
+        let url = dir.appendingPathComponent("transcript.md")
+        guard !FileManager.default.fileExists(atPath: url.path) else { return }
+        let body = (frontmatter(kind: "Transcript", startedAt: startedAt) + [
+            "# Transcript",
+            "",
+            "_Recording recovered from retained audio._",
+            "",
+        ]).joined(separator: "\n")
+        writeOwnerOnly(body, to: url)
+    }
+
+    static func clearAutomaticUpgradePending(in dir: URL) {
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent(automaticUpgradeMarker))
+    }
+
+    static func pendingAutomaticUpgrades() -> [ArchivedSession] {
+        recentSessions(limit: 200).filter {
+            $0.isRTIArchive
+                && $0.date != nil
+                && FileManager.default.fileExists(atPath: $0.url.appendingPathComponent(automaticUpgradeMarker).path)
+                && !TranscriptUpgradeAudioDiscovery.inputs(in: $0.url).isEmpty
+        }
     }
 
     /// Persist a session. Silently no-ops if there's nothing to save or the
@@ -68,7 +99,10 @@ enum SessionArchive {
         mode: String? = nil,
         workstreamName: String? = nil
     ) -> URL? {
-        guard !transcript.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return nil }
+        let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
+            .compactMap { $0 }
+            .contains { FileManager.default.fileExists(atPath: $0.path) }
+        guard !transcript.isEmpty || !chat.isEmpty || !analysis.isEmpty || hasRetainedAudio else { return nil }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
 
         func fm(_ kind: String) -> [String] {
@@ -77,7 +111,7 @@ enum SessionArchive {
 
         // Only archive a transcript when there's real spoken content (a
         // non-note entry) — a header-only transcript.md just pollutes search.
-        if transcript.contains(where: { $0.speakerId != "note" }) {
+        if transcript.contains(where: { $0.speakerId != "note" }) || hasRetainedAudio {
             let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
             let md = (fm("Transcript") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md"))
@@ -109,8 +143,8 @@ enum SessionArchive {
             let md = (fm("Screen context") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md"))
         }
-        let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.m4a", in: dir)
-        let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.m4a", in: dir)
+        let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
+        let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
         writeMetadata(
             ArchiveMetadata(
                 sessionId: sessionId,
@@ -384,6 +418,34 @@ enum SessionArchive {
         }
     }
 
+    /// Persist RTI chat and analysis beside the eventual canonical transcript
+    /// without writing a provisional raw transcript. The upgraded transcript
+    /// remains the only text eligible for downstream meeting processing.
+    @discardableResult
+    static func writeCanonicalMeetingSidecar(
+        startedAt: Date,
+        chat: [ChatEntry],
+        analysis: Analysis,
+        archiveDir: URL?,
+        linkedMeeting: String?
+    ) -> URL? {
+        guard let transcriptsRaw = meetingTranscriptsRawDirectory() else { return nil }
+        try? FileManager.default.createDirectory(at: transcriptsRaw, withIntermediateDirectories: true)
+        let stem = canonicalMeetingStem(startedAt: startedAt)
+        let sidecar = renderCanonicalSidecar(
+            stem: stem,
+            startedAt: startedAt,
+            chat: chat,
+            analysis: analysis,
+            archiveDir: archiveDir,
+            linkedMeeting: linkedMeeting
+        )
+        guard !sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let url = transcriptsRaw.appendingPathComponent("\(stem)-rti.md")
+        writeOwnerOnly(sidecar, to: url)
+        return url
+    }
+
     @discardableResult
     private static func writeCanonicalMeetingExport(
         startedAt: Date,
@@ -562,7 +624,7 @@ enum SessionArchive {
     IMPORTANT — this run is UNATTENDED (fired automatically after an RTI session), so be conservative: (1) Always write the meeting note. (2) Set 'projects:' ONLY to an existing project you are confident about. (3) Do NOT create any new vault project folder, do NOT create a Todoist project, and do NOT push Todoist tasks. (4) If the project is new, ambiguous, or you are unsure, set 'projects: [unsorted]' and add a '## Needs routing' section with your best guess and reasoning for Tristan to confirm. Never guess a project into existence.
     """
 
-    private static func sessionDirectory(startedAt: Date) -> URL? {
+    static func sessionDirectory(startedAt: Date) -> URL? {
         guard let base = sessionsBaseDirectory() else { return nil }
         let folder = base.appendingPathComponent(folderStamp.string(from: startedAt), isDirectory: true)
         do {

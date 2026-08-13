@@ -650,6 +650,7 @@ struct SessionsBrowserView: View {
                     }
                 }
                 await MainActor.run {
+                    SessionArchive.clearAutomaticUpgradePending(in: session.url)
                     upgradeStatus = result.summaryURL == nil
                         ? "Transcript upgraded with \(result.provider); summary regeneration failed."
                         : "Transcript upgraded with \(result.provider); summary regenerated."

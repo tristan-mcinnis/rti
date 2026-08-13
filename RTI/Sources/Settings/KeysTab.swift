@@ -40,7 +40,7 @@ struct ProvidersTab: View {
     var body: some View {
         SettingsPage(maxWidth: 720) {
             VStack(alignment: .leading, spacing: 14) {
-                SettingsCard("Provider Routing", detail: "Pick providers per lane: assistant and transcript upgrade. Live speech-to-text is fixed to Soniox.") {
+                SettingsCard("Provider Routing", detail: "Pick the assistant provider. Soniox handles live transcription and the automatic improved pass after Finish.") {
                     VStack(alignment: .leading, spacing: 12) {
                         providerPicker(
                             title: "Assistant",
@@ -54,10 +54,10 @@ struct ProvidersTab: View {
                             detail: "Fixed for live transcription, with live translation support."
                         )
                         providerPicker(
-                            title: "Default transcript upgrade choice",
+                            title: "Manual re-upgrade choice",
                             selection: $selectedAsyncTranscriptProviderId,
                             options: AsyncTranscriptProviders.all.map { ($0.id, $0.displayName) },
-                            detail: "Used as the first option when you click Upgrade Transcript. You still choose Soniox or Aliyun for each archived session."
+                            detail: "Automatic upgrades use Soniox. This selects the first option when manually re-processing an archived session."
                         )
                     }
                 }
@@ -84,7 +84,7 @@ struct ProvidersTab: View {
                     }
                 }
 
-                SettingsCard("Transcript Upgrade Provider Keys", detail: "These keys are only for the post-hoc Upgrade Transcript lane. That lane replaces the rough live transcript using the session-local retained audio, then regenerates the summary from the upgraded text.") {
+                SettingsCard("Transcript Upgrade Provider Keys", detail: "Soniox automatically replaces the rough live transcript after Finish and regenerates the summary. Aliyun remains available for a manual re-upgrade.") {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(AsyncTranscriptProviders.all) { provider in
                             VStack(alignment: .leading, spacing: 10) {

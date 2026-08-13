@@ -135,10 +135,10 @@ This is the definitive both-sides-recorded test. Open the **Audio I/O Monitor**
 ## E. Auto-update
 - [ ] After publishing a release whose tag is **newer** than the running build, menubar → **Check for Updates…** offers a Download button to the release page. (Up-to-date shows "You're up to date".)
 
-## F. Upgrade Transcript (archived-session exception)
-This verifies the narrow post-hoc exception: a finished RTI archive with retained
-audio can be upgraded without creating a corpus, import flow, database, or
-cross-session search surface.
+## F. Automatic transcript improvement
+This verifies the normal RTI finish path: live transcription first, then an
+automatic Soniox pass over the retained mic/system recordings before summary,
+meeting processing, and Neon indexing.
 
 1. Build and launch RTI.
 2. Ensure Settings → Providers has credentials for the provider you intend to
@@ -146,7 +146,7 @@ cross-session search surface.
    for Chinese-heavy sessions.
 3. Create or select an archived session folder that contains:
    - `transcript.md`
-   - `audio-mic.m4a` and/or `audio-system.m4a`
+   - `audio-mic.wav` and/or `audio-system.wav`
    - optional `session.json` with `micAudioFile`, `systemAudioFile`, and
      `systemAudioStartOffsetMs`
 4. For a disposable public fixture, download an Open Speech Repository sample
@@ -158,16 +158,16 @@ cross-session search surface.
    ffmpeg -y -i /tmp/OSR_us_000_0010_8k.wav -ac 1 -ar 16000 -c:a aac /tmp/audio-mic.m4a
    ```
 
-5. Open **Past Sessions**, select the archived session, click
-   **Upgrade Transcript**, then choose **Soniox** or **Aliyun
-   (Chinese-heavy)** in the provider prompt.
-6. Expected UI behavior:
+5. Start a normal RTI recording with ⌘⇧R. Confirm the bottom-centre HUD appears,
+   both audio meters move independently, and Sentinel does not start.
+6. Click the HUD checkmark to Finish.
+7. Expected UI behavior:
    - Button disables while the job runs.
    - Status reports provider selection, per-file transcription, note
      preservation, write, summary regeneration, and final success/failure.
    - Missing audio, missing credentials, script failures, timeouts, and empty
      provider transcripts are shown without replacing the original transcript.
-7. Expected files after success:
+8. Expected files after success:
    - `transcript.md` contains the upgraded transcript.
    - `transcript.upgraded.md` contains the same upgraded output.
    - `transcript.backup-<stamp>.md` preserves the prior rough transcript.
@@ -175,6 +175,7 @@ cross-session search surface.
    - `summary.md` is regenerated from the upgraded transcript.
    - Inline `📝 Note:` rows from the old transcript are preserved at their
      approximate timestamps/order.
+9. Confirm the HUD is absent from a QuickTime or meeting screen share.
 
 ## G. Signing + notarization (needs your Apple Developer ID)
 - [ ] `export DEVELOPMENT_TEAM=…`, set up `notarytool` profile `rti-notary` (see RELEASE.md), then `./scripts/release.sh <version>`.

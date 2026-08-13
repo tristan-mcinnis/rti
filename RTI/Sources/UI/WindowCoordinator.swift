@@ -13,21 +13,25 @@ final class WindowCoordinator {
     private var overlayController: OverlayWindowController?
     private var sessionsControl: SessionsControlWindowController?
     private var meetingBrief: MeetingBriefWindowController?
+    private var recordingHUD: RecordingHUDWindowController?
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
 
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
         sessionsControl = SessionsControlWindowController()
         meetingBrief = MeetingBriefWindowController()
+        recordingHUD = RecordingHUDWindowController()
 
         let controller = OverlayWindowController(onOpenSettings: onOpenSettings)
         overlayController = controller
         controller.show(initialLaunch: true)
+        recordingHUD?.sync(with: SessionCoordinator.shared.phase)
 
     }
 
     func setSharingInvisible(_ invisible: Bool) {
         overlayController?.setSharingInvisible(invisible)
+        recordingHUD?.setSharingInvisible(invisible)
     }
 
     /// Toggle the persisted invisibility flag and apply it to every panel.
@@ -44,6 +48,10 @@ final class WindowCoordinator {
     func showOverlay() { overlayController?.show() }
     func hideOverlay() { overlayController?.hide() }
     func toggleOverlay() { overlayController?.toggle() }
+
+    func syncRecordingHUD() {
+        recordingHUD?.sync(with: SessionCoordinator.shared.phase)
+    }
 
     // MARK: - Library & Preferences
 

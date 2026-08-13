@@ -63,14 +63,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // Normal stops already delete it; the app keeps no audio.
         WAVWriter.sweepStaleRecordings()
 
-        // Follow the external Meeting Sentinel tool's recording state so the
-        // UI can surface when a meeting is being recorded outside RTI.
-        MeetingSentinelMonitor.shared.start()
-
         // Register the periodic real-time analysis tasks (notes,
         // discussion-guide matching). They only fire while a session runs and
         // self-gate on their Settings toggles.
         SessionCoordinator.shared.registerAnalysisTasks()
+
+        // A quit, crash, or network outage during the offline pass leaves a
+        // durable marker beside retained audio. Resume those jobs on launch;
+        // nothing is routed or indexed until an upgrade succeeds.
+        Task { @MainActor in
+            for session in SessionArchive.pendingAutomaticUpgrades() {
+                do {
+                    _ = try await TranscriptUpgradeService.upgrade(
+                        session: session,
+                        provider: AsyncTranscriptProviders.soniox
+                    ) { _ in }
+                    SessionArchive.clearAutomaticUpgradePending(in: session.url)
+                } catch {
+                    RTILog.log("pending transcript upgrade remains queued for \(session.url.lastPathComponent): \(error.localizedDescription)", category: "archive")
+                }
+            }
+        }
 
         windows.install(onOpenSettings: { [weak self] in
             Task { @MainActor [weak self] in self?.windows.openSettings() }
@@ -91,10 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CommandRegistry.shared.replaceAll(commands)
 
         // Menu: dynamic state providers for items whose titles change.
-        menu.isRunningProvider = {
-            SessionCoordinator.shared.isRunning
-                || MeetingSentinelMonitor.shared.liveMeeting != nil
-        }
+        menu.isRunningProvider = { SessionCoordinator.shared.isRunning }
         menu.install(commands: commands)
 
         hotkeys.registerAll(commands: commands)
@@ -104,12 +114,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                     withObservationTracking {
                         _ = SessionCoordinator.shared.isRunning
-                        _ = MeetingSentinelMonitor.shared.liveMeeting
+                        _ = SessionCoordinator.shared.phase
                     } onChange: {
                         continuation.resume()
                     }
                 }
                 self?.menu.refreshTitle()
+                self?.windows.syncRecordingHUD()
             }
         }
 
@@ -166,14 +177,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard SessionCoordinator.shared.isRunning else { return .terminateNow }
+        let session = SessionCoordinator.shared
+        guard session.phase != .idle, session.phase != .done else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = "Recording in progress"
-        alert.informativeText = "RTI is currently recording a session. Quitting will stop the recording, flush the WAV file, and finalize the session."
+        if session.isRunning || session.phase == .finishing {
+            alert.messageText = "Recording in progress"
+            alert.informativeText = "RTI is still saving this recording. Quit only if you want to stop before processing is complete."
+        } else {
+            alert.messageText = "Transcript improvement in progress"
+            alert.informativeText = "RTI has not yet generated or indexed the final notes. Wait for “Notes ready” before quitting."
+        }
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Stop & Quit")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        alert.addButton(withTitle: "Wait")
+        alert.addButton(withTitle: "Quit Anyway")
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func applicationWillTerminate(_ notification: Notification) {

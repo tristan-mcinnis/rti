@@ -98,24 +98,15 @@ struct OverlayVisualContextButton: View {
 
 // MARK: - Project routing picker
 
-/// Compact project dropdown beside the record button, so a recording is routed
-/// to its vault project at the moment of capture instead of orphaned in the
-/// generic meetings pool. The selection flows through the existing pipe:
-/// MeetingContextStore → SentinelCommandBuilder start/stop --project →
-/// `<stem>.meeting.json` → the /meeting skill. Picking mid-recording works;
-/// the slug is passed again at stop.
+/// Optional project context. Unclassified meetings remain valid and flow into
+/// the same meeting library and Neon index without a project declaration.
 struct OverlayProjectPicker: View {
     private let context = MeetingContextStore.shared
-    private let control = MeetingControlCoordinator.shared
     @State private var hovering = false
 
     private var selectedName: String? {
         context.workstreamItem?.isProject == true ? context.workstreamName : nil
     }
-
-    /// Recording with no project selected is the failure mode this control
-    /// exists to prevent — surface it.
-    private var unrouted: Bool { control.isRecording && selectedName == nil }
 
     var body: some View {
         let projects = VaultWorkstreamStore.projects()
@@ -168,18 +159,15 @@ struct OverlayProjectPicker: View {
     }
 
     private var tint: Color {
-        if unrouted { return .orange }
         return selectedName == nil ? Color.overlayInk.opacity(0.52) : Color.blue.opacity(0.9)
     }
 
     private var background: Color {
-        if unrouted { return Color.orange.opacity(0.12) }
         if selectedName != nil { return Color.blue.opacity(0.10) }
         return Color.overlayInk.opacity(hovering ? 0.08 : 0.045)
     }
 
     private var border: Color {
-        if unrouted { return Color.orange.opacity(0.45) }
         if selectedName != nil { return Color.blue.opacity(0.30) }
         return Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
     }
@@ -188,18 +176,16 @@ struct OverlayProjectPicker: View {
         if let name = selectedName {
             return "This recording files to \(name) — click to change"
         }
-        return unrouted
-            ? "Recording has NO project — pick one so it files itself"
-            : "Pick the project this meeting belongs to"
+        return "Optionally file this meeting to a project"
     }
 }
 
 // MARK: - Record control
 
-/// Sentinel is the default meeting path. RTI live intelligence is an explicit
-/// escalation exposed by the companion button once the durable recording runs.
+/// RTI is the single recording path: live transcript now, improved transcript
+/// and notes automatically after Finish.
 struct OverlayRecordButton: View {
-    private let control = MeetingControlCoordinator.shared
+    private let session = SessionCoordinator.shared
 
     @State private var hovering = false
 
@@ -212,7 +198,7 @@ struct OverlayRecordButton: View {
             .clipShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(control.isBusy)
+        .disabled(session.phase == .finishing)
         .hoverHighlight($hovering)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(helpText)
@@ -220,21 +206,29 @@ struct OverlayRecordButton: View {
     }
 
     private var accessibilityLabel: String {
-        control.isRecording ? "Stop recording and process" : "Record meeting with Sentinel"
+        switch session.phase {
+        case .idle, .done: "Start recording"
+        case .recording, .paused: "Finish recording"
+        case .finishing, .summarizing: "Processing recording"
+        }
     }
 
     private func primaryAction() {
-        control.toggleRecording()
+        if session.phase == .done, let url = session.summaryURL {
+            WindowCoordinator.shared.showSession(folder: url.deletingLastPathComponent().lastPathComponent)
+        } else {
+            session.toggleSession()
+        }
     }
 
     @ViewBuilder
     private var glyph: some View {
-        if control.isBusy {
+        if session.phase == .finishing || session.phase == .summarizing {
             ProgressView()
                 .controlSize(.small)
                 .scaleEffect(0.62)
                 .frame(width: 9, height: 9)
-        } else if control.isRecording {
+        } else if session.phase == .recording || session.phase == .paused {
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                 .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
                 .frame(width: 8, height: 8)
@@ -248,23 +242,26 @@ struct OverlayRecordButton: View {
     private var background: some View {
         ZStack {
             Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.08 : 0.045))
-            if control.isRecording {
+            if session.phase == .recording || session.phase == .paused {
                 Capsule(style: .continuous).fill(Color(red: 1.0, green: 0.20, blue: 0.20).opacity(0.12))
             }
         }
     }
 
     private var borderColor: Color {
-        control.isRecording
+        (session.phase == .recording || session.phase == .paused)
             ? Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
             : Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
     }
 
     private var helpText: String {
-        if control.isBusy { return control.statusMessage ?? "Meeting Sentinel is working…" }
-        return control.isRecording
-            ? "Stop Sentinel recording and process the definitive transcript (⌘⇧R)"
-            : "Record this meeting with Sentinel (⌘⇧R)"
+        switch session.phase {
+        case .idle: "Start recording (⌘⇧R)"
+        case .recording, .paused: "Finish recording and improve transcript (⌘⇧R)"
+        case .finishing: "Saving audio…"
+        case .summarizing: session.postProcessingStatus ?? "Improving transcript…"
+        case .done: session.summaryURL == nil ? "Session saved" : "Notes ready"
+        }
     }
 }
 
@@ -273,17 +270,15 @@ struct OverlayRecordButton: View {
 /// something to do, so the header stays uncluttered when idle.
 struct OverlaySessionAuxButton: View {
     private let session = SessionCoordinator.shared
-    private let control = MeetingControlCoordinator.shared
     @State private var hovering = false
 
-    private enum Kind { case goLive, pause, resume, none }
+    private enum Kind { case pause, resume, none }
 
     private var kind: Kind {
         switch session.phase {
         case .recording: .pause
         case .paused: .resume
-        case .finishing, .summarizing: .none
-        default: control.isRecording ? .goLive : .none
+        default: .none
         }
     }
 
@@ -307,7 +302,6 @@ struct OverlaySessionAuxButton: View {
 
     private var accessibilityLabel: String {
         switch kind {
-        case .goLive: "Go live with RTI"
         case .pause: "Pause recording"
         case .resume: "Resume recording"
         case .none: ""
@@ -316,7 +310,6 @@ struct OverlaySessionAuxButton: View {
 
     private var icon: String {
         switch kind {
-        case .goLive: "sparkles"
         case .pause: "pause.fill"
         case .resume: "play.fill"
         case .none: ""
@@ -325,7 +318,6 @@ struct OverlaySessionAuxButton: View {
 
     private var tint: Color {
         switch kind {
-        case .goLive: Color.blue.opacity(0.9)
         case .resume: Color.green.opacity(0.9)
         default: Color.overlayInk.opacity(0.7)
         }
@@ -333,16 +325,14 @@ struct OverlaySessionAuxButton: View {
 
     private var help: String {
         switch kind {
-        case .goLive: "Add RTI's provisional live transcript and intelligence"
-        case .pause: "Pause RTI live intelligence (⌘⇧P); Sentinel keeps recording"
-        case .resume: "Resume RTI live intelligence (⌘⇧P)"
+        case .pause: "Pause recording (⌘⇧P)"
+        case .resume: "Resume recording (⌘⇧P)"
         case .none: ""
         }
     }
 
     private func act() {
         switch kind {
-        case .goLive: control.toggleLiveIntelligence()
         case .pause, .resume: session.togglePause()
         case .none: break
         }

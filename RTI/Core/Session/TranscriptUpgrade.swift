@@ -25,10 +25,12 @@ public struct TranscriptUpgradeNote: Equatable, Sendable {
 public struct TranscriptUpgradeAudioInput: Equatable, Sendable {
     public let url: URL
     public let offsetMs: Int
+    public let defaultSpeaker: String
 
-    public init(url: URL, offsetMs: Int) {
+    public init(url: URL, offsetMs: Int, defaultSpeaker: String = "Speaker 1") {
         self.url = url
         self.offsetMs = offsetMs
+        self.defaultSpeaker = defaultSpeaker
     }
 }
 
@@ -77,24 +79,52 @@ public enum TranscriptUpgradePipelineError: LocalizedError, Equatable {
 public enum TranscriptUpgradeAudioDiscovery {
     public static func inputs(in dir: URL) -> [TranscriptUpgradeAudioInput] {
         let metadata = readMetadata(in: dir)
-        let micName = safeAudioFileName(metadata?.micAudioFile, fallback: "audio-mic.m4a")
-        let systemName = safeAudioFileName(metadata?.systemAudioFile, fallback: "audio-system.m4a")
+        let micName = safeAudioFileName(
+            metadata?.micAudioFile,
+            fallbacks: ["audio-mic.wav", "audio-mic.m4a"],
+            in: dir
+        )
+        let systemName = safeAudioFileName(
+            metadata?.systemAudioFile,
+            fallbacks: ["audio-system.wav", "audio-system.m4a"],
+            in: dir
+        )
         let candidates = [
-            TranscriptUpgradeAudioInput(url: dir.appendingPathComponent(micName), offsetMs: 0),
-            TranscriptUpgradeAudioInput(url: dir.appendingPathComponent(systemName), offsetMs: metadata?.systemAudioStartOffsetMs ?? 0)
+            TranscriptUpgradeAudioInput(url: dir.appendingPathComponent(micName), offsetMs: 0, defaultSpeaker: "Speaker 1"),
+            TranscriptUpgradeAudioInput(url: dir.appendingPathComponent(systemName), offsetMs: metadata?.systemAudioStartOffsetMs ?? 0, defaultSpeaker: "Remote speaker")
         ]
         var seen = Set<String>()
         return candidates.filter { input in
             guard FileManager.default.fileExists(atPath: input.url.path) else { return false }
+            guard hasAudioPayload(input.url) else { return false }
             return seen.insert(input.url.standardizedFileURL.path).inserted
         }
     }
 
-    private static func safeAudioFileName(_ value: String?, fallback: String) -> String {
-        guard let value else { return fallback }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return fallback }
-        return URL(fileURLWithPath: trimmed).lastPathComponent
+    /// A crash before the delayed system leg receives its first frame leaves
+    /// a valid header-only WAV. Ignore it so the complete mic leg can still be
+    /// upgraded. Legacy retained formats keep their existing discovery rule.
+    private static func hasAudioPayload(_ url: URL) -> Bool {
+        guard url.pathExtension.lowercased() == "wav" else { return true }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: 44), header.count == 44,
+              String(data: header[0..<4], encoding: .ascii) == "RIFF",
+              String(data: header[36..<40], encoding: .ascii) == "data" else { return false }
+        let size = header[40..<44].enumerated().reduce(UInt32(0)) { result, byte in
+            result | (UInt32(byte.element) << UInt32(byte.offset * 8))
+        }
+        return size > 0
+    }
+
+    private static func safeAudioFileName(_ value: String?, fallbacks: [String], in dir: URL) -> String {
+        if let value {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return URL(fileURLWithPath: trimmed).lastPathComponent }
+        }
+        return fallbacks.first {
+            FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path)
+        } ?? fallbacks[0]
     }
 
     private static func readMetadata(in dir: URL) -> ArchiveMetadata? {
@@ -142,7 +172,11 @@ public enum TranscriptUpgradePipeline {
             progress("Transcribing \(input.url.lastPathComponent)")
             let outputBase = sessionDir.appendingPathComponent("transcript-upgrade-\(providerID)-\(input.url.deletingPathExtension().lastPathComponent)")
             let text = try await transcribe(input.url, outputBase)
-            let parsed = TranscriptUpgradeMerge.segments(from: text, offsetMs: input.offsetMs)
+            let parsed = TranscriptUpgradeMerge.segments(
+                from: text,
+                defaultSpeaker: input.defaultSpeaker,
+                offsetMs: input.offsetMs
+            )
             segments.append(contentsOf: parsed)
         }
         guard !segments.isEmpty else {
@@ -194,7 +228,13 @@ public enum TranscriptUpgradeMerge {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
             if let parsed = timestampedSegment(fromLine: line, defaultSpeaker: defaultSpeaker, offsetMs: offsetMs) {
-                segments.append(parsed)
+                let speaker: String
+                if defaultSpeaker == "Remote speaker", parsed.speaker.hasPrefix("Speaker ") {
+                    speaker = "Remote \(parsed.speaker.lowercased())"
+                } else {
+                    speaker = parsed.speaker
+                }
+                segments.append(TranscriptUpgradeSegment(speaker: speaker, startMs: parsed.startMs, text: parsed.text))
             }
         }
         if segments.isEmpty {
