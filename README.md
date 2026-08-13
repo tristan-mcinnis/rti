@@ -12,7 +12,7 @@ Personal build: **real-time first, no corpus** — the live transcript and chat 
 - **Invisible overlay.** Borderless `NSPanel` with `sharingType = .none` — excluded from QuickTime, Zoom local recording, and `screencapture`. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
 - **Meeting awareness.** When Meeting Sentinel is recording a meeting outside RTI, a banner offers **Go live** to overlay the assistant on it (and to open the pre-meeting brief, if one was written). RTI never auto-records — you start a live session yourself with ⌘⇧R.
 - **Real-time analysis tabs.** Optional overlay tabs generate live meeting **Notes**, track coverage of an imported **Discussion Guide**, and collect tagged **Findings** — all held in memory and refreshed on a timer. Toggle each in the **Setup** tab; jump to them with ⌘⌥3 / ⌘⌥4 / ⌘⌥5.
-- **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers. On by default; toggle in Settings → General. The mic is fully released when a session stops, so it won't block other apps.
+- **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers. **Off by default** (VPIO delivers silent buffers on some Macs, verified 2026-06-09 — silent mic kills transcription); toggle in Settings → General if your setup needs it. The mic is fully released when a session stops, so it won't block other apps.
 - **Smart Screenshot.** ⌘⇧H captures the display under the mouse, runs Vision OCR on-device, attaches the text to your next prompt. The image is discarded.
 - **Translation.** Optional live translation alongside the transcript (one-way or two-way), in the Live Transcript window.
 - **Modes.** Built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text. Stored as a small JSON file.
@@ -38,7 +38,9 @@ A locally built `.app` is ad-hoc-signed — Gatekeeper requires a right-click �
 ## First run
 
 1. Launch RTI — it runs in the menubar with no Dock icon.
-2. Grant **Microphone** and **Screen Recording** permissions.
+2. Grant **Microphone**, **System Audio Recording** (the audio-only CoreAudio-tap
+   permission; this is the primary system-audio path), and **Screen Recording**
+   (SCK fallback + Smart Screenshot) permissions.
 3. Paste your **Soniox** and **LLM provider** keys.
 4. Start a session: ⌘⇧R. Toggle the overlay: ⌘\\. Ask the assistant: ⌘↵.
 

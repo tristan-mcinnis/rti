@@ -91,7 +91,10 @@ public struct SonioxConfigMessage: Codable {
     let context: SonioxContext?
 
     public static func `default`(apiKey: String, translation: TranslationConfig? = nil, contextTerms: [String] = []) -> SonioxConfigMessage {
-        var hints = Set(["en"])
+        // en+zh always: meetings here code-switch constantly, and the batch
+        // lane (meeting-sentinel) has hinted both since day one. Hints bias
+        // recognition, they don't force a language.
+        var hints = Set(["en", "zh"])
         if let t = translation {
             switch t.type {
             case "one_way":
