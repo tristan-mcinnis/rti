@@ -30,12 +30,19 @@ settings:
       CODE_SIGN_IDENTITY: "-"
       ENABLE_HARDENED_RUNTIME: NO
     Release:
-      # Signing identity is supplied at build time:
-      #   xcodebuild ... DEVELOPMENT_TEAM=$TEAM_ID \
-      #              CODE_SIGN_STYLE=Manual \
-      #              CODE_SIGN_IDENTITY="Developer ID Application"
-      # (see scripts/release.sh). Hardened Runtime is required for
-      # notarization.
+      # Default Release signing is the personal Apple Development identity so
+      # local installs keep a STABLE identity across rebuilds — macOS ties
+      # mic / system-audio / screen-recording grants to the signing identity,
+      # and ad-hoc builds (unique cdhash per build) reset all permissions on
+      # every update (bitten 2026-08-14). scripts/release.sh still overrides
+      # these at build time with Developer ID for notarized DMGs.
+      # xcodebuild signs ad-hoc here (Xcode's account machinery is unusable
+      # headlessly); scripts/install-local.sh then RE-SIGNS the product with
+      # the personal Apple Development certificate so the identity stays
+      # stable across updates — macOS ties mic / system-audio / screen
+      # grants to the signing identity, and ad-hoc builds reset them on
+      # every install (bitten 2026-08-14). scripts/release.sh overrides
+      # with Developer ID for notarized DMGs.
       ENABLE_HARDENED_RUNTIME: YES
 
 packages:
