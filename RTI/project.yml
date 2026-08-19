@@ -101,6 +101,7 @@ targets:
     platform: macOS
     sources:
       - path: Tests
+      - path: Sources/Analysis/AutoAssistCard.swift
       - path: Sources/Session/VaultWorkstreamStore.swift
       - path: Sources/Session/SentinelPaths.swift
       - path: Sources/LLM/AssistantTurnBuilder.swift

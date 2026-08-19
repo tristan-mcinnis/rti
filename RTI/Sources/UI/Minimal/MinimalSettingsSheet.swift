@@ -12,6 +12,18 @@ struct MinimalSettingsSheet: View {
     @State private var selectedMicUID = AudioInputDeviceStore.preferredUID
     @State private var saved = false
 
+    // Live analysis — opt-in, all off by default. Same UserDefaults keys the
+    // pre-strip GeneralTab used.
+    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
+    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
+    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
+
+    // Appearance — overlay transparency + reduce motion, bound to the
+    // existing OverlayAppearanceDefaults keys.
+    @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel = OverlayAppearanceDefaults.defaultTranslucentPanel
+    @AppStorage(OverlayAppearanceDefaults.opacityKey) private var panelOpacity = OverlayAppearanceDefaults.defaultOpacity
+    @AppStorage(OverlayAppearanceDefaults.reduceMotionKey) private var reduceMotion = OverlayAppearanceDefaults.defaultReduceMotion
+
     private var activeLLMOption: LLMProviderOption {
         LLMProviders.option(id: LLMProviders.activeId)
     }
@@ -53,6 +65,48 @@ struct MinimalSettingsSheet: View {
                     }
                 }
                 .labelsHidden()
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Live analysis")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Palette.inkSecondary)
+                Toggle("Generate live notes", isOn: $notesEnabled)
+                Toggle("Track discussion guide", isOn: $guideEnabled)
+                Toggle("Suggest follow-up questions", isOn: $autoAssistEnabled)
+            }
+            .toggleStyle(.checkbox)
+            .font(.system(size: 13))
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Appearance")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Palette.inkSecondary)
+                Toggle("Use a translucent panel", isOn: $translucentPanel)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 13))
+                if translucentPanel {
+                    HStack {
+                        Text("Opacity")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Palette.inkFaint)
+                        Slider(value: $panelOpacity, in: OverlayAppearanceDefaults.opacityRange)
+                    }
+                }
+                Text("Reduce motion")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.inkFaint)
+                Picker("Reduce motion", selection: $reduceMotion) {
+                    ForEach(RTIReduceMotionMode.allCases) { mode in
+                        Text(mode.label).tag(mode.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
             }
 
             HStack {

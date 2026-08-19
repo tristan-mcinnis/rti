@@ -18,8 +18,13 @@ struct MinimalAskComposer: View {
 
     var body: some View {
         let controller = LLMController.shared
+        let auto = AutoAssistController.shared
 
         VStack(alignment: .leading, spacing: 16) {
+            if !auto.cards.isEmpty {
+                autoAssistChips(auto: auto, controller: controller)
+            }
+
             if !settledParagraphs.isEmpty || !tailParagraph.isEmpty {
                 answerRegion
                     .transition(.opacity)
@@ -36,6 +41,55 @@ struct MinimalAskComposer: View {
             }
         }
         .onDisappear { pollTask?.cancel() }
+    }
+
+    // MARK: - Auto-assist chips (opt-in, Settings -> "Suggest follow-up questions")
+
+    /// Proactive suggestions from `AutoAssistController`, rendered as
+    /// dismissable chips. Tapping a chip sends its text as the question;
+    /// the trailing x dismisses without asking.
+    private func autoAssistChips(auto: AutoAssistController, controller: LLMController) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(auto.cards) { card in
+                    chip(card, auto: auto, controller: controller)
+                }
+            }
+        }
+    }
+
+    private func chip(_ card: AutoAssistCard, auto: AutoAssistController, controller: LLMController) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                auto.dismiss(card.id)
+                controller.sendAskAnything(card.text)
+            } label: {
+                Text(card.text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.inkPrimary)
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                auto.dismiss(card.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Palette.inkFaint)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss suggestion")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule().fill(Palette.surfaceRaised)
+        )
+        .overlay(
+            Capsule().strokeBorder(Palette.borderHairline)
+        )
+        .pressable()
     }
 
     // MARK: - Answer region

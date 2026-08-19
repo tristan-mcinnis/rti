@@ -102,6 +102,41 @@ final class SessionCoordinator {
         commonInit()
     }
 
+    /// Register the periodic analysis tasks with the scheduler. Called once
+    /// at launch from AppDelegate. Each task self-gates on its own Settings
+    /// toggle (`AnalysisSettingsDefaults`, all default false) — Findings
+    /// stayed removed, so only notes / discussion guide / auto-assist
+    /// register here.
+    func registerAnalysisTasks() {
+        AnalysisScheduler.shared.register(
+            id: "notes",
+            task: .init(enabledKey: AnalysisSettingsDefaults.notesEnabledKey) { _ in
+                await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
+            }
+        )
+        AnalysisScheduler.shared.register(
+            id: "discussionGuide",
+            task: .init(enabledKey: AnalysisSettingsDefaults.guideEnabledKey) { sinceMs in
+                await DiscussionGuideController.shared.match(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
+            }
+        )
+        AnalysisScheduler.shared.register(
+            id: "autoAssist",
+            task: .init(enabledKey: AnalysisSettingsDefaults.autoAssistEnabledKey) { _ in
+                await AutoAssistController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
+            }
+        )
+    }
+
+    /// Whether any live-analysis feature is turned on — gates both the
+    /// scheduler timer and the overlay's segmented control.
+    static var anyAnalysisEnabled: Bool {
+        let d = UserDefaults.standard
+        return d.bool(forKey: AnalysisSettingsDefaults.notesEnabledKey)
+            || d.bool(forKey: AnalysisSettingsDefaults.guideEnabledKey)
+            || d.bool(forKey: AnalysisSettingsDefaults.autoAssistEnabledKey)
+    }
+
     private func commonInit() {
         activeSTTDefaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
@@ -316,6 +351,19 @@ final class SessionCoordinator {
         transcriptPipeline.reset()
         SpeakerNameStore.shared.reset()
 
+        // Bind the opt-in analysis controllers to the fresh session and start
+        // the scheduler only if at least one is turned on (Settings ->
+        // "Live analysis"); each task still self-gates on every tick.
+        NotesGenerationController.shared.reset(for: sessionId)
+        DiscussionGuideController.shared.reset(for: sessionId)
+        AutoAssistController.shared.reset(for: sessionId)
+        if Self.anyAnalysisEnabled {
+            AnalysisScheduler.shared.start(
+                intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
+                defaultInterval: AnalysisSettingsDefaults.defaultInterval
+            )
+        }
+
         // Keep Bluetooth headphones in full-volume A2DP: if the default mic is a
         // BT headset, route capture to the built-in mic for the session. Must run
         // before the engine reads the default input device.
@@ -369,6 +417,7 @@ final class SessionCoordinator {
         // before the final teardown gives Soniox time to flush remaining
         // partial audio and deliver final transcripts.
         audioPipeline.finalize()
+        AnalysisScheduler.shared.stop()
         checkpointTask?.cancel()
         checkpointTask = nil
         phase = .finishing
@@ -593,7 +642,10 @@ final class SessionCoordinator {
             endedAt: endedAt,
             transcript: transcriptPipeline.liveEntries,
             chat: LLMController.shared.entries,
-            analysis: SessionArchive.Analysis(),
+            analysis: SessionArchive.Analysis(
+                notes: NotesGenerationController.shared.notes,
+                guide: DiscussionGuideController.shared.guide
+            ),
             sessionId: sessionId,
             micRecordingURL: includeAudio ? audioPipeline.micRecordingURL : nil,
             systemRecordingURL: includeAudio ? audioPipeline.systemRecordingURL : nil,
@@ -684,6 +736,10 @@ final class SessionCoordinator {
         if newInterim != interimLine { interimLine = newInterim }
         if entriesChanged {
             liveEntries = transcriptPipeline.liveEntries
+            // New speech just landed → let Auto mode react proactively (it
+            // debounces and rate-limits internally, so this is cheap to call
+            // even when the feature is off).
+            AutoAssistController.shared.noteActivity()
         }
     }
 

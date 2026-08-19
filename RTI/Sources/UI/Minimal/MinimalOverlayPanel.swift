@@ -1,31 +1,100 @@
 import AppKit
 import SwiftUI
 
-/// The composed minimal overlay: one panel, no tabs — a header, the live
-/// transcript, and the ask composer. `onOpenSettings` is supplied by the
+/// Which live surface the panel is showing below the header. `.transcript`
+/// is always available; `.notes` / `.guide` only exist once their Settings
+/// toggle is on (Settings -> "Live analysis").
+private enum OverlaySurface: String, CaseIterable, Identifiable {
+    case transcript, notes, guide
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .transcript: "Transcript"
+        case .notes: "Notes"
+        case .guide: "Guide"
+        }
+    }
+}
+
+/// The composed minimal overlay: one panel, no tabs by default — a header,
+/// the live transcript, and the ask composer. A segmented control appears
+/// in the header only when at least one opt-in analysis feature (live
+/// notes / discussion guide) is turned on, letting the user switch that
+/// surface in for the transcript. `onOpenSettings` is supplied by the
 /// integrator since this view doesn't own window lifecycle.
 struct MinimalOverlayPanel: View {
     var onOpenSettings: () -> Void = {}
+
+    @State private var surface: OverlaySurface = .transcript
+    @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel = OverlayAppearanceDefaults.defaultTranslucentPanel
+    @AppStorage(OverlayAppearanceDefaults.opacityKey) private var panelOpacity = OverlayAppearanceDefaults.defaultOpacity
+    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
+    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
+
+    private var availableSurfaces: [OverlaySurface] {
+        var surfaces: [OverlaySurface] = [.transcript]
+        if notesEnabled { surfaces.append(.notes) }
+        if guideEnabled { surfaces.append(.guide) }
+        return surfaces
+    }
 
     var body: some View {
         let coordinator = SessionCoordinator.shared
 
         VStack(alignment: .leading, spacing: 16) {
             headerBar(coordinator: coordinator)
-            MinimalTranscriptView()
-                .frame(minHeight: 240)
+            if availableSurfaces.count > 1 {
+                surfacePicker
+            }
+            surfaceContent
             MinimalAskComposer()
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Palette.surfacePanel)
-        )
+        .background(panelBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Palette.borderHairline)
         )
         .animation(Motion.panelReveal, value: coordinator.phase)
+        .onChange(of: availableSurfaces) { _, surfaces in
+            if !surfaces.contains(surface) { surface = .transcript }
+        }
+    }
+
+    @ViewBuilder
+    private var surfaceContent: some View {
+        switch surface {
+        case .transcript: MinimalTranscriptView().frame(minHeight: 240)
+        case .notes: MinimalNotesView()
+        case .guide: MinimalGuideView()
+        }
+    }
+
+    private var surfacePicker: some View {
+        Picker("Surface", selection: $surface) {
+            ForEach(availableSurfaces) { s in
+                Text(s.label).tag(s)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    @ViewBuilder
+    private var panelBackground: some View {
+        if translucentPanel {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.regularMaterial)
+                .opacity(panelOpacity)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Palette.surfacePanel.opacity(panelOpacity * 0.72))
+                )
+        } else {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Palette.surfacePanel.opacity(panelOpacity))
+        }
     }
 
     private func headerBar(coordinator: SessionCoordinator) -> some View {

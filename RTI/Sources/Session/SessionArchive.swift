@@ -26,11 +26,14 @@ enum SessionArchive {
     /// linked-meeting hand-off) stay tidy. Everything in here is ephemeral
     /// in-memory state captured at stop time; this archive is the only place
     /// it is written to disk.
-    /// Placeholder — the real-time analysis engine (notes/guide/findings) was
-    /// removed; this stays as an empty value type so the archive call sites
-    /// (SessionCoordinator, SessionFinalizer) don't need restructuring.
+    /// Live-analysis features are opt-in, off by default (Settings ->
+    /// "Live analysis"). Only Notes and Discussion Guide survive the
+    /// 2026-08-19 strip; Findings/live-intelligence stays removed.
     struct Analysis {
-        var isEmpty: Bool { true }
+        var notes: [GeneratedNote] = []
+        var guide: DiscussionGuide?
+
+        var isEmpty: Bool { notes.isEmpty && guide == nil }
     }
 
     struct CanonicalMeetingExport {
@@ -121,6 +124,17 @@ enum SessionArchive {
             let body = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
             let md = (fm("Chat") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
+        }
+
+        if !analysis.notes.isEmpty {
+            let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
+            let md = (fm("Notes") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
+        }
+        if let guide = analysis.guide {
+            let body = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
+            let md = (fm("Discussion guide") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
         }
 
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
@@ -710,6 +724,43 @@ enum SessionArchive {
             lines.append("")
         }
         return lines
+    }
+
+    /// Combined markdown for generated notes — one block per note, oldest
+    /// material first, separated by rules.
+    private static func renderNotes(_ notes: [GeneratedNote]) -> String {
+        notes.map { n in
+            var head = "### \(offset(n.rangeStartMs)) – \(offset(n.rangeEndMs))"
+            if !n.title.isEmpty { head += " · \(n.title)" }
+            return "\(head)\n\n\(n.content)"
+        }.joined(separator: "\n\n")
+    }
+
+    private static func renderGuide(_ guide: DiscussionGuide) -> String {
+        let cov = guide.coverage
+        var lines = ["**\(guide.fileName)** — \(cov.answered)/\(cov.total) answered (\(cov.percent)%)", ""]
+        for obj in guide.objectives {
+            lines.append("## \(obj.title)")
+            if let desc = obj.description, !desc.isEmpty { lines.append(desc) }
+            lines.append("")
+            for sec in obj.sections {
+                lines.append("### \(sec.title)")
+                lines.append("")
+                for q in sec.questions {
+                    let mark = q.status == .answered ? "x" : " "
+                    lines.append("- [\(mark)] \(q.text)")
+                    if let r = q.response {
+                        lines.append("  - \(r.summary)")
+                        for quote in r.quotes {
+                            let stamp = quote.formattedTimestamp.isEmpty ? "" : "`\(quote.formattedTimestamp)` "
+                            lines.append("  - > \(stamp)\(quote.text)")
+                        }
+                    }
+                }
+                lines.append("")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     private static func header(startedAt: Date, endedAt: Date) -> String {

@@ -72,6 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         let invisible = UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
         windows.setSharingInvisible(invisible)
 
+        // Opt-in live-analysis tasks (Notes / Discussion Guide / Auto-assist),
+        // all off by default — see Settings -> "Live analysis".
+        SessionCoordinator.shared.registerAnalysisTasks()
+
         menu.install()
         hotkeys.registerAll()
 
