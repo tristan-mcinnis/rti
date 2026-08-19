@@ -90,7 +90,8 @@ enum SessionArchive {
         workstreamSlug: String? = nil,
         linkedMeeting: String? = nil,
         mode: String? = nil,
-        workstreamName: String? = nil
+        workstreamName: String? = nil,
+        speakerNames: [String: String] = [:]
     ) -> URL? {
         let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
             .compactMap { $0 }
@@ -105,9 +106,15 @@ enum SessionArchive {
         // Only archive a transcript when there's real spoken content (a
         // non-note entry) — a header-only transcript.md just pollutes search.
         if transcript.contains(where: { $0.speakerId != "note" }) || hasRetainedAudio {
-            let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
+            let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, speakerNames: speakerNames)
             let md = (fm("Transcript") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md"))
+        }
+
+        if !speakerNames.isEmpty, let data = try? JSONEncoder().encode(speakerNames) {
+            let url = dir.appendingPathComponent("speaker-names.json")
+            try? data.write(to: url, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         }
 
         if !chat.isEmpty {
@@ -216,7 +223,7 @@ enum SessionArchive {
         let url = dir.appendingPathComponent("summary.md")
         writeOwnerOnly(md, to: url)
         RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)" + (sessionTitle.map { ", title: \($0)" } ?? ""), category: "summary")
-        notifySummaryReady(sessionFolder: dir.lastPathComponent)
+        notifySaved(title: sessionTitle ?? dir.lastPathComponent, sessionDir: dir)
         return url
     }
 
@@ -281,18 +288,20 @@ enum SessionArchive {
         return lines.joined(separator: "\n")
     }
 
-    /// Local notification when the post-stop summary lands, so the user knows
-    /// the wrap-up is readable (Sessions browser / vault) without checking.
-    private static func notifySummaryReady(sessionFolder: String) {
+    /// Local notification when a session finishes saving, so the user knows
+    /// where it landed without checking. Tapping it reveals `sessionDir` in
+    /// Finder (`AppDelegate`'s `UNUserNotificationCenterDelegate`) — RTI has
+    /// no in-app reader for the archive by design.
+    private static func notifySaved(title: String, sessionDir: URL) {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
-            content.title = "Session summary ready"
-            content.body = "Tap to read the summary in RTI's Sessions browser."
-            // Carried back on tap so the delegate can open this exact session.
-            content.userInfo = ["sessionFolder": sessionFolder]
-            let request = UNNotificationRequest(identifier: "rti.summary.\(sessionFolder)", content: content, trigger: nil)
+            content.title = "Saved: \(title)"
+            content.body = "Tap to open the session folder."
+            // Carried back on tap so the delegate can reveal this exact folder.
+            content.userInfo = ["sessionFolder": sessionDir.path]
+            let request = UNNotificationRequest(identifier: "rti.summary.\(sessionDir.lastPathComponent)", content: content, trigger: nil)
             center.add(request)
         }
     }
@@ -624,7 +633,7 @@ enum SessionArchive {
 
     // MARK: - Rendering
 
-    private static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry]) -> String {
+    private static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry], speakerNames: [String: String] = [:]) -> String {
         var lines = ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), ""]
 
         // Originals only — live-translation tokens are a viewing convenience, not
@@ -633,17 +642,12 @@ enum SessionArchive {
             .filter { $0.translationStatus != "translation" }
             .sorted { $0.startMs < $1.startMs }
 
-        // Neutral, appearance-ordered speaker labels — matching the live view.
-        // The capture channel (mic vs system) doesn't identify who's talking.
-        var speakerNumber: [String: Int] = [:]
-        var nextNumber = 1
+        // Same labels as the live view (SpeakerLabels.displayName), with any
+        // session-scoped rename from SpeakerNameStore applied on top.
         func label(for id: String) -> String {
             if id == "note" { return "📝 Note" }
-            if let n = speakerNumber[id] { return "Speaker \(n)" }
-            let n = nextNumber
-            speakerNumber[id] = n
-            nextNumber += 1
-            return "Speaker \(n)"
+            if let named = speakerNames[id], !named.isEmpty { return named }
+            return SpeakerLabels.displayName(for: id)
         }
 
         // Coalesce a speaker's consecutive fragments into one flowing paragraph,

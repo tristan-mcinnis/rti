@@ -41,7 +41,8 @@ struct SessionFinalizer {
             workstreamSlug: Self.workstreamSlug(for: snapshot.workstreamItem),
             linkedMeeting: nil,
             mode: snapshot.modeName,
-            workstreamName: snapshot.workstreamItem?.name
+            workstreamName: snapshot.workstreamItem?.name,
+            speakerNames: SpeakerNameStore.shared.names
         )
 
         return ArchiveResult(

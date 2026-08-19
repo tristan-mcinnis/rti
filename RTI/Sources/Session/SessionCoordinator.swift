@@ -314,6 +314,7 @@ final class SessionCoordinator {
         liveEntries = []
         interimLine = nil
         transcriptPipeline.reset()
+        SpeakerNameStore.shared.reset()
 
         // Keep Bluetooth headphones in full-volume A2DP: if the default mic is a
         // BT headset, route capture to the built-in mic for the session. Must run

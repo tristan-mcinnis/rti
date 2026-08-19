@@ -45,10 +45,10 @@ struct MinimalAskComposer: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(settledParagraphs.enumerated()), id: \.offset) { _, paragraph in
-                        RTIMarkdown(paragraph, style: .overlay)
+                        RTIMarkdown(paragraph)
                     }
                     if !tailParagraph.isEmpty {
-                        RTIMarkdown(tailParagraph, style: .overlay)
+                        RTIMarkdown(tailParagraph)
                             .id(answerBottomID)
                     }
                 }

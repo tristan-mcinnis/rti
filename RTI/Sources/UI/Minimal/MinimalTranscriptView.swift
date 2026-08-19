@@ -41,6 +41,8 @@ struct MinimalTranscriptView: View {
     @State private var nextSpeakerIndex = 0
     @State private var isAtBottom = true
     @State private var lastScrollAt = Date.distantPast
+    @State private var renamingSpeakerId: String?
+    @State private var renameDraft = ""
 
     private let bottomAnchorID = "minimal-transcript-bottom"
 
@@ -89,7 +91,10 @@ struct MinimalTranscriptView: View {
     // MARK: - Rows
 
     private func rowView(_ row: Row) -> some View {
-        HStack(alignment: .capHeightCenter, spacing: 8) {
+        let store = SpeakerNameStore.shared
+        let currentLabel = row.isNote ? row.label : (store.name(for: row.speakerId) ?? row.label)
+
+        return HStack(alignment: .capHeightCenter, spacing: 8) {
             Circle()
                 .fill(row.isNote ? Palette.stateWarn : Palette.speakerChip(index: row.speakerIndex))
                 .frame(width: 8, height: 8)
@@ -97,12 +102,35 @@ struct MinimalTranscriptView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(row.label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Palette.inkSecondary)
+                    if row.isNote {
+                        Text(currentLabel)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Palette.inkSecondary)
+                            .alignmentGuide(.capHeightCenter) {
+                                $0[VerticalAlignment.firstTextBaseline] - approximateCapHeight(fontSize: 12) / 2
+                            }
+                    } else if renamingSpeakerId == row.speakerId {
+                        TextField("Name", text: $renameDraft, onCommit: { commitRename(row.speakerId) })
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Palette.inkPrimary)
+                            .frame(width: 100)
+                            .onExitCommand { renamingSpeakerId = nil }
+                    } else {
+                        Button {
+                            renameDraft = currentLabel
+                            renamingSpeakerId = row.speakerId
+                        } label: {
+                            Text(currentLabel)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Palette.inkSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Rename speaker \(currentLabel)")
                         .alignmentGuide(.capHeightCenter) {
                             $0[VerticalAlignment.firstTextBaseline] - approximateCapHeight(fontSize: 12) / 2
                         }
+                    }
                     Text(timeString(row.startMs))
                         .font(.system(size: 11).monospacedDigit())
                         .foregroundStyle(Palette.inkFaint)
@@ -190,6 +218,13 @@ struct MinimalTranscriptView: View {
         speakerIndexMap[speakerId] = index
         nextSpeakerIndex += 1
         return index
+    }
+
+    // MARK: - Speaker rename
+
+    private func commitRename(_ speakerId: String) {
+        SpeakerNameStore.shared.rename(speakerId, to: renameDraft)
+        renamingSpeakerId = nil
     }
 
     // MARK: - Scroll follow (throttled to 1 seek / 250ms, only at bottom)
