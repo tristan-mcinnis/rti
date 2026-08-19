@@ -20,7 +20,7 @@ enum Commands {
         [
             MenuItem(
                 title: {
-                    SessionCoordinator.shared.isRunning ? "Finish Recording  ⌘⇧R" : "Start Recording  ⌘⇧R"
+                    SessionCoordinator.shared.isRunning ? "Finish recording  ⌘⇧R" : "Start recording  ⌘⇧R"
                 },
                 action: { SessionCoordinator.shared.toggleSession() }
             ),
