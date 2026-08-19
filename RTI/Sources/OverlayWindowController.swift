@@ -39,7 +39,7 @@ final class OverlayWindowController {
     private nonisolated(unsafe) var sizeObserver: NSObjectProtocol?
     private nonisolated(unsafe) var appearanceObserver: NSObjectProtocol?
 
-    init(onOpenSettings: @Sendable @escaping () -> Void = {}) {
+    init() {
         let initialSize = Self.configuredSize()
         let panel = KeyableOverlayPanel(
             contentRect: NSRect(x: 0, y: 0, width: initialSize.width, height: initialSize.height),
@@ -60,7 +60,7 @@ final class OverlayWindowController {
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true
 
-        panel.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
+        panel.contentView = NSHostingView(rootView: OverlayPanelView())
         panel.appearance = Self.configuredAppearance()
 
         self.window = panel

@@ -67,28 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             }
         }
 
-        windows.install(onOpenSettings: { [weak self] in
-            Task { @MainActor [weak self] in self?.windows.openSettings() }
-        })
+        windows.install()
 
         let invisible = UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
         windows.setSharingInvisible(invisible)
 
-        // Build the shared command registry once. Menu, hotkeys, and the
-        // command palette all consume this same list.
-        let commands = CommandBuilder.buildCommands(
-            windows: windows,
-            session: SessionCoordinator.shared,
-            llm: LLMController.shared
-        )
-
-        CommandRegistry.shared.replaceAll(commands)
-
-        // Menu: dynamic state providers for items whose titles change.
-        menu.isRunningProvider = { SessionCoordinator.shared.isRunning }
-        menu.install(commands: commands)
-
-        hotkeys.registerAll(commands: commands)
+        menu.install()
+        hotkeys.registerAll()
 
         sessionObservationTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -101,19 +86,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
                     }
                 }
                 self?.menu.refreshTitle()
-                self?.windows.syncRecordingHUD()
             }
         }
 
         registerNotificationObservers()
 
-        // Route "summary ready" notification taps to the in-app Sessions browser.
+        // Route "session saved" notification taps to reveal the folder in Finder.
         UNUserNotificationCenter.current().delegate = self
 
-        if !LLMProviders.activeHasKey || !STTProviders.activeHasKey {
-            // First run (or keys cleared): guide setup instead of cold-dropping
-            // into Settings.
-            onboarding.show()
+        if AppPermissions.microphone != .granted {
+            // First run (or mic revoked): the permission card, then straight
+            // into Settings to collect API keys.
+            onboarding.show(onFinish: { [weak self] in
+                self?.windows.showOverlay()
+                NotificationCenter.default.post(name: .rtiOpenSettings, object: nil)
+            })
+        } else if !LLMProviders.activeHasKey || !STTProviders.activeHasKey {
+            // Mic already granted, keys still missing: straight to Settings.
+            windows.showOverlay()
+            NotificationCenter.default.post(name: .rtiOpenSettings, object: nil)
         }
     }
 
@@ -123,7 +114,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private func registerNotificationObservers() {
         let observers: [(NSNotification.Name, Selector)] = [
             (.rtiToggleOverlay, #selector(toggleOverlay)),
-            (.rtiClearChat, #selector(clearChat)),
         ]
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
@@ -131,16 +121,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
 
     @objc private func toggleOverlay() { windows.toggleOverlay() }
-    @objc private func clearChat() { Self.clearChatNow() }
-
-    /// Clear the current session's chat immediately — no confirmation modal.
-    /// The chat is ephemeral (no persisted history) and the live transcript is
-    /// untouched, so a blocking "Are you sure?" alert was pure friction; clearing
-    /// is now a single click / keystroke. Static so `CommandPaletteFactory` can
-    /// reference it without a live AppDelegate instance.
-    static func clearChatNow() {
-        LLMController.shared.clear()
-    }
 
     private func ensureSingleInstance() -> Bool {
         let bundleId = Bundle.main.bundleIdentifier ?? "com.tristan.rti"
@@ -199,21 +179,16 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         completionHandler([.banner, .list])
     }
 
-    /// Tapping a "summary ready" notification opens that session in the in-app
-    /// Sessions browser (read it in RTI, not in an external Markdown editor).
+    /// Tapping "Saved: <title>" reveals that session's folder in Finder — RTI
+    /// keeps no in-app reader for the archive by design.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let folder = response.notification.request.content.userInfo["sessionFolder"] as? String
-        Task { @MainActor in
-            NSApp.activate(ignoringOtherApps: true)
-            if let folder {
-                WindowCoordinator.shared.showSession(folder: folder)
-            } else {
-                WindowCoordinator.shared.showSessionsControl(tab: .sessions)
-            }
+        let folderPath = response.notification.request.content.userInfo["sessionFolder"] as? String
+        if let folderPath {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folderPath)])
         }
         completionHandler()
     }
