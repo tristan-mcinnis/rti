@@ -104,19 +104,12 @@ targets:
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
       - path: Sources/Session/VaultWorkstreamStore.swift
       - path: Sources/Session/SentinelPaths.swift
-      - path: Sources/LLM/VaultSearch.swift
-      - path: Sources/LLM/VaultSearchCLI.swift
-      - path: Sources/LLM/VaultRetrieval.swift
       - path: Sources/LLM/AssistantTurnBuilder.swift
-      - path: Sources/LLM/ToolExecutor.swift
-      - path: Sources/Analysis/AutoAssistCard.swift
-      - path: Sources/Analysis/FindingEntry.swift
-      - path: Sources/Session/VaultMeetings.swift
       - path: Sources/Session/VaultFiles.swift
       - path: Sources/Session/SessionArchiveMetadata.swift
       - path: Sources/Audio/WAVWriter.swift
+      - path: Sources/Audio/AudioInputDevice.swift
       - path: Sources/Support/AppLog.swift
-      - path: Sources/LLM/RetrievalHeuristics.swift
     dependencies:
       - target: RTICore
       - package: Yams

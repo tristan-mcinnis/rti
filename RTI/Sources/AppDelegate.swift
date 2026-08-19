@@ -36,23 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CrashLog.install()
         CredentialStore.migrateLegacyIfNeeded()
 
-        // Wake the Neon search compute now so the first vault search of the
-        // session doesn't pay the serverless cold-start.
-        VaultSearchCLI.warmUp()
-
         continueLaunch()
     }
 
     @MainActor private func continueLaunch() {
-        _ = ModeStore.shared
-        UserDefaults.standard.register(defaults: [
-            AnalysisSettingsDefaults.notesEnabledKey: AnalysisSettingsDefaults.defaultNotesEnabled,
-            AnalysisSettingsDefaults.guideEnabledKey: AnalysisSettingsDefaults.defaultGuideEnabled,
-            AnalysisSettingsDefaults.findingsEnabledKey: AnalysisSettingsDefaults.defaultFindingsEnabled,
-            AnalysisSettingsDefaults.autoAssistEnabledKey: AnalysisSettingsDefaults.defaultAutoAssistEnabled,
-            AnalysisSettingsDefaults.notesIntervalKey: AnalysisSettingsDefaults.defaultInterval,
-        ])
-
         // Clear any phantom system-audio aggregate devices left by a prior
         // crash before the first tap-based capture runs.
         if #available(macOS 14.2, *) {
@@ -62,11 +49,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // Belt-and-suspenders: delete any orphan WAV left in temp by a crash.
         // Normal stops already delete it; the app keeps no audio.
         WAVWriter.sweepStaleRecordings()
-
-        // Register the periodic real-time analysis tasks (notes,
-        // discussion-guide matching). They only fire while a session runs and
-        // self-gate on their Settings toggles.
-        SessionCoordinator.shared.registerAnalysisTasks()
 
         // A quit, crash, or network outage during the offline pass leaves a
         // durable marker beside retained audio. Resume those jobs on launch;
@@ -97,8 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         let commands = CommandBuilder.buildCommands(
             windows: windows,
             session: SessionCoordinator.shared,
-            llm: LLMController.shared,
-            modes: ModeStore.shared
+            llm: LLMController.shared
         )
 
         CommandRegistry.shared.replaceAll(commands)
@@ -133,10 +114,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             // First run (or keys cleared): guide setup instead of cold-dropping
             // into Settings.
             onboarding.show()
-        } else {
-            // Quiet update check on normal launches — silent unless a newer
-            // build has been published.
-            UpdateChecker.checkInBackground()
         }
     }
 

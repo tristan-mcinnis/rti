@@ -15,10 +15,7 @@ import UserNotifications
 /// can't be located via Sentinel's config):
 ///   transcript.md         — the live transcript, notes inline
 ///   chat.md               — the assistant chat log (only written if non-empty)
-///   notes.md              — generated meeting notes (only if any)
-///   discussion-guide.md   — discussion-guide coverage (only if a guide loaded)
-///   live-intelligence.md  — decisions/actions/questions/risks (only if any)
-///   screen-context.md     — timestamped active-screen OCR changes (only if any)
+///   summary.md            — end-of-session summary (only if generated)
 ///   audio-mic.wav         — retained mic audio for automatic transcript upgrade
 ///   audio-system.wav      — retained system audio for automatic transcript upgrade
 enum SessionArchive {
@@ -29,15 +26,11 @@ enum SessionArchive {
     /// linked-meeting hand-off) stay tidy. Everything in here is ephemeral
     /// in-memory state captured at stop time; this archive is the only place
     /// it is written to disk.
+    /// Placeholder — the real-time analysis engine (notes/guide/findings) was
+    /// removed; this stays as an empty value type so the archive call sites
+    /// (SessionCoordinator, SessionFinalizer) don't need restructuring.
     struct Analysis {
-        var notes: [GeneratedNote] = []
-        var guide: DiscussionGuide?
-        var findings: [FindingEntry] = []
-        var visualContext: [VisualContextEvent] = []
-
-        var isEmpty: Bool {
-            notes.isEmpty && guide == nil && findings.isEmpty && visualContext.isEmpty
-        }
+        var isEmpty: Bool { true }
     }
 
     struct CanonicalMeetingExport {
@@ -123,26 +116,6 @@ enum SessionArchive {
             writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
         }
 
-        if !analysis.notes.isEmpty {
-            let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
-            let md = (fm("Notes") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
-        }
-        if let guide = analysis.guide {
-            let body = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
-            let md = (fm("Discussion guide") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
-        }
-        if !analysis.findings.isEmpty {
-            let body = (["# Live intelligence", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderFindings(analysis.findings)]).joined(separator: "\n")
-            let md = (fm("Live intelligence") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("live-intelligence.md"))
-        }
-        if !analysis.visualContext.isEmpty {
-            let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(analysis.visualContext)]).joined(separator: "\n")
-            let md = (fm("Screen context") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md"))
-        }
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
         writeMetadata(
@@ -185,10 +158,10 @@ enum SessionArchive {
         // Full-meeting summaries routinely outlive the default 60s stream
         // timeout (the silent failure that left archives without summary.md)
         // — give this call its own generous budget and log failures.
-        // Shape the wrap-up to the session's mode (research debrief for
-        // interviews, minutes otherwise) and run it on the reasoning ("smart")
-        // model — the end-of-session summary is worth the extra latency.
-        let kind = ModeStore.shared.activeMode?.kind ?? .other
+        // Modes were removed — RTI always writes the meeting-shaped
+        // summary, run on the reasoning ("smart") model since the
+        // end-of-session summary is worth the extra latency.
+        let kind: ModeKind = .meeting
         // Piggyback a short session-title on the summary call (one model call,
         // no extra latency). The instruction is appended AFTER the user's
         // editable summary prompt so it never mutates the stored prompt; the
@@ -536,30 +509,6 @@ enum SessionArchive {
             lines.append(bodyAfterFrontmatter(summary).trimmingCharacters(in: .whitespacesAndNewlines))
             lines.append("")
         }
-        if !analysis.notes.isEmpty {
-            lines.append("## Generated notes")
-            lines.append("")
-            lines.append(renderNotes(analysis.notes))
-            lines.append("")
-        }
-        if let guide = analysis.guide {
-            lines.append("## Discussion guide")
-            lines.append("")
-            lines.append(renderGuide(guide))
-            lines.append("")
-        }
-        if !analysis.findings.isEmpty {
-            lines.append("## Live intelligence")
-            lines.append("")
-            lines.append(renderFindings(analysis.findings))
-            lines.append("")
-        }
-        if !analysis.visualContext.isEmpty {
-            lines.append("## Screen context")
-            lines.append("")
-            lines.append(renderVisualContext(analysis.visualContext))
-            lines.append("")
-        }
         if !chat.isEmpty {
             lines.append("## Assistant chat")
             lines.append("")
@@ -757,152 +706,6 @@ enum SessionArchive {
             lines.append("")
         }
         return lines
-    }
-
-    /// Combined markdown for generated notes — one block per note, newest
-    /// material last, separated by rules. Shared by the local archive and the
-    /// linked-meeting record.
-    private static func renderNotes(_ notes: [GeneratedNote]) -> String {
-        notes.map { n in
-            var head = "### \(offset(n.rangeStartMs)) – \(offset(n.rangeEndMs))"
-            if !n.title.isEmpty { head += " · \(n.title)" }
-            return "\(head)\n\n\(n.content)"
-        }.joined(separator: "\n\n")
-    }
-
-    /// Live intelligence ledger: one bullet per tagged work object, in the
-    /// order logged, with its `[mm:ss]`, why line, and any source quote.
-    private static func renderFindings(_ findings: [FindingEntry]) -> String {
-        findings.map { f in
-            var line = "- **[\(f.tag.label)]** `\(offset(f.rangeMs))` \(f.headline)"
-            if !f.matters.isEmpty { line += "\n  - _Why:_ \(f.matters)" }
-            if let quote = f.quote, !quote.isEmpty {
-                let who = f.speaker.map { "\($0): " } ?? ""
-                line += "\n  - > \(who)\(quote)"
-            }
-            return line
-        }.joined(separator: "\n")
-    }
-
-    /// Materially changed active-screen OCR frames. Images never enter the
-    /// archive; this compact evidence trail is what the vault and agent keep.
-    private static func renderVisualContext(_ events: [VisualContextEvent]) -> String {
-        events.map { event in
-            "### `\(VisualContextText.timestamp(event.offsetSeconds))`\n\n\(event.text)"
-        }.joined(separator: "\n\n---\n\n")
-    }
-
-    /// Discussion-guide coverage: a header line plus each question with its
-    /// status and any matched quotes.
-    private static func renderGuide(_ guide: DiscussionGuide) -> String {
-        let cov = guide.coverage
-        var lines = ["**\(guide.fileName)** — \(cov.answered)/\(cov.total) answered (\(cov.percent)%)", ""]
-        for obj in guide.objectives {
-            lines.append("## \(obj.title)")
-            if let desc = obj.description, !desc.isEmpty { lines.append(desc) }
-            lines.append("")
-            for sec in obj.sections {
-                lines.append("### \(sec.title)")
-                lines.append("")
-                for q in sec.questions {
-                    let mark = q.status == .answered ? "x" : " "
-                    lines.append("- [\(mark)] \(q.text)")
-                    if let r = q.response {
-                        lines.append("  - \(r.summary)")
-                        for quote in r.quotes {
-                            let stamp = quote.formattedTimestamp.isEmpty ? "" : "`\(quote.formattedTimestamp)` "
-                            lines.append("  - > \(stamp)\(quote.text)")
-                        }
-                    }
-                }
-                lines.append("")
-            }
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    // MARK: - Linked Meeting Sentinel record
-
-    /// When the RTI session was linked to a meeting that Meeting Sentinel is
-    /// recording, drop RTI's notes + chat next to Sentinel's raw transcript so
-    /// the downstream vault/Hermes workflow can fold them in. Keyed by the
-    /// meeting stem; the destination is derived from Sentinel's own audio path
-    /// (`<meetings>/recordings/<stem>.m4a` → `<meetings>/transcripts-raw/`)
-    /// rather than a hardcoded vault location. RTI's rough live transcript is
-    /// deliberately omitted — Sentinel's batch transcript is the record-of-truth.
-    static func writeLinkedMeetingNotes(
-        meeting: SentinelMeeting,
-        transcript: [LiveEntry],
-        chat: [ChatEntry],
-        analysis: Analysis = Analysis()
-    ) {
-        let notes = transcript.filter { $0.speakerId == "note" }
-        guard !notes.isEmpty || !chat.isEmpty || !analysis.isEmpty else { return }
-
-        let file = SentinelPaths.linkedMeetingNotesURL(audioFilePath: meeting.audioFilePath, meetingName: meeting.name)
-        let transcriptsRaw = file.deletingLastPathComponent()
-        // Only write if Sentinel's transcripts dir already exists — never
-        // create stray folders if the path derivation is ever wrong.
-        guard FileManager.default.fileExists(atPath: transcriptsRaw.path) else { return }
-
-        let md = renderLinkedMeeting(meeting: meeting, userNotes: notes, chat: chat, analysis: analysis)
-        writeOwnerOnly(md, to: file)
-    }
-
-    private static func renderLinkedMeeting(
-        meeting: SentinelMeeting,
-        userNotes: [LiveEntry],
-        chat: [ChatEntry],
-        analysis: Analysis
-    ) -> String {
-        var lines = [
-            "---",
-            "source: rti-live",
-            "meeting: \(meeting.name)",
-            "generated: \(ISO8601DateFormatter().string(from: Date()))",
-            "---",
-            "",
-            "# RTI live notes — \(meeting.name)",
-            "",
-        ]
-        if !userNotes.isEmpty {
-            lines.append("## User notes")
-            lines.append("")
-            for note in userNotes.sorted(by: { $0.startMs < $1.startMs }) {
-                lines.append("- `\(offset(note.startMs))` \(note.text)")
-            }
-            lines.append("")
-        }
-        if !analysis.notes.isEmpty {
-            lines.append("## Generated notes")
-            lines.append("")
-            lines.append(renderNotes(analysis.notes))
-            lines.append("")
-        }
-        if let guide = analysis.guide {
-            lines.append("## Discussion guide")
-            lines.append("")
-            lines.append(renderGuide(guide))
-            lines.append("")
-        }
-        if !analysis.findings.isEmpty {
-            lines.append("## Live intelligence")
-            lines.append("")
-            lines.append(renderFindings(analysis.findings))
-            lines.append("")
-        }
-        if !analysis.visualContext.isEmpty {
-            lines.append("## Screen context")
-            lines.append("")
-            lines.append(renderVisualContext(analysis.visualContext))
-            lines.append("")
-        }
-        if !chat.isEmpty {
-            lines.append("## Assistant chat")
-            lines.append("")
-            lines += chatBlock(chat)
-        }
-        return lines.joined(separator: "\n")
     }
 
     private static func header(startedAt: Date, endedAt: Date) -> String {

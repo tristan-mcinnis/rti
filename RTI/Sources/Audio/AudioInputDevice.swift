@@ -58,10 +58,79 @@ enum AudioInputDeviceStore {
     /// Resolve the user's preferred device to an `AudioDeviceID` we can hand to
     /// CoreAudio. Returns `nil` when "system default" is selected so the caller
     /// can fall back to the existing AVAudioEngine behavior.
+    ///
+    /// Thin wrapper kept for callers that only care about the raw UID pick
+    /// (unfiltered). `preferredRealInputDeviceID()` is the one that filters
+    /// out virtual devices and should be used to actually bind capture.
     static func resolvePreferredDeviceID() -> AudioDeviceID? {
         let uid = preferredUID
         guard uid != AudioInputDevice.systemDefaultUID else { return nil }
         return availableInputDevices().first(where: { $0.uid == uid })?.id
+    }
+
+    // MARK: - Virtual device filtering
+    //
+    // Virtual/loopback devices (BlackHole, aggregates, etc.) show up as valid
+    // input devices to CoreAudio, so nothing stops the app from silently
+    // recording a loopback device instead of a real microphone. These
+    // helpers filter them out.
+
+    /// Name substrings (case-insensitive) known to belong to virtual/loopback
+    /// audio devices rather than physical microphones.
+    private static let virtualDeviceNameDenylist = [
+        "blackhole", "loopback", "soundflower", "vb-cable", "vb-audio",
+        "aggregate", "multi-output", "zoomaudiodevice", "teams audio", "krisp",
+    ]
+
+    /// True when `deviceID` is a virtual, aggregate, or otherwise
+    /// known-loopback device rather than a physical microphone.
+    static func isVirtual(_ deviceID: AudioDeviceID) -> Bool {
+        let transport = transportType(deviceID)
+        if transport == kAudioDeviceTransportTypeVirtual || transport == kAudioDeviceTransportTypeAggregate {
+            return true
+        }
+        guard let name = stringProperty(deviceID, kAudioObjectPropertyName) else { return false }
+        return isVirtualName(name)
+    }
+
+    /// Pure name-based check against the virtual/loopback device denylist,
+    /// split out from `isVirtual(_:)` so it's testable without a real
+    /// `AudioDeviceID`.
+    static func isVirtualName(_ name: String) -> Bool {
+        let lowered = name.lowercased()
+        return virtualDeviceNameDenylist.contains { lowered.contains($0) }
+    }
+
+    /// All input-capable devices, minus virtual/loopback ones.
+    static func physicalInputDevices() -> [AudioInputDevice] {
+        availableInputDevices().filter { !isVirtual($0.id) }
+    }
+
+    /// Name + UID for an arbitrary device ID, for logging which device was
+    /// actually bound.
+    static func nameAndUID(for deviceID: AudioDeviceID) -> (name: String, uid: String) {
+        let name = stringProperty(deviceID, kAudioObjectPropertyName) ?? "unknown"
+        let uid = stringProperty(deviceID, kAudioDevicePropertyDeviceUID) ?? "unknown"
+        return (name, uid)
+    }
+
+    /// The device capture should actually bind to, in priority order:
+    /// 1. the user's explicit pick, if it's not virtual
+    /// 2. the current system default input, if it's not virtual
+    /// 3. the built-in microphone
+    /// 4. the first physical input device
+    /// 5. `nil` if there is no physical input device at all
+    static func preferredRealInputDeviceID() -> AudioDeviceID? {
+        if let picked = resolvePreferredDeviceID(), !isVirtual(picked) {
+            return picked
+        }
+        if let defaultID = defaultDeviceID(kAudioHardwarePropertyDefaultInputDevice), !isVirtual(defaultID) {
+            return defaultID
+        }
+        if let builtIn = builtInInputDeviceID() {
+            return builtIn
+        }
+        return physicalInputDevices().first?.id
     }
 
     /// Human-readable name of the input device actually in use — the picked

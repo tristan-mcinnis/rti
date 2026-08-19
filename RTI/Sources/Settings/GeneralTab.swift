@@ -13,7 +13,6 @@ struct GeneralTab: View {
                 SettingsCard { LaunchAtLoginSection() }
                 SettingsCard { CaptureAccessSection() }
                 SettingsCard { AudioInputSection() }
-                SettingsCard { RealTimeAnalysisSection() }
                 SettingsCard { OverlayAppearanceSection() }
                 SettingsCard { HotkeysSection() }
                 SettingsCard { DataAndSupportSection() }
@@ -188,59 +187,6 @@ private struct AudioInputSection: View {
         }
         .onAppear {
             inputDevices = AudioInputDeviceStore.availableInputDevices()
-        }
-    }
-}
-
-// MARK: - Real-Time Analysis
-
-private struct RealTimeAnalysisSection: View {
-    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = AnalysisSettingsDefaults.defaultNotesEnabled
-    @AppStorage(AnalysisSettingsDefaults.notesIntervalKey) private var notesInterval: Double = AnalysisSettingsDefaults.defaultInterval
-    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = AnalysisSettingsDefaults.defaultGuideEnabled
-    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled: Bool = AnalysisSettingsDefaults.defaultFindingsEnabled
-    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled: Bool = AnalysisSettingsDefaults.defaultAutoAssistEnabled
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Real-Time Analysis")
-                .font(.system(size: 13, weight: .medium))
-
-            Toggle("Enable notes generation", isOn: $notesEnabled)
-            Toggle("Enable discussion guide matching", isOn: $guideEnabled)
-            Toggle("Enable live intelligence ledger", isOn: $findingsEnabled)
-            Toggle("Enable auto next-move cards", isOn: $autoAssistEnabled)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Notes interval")
-                        .font(.system(size: 12))
-                    Spacer()
-                    Text("\(Int(notesInterval / 60)) min")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                Slider(value: $notesInterval, in: AnalysisSettingsDefaults.intervalRange, step: 60) {}
-            }
-            .disabled(!notesEnabled)
-            .opacity(notesEnabled ? 1 : 0.5)
-
-            Text("Runs automatically while recording.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                Button("Reset to Defaults") {
-                    notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
-                    guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
-                    findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
-                    autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
-                    notesInterval = AnalysisSettingsDefaults.defaultInterval
-                }
-                .controlSize(.small)
-            }
         }
     }
 }

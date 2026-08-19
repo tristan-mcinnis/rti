@@ -17,8 +17,7 @@ enum CommandBuilder {
     static func buildCommands(
         windows: WindowCoordinator,
         session: SessionCoordinator,
-        llm: LLMController,
-        modes: ModeStore
+        llm: LLMController
     ) -> [RTICommand] {
         sessionCommands(windows: windows, session: session)
             + navigationCommands(windows: windows)
@@ -28,7 +27,6 @@ enum CommandBuilder {
             + transcriptionCommands()
             + panelCommands(windows: windows, llm: llm)
             + appCommands(windows: windows)
-            + modeSwitchCommands(modes: modes, llm: llm)
     }
 
     // MARK: - Transcription provider (menu quick-switch)
@@ -91,9 +89,6 @@ enum CommandBuilder {
             tabCmd("setup", "Go to Prepare meeting"),
             tabCmd("assist", "Go to Assist"),
             tabCmd("transcript", "Go to Transcript"),
-            tabCmd("notes", "Go to Notes"),
-            tabCmd("guide", "Go to Guide"),
-            tabCmd("findings", "Go to Intel"),
         ]
     }
 
@@ -176,13 +171,6 @@ enum CommandBuilder {
                 title: "Sessions",
                 keywords: ["history", "archive", "library", "previous"],
                 perform: { [weak windows] in windows?.showSessionsControl(tab: .sessions) },
-                menuSection: .navigation
-            ),
-            RTICommand(
-                id: "view.brief",
-                title: "Pre-meeting Brief",
-                keywords: ["brief", "prep", "prepare", "agenda", "meeting"],
-                perform: { [weak windows] in windows?.showMeetingBrief() },
                 menuSection: .navigation
             ),
         ]
@@ -274,16 +262,6 @@ enum CommandBuilder {
                 hotkeyKeyCode: UInt32(kVK_ANSI_N),
                 hotkeyModifiers: UInt32(cmdKey | optionKey)
             ),
-            RTICommand(
-                id: "capture.screen",
-                title: "Capture Screen  ⌘⇧H",
-                subtitle: "⌘H",
-                keywords: ["screenshot", "ocr"],
-                perform: { ScreenshotManager.shared.captureAndAttach() },
-                menuSection: .actions,
-                hotkeyKeyCode: UInt32(kVK_ANSI_H),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
-            ),
         ] + AssistantAction.primaryEligibleActions.map { action in
             RTICommand(
                 id: "primary.set.\(action.id)",
@@ -311,19 +289,6 @@ enum CommandBuilder {
         llm: LLMController
     ) -> [RTICommand] {
         [
-            RTICommand(
-                id: "fieldwork.preset",
-                title: "Fieldwork Preset (interview + listener + ⌘⏎ Assist)",
-                keywords: ["fgd", "idi", "observe", "research", "preset"],
-                perform: {
-                    let modes = ModeStore.shared
-                    if let interview = modes.modes.first(where: { $0.name.localizedCaseInsensitiveContains("interview") }) {
-                        modes.activeModeId = interview.id
-                    }
-                    llm.listenerMode = true
-                    llm.primaryActionID = "assist"
-                }
-            ),
             RTICommand(
                 id: "listener.toggle",
                 title: "Listener Mode (I'm not speaking)",
@@ -374,44 +339,11 @@ enum CommandBuilder {
                 menuSection: .app
             ),
             RTICommand(
-                id: "app.checkUpdates",
-                title: "Check for Updates…",
-                keywords: ["update", "upgrade", "version", "release"],
-                perform: { UpdateChecker.checkAndReport() },
-                menuSection: .app
-            ),
-            RTICommand(
                 id: "app.quit",
                 title: "Quit RTI",
                 subtitle: "⌘Q",
                 perform: { NSApp.terminate(nil) }
             ),
         ]
-    }
-
-    @MainActor
-    private static func modeSwitchCommands(
-        modes: ModeStore,
-        llm: LLMController
-    ) -> [RTICommand] {
-        modes.modes.map { mode in
-            RTICommand(
-                id: "mode.switch.\(mode.id)",
-                title: "Switch to: \(mode.name)",
-                keywords: ["mode", "preset"],
-                isAvailable: { modes.activeMode?.id != mode.id },
-                perform: {
-                    modes.activeModeId = mode.id
-                    // Per-mode ⌘⏎ binding: meeting mode defaults to
-                    // Answer-latest, fieldwork/interview mode keeps the
-                    // Assist template (see applyFieldworkPreset above).
-                    switch mode.kind {
-                    case .meeting: llm.primaryActionID = "answerLatest"
-                    case .interview: llm.primaryActionID = "assist"
-                    case .coding, .other: break
-                    }
-                }
-            )
-        }
     }
 }

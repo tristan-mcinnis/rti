@@ -7,9 +7,6 @@ struct SessionsControlView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case sessions = "Sessions"
         case providers = "Providers"
-        case modes = "Modes"
-        case prompts = "Prompts"
-        case glossary = "Glossary"
         case general = "General"
         case logs = "Logs"
 
@@ -19,9 +16,6 @@ struct SessionsControlView: View {
             switch self {
             case .sessions:       return "clock.arrow.circlepath"
             case .providers:      return "server.rack"
-            case .modes:          return "square.stack.3d.up"
-            case .prompts:        return "text.bubble"
-            case .glossary:       return "character.book.closed"
             case .general:        return "gearshape.fill"
             case .logs:           return "doc.text.magnifyingglass"
             }
@@ -75,7 +69,7 @@ struct SessionsControlView: View {
             .padding(.top, 20)
 
             sidebarSection("Meetings", tabs: [.sessions])
-            sidebarSection("Preferences", tabs: [.providers, .modes, .prompts, .glossary, .general])
+            sidebarSection("Preferences", tabs: [.providers, .general])
             sidebarSection("Support", tabs: [.logs])
 
             Spacer(minLength: 0)
@@ -143,12 +137,6 @@ struct SessionsControlView: View {
 
         case .providers:
             ProvidersTab()
-        case .modes:
-            ModesTab()
-        case .prompts:
-            PromptsTab()
-        case .glossary:
-            GlossaryTab()
         case .general:
             GeneralTab()
 
@@ -178,79 +166,3 @@ struct SessionsControlView: View {
     }
 }
 
-/// Slim banner shown while the external Meeting Sentinel tool is recording a
-/// meeting (Step 1 of the RTI ⇄ Sentinel bridge). Collapses to nothing when
-/// no meeting is live. Read-only awareness — no controls yet.
-@MainActor
-private struct SentinelMeetingBanner: View {
-    @State private var monitor = MeetingSentinelMonitor.shared
-    @State private var session = SessionCoordinator.shared
-    // No Combine timer — the per-instance Timer.publish subscription pattern
-    // segfaulted in OverlayRecordButton (stale SubscriptionView on teardown);
-    // the elapsed label uses TimelineView so SwiftUI owns the clock.
-
-    var body: some View {
-        if let meeting = monitor.liveMeeting {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(.red)
-                    .frame(width: 8, height: 8)
-                Text("Recording")
-                    .font(.system(size: 12, weight: .semibold))
-                Text(meeting.name)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 8)
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(elapsedString(meeting.startedAt, now: context.date))
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                Button("Brief") { WindowCoordinator.shared.showMeetingBrief() }
-                    .font(.system(size: 11, weight: .medium))
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("Review the pre-meeting brief for this meeting")
-                goLiveControl(meeting)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.red.opacity(0.10))
-            .help("Meeting Sentinel is recording this meeting (\(meeting.audioFilePath))")
-        }
-    }
-
-    /// Right-hand control: "Go live" to overlay RTI's live intelligence on the
-    /// meeting Sentinel is recording, or a live indicator once RTI is running.
-    @ViewBuilder
-    private func goLiveControl(_ meeting: SentinelMeeting) -> some View {
-        if session.isRunning {
-            Label("RTI live", systemImage: "waveform")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.green)
-                .labelStyle(.titleAndIcon)
-        } else {
-            Button {
-                SessionCoordinator.shared.startSession(linkedTo: meeting)
-                WindowCoordinator.shared.showOverlay()
-            } label: {
-                Text("Go live")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .tint(.red)
-            .help("Start RTI's live transcript + assist overlay for this meeting")
-        }
-    }
-
-    private func elapsedString(_ start: Date, now: Date) -> String {
-        let total = Int(max(0, now.timeIntervalSince(start)))
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        return h > 0
-            ? String(format: "%d:%02d:%02d", h, m, s)
-            : String(format: "%02d:%02d", m, s)
-    }
-}

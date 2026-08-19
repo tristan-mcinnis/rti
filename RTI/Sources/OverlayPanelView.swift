@@ -11,12 +11,6 @@ struct OverlayPanelView: View {
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel: Bool = OverlayAppearanceDefaults.defaultTranslucentPanel
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
-    // Live-analysis tabs only show when their tasks are enabled in Prepare.
-    // Notes defaults on; Guide/Intel/Auto stay opt-in.
-    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
-    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
-    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
-    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
     // RTI opens at the beginning of the user's journey: preparing this
     // meeting. Starting the recording moves the user into the live workspace.
     @State private var tab: OverlayTab = .assist
@@ -25,13 +19,7 @@ struct OverlayPanelView: View {
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
     // top bar gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
-        var t: [OverlayTab] = [.assist]
-        if autoAssistEnabled { t.append(.auto) }
-        t.append(.transcript)
-        if notesEnabled { t.append(.notes) }
-        if guideEnabled { t.append(.guide) }
-        if findingsEnabled { t.append(.findings) }
-        return t
+        [.assist, .transcript]
     }
 
     var body: some View {
@@ -47,7 +35,6 @@ struct OverlayPanelView: View {
                         .opacity(0.55)
                         .padding(.horizontal, 2)
                     OverlayMicControl()
-                    OverlayVisualContextButton()
                     OverlayProjectPicker()
                     OverlayRecordButton()
                     OverlaySessionAuxButton()
@@ -61,11 +48,6 @@ struct OverlayPanelView: View {
                         .fill(Color.overlayBorder.opacity(0.65))
                         .frame(height: 1)
                 }
-                // If the active tab gets turned off in Prepare, fall back to Assist.
-                .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
-                .onChange(of: guideEnabled) { _, _ in normalizeSelection() }
-                .onChange(of: findingsEnabled) { _, _ in normalizeSelection() }
-                .onChange(of: autoAssistEnabled) { _, _ in normalizeSelection() }
                 // Global hotkeys (⌘⌥1–5) and commands switch tabs by posting a
                 // notification with the target tab's rawValue.
                 .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { note in
@@ -86,18 +68,10 @@ struct OverlayPanelView: View {
                     switch tab {
                     case .assist:
                         assistTab
-                    case .auto:
-                        AutoTabView().tabContentPadding()
                     case .transcript:
                         TranscriptTabView().tabContentPadding()
-                    case .notes:
-                        NotesTabView().tabContentPadding()
                     case .setup:
                         SetupTabView().tabContentPadding()
-                    case .guide:
-                        GuideTabView().tabContentPadding()
-                    case .findings:
-                        FindingsTabView().tabContentPadding()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -153,12 +127,6 @@ struct OverlayPanelView: View {
             .opacity((accentColorHex.isEmpty || contrast < 0) ? 0 : 0)
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
-    }
-
-    private func normalizeSelection() {
-        // Prepare lives outside visibleTabs but is always reachable, so don't
-        // kick the user out of it when a live-analysis toggle flips.
-        if tab != .setup, !visibleTabs.contains(tab) { tab = .assist }
     }
 
     /// The original chat surface, now the default "Assist" tab.

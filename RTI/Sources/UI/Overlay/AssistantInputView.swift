@@ -213,15 +213,11 @@ struct AssistantInputView: View {
     @State private var selectedSlashIndex = 0
     @State private var selectedMentionIndex = 0
     @State private var selectedMentionPaths: [String] = []
-    @State private var selectedAttachments: [ExternalDocumentAttachment] = []
-    @State private var attachmentError: String?
-    @State private var fileImporterPresented = false
     @State private var inputFieldWidth: CGFloat = 360
     @StateObject private var mentionSuggestions = MentionSuggestionStore()
     @FocusState private var isInputFocused: Bool
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     private let llm = LLMController.shared
-    private let modes = ModeStore.shared
     private let session = SessionCoordinator.shared
     private let inputState = OverlayInputState.shared
 
@@ -239,7 +235,7 @@ struct AssistantInputView: View {
                 contextDashboard
             }
 
-            if !selectedMentionPaths.isEmpty || !selectedAttachments.isEmpty {
+            if !selectedMentionPaths.isEmpty {
                 selectedMentionChips
             }
 
@@ -263,8 +259,6 @@ struct AssistantInputView: View {
                     }
                 )
                 .padding(.leading, ComposerMetrics.textLeadingPadding)
-
-                attachmentButton
 
                 if session.isRunning {
                     noteModeToggle
@@ -294,25 +288,10 @@ struct AssistantInputView: View {
             )
             .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 5)
         }
-        // Drop an image here → it's OCR'd on-device and attached as context for
-        // the next message (same path as ⌘⇧H screen capture; no image is sent
-        // to the model, only the extracted text).
-        .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
-            handleDrop(providers)
-        }
-        .fileImporter(
-            isPresented: $fileImporterPresented,
-            allowedContentTypes: [.pdf, .plainText, .utf8PlainText, .text,
-                                  UTType(filenameExtension: "md") ?? .plainText,
-                                  UTType(filenameExtension: "markdown") ?? .plainText],
-            allowsMultipleSelection: true,
-            onCompletion: handleFileImport
-        )
         // A draft typed during one meeting must not survive into the next —
         // an accidental ⏎ would send stale text into the wrong conversation.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
             input = ""
-            selectedAttachments = []
             if inputState.mode == .liveNote {
                 inputState.mode = .chat
             }
@@ -472,11 +451,6 @@ struct AssistantInputView: View {
                 miniPill("Smart", icon: "sparkles", active: true)
             }
 
-            if let attachmentError {
-                miniPill(attachmentError, icon: "exclamationmark.triangle", active: true)
-                    .foregroundStyle(Color.orange.opacity(0.92))
-            }
-
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -487,7 +461,6 @@ struct AssistantInputView: View {
         !llm.contextPreviewLabels().filter { $0 != "Screen OCR" }.isEmpty
             || llm.pendingScreenContext != nil
             || llm.screenCaptureStatus != nil
-            || attachmentError != nil
     }
 
     private var composerInputHeight: CGFloat {
@@ -606,35 +579,6 @@ struct AssistantInputView: View {
                     )
                     .help(path)
                 }
-                ForEach(selectedAttachments) { attachment in
-                    HStack(spacing: 5) {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(attachment.name)
-                            .font(.system(size: 11, weight: .semibold))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Button {
-                            selectedAttachments.removeAll { $0.id == attachment.id }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
-                                .frame(width: 14, height: 14)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove attachment")
-                    }
-                    .foregroundStyle(Color.blue.opacity(0.82))
-                    .padding(.leading, 8)
-                    .padding(.trailing, 5)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule()
-                            .fill(Color.blue.opacity(0.08))
-                            .overlay(Capsule().stroke(Color.blue.opacity(0.15), lineWidth: 1))
-                    )
-                    .help("Attached for this message only")
-                }
             }
             .padding(.horizontal, 2)
         }
@@ -688,10 +632,7 @@ struct AssistantInputView: View {
             SlashCommand(id: "summary", label: "Summary", symbol: "doc.text", help: "Summarize the full session"),
             SlashCommand(id: "note", label: "Note", symbol: "note.text", help: "Toggle live note mode, or use /note <text>"),
             SlashCommand(id: "chat", label: "Chat", symbol: "text.bubble", help: "Exit note mode and return to chat"),
-            SlashCommand(id: "screen", label: "Screen", symbol: "camera.viewfinder", help: "Attach screen OCR to the next message"),
             SlashCommand(id: "recent", label: "Recent", symbol: "calendar", help: "Ask about recent project meetings"),
-            SlashCommand(id: "search", label: "Search", symbol: "doc.text", help: "Search the vault or selected project/client"),
-            SlashCommand(id: "sources", label: "Sources", symbol: "text.page", help: "Show source hits for a query or last question"),
             SlashCommand(id: "project", label: "Project", symbol: "folder", help: "Show, set, or clear project/client context"),
             SlashCommand(id: "help", label: "Help", symbol: "questionmark.circle", help: "Show slash commands"),
             SlashCommand(id: "new", label: "New chat", symbol: "plus.message", help: "Clear the current chat"),
@@ -848,11 +789,6 @@ struct AssistantInputView: View {
                 }
             }
 
-            Button(action: applyFieldworkPreset) {
-                Label("Fieldwork preset (interview + listener)", systemImage: "person.2.wave.2")
-            }
-            .help("Interview mode + listener mode + ⌘⏎ → Assist in one click; pick the project in Setup")
-
             Divider()
 
             Button { llm.smartMode.toggle() } label: {
@@ -880,21 +816,8 @@ struct AssistantInputView: View {
         .help(llm.smartMode ? "Assist actions · Smart on" : "Assist actions")
     }
 
-    private var attachmentButton: some View {
-        Button { fileImporterPresented = true } label: {
-            Image(systemName: "paperclip")
-                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
-                .foregroundStyle(Color.overlayInk.opacity(0.58))
-                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Attach file")
-        .accessibilityHint("Attach a PDF, Markdown, or text file to the next message")
-        .help("Attach file")
-    }
-
     private var sendButton: some View {
-        let isEmpty = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedMentionPaths.isEmpty && selectedAttachments.isEmpty
+        let isEmpty = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedMentionPaths.isEmpty
         return Button(action: submit) {
             Image(systemName: "arrow.up")
                 .font(.system(size: 13, weight: .bold))
@@ -944,70 +867,14 @@ struct AssistantInputView: View {
         return hint.isEmpty ? action.label : "\(action.label)  \(hint)"
     }
 
-    /// One-click setup for sitting in on fieldwork (FGD/IDI as an observer):
-    /// Interview mode + listener mode + ⌘⏎ bound to Assist. The workstream
-    /// (project) still gets picked in Prepare — that's a per-meeting fact.
-    private func applyFieldworkPreset() {
-        if let interview = modes.modes.first(where: { $0.name.localizedCaseInsensitiveContains("interview") }) {
-            modes.activeModeId = interview.id
-        }
-        llm.listenerMode = true
-        llm.primaryActionID = "assist"
-    }
-
-    /// Load the first dropped image and hand it to ScreenshotManager for
-    /// on-device OCR → attach as pending context. Returns true if we took it.
-    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        if handleImageDrop(providers) { return true }
-        return handleFileDrop(providers)
-    }
-
-    private func handleImageDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSImage.self) }) else {
-            return false
-        }
-        provider.loadObject(ofClass: NSImage.self) { object, _ in
-            guard let image = object as? NSImage else { return }
-            Task { @MainActor in ScreenshotManager.shared.attachDroppedImage(image) }
-        }
-        return true
-    }
-
-    private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-            guard let data = item as? Data,
-                  let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-            Task { @MainActor in addAttachment(url) }
-        }
-        return true
-    }
-
-    private func handleFileImport(_ result: Result<[URL], Error>) {
-        guard case let .success(urls) = result else { return }
-        urls.forEach(addAttachment)
-    }
-
-    private func addAttachment(_ url: URL) {
-        do {
-            let attachment = try ExternalDocumentLoader.load(url: url)
-            guard !selectedAttachments.contains(where: { $0.name == attachment.name && $0.text == attachment.text }) else { return }
-            selectedAttachments.append(attachment)
-            attachmentError = nil
-        } catch {
-            attachmentError = error.localizedDescription
-        }
-    }
-
     private func submit() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || (inputState.mode == .chat && (!selectedMentionPaths.isEmpty || !selectedAttachments.isEmpty)) else { return }
+        guard !text.isEmpty || (inputState.mode == .chat && !selectedMentionPaths.isEmpty) else { return }
         switch inputState.mode {
         case .liveNote:
             if submitLiveNote(text) {
                 input = ""
                 selectedMentionPaths = []
-                selectedAttachments = []
                 inputState.mode = .chat
                 DispatchQueue.main.async { isInputFocused = true }
             }
@@ -1020,15 +887,13 @@ struct AssistantInputView: View {
                 if performSlashSubmit(String(text.dropFirst())) {
                     input = ""
                     selectedMentionPaths = []
-                    selectedAttachments = []
                 }
                 DispatchQueue.main.async { isInputFocused = true }
                 return
             }
-            llm.sendAskAnything(inputWithSelectedMentions(text), attachments: selectedAttachments)
+            llm.sendAskAnything(inputWithSelectedMentions(text))
             input = ""
             selectedMentionPaths = []
-            selectedAttachments = []
         }
     }
 
@@ -1076,14 +941,8 @@ struct AssistantInputView: View {
             }
         case "chat":
             inputState.mode = .chat
-        case "screen":
-            ScreenshotManager.shared.captureAndAttach()
         case "recent":
-            llm.sendAskAnything("What were the most recent meetings or sessions for this project? Use the recent meetings tool if project context is available.")
-        case "search", "grep", "rag":
-            llm.sendVaultSearchCommand(argument)
-        case "sources", "source":
-            llm.sendVaultSourcesCommand(argument.isEmpty ? nil : argument)
+            llm.sendAskAnything("What were the most recent meetings or sessions for this project?")
         case "project", "client", "context":
             llm.runProjectCommand(argument)
         case "help", "?":

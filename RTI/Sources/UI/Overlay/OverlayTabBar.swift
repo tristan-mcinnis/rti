@@ -5,7 +5,7 @@ import SwiftUI
 /// across the top — instead of a constellation of floating panels.
 enum OverlayTab: String, CaseIterable, Identifiable {
     // Prepare is the meeting home; the rest are live surfaces.
-    case setup, assist, auto, transcript, notes, guide, findings
+    case setup, assist, transcript
     var id: String {
         rawValue
     }
@@ -14,11 +14,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         switch self {
         case .setup: "Prepare"
         case .assist: "Assist"
-        case .auto: "Auto"
         case .transcript: "Transcript"
-        case .notes: "Notes"
-        case .guide: "Guide"
-        case .findings: "Intel"
         }
     }
 
@@ -26,11 +22,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         switch self {
         case .setup: "slider.horizontal.3"
         case .assist: "sparkles"
-        case .auto: "wand.and.stars"
         case .transcript: "bubble.left.and.text.bubble.right"
-        case .notes: "note.text"
-        case .guide: "list.bullet.clipboard"
-        case .findings: "checklist.checked"
         }
     }
 }
@@ -41,19 +33,12 @@ struct OverlayTabBar: View {
     /// bar only renders the ones currently enabled.
     var tabs: [OverlayTab] = OverlayTab.allCases
 
-    /// Reading the @Observable controller here makes the bar re-render when a
-    /// proactive card arrives, lighting the Auto tab's unread badge.
-    private var autoUnseen: Int {
-        AutoAssistController.shared.unseenCount
-    }
-
     var body: some View {
         HStack(spacing: 2) {
             ForEach(tabs) { tab in
                 OverlayTabButton(
                     tab: tab,
                     isSelected: selection == tab,
-                    autoUnseen: autoUnseen,
                     action: { selection = tab }
                 )
             }
@@ -65,24 +50,14 @@ struct OverlayTabBar: View {
 private struct OverlayTabButton: View {
     let tab: OverlayTab
     let isSelected: Bool
-    let autoUnseen: Int
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 13, weight: .regular))
-                    .frame(width: 30, height: 28)
-                // Unread badge: Auto surfaced cards the user hasn't seen.
-                if tab == .auto, !isSelected, autoUnseen > 0 {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 6, height: 6)
-                        .offset(x: -3, y: 5)
-                }
-            }
+            Image(systemName: tab.icon)
+                .font(.system(size: 13, weight: .regular))
+                .frame(width: 30, height: 28)
             .foregroundStyle(isSelected ? Color.overlayAccent : Color.overlayInk.opacity(hovering ? 0.68 : 0.46))
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)

@@ -9,16 +9,13 @@ import SwiftUI
 /// section-level controls.
 struct SettingsView: View {
     enum SettingsTab: String, CaseIterable, Identifiable {
-        case providers, modes, prompts, glossary, general
+        case providers, general
 
         var id: String { rawValue }
 
         var label: String {
             switch self {
             case .providers: "Providers"
-            case .modes: "Modes"
-            case .prompts: "Prompts"
-            case .glossary: "Glossary"
             case .general: "General"
             }
         }
@@ -26,9 +23,6 @@ struct SettingsView: View {
         var systemImage: String {
             switch self {
             case .providers: "server.rack"
-            case .modes: "square.stack.3d.up"
-            case .prompts: "text.bubble"
-            case .glossary: "character.book.closed"
             case .general: "gearshape"
             }
         }
@@ -36,9 +30,6 @@ struct SettingsView: View {
         var description: String {
             switch self {
             case .providers: "Choose providers, store keys, and swap LLM or STT backends."
-            case .modes: "Tune the assistant persona and reference context."
-            case .prompts: "Edit the action prompts RTI sends to the model."
-            case .glossary: "Keep names, acronyms, and domain terms consistent."
             case .general: "Configure capture, automation, overlay, and diagnostics."
             }
         }
@@ -71,9 +62,6 @@ struct SettingsView: View {
                 Group {
                     switch section {
                     case .providers: ProvidersTab()
-                    case .modes: ModesTab()
-                    case .prompts: PromptsTab()
-                    case .glossary: GlossaryTab()
                     case .general: GeneralTab()
                     }
                 }

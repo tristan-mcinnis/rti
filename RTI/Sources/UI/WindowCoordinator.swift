@@ -12,14 +12,12 @@ final class WindowCoordinator {
 
     private var overlayController: OverlayWindowController?
     private var sessionsControl: SessionsControlWindowController?
-    private var meetingBrief: MeetingBriefWindowController?
     private var recordingHUD: RecordingHUDWindowController?
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
 
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
         sessionsControl = SessionsControlWindowController()
-        meetingBrief = MeetingBriefWindowController()
         recordingHUD = RecordingHUDWindowController()
 
         let controller = OverlayWindowController(onOpenSettings: onOpenSettings)
@@ -69,11 +67,6 @@ final class WindowCoordinator {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             NotificationCenter.default.post(name: .rtiOpenSessionInBrowser, object: folder)
         }
-    }
-
-    /// Open the read-only pre-meeting brief browser (Hermes-authored briefs).
-    func showMeetingBrief() {
-        meetingBrief?.show()
     }
 
     // MARK: - Convenience wrappers used by AppDelegate / menu
