@@ -161,7 +161,7 @@ final class LLMController {
         if !prepared.references.isEmpty {
             let label = prepared.references.count == 1
                 ? "Attached source"
-                : "(prepared.references.count) attached sources"
+                : "\(prepared.references.count) attached sources"
             performSend(
                 userInput: userInput,
                 action: "Ask",

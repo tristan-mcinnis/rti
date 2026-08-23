@@ -122,7 +122,11 @@ public struct DiscussionGuide: Codable, Equatable {
     /// Apply a batch of matches from the periodic matcher. Existing
     /// quotes are preserved; new quotes are appended; status is overwritten.
     public mutating func apply(matches: [GuideMatch]) {
-        let byId = Dictionary(uniqueKeysWithValues: matches.map { ($0.questionId, $0) })
+        // Built with last-wins rather than Dictionary(uniqueKeysWithValues:)
+        // — the matcher decodes raw LLM batches, and a duplicate questionId
+        // must degrade to "later evidence supersedes earlier", not trap.
+        var byId: [String: GuideMatch] = [:]
+        for match in matches { byId[match.questionId] = match }
         for o in objectives.indices {
             for s in objectives[o].sections.indices {
                 for q in objectives[o].sections[s].questions.indices {

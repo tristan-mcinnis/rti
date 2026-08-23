@@ -92,6 +92,26 @@ final class DiscussionGuideTests: XCTestCase {
         XCTAssertEqual(q1.response?.quotes.map(\.text), ["same quote", "new quote"])
     }
 
+    /// The matcher decodes a whole LLM batch at once; nothing stops the model
+    /// from emitting two matches for the same questionId. Applying them must
+    /// not trap (Dictionary(uniqueKeysWithValues:) crashes on duplicates) —
+    /// later evidence wins, matching sequential application.
+    func test_applyDuplicateQuestionIdsInOneBatch_doesNotCrashAndLastWins() {
+        var guide = makeGuide()
+        guide.apply(matches: [
+            GuideMatch(questionId: "q1", summary: "first pass",
+                       quotes: [quote("early quote")], confidence: .low, status: .partial),
+            GuideMatch(questionId: "q1", summary: "second pass",
+                       quotes: [quote("later quote")], confidence: .high, status: .answered),
+        ])
+
+        let q1 = guide.objectives[0].sections[0].questions[0]
+        XCTAssertEqual(q1.status, .answered)
+        XCTAssertEqual(q1.response?.summary, "second pass")
+        XCTAssertEqual(q1.response?.quotes.map(\.text), ["later quote"])
+        XCTAssertEqual(guide.coverage.answered, 1)
+    }
+
     func test_applyUnknownQuestionId_isIgnored() {
         var guide = makeGuide()
         guide.apply(matches: [
