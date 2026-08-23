@@ -30,7 +30,11 @@ concurrency:
 jobs:
   build-test:
     name: Build & Test (Debug)
-    runs-on: macos-15
+    # Self-hosted runner on Tristan's Mac: the XCTest suite needs macOS +
+    # Xcode, and GitHub's hosted macOS runners bill at 10x the Linux rate
+    # (~$0.08/min), which was the single largest line in the account's
+    # Actions spend. Free on own hardware.
+    runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
 
@@ -82,7 +86,11 @@ jobs:
 
   lint:
     name: SwiftFormat (new files)
-    runs-on: macos-15
+    # Self-hosted runner on Tristan's Mac: the XCTest suite needs macOS +
+    # Xcode, and GitHub's hosted macOS runners bill at 10x the Linux rate
+    # (~$0.08/min), which was the single largest line in the account's
+    # Actions spend. Free on own hardware.
+    runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
         with:
