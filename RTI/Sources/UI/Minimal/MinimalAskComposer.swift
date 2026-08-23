@@ -9,6 +9,7 @@ import SwiftUI
 /// recomputed each tick.
 struct MinimalAskComposer: View {
     @State private var input = ""
+    @State private var historyTurns: [HistoryTurn] = []
     @State private var settledParagraphs: [String] = []
     @State private var tailParagraph = ""
     @State private var pollTask: Task<Void, Never>?
@@ -25,8 +26,9 @@ struct MinimalAskComposer: View {
                 autoAssistChips(auto: auto, controller: controller)
             }
 
-            if !settledParagraphs.isEmpty || !tailParagraph.isEmpty {
-                answerRegion
+            if !historyTurns.isEmpty
+                || (controller.streaming && (!settledParagraphs.isEmpty || !tailParagraph.isEmpty)) {
+                answerRegion(controller: controller)
                     .transition(.opacity)
                     .animation(Motion.answerReveal, value: tailParagraph)
             }
@@ -38,8 +40,16 @@ struct MinimalAskComposer: View {
                 startPolling(controller)
             } else {
                 stopPolling(controller)
+                // The final delta usually lands before streaming flips, so
+                // the last onChange(entries) ran with the answer still
+                // classified as live — resync now that it is history.
+                syncHistory(controller)
             }
         }
+        .onChange(of: controller.entries) { _, _ in
+            syncHistory(controller)
+        }
+        .onAppear { syncHistory(controller) }
         .onDisappear { pollTask?.cancel() }
     }
 
@@ -94,28 +104,45 @@ struct MinimalAskComposer: View {
 
     // MARK: - Answer region
 
-    private var answerRegion: some View {
+    private func answerRegion(controller: LLMController) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(settledParagraphs.enumerated()), id: \.offset) { _, paragraph in
-                        RTIMarkdown(paragraph)
+                    ForEach(historyTurns) { turn in
+                        VStack(alignment: .leading, spacing: 4) {
+                            turnHeader(turn)
+                            RTIMarkdown(turn.answer)
+                        }
+                        .id(turn.id)
                     }
-                    if !tailParagraph.isEmpty {
-                        RTIMarkdown(tailParagraph)
-                            .id(answerBottomID)
+                    if controller.streaming {
+                        ForEach(Array(settledParagraphs.enumerated()), id: \.offset) { _, paragraph in
+                            RTIMarkdown(paragraph)
+                        }
+                        if !tailParagraph.isEmpty {
+                            RTIMarkdown(tailParagraph)
+                        }
                     }
+                    Color.clear.frame(height: 1).id(answerBottomID)
                 }
                 .padding(.vertical, 2)
             }
             .frame(maxHeight: 200)
             .onChange(of: tailParagraph) { _, _ in
-                let now = Date()
-                guard now.timeIntervalSince(lastScrollAt) >= 0.25 else { return }
-                lastScrollAt = now
-                proxy.scrollTo(answerBottomID, anchor: .bottom)
+                autoscroll(proxy)
+            }
+            .onChange(of: historyTurns.count) { _, _ in
+                autoscroll(proxy)
             }
         }
+    }
+
+    /// Throttled scroll-to-bottom shared by stream deltas and new turns.
+    private func autoscroll(_ proxy: ScrollViewProxy) {
+        let now = Date()
+        guard now.timeIntervalSince(lastScrollAt) >= 0.25 else { return }
+        lastScrollAt = now
+        proxy.scrollTo(answerBottomID, anchor: .bottom)
     }
 
     // MARK: - Composer
@@ -162,6 +189,65 @@ struct MinimalAskComposer: View {
         guard !trimmed.isEmpty, !controller.streaming else { return }
         controller.sendAskAnything(trimmed)
         input = ""
+    }
+
+    // MARK: - Turn history
+
+    /// One completed Q&A pair in the scrollback, derived from the ephemeral
+    /// entries buffer on LLMController (the same one SessionArchive writes
+    /// out at session end). Explicit asks show their question text;
+    /// hotkey-driven prompts ("Say next", "Recap", ...) show the action
+    /// label instead of their internal prompt text.
+    private struct HistoryTurn: Identifiable, Equatable {
+        let id: UUID
+        let question: String?
+        let actionLabel: String?
+        let answer: String
+    }
+
+    @ViewBuilder
+    private func turnHeader(_ turn: HistoryTurn) -> some View {
+        if let question = turn.question {
+            Text(question)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Palette.inkSecondary)
+        } else if let label = turn.actionLabel {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Palette.inkFaint)
+        }
+    }
+
+    /// Rebuild the scrollback from the controller entries. While streaming
+    /// the last assistant entry is live and rendered by the settled/tail
+    /// poll instead. The equality guard keeps finished rows from
+    /// re-rendering on token ticks.
+    private func syncHistory(_ controller: LLMController) {
+        var visible = controller.entries
+        if controller.streaming, let last = visible.last, last.role == "assistant" {
+            visible.removeLast()
+        }
+        var turns: [HistoryTurn] = []
+        var pendingQuestion: String?
+        var pendingAction: String?
+        for entry in visible {
+            if entry.role == "user" {
+                pendingQuestion = entry.action == "Ask" ? entry.text : nil
+                pendingAction = entry.action
+            } else if !entry.text.isEmpty {
+                turns.append(HistoryTurn(
+                    id: entry.id,
+                    question: pendingQuestion,
+                    actionLabel: pendingAction,
+                    answer: entry.text
+                ))
+                pendingQuestion = nil
+                pendingAction = nil
+            }
+        }
+        if turns != historyTurns {
+            historyTurns = turns
+        }
     }
 
     // MARK: - 50ms coalescing poll
