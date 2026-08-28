@@ -6,6 +6,9 @@ import AppKit
 @MainActor
 final class MenuCoordinator: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
+    /// Drives the once-a-second elapsed readout in the status item while a
+    /// session is running (the "timer in the menubar" affordance).
+    private var elapsedTimer: Timer?
 
     /// Commands keyed by id for fast lookup during menu-open refresh.
     private var commandsByID: [String: RTICommand] = [:]
@@ -43,14 +46,39 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
 
         item.menu = menu
         statusItem = item
+
+        refreshTitle()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshTitle() }
+        }
     }
 
+    /// Called by AppDelegate's session-phase observation, and once a second by
+    /// the elapsed timer. While a session runs, the status item shows the
+    /// recording symbol plus a monospaced-digit elapsed readout ("3:07").
     func refreshTitle() {
         let running = isRunningProvider?() ?? false
-        statusItem?.button?.image = Self.statusImage(running: running)
-        statusItem?.button?.toolTip = running
+        let button = statusItem?.button
+        button?.image = Self.statusImage(running: running)
+        button?.toolTip = running
             ? "RTI — recording in progress"
             : "RTI — click for menu (⌘\\ to toggle overlay)"
+
+        let session = SessionCoordinator.shared
+        let showElapsed: Bool = switch session.phase {
+        case .recording, .paused, .finishing: true
+        case .idle, .summarizing, .done: false
+        }
+        if showElapsed {
+            button?.imagePosition = .imageLeading
+            button?.attributedTitle = NSAttributedString(
+                string: " " + TimeFormat.elapsed(session.elapsed(at: Date())),
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)]
+            )
+        } else {
+            button?.attributedTitle = NSAttributedString(string: "")
+            button?.imagePosition = .imageOnly
+        }
     }
 
     private func applyStatusAppearance(to button: NSStatusBarButton?, running: Bool) {
