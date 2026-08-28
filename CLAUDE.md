@@ -64,11 +64,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
-This file also provides project-specific guidance to Claude Code (claude.ai/code) when working with this repository.
+This file also provides project-specific guidance to coding agents (Claude Code, Codex — AGENTS.md symlinks here) when working with this repository.
 
 ## Release workflow
 
 When making a change to RTI, verify it, commit the intended changes to `main`, and push `main`. For a change that should be used in the installed app, build from that committed revision and replace `/Applications/RTI.app` with that exact build.
+
+**Run/install reality:** Tristan launches the installed app at `/Applications/RTI.app`, not the DerivedData build product. When a change needs to be tested in the running Mac app, do not stop after `xcodebuild` — install via `scripts/install-local.sh` (stable signing identity, so TCC permission grants survive) and relaunch. Check binary timestamps for both paths when behavior still looks stale.
 
 ## Project identity
 
@@ -77,6 +79,8 @@ When making a change to RTI, verify it, commit the intended changes to `main`, a
 ## Project focus — personal, real-time only
 
 This is the **personal fork** of RTI: a single-user, real-time meeting copilot. It deliberately does **not** keep anything after a meeting ends. There is no database, no markdown corpus, no session history, no audio/video import, no cross-meeting search or Q&A, and no post-hoc analysis. If a feature isn't about helping *live, in the current conversation*, it doesn't belong here — the whole point of this fork was to strip that surface away.
+
+**Sole recorder (2026-08-28):** RTI owns meeting recording end to end — durable WAV legs, automatic transcript upgrade, and the vault hand-off. Meeting Sentinel was deleted; nothing external records meetings anymore.
 
 > History note: an earlier build had all of the above (SQLite + markdown corpus, FTS5 + dense-embedding search, "Ask Your Corpus", projects, dossiers/notes/themes/discussion-guide analysis, drag-to-import, an `rti-mcp` JSON-RPC server, calendar integration). All of it was removed in the personal refocus. If you find a stray reference to any of it, it's a leftover — delete it, don't revive it.
 
@@ -119,7 +123,7 @@ Global hotkeys use Carbon `RegisterEventHotKey` so they fire from any frontmost 
 
 ## Where to look for what
 
-- **Overlay implementation (one tabbed master panel)** → `RTI/Sources/OverlayWindowController.swift` (the borderless `NSPanel`) + `RTI/Sources/OverlayPanelView.swift` (hosts the tab bar + an inline Record control + the Assist chat surface) + `RTI/Sources/UI/Overlay/OverlayTabs.swift` (the tabs — **Assist, Transcript, Notes, Context, Guide** — plus `OverlayRecordButton` and shared tab chrome). The overlay is the single surface for everything; toggle with ⌘\. The old free-floating record pill (`TopWidgetView`) and the separate Notes/Dossiers/Guide floating panels were folded into this in the 2026-06 overlay-tabs work — **don't reintroduce a floating record widget or per-feature floating panels.** Translation is the lone remaining `FloatingPanel` (`RTI/Sources/UI/FloatingPanel.swift` now has only `.translation`).
+- **Overlay implementation (one tabbed master panel)** → `RTI/Sources/OverlayWindowController.swift` (the borderless `NSPanel`) + `RTI/Sources/OverlayPanelView.swift` (hosts the tab bar + an inline Record control + the Assist chat surface) + `RTI/Sources/UI/Overlay/OverlayTabs.swift` (the tabs — **Assist, Transcript, Notes, Context, Guide** — plus `OverlayRecordButton` and shared tab chrome). The overlay is the single surface for everything; toggle with ⌘\. The old free-floating record pill (`TopWidgetView`) and separate feature panels were folded into this surface — **don't reintroduce a floating record widget or per-feature floating panels** (the floating RecordingHUD was likewise deleted 2026-08-28; the menubar timer is the one recording indicator). Translation renders inline in the Transcript tab.
 - **Hotkey registration** → `RTI/Sources/UI/HotkeyCoordinator.swift` (with `RTI/Sources/GlobalHotkey.swift` as the Carbon wrapper)
 - **App entry / status item** → `RTI/Sources/RTIApp.swift` + `RTI/Sources/AppDelegate.swift`
 - **Soniox wire shapes** → `RTI/Sources/Soniox/SonioxProtocol.swift`
