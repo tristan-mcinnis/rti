@@ -120,7 +120,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
                     }
                 }
                 self?.menu.refreshTitle()
-                self?.windows.syncRecordingHUD()
             }
         }
 
