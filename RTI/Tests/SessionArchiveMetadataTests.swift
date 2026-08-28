@@ -1,7 +1,7 @@
 import XCTest
 
-/// Pins `session.json`'s shape: the new mode/workstream/duration/linked_meeting
-/// fields round-trip, and legacy archives (written before this fix, missing
+/// Pins `session.json`'s shape: the mode/workstream/duration fields
+/// round-trip, and legacy archives (written before this fix, missing
 /// those keys) still decode — `TranscriptUpgrade` reads this same struct.
 final class SessionArchiveMetadataTests: XCTestCase {
     func testEnrichedMetadataRoundTrips() throws {
@@ -12,15 +12,13 @@ final class SessionArchiveMetadataTests: XCTestCase {
             systemAudioFile: "audio-system.m4a",
             mode: "Meeting",
             workstream: "Acme Brand",
-            durationSeconds: 1800,
-            linkedMeeting: "2026-07-08 Acme sync"
+            durationSeconds: 1800
         )
         let data = try JSONEncoder().encode(metadata)
         let decoded = try JSONDecoder().decode(SessionArchiveMetadata.self, from: data)
         XCTAssertEqual(decoded.mode, "Meeting")
         XCTAssertEqual(decoded.workstream, "Acme Brand")
         XCTAssertEqual(decoded.durationSeconds, 1800)
-        XCTAssertEqual(decoded.linkedMeeting, "2026-07-08 Acme sync")
     }
 
     func testLegacySessionJSONWithoutNewFieldsStillDecodes() throws {
@@ -32,6 +30,5 @@ final class SessionArchiveMetadataTests: XCTestCase {
         XCTAssertNil(decoded.mode)
         XCTAssertNil(decoded.workstream)
         XCTAssertNil(decoded.durationSeconds)
-        XCTAssertNil(decoded.linkedMeeting)
     }
 }

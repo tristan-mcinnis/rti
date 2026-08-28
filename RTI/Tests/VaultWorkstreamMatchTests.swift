@@ -1,7 +1,7 @@
 import XCTest
 
 /// Pins the conservative meeting-name → vault-workstream matcher that
-/// pre-selects the Context tab when you "Go live" on a Sentinel meeting.
+/// pre-selects the Context tab from a matched meeting name.
 /// The guarantees that matter: whole-word matches only (no substring
 /// false-positives), projects beat clients, longest name wins, and short
 /// slugs never auto-match.

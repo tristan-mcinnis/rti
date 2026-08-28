@@ -52,10 +52,13 @@ final class LLMController {
     /// "assist wasn't helpful in the meeting" complaint). At every session start
     /// we keep listener mode ONLY when the active mode is a fieldwork/observation
     /// mode; a normal meeting resets to participant framing.
-    /// Modes were removed; RTI only has the one built-in Meeting persona, so
-    /// there is no automatic fieldwork detection any more — listener mode is
-    /// purely a manual toggle now.
-    func reconcileListenerModeForSessionStart() {}
+    func reconcileListenerModeForSessionStart() {
+        guard listenerMode else { return }
+        let name = (ModeStore.shared.activeMode?.name ?? "").lowercased()
+        let fieldwork = ["interview", "observ", "fgd", "idi", "fieldwork", "listen"]
+            .contains { name.contains($0) }
+        if !fieldwork { listenerMode = false }
+    }
 
     private let request: LLMRequest
     private var streamingEntryID: UUID?
@@ -127,7 +130,8 @@ final class LLMController {
     /// mode (research debrief for interviews, minutes otherwise) and always runs
     /// on the reasoning ("smart") model — the wrap-up is worth the extra latency.
     func sendSummary() {
-        performSend(userInput: PromptStore.shared.summary(for: .meeting), action: "Summary", fullTranscript: true, forceSmart: true)
+        let kind = ModeStore.shared.activeMode?.kind ?? .other
+        performSend(userInput: PromptStore.shared.summary(for: kind), action: "Summary", fullTranscript: true, forceSmart: true)
     }
 
     /// Listener research actions — surface tensions / what's unsaid / themes for
@@ -144,24 +148,25 @@ final class LLMController {
         performSend(userInput: PromptStore.shared.text(.themes), action: "Themes")
     }
 
-    func sendAskAnything(_ input: String) {
+    func sendAskAnything(_ input: String, attachments: [ExternalDocumentAttachment] = []) {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let prepared = prepareAskInput(trimmed)
+        guard !trimmed.isEmpty || !attachments.isEmpty else { return }
+        let prepared = prepareAskInput(trimmed, attachments: attachments)
         guard let userInput = prepared.userInput else {
             lastError = prepared.error
             lastErrorIsAuth = false
             return
         }
         guard !streaming else { return }
-        // An explicit attachment/@mention is the user's chosen source; the
-        // vault RAG search that used to run otherwise was removed with the
-        // tool loop, so a plain "Ask" now just answers from the live
-        // transcript + any @mentioned document.
+        // An explicit attachment/@mention is already the user's chosen source.
+        // Searching the whole vault first both wastes time and can drown it out
+        // with unrelated results (e.g. asking "what is this about?"). The
+        // model can still use a vault tool if the user specifically asks for a
+        // comparison or broader lookup.
         if !prepared.references.isEmpty {
             let label = prepared.references.count == 1
                 ? "Attached source"
-                : "\(prepared.references.count) attached sources"
+                : "(prepared.references.count) attached sources"
             performSend(
                 userInput: userInput,
                 action: "Ask",
@@ -170,7 +175,41 @@ final class LLMController {
             )
             return
         }
-        performSend(userInput: userInput, action: "Ask")
+        let workstreamNames = (VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()).map(\.name)
+        let recentQuestions = self.recentAskQuestions(excluding: userInput)
+        guard Self.shouldSearchVault(
+            query: userInput,
+            hasSelectedScope: MeetingContextStore.shared.workstreamScopePath != nil,
+            workstreamNames: workstreamNames,
+            recentQuestions: recentQuestions
+        ) else {
+            performSend(userInput: userInput, action: "Ask")
+            return
+        }
+        let progressID = beginLocalProgress(
+            userInput: userInput,
+            action: "Ask",
+            text: "Searching the vault…"
+        )
+        Task { @MainActor in
+            let scope = Self.retrievalScope(for: userInput)
+            let forceHard = Self.shouldForceVaultSearch(query: userInput, workstreamNames: workstreamNames, recentQuestions: recentQuestions)
+            let retrieval = await VaultRetrieval.search(
+                query: userInput,
+                scopeRelativePath: scope,
+                zeroResultPolicy: forceHard ? .hard : .soft
+            )
+            let sources = retrieval.sourcePaths
+            let scopeLabel = scope == nil ? "vault-wide" : "project-scoped"
+            updateLocalAssistant(
+                progressID,
+                text: sources.isEmpty
+                    ? "Vault search finished (\(scopeLabel), \(retrieval.elapsedMS)ms). Drafting answer…"
+                    : "Found \(sources.count) source\(sources.count == 1 ? "" : "s") (\(scopeLabel), \(retrieval.elapsedMS)ms). Drafting answer…"
+            )
+            removeLocalProgress(progressID)
+            performSend(userInput: userInput, action: "Ask", referencedDocuments: prepared.references, retrievalContext: retrieval.modelContextForQuestion, initialTrace: retrieval.trace)
+        }
     }
 
     func sendAssist() {
@@ -185,13 +224,35 @@ final class LLMController {
             lastErrorIsAuth = false
             return
         }
-        let prompt = """
-        Answer the MOST recent client question, challenge, or decision point in the live transcript.
-        If the latest point is answerable from the current transcript, answer directly from that.
-        Be concise and practical: what should I say now, or what answer should I give?
-        Do not narrate the search process. Do not say "let me search" or "I found". Return only the final answer.
-        """
-        performSend(userInput: prompt, action: "Answer latest")
+        let progressID = beginLocalProgress(
+            userInput: "Answer latest",
+            action: "Answer latest",
+            text: "Reading the latest transcript point…"
+        )
+        Task { @MainActor in
+            var vaultBlock = ""
+            let scope = Self.retrievalScope(for: window)
+            updateLocalAssistant(progressID, text: scope == nil ? "Searching the vault for the latest point…" : "Searching this project for the latest point…")
+            let retrieval = await VaultRetrieval.search(query: window, scopeRelativePath: scope, zeroResultPolicy: .latestPoint)
+            if retrieval.hasResults {
+                vaultBlock = "\n\n\(retrieval.scopeLabel) search results for the latest live question/point:\n---\n\(retrieval.formattedResults)\n---"
+            } else {
+                // Same contract as sendAskAnything: an empty search must reach
+                // the model as an explicit zero-result, never silently.
+                vaultBlock = "\n\n\(retrieval.modelContextForQuestion)"
+            }
+            updateLocalAssistant(progressID, text: "Context ready (\(retrieval.elapsedMS)ms). Drafting answer…")
+            let prompt = """
+            Answer the MOST recent client question, challenge, or decision point in the live transcript.
+            If the latest point is answerable from the current transcript, answer directly from that.
+            If project context or vault material is relevant, use it and cite the source path briefly.
+            Be concise and practical: what should I say now, or what answer should I give?
+            Do not narrate the search process. Do not say "let me search" or "I found". Return only the final answer.
+            \(vaultBlock)
+            """
+            removeLocalProgress(progressID)
+            performSend(userInput: prompt, action: "Answer latest")
+        }
     }
 
     func sendSaySomething() {
@@ -292,15 +353,63 @@ final class LLMController {
             action: "Help",
             output: """
             **Slash commands**
+            `/search <query>` — fast vault RAG search in the selected project/client, or whole vault if nothing is selected.
+            `/sources [query]` — show source hits for a query; if blank, uses your last question.
             `/project [name]` — set project/client context by name. Blank shows current context. Use `/project clear` to go vault-wide.
             `/answer` — answer the latest live question/point.
             `/recent` — ask about recent sessions for the selected project.
+            `/screen` — OCR connected screens and attach them to the next message.
             `/note <text>` — add a live transcript note.
             `/new` — clear this chat.
 
-            `@file-or-phrase` attaches a vault document by path.
+            `@file-or-phrase` attaches a vault document. It searches the selected project/client first, then the whole vault.
+            Use **Attach file…** (or drag one in) for a one-turn PDF, Markdown, or text-file attachment; RTI keeps only its in-memory text for that request.
             """
         )
+    }
+
+    func sendVaultSearchCommand(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            postLocalTurn(userInput: "/search", action: "Search", output: "Usage: `/search <query>`")
+            return
+        }
+        guard !streaming else { return }
+        let userInput = "/search \(trimmed)"
+        let assistant = ChatEntry(role: "assistant", text: "Searching vault…", action: nil, contextUsed: false, screenContextUsed: false)
+        entries.append(ChatEntry(role: "user", text: userInput, action: "Search", contextUsed: false, screenContextUsed: false))
+        entries.append(assistant)
+        let assistantID = assistant.id
+        Task { @MainActor in
+            let scope = Self.retrievalScope(for: trimmed)
+            let retrieval = await VaultRetrieval.search(query: trimmed, scopeRelativePath: scope)
+            let label = scope == nil ? "Vault-wide search" : "Scoped search"
+            toolTraces[assistantID] = retrieval.trace
+            updateLocalAssistant(assistantID, text: "**\(label)**\n\n\(retrieval.formattedResults)")
+        }
+    }
+
+    func sendVaultSourcesCommand(_ query: String?) {
+        let fallback = lastUserQuestion()
+        let trimmed = (query ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let effective = trimmed.isEmpty ? fallback : trimmed
+        guard !effective.isEmpty else {
+            postLocalTurn(userInput: "/sources", action: "Sources", output: "Usage: `/sources <query>` or run it after asking a question.")
+            return
+        }
+        guard !streaming else { return }
+        let userInput = trimmed.isEmpty ? "/sources" : "/sources \(trimmed)"
+        let assistant = ChatEntry(role: "assistant", text: "Finding sources…", action: nil, contextUsed: false, screenContextUsed: false)
+        entries.append(ChatEntry(role: "user", text: userInput, action: "Sources", contextUsed: false, screenContextUsed: false))
+        entries.append(assistant)
+        let assistantID = assistant.id
+        Task { @MainActor in
+            let scope = Self.retrievalScope(for: effective)
+            let retrieval = await VaultRetrieval.search(query: effective, scopeRelativePath: scope)
+            let label = scope == nil ? "Vault-wide sources" : "Scoped sources"
+            toolTraces[assistantID] = retrieval.trace
+            updateLocalAssistant(assistantID, text: "**\(label) for:** \(effective)\n\n\(retrieval.formattedResults)")
+        }
     }
 
     func runProjectCommand(_ argument: String) {
@@ -351,15 +460,24 @@ final class LLMController {
         let transcript = recentTranscriptText(fullWindow: fullTranscript)
         let manualScreenContext = pendingScreenContext
         pendingScreenContext = nil
-        let screenContext = [manualScreenContext]
+        let ambientScreenContext = SessionCoordinator.shared.isRunning
+            ? VisualContextTrail.shared.recentPromptContext()
+            : nil
+        let screenContext = [ambientScreenContext, manualScreenContext]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n---\n\n")
         let screenUsed = !screenContext.isEmpty
 
-        // Modes were removed — RTI always runs the one built-in Meeting
-        // system prompt.
-        let basePrompt = PromptStore.shared.text(.systemDefault)
+        let activeMode = ModeStore.shared.activeMode
+        let basePrompt: String = {
+            if let prompt = activeMode?.systemPrompt,
+               !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
+                return prompt
+            }
+            return PromptStore.shared.text(.systemDefault)
+        }()
 
         let turn = AssistantTurnBuilder.build(.init(
             userInput: userInput,
@@ -376,11 +494,11 @@ final class LLMController {
             listenerSystemSuffix: PromptStore.shared.text(.listenerSystemSuffix),
             listenerMode: listenerMode,
             meetingContext: MeetingContextStore.shared.combined,
-            meetingBrief: nil,
-            discussionGuide: nil,
-            glossaryFragment: nil,
-            referenceText: nil,
-            referenceModeName: nil,
+            meetingBrief: MeetingContextStore.shared.briefContext,
+            discussionGuide: DiscussionGuideController.shared.guide?.assistantContextSummary(),
+            glossaryFragment: GlossaryStore.shared.systemPromptFragment,
+            referenceText: activeMode?.referenceText,
+            referenceModeName: activeMode?.name,
             screenContext: screenUsed ? screenContext : nil,
             referencedDocumentsText: referencedDocumentsText(referencedDocuments),
             existingEntries: entries
@@ -410,7 +528,7 @@ final class LLMController {
             ts: Self.iso8601.string(from: Date()),
             startedAt: Date(),
             action: action,
-            mode: nil,
+            mode: activeMode?.name,
             provider: LLMProviders.activeId,
             model: LLMProviders.active.model,
             smart: effectiveSmart,
@@ -429,45 +547,67 @@ final class LLMController {
         reasoning = false
         let thisEntryID = assistantEntry.id
 
-        // The tool loop (vault search / read / grep / list tools) was
-        // removed with the vault-search strip — this is now a single
-        // streaming completion with no function calling.
+        let toolsJSON = LLMToolRegistry.wireFormatData()
+
         Task { [weak self] in
             guard let self else { return }
-            do {
-                _ = try await self.request.streamWithTools(
-                    messages: apiMessages,
-                    toolsJSON: nil,
-                    smart: effectiveSmart,
-                    onContent: { delta in
-                        Task { @MainActor in
-                            guard self.streamingEntryID == thisEntryID else { return }
+            let loop = ToolLoop(request: request)
+            await loop.run(
+                conversation: apiMessages,
+                toolsJSON: toolsJSON,
+                smart: effectiveSmart,
+                onEvent: { event in
+                    MainActor.assumeIsolated {
+                        switch event {
+                        case let .contentDelta(delta):
+                            if self.streamingEntryID != thisEntryID { return }
                             if self.reasoning { self.reasoning = false }
                             self.markFirstTokenIfNeeded()
                             self.appendToStreamingEntry(delta)
+                        case .reasoningStarted:
+                            self.reasoning = true
+                        case .reasoningEnded:
+                            self.reasoning = false
+                        case let .toolStatus(status):
+                            self.toolStatus = status
+                        case let .toolStarted(name, status):
+                            self.clearStreamingEntry(thisEntryID)
+                            self.recordToolStarted(name: name, status: status, assistantID: thisEntryID)
+                        case let .toolFinished(name, elapsedMS, result):
+                            self.recordToolFinished(name: name, elapsedMS: elapsedMS, result: result, assistantID: thisEntryID)
+                        case .toolStatusDone:
+                            self.clearStreamingEntry(thisEntryID)
+                            self.toolStatus = nil
+                        case let .done(finalText):
+                            // Deltas hop to main through a different queue
+                            // chain than .done, so the last few can land AFTER
+                            // finalize and get dropped — the mid-sentence
+                            // truncation bug. .done carries the complete
+                            // buffered text; reconcile against it so event
+                            // ordering can't lose the tail.
+                            if self.streamingEntryID == thisEntryID,
+                               let idx = self.entries.firstIndex(where: { $0.id == thisEntryID }),
+                               finalText.count > self.entries[idx].text.count
+                            {
+                                self.entries[idx].text = finalText
+                            }
+                            self.finalizeAssistantTurn(streamingEntryID: thisEntryID)
+                        case let .error(message, isAuth):
+                            guard self.streamingEntryID == thisEntryID else { return }
+                            self.lastError = message
+                            self.lastErrorIsAuth = isAuth
+                            self.streaming = false
+                            self.reasoning = false
+                            self.toolStatus = nil
+                            self.activeToolTraceLines = []
+                            self.pruneTrailingEmptyAssistant()
+                            self.streamingEntryID = nil
+                            self.pendingTurn = nil
+                            RTILog.log("LLM stream error: \(message)", category: "llm")
                         }
-                    },
-                    onReasoning: { _ in
-                        Task { @MainActor in self.reasoning = true }
                     }
-                )
-                self.finalizeAssistantTurn(streamingEntryID: thisEntryID)
-            } catch is CancellationError {
-                return
-            } catch {
-                guard self.streamingEntryID == thisEntryID else { return }
-                let llmError = error as? LLMError
-                self.lastError = llmError?.userMessage ?? "\(error)"
-                self.lastErrorIsAuth = llmError?.isAuth ?? false
-                self.streaming = false
-                self.reasoning = false
-                self.toolStatus = nil
-                self.activeToolTraceLines = []
-                self.pruneTrailingEmptyAssistant()
-                self.streamingEntryID = nil
-                self.pendingTurn = nil
-                RTILog.log("LLM stream error: \(error)", category: "llm")
-            }
+                }
+            )
         }
     }
 
@@ -517,6 +657,15 @@ final class LLMController {
         pendingTurn?.firstTokenAt = Date()
     }
 
+    private func recordPendingTool(elapsedMS: Int, sources: [String]) {
+        guard pendingTurn != nil else { return }
+        pendingTurn?.toolCount += 1
+        pendingTurn?.toolElapsedMS += elapsedMS
+        for source in sources where pendingTurn?.sources.contains(source) == false {
+            pendingTurn?.sources.append(source)
+        }
+    }
+
     /// The assistant's previous answers to this same quick action (Assist /
     /// Follow-ups / Say next), newest last, capped to the last 3 so the
     /// anti-repeat context stays small. Recap and free-form Ask are exempt —
@@ -533,10 +682,71 @@ final class LLMController {
         return outputs.suffix(3).map { "- \($0.replacingOccurrences(of: "\n", with: " "))" }.joined(separator: "\n")
     }
 
-    /// Discussion-guide coverage is unavailable — the real-time analysis
-    /// engine was removed. Kept as a no-op so prompt assembly doesn't need
-    /// restructuring.
-    private static func guideCoverageContext() -> String { "" }
+    /// Compact "what the discussion guide still needs" block for the
+    /// assist-family prompts. Empty string when no guide is loaded or
+    /// everything is covered.
+    private static func guideCoverageContext() -> String {
+        guard let guide = DiscussionGuideController.shared.guide else { return "" }
+        var open: [String] = []
+        var partial: [String] = []
+        for obj in guide.objectives {
+            for section in obj.sections {
+                for q in section.questions {
+                    let line = "[\(section.title)] \(q.text)"
+                    switch q.status {
+                    case .pending: open.append(line)
+                    case .partial: partial.append(line)
+                    case .answered: break
+                    }
+                }
+            }
+        }
+        guard !open.isEmpty || !partial.isEmpty else { return "" }
+        var out = "Discussion guide coverage (factor this into your suggestion — flag what's still missing if time is passing):"
+        if !open.isEmpty {
+            out += "\nNOT yet covered:\n" + open.prefix(12).map { "- \($0)" }.joined(separator: "\n")
+        }
+        if !partial.isEmpty {
+            out += "\nPartially covered:\n" + partial.prefix(6).map { "- \($0)" }.joined(separator: "\n")
+        }
+        return out
+    }
+
+    /// Retrieval scope is explicit project first; otherwise infer a project from
+    /// the question text ("acmebrand" should hit "Acme Brand") before falling
+    /// back to whole-vault RAG.
+    private static func retrievalScope(for query: String) -> String? {
+        if let selected = MeetingContextStore.shared.workstreamScopePath { return selected }
+        let compactQuery = compactKey(query)
+        guard !compactQuery.isEmpty else { return nil }
+        let match = VaultWorkstreamStore.projects()
+            .filter {
+                let key = compactKey($0.name)
+                return !key.isEmpty && compactQuery.contains(key)
+            }
+            .max { compactKey($0.name).count < compactKey($1.name).count }
+        guard let match else { return nil }
+        return VaultWorkstreamStore.scopeRelativePath(for: match)
+    }
+
+    nonisolated private static func compactKey(_ text: String) -> String {
+        RetrievalHeuristics.compactKey(text)
+    }
+
+    /// Moved to `RetrievalHeuristics` so the test bundle can compile it
+    /// without this controller; kept as a passthrough for existing call sites.
+    nonisolated static func shouldForceVaultSearch(query: String, workstreamNames: [String], recentQuestions: [String]) -> Bool {
+        RetrievalHeuristics.shouldForceVaultSearch(query: query, workstreamNames: workstreamNames, recentQuestions: recentQuestions)
+    }
+
+    nonisolated static func shouldSearchVault(query: String, hasSelectedScope: Bool, workstreamNames: [String], recentQuestions: [String]) -> Bool {
+        RetrievalHeuristics.shouldSearchVault(
+            query: query,
+            hasSelectedScope: hasSelectedScope,
+            workstreamNames: workstreamNames,
+            recentQuestions: recentQuestions
+        )
+    }
 
     private func pruneTrailingEmptyAssistant() {
         if let last = entries.last, last.role == "assistant", last.text.isEmpty {
@@ -550,9 +760,14 @@ final class LLMController {
         entries[idx].text += delta
     }
 
-    private func prepareAskInput(_ input: String) -> (userInput: String?, references: [ReferencedDocument], error: String?) {
+    private func clearStreamingEntry(_ id: UUID) {
+        guard let idx = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[idx].text = ""
+    }
+
+    private func prepareAskInput(_ input: String, attachments: [ExternalDocumentAttachment] = []) -> (userInput: String?, references: [ReferencedDocument], error: String?) {
         let mentionResult = Self.extractMentionTokens(from: input)
-        var references: [ReferencedDocument] = []
+        var references = attachments.map { ReferencedDocument(path: "Attached file: \($0.name)", content: $0.text) }
         for token in mentionResult.tokens {
             switch VaultFiles.resolveMention(token, scopeRelativePath: MeetingContextStore.shared.fileAccessScopePath) {
             case let .resolved(path, content):
@@ -645,6 +860,47 @@ final class LLMController {
         toolTraces[id]
     }
 
+    private func recordToolStarted(name: String, status: String, assistantID: UUID) {
+        guard name == "search_vault" || name == "grep_vault" || name == "recent_meetings" || name == "list_files" else {
+            return
+        }
+        activeToolTraceLines.append("Running \(displayName(forTool: name))")
+        toolTraces[assistantID] = activeToolTraceLines.joined(separator: "\n")
+    }
+
+    private func recordToolFinished(name: String, elapsedMS: Int, result: String, assistantID: UUID) {
+        guard name == "search_vault" || name == "grep_vault" || name == "recent_meetings" || name == "list_files" else {
+            return
+        }
+        let display = displayName(forTool: name)
+        let sources = sourcePaths(in: result)
+        recordPendingTool(elapsedMS: elapsedMS, sources: sources)
+        var line = "\(display) · \(elapsedMS)ms"
+        if !sources.isEmpty {
+            line += " · \(sources.count) source\(sources.count == 1 ? "" : "s")"
+            line += ": " + sources.prefix(3).joined(separator: ", ")
+            if sources.count > 3 { line += ", +" + String(sources.count - 3) }
+        }
+        if let last = activeToolTraceLines.indices.last {
+            activeToolTraceLines[last] = line
+        } else {
+            activeToolTraceLines.append(line)
+        }
+        toolTraces[assistantID] = activeToolTraceLines.joined(separator: "\n")
+    }
+
+    private func displayName(forTool name: String) -> String {
+        switch name {
+        case "search_vault": return "Vault search"
+        case "grep_vault": return "Vault grep"
+        case "read_document": return "Read document"
+        case "recent_meetings": return "Recent meetings"
+        case "list_files": return "List files"
+        case "capture_screen": return "Screen OCR"
+        default: return name
+        }
+    }
+
     private func sourcePaths(in text: String) -> [String] {
         let pattern = #"\(([^(),]+\.md), updated \d{4}-\d{2}-\d{2}\)|\(([^(),]+\.md)\)"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
@@ -657,6 +913,24 @@ final class LLMController {
             }
         }
         return out
+    }
+
+    /// Prior "Ask" questions already typed this session (most recent last),
+    /// excluding the one just submitted — feeds the repeat check in
+    /// `shouldForceVaultSearch`.
+    private func recentAskQuestions(excluding current: String) -> [String] {
+        entries
+            .filter { $0.role == "user" && $0.action == "Ask" && $0.text != current }
+            .suffix(8)
+            .map(\.text)
+    }
+
+    private func lastUserQuestion() -> String {
+        entries.reversed().first { entry in
+            entry.role == "user" && ["Ask", "Search", "Sources"].contains(entry.action ?? "")
+        }?.text
+            .replacingOccurrences(of: #"^/(search|sources)\s*"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     /// Build the recent diarized transcript from the in-memory live entries,
@@ -714,7 +988,7 @@ extension LLMController {
     /// catalogue (no per-surface registry). The ✦ menu runs each via
     /// `perform(actionID:)`.
     func availableQuickActions() -> [AssistantAction] {
-        let kind: ModeKind = .meeting
+        let kind = ModeStore.shared.activeMode?.kind ?? .other
         let listener = listenerMode
         return AssistantAction.all.filter { action in
             if let lo = action.listenerOnly, lo != listener { return false }
@@ -737,6 +1011,15 @@ extension LLMController {
         }
         if !MeetingContextStore.shared.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             labels.append("Meeting note")
+        }
+        if MeetingContextStore.shared.briefContext != nil {
+            labels.append("Brief")
+        }
+        if DiscussionGuideController.shared.guide != nil {
+            labels.append("Guide")
+        }
+        if !GlossaryStore.shared.entries.isEmpty {
+            labels.append("Glossary")
         }
         if pendingScreenContext != nil {
             labels.append("Screen OCR")

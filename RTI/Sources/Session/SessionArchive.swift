@@ -12,10 +12,13 @@ import UserNotifications
 ///
 /// Layout: <vault>/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
 /// (falls back to ~/Library/Application Support/RTI/sessions/ if the vault
-/// can't be located via Sentinel's config):
+/// can't be located via RTI's config, `~/.config/rti/config.json`):
 ///   transcript.md         — the live transcript, notes inline
 ///   chat.md               — the assistant chat log (only written if non-empty)
-///   summary.md            — end-of-session summary (only if generated)
+///   notes.md              — generated meeting notes (only if any)
+///   discussion-guide.md   — discussion-guide coverage (only if a guide loaded)
+///   live-intelligence.md  — decisions/actions/questions/risks (only if any)
+///   screen-context.md     — timestamped active-screen OCR changes (only if any)
 ///   audio-mic.wav         — retained mic audio for automatic transcript upgrade
 ///   audio-system.wav      — retained system audio for automatic transcript upgrade
 enum SessionArchive {
@@ -26,14 +29,15 @@ enum SessionArchive {
     /// linked-meeting hand-off) stay tidy. Everything in here is ephemeral
     /// in-memory state captured at stop time; this archive is the only place
     /// it is written to disk.
-    /// Live-analysis features are opt-in, off by default (Settings ->
-    /// "Live analysis"). Only Notes and Discussion Guide survive the
-    /// 2026-08-19 strip; Findings/live-intelligence stays removed.
     struct Analysis {
         var notes: [GeneratedNote] = []
         var guide: DiscussionGuide?
+        var findings: [FindingEntry] = []
+        var visualContext: [VisualContextEvent] = []
 
-        var isEmpty: Bool { notes.isEmpty && guide == nil }
+        var isEmpty: Bool {
+            notes.isEmpty && guide == nil && findings.isEmpty && visualContext.isEmpty
+        }
     }
 
     struct CanonicalMeetingExport {
@@ -76,9 +80,9 @@ enum SessionArchive {
     /// Application Support directory can't be resolved — archiving is a
     /// best-effort side record, never something that should fail a stop.
     /// Returns the session directory it wrote (nil if nothing was saved) so
-    /// the caller can hand it to the vault-side router. `workstreamSlug` and
-    /// `linkedMeeting` are pure DECLARATIONS stamped into frontmatter — all
-    /// routing policy lives in the vault's triage tooling, never in this app.
+    /// the caller can hand it to the vault-side router. `workstreamSlug` is a
+    /// pure DECLARATION stamped into frontmatter — all routing policy lives
+    /// in the vault's triage tooling, never in this app.
     @discardableResult
     static func write(
         startedAt: Date,
@@ -91,7 +95,6 @@ enum SessionArchive {
         systemRecordingURL: URL? = nil,
         systemAudioStartOffsetMs: Int? = nil,
         workstreamSlug: String? = nil,
-        linkedMeeting: String? = nil,
         mode: String? = nil,
         workstreamName: String? = nil,
         speakerNames: [String: String] = [:]
@@ -103,7 +106,7 @@ enum SessionArchive {
         guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
 
         func fm(_ kind: String) -> [String] {
-            frontmatter(kind: kind, startedAt: startedAt, workstreamSlug: workstreamSlug, linkedMeeting: linkedMeeting)
+            frontmatter(kind: kind, startedAt: startedAt, workstreamSlug: workstreamSlug)
         }
 
         // Only archive a transcript when there's real spoken content (a
@@ -136,7 +139,16 @@ enum SessionArchive {
             let md = (fm("Discussion guide") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
         }
-
+        if !analysis.findings.isEmpty {
+            let body = (["# Live intelligence", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderFindings(analysis.findings)]).joined(separator: "\n")
+            let md = (fm("Live intelligence") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("live-intelligence.md"))
+        }
+        if !analysis.visualContext.isEmpty {
+            let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(analysis.visualContext)]).joined(separator: "\n")
+            let md = (fm("Screen context") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md"))
+        }
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
         writeMetadata(
@@ -147,8 +159,7 @@ enum SessionArchive {
                 systemAudioFile: systemName,
                 mode: mode,
                 workstream: workstreamName,
-                durationSeconds: Int(max(0, endedAt.timeIntervalSince(startedAt))),
-                linkedMeeting: linkedMeeting
+                durationSeconds: Int(max(0, endedAt.timeIntervalSince(startedAt)))
             ),
             to: dir
         )
@@ -179,10 +190,10 @@ enum SessionArchive {
         // Full-meeting summaries routinely outlive the default 60s stream
         // timeout (the silent failure that left archives without summary.md)
         // — give this call its own generous budget and log failures.
-        // Modes were removed — RTI always writes the meeting-shaped
-        // summary, run on the reasoning ("smart") model since the
-        // end-of-session summary is worth the extra latency.
-        let kind: ModeKind = .meeting
+        // Shape the wrap-up to the session's mode (research debrief for
+        // interviews, minutes otherwise) and run it on the reasoning ("smart")
+        // model — the end-of-session summary is worth the extra latency.
+        let kind = ModeStore.shared.activeMode?.kind ?? .other
         // Piggyback a short session-title on the summary call (one model call,
         // no extra latency). The instruction is appended AFTER the user's
         // editable summary prompt so it never mutates the stored prompt; the
@@ -237,7 +248,7 @@ enum SessionArchive {
         let url = dir.appendingPathComponent("summary.md")
         writeOwnerOnly(md, to: url)
         RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)" + (sessionTitle.map { ", title: \($0)" } ?? ""), category: "summary")
-        notifySaved(title: sessionTitle ?? dir.lastPathComponent, sessionDir: dir)
+        notifySummaryReady(sessionFolder: dir.lastPathComponent)
         return url
     }
 
@@ -302,20 +313,18 @@ enum SessionArchive {
         return lines.joined(separator: "\n")
     }
 
-    /// Local notification when a session finishes saving, so the user knows
-    /// where it landed without checking. Tapping it reveals `sessionDir` in
-    /// Finder (`AppDelegate`'s `UNUserNotificationCenterDelegate`) — RTI has
-    /// no in-app reader for the archive by design.
-    private static func notifySaved(title: String, sessionDir: URL) {
+    /// Local notification when the post-stop summary lands, so the user knows
+    /// the wrap-up is readable (Sessions browser / vault) without checking.
+    private static func notifySummaryReady(sessionFolder: String) {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
-            content.title = "Saved: \(title)"
-            content.body = "Tap to open the session folder."
-            // Carried back on tap so the delegate can reveal this exact folder.
-            content.userInfo = ["sessionFolder": sessionDir.path]
-            let request = UNNotificationRequest(identifier: "rti.summary.\(sessionDir.lastPathComponent)", content: content, trigger: nil)
+            content.title = "Session summary ready"
+            content.body = "Tap to read the summary in RTI's Sessions browser."
+            // Carried back on tap so the delegate can open this exact session.
+            content.userInfo = ["sessionFolder": sessionFolder]
+            let request = UNNotificationRequest(identifier: "rti.summary.\(sessionFolder)", content: content, trigger: nil)
             center.add(request)
         }
     }
@@ -337,18 +346,17 @@ enum SessionArchive {
         try? proc.run()
     }
 
-    /// Export RTI's live transcript into the same raw-transcript lane Meeting
-    /// Sentinel used, then the existing `/meeting` pipeline can turn it into
-    /// the canonical meeting note + Neon-indexed vault document. This copies
-    /// out of the RTI archive; it does not move or delete the archive.
+    /// Export RTI's live transcript into the vault's raw-transcript lane
+    /// (`meetings/transcripts-raw/`), where the existing `/meeting` pipeline
+    /// turns it into the canonical meeting note + Neon-indexed vault document.
+    /// This copies out of the RTI archive; it does not move or delete the archive.
     @discardableResult
     static func writeCanonicalMeetingExport(
         startedAt: Date,
         transcript: [LiveEntry],
         chat: [ChatEntry],
         analysis: Analysis,
-        archiveDir: URL?,
-        linkedMeeting: String?
+        archiveDir: URL?
     ) -> CanonicalMeetingExport? {
         let raw = CanonicalMeetingTranscript.render(entries: transcript)
         return writeCanonicalMeetingExport(
@@ -356,8 +364,7 @@ enum SessionArchive {
             rawTranscript: raw,
             chat: chat,
             analysis: analysis,
-            archiveDir: archiveDir,
-            linkedMeeting: linkedMeeting
+            archiveDir: archiveDir
         )
     }
 
@@ -375,7 +382,6 @@ enum SessionArchive {
             chat: [],
             analysis: Analysis(),
             archiveDir: archiveDir,
-            linkedMeeting: nil,
             writeSidecar: false
         )?.transcriptURL
     }
@@ -422,8 +428,7 @@ enum SessionArchive {
         startedAt: Date,
         chat: [ChatEntry],
         analysis: Analysis,
-        archiveDir: URL?,
-        linkedMeeting: String?
+        archiveDir: URL?
     ) -> URL? {
         guard let transcriptsRaw = meetingTranscriptsRawDirectory() else { return nil }
         try? FileManager.default.createDirectory(at: transcriptsRaw, withIntermediateDirectories: true)
@@ -433,8 +438,7 @@ enum SessionArchive {
             startedAt: startedAt,
             chat: chat,
             analysis: analysis,
-            archiveDir: archiveDir,
-            linkedMeeting: linkedMeeting
+            archiveDir: archiveDir
         )
         guard !sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let url = transcriptsRaw.appendingPathComponent("\(stem)-rti.md")
@@ -449,7 +453,6 @@ enum SessionArchive {
         chat: [ChatEntry],
         analysis: Analysis,
         archiveDir: URL?,
-        linkedMeeting: String?,
         writeSidecar: Bool = true
     ) -> CanonicalMeetingExport? {
         let text = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -467,8 +470,7 @@ enum SessionArchive {
                 startedAt: startedAt,
                 chat: chat,
                 analysis: analysis,
-                archiveDir: archiveDir,
-                linkedMeeting: linkedMeeting
+                archiveDir: archiveDir
             )
             if sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 sidecarURL = nil
@@ -486,7 +488,7 @@ enum SessionArchive {
     }
 
     private static func meetingTranscriptsRawDirectory() -> URL? {
-        if let transcriptsRaw = SentinelPaths.meetingTranscriptsRawDirectory() { return transcriptsRaw }
+        if let transcriptsRaw = VaultPaths.meetingTranscriptsRawDirectory() { return transcriptsRaw }
         return VaultLogStore.rtiDirectory()?
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -502,8 +504,7 @@ enum SessionArchive {
         startedAt: Date,
         chat: [ChatEntry],
         analysis: Analysis,
-        archiveDir: URL?,
-        linkedMeeting: String?
+        archiveDir: URL?
     ) -> String {
         var lines = [
             "---",
@@ -519,9 +520,6 @@ enum SessionArchive {
         if let archiveDir {
             lines.append("_RTI archive: `\(archiveDir.path)`_")
         }
-        if let linkedMeeting, !linkedMeeting.isEmpty {
-            lines.append("_Linked meeting: \(linkedMeeting)_")
-        }
         lines.append("")
 
         if let archiveDir,
@@ -530,6 +528,30 @@ enum SessionArchive {
             lines.append("## RTI session summary")
             lines.append("")
             lines.append(bodyAfterFrontmatter(summary).trimmingCharacters(in: .whitespacesAndNewlines))
+            lines.append("")
+        }
+        if !analysis.notes.isEmpty {
+            lines.append("## Generated notes")
+            lines.append("")
+            lines.append(renderNotes(analysis.notes))
+            lines.append("")
+        }
+        if let guide = analysis.guide {
+            lines.append("## Discussion guide")
+            lines.append("")
+            lines.append(renderGuide(guide))
+            lines.append("")
+        }
+        if !analysis.findings.isEmpty {
+            lines.append("## Live intelligence")
+            lines.append("")
+            lines.append(renderFindings(analysis.findings))
+            lines.append("")
+        }
+        if !analysis.visualContext.isEmpty {
+            lines.append("## Screen context")
+            lines.append("")
+            lines.append(renderVisualContext(analysis.visualContext))
             lines.append("")
         }
         if !chat.isEmpty {
@@ -560,28 +582,24 @@ enum SessionArchive {
     }
 
     private static func vaultRoot(startingAt dir: URL) -> URL? {
-        SentinelPaths.vaultRoot(startingAt: dir)
+        VaultPaths.vaultRoot(startingAt: dir)
     }
 
     private static func meetingProcessorPrompt(transcriptURL: URL) -> String {
-        let template = sentinelConfig()["auto_process_prompt"] as? String
+        let template = appConfig()["auto_process_prompt"] as? String
             ?? defaultMeetingProcessorPrompt
         return template.replacingOccurrences(of: "{transcript}", with: transcriptURL.path)
     }
 
     private static func meetingProcessorPermissionArguments() -> [String] {
-        let yolo = (sentinelConfig()["auto_process_yolo"] as? Bool) ?? true
+        let yolo = (appConfig()["auto_process_yolo"] as? Bool) ?? true
         return yolo
             ? ["--dangerously-skip-permissions"]
             : ["--permission-mode", "acceptEdits"]
     }
 
-    private static func sentinelConfig() -> [String: Any] {
-        SentinelPaths.configDictionary()
-    }
-
-    private static func sentinelConfigURL() -> URL {
-        SentinelPaths.configURL()
+    private static func appConfig() -> [String: Any] {
+        VaultPaths.configDictionary()
     }
 
     private static func meetingProcessorLogURL(stem: String) -> URL {
@@ -656,12 +674,19 @@ enum SessionArchive {
             .filter { $0.translationStatus != "translation" }
             .sorted { $0.startMs < $1.startMs }
 
-        // Same labels as the live view (SpeakerLabels.displayName), with any
-        // session-scoped rename from SpeakerNameStore applied on top.
+        // Neutral, appearance-ordered speaker labels — matching the live view —
+        // with any session-scoped rename from SpeakerNameStore applied on top.
+        // The capture channel (mic vs system) doesn't identify who's talking.
+        var speakerNumber: [String: Int] = [:]
+        var nextNumber = 1
         func label(for id: String) -> String {
             if id == "note" { return "📝 Note" }
             if let named = speakerNames[id], !named.isEmpty { return named }
-            return SpeakerLabels.displayName(for: id)
+            if let n = speakerNumber[id] { return "Speaker \(n)" }
+            let n = nextNumber
+            speakerNumber[id] = n
+            nextNumber += 1
+            return "Speaker \(n)"
         }
 
         // Coalesce a speaker's consecutive fragments into one flowing paragraph,
@@ -726,8 +751,9 @@ enum SessionArchive {
         return lines
     }
 
-    /// Combined markdown for generated notes — one block per note, oldest
-    /// material first, separated by rules.
+    /// Combined markdown for generated notes — one block per note, newest
+    /// material last, separated by rules. Shared by the local archive and the
+    /// linked-meeting record.
     private static func renderNotes(_ notes: [GeneratedNote]) -> String {
         notes.map { n in
             var head = "### \(offset(n.rangeStartMs)) – \(offset(n.rangeEndMs))"
@@ -736,6 +762,30 @@ enum SessionArchive {
         }.joined(separator: "\n\n")
     }
 
+    /// Live intelligence ledger: one bullet per tagged work object, in the
+    /// order logged, with its `[mm:ss]`, why line, and any source quote.
+    private static func renderFindings(_ findings: [FindingEntry]) -> String {
+        findings.map { f in
+            var line = "- **[\(f.tag.label)]** `\(offset(f.rangeMs))` \(f.headline)"
+            if !f.matters.isEmpty { line += "\n  - _Why:_ \(f.matters)" }
+            if let quote = f.quote, !quote.isEmpty {
+                let who = f.speaker.map { "\($0): " } ?? ""
+                line += "\n  - > \(who)\(quote)"
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+
+    /// Materially changed active-screen OCR frames. Images never enter the
+    /// archive; this compact evidence trail is what the vault and agent keep.
+    private static func renderVisualContext(_ events: [VisualContextEvent]) -> String {
+        events.map { event in
+            "### `\(VisualContextText.timestamp(event.offsetSeconds))`\n\n\(event.text)"
+        }.joined(separator: "\n\n---\n\n")
+    }
+
+    /// Discussion-guide coverage: a header line plus each question with its
+    /// status and any matched quotes.
     private static func renderGuide(_ guide: DiscussionGuide) -> String {
         let cov = guide.coverage
         var lines = ["**\(guide.fileName)** — \(cov.answered)/\(cov.total) answered (\(cov.percent)%)", ""]
@@ -769,17 +819,16 @@ enum SessionArchive {
         return "_\(started) · \(duration(seconds))_"
     }
 
-    /// YAML frontmatter so the vault's Neon ingester titles + links these files
-    /// (mirrors `renderLinkedMeeting`'s block). Must be the very first thing in
-    /// the file, before the H1. `kind` is the file's human label, e.g.
-    /// "Transcript" / "Chat" / "Notes" / "Discussion guide". `type: reference`
-    /// keeps all four out of the meeting_note / transcript / discussion_guide
-    /// buckets the ingester would otherwise infer from the filename.
+    /// YAML frontmatter so the vault's Neon ingester titles + links these files.
+    /// Must be the very first thing in the file, before the H1. `kind` is the
+    /// file's human label, e.g. "Transcript" / "Chat" / "Notes" /
+    /// "Discussion guide". `type: reference` keeps all four out of the
+    /// meeting_note / transcript / discussion_guide buckets the ingester
+    /// would otherwise infer from the filename.
     private static func frontmatter(
         kind: String,
         startedAt: Date,
-        workstreamSlug: String? = nil,
-        linkedMeeting: String? = nil
+        workstreamSlug: String? = nil
     ) -> [String] {
         let stamp = frontmatterStamp.string(from: startedAt) // "2026-06-09 11:07"
         let date = String(stamp.prefix(10)) // "2026-06-09"
@@ -790,14 +839,11 @@ enum SessionArchive {
             "date: \(date)",
             "source: rti",
         ]
-        // Declarations for the vault-side router (route-rti-session.py):
-        // which workstream this session was set up against, and which Sentinel
-        // meeting it overlaid. Facts only — routing policy lives in the vault.
+        // Declaration for the vault-side router (route-rti-session.py):
+        // which workstream this session was set up against. Facts only —
+        // routing policy lives in the vault.
         if let workstreamSlug, !workstreamSlug.isEmpty {
             lines.append("workstream: \(yamlQuoted(workstreamSlug))")
-        }
-        if let linkedMeeting, !linkedMeeting.isEmpty {
-            lines.append("linked_meeting: \(yamlQuoted(linkedMeeting))")
         }
         lines += [
             "projects:",
@@ -876,7 +922,7 @@ extension SessionArchive {
         }
 
         let url: URL
-        /// Sentinel-only sessions point directly at Sentinel's definitive
+        /// Recorded-meeting rows point directly at the meeting's definitive
         /// transcript. RTI archives point at their per-session directory.
         let transcriptURL: URL
         let isRTIArchive: Bool
@@ -926,7 +972,7 @@ extension SessionArchive {
             rtiSessions = []
         }
 
-        return (rtiSessions + sentinelSessions())
+        return (rtiSessions + recordedMeetingSessions())
             .sorted {
                 ($0.date ?? .distantPast) > ($1.date ?? .distantPast)
             }
@@ -934,16 +980,17 @@ extension SessionArchive {
             .map { $0 }
     }
 
-    /// Completed Sentinel recordings are meetings too, even when RTI live
+    /// Legacy recorded meetings (`.meeting.json` sidecars in the vault's
+    /// recordings directory) are sessions too, even when RTI live
     /// intelligence was never enabled. Read their sidecars rather than
-    /// guessing from loose files, and keep the transcript at its Sentinel-owned
+    /// guessing from loose files, and keep the transcript at its vault
     /// location instead of copying it into RTI's archive.
-    static func sentinelSessions(
-        configURL: URL = SentinelPaths.configURL(),
+    static func recordedMeetingSessions(
+        configURL: URL = VaultPaths.configURL(),
         fileManager: FileManager = .default
     ) -> [ArchivedSession] {
-        SentinelPaths.completedSessions(configURL: configURL, fileManager: fileManager).map { record in
-            let title = genericSentinelName(record.name) ? "Recorded meeting" : record.name
+        VaultPaths.recordedMeetings(configURL: configURL, fileManager: fileManager).map { record in
+            let title = genericMeetingName(record.name) ? "Recorded meeting" : record.name
             return ArchivedSession(
                 url: record.transcriptURL,
                 transcriptURL: record.transcriptURL,
@@ -955,7 +1002,7 @@ extension SessionArchive {
         }
     }
 
-    private static func genericSentinelName(_ name: String) -> Bool {
+    private static func genericMeetingName(_ name: String) -> Bool {
         name.range(of: #"^meeting-\d{8}-\d{4}$"#, options: .regularExpression) != nil
     }
 

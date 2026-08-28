@@ -21,6 +21,18 @@ final class MeetingContextStore {
     /// project's discussion guides. nil when nothing is picked.
     var workstreamItem: VaultItem?
 
+    /// Calendar meeting explicitly selected in Setup. This is read-only context
+    /// for the current session; RTI never changes the source calendar event.
+    private(set) var calendarMeeting: CalendarMeeting?
+
+    /// Content of the pre-meeting prep brief auto-matched to this session
+    /// (authored by Ava's Meeting Prep job, read from `<meetings>/briefs/`).
+    /// Separate from `combined` so it's injected only for active-participant
+    /// meeting sessions, never fieldwork/observation. nil when none matched.
+    private(set) var briefContext: String?
+    /// Display title of the matched brief, for the "RTI is using:" banner.
+    private(set) var briefTitle: String?
+
     private init() {}
 
     /// The combined context fed to the assistant (workstream first, then note).
@@ -29,6 +41,9 @@ final class MeetingContextStore {
         var parts: [String] = []
         if let workstream = workstreamContext?.trimmingCharacters(in: .whitespacesAndNewlines), !workstream.isEmpty {
             parts.append(workstream)
+        }
+        if let calendar = calendarContext {
+            parts.append(calendar)
         }
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedNote.isEmpty { parts.append(trimmedNote) }
@@ -55,21 +70,49 @@ final class MeetingContextStore {
         workstreamItem = nil
     }
 
+    func selectCalendarMeeting(_ meeting: CalendarMeeting) {
+        calendarMeeting = meeting
+    }
+
+    func clearCalendarMeeting() {
+        calendarMeeting = nil
+    }
+
     /// Session context is intentionally one-meeting-only. Clearing it after a
     /// finished archive prevents a project or invite from silently leaking
     /// into the next unrelated recording.
     func resetAfterSession() {
         note = ""
         clearWorkstream()
+        clearCalendarMeeting()
+        briefContext = nil
+        briefTitle = nil
+    }
+
+    /// Compact, authoritative context for Assist and generated summaries. A
+    /// participant is an invitee, not evidence they actually spoke or attended.
+    var calendarContext: String? {
+        guard let meeting = calendarMeeting else { return nil }
+        var lines = ["Confirmed calendar meeting: \(meeting.title)"]
+        if !meeting.attendees.isEmpty {
+            lines.append("Invited participants (not proof of attendance):")
+            lines += meeting.attendees.map { attendee in
+                attendee.email.map { "- \(attendee.name) <\($0)>" } ?? "- \(attendee.name)"
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Reference material for end-of-session summaries. Project context gives
-    /// the model the correct vocabulary and spellings.
+    /// the model the correct vocabulary and spellings; the confirmed calendar
+    /// event provides names that are safe to label as invitees.
     var summaryContext: String? {
-        guard let workstream = workstreamContext?.trimmingCharacters(in: .whitespacesAndNewlines), !workstream.isEmpty else {
-            return nil
+        var parts: [String] = []
+        if let workstream = workstreamContext?.trimmingCharacters(in: .whitespacesAndNewlines), !workstream.isEmpty {
+            parts.append("Selected project/wiki context:\n\(String(workstream.prefix(8_000)))")
         }
-        return "Selected project/wiki context:\n\(String(workstream.prefix(8_000)))"
+        if let calendar = calendarContext { parts.append(calendar) }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
     }
 
     func selectWorkstream(_ item: VaultItem) {
@@ -103,4 +146,38 @@ final class MeetingContextStore {
         return match
     }
 
+    /// Best-effort: when a session matches a calendar meeting, pre-select
+    /// the vault workstream whose name appears in the meeting name. No-ops if
+    /// the user already picked one or nothing matches — a wrong guess just shows
+    /// in the "RTI is using:" banner for the user to clear.
+    func autoLink(toMeetingNamed meetingName: String) {
+        guard workstreamName == nil else { return }
+        let items = VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()
+        guard let match = VaultWorkstreamStore.match(meetingName: meetingName, in: items) else { return }
+        selectWorkstream(match)
+    }
+
+    /// At session start, match a same-day prep brief to this session and load
+    /// it (or clear a stale one). Conservative matching (name, or a single
+    /// unambiguous brief) lives in `MeetingBriefStore.briefMatching`. Called
+    /// fresh every start so a brief never leaks into a later, unrelated session.
+    func loadBriefForSession(meetingName: String?) {
+        briefTitle = nil
+        briefContext = nil
+        guard let brief = MeetingBriefStore.briefMatching(
+            meetingName: meetingName,
+            workstreamName: workstreamName,
+            today: Self.todayStamp.string(from: Date())
+        ) else { return }
+        let content = MeetingBriefStore.content(of: brief).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else { return }
+        briefTitle = brief.displayTitle
+        briefContext = content
+    }
+
+    private static let todayStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 }

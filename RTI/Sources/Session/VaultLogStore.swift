@@ -6,7 +6,7 @@ import Foundation
 /// in-app reader. Query with `jq`/DuckDB/Neon on demand.
 ///
 /// Location: `<vault>/databases/projects/personal/rti/turns/<yyyy-MM-dd>.jsonl`,
-/// derived from Meeting Sentinel's `recordings_dir` so the vault path is never
+/// derived from RTI's configured `recordings_dir` so the vault path is never
 /// hardcoded here. Per-day files keep any single iCloud/git-synced file small.
 enum VaultLogStore {
     struct TurnRecord: Codable {
@@ -51,16 +51,16 @@ enum VaultLogStore {
 
     // MARK: - Paths
 
-    /// `<vault>/databases/projects/personal/rti`, derived from Sentinel's config.
+    /// `<vault>/databases/projects/personal/rti`, derived from RTI's config.
     /// Also used by SessionArchive to place per-session records in the vault.
     static func rtiDirectory() -> URL? {
-        SentinelPaths.rtiDirectory()
+        VaultPaths.rtiDirectory()
     }
 
-    /// Meeting Sentinel's recordings directory. RTI uses this only to derive
+    /// The vault's meeting recordings directory. RTI uses this only to derive
     /// adjacent vault paths for its text handoff; it never writes audio here.
     static func recordingsDirectory() -> URL? {
-        SentinelPaths.preferredDatabasesDirectory()?
+        VaultPaths.preferredDatabasesDirectory()?
             .appendingPathComponent("meetings/recordings", isDirectory: true)
     }
 

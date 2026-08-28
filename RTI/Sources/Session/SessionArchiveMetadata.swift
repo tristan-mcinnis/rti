@@ -20,6 +20,4 @@ struct SessionArchiveMetadata: Codable {
     let workstream: String?
     /// Wall-clock session length in seconds (endedAt - startedAt).
     let durationSeconds: Int?
-    /// Name of the Sentinel meeting this session was overlaid on, if any.
-    let linkedMeeting: String?
 }

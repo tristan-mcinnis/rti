@@ -107,12 +107,9 @@ final class AudioCaptureManager: @unchecked Sendable {
             RTILog.log("voice processing unavailable on this device — using raw input: \(error)", category: "audio")
         }
 
-        // Always bind an explicit device — never fall through to nil and let
-        // AVAudioEngine silently pick whatever the system default input is
-        // (which may be a virtual/loopback device like BlackHole).
-        if let realDeviceID = AudioInputDeviceStore.preferredRealInputDeviceID(),
+        if let preferred = AudioInputDeviceStore.resolvePreferredDeviceID(),
            let unit = input.audioUnit {
-            var deviceID = realDeviceID
+            var deviceID = preferred
             let setStatus = AudioUnitSetProperty(
                 unit,
                 kAudioOutputUnitProperty_CurrentDevice,
@@ -121,14 +118,13 @@ final class AudioCaptureManager: @unchecked Sendable {
                 &deviceID,
                 UInt32(MemoryLayout.size(ofValue: deviceID))
             )
-            let info = AudioInputDeviceStore.nameAndUID(for: deviceID)
             if setStatus != noErr {
-                RTILog.log("failed to bind input device \(info.name) [\(info.uid)] (status=\(setStatus))", category: "audio")
+                RTILog.log("failed to bind input device (status=\(setStatus)) — using system default", category: "audio")
             } else {
-                RTILog.log("bound to input device \(info.name) [\(info.uid)]", category: "audio")
+                RTILog.log("bound to input device id=\(deviceID)", category: "audio")
             }
         } else {
-            RTILog.log("no physical input device found — recording may fail", category: "audio")
+            RTILog.log("using system default input device", category: "audio")
         }
         let nativeFormat = input.outputFormat(forBus: 0)
 

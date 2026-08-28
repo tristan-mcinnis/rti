@@ -10,7 +10,7 @@ struct AudioInputDevice: Identifiable, Hashable {
     let uid: String
     let name: String
 
-    /// Sentinel UID meaning "follow the system default input device" — keeps
+    /// Sentinel value meaning "follow the system default input device" — keeps
     /// users who never touch the picker on the existing behavior.
     static let systemDefaultUID = "__system_default__"
 }

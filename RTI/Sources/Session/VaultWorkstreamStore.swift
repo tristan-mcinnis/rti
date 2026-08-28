@@ -11,14 +11,14 @@ struct VaultItem: Identifiable, Hashable {
 /// Read-only access to the vault's clients + projects so the Context tab can
 /// offer a dropdown ("this meeting is with Acme / project Acme-Digital") and
 /// pull that workstream's content in as assistant context. RTI never writes
-/// here. The vault is located via Meeting Sentinel's config — the same
+/// here. The vault is located via RTI's config — the same
 /// mechanism `MeetingBriefStore` uses — so no path is hardcoded.
 enum VaultWorkstreamStore {
-    /// `<vault>/databases` — resolved from Sentinel's configured recordings
+    /// `<vault>/databases` — resolved from RTI's configured recordings
     /// path, with a nearby moved `kb/databases` tree preferred when the
     /// configured path is stale.
     static func databasesDir() -> URL? {
-        SentinelPaths.preferredDatabasesDirectory()
+        VaultPaths.preferredDatabasesDirectory()
     }
 
     static func clients() -> [VaultItem] {
@@ -117,7 +117,7 @@ enum VaultWorkstreamStore {
         return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : nil
     }
 
-    /// Best-effort match of a Sentinel meeting name to a vault workstream — used
+    /// Best-effort match of a meeting name to a vault workstream — used
     /// to pre-select context when you "Go live" on a recorded meeting. Returns
     /// the item whose name appears (whole-word) in the meeting name, preferring
     /// projects, then the longest match. Conservative: only names of 4+ chars

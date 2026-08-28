@@ -81,6 +81,24 @@ final class SessionCoordinator {
     /// the mic leg keeps recording. nil when system audio is fine/absent.
     private(set) var systemAudioNotice: String?
     private(set) var systemAudioStartOffsetMs: Int?
+    /// When non-nil, Soniox will stream translation tokens alongside
+    /// the regular transcript. Bound to UserDefaults and the live
+    /// transcript toggle.
+    var translationConfig: TranslationConfig? {
+        didSet {
+            guard translationConfig != oldValue else { return }
+            audioPipeline.translationConfig = translationConfig
+            if isRunning {
+                // Keep the transcript across the Soniox reconnect and continue
+                // the timeline, so toggling translation never wipes preceding
+                // entries or drops the next ones.
+                transcriptPipeline.prepareForReconnect()
+                audioPipeline.reconfigureStreamingClients()
+                publishState()
+            }
+        }
+    }
+
     private let audioPipeline = AudioPipeline()
     private let transcriptPipeline = TranscriptPipeline()
     /// Set while a start is in flight (during the async mic-permission prompt)
@@ -88,8 +106,8 @@ final class SessionCoordinator {
     private var isStarting = false
     private var delayedCompleteTask: Task<Void, Never>?
     private var checkpointTask: Task<Void, Never>?
+    private var translationDefaultsObserver: NSObjectProtocol?
     private var activeSTTProviderId = STTProviders.activeId
-    private var activeSTTDefaultsObserver: NSObjectProtocol?
     /// When the last session was stopped — used to reject a phantom restart
     /// fired immediately after a manual stop (the stop→start race).
     private var lastStopAt: Date?
@@ -103,14 +121,14 @@ final class SessionCoordinator {
     }
 
     /// Register the periodic analysis tasks with the scheduler. Called once
-    /// at launch from AppDelegate. Each task self-gates on its own Settings
-    /// toggle (`AnalysisSettingsDefaults`, all default false) — Findings
-    /// stayed removed, so only notes / discussion guide / auto-assist
-    /// register here.
+    /// at launch from AppDelegate. The scheduler only fires the tasks whose
+    /// enable flag is set, and only while a session is running.
     func registerAnalysisTasks() {
         AnalysisScheduler.shared.register(
             id: "notes",
             task: .init(enabledKey: AnalysisSettingsDefaults.notesEnabledKey) { _ in
+                // Notes own their own watermark (so the manual Generate button
+                // can't duplicate) — ignore the scheduler's sinceMs.
                 await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
             }
         )
@@ -121,30 +139,38 @@ final class SessionCoordinator {
             }
         )
         AnalysisScheduler.shared.register(
+            id: "findings",
+            task: .init(enabledKey: AnalysisSettingsDefaults.findingsEnabledKey) { _ in
+                // Intel owns its own watermark (so the manual Generate button
+                // can't duplicate) — ignore the scheduler's sinceMs.
+                await FindingsController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
+            }
+        )
+        AnalysisScheduler.shared.register(
             id: "autoAssist",
             task: .init(enabledKey: AnalysisSettingsDefaults.autoAssistEnabledKey) { _ in
+                // Auto mode owns its own watermark — ignore the scheduler's sinceMs.
                 await AutoAssistController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
             }
         )
     }
 
-    /// Whether any live-analysis feature is turned on — gates both the
-    /// scheduler timer and the overlay's segmented control.
-    static var anyAnalysisEnabled: Bool {
-        let d = UserDefaults.standard
-        return d.bool(forKey: AnalysisSettingsDefaults.notesEnabledKey)
-            || d.bool(forKey: AnalysisSettingsDefaults.guideEnabledKey)
-            || d.bool(forKey: AnalysisSettingsDefaults.autoAssistEnabledKey)
-    }
-
     private func commonInit() {
-        activeSTTDefaultsObserver = NotificationCenter.default.addObserver(
+        // Keep the live translation config in sync with UserDefaults without
+        // letting every view push its own copy. Views mutate the defaults keys;
+        // this store-derived update is the single writer to `translationConfig`.
+        translationConfig = TranslationStore.currentConfig()
+        translationDefaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                let nextTranslation = TranslationStore.currentConfig()
+                if self.translationConfig != nextTranslation {
+                    self.translationConfig = nextTranslation
+                }
                 let nextSTTProviderId = STTProviders.activeId
                 if self.activeSTTProviderId != nextSTTProviderId {
                     self.activeSTTProviderId = nextSTTProviderId
@@ -195,8 +221,10 @@ final class SessionCoordinator {
     @discardableResult
     func insertNote(_ text: String) -> Bool {
         guard let startedAt else { return false }
+        let startMs = Int(Date().timeIntervalSince(startedAt) * 1000)
         let ok = transcriptPipeline.insertNote(text, startedAt: startedAt)
         if ok {
+            FindingsController.shared.recordUserMarkedNote(text, startMs: startMs)
             publishState()
         }
         return ok
@@ -246,6 +274,7 @@ final class SessionCoordinator {
         guard phase == .recording else { return }
         pausedAt = Date()
         audioPipeline.suspended = true
+        VisualContextTrail.shared.setPaused(true)
         phase = .paused
         publishState()
     }
@@ -255,6 +284,7 @@ final class SessionCoordinator {
         if let pausedAt { pausedAccumulated += Date().timeIntervalSince(pausedAt) }
         pausedAt = nil
         audioPipeline.suspended = false
+        VisualContextTrail.shared.setPaused(false)
         phase = .recording
         publishState()
     }
@@ -282,8 +312,8 @@ final class SessionCoordinator {
         // Reject the stop→start race: a phantom restart fired ~4s after a manual
         // stop (the "0:05 / no audio received" blip). Don't start while a stop is
         // still finalizing, or within a short cooldown after one. The cooldown
-        // only guards against *automatic* restarts (e.g. the Sentinel go-live
-        // banner) — a deliberate user "new recording" press bypasses it.
+        // only guards against *automatic* restarts — a deliberate user
+        // "new recording" press bypasses it.
         if delayedCompleteTask != nil { return }
         if !userInitiated,
            let stopped = lastStopAt, Date().timeIntervalSince(stopped) < Self.restartCooldown { return }
@@ -345,24 +375,42 @@ final class SessionCoordinator {
         // to the active mode at every start.
         LLMController.shared.reconcileListenerModeForSessionStart()
 
+        // Use a conservative current-calendar suggestion as optional context.
+        // A manual choice made in Meeting options always wins.
+        let calendar = CalendarMeetingStore.shared
+        calendar.refresh(at: now)
+        if MeetingContextStore.shared.calendarMeeting == nil,
+           let suggestion = calendar.suggestion {
+            MeetingContextStore.shared.selectCalendarMeeting(suggestion)
+            MeetingContextStore.shared.autoLink(toMeetingNamed: suggestion.title)
+        }
+
+        // Auto-attach a same-day prep brief for this meeting (if one matches),
+        // so Meeting-mode Assist works against "what we said we needed from this
+        // call", not just the transcript. Read fresh each start; no-op when none.
+        MeetingContextStore.shared.loadBriefForSession(meetingName: nil)
+
+        // Meetings are when vault searches cluster — wake Neon now so the first
+        // in-session search is warm, not a ~10-15s cold-start.
+        VaultSearchCLI.warmUp()
+
         // Reset the live transcript for the fresh session.
         liveEntries = []
         interimLine = nil
         transcriptPipeline.reset()
         SpeakerNameStore.shared.reset()
 
-        // Bind the opt-in analysis controllers to the fresh session and start
-        // the scheduler only if at least one is turned on (Settings ->
-        // "Live analysis"); each task still self-gates on every tick.
+        // Bind the analysis controllers to the fresh session and start the
+        // periodic scheduler. Each task self-gates on its Settings toggle.
         NotesGenerationController.shared.reset(for: sessionId)
         DiscussionGuideController.shared.reset(for: sessionId)
+        FindingsController.shared.reset(for: sessionId)
         AutoAssistController.shared.reset(for: sessionId)
-        if Self.anyAnalysisEnabled {
-            AnalysisScheduler.shared.start(
-                intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
-                defaultInterval: AnalysisSettingsDefaults.defaultInterval
-            )
-        }
+        AnalysisScheduler.shared.start(
+            intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
+            defaultInterval: AnalysisSettingsDefaults.defaultInterval
+        )
+        startKeepWarm()
 
         // Keep Bluetooth headphones in full-volume A2DP: if the default mic is a
         // BT headset, route capture to the built-in mic for the session. Must run
@@ -398,12 +446,14 @@ final class SessionCoordinator {
         publishState()
         micMuted = false
         phase = .recording
+        VisualContextTrail.shared.start(sessionStartedAt: now)
         startCheckpointLoop()
     }
 
     func stopSession() {
         guard isRunning, let sessionId = currentSessionId else { return }
         lastStopAt = Date()
+        VisualContextTrail.shared.stopCapturing()
 
         // Settle any in-progress pause so the frozen duration excludes it.
         if phase == .paused, let pausedAt {
@@ -418,6 +468,8 @@ final class SessionCoordinator {
         // partial audio and deliver final transcripts.
         audioPipeline.finalize()
         AnalysisScheduler.shared.stop()
+        keepWarmTimer?.invalidate()
+        keepWarmTimer = nil
         checkpointTask?.cancel()
         checkpointTask = nil
         phase = .finishing
@@ -457,7 +509,6 @@ final class SessionCoordinator {
             let transcript = snapshot.transcript
             let chat = snapshot.chat
             let analysis = snapshot.analysis
-            let linkedMeetingName = archiveResult.linkedMeetingName
             let summaryContext = archiveResult.summaryContext
             // Render the transcript NOW and hand it to the summary call. The old
             // path re-read the live transcript inside the async summary, so
@@ -474,8 +525,7 @@ final class SessionCoordinator {
                     startedAt: startedAt,
                     chat: chat,
                     analysis: analysis,
-                    archiveDir: archiveDir,
-                    linkedMeeting: linkedMeetingName
+                    archiveDir: archiveDir
                 )
                 phase = .summarizing
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
@@ -533,8 +583,7 @@ final class SessionCoordinator {
                     transcript: transcript,
                     chat: chat,
                     analysis: analysis,
-                    archiveDir: archiveDir,
-                    linkedMeetingName: linkedMeetingName
+                    archiveDir: archiveDir
                 )
             }
             MeetingContextStore.shared.resetAfterSession()
@@ -572,6 +621,7 @@ final class SessionCoordinator {
     func emergencyShutdown() {
         // Restore the default mic even on an abrupt quit (no-op if not switched).
         BluetoothMicGuard.shared.release()
+        VisualContextTrail.shared.stopCapturing()
 
         let stopPending = delayedCompleteTask != nil
         guard isRunning || stopPending else { return }
@@ -617,8 +667,7 @@ final class SessionCoordinator {
                 transcript: snapshot.transcript,
                 chat: snapshot.chat,
                 analysis: snapshot.analysis,
-                archiveDir: dir,
-                linkedMeetingName: result.linkedMeetingName
+                archiveDir: dir
             )
         }
         return dir
@@ -632,6 +681,7 @@ final class SessionCoordinator {
     ) -> SessionFinalizer.Snapshot {
         let summaryContext = [
             MeetingContextStore.shared.summaryContext,
+            VisualContextTrail.shared.summaryReferenceContext(),
         ]
         .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
@@ -644,14 +694,16 @@ final class SessionCoordinator {
             chat: LLMController.shared.entries,
             analysis: SessionArchive.Analysis(
                 notes: NotesGenerationController.shared.notes,
-                guide: DiscussionGuideController.shared.guide
+                guide: DiscussionGuideController.shared.guide,
+                findings: FindingsController.shared.findings,
+                visualContext: VisualContextTrail.shared.events
             ),
             sessionId: sessionId,
             micRecordingURL: includeAudio ? audioPipeline.micRecordingURL : nil,
             systemRecordingURL: includeAudio ? audioPipeline.systemRecordingURL : nil,
             systemAudioStartOffsetMs: systemAudioStartOffsetMs,
             workstreamItem: MeetingContextStore.shared.workstreamItem,
-            modeName: nil,
+            modeName: ModeStore.shared.activeMode?.name,
             summaryContext: summaryContext.isEmpty ? nil : summaryContext
         )
     }
@@ -662,7 +714,6 @@ final class SessionCoordinator {
         chat: [ChatEntry],
         analysis: SessionArchive.Analysis,
         archiveDir: URL?,
-        linkedMeetingName: String?,
         process: Bool = true
     ) {
         guard let export = SessionArchive.writeCanonicalMeetingExport(
@@ -670,8 +721,7 @@ final class SessionCoordinator {
             transcript: transcript,
             chat: chat,
             analysis: analysis,
-            archiveDir: archiveDir,
-            linkedMeeting: linkedMeetingName
+            archiveDir: archiveDir
         ) else { return }
         if process { SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL) }
     }
@@ -737,10 +787,26 @@ final class SessionCoordinator {
         if entriesChanged {
             liveEntries = transcriptPipeline.liveEntries
             // New speech just landed → let Auto mode react proactively (it
-            // debounces and rate-limits internally, so this is cheap to call
-            // even when the feature is off).
+            // debounces and rate-limits internally, so this is cheap to call).
             AutoAssistController.shared.noteActivity()
         }
     }
 
+    // MARK: - Keep-warm
+
+    /// During a session, vault searches (Assist tool calls + Auto mode) cluster.
+    /// Neon's serverless compute suspends after a few minutes idle, which would
+    /// make the next search eat a ~15s cold start (past VaultSearchCLI's 12s
+    /// timeout → silent grep fallback). A light periodic ping keeps it warm so
+    /// every in-session search stays on the ~2.4s semantic path.
+    private var keepWarmTimer: Timer?
+    private static let keepWarmInterval: TimeInterval = 240
+
+    private func startKeepWarm() {
+        keepWarmTimer?.invalidate()
+        keepWarmTimer = Timer.scheduledTimer(withTimeInterval: Self.keepWarmInterval, repeats: true) { _ in
+            VaultSearchCLI.warmUp()
+        }
+        keepWarmTimer?.tolerance = 30
+    }
 }

@@ -21,7 +21,6 @@ struct SessionFinalizer {
     struct ArchiveResult {
         let archiveDir: URL?
         let transcriptText: String
-        let linkedMeetingName: String?
         let summaryContext: String?
     }
 
@@ -39,7 +38,6 @@ struct SessionFinalizer {
             systemRecordingURL: snapshot.systemRecordingURL,
             systemAudioStartOffsetMs: snapshot.systemAudioStartOffsetMs,
             workstreamSlug: Self.workstreamSlug(for: snapshot.workstreamItem),
-            linkedMeeting: nil,
             mode: snapshot.modeName,
             workstreamName: snapshot.workstreamItem?.name,
             speakerNames: SpeakerNameStore.shared.names
@@ -48,7 +46,6 @@ struct SessionFinalizer {
         return ArchiveResult(
             archiveDir: archiveDir,
             transcriptText: Self.transcriptText(snapshot.transcript),
-            linkedMeetingName: nil,
             summaryContext: snapshot.summaryContext
         )
     }

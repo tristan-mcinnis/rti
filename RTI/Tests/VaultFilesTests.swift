@@ -2,7 +2,7 @@ import XCTest
 
 /// Locks the path-confinement of VaultFiles.resolve — the security boundary that
 /// keeps an untrusted transcript from steering a read outside databases/. These
-/// run against the real vault location (resolved via Sentinel config); if that
+/// run against the real vault location (resolved via RTI config); if that
 /// can't be found, resolve returns nil and the refusal assertions still hold.
 final class VaultFilesTests: XCTestCase {
     func testInProjectPathResolvesOrNilButNeverEscapes() {

@@ -20,20 +20,18 @@ struct RTIApp: App {
     }
 
     var body: some Scene {
-        // No content: RTI is a menubar accessory (LSUIElement) with no
-        // window to restore. The Settings command routes to the overlay's
-        // own sheet instead of a second SwiftUI Settings scene.
-        Settings {
-            EmptyView()
-        }
-        .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings…") {
-                    WindowCoordinator.shared.showOverlay()
-                    NotificationCenter.default.post(name: .rtiOpenSettings, object: nil)
+        // Keep a real Settings scene so the app remains resident normally, but
+        // route the actual Settings command to RTI's own settings window below.
+        // That avoids stale scene-restoration state from the SwiftUI Settings
+        // scene being the primary user path.
+        Settings { SettingsView(onClose: nil) }
+            .commands {
+                CommandGroup(replacing: .appSettings) {
+                    Button("Settings…") {
+                        WindowCoordinator.shared.openSettings()
+                    }
+                    .keyboardShortcut(",", modifiers: .command)
                 }
-                .keyboardShortcut(",", modifiers: .command)
             }
-        }
     }
 }

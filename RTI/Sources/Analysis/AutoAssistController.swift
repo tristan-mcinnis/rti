@@ -77,12 +77,6 @@ final class AutoAssistController {
         unseenCount = 0
     }
 
-    /// Dismiss one card from the inline chip row without affecting the
-    /// dedup set used to avoid re-surfacing the same suggestion.
-    func dismiss(_ id: AutoAssistCard.ID) {
-        cards.removeAll { $0.id == id }
-    }
-
     // MARK: - Proactive triggering
 
     /// Called when new final transcript content lands. Debounces, then fires a
@@ -134,11 +128,18 @@ final class AutoAssistController {
         let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? windowStartMs
 
         // Grounding: who/what the meeting is about + the live guide state.
-        // Vault-search grounding (RECALL cards citing project vault material)
-        // stayed removed with WP6 — cards now ground only in the meeting's own
-        // context and transcript, not a retrieval pass.
         let projectContext = MeetingContextStore.shared.combined
         let guideSummary = DiscussionGuideController.shared.guide?.assistantContextSummary()
+
+        // Project-scoped retrieval: pull what the project's vault knows about
+        // what's being discussed right now, so a RECALL card can be real. Only
+        // when a project is picked (scope present) — keeps generic meetings cheap.
+        var vaultMaterial: String?
+        if let scope = MeetingContextStore.shared.workstreamScopePath {
+            let found = await VaultSearch.searchFormatted(query: window, scopeRelativePath: scope)
+            // Only inject a genuine hit, not the "nothing matched" sentinel.
+            if found.hasPrefix("Found ") { vaultMaterial = found }
+        }
 
         let priorList: String = cards.isEmpty
             ? "(none yet)"
@@ -150,6 +151,9 @@ final class AutoAssistController {
         }
         if let guideSummary, !guideSummary.isEmpty {
             prompt += "\n\nDiscussion guide & live coverage:\n---\n\(guideSummary)\n---"
+        }
+        if let vaultMaterial {
+            prompt += "\n\nRelevant project vault material for what's being discussed (use for RECALL/FLAG; cite the source; do not fabricate):\n---\n\(vaultMaterial)\n---"
         }
         prompt += "\n\nRecent conversation window:\n\(window)"
 
