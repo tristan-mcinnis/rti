@@ -10,14 +10,53 @@ Personal build: **real-time first, no corpus** — the live transcript and chat 
 - **Clear recording lifecycle.** The record control names every phase — **Recording → Paused → Saving → Summarizing → Notes ready** — so you always know what RTI is doing. **Pause/resume** (⌘⇧P) suspends transcription while holding the Soniox socket warm, so resume is instant (no re-handshake). On finish you watch the end-of-session summary generate (Granola-style "Summarizing…"), then **start a new recording with one click** — the previous session is saved, not cleared, and the new one can begin even while the last summary is still being written.
 - **Streaming assistant, mode-aware.** ⌘↵ runs the primary action over the last few minutes of transcript. The quick-action set follows the active mode + listener state: meeting/participant gets Assist / Say next / Follow-ups; fieldwork observer (Interview + Listener) gets Assist / Follow-ups / Key tensions / What's unsaid / Emerging themes. You can also drop an image into the composer (on-device OCR → text). OpenAI-compatible streaming chat.
 - **Invisible overlay.** Borderless `NSPanel` with `sharingType = .none` — excluded from QuickTime, Zoom local recording, and `screencapture`. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
-- **Meeting awareness.** When Meeting Sentinel is recording a meeting outside RTI, a banner offers **Go live** to overlay the assistant on it (and to open the pre-meeting brief, if one was written). RTI never auto-records — you start a live session yourself with ⌘⇧R.
+- **Sole meeting recorder.** RTI is the only meeting-capture tool on this machine (Meeting Sentinel was deleted 2026-08-28). ⌘⇧R starts and finishes every recording; RTI never auto-records.
 - **Real-time analysis tabs.** Optional overlay tabs generate live meeting **Notes**, track coverage of an imported **Discussion Guide**, and collect tagged **Findings** — all held in memory and refreshed on a timer. Toggle each in the **Setup** tab; jump to them with ⌘⌥3 / ⌘⌥4 / ⌘⌥5.
 - **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers. **Off by default** (VPIO delivers silent buffers on some Macs, verified 2026-06-09 — silent mic kills transcription); toggle in Settings → General if your setup needs it. The mic is fully released when a session stops, so it won't block other apps.
 - **Smart Screenshot.** ⌘⇧H captures the display under the mouse, runs Vision OCR on-device, attaches the text to your next prompt. The image is discarded.
 - **Translation.** Optional live translation alongside the transcript (one-way or two-way), in the Live Transcript window.
 - **Modes.** Built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text. Stored as a small JSON file.
 
-The only things written to disk are config (API keys in the Keychain-style store, modes in `~/Library/Application Support/RTI/modes.json`), a write-only Markdown record of each finished session, and the session-local audio files (`audio-mic.m4a` / `audio-system.m4a`) used only by **Upgrade Transcript**. There's no database, no in-app search, and no corpus reader.
+The only things written to disk are config (API keys in the Keychain-style store, modes in `~/Library/Application Support/RTI/modes.json`), a write-only Markdown record of each finished session, and the session-local audio files (`audio-mic.wav` / `audio-system.wav`) used only by **Upgrade Transcript**. There's no database, no in-app search, and no corpus reader. See **Where everything goes** below for the exact paths.
+
+## Where everything goes (data flow)
+
+One config file anchors every path: **`~/.config/rti/config.json`** (`VaultPaths.swift` reads it; `recordings_dir` anchors the vault tree). Change the vault location by editing that one file.
+
+**1. The session archive** — everything a session produced, in one folder:
+
+```
+~/vault/kb/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
+  transcript.md         # live transcript, Markdown, YAML frontmatter, inline 📝 notes
+  chat.md               # assistant chat log (only if you chatted)
+  notes.md              # generated live notes (only if enabled + produced)
+  discussion-guide.md   # guide coverage (only if a guide was loaded)
+  live-intelligence.md  # tagged findings ledger (only if any)
+  screen-context.md     # screen-OCR trail (only if any)
+  summary.md            # end-of-session summary (+ title.txt for the browser)
+  session.json          # metadata: mode, workstream, duration, audio file names
+  speaker-names.json    # your live speaker renames (only if you renamed)
+  audio-mic.wav         # THE AUDIO. Mic leg, kept for transcript upgrade
+  audio-system.wav      # system-audio leg (the other side of the call)
+```
+
+Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `source: rti`, `workstream:` when a project was picked in Setup, `projects: [rti]`, `tags: [rti]`) so the vault's Neon ingester titles and links it.
+
+**2. The canonical meeting lane** — on finish (and again after the automatic transcript upgrade), RTI exports plain text into the vault's raw-transcript lane:
+
+```
+~/vault/kb/databases/meetings/transcripts-raw/
+  rti-session-<yyyyMMdd-HHmmss>-transcript.txt    # canonical raw transcript (plain text, no frontmatter)
+  rti-session-<yyyyMMdd-HHmmss>-rti.md            # sidecar: summary + notes + findings + chat (frontmatter: source: rti-live)
+```
+
+**3. Vault ingestion** — all vault-side, never in the app:
+
+- On session stop RTI fire-and-forgets `~/vault/.claude/tools/triage/route-rti-session.py` (workstream declared → field-notes companion in that project; otherwise the session stays in `rti/sessions/`, searchable and promotable later).
+- The `com.tristan.rti-meeting-drain` LaunchAgent (every 30 min) picks up unprocessed `-transcript.txt` files and runs `/meeting` headless: it writes the canonical meeting note at `kb/databases/meetings/YYYYMMDD-<type>-<topic>.md`, folds the `-rti.md` sidecar in as priority signal, and writes a speaker-resolved `-transcript.named.txt` sibling. The raw transcript is never edited.
+- The Neon/Hermes ingest watcher indexes the archive's frontmattered Markdown for search.
+
+Legacy files you may still see: `meetings/recordings/rti-<UUID>-mic.m4a` (old RTI builds kept audio there; current builds keep WAV legs in the session folder) and `*.meeting.json` sidecars (Meeting Sentinel era — the Sessions browser still lists them as recorded meetings).
 
 ## Build & run
 
@@ -114,7 +153,7 @@ RTI/
     Soniox/                        # WebSocket realtime transcription
     LLM/                           # LLMProvider config + LLMClient + LLMController + tools
     Screenshot/                    # ScreenCaptureKit + Vision OCR
-    Session/                       # SessionCoordinator + in-memory transcript pipeline + Meeting Sentinel bridge + session archive
+    Session/                       # SessionCoordinator + in-memory transcript pipeline + session archive + VaultPaths
     Modes/                         # ModeStore (JSON-backed prompt presets)
     Analysis/                      # Real-time Notes / Dossiers / Discussion Guide panels (in-memory)
     Widgets/                       # Recording-pill widget
