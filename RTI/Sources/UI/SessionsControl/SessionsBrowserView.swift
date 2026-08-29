@@ -1026,6 +1026,9 @@ struct SessionsBrowserView: View {
         } else if let data = try? JSONEncoder().encode(names) {
             try? data.write(to: url, options: .atomic)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            // Save is the human confirm — let the vault flywheel enroll these
+            // voices so future sessions get suggested automatically.
+            SpeakerEnrollment.fireAndForget(sessionDir: selected.url)
         }
         speakerNames = names
         showingSpeakerEditor = false
