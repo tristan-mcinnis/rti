@@ -1,3 +1,4 @@
+import RTICore
 import SwiftUI
 
 /// Single source of truth for mapping Soniox speaker IDs (`self`, `room_1`,
@@ -5,18 +6,11 @@ import SwiftUI
 /// per-speaker chip colors used across the live analysis surfaces.
 enum SpeakerLabels {
     static func displayName(for raw: String) -> String {
-        switch raw {
-        case "self": return "You"
-        case "note": return "Note"
-        case let other where other.hasPrefix("room_"):
-            return "Room speaker \(other.dropFirst("room_".count))"
-        case let other where other.hasPrefix("remote_"):
-            return "Remote speaker \(other.dropFirst("remote_".count))"
-        case let other where other.hasPrefix("them_"):
-            return "Speaker \(other.dropFirst("them_".count))"
-        default:
-            return raw.capitalized
-        }
+        if raw == "note" { return "Note" }
+        // Raw-id naming lives in RTICore (SpeakerLabelMapping) so the archive
+        // layer keys speaker-names.json by the same strings the UI shows.
+        if let mapped = SpeakerLabelMapping.displayLabel(forRawKey: raw) { return mapped }
+        return raw.capitalized
     }
 
     static func chipColor(for raw: String) -> Color {

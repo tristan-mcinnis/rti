@@ -117,7 +117,11 @@ enum SessionArchive {
             writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md"))
         }
 
-        if !speakerNames.isEmpty, let data = try? JSONEncoder().encode(speakerNames) {
+        // Serialize keyed by display labels ("Remote speaker 1"), not raw ids
+        // (`remote_1`): the post-hoc rename UI and any vault-side consumer
+        // match names against the labels transcripts actually print.
+        let displayKeyedNames = SpeakerLabelMapping.displayKeyedNames(speakerNames)
+        if !displayKeyedNames.isEmpty, let data = try? JSONEncoder().encode(displayKeyedNames) {
             let url = dir.appendingPathComponent("speaker-names.json")
             try? data.write(to: url, options: .atomic)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
@@ -148,6 +152,16 @@ enum SessionArchive {
             let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(analysis.visualContext)]).joined(separator: "\n")
             let md = (fm("Screen context") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md"))
+        }
+        // Frames staged during the session (local-vision lane) move into
+        // `frames/` beside screen-context.md; gitignored, owner-only.
+        let staging = VisualFrameStore.stagingDirectory(
+            configHome: VaultPaths.homeDirectory(),
+            startedAt: startedAt
+        )
+        let movedFrames = VisualFrameStore.promoteStagedFrames(stagingDirectory: staging, into: dir)
+        if movedFrames > 0 {
+            RTILog.log("Archived \(movedFrames) screen frame(s) into \(dir.lastPathComponent)/frames.", category: "screenshot")
         }
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
@@ -776,11 +790,24 @@ enum SessionArchive {
         }.joined(separator: "\n")
     }
 
-    /// Materially changed active-screen OCR frames. Images never enter the
-    /// archive; this compact evidence trail is what the vault and agent keep.
+    /// Materially changed active-screen captures. Each event carries its OCR
+    /// text, and — when the local-vision lane is enabled — a model description
+    /// plus a pointer to the compressed frame kept in the session's `frames/`
+    /// directory. The frame files themselves stay out of git and out of the
+    /// meeting-note text lane; only these references and text travel.
     private static func renderVisualContext(_ events: [VisualContextEvent]) -> String {
         events.map { event in
-            "### `\(VisualContextText.timestamp(event.offsetSeconds))`\n\n\(event.text)"
+            var lines = ["### `\(VisualContextText.timestamp(event.offsetSeconds))`", ""]
+            if let frame = event.frameFilename, !frame.isEmpty {
+                lines.append("_Frame: frames/\(frame)_")
+                lines.append("")
+            }
+            lines.append(event.text)
+            if let vision = event.visionSummary, !vision.isEmpty {
+                lines.append("")
+                lines.append("**What the screen looks like:** \(vision)")
+            }
+            return lines.joined(separator: "\n")
         }.joined(separator: "\n\n---\n\n")
     }
 

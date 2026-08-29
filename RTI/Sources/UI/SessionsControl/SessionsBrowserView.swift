@@ -23,6 +23,7 @@ struct SessionsBrowserView: View {
     @State private var summaryDraft = ""
     @State private var showingSpeakerEditor = false
     @State private var speakerNames: [String: String] = [:]
+    @State private var speakerSuggestions: [String: SpeakerSuggestions.Entry] = [:]
     @State private var regeneratingSummaryID: URL?
     @State private var editingTranscript = false
     @State private var transcriptTurns: [SessionTranscriptTurn] = []
@@ -218,7 +219,10 @@ struct SessionsBrowserView: View {
                 Menu {
                     if session.isRTIArchive {
                         Button("Edit title…") { beginTitleEdit(for: session) }
-                        Button("Name speakers…") { showingSpeakerEditor = true }
+                        Button("Name speakers…") {
+                            loadSpeakerSuggestions()
+                            showingSpeakerEditor = true
+                        }
                         Divider()
                     }
                     Button("Save as Markdown…") { exportMarkdown() }
@@ -766,7 +770,9 @@ struct SessionsBrowserView: View {
             speakerNames = [:]
             return
         }
-        speakerNames = names
+        // Legacy files are keyed by raw ids (`remote_1`) from live renames;
+        // current files by display labels. Normalize so both render.
+        speakerNames = SpeakerLabelMapping.displayKeyedNames(names)
         loadText()
     }
 
@@ -783,14 +789,7 @@ struct SessionsBrowserView: View {
         guard let selected else { return [] }
         let transcript = selected.transcriptURL
         let text = (try? String(contentsOf: transcript, encoding: .utf8)) ?? ""
-        let pattern = #"Speaker [0-9]+"#
-        let range = NSRange(text.startIndex..., in: text)
-        let matches = try? NSRegularExpression(pattern: pattern).matches(in: text, range: range)
-        return Array(Set((matches ?? []).compactMap { match in
-            Range(match.range, in: text).map { String(text[$0]) }
-        })).sorted {
-            Int($0.dropFirst("Speaker ".count)) ?? 0 < Int($1.dropFirst("Speaker ".count)) ?? 0
-        }
+        return SpeakerLabelMapping.archivedSpeakerLabels(in: text)
     }
 
     private func beginTitleEdit(for session: SessionArchive.ArchivedSession) {
@@ -959,8 +958,11 @@ struct SessionsBrowserView: View {
                         GridRow {
                             Text(label)
                                 .font(.system(size: 13, weight: .medium))
-                            TextField("Name", text: speakerBinding(for: label))
-                                .textFieldStyle(.roundedBorder)
+                            VStack(alignment: .leading, spacing: 3) {
+                                TextField("Name", text: speakerBinding(for: label))
+                                    .textFieldStyle(.roundedBorder)
+                                speakerSuggestionHint(for: label)
+                            }
                         }
                     }
                 }
@@ -981,6 +983,35 @@ struct SessionsBrowserView: View {
             get: { speakerNames[label, default: ""] },
             set: { speakerNames[label] = $0 }
         )
+    }
+
+    /// Voice-profile hint under a rename field: shows the vault matcher's
+    /// suggestion (accept or maybe band) with its cosine score. "Use" fills
+    /// the field; nothing is applied until Save — the human confirm the
+    /// suggestion-only doctrine requires.
+    @ViewBuilder
+    private func speakerSuggestionHint(for label: String) -> some View {
+        if let entry = speakerSuggestions[label],
+           let name = entry.suggestion,
+           entry.isAccept || entry.isMaybe {
+            HStack(spacing: 6) {
+                Text("Voice match: \(name) (\(String(format: "%.2f", entry.score ?? 0))\(entry.isMaybe ? ", weak" : ""))")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Button("Use") { speakerNames[label] = name }
+                    .buttonStyle(.link)
+                    .font(.system(size: 11))
+            }
+        }
+    }
+
+    private func loadSpeakerSuggestions() {
+        guard let selected, selected.isRTIArchive,
+              let file = SpeakerSuggestions.load(fromSessionDir: selected.url) else {
+            speakerSuggestions = [:]
+            return
+        }
+        speakerSuggestions = file.speakers.reduce(into: [:]) { $0[$1.label] = $1 }
     }
 
     private func saveSpeakerNames() {
