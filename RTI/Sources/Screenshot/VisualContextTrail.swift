@@ -4,9 +4,12 @@ import Foundation
 import Observation
 import RTICore
 
-/// Session-scoped ambient screen context. Samples only while RTI is recording,
-/// keeps OCR text in memory, and leaves image persistence to nobody: the image
-/// is discarded inside ScreenshotManager immediately after Vision OCR.
+/// Session-scoped ambient screen context. Samples only while RTI is recording
+/// and keeps OCR text in memory. When the `local_vision` lane is enabled, each
+/// accepted frame is also staged as a compressed JPEG for the session archive
+/// (`frames/`), and — with `ambient_describe` on — described by the local
+/// vision model at 127.0.0.1. With the lane disabled, images are discarded
+/// inside ScreenshotManager immediately after Vision OCR, as before.
 @Observable @MainActor
 final class VisualContextTrail {
     static let shared = VisualContextTrail()
@@ -102,6 +105,27 @@ final class VisualContextTrail {
         )
     }
 
+    /// A ⌘⇧H / `capture_screen` capture made while a session is live: give it
+    /// a home in the trail so its frame and vision summary reach the archive.
+    /// `lastCapturedText` is deliberately untouched — a manual capture must
+    /// not suppress the next ambient sample.
+    func recordExternalCapture(
+        offsetSeconds: Int,
+        text: String,
+        visionSummary: String?,
+        frameFilename: String?
+    ) {
+        guard sessionStartedAt != nil else { return }
+        guard !text.isEmpty || visionSummary != nil else { return }
+        events.append(VisualContextEvent(
+            offsetSeconds: offsetSeconds,
+            text: text.isEmpty ? "(no machine-readable text on screen)" : text,
+            visionSummary: visionSummary,
+            frameFilename: frameFilename
+        ))
+        trimEventsIfNeeded()
+    }
+
     func openScreenRecordingSettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else { return }
         NSWorkspace.shared.open(url)
@@ -132,17 +156,37 @@ final class VisualContextTrail {
         guard isEnabled, let sessionStartedAt else { return }
         state = .capturing
         do {
-            let raw = try await ScreenshotManager.shared.captureActiveDisplayDescription()
-            let text = VisualContextText.compact(raw)
+            let visionConfig = LocalVisionConfiguration.from(VaultPaths.configDictionary())
+            let wantsFrame = visionConfig.enabled
+                && (visionConfig.saveFrames || visionConfig.ambientDescribe)
+            let frame = try await ScreenshotManager.shared.captureActiveDisplayFrame(includeFrame: wantsFrame)
+            let text = VisualContextText.compact(frame.text)
             if VisualContextText.isMeaningfullyDifferent(text, from: lastCapturedText) {
-                events.append(VisualContextEvent(
-                    offsetSeconds: Int(Date().timeIntervalSince(sessionStartedAt)),
-                    text: text
-                ))
-                if events.count > VisualContextSettingsDefaults.maximumEventCount {
-                    events.removeFirst(events.count - VisualContextSettingsDefaults.maximumEventCount)
+                let offset = Int(Date().timeIntervalSince(sessionStartedAt))
+                var frameFilename: String?
+                if visionConfig.enabled, visionConfig.saveFrames, let jpeg = frame.frameJPEG {
+                    let staging = VisualFrameStore.stagingDirectory(
+                        configHome: VaultPaths.homeDirectory(),
+                        startedAt: sessionStartedAt
+                    )
+                    frameFilename = try? VisualFrameStore.writeFrame(
+                        jpeg,
+                        offsetSeconds: offset,
+                        trigger: "ambient",
+                        stagingDirectory: staging
+                    )
                 }
+                let event = VisualContextEvent(
+                    offsetSeconds: offset,
+                    text: text,
+                    frameFilename: frameFilename
+                )
+                events.append(event)
+                trimEventsIfNeeded()
                 lastCapturedText = text
+                if visionConfig.enabled, visionConfig.ambientDescribe, let jpeg = frame.frameJPEG {
+                    describeInBackground(jpeg: jpeg, eventID: event.id, configuration: visionConfig)
+                }
             }
             lastError = nil
             state = .active
@@ -161,5 +205,33 @@ final class VisualContextTrail {
                 lastError = "Screen context paused: \(nsError.localizedDescription)"
             }
         }
+    }
+
+    private func trimEventsIfNeeded() {
+        if events.count > VisualContextSettingsDefaults.maximumEventCount {
+            events.removeFirst(events.count - VisualContextSettingsDefaults.maximumEventCount)
+        }
+    }
+
+    /// The description must never delay the capture loop, so it lands on the
+    /// event after the fact — the prompt, archive, and summary readers all
+    /// pick it up from the updated event.
+    private func describeInBackground(
+        jpeg: Data,
+        eventID: UUID,
+        configuration: LocalVisionConfiguration
+    ) {
+        Task { [weak self] in
+            guard let summary = try? await LocalVisionService.describe(
+                imageData: jpeg,
+                configuration: configuration
+            ) else { return }
+            self?.attachVisionSummary(summary, to: eventID)
+        }
+    }
+
+    private func attachVisionSummary(_ summary: String, to id: UUID) {
+        guard let index = events.firstIndex(where: { $0.id == id }) else { return }
+        events[index] = events[index].withVisionSummary(summary)
     }
 }

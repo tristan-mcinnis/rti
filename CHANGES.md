@@ -1,5 +1,30 @@
 # RTI Change Log
 
+## 2026-08-29 — Local vision lane: frames with a home + model descriptions
+
+Screen captures are no longer OCR-only. A new `local_vision` block in
+`~/.config/rti/config.json` (absent/off = the old OCR-only behaviour) wires
+captures to the local-models daemon on `127.0.0.1:8078` (`POST /v1/vision`,
+Qwen3-VL via mlx-vlm) — the image never leaves the Mac.
+
+- **Vision descriptions.** ⌘⇧H, `/screen`, the `capture_screen` tool, and
+  dropped images gain a "What the screen looks like" section from the local
+  vision model: layout, charts, imagery — what OCR cannot carry. Failures
+  degrade silently to OCR-only; a capture never blocks on the model.
+- **Frames have a home.** During a live session, the cursor display's frame is
+  kept as a compressed JPEG (1,600px long edge, q0.7) and archived to
+  `sessions/<stamp>/frames/` beside `screen-context.md`, which now references
+  each frame and carries the vision summary per event. Frames are owner-only
+  and gitignored (vault media policy); the text lanes stay text.
+- **Ambient trail.** Trail events can carry frames too (`save_frames`) and,
+  when `ambient_describe` is on (default off), a background vision description
+  per accepted frame.
+- New in `RTICore`: `LocalVisionService` (+ configuration parsing),
+  `ScreenFrameEncoder`, `VisualFrameStore`; `VisualContextEvent` gains
+  optional `visionSummary` / `frameFilename` (legacy JSON still decodes).
+  Tests: `LocalVisionServiceTests`, `ScreenFrameEncoderTests`,
+  `VisualFrameStoreTests`, extended `VisualContextEventTests`.
+
 ## 2026-06-25 — Editable prompts (Settings → Prompts) + single-source registry
 
 Every prompt RTI sends is now editable in the app, with reset-to-defaults, and

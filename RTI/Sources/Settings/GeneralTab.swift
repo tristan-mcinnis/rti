@@ -72,7 +72,7 @@ private struct CaptureAccessSection: View {
             Divider()
             accessRow(
                 title: "Screen & OCR",
-                detail: "Optional — reads the active screen and attached images; images are discarded.",
+                detail: "Optional — reads the active screen and attached images. With the local vision lane on, session frames are kept in the session archive; otherwise images are discarded.",
                 state: screenPermission,
                 grant: {
                     _ = AppPermissions.requestScreenRecording()

@@ -4,6 +4,13 @@ import CoreGraphics
 import Foundation
 @preconcurrency import ScreenCaptureKit
 
+/// The primary display's OCR text plus, when the local-vision lane wants one,
+/// a compressed JPEG of the frame. Consumed by the Visual Context Trail.
+struct ActiveDisplayFrame {
+    let text: String
+    let frameJPEG: Data?
+}
+
 @MainActor
 final class ScreenshotManager {
     static let shared = ScreenshotManager()
@@ -15,6 +22,7 @@ final class ScreenshotManager {
         let isPrimary: Bool
         let text: String
         let regions: [ScreenTextRegion]
+        let frameJPEG: Data?
     }
 
     private struct ScreenTextRegion {
@@ -27,14 +35,19 @@ final class ScreenshotManager {
 
     private init() {}
 
-    /// Capture connected displays, OCR them, and attach the text to
-    /// `LLMController` as pending screen context for the next turn.
+    private func visionConfiguration() -> LocalVisionConfiguration {
+        LocalVisionConfiguration.from(VaultPaths.configDictionary())
+    }
+
+    /// Capture connected displays, OCR them (plus a local vision-model
+    /// description when the `local_vision` lane is enabled), and attach the
+    /// result to `LLMController` as pending screen context for the next turn.
     func captureAndAttach() {
         LLMController.shared.setScreenCaptureStatus("Reading all screens…")
         Task { [weak self] in
             guard let self else { return }
             do {
-                let combined = try await self.captureAndDescribe()
+                let combined = try await self.captureAndDescribe(trigger: "manual")
                 LLMController.shared.attachScreenContext(combined)
             } catch ScreenshotError.empty {
                 LLMController.shared.setScreenAttachError("No content found on the captured screen.")
@@ -51,8 +64,10 @@ final class ScreenshotManager {
 
     /// OCR an image the user dropped into the composer and attach the text as
     /// pending context for the next turn — the drag-and-drop sibling of
-    /// `captureAndAttach()`. The image itself is never sent to the model (the
-    /// provider is text-only); on-device Vision OCR extracts the text.
+    /// `captureAndAttach()`. The chat provider itself is text-only; on-device
+    /// Vision OCR extracts the text, and when the local-vision lane is enabled
+    /// the image is also described by the local model (127.0.0.1) so charts
+    /// and imagery survive the trip.
     func attachDroppedImage(_ image: NSImage) {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             LLMController.shared.setScreenAttachError("Couldn't read that image.")
@@ -63,12 +78,28 @@ final class ScreenshotManager {
             do {
                 let ocr = try await OCRService.recognizeText(in: cgImage)
                 let trimmed = self.truncate(ocr)
-                guard !trimmed.isEmpty else {
+                let visionConfig = self.visionConfiguration()
+                var visionSummary: String?
+                if visionConfig.enabled,
+                   let jpeg = ScreenFrameEncoder.jpegData(from: cgImage) {
+                    visionSummary = try? await LocalVisionService.describe(
+                        imageData: jpeg,
+                        prompt: "Describe this image in 2-4 short sentences: what it shows, any charts, diagrams, or visual detail. Do not transcribe the text itself.",
+                        configuration: visionConfig
+                    )
+                }
+                guard !trimmed.isEmpty || visionSummary != nil else {
                     LLMController.shared.setScreenAttachError("No readable text found in that image.")
                     return
                 }
-                RTILog.log("Dropped image: OCR=\(trimmed.count) chars.", category: "screenshot")
-                LLMController.shared.attachScreenContext("Text from a dropped image:\n\(trimmed)")
+                var context = trimmed.isEmpty
+                    ? "A dropped image with no machine-readable text."
+                    : "Text from a dropped image:\n\(trimmed)"
+                if let visionSummary {
+                    context += "\n\nWhat the image looks like (local vision model): \(visionSummary)"
+                }
+                RTILog.log("Dropped image: OCR=\(trimmed.count) chars vision=\(visionSummary != nil).", category: "screenshot")
+                LLMController.shared.attachScreenContext(context)
             } catch {
                 RTILog.log("Dropped-image OCR failed: \(error)", category: "screenshot")
                 LLMController.shared.setScreenAttachError("Couldn't read text from that image.")
@@ -76,22 +107,57 @@ final class ScreenshotManager {
         }
     }
 
-    /// Capture + OCR and return the visible-text string.
-    /// Throws `ScreenshotError.empty` if OCR produced no text.
-    /// Used by the LLM `capture_screen` tool so the result flows directly
-    /// back into the model rather than into pending-context state.
-    func captureAndDescribe() async throws -> String {
+    /// Capture + OCR (+ local vision description when enabled) and return the
+    /// combined context string. Throws `ScreenshotError.empty` if neither OCR
+    /// nor the vision model produced anything. Used by the ⌘⇧H attach path and
+    /// the LLM `capture_screen` tool. During a live session the primary frame
+    /// is also staged into the session archive so the capture has a home.
+    func captureAndDescribe(trigger: String = "manual") async throws -> String {
         LLMController.shared.setScreenCaptureStatus("Reading all screens…")
         do {
-            let screens = try await captureAllDisplaysWithOCR()
+            let visionConfig = visionConfiguration()
+            let screens = try await captureDisplaysWithOCR(
+                activeOnly: false,
+                includeFrame: visionConfig.enabled
+            )
             let nonEmpty = screens.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            guard !nonEmpty.isEmpty else {
+            let primaryJPEG = screens.first?.frameJPEG
+
+            var visionSummary: String?
+            if visionConfig.enabled, let jpeg = primaryJPEG {
+                LLMController.shared.setScreenCaptureStatus("Asking the local vision model…")
+                do {
+                    visionSummary = try await LocalVisionService.describe(
+                        imageData: jpeg,
+                        configuration: visionConfig
+                    )
+                } catch {
+                    RTILog.log("Local vision describe failed; capture continues OCR-only: \(error)", category: "vision")
+                }
+            }
+
+            guard !nonEmpty.isEmpty || visionSummary != nil else {
                 throw ScreenshotError.empty
             }
             lastCapturedRegions = nonEmpty.flatMap(\.regions)
-            let combined = formatScreenContext(nonEmpty)
+            var combined = nonEmpty.isEmpty
+                ? "No machine-readable text was found on the screens."
+                : formatScreenContext(nonEmpty)
+            if let visionSummary {
+                combined += "\n\n## What the screen looks like (local vision model)\n\(visionSummary)"
+            }
+            recordCaptureInSessionTrail(
+                primaryText: screens.first?.text ?? "",
+                visionSummary: visionSummary,
+                frameJPEG: primaryJPEG,
+                trigger: trigger,
+                visionConfig: visionConfig
+            )
             LLMController.shared.setScreenCaptureStatus(nil)
-            RTILog.log("Screenshot: screens=\(nonEmpty.count) OCR=\(combined.count) chars.", category: "screenshot")
+            RTILog.log(
+                "Screenshot: screens=\(nonEmpty.count) context=\(combined.count) chars vision=\(visionSummary != nil).",
+                category: "screenshot"
+            )
             return combined
         } catch {
             LLMController.shared.setScreenCaptureStatus(errorDescription(for: error))
@@ -99,15 +165,16 @@ final class ScreenshotManager {
         }
     }
 
-    /// Capture only the display containing the pointer and return its OCR.
-    /// Used by the live Visual Context Trail: no UI status is changed and the
-    /// image is released as soon as on-device Vision OCR completes.
-    func captureActiveDisplayDescription() async throws -> String {
-        let screens = try await captureDisplaysWithOCR(activeOnly: true)
+    /// Capture only the display containing the pointer. Used by the live
+    /// Visual Context Trail: no UI status is changed. The full-resolution
+    /// image is released as soon as OCR (and optional JPEG encoding for the
+    /// session archive) completes; only the compact JPEG travels further.
+    func captureActiveDisplayFrame(includeFrame: Bool) async throws -> ActiveDisplayFrame {
+        let screens = try await captureDisplaysWithOCR(activeOnly: true, includeFrame: includeFrame)
         guard let screen = screens.first else { throw ScreenshotError.noDisplay }
         let text = screen.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw ScreenshotError.empty }
-        return text
+        return ActiveDisplayFrame(text: text, frameJPEG: screen.frameJPEG)
     }
 
     func highlightTextOnLastCapture(_ query: String) -> String {
@@ -120,6 +187,41 @@ final class ScreenshotManager {
         }
         ScreenHighlightOverlay.flash(rect: match.rect)
         return "Highlighted `\(match.text)` on \(match.screenLabel)."
+    }
+
+    /// Give a manual/tool capture a home in the live session: stage the
+    /// compressed frame for the archive and append a trail event carrying the
+    /// vision summary. Outside a session, captures stay ephemeral as before.
+    private func recordCaptureInSessionTrail(
+        primaryText: String,
+        visionSummary: String?,
+        frameJPEG: Data?,
+        trigger: String,
+        visionConfig: LocalVisionConfiguration
+    ) {
+        guard SessionCoordinator.shared.isRunning,
+              let startedAt = SessionCoordinator.shared.startedAt else { return }
+        let offset = Int(Date().timeIntervalSince(startedAt))
+        var frameFilename: String?
+        if visionConfig.enabled, visionConfig.saveFrames, let jpeg = frameJPEG {
+            let staging = VisualFrameStore.stagingDirectory(
+                configHome: VaultPaths.homeDirectory(),
+                startedAt: startedAt
+            )
+            frameFilename = try? VisualFrameStore.writeFrame(
+                jpeg,
+                offsetSeconds: offset,
+                trigger: trigger,
+                stagingDirectory: staging
+            )
+        }
+        guard frameFilename != nil || visionSummary != nil else { return }
+        VisualContextTrail.shared.recordExternalCapture(
+            offsetSeconds: offset,
+            text: VisualContextText.compact(primaryText),
+            visionSummary: visionSummary,
+            frameFilename: frameFilename
+        )
     }
 
     private static func isScreenRecordingDenied(_ error: Error) -> Bool {
@@ -142,11 +244,7 @@ final class ScreenshotManager {
         }
     }
 
-    private func captureAllDisplaysWithOCR() async throws -> [CapturedScreenOCR] {
-        try await captureDisplaysWithOCR(activeOnly: false)
-    }
-
-    private func captureDisplaysWithOCR(activeOnly: Bool) async throws -> [CapturedScreenOCR] {
+    private func captureDisplaysWithOCR(activeOnly: Bool, includeFrame: Bool = false) async throws -> [CapturedScreenOCR] {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard !content.displays.isEmpty else {
             throw ScreenshotError.noDisplay
@@ -173,6 +271,11 @@ final class ScreenshotManager {
 
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
             let ocrRegions = try await OCRService.recognizeTextRegions(in: image)
+            // Only the cursor display (index 0 after sorting) keeps a frame:
+            // one compact JPEG bounds memory and archive size per capture.
+            let frameJPEG = (includeFrame && index == 0)
+                ? ScreenFrameEncoder.jpegData(from: image)
+                : nil
             let label = screenLabel(index: index, total: selectedDisplays.count, isPrimary: isPrimary)
             let text = ocrRegions.map(\.text).joined(separator: "\n")
             let regions = ocrRegions.map {
@@ -182,7 +285,7 @@ final class ScreenshotManager {
                     screenLabel: label
                 )
             }
-            captured.append(CapturedScreenOCR(label: label, isPrimary: isPrimary, text: text, regions: regions))
+            captured.append(CapturedScreenOCR(label: label, isPrimary: isPrimary, text: text, regions: regions, frameJPEG: frameJPEG))
         }
         return captured
     }

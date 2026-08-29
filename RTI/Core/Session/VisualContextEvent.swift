@@ -1,17 +1,44 @@
 import Foundation
 
-/// One materially changed active-screen OCR snapshot captured during a live
-/// RTI session. Only text and its session-relative timestamp survive; the
-/// screenshot is discarded immediately after on-device OCR.
+/// One materially changed active-screen capture taken during a live RTI
+/// session. The OCR text always survives; when the local-vision lane is
+/// enabled the event may also carry a model description of the frame and the
+/// filename of a compressed JPEG kept in the session's `frames/` directory.
+/// With the lane disabled, behaviour matches the old build: text only, the
+/// screenshot discarded immediately after on-device OCR.
 public struct VisualContextEvent: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let offsetSeconds: Int
     public let text: String
+    /// Short description from the local vision model (127.0.0.1, Qwen VL via
+    /// local-models). Adds what OCR cannot see: layout, charts, imagery.
+    public let visionSummary: String?
+    /// Filename of the kept compressed frame inside the session's `frames/`
+    /// directory. Nil = text-only capture (frame saving off, or no session).
+    public let frameFilename: String?
 
-    public init(id: UUID = UUID(), offsetSeconds: Int, text: String) {
+    public init(
+        id: UUID = UUID(),
+        offsetSeconds: Int,
+        text: String,
+        visionSummary: String? = nil,
+        frameFilename: String? = nil
+    ) {
         self.id = id
         self.offsetSeconds = max(0, offsetSeconds)
         self.text = text
+        self.visionSummary = visionSummary
+        self.frameFilename = frameFilename
+    }
+
+    public func withVisionSummary(_ summary: String) -> VisualContextEvent {
+        VisualContextEvent(
+            id: id,
+            offsetSeconds: offsetSeconds,
+            text: text,
+            visionSummary: summary,
+            frameFilename: frameFilename
+        )
     }
 }
 
@@ -55,7 +82,11 @@ public enum VisualContextText {
     ) -> String? {
         guard maxEvents > 0, maxCharacters > 0 else { return nil }
         let blocks = events.suffix(maxEvents).map { event in
-            "[\(timestamp(event.offsetSeconds))]\n\(event.text)"
+            var block = "[\(timestamp(event.offsetSeconds))]\n\(event.text)"
+            if let vision = event.visionSummary, !vision.isEmpty {
+                block += "\nWhat the screen looks like: \(vision)"
+            }
+            return block
         }
         let body = blocks.joined(separator: "\n\n")
         guard !body.isEmpty else { return nil }

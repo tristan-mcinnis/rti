@@ -32,7 +32,8 @@ One config file anchors every path: **`~/.config/rti/config.json`** (`VaultPaths
   notes.md              # generated live notes (only if enabled + produced)
   discussion-guide.md   # guide coverage (only if a guide was loaded)
   live-intelligence.md  # tagged findings ledger (only if any)
-  screen-context.md     # screen-OCR trail (only if any)
+  screen-context.md     # screen trail: OCR + vision summaries + frame refs (only if any)
+  frames/               # compressed JPEG frames per capture (local_vision lane; gitignored)
   summary.md            # end-of-session summary (+ title.txt for the browser)
   session.json          # metadata: mode, workstream, duration, audio file names
   speaker-names.json    # your live speaker renames (only if you renamed)

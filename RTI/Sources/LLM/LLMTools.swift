@@ -42,7 +42,9 @@ enum LLMToolRegistry {
         description: """
         Capture the user's connected screens. Runs OCR to return visible text \
         grouped by display, with the screen containing the mouse cursor listed \
-        first as the primary screen. \
+        first as the primary screen. When the local vision model is enabled, \
+        the result also includes a "What the screen looks like" description \
+        covering layout, charts, and imagery that OCR cannot carry. \
         Use this whenever the user asks about their screen, what they're \
         looking at, what's visible, what an app is showing, or asks you to \
         read or summarise something on their display. Do not ask the user \
@@ -54,7 +56,7 @@ enum LLMToolRegistry {
             "additionalProperties": false
         ],
         execute: { _ in
-            try await ScreenshotManager.shared.captureAndDescribe()
+            try await ScreenshotManager.shared.captureAndDescribe(trigger: "tool")
         },
         runningStatus: "📷 Looking at your screen…"
     )
