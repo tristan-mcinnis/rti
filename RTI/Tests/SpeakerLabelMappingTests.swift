@@ -129,4 +129,44 @@ final class SpeakerLabelMappingTests: XCTestCase {
         XCTAssertTrue(maybe.isMaybe)
         XCTAssertNil(decoded.entry(for: "Speaker 9"))
     }
+
+    // MARK: VoiceSampleCatalog decoding (Settings › Voices review surface)
+
+    func testVoiceSampleCatalogDecodesAndGroups() throws {
+        // Shape produced by speaker-profiles.py samples --json (2026-08-29).
+        let json = """
+        {"samples": [
+          {"id": 4, "name": "Tristan McInnis",
+           "source": "/v/sessions/2026-08-28 070051#Speaker 1@329.0s+8.0s",
+           "created": "2026-08-29T11:02:00+00:00",
+           "audio": "/v/sessions/2026-08-28 070051/audio-mic.wav",
+           "offset": 329.0, "duration": 8.0, "playable": true,
+           "session": "2026-08-28 070051", "label": "Speaker 1"},
+          {"id": 1, "name": "Tristan McInnis",
+           "source": "/v/sessions/2026-08-28 071047/audio-mic.wav",
+           "created": "2026-08-28T05:21:01+00:00",
+           "audio": "/v/sessions/2026-08-28 071047/audio-mic.wav",
+           "offset": null, "duration": null, "playable": true,
+           "session": "2026-08-28 071047", "label": null},
+          {"id": 14, "name": "Alex Wilson",
+           "source": "/v/sessions/2026-08-28 070051/audio-system.wav@15.0s+8.0s",
+           "created": "2026-08-29T11:30:00+00:00",
+           "audio": "/missing.wav", "offset": 15.0, "duration": 8.0,
+           "playable": false, "session": "2026-08-28 070051", "label": null}
+        ]}
+        """
+        let catalog = try JSONDecoder().decode(VoiceSampleCatalog.self, from: Data(json.utf8))
+        XCTAssertEqual(catalog.samples.count, 3)
+
+        let grouped = catalog.byPerson
+        XCTAssertEqual(grouped.map(\.name), ["Alex Wilson", "Tristan McInnis"])
+        XCTAssertEqual(grouped[1].samples.map(\.id), [1, 4], "samples sort by id within a person")
+
+        let legacy = try XCTUnwrap(catalog.samples.first { $0.id == 1 })
+        XCTAssertNil(legacy.offset)
+        XCTAssertTrue(legacy.canAudition)
+
+        let missingAudio = try XCTUnwrap(catalog.samples.first { $0.id == 14 })
+        XCTAssertFalse(missingAudio.canAudition)
+    }
 }

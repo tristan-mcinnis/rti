@@ -10,6 +10,7 @@ struct SessionsControlView: View {
         case modes = "Modes"
         case prompts = "Prompts"
         case glossary = "Glossary"
+        case voices = "Voices"
         case general = "General"
         case logs = "Logs"
 
@@ -22,6 +23,7 @@ struct SessionsControlView: View {
             case .modes:          return "square.stack.3d.up"
             case .prompts:        return "text.bubble"
             case .glossary:       return "character.book.closed"
+            case .voices:         return "person.wave.2.fill"
             case .general:        return "gearshape.fill"
             case .logs:           return "doc.text.magnifyingglass"
             }
@@ -149,6 +151,8 @@ struct SessionsControlView: View {
             PromptsTab()
         case .glossary:
             GlossaryTab()
+        case .voices:
+            VoicesTab()
         case .general:
             GeneralTab()
 
