@@ -12,12 +12,59 @@ struct GeneralTab: View {
             VStack(alignment: .leading, spacing: 14) {
                 SettingsCard { LaunchAtLoginSection() }
                 SettingsCard { CaptureAccessSection() }
+                SettingsCard { ScreenPrivacySection() }
                 SettingsCard { AudioInputSection() }
                 SettingsCard { RealTimeAnalysisSection() }
                 SettingsCard { OverlayAppearanceSection() }
                 SettingsCard { HotkeysSection() }
                 SettingsCard { DataAndSupportSection() }
                 SettingsCard { DiagnosticsSection() }
+            }
+        }
+    }
+}
+
+// MARK: - Screen Privacy
+
+/// Deny-list of apps whose windows are removed from every screen capture at
+/// the ScreenCaptureKit filter — their pixels never reach OCR, frames, notes,
+/// summaries, or the vault meeting note.
+private struct ScreenPrivacySection: View {
+    @State private var listText: String = ScreenPrivacy.excludedBundleIds.joined(separator: "\n")
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Screen Privacy")
+                .font(.system(size: 13, weight: .medium))
+            Text("Windows of these apps are cut out of every screen capture — ambient context, attached screenshots, and the assistant's capture tool. Their content can never reach OCR text, kept frames, notes, or meeting summaries. One bundle id per line.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            TextEditor(text: $listText)
+                .font(.system(size: 11, design: .monospaced))
+                .frame(minHeight: 120, maxHeight: 160)
+                .settingsEditorBorder()
+                .onChange(of: listText) { _, newValue in
+                    ScreenPrivacy.excludedBundleIds = newValue
+                        .split(separator: "\n")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }
+                }
+            HStack {
+                let count = ScreenPrivacy.excludedBundleIds.count
+                SettingsStatusLabel(
+                    text: count == 0
+                        ? "No apps excluded — everything visible on screen can be captured."
+                        : "\(count) app\(count == 1 ? "" : "s") never captured. Applies immediately.",
+                    systemImage: count == 0 ? "exclamationmark.triangle.fill" : "eye.slash.fill",
+                    color: count == 0 ? .orange : .green
+                )
+                Spacer()
+                Button("Reset to Defaults") {
+                    ScreenPrivacy.resetToDefaults()
+                    listText = ScreenPrivacy.excludedBundleIds.joined(separator: "\n")
+                }
+                .controlSize(.small)
             }
         }
     }

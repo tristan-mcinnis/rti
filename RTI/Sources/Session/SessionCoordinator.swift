@@ -533,7 +533,7 @@ final class SessionCoordinator {
                     ? "Writing notes…"
                     : "Improving transcript…"
                 Task { @MainActor [weak self] in
-                    let url: URL?
+                    var url: URL?
                     if !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty {
                         do {
                             let result = try await TranscriptUpgradeService.upgrade(
@@ -558,6 +558,22 @@ final class SessionCoordinator {
                     } else {
                         self?.postProcessingStatus = "Upgrade unavailable · audio retained"
                         url = nil
+                    }
+                    // Reliability net: whatever kept the upgrade from producing
+                    // a summary (provider failure, empty upgrade result, no
+                    // retained audio), still summarize + title the session from
+                    // the live transcript so real content is never left as
+                    // "Untitled session" with no summary.
+                    if url == nil, !transcriptText.isEmpty,
+                       !FileManager.default.fileExists(atPath: archiveDir.appendingPathComponent("summary.md").path) {
+                        url = await SessionArchive.writeAutoSummary(
+                            transcriptText: transcriptText,
+                            to: archiveDir,
+                            startedAt: startedAt,
+                            speakerNames: SpeakerNameStore.shared.names,
+                            referenceContext: summaryContext
+                        )
+                        if url != nil { self?.postProcessingStatus = nil }
                     }
                     guard let self else { return }
                     // Only resolve to `done` if this is still the session the

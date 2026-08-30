@@ -251,9 +251,14 @@ final class ScreenshotManager {
         }
 
         let displays = displaysWithCursorFirst(content.displays)
+        // Excluded windows are removed from the composited image itself: RTI's
+        // own windows (so the overlay never OCRs itself) plus the privacy
+        // deny-list (password managers, personal chat, notification banners —
+        // see ScreenPrivacy). Their pixels never exist in any capture path.
         let ownBundleIdentifier = Bundle.main.bundleIdentifier
-        let ownWindows = content.windows.filter {
-            $0.owningApplication?.bundleIdentifier == ownBundleIdentifier
+        let excludedWindows = content.windows.filter {
+            let bundleId = $0.owningApplication?.bundleIdentifier
+            return bundleId == ownBundleIdentifier || ScreenPrivacy.isExcluded(bundleIdentifier: bundleId)
         }
 
         var captured: [CapturedScreenOCR] = []
@@ -261,7 +266,7 @@ final class ScreenshotManager {
         for (index, display) in selectedDisplays.enumerated() {
             let frame = appKitFrame(for: display)
             let isPrimary = frame.contains(NSEvent.mouseLocation)
-            let filter = SCContentFilter(display: display, excludingWindows: ownWindows)
+            let filter = SCContentFilter(display: display, excludingWindows: excludedWindows)
             let config = SCStreamConfiguration()
             config.width = Int(display.width)
             config.height = Int(display.height)
