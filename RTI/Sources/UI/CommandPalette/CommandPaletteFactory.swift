@@ -151,7 +151,8 @@ enum CommandBuilder {
                     session.isPaused ? "Resume Recording  ⌘⇧P" : "Pause Recording  ⌘⇧P"
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_P),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
+                hotkeyModifiers: UInt32(cmdKey | shiftKey),
+                hotkeySessionScoped: true
             ),
         ]
     }
@@ -227,7 +228,8 @@ enum CommandBuilder {
                 perform: { llm.sendPrimary() },
                 menuTitleProvider: { "\(AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist")  ⌘⏎" },
                 hotkeyKeyCode: UInt32(kVK_Return),
-                hotkeyModifiers: UInt32(cmdKey)
+                hotkeyModifiers: UInt32(cmdKey),
+                hotkeySessionScoped: true
             ),
         ] + AssistantAction.all.map { action in
             // Every quick action's palette entry + global hotkey is derived
@@ -239,7 +241,8 @@ enum CommandBuilder {
                 keywords: action.keywords,
                 perform: { llm.perform(actionID: action.id) },
                 hotkeyKeyCode: action.hotkey.flatMap { carbonKeyCode(for: $0.key) },
-                hotkeyModifiers: action.hotkey.map { carbonModifiers($0.modifiers) }
+                hotkeyModifiers: action.hotkey.map { carbonModifiers($0.modifiers) },
+                hotkeySessionScoped: true
             )
         } + [
             // One-shot recap depth overrides — not in the catalogue (they don't
@@ -272,7 +275,8 @@ enum CommandBuilder {
                     "Note Mode  ⌘⌥N"
                 },
                 hotkeyKeyCode: UInt32(kVK_ANSI_N),
-                hotkeyModifiers: UInt32(cmdKey | optionKey)
+                hotkeyModifiers: UInt32(cmdKey | optionKey),
+                hotkeySessionScoped: true
             ),
             RTICommand(
                 id: "capture.screen",
@@ -282,7 +286,8 @@ enum CommandBuilder {
                 perform: { ScreenshotManager.shared.captureAndAttach() },
                 menuSection: .actions,
                 hotkeyKeyCode: UInt32(kVK_ANSI_H),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey)
+                hotkeyModifiers: UInt32(cmdKey | shiftKey),
+                hotkeySessionScoped: true
             ),
         ] + AssistantAction.primaryEligibleActions.map { action in
             RTICommand(

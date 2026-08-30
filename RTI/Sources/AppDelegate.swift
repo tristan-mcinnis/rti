@@ -120,6 +120,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
                     }
                 }
                 self?.menu.refreshTitle()
+                // ⌘⏎ and the quick-action chords are held only while
+                // recording; released here so other apps get them back.
+                self?.hotkeys.setSessionActive(SessionCoordinator.shared.isRunning)
             }
         }
 

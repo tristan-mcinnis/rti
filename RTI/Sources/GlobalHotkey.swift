@@ -61,6 +61,14 @@ final class GlobalHotkey {
         )
     }
 
+    /// Release every registered hotkey so other apps get the chords back.
+    /// The Carbon event handler stays installed; `register` can re-arm later.
+    func unregisterAll() {
+        refs.values.forEach { UnregisterEventHotKey($0) }
+        refs.removeAll()
+        handlers.removeAll()
+    }
+
     deinit {
         refs.values.forEach { UnregisterEventHotKey($0) }
         if let ref = eventHandlerRef { RemoveEventHandler(ref) }

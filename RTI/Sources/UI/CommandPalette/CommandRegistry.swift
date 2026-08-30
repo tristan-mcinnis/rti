@@ -49,6 +49,10 @@ struct RTICommand: Identifiable {
     let hotkeyKeyCode: UInt32?
     /// Carbon modifier mask (`cmdKey`, `shiftKey`, `optionKey`).
     let hotkeyModifiers: UInt32?
+    /// When true, the global hotkey is held only while a session is
+    /// recording. Outside a session the chord (e.g. ⌘⏎) belongs to
+    /// whatever app the user is in — RTI must not steal it all day.
+    let hotkeySessionScoped: Bool
 
     init(
         id: String,
@@ -62,7 +66,8 @@ struct RTICommand: Identifiable {
         menuTitleProvider: (() -> String)? = nil,
         menuStateProvider: (() -> Bool)? = nil,
         hotkeyKeyCode: UInt32? = nil,
-        hotkeyModifiers: UInt32? = nil
+        hotkeyModifiers: UInt32? = nil,
+        hotkeySessionScoped: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -76,6 +81,7 @@ struct RTICommand: Identifiable {
         self.menuStateProvider = menuStateProvider
         self.hotkeyKeyCode = hotkeyKeyCode
         self.hotkeyModifiers = hotkeyModifiers
+        self.hotkeySessionScoped = hotkeySessionScoped
     }
 }
 
