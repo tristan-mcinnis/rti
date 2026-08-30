@@ -34,8 +34,10 @@ struct SessionsBrowserView: View {
         let name: String
     }
 
-    /// Preferred reading order when a session folder is opened.
-    private static let fileOrder = ["summary.md", "live-intelligence.md", "notes.md", "transcript.md", "chat.md", "discussion-guide.md"]
+    /// Preferred reading order when a session folder is opened. The "frames"
+    /// (screenshots) and "log" (headless /meeting processor output) pills are
+    /// appended by loadFiles() when present — they aren't markdown documents.
+    private static let fileOrder = ["summary.md", "live-intelligence.md", "notes.md", "transcript.md", "chat.md", "discussion-guide.md", "screen-context.md"]
 
     var body: some View {
         HSplitView {
@@ -399,6 +401,15 @@ struct SessionsBrowserView: View {
                 } else {
                     RTIMarkdown(fileText, style: .panel)
                 }
+            case "frames":
+                if let dir = selectedFile?.url {
+                    SessionFramesGallery(directory: dir)
+                }
+            case "log":
+                Text(fileText)
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             default:
                 RTIMarkdown(fileText, style: .panel)
             }
@@ -413,6 +424,9 @@ struct SessionsBrowserView: View {
         case "transcript": "Transcript"
         case "chat": "Chat"
         case "discussion-guide": "Guide"
+        case "screen-context": "Screen"
+        case "frames": "Screenshots"
+        case "log": "Log"
         default: file.name.capitalized
         }
     }
@@ -580,9 +594,23 @@ struct SessionsBrowserView: View {
         }
         let present = (try? FileManager.default.contentsOfDirectory(at: selected.url, includingPropertiesForKeys: nil)) ?? []
         let byName = Dictionary(uniqueKeysWithValues: present.map { ($0.lastPathComponent, $0) })
-        files = Self.fileOrder.compactMap { name in
+        var loaded = Self.fileOrder.compactMap { name in
             byName[name].map { SessionFile(url: $0, name: String(name.dropLast(3))) }
         }
+        // Screenshots kept by the local-vision lane live in frames/.
+        let framesDir = selected.url.appendingPathComponent("frames", isDirectory: true)
+        if let frames = try? FileManager.default.contentsOfDirectory(at: framesDir, includingPropertiesForKeys: nil),
+           frames.contains(where: { ["jpg", "jpeg", "png"].contains($0.pathExtension.lowercased()) }) {
+            loaded.append(SessionFile(url: framesDir, name: "frames"))
+        }
+        // The headless /meeting processor's log for this session, if it ran.
+        if let startedAt = selected.date {
+            let log = SessionArchive.processingLogURL(forSessionStartedAt: startedAt)
+            if FileManager.default.fileExists(atPath: log.path) {
+                loaded.append(SessionFile(url: log, name: "log"))
+            }
+        }
+        files = loaded
         selectedFile = files.first
     }
 
@@ -724,6 +752,7 @@ struct SessionsBrowserView: View {
 
     private func loadText() {
         guard let selectedFile else { fileText = ""; return }
+        if selectedFile.name == "frames" { fileText = ""; return }
         var text = (try? String(contentsOf: selectedFile.url, encoding: .utf8)) ?? "(couldn't read file)"
         // Hide the machine-facing frontmatter block from the reading view.
         if text.hasPrefix("---"), let end = text.range(of: "\n---\n") {

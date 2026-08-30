@@ -16,6 +16,16 @@ struct SessionsControlView: View {
 
         var id: String { rawValue }
 
+        enum Section { case meetings, preferences, support }
+
+        var section: Section {
+            switch self {
+            case .sessions:                                        return .meetings
+            case .providers, .modes, .prompts, .glossary, .voices, .general: return .preferences
+            case .logs:                                            return .support
+            }
+        }
+
         var icon: String {
             switch self {
             case .sessions:       return "clock.arrow.circlepath"
@@ -40,9 +50,12 @@ struct SessionsControlView: View {
         NavigationSplitView {
             sessionsSidebar
         } detail: {
+            // .id forces a full teardown/rebuild of the detail subtree per tab.
+            // Without it, ScrollView-rooted tabs (Providers/Glossary/General/
+            // Logs) mounted in the AX tree but never painted when swapped in —
+            // only NSTableView-backed Lists (Modes/Prompts) rendered (2026-08-30).
             contentForTab
-                .safeAreaInset(edge: .top) {
-                }
+                .id(selectedTab)
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiShowLogs)) { _ in
             selectedTab = .logs
@@ -76,9 +89,12 @@ struct SessionsControlView: View {
             .padding(.horizontal, 18)
             .padding(.top, 20)
 
-            sidebarSection("Meetings", tabs: [.sessions])
-            sidebarSection("Preferences", tabs: [.providers, .modes, .prompts, .glossary, .general])
-            sidebarSection("Support", tabs: [.logs])
+            // Derived from Tab.allCases so a newly added tab can never be
+            // silently missing from the sidebar (bitten 2026-08-30: Voices
+            // existed in the enum + content switch but not in this list).
+            sidebarSection("Meetings", tabs: Tab.allCases.filter { $0.section == .meetings })
+            sidebarSection("Preferences", tabs: Tab.allCases.filter { $0.section == .preferences })
+            sidebarSection("Support", tabs: Tab.allCases.filter { $0.section == .support })
 
             Spacer(minLength: 0)
             versionFooter

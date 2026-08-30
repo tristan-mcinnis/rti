@@ -616,6 +616,14 @@ enum SessionArchive {
         VaultPaths.configDictionary()
     }
 
+    /// The headless /meeting processor's log for a session started at the
+    /// given time — surfaced as the per-session "Log" pill in the browser.
+    /// The processor logs under the exported transcript's stem, which carries
+    /// a "-transcript" suffix (see runMeetingProcessor's caller).
+    static func processingLogURL(forSessionStartedAt startedAt: Date) -> URL {
+        meetingProcessorLogURL(stem: canonicalMeetingStem(startedAt: startedAt) + "-transcript")
+    }
+
     private static func meetingProcessorLogURL(stem: String) -> URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
