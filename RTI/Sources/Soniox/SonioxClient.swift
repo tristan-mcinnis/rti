@@ -36,6 +36,14 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     /// Set to true when the user deliberately closes the connection,
     /// to suppress automatic reconnect. Protected by `lock`.
     private var intentionalDisconnect = false
+    /// True once the config text frame has been written on the CURRENT
+    /// socket. Audio must never be written before it: Starscream buffers
+    /// pre-handshake writes and flushes them on upgrade, so PCM frames
+    /// queued before `.connected` reach Soniox ahead of the config message
+    /// and the server kills the stream with 400 "Start request must be a
+    /// text message" — a non-retryable clientBug that stops the whole
+    /// session seconds after it starts. Protected by `lock`.
+    private var configSent = false
     private var retryCount = 0
     private var retryWorkItem: DispatchWorkItem?
 
@@ -73,7 +81,9 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
 
     func sendAudio(_ data: Data) {
         lock.lock()
-        guard let socket = socket else {
+        guard let socket = socket, configSent else {
+            // Drop audio captured before the config frame is on the wire
+            // (the WAV still keeps it) — see `configSent`.
             lock.unlock()
             return
         }
@@ -138,6 +148,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     private func handleDrop(_ failure: SonioxFailure) {
         lock.lock()
         isConnected = false
+        configSent = false
         let blocked = intentionalDisconnect
         let phaseDidOpen = didOpen
         lock.unlock()
@@ -205,6 +216,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         ws.delegate = self
         lock.lock()
         socket = ws
+        configSent = false
         lock.unlock()
         ws.connect()
     }
@@ -216,6 +228,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             if let string = String(data: data, encoding: .utf8) {
                 lock.lock()
                 socket?.write(string: string)
+                configSent = true
                 lock.unlock()
                 let hasTranslation = translationConfig != nil
                 RTILog.log("sent config (translation=\(hasTranslation), contextTerms=\(contextTerms.count))", category: "soniox")

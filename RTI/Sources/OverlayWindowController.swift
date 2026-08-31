@@ -3,13 +3,12 @@ import SwiftUI
 
 private let savedFrameKey = "rti.overlay.savedFrame"
 
-/// Non-activating panel that still accepts keyboard input when clicked,
-/// so the text field works without activating RTI over the meeting app.
-private final class KeyableOverlayPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-
-    /// Called when the panel transitions to key — used to auto-focus the input.
+/// The main RTI window. A standard titled window (close/minimize/zoom,
+/// normal activation and key handling) — the earlier borderless
+/// non-activating floating panel made basic window management (closing,
+/// focusing) unpredictable.
+private final class OverlayWindow: NSWindow {
+    /// Called when the window transitions to key — used to auto-focus the input.
     /// Posting synchronously inside becomeKey re-enters layout because the
     /// SwiftUI focus change drives a layout pass while AppKit is still in one,
     /// which logs "_NSDetectedLayoutRecursion". Defer to the next runloop tick.
@@ -20,9 +19,8 @@ private final class KeyableOverlayPanel: NSPanel {
         }
     }
 
-    /// ESC dismisses the overlay — universal expectation for transient surfaces.
-    /// Posts a notification so the controller can route through hide() and keep
-    /// alphaValue / isVisible in sync, instead of calling orderOut directly.
+    /// ESC dismisses the window — routes through the same toggle path as ⌘\
+    /// so visibility state stays in one place.
     override func cancelOperation(_ sender: Any?) {
         NotificationCenter.default.post(name: .rtiToggleOverlay, object: nil)
     }
@@ -30,46 +28,54 @@ private final class KeyableOverlayPanel: NSPanel {
 
 @MainActor
 final class OverlayWindowController {
-    private let window: NSPanel
+    private let window: NSWindow
     private var frameSaveWorkItem: DispatchWorkItem?
     // Observer tokens are non-Sendable but only touched in init (set) and
     // deinit (read for removeObserver); marking nonisolated(unsafe) lets the
     // class stay @MainActor while keeping the cleanup path compileable.
     private nonisolated(unsafe) var didMoveObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var didResizeObserver: NSObjectProtocol?
     private nonisolated(unsafe) var sizeObserver: NSObjectProtocol?
     private nonisolated(unsafe) var appearanceObserver: NSObjectProtocol?
 
     init(onOpenSettings: @Sendable @escaping () -> Void = {}) {
         let initialSize = Self.configuredSize()
-        let panel = KeyableOverlayPanel(
+        let win = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: initialSize.width, height: initialSize.height),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        panel.isFloatingPanel = Self.keepsOverlayAboveOtherWindows
-        panel.becomesKeyOnlyIfNeeded = true
-        panel.level = Self.keepsOverlayAboveOtherWindows ? .floating : .normal
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        // A window shadow separates the panel from the desktop — important in
-        // light mode, where a pale panel otherwise blurs into a light background.
-        panel.hasShadow = true
-        panel.sharingType = .none
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
+        win.title = "RTI"
+        // The controller owns the window for the app's lifetime; the close
+        // button hides it (⌘\ or the menubar brings it back).
+        win.isReleasedWhenClosed = false
+        win.sharingType = .none
+        win.isMovableByWindowBackground = true
 
-        panel.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
-        panel.appearance = Self.configuredAppearance()
+        win.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
+        win.appearance = Self.configuredAppearance()
 
-        self.window = panel
+        self.window = win
+        applyConfiguredWindowLevel()
 
         // queue: .main means these fire on the main thread; assumeIsolated
         // bridges the non-isolated callback into the class's MainActor.
         didMoveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification,
-            object: panel,
+            object: win,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.saveFrame()
+            }
+        }
+
+        // The window is user-resizable now — persist size changes the same
+        // way as moves.
+        didResizeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: win,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -78,7 +84,7 @@ final class OverlayWindowController {
         }
 
         // Settings → "Overlay Appearance" sliders post this when width/height
-        // change, so the live overlay resizes immediately.
+        // change, so the live window resizes immediately.
         sizeObserver = NotificationCenter.default.addObserver(
             forName: .rtiOverlaySizeChanged,
             object: nil,
@@ -87,7 +93,7 @@ final class OverlayWindowController {
             MainActor.assumeIsolated { self?.applyConfiguredSize() }
         }
 
-        // Settings → Appearance posts this so the panel re-themes live.
+        // Settings → Appearance posts this so the window re-themes live.
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .rtiOverlayAppearanceChanged,
             object: nil,
@@ -108,11 +114,12 @@ final class OverlayWindowController {
 
     deinit {
         if let o = didMoveObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = didResizeObserver { NotificationCenter.default.removeObserver(o) }
         if let o = sizeObserver { NotificationCenter.default.removeObserver(o) }
         if let o = appearanceObserver { NotificationCenter.default.removeObserver(o) }
     }
 
-    /// The NSAppearance the overlay should use, per the Settings theme mode.
+    /// The NSAppearance the window should use, per the Settings theme mode.
     private static func configuredAppearance() -> NSAppearance? {
         switch OverlayAppearanceDefaults.effectiveAppearanceMode() {
         case .system:
@@ -129,10 +136,15 @@ final class OverlayWindowController {
             ?? OverlayAppearanceDefaults.defaultAlwaysOnTop
     }
 
+    /// "Always on top" keeps the meeting workflow working: the window floats
+    /// over the call app and follows into full-screen spaces. Off = a fully
+    /// normal window.
     private func applyConfiguredWindowLevel() {
         let keepAbove = Self.keepsOverlayAboveOtherWindows
-        window.isFloatingPanel = keepAbove
         window.level = keepAbove ? .floating : .normal
+        window.collectionBehavior = keepAbove
+            ? [.canJoinAllSpaces, .fullScreenAuxiliary]
+            : [.managed, .participatesInCycle]
     }
 
     private static func configuredSize() -> NSSize {
@@ -145,7 +157,7 @@ final class OverlayWindowController {
         )
     }
 
-    /// Resize the overlay in place when the user drags a Settings slider.
+    /// Resize the window in place when the user drags a Settings slider.
     /// Keeps the current top-left origin so the window doesn't jump.
     private func applyConfiguredSize() {
         let newSize = Self.configuredSize()
@@ -188,44 +200,15 @@ final class OverlayWindowController {
     }
 
     func show(initialLaunch: Bool = false) {
-        if initialLaunch {
-            window.orderFront(nil)
-        } else {
-            window.orderFrontRegardless()
-        }
-        window.makeKey()
-        if OverlayAppearanceDefaults.effectiveReduceMotion() {
-            window.alphaValue = 1
-        } else {
-            window.alphaValue = 0
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.18
-                window.animator().alphaValue = 1
-            }
-        }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
         }
     }
 
     func hide() {
-        if OverlayAppearanceDefaults.effectiveReduceMotion() {
-            window.orderOut(nil)
-            window.alphaValue = 1
-            return
-        }
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.15
-            window.animator().alphaValue = 0
-        }, completionHandler: { [window] in
-            // runAnimationGroup's completion fires on the main thread, but
-            // Swift's concurrency checker can't see that — assumeIsolated
-            // bridges the non-isolated callback to MainActor explicitly.
-            MainActor.assumeIsolated {
-                window.orderOut(nil)
-                window.alphaValue = 1
-            }
-        })
+        window.orderOut(nil)
     }
 
     func toggle() {
@@ -239,7 +222,7 @@ final class OverlayWindowController {
     // MARK: - Frame persistence
 
     private func saveFrame() {
-        // Debounce: didMoveNotification fires per pixel of drag. Without this
+        // Debounce: didMove/didResize fire per pixel of drag. Without this
         // we'd hit UserDefaults dozens of times per second during a drag.
         frameSaveWorkItem?.cancel()
         let item = DispatchWorkItem { [weak self] in

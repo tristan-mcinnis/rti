@@ -102,12 +102,7 @@ struct OverlayPanelView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-
-            ResizeHandle()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .padding([.bottom, .trailing], 6)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .font(.system(size: CGFloat(uiFontSize), weight: .regular))
         .tint(Color.overlayAccent)
         .accentColor(Color.overlayAccent)
@@ -115,29 +110,23 @@ struct OverlayPanelView: View {
         .overlay(themeRefreshToken)
     }
 
+    /// Hosted in a standard titled window now — the window supplies chrome
+    /// (corners, border, shadow), so the background just fills the content
+    /// area. Material vs solid and the opacity slider still apply.
     @ViewBuilder
     private var panelBackground: some View {
         if translucentPanel {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .fill(.regularMaterial)
                 .opacity(backgroundOpacity)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    Rectangle()
                         .fill(Color.overlayPanel.opacity(backgroundOpacity * 0.72))
                 )
-                .overlay(panelStroke)
-                .shadow(color: Color.black.opacity(0.10), radius: 24, x: 0, y: 10)
         } else {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .fill(Color.overlayPanel.opacity(backgroundOpacity))
-                .overlay(panelStroke)
-                .shadow(color: Color.black.opacity(0.10), radius: 24, x: 0, y: 10)
         }
-    }
-
-    private var panelStroke: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .stroke(Color.overlayBorder, lineWidth: 1)
     }
 
     private var preferredColorScheme: ColorScheme? {
