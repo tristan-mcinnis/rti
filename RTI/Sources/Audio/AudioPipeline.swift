@@ -100,6 +100,23 @@ final class AudioPipeline {
     /// delivers audio. Connecting eagerly meant a dead tap left Soniox with
     /// a config and no audio → endless 408 timeout/reconnect spam.
     private var systemSTTConnected = false
+    /// Keepalive for the system STT leg. With a Bluetooth output device the
+    /// CoreAudio tap delivers buffers only WHILE audio is playing; during
+    /// machine silence Soniox receives nothing and 408-timeouts every ~20s,
+    /// churning the socket (and losing whatever the other party says during
+    /// the 1–4s reconnect windows). When the backend goes idle, this pumps
+    /// zero-PCM at real-time pace — same trick the pause path uses — so the
+    /// socket stays warm and the leg's sample clock keeps tracking wall time
+    /// (Soniox timestamps count received samples, so under-paced silence
+    /// would skew alignment with the mic leg).
+    private var systemKeepaliveTask: Task<Void, Never>?
+    /// Wall-clock of the most recent real backend buffer. Written on the
+    /// backend's delivery queue, read at 1 Hz on main — tearing is benign.
+    private var lastSystemBufferAt: Date?
+    /// Wall-clock up to which keepalive silence has been injected, nil while
+    /// real audio is flowing.
+    private var systemSilencePumpedUntil: Date?
+    private let systemKeepaliveIdleThreshold: TimeInterval = 2
     private let systemAudioNoBufferThreshold: TimeInterval = 8
     private let systemAudioSilentThreshold: TimeInterval = 12
     private let systemAudioNoticeThreshold: TimeInterval = 30
@@ -183,6 +200,8 @@ final class AudioPipeline {
         isCapturing = true
         didFallBackToSCK = false
         systemSTTConnected = false
+        lastSystemBufferAt = nil
+        systemSilencePumpedUntil = nil
         startMicWatchdog()
 
         // Don't even attempt the system-audio Soniox leg without a key.
@@ -225,6 +244,7 @@ final class AudioPipeline {
             var connectRequested = false
             let onPCM: (AVAudioPCMBuffer) -> Void = { [weak self] buffer in
                 guard let self else { return }
+                lastSystemBufferAt = Date()
                 if !connectRequested {
                     connectRequested = true
                     DispatchQueue.main.async { [weak self] in self?.connectSystemSTTIfNeeded() }
@@ -291,6 +311,43 @@ final class AudioPipeline {
         systemSTTConnected = true
         RTILog.log("system audio flowing — connecting system STT leg", category: "audio")
         client.connect()
+        startSystemKeepalive()
+    }
+
+    private func startSystemKeepalive() {
+        systemKeepaliveTask?.cancel()
+        systemSilencePumpedUntil = nil
+        systemKeepaliveTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, isCapturing else { continue }
+                pumpSystemSilenceIfIdle()
+            }
+        }
+    }
+
+    private func stopSystemKeepalive() {
+        systemKeepaliveTask?.cancel()
+        systemKeepaliveTask = nil
+        systemSilencePumpedUntil = nil
+    }
+
+    private func pumpSystemSilenceIfIdle() {
+        let now = Date()
+        guard let lastReal = lastSystemBufferAt,
+              now.timeIntervalSince(lastReal) > systemKeepaliveIdleThreshold else {
+            systemSilencePumpedUntil = nil
+            return
+        }
+        // Cover the whole un-pumped span so the leg's sample clock stays on
+        // wall time: from the last real buffer (first tick of an idle spell)
+        // or the previous injection (subsequent ticks) up to now.
+        let from = max(systemSilencePumpedUntil ?? lastReal, lastReal)
+        let gap = now.timeIntervalSince(from)
+        guard gap > 0 else { return }
+        let sampleCount = Int(gap * 16_000)
+        systemSoniox?.sendAudio(Data(count: sampleCount * 2))
+        systemSilencePumpedUntil = now
     }
 
     private func markSystemAudioStarted() {
@@ -504,6 +561,7 @@ final class AudioPipeline {
         isCapturing = false
         stopMicWatchdog()
         stopSystemAudioWatchdog()
+        stopSystemKeepalive()
         levelMeter.reset()
         audio.stop()
         systemAudio?.stop()
@@ -574,6 +632,7 @@ final class AudioPipeline {
         isCapturing = false
         stopMicWatchdog()
         stopSystemAudioWatchdog()
+        stopSystemKeepalive()
         levelMeter.reset()
         audio.stop()
         systemAudio?.stop()
