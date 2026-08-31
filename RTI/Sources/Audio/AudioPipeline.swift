@@ -89,6 +89,17 @@ final class AudioPipeline {
     private var lastSystemAudioRecoveryAt: Date?
     private var systemAudioOutageReported = false
     private var systemAudioRecoveryAttempts = 0
+    /// The system-leg PCM/error handlers, kept so the watchdog can rewire
+    /// them onto a ScreenCaptureKit backend if the CoreAudio tap turns out
+    /// to deliver nothing (seen with Bluetooth output devices).
+    private var systemPCMHandler: ((AVAudioPCMBuffer) -> Void)?
+    private var systemCaptureErrorHandler: ((String) -> Void)?
+    /// One-shot per session: a dead tap swaps to SCK at most once.
+    private var didFallBackToSCK = false
+    /// The system-leg STT socket connects only once the backend actually
+    /// delivers audio. Connecting eagerly meant a dead tap left Soniox with
+    /// a config and no audio → endless 408 timeout/reconnect spam.
+    private var systemSTTConnected = false
     private let systemAudioNoBufferThreshold: TimeInterval = 8
     private let systemAudioSilentThreshold: TimeInterval = 12
     private let systemAudioNoticeThreshold: TimeInterval = 30
@@ -170,6 +181,8 @@ final class AudioPipeline {
         captureStartWall = Date()
         try audio.start()
         isCapturing = true
+        didFallBackToSCK = false
+        systemSTTConnected = false
         startMicWatchdog()
 
         // Don't even attempt the system-audio Soniox leg without a key.
@@ -202,11 +215,20 @@ final class AudioPipeline {
                 }
             }
             sysClient.onStatus = { [weak self] health in self?.onSystemAudioHealth?(health) }
-            sysClient.connect()
+            // Deliberately NOT connected yet — see `connectSystemSTTIfNeeded`:
+            // the socket opens on the first real buffer from the backend.
             systemSoniox = sysClient
 
+            // `connectRequested` is touched only from the backend's serial
+            // delivery queue; the main-actor `systemSTTConnected` flag makes
+            // the connect itself idempotent.
+            var connectRequested = false
             let onPCM: (AVAudioPCMBuffer) -> Void = { [weak self] buffer in
                 guard let self else { return }
+                if !connectRequested {
+                    connectRequested = true
+                    DispatchQueue.main.async { [weak self] in self?.connectSystemSTTIfNeeded() }
+                }
                 levelMeter.recordSystem(buffer)
                 guard let int16 = buffer.int16ChannelData else { return }
                 let frameLength = Int(buffer.frameLength)
@@ -223,6 +245,8 @@ final class AudioPipeline {
             let onErr: (String) -> Void = { msg in
                 RTILog.log("system audio capture error — \(msg)", category: "audio")
             }
+            systemPCMHandler = onPCM
+            systemCaptureErrorHandler = onErr
 
             // Prefer the CoreAudio process tap (no Screen Recording
             // permission, doesn't disturb screenshot OCR, follows the output
@@ -258,6 +282,15 @@ final class AudioPipeline {
                 RTILog.log("system audio start failed — \(error)", category: "audio")
             }
         }
+    }
+
+    /// Open the system-leg STT socket the first time the backend proves it
+    /// can deliver audio. Idempotent; called (via main) from the PCM path.
+    private func connectSystemSTTIfNeeded() {
+        guard isCapturing, !systemSTTConnected, let client = systemSoniox else { return }
+        systemSTTConnected = true
+        RTILog.log("system audio flowing — connecting system STT leg", category: "audio")
+        client.connect()
     }
 
     private func markSystemAudioStarted() {
@@ -413,7 +446,41 @@ final class AudioPipeline {
             }
         }
 
+        if await fallBackToSCKIfTapDead(health: health) { return }
+
         reportPersistentSystemAudioOutageIfNeeded(reason: reason, elapsed: elapsed, health: health, shouldNotify: notifyIfPersistent)
+    }
+
+    /// Last-resort backend swap: the CoreAudio tap can "run" while delivering
+    /// no buffers at all (seen 2026-08-31 with a Bluetooth output device —
+    /// captured=0.0s for a whole meeting, so the other party was never
+    /// transcribed). When rebuild attempts are exhausted and the tap has
+    /// produced essentially nothing, replace it with the ScreenCaptureKit
+    /// backend. Only fires for a tap that never delivered — buffers arriving
+    /// with silent CONTENT just mean nobody is talking, and stay untouched.
+    private func fallBackToSCKIfTapDead(health: SystemAudioCaptureHealth) async -> Bool {
+        guard !didFallBackToSCK, isCapturing,
+              health.duration < 0.5,
+              let onPCM = systemPCMHandler, let onErr = systemCaptureErrorHandler else { return false }
+        guard #available(macOS 14.2, *), systemAudio is CoreAudioTapCapture else { return false }
+        didFallBackToSCK = true
+        RTILog.log("CoreAudio tap delivered no audio — falling back to ScreenCaptureKit", category: "audio")
+        systemAudio?.stop()
+        systemAudio = nil
+        let sck = SystemAudioCapture()
+        sck.onPCMBuffer = onPCM
+        sck.onError = onErr
+        do {
+            try await sck.start()
+            guard isCapturing else { sck.stop(); return false }
+            systemAudio = sck
+            markSystemAudioStarted()
+            return true
+        } catch {
+            RTILog.log("ScreenCaptureKit fallback failed — \(error)", category: "audio")
+            onSystemAudioHealth?(.failed)
+            return false
+        }
     }
 
     private func reportPersistentSystemAudioOutageIfNeeded(
@@ -441,6 +508,8 @@ final class AudioPipeline {
         audio.stop()
         systemAudio?.stop()
         systemAudio = nil
+        systemPCMHandler = nil
+        systemCaptureErrorHandler = nil
         soniox?.finalize()
         systemSoniox?.finalize()
     }
@@ -492,7 +561,10 @@ final class AudioPipeline {
                 }
             }
             sys.onStatus = { [weak self] health in self?.onSystemAudioHealth?(health) }
-            sys.connect()
+            // Same lazy rule as at start: only open the socket if the backend
+            // has proven it delivers audio (connectSystemSTTIfNeeded covers
+            // the not-yet case when the first buffer eventually arrives).
+            if systemSTTConnected { sys.connect() }
             systemSoniox = sys
         }
     }
@@ -506,6 +578,8 @@ final class AudioPipeline {
         audio.stop()
         systemAudio?.stop()
         systemAudio = nil
+        systemPCMHandler = nil
+        systemCaptureErrorHandler = nil
         soniox?.disconnect()
         soniox = nil
         systemSoniox?.disconnect()

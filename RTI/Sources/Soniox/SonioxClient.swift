@@ -168,8 +168,17 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         lock.lock()
         let phaseDidOpen = didOpen
 
-        // Cancel any in-flight retry so we don't stack overlapping attempts.
-        retryWorkItem?.cancel()
+        // One socket teardown emits several events (e.g. a server 408 is
+        // followed by .disconnected(1000) and .cancelled), and each routes
+        // through handleDrop. Scheduling a retry per event burned 2–3 of the
+        // maxRetries budget per REAL drop, so a couple of genuine drops could
+        // reach "max retries" and kill the session. If a retry is already
+        // queued, this drop is part of the same teardown — keep the existing
+        // attempt.
+        guard retryWorkItem == nil else {
+            lock.unlock()
+            return
+        }
 
         // Re-check intentionalDisconnect under the lock.  handleDrop releases
         // the lock between its check and this call, so `finalize` or
@@ -196,6 +205,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         let item = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.lock.lock()
+            self.retryWorkItem = nil
             let blocked = self.intentionalDisconnect
             self.lock.unlock()
             guard !blocked else { return }
