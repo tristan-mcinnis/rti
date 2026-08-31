@@ -351,7 +351,7 @@ enum AudioInputDeviceStore {
         return transport
     }
 
-    private static func isBluetooth(_ deviceID: AudioDeviceID) -> Bool {
+    static func isBluetooth(_ deviceID: AudioDeviceID) -> Bool {
         let t = transportType(deviceID)
         return t == kAudioDeviceTransportTypeBluetooth || t == kAudioDeviceTransportTypeBluetoothLE
     }

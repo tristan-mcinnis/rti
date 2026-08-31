@@ -108,6 +108,16 @@ final class AudioCaptureManager: @unchecked Sendable {
         }
 
         if let preferred = AudioInputDeviceStore.resolvePreferredDeviceID(),
+           AudioInputDeviceStore.isBluetooth(preferred) {
+            // A Bluetooth mic can never work here: BluetoothMicGuard keeps the
+            // headset in A2DP (its mic OFF) to protect audio quality, so an
+            // AUHAL bound to it runs but delivers zero buffers — the mic leg
+            // records nothing and its STT stream starves (whole-day incident,
+            // 2026-08-31: preferred input was AirPods; the user's side of a
+            // meeting was silently lost). Fall through to the system default,
+            // which the guard has already steered to the built-in mic.
+            RTILog.log("preferred input is a Bluetooth mic — ignoring it (A2DP guard keeps its mic off); using system default input", category: "audio")
+        } else if let preferred = AudioInputDeviceStore.resolvePreferredDeviceID(),
            let unit = input.audioUnit {
             var deviceID = preferred
             let setStatus = AudioUnitSetProperty(

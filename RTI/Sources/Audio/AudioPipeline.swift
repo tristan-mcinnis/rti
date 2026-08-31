@@ -239,9 +239,14 @@ final class AudioPipeline {
             // the socket opens on the first real buffer from the backend.
             systemSoniox = sysClient
 
+            var systemBufferCount = 0
             let onPCM: (AVAudioPCMBuffer) -> Void = { [weak self] buffer in
                 guard let self else { return }
                 lastSystemBufferAt = Date()
+                systemBufferCount += 1
+                if systemBufferCount == 1 || systemBufferCount % 200 == 0 {
+                    RTILog.log("system PCM buffer #\(systemBufferCount): frames=\(buffer.frameLength) int16=\(buffer.int16ChannelData != nil)", category: "audio")
+                }
                 if !systemSTTLinkArmed {
                     systemSTTLinkArmed = true
                     DispatchQueue.main.async { [weak self] in self?.connectSystemSTTIfNeeded() }
@@ -378,9 +383,24 @@ final class AudioPipeline {
     /// If the mic tap has stopped delivering buffers for longer than the
     /// threshold, the input is effectively dead — surface it (which stops the
     /// session) so the user isn't unknowingly recording silence. Fires at most
-    /// once per outage. Ignores the startup window (nil = no buffer yet).
+    /// once per outage.
     private func checkMicHealth() {
-        guard let since = audio.secondsSinceLastBuffer() else { return }
+        guard let since = audio.secondsSinceLastBuffer() else {
+            // No FIRST buffer ever. This used to be treated as "still starting
+            // up" forever, which let a bound-but-dead input device (2026-08-31:
+            // an A2DP-parked AirPods mic) record silently-nothing for a whole
+            // meeting. Apply the same threshold from capture start instead.
+            if let started = captureStartWall,
+               Date().timeIntervalSince(started) > micOutageThreshold,
+               !micOutageReported {
+                micOutageReported = true
+                onError?(
+                    "The microphone never delivered audio — the selected input device may be unavailable. Check the input device in Settings, then start the session again.",
+                    false
+                )
+            }
+            return
+        }
         if since > micOutageThreshold {
             guard !micOutageReported else { return }
             micOutageReported = true

@@ -85,13 +85,32 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             // Drop audio captured before the config frame is on the wire
             // (the WAV still keeps it) — see `configSent`.
             lock.unlock()
+            let dropped = preConfigDropCount + 1
+            preConfigDropCount = dropped
+            if dropped == 1 || dropped % 500 == 0 {
+                RTILog.log("sendAudio dropped pre-config frame #\(dropped) (\(data.count) bytes)", category: "soniox")
+            }
             return
         }
         // Writing to an already-disconnected socket is handled gracefully
         // by Starscream: it triggers .cancelled, which handleDrop processes.
         socket.write(data: data)
+        let sent = sentFrameCount + 1
+        sentFrameCount = sent
+        sentByteCount += data.count
         lock.unlock()
+        if sent == 1 || sent % 500 == 0 {
+            RTILog.log("sent audio frame #\(sent) (total \(sentByteCount) bytes)", category: "soniox")
+        }
     }
+
+    // Write-path diagnostics (2026-08-31): the system leg was observed
+    // hitting Soniox's 20s no-data 408 while capture buffers appeared to
+    // flow — these counters make "is anything actually written?" visible
+    // in the log.
+    private var preConfigDropCount = 0
+    private var sentFrameCount = 0
+    private var sentByteCount = 0
 
     /// Signal end-of-audio to Soniox so remaining interim tokens get finalized.
     /// The caller should wait briefly before calling disconnect() to let finals arrive.
