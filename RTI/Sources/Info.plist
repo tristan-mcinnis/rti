@@ -30,7 +30,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
-	<true/>
+	<false/>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>RTI captures system audio to transcribe the other side of your conversations. No screen content is recorded.</string>
 	<key>NSCalendarsUsageDescription</key>
