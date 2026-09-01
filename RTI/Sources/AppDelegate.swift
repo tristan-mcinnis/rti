@@ -79,6 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
                         provider: AsyncTranscriptProviders.soniox
                     ) { _ in }
                     SessionArchive.clearAutomaticUpgradePending(in: session.url)
+                } catch TranscriptUpgradeError.emptyTranscript(let provider)
+                    where TranscriptUpgradeService.retainedAudioSeconds(in: session.url) < 60 {
+                    // A sub-minute session that transcribes to nothing is a
+                    // test blip, not a meeting — stop re-queueing it forever.
+                    SessionArchive.clearAutomaticUpgradePending(in: session.url)
+                    RTILog.log("cleared pending upgrade for \(session.url.lastPathComponent): \(provider) returned an empty transcript and the retained audio is under a minute", category: "archive")
                 } catch {
                     RTILog.log("pending transcript upgrade remains queued for \(session.url.lastPathComponent): \(error.localizedDescription)", category: "archive")
                 }

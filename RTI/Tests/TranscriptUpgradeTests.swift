@@ -150,7 +150,7 @@ final class TranscriptUpgradeTests: XCTestCase {
         ])
     }
 
-    func testRenderPlacesNotesInTimestampOrder() {
+    func testRenderCollectsNotesInTrailingSection() {
         let startedAt = Date(timeIntervalSince1970: 0)
         let body = TranscriptUpgradeMerge.renderBody(
             startedAt: startedAt,
@@ -165,12 +165,22 @@ final class TranscriptUpgradeTests: XCTestCase {
             generatedAt: startedAt
         )
 
-        let before = body.range(of: "Before note.")!.lowerBound
-        let note = body.range(of: "Important user note.")!.lowerBound
+        // Notes are real-time aids, not speech: the transcript body stays pure
+        // speech and the notes land in a trailing "Session notes" section.
         let after = body.range(of: "After note.")!.lowerBound
-        XCTAssertLessThan(before, note)
-        XCTAssertLessThan(note, after)
+        let section = body.range(of: "## Session notes")!.lowerBound
+        let note = body.range(of: "Important user note.")!.lowerBound
+        XCTAssertLessThan(after, section)
+        XCTAssertLessThan(section, note)
+        XCTAssertTrue(body.contains("- `0:05` Important user note."))
+        XCTAssertFalse(body.contains("📝"))
         XCTAssertTrue(body.contains("Upgraded with Soniox"))
+
+        // Re-upgrading an upgraded transcript must recover the notes from the
+        // trailing section.
+        XCTAssertEqual(TranscriptUpgradeMerge.notes(from: body), [
+            TranscriptUpgradeNote(startMs: 5_000, text: "Important user note.")
+        ])
     }
 
     func testInstallUpgradedTranscriptKeepsRecoverableArtifacts() throws {
@@ -341,14 +351,15 @@ final class TranscriptUpgradeTests: XCTestCase {
         XCTAssertTrue(transcript.contains("Upgraded with Fake Provider"))
         XCTAssertTrue(transcript.contains("Source audio: audio-mic.m4a, audio-system.m4a"))
         XCTAssertTrue(transcript.contains("`0:01` **Speaker 1:** Mic audio upgraded."))
-        XCTAssertTrue(transcript.contains("`0:03` **📝 Note:** Preserve this user note."))
         XCTAssertTrue(transcript.contains("`0:05` **Remote speaker:** System audio upgraded."))
 
+        // Notes live in a trailing "Session notes" section, after all speech.
+        XCTAssertTrue(transcript.contains("- `0:03` Preserve this user note."))
         let mic = transcript.range(of: "Mic audio upgraded.")!.lowerBound
-        let note = transcript.range(of: "Preserve this user note.")!.lowerBound
         let system = transcript.range(of: "System audio upgraded.")!.lowerBound
-        XCTAssertLessThan(mic, note)
-        XCTAssertLessThan(note, system)
+        let note = transcript.range(of: "Preserve this user note.")!.lowerBound
+        XCTAssertLessThan(mic, system)
+        XCTAssertLessThan(system, note)
 
         XCTAssertEqual(try String(contentsOf: result.artifactResult.upgradedURL, encoding: .utf8), transcript)
         XCTAssertEqual(

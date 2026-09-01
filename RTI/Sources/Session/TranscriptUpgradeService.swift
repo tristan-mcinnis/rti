@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import RTICore
 
@@ -19,6 +20,7 @@ enum TranscriptUpgradeError: LocalizedError {
     case missingCredentials(String)
     case missingScript(String)
     case providerFailed(String)
+    case emptyTranscript(String)
     case unreadableTranscript
     case writeFailed(String)
 
@@ -32,6 +34,8 @@ enum TranscriptUpgradeError: LocalizedError {
             return "Transcript provider script is missing: \(path)"
         case .providerFailed(let detail):
             return detail
+        case .emptyTranscript(let provider):
+            return "\(provider) returned an empty transcript; the original transcript was left unchanged."
         case .unreadableTranscript:
             return "Couldn't read the original transcript."
         case .writeFailed(let detail):
@@ -170,6 +174,17 @@ enum TranscriptUpgradeService {
         TranscriptUpgradeAudioDiscovery.inputs(in: dir)
     }
 
+    /// Total duration of the retained audio legs, for the "is this a real
+    /// session or a test blip" judgment. 0 when unreadable.
+    static func retainedAudioSeconds(in dir: URL) -> TimeInterval {
+        audioInputs(in: dir).reduce(0) { total, input in
+            guard let file = try? AVAudioFile(forReading: input.url) else { return total }
+            let rate = file.processingFormat.sampleRate
+            guard rate > 0 else { return total }
+            return total + Double(file.length) / rate
+        }
+    }
+
     private static func mapPipelineError(_ error: Error) -> Error {
         if let upgradeError = error as? TranscriptUpgradeError {
             return upgradeError
@@ -183,7 +198,7 @@ enum TranscriptUpgradeService {
         case .unreadableTranscript:
             return TranscriptUpgradeError.unreadableTranscript
         case .emptyTranscript(let provider):
-            return TranscriptUpgradeError.providerFailed("\(provider) returned an empty transcript; the original transcript was left unchanged.")
+            return TranscriptUpgradeError.emptyTranscript(provider)
         case .missingSessionDate:
             return TranscriptUpgradeError.writeFailed("session folder name is not a timestamp")
         }

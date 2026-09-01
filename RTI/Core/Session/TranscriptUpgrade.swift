@@ -216,10 +216,33 @@ public enum TranscriptUpgradePipeline {
 
 public enum TranscriptUpgradeMerge {
     public static func notes(from markdown: String) -> [TranscriptUpgradeNote] {
-        markdown
-            .components(separatedBy: .newlines)
-            .compactMap(note(fromLine:))
-            .sorted { $0.startMs < $1.startMs }
+        // Two shapes: inline `**📝 Note:**` lines (live transcripts) and the
+        // `- \`m:ss\` text` bullets under "## Session notes" that upgraded
+        // transcripts carry — re-upgrading must not drop the notes.
+        var inSessionNotes = false
+        var found: [TranscriptUpgradeNote] = []
+        for line in markdown.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("#") {
+                inSessionNotes = trimmed == "## Session notes"
+                continue
+            }
+            if inSessionNotes, trimmed.hasPrefix("- `") {
+                if let note = sessionNoteBullet(fromLine: trimmed) { found.append(note) }
+            } else if let note = note(fromLine: line) {
+                found.append(note)
+            }
+        }
+        return found.sorted { $0.startMs < $1.startMs }
+    }
+
+    private static func sessionNoteBullet(fromLine line: String) -> TranscriptUpgradeNote? {
+        let body = String(line.dropFirst(2))
+        guard let firstTick = body.firstIndex(of: "`"),
+              let secondTick = body[body.index(after: firstTick)...].firstIndex(of: "`"),
+              let ms = milliseconds(from: String(body[body.index(after: firstTick)..<secondTick])) else { return nil }
+        let text = String(body[body.index(after: secondTick)...]).trimmingCharacters(in: .whitespaces)
+        return text.isEmpty ? nil : TranscriptUpgradeNote(startMs: ms, text: text)
     }
 
     public static func segments(from text: String, defaultSpeaker: String = "Speaker 1", offsetMs: Int = 0) -> [TranscriptUpgradeSegment] {
@@ -260,41 +283,31 @@ public enum TranscriptUpgradeMerge {
             "",
             header(startedAt: startedAt, endedAt: endedAt),
             "",
-            "_Upgraded with \(provider) on \(upgradeStamp.string(from: generatedAt)). Source audio: \(sourceFiles.joined(separator: ", ")). User notes preserved from the original live transcript._",
+            "_Upgraded with \(provider) on \(upgradeStamp.string(from: generatedAt)). Source audio: \(sourceFiles.joined(separator: ", "))._",
             "",
         ]
 
-        enum Item {
-            case segment(TranscriptUpgradeSegment, Int)
-            case note(TranscriptUpgradeNote, Int)
-
-            var startMs: Int {
-                switch self {
-                case .segment(let segment, _): return segment.startMs
-                case .note(let note, _): return note.startMs
-                }
-            }
-
-            var order: Int {
-                switch self {
-                case .segment(_, let index): return index * 2
-                case .note(_, let index): return index * 2 + 1
-                }
-            }
+        // Notes typed during the session are real-time context aids, not part
+        // of the conversation — keep the upgraded transcript body pure speech
+        // and collect the notes in a trailing section instead.
+        let orderedSegments = segments.enumerated().sorted { lhs, rhs in
+            if lhs.element.startMs == rhs.element.startMs { return lhs.offset < rhs.offset }
+            return lhs.element.startMs < rhs.element.startMs
+        }
+        for (_, segment) in orderedSegments {
+            lines.append("`\(offset(segment.startMs))` **\(segment.speaker):** \(segment.text)")
+            lines.append("")
         }
 
-        let items = segments.enumerated().map { Item.segment($0.element, $0.offset) }
-            + notes.enumerated().map { Item.note($0.element, $0.offset) }
-
-        for item in items.sorted(by: { lhs, rhs in
-            if lhs.startMs == rhs.startMs { return lhs.order < rhs.order }
-            return lhs.startMs < rhs.startMs
-        }) {
-            switch item {
-            case .segment(let segment, _):
-                lines.append("`\(offset(segment.startMs))` **\(segment.speaker):** \(segment.text)")
-            case .note(let note, _):
-                lines.append("`\(offset(note.startMs))` **📝 Note:** \(note.text)")
+        if !notes.isEmpty {
+            lines.append("## Session notes")
+            lines.append("")
+            let orderedNotes = notes.enumerated().sorted { lhs, rhs in
+                if lhs.element.startMs == rhs.element.startMs { return lhs.offset < rhs.offset }
+                return lhs.element.startMs < rhs.element.startMs
+            }
+            for (_, note) in orderedNotes {
+                lines.append("- `\(offset(note.startMs))` \(note.text)")
             }
             lines.append("")
         }
