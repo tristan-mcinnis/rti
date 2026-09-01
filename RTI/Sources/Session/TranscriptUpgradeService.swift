@@ -263,7 +263,9 @@ private enum ScriptRunner {
                 let data = stderr.fileHandleForReading.readDataToEndOfFile()
                 let out = String(data: outData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let err = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let detail = err.isEmpty ? out : err
+                // Keep both streams: Python warnings land on stderr and would
+                // otherwise mask the actual error printed on stdout.
+                let detail = [err, out].filter { !$0.isEmpty }.joined(separator: "\n")
                 if proc.terminationStatus == 0 {
                     continuation.resume()
                 } else {

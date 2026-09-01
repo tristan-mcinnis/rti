@@ -297,12 +297,9 @@ private struct RealTimeAnalysisSection: View {
 private struct OverlayAppearanceSection: View {
     @AppStorage(OverlayAppearanceDefaults.widthKey) private var overlayWidth: Double = OverlayAppearanceDefaults.defaultWidth
     @AppStorage(OverlayAppearanceDefaults.heightKey) private var overlayHeight: Double = OverlayAppearanceDefaults.defaultHeight
-    @AppStorage(OverlayAppearanceDefaults.opacityKey) private var overlayOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
     @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
-    @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel: Bool = OverlayAppearanceDefaults.defaultTranslucentPanel
-    @AppStorage(OverlayAppearanceDefaults.alwaysOnTopKey) private var alwaysOnTop: Bool = OverlayAppearanceDefaults.defaultAlwaysOnTop
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     @AppStorage(OverlayAppearanceDefaults.reduceMotionKey) private var reduceMotion: String = OverlayAppearanceDefaults.defaultReduceMotion
 
@@ -331,20 +328,6 @@ private struct OverlayAppearanceSection: View {
                     .foregroundStyle(.secondary)
             }
             .onChange(of: accentColorHex) { _, _ in postAppearanceChanged() }
-
-            Toggle("Translucent panel", isOn: $translucentPanel)
-                .onChange(of: translucentPanel) { _, _ in postAppearanceChanged() }
-            Text("Off keeps the panel and composer pure white; their separation comes from a subtle edge and shadow.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 2)
-
-            Toggle("Keep overlay above other windows", isOn: $alwaysOnTop)
-                .onChange(of: alwaysOnTop) { _, _ in postAppearanceChanged() }
-            Text("Turn this off when you want RTI to behave like a regular window that can sit behind the app you are using.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 2)
 
             sliderRow(
                 label: "Contrast",
@@ -394,29 +377,16 @@ private struct OverlayAppearanceSection: View {
                 postsResize: true
             )
 
-            sliderRow(
-                label: "Background opacity",
-                value: $overlayOpacity,
-                range: OverlayAppearanceDefaults.opacityRange,
-                step: 0.05,
-                format: "%.0f%%",
-                postsResize: false,
-                displayTransform: { $0 * 100 }
-            )
-
             HStack {
                 Spacer()
                 Button("Reset to Defaults") {
                     appearanceMode = OverlayAppearanceDefaults.defaultAppearanceMode
                     accentColorHex = OverlayAppearanceDefaults.defaultAccentColor
                     contrast = OverlayAppearanceDefaults.defaultContrast
-                    translucentPanel = OverlayAppearanceDefaults.defaultTranslucentPanel
-                    alwaysOnTop = OverlayAppearanceDefaults.defaultAlwaysOnTop
                     uiFontSize = OverlayAppearanceDefaults.defaultUIFontSize
                     reduceMotion = OverlayAppearanceDefaults.defaultReduceMotion
                     overlayWidth = OverlayAppearanceDefaults.defaultWidth
                     overlayHeight = OverlayAppearanceDefaults.defaultHeight
-                    overlayOpacity = OverlayAppearanceDefaults.defaultOpacity
                     UserDefaults.standard.removeObject(forKey: OverlayAppearanceDefaults.lightModeKey)
                     NotificationCenter.default.post(name: .rtiOverlaySizeChanged, object: nil)
                     postAppearanceChanged()

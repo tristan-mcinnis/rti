@@ -51,13 +51,11 @@ final class OverlayWindowController {
         // button hides it (⌘\ or the menubar brings it back).
         win.isReleasedWhenClosed = false
         win.sharingType = .none
-        win.isMovableByWindowBackground = true
 
         win.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
         win.appearance = Self.configuredAppearance()
 
         self.window = win
-        applyConfiguredWindowLevel()
 
         // queue: .main means these fire on the main thread; assumeIsolated
         // bridges the non-isolated callback into the class's MainActor.
@@ -101,7 +99,6 @@ final class OverlayWindowController {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.window.appearance = Self.configuredAppearance()
-                self?.applyConfiguredWindowLevel()
             }
         }
 
@@ -129,22 +126,6 @@ final class OverlayWindowController {
         case .dark:
             return NSAppearance(named: .darkAqua)
         }
-    }
-
-    private static var keepsOverlayAboveOtherWindows: Bool {
-        UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.alwaysOnTopKey) as? Bool
-            ?? OverlayAppearanceDefaults.defaultAlwaysOnTop
-    }
-
-    /// "Always on top" keeps the meeting workflow working: the window floats
-    /// over the call app and follows into full-screen spaces. Off = a fully
-    /// normal window.
-    private func applyConfiguredWindowLevel() {
-        let keepAbove = Self.keepsOverlayAboveOtherWindows
-        window.level = keepAbove ? .floating : .normal
-        window.collectionBehavior = keepAbove
-            ? [.canJoinAllSpaces, .fullScreenAuxiliary]
-            : [.managed, .participatesInCycle]
     }
 
     private static func configuredSize() -> NSSize {

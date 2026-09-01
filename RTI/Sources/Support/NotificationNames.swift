@@ -30,16 +30,11 @@ extension Notification.Name {
 enum OverlayAppearanceDefaults {
     static let widthKey = "rti.overlay.width"
     static let heightKey = "rti.overlay.height"
-    static let opacityKey = "rti.overlay.opacity"
     /// `system`, `light`, or `dark`. Replaces the older light-mode bool.
     static let appearanceModeKey = "rti.overlay.appearanceMode"
     static let lightModeKey = "rti.overlay.lightMode"
     static let accentColorKey = "rti.overlay.accentColor"
     static let contrastKey = "rti.overlay.contrast"
-    static let translucentPanelKey = "rti.overlay.translucentPanel"
-    /// Whether the overlay stays above other applications. Off makes it a
-    /// normal-level window that can sit behind the active app.
-    static let alwaysOnTopKey = "rti.overlay.alwaysOnTop"
     static let uiFontSizeKey = "rti.overlay.uiFontSize"
     static let reduceMotionKey = "rti.overlay.reduceMotion"
     /// When true (the default), every RTI panel sets `sharingType = .none` so it
@@ -47,17 +42,13 @@ enum OverlayAppearanceDefaults {
     static let invisibilityKey = "rti.invisible"
     static let defaultWidth: Double = 700
     static let defaultHeight: Double = 440
-    static let defaultOpacity: Double = 1.00
     static let defaultAppearanceMode = RTIAppearanceMode.system.rawValue
     static let defaultAccentColor = "#339CFF"
     static let defaultContrast: Double = 60
-    static let defaultTranslucentPanel = false
-    static let defaultAlwaysOnTop = true
     static let defaultUIFontSize: Double = 14
     static let defaultReduceMotion = RTIReduceMotionMode.system.rawValue
     static let widthRange: ClosedRange<Double> = 320...800
     static let heightRange: ClosedRange<Double> = 400...900
-    static let opacityRange: ClosedRange<Double> = 0.10...1.00
     static let contrastRange: ClosedRange<Double> = 35...85
     static let uiFontSizeRange: ClosedRange<Double> = 12...18
 

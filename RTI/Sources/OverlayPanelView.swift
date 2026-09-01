@@ -5,11 +5,9 @@ struct OverlayPanelView: View {
     private let session = SessionCoordinator.shared
     var onOpenSettings: () -> Void = {}
 
-    @AppStorage(OverlayAppearanceDefaults.opacityKey) private var backgroundOpacity: Double = OverlayAppearanceDefaults.defaultOpacity
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
     @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
-    @AppStorage(OverlayAppearanceDefaults.translucentPanelKey) private var translucentPanel: Bool = OverlayAppearanceDefaults.defaultTranslucentPanel
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     // Live-analysis tabs only show when their tasks are enabled in Prepare.
     // Notes defaults on; Guide/Intel/Auto stay opt-in.
@@ -110,23 +108,11 @@ struct OverlayPanelView: View {
         .overlay(themeRefreshToken)
     }
 
-    /// Hosted in a standard titled window now — the window supplies chrome
-    /// (corners, border, shadow), so the background just fills the content
-    /// area. Material vs solid and the opacity slider still apply.
-    @ViewBuilder
+    /// Hosted in a standard titled window — the window supplies chrome
+    /// (corners, border, shadow), so the background is just a solid fill of
+    /// the content area.
     private var panelBackground: some View {
-        if translucentPanel {
-            Rectangle()
-                .fill(.regularMaterial)
-                .opacity(backgroundOpacity)
-                .overlay(
-                    Rectangle()
-                        .fill(Color.overlayPanel.opacity(backgroundOpacity * 0.72))
-                )
-        } else {
-            Rectangle()
-                .fill(Color.overlayPanel.opacity(backgroundOpacity))
-        }
+        Rectangle().fill(Color.overlayPanel)
     }
 
     private var preferredColorScheme: ColorScheme? {

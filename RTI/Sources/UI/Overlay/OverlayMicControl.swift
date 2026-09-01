@@ -116,14 +116,23 @@ struct OverlayMicControl: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .accessibilityLabel("Choose input device")
-        .onAppear {
-            devices = AudioInputDeviceStore.availableInputDevices()
-            outputDevices = AudioInputDeviceStore.availableOutputDevices()
-            currentOutputUID = AudioInputDeviceStore.defaultOutputUID() ?? ""
-            captureApps = AudioInputDeviceStore.capturableApps()
-            captureAppBundleID = AudioInputDeviceStore.captureAppBundleID
+        .onAppear { refreshLists() }
+        // The overlay can outlive an entire meeting app's lifecycle (Zoom
+        // launched after RTI, for instance), so a one-shot .onAppear load
+        // goes stale. The mouse always crosses the control before the menu
+        // can open — refresh on hover so the lists are current when it does.
+        .onChange(of: hovering) { _, isHovering in
+            if isHovering { refreshLists() }
         }
         .help("Choose input device")
+    }
+
+    private func refreshLists() {
+        devices = AudioInputDeviceStore.availableInputDevices()
+        outputDevices = AudioInputDeviceStore.availableOutputDevices()
+        currentOutputUID = AudioInputDeviceStore.defaultOutputUID() ?? ""
+        captureApps = AudioInputDeviceStore.capturableApps()
+        captureAppBundleID = AudioInputDeviceStore.captureAppBundleID
     }
 
     private func captureAppButton(name: String, bundleID: String) -> some View {
