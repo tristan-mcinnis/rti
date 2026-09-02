@@ -89,6 +89,27 @@ enum VaultPaths {
             .appendingPathComponent("projects/personal/rti", isDirectory: true)
     }
 
+    /// The vault git root: `<gitRoot>/{vault,kb}/databases` → up two. Home of
+    /// the vault's own tooling (`.claude/tools/…`, `code/hermes/…`).
+    static func gitRootDirectory(configURL: URL = configURL()) -> URL? {
+        preferredDatabasesDirectory(configURL: configURL)?
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
+    /// A vault-side tool by git-root-relative path, or nil when the vault is
+    /// unreachable or the file is missing. Every script RTI shells out to in
+    /// the vault resolves through here.
+    static func vaultToolURL(
+        _ relativePath: String,
+        configURL: URL = configURL(),
+        fileManager: FileManager = .default
+    ) -> URL? {
+        guard let root = gitRootDirectory(configURL: configURL) else { return nil }
+        let url = root.appendingPathComponent(relativePath)
+        return fileManager.fileExists(atPath: url.path) ? url : nil
+    }
+
     static func meetingTranscriptsRawDirectory(configURL: URL = configURL()) -> URL? {
         preferredDatabasesDirectory(configURL: configURL)?
             .appendingPathComponent("meetings/transcripts-raw", isDirectory: true)

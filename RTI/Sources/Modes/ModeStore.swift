@@ -76,12 +76,7 @@ final class ModeStore {
     // MARK: - Persistence
 
     private static var fileURL: URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let rti = dir.appendingPathComponent("RTI", isDirectory: true)
-        try? FileManager.default.createDirectory(at: rti, withIntermediateDirectories: true)
-        return rti.appendingPathComponent("modes.json")
+        AppSupportPaths.file("modes.json")
     }
 
     private func persist() {

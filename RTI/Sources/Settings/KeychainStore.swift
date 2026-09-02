@@ -18,12 +18,7 @@ enum KeychainStore {
     private static let queue = DispatchQueue(label: "com.tristan.rti.credentials", attributes: .concurrent)
 
     private static var fileURL: URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let rti = dir.appendingPathComponent("RTI", isDirectory: true)
-        try? FileManager.default.createDirectory(at: rti, withIntermediateDirectories: true)
-        return rti.appendingPathComponent("credentials.json")
+        AppSupportPaths.file("credentials.json")
     }
 
     static func set(_ value: String, for account: String) {

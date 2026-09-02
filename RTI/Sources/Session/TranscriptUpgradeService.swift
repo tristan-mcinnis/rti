@@ -210,7 +210,12 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
     let id = "soniox_file"
     let displayName = "Soniox"
     let apiKey: String
-    private let script = "/Users/user/Documents/Code/file-transcriber/skills/file-transcriber/scripts/transcribe-soniox.py"
+    /// `soniox_file_script` in `~/.config/rti/config.json`, else the default
+    /// checkout location under the user's home.
+    private let script = TranscriptUpgradeScripts.path(
+        configKey: "soniox_file_script",
+        default: "Documents/code/file-transcriber/skills/file-transcriber/scripts/transcribe-soniox.py"
+    )
 
     func transcribe(audioURL: URL, outputBaseURL: URL) async throws -> String {
         guard FileManager.default.fileExists(atPath: script) else {
@@ -218,7 +223,7 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
         }
         let output = outputBaseURL.appendingPathExtension("soniox.txt")
         try await ScriptRunner.run(
-            executable: "/usr/bin/python3",
+            executable: ExternalTools.systemPython.path,
             arguments: [script, "-f", audioURL.path, "-l", "en", "zh", "--format", "txt", "-o", output.path],
             environment: ["SONIOX_API_KEY": apiKey]
         )
@@ -232,7 +237,12 @@ private struct AliyunScriptTranscriptProvider: AsyncTranscriptProvider {
     let accessKeyId: String
     let accessKeySecret: String
     let appKey: String
-    private let script = "/Users/user/Documents/code/archive/aliyun-stt/scripts/aliyun_filetrans.py"
+    /// `aliyun_file_script` in `~/.config/rti/config.json`, else the default
+    /// checkout location under the user's home.
+    private let script = TranscriptUpgradeScripts.path(
+        configKey: "aliyun_file_script",
+        default: "Documents/code/archive/aliyun-stt/scripts/aliyun_filetrans.py"
+    )
 
     func transcribe(audioURL: URL, outputBaseURL: URL) async throws -> String {
         guard FileManager.default.fileExists(atPath: script) else {
@@ -241,7 +251,7 @@ private struct AliyunScriptTranscriptProvider: AsyncTranscriptProvider {
         let rawOutput = outputBaseURL.appendingPathExtension("aliyun.json")
         let textOutput = outputBaseURL.appendingPathExtension("aliyun.txt")
         try await ScriptRunner.run(
-            executable: "/usr/bin/python3",
+            executable: ExternalTools.systemPython.path,
             arguments: [script, "--audio", audioURL.path, "--raw-output", rawOutput.path, "--text-output", textOutput.path],
             environment: [
                 "ALIBABA_CLOUD_ACCESS_KEY_ID": accessKeyId,
@@ -250,6 +260,19 @@ private struct AliyunScriptTranscriptProvider: AsyncTranscriptProvider {
             ]
         )
         return (try? String(contentsOf: textOutput, encoding: .utf8)) ?? ""
+    }
+}
+
+/// Where the offline transcript-provider scripts live. One config file
+/// (`~/.config/rti/config.json`) anchors every path RTI touches; these two
+/// keys let the checkouts move without a rebuild.
+private enum TranscriptUpgradeScripts {
+    static func path(configKey: String, default homeRelative: String) -> String {
+        if let configured = VaultPaths.configDictionary()[configKey] as? String, !configured.isEmpty {
+            return (configured as NSString).expandingTildeInPath
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(homeRelative).path
     }
 }
 

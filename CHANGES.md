@@ -1,5 +1,41 @@
 # RTI Change Log
 
+## 2026-09-02 — Consistency pass: one resolver per path and binary
+
+No feature change. See `docs/consistency-audit-20260902.md` for the audit.
+
+- **`AppSupportPaths`** replaces six independent `~/Library/Application
+  Support/RTI` resolvers (credentials, modes, crash log, sessions fallback,
+  Settings › General reveal actions).
+- **`VaultPaths.gitRootDirectory` / `vaultToolURL`** replace three copies of
+  the `databases → up two → .claude/tools/…` derivation (session router,
+  speaker enrollment, hermes search CLI).
+- **`ExternalTools`** owns the `claude`, `bun`, and python candidate lists
+  and the fire-and-forget child launcher. `SpeakerEnrollment` and
+  `SessionArchive` no longer carry their own.
+- **Transcript-upgrade scripts** are no longer hardcoded to `/Users/user`:
+  `soniox_file_script` / `aliyun_file_script` in `~/.config/rti/config.json`,
+  defaulting to the same checkout paths under the current home.
+- README and CLAUDE.md now describe the titled `NSWindow` Dock-app shape
+  shipped 2026-09-01 instead of the retired borderless translucent panel.
+
+## 2026-08-30 → 09-01 — Window shape, audio resilience, screen privacy
+
+Backfilled from `git log` (no entry was written at the time).
+
+- Regular Dock app (`LSUIElement=NO`) with a normal titled main window; the
+  always-on-top float and translucency are gone. Capture-app picker refreshes
+  live.
+- Upgraded transcripts move notes to a trailing section; short empty sessions
+  self-clear; summary + title fall back to the live transcript when the
+  upgrade fails.
+- Mic never binds to a Bluetooth input; alarm on a never-delivering mic.
+  System-audio leg: lazy STT connect, SCK fallback for a dead tap, honest
+  retry budget, idle park/resume instead of silence keepalive.
+- Screen privacy deny-list at the `SCContentFilter` choke point; chat
+  hotkeys scoped to active sessions; blank settings tabs fixed; honest
+  versioning. Engineering audit in `docs/engineering-audit-20260901.md`.
+
 ## 2026-08-29 — Local vision lane: frames with a home + model descriptions
 
 Screen captures are no longer OCR-only. A new `local_vision` block in

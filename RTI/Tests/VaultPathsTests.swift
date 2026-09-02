@@ -77,6 +77,27 @@ final class VaultPathsTests: XCTestCase {
         XCTAssertNotNil(meetings.first?.startedAt)
     }
 
+    func testVaultToolResolvesFromGitRootAndRequiresFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let recordings = root.appendingPathComponent("vault/databases/meetings/recordings", isDirectory: true)
+        try FileManager.default.createDirectory(at: recordings, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("vault/databases/projects"), withIntermediateDirectories: true)
+        let tool = root.appendingPathComponent(".claude/tools/triage/route-rti-session.py")
+        try FileManager.default.createDirectory(at: tool.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "print()".write(to: tool, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = writeConfig(recordings.path)
+
+        XCTAssertEqual(VaultPaths.gitRootDirectory(configURL: config)?.standardizedFileURL.path, root.standardizedFileURL.path)
+        XCTAssertEqual(
+            VaultPaths.vaultToolURL(".claude/tools/triage/route-rti-session.py", configURL: config)?.standardizedFileURL.path,
+            tool.standardizedFileURL.path
+        )
+        XCTAssertNil(VaultPaths.vaultToolURL(".claude/tools/missing.py", configURL: config))
+    }
+
     func testVaultRootWalksUpToMarker() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

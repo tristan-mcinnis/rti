@@ -503,15 +503,12 @@ private struct DataAndSupportSection: View {
     }
 
     private func revealRTIFolder() {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
-        let rti = dir.appendingPathComponent("RTI", isDirectory: true)
-        try? FileManager.default.createDirectory(at: rti, withIntermediateDirectories: true)
+        guard let rti = AppSupportPaths.rtiDirectory() else { return }
         NSWorkspace.shared.open(rti)
     }
 
     private func crashLogURL() -> URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
-        return dir.appendingPathComponent("RTI/crash.log")
+        CrashLog.logURL
     }
 
     private func revealCrashLog() {

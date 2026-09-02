@@ -19,7 +19,7 @@ enum VaultSearchCLI {
     /// fts query — no Jina embed — purely to keep the database warm. Output is
     /// discarded; never blocks the caller. Safe to call repeatedly.
     static func warmUp() {
-        guard let bun = bunPath(), let cli = cliPath() else { return }
+        guard let bun = ExternalTools.bun(), let cli = cliPath() else { return }
         let hermesDir = cli.deletingLastPathComponent().deletingLastPathComponent()
         DispatchQueue.global(qos: .utility).async {
             let proc = Process()
@@ -34,7 +34,7 @@ enum VaultSearchCLI {
     }
 
     static func search(query: String, limit: Int = 6) async -> [VaultSearch.Result]? {
-        guard let bun = bunPath(), let cli = cliPath() else { return nil }
+        guard let bun = ExternalTools.bun(), let cli = cliPath() else { return nil }
         let hermesDir = cli.deletingLastPathComponent().deletingLastPathComponent() // src → hermes
         return await withCheckedContinuation { (cont: CheckedContinuation<[VaultSearch.Result]?, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -104,23 +104,10 @@ enum VaultSearchCLI {
 
     // MARK: - Resolution
 
-    private static func bunPath() -> URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates = [
-            home.appendingPathComponent(".bun/bin/bun"),
-            URL(fileURLWithPath: "/opt/homebrew/bin/bun"),
-            URL(fileURLWithPath: "/usr/local/bin/bun"),
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
-    }
-
     /// `<gitRoot>/code/hermes/src/cli.ts`, derived from the vault location the
-    /// rest of RTI already resolves (databases is `<gitRoot>/vault/databases`).
+    /// rest of RTI already resolves.
     private static func cliPath() -> URL? {
-        guard let databases = VaultWorkstreamStore.databasesDir() else { return nil }
-        let gitRoot = databases.deletingLastPathComponent().deletingLastPathComponent() // databases → vault → gitRoot
-        let cli = gitRoot.appendingPathComponent("code/hermes/src/cli.ts")
-        return FileManager.default.fileExists(atPath: cli.path) ? cli : nil
+        VaultPaths.vaultToolURL("code/hermes/src/cli.ts")
     }
 
     // MARK: - Field helpers

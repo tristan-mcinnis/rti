@@ -17,12 +17,7 @@ enum CrashLog {
     }
 
     static var logURL: URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let rti = dir.appendingPathComponent("RTI", isDirectory: true)
-        try? FileManager.default.createDirectory(at: rti, withIntermediateDirectories: true)
-        return rti.appendingPathComponent("crash.log")
+        AppSupportPaths.file("crash.log")
     }
 
     private static func append(_ text: String) {

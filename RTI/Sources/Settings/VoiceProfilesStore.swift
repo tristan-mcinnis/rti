@@ -73,7 +73,7 @@ final class VoiceProfilesStore {
 
     private nonisolated static func run(arguments: [String]) async -> RunResult {
         guard let script = SpeakerEnrollment.speakerProfilesScriptURL(),
-              let python = SpeakerEnrollment.pythonExecutableURL() else {
+              let python = ExternalTools.stackPython() else {
             return .unavailable
         }
         return await Task.detached(priority: .userInitiated) {

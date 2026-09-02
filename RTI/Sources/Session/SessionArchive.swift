@@ -347,17 +347,8 @@ enum SessionArchive {
     /// there). Best-effort and fire-and-forget: missing script or python is a
     /// silent no-op, and the app never waits on or parses the result.
     static func runVaultRouter(sessionDir: URL) {
-        // databasesDir = <git root>/vault/databases → up two = git root.
-        guard let databases = VaultWorkstreamStore.databasesDir() else { return }
-        let script = databases
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent(".claude/tools/triage/route-rti-session.py")
-        guard FileManager.default.fileExists(atPath: script.path) else { return }
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        proc.arguments = [script.path, sessionDir.path]
-        try? proc.run()
+        guard let script = VaultPaths.vaultToolURL(".claude/tools/triage/route-rti-session.py") else { return }
+        ExternalTools.launchDetached(ExternalTools.systemPython, arguments: [script.path, sessionDir.path])
     }
 
     /// Export RTI's live transcript into the vault's raw-transcript lane
@@ -401,7 +392,7 @@ enum SessionArchive {
     }
 
     static func runMeetingProcessor(transcriptURL: URL) {
-        guard let claude = claudeExecutableURL() else {
+        guard let claude = ExternalTools.claude() else {
             RTILog.log("meeting processor: claude CLI not found; skipped \(transcriptURL.lastPathComponent)", category: "archive")
             return
         }
@@ -582,17 +573,6 @@ enum SessionArchive {
             return text
         }
         return String(text[end.upperBound...]).trimmingCharacters(in: .newlines)
-    }
-
-    private static func claudeExecutableURL() -> URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates = [
-            home.appendingPathComponent(".local/bin/claude"),
-            home.appendingPathComponent(".claude/local/claude"),
-            URL(fileURLWithPath: "/opt/homebrew/bin/claude"),
-            URL(fileURLWithPath: "/usr/local/bin/claude"),
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
     private static func vaultRoot(startingAt dir: URL) -> URL? {
@@ -979,8 +959,7 @@ extension SessionArchive {
         if let vault = VaultLogStore.rtiDirectory()?.appendingPathComponent("sessions", isDirectory: true) {
             return vault
         }
-        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("RTI", isDirectory: true)
+        return AppSupportPaths.rtiDirectory()?
             .appendingPathComponent("sessions", isDirectory: true)
     }
 
