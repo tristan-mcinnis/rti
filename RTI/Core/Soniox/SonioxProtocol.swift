@@ -1,5 +1,4 @@
 import Foundation
-import RTICore
 
 public struct SonioxWord {
     public let text: String
