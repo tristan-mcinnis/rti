@@ -12,7 +12,6 @@ import Foundation
 /// merely being visible — would otherwise OCR personal content straight into
 /// the meeting record.
 enum ScreenPrivacy {
-    static let excludedAppsKey = "screenPrivacy.excludedBundleIds"
 
     /// Password managers, personal chat apps, and notification banners.
     static let defaultExcludedBundleIds: [String] = [
@@ -32,16 +31,16 @@ enum ScreenPrivacy {
     /// list in Settings › General; an explicitly emptied list is respected.
     static var excludedBundleIds: [String] {
         get {
-            UserDefaults.standard.array(forKey: excludedAppsKey) as? [String]
+            UserDefaults.standard.array(forKey: ScreenPrivacyDefaults.excludedAppsKey) as? [String]
                 ?? defaultExcludedBundleIds
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: excludedAppsKey)
+            UserDefaults.standard.set(newValue, forKey: ScreenPrivacyDefaults.excludedAppsKey)
         }
     }
 
     static func resetToDefaults() {
-        UserDefaults.standard.removeObject(forKey: excludedAppsKey)
+        UserDefaults.standard.removeObject(forKey: ScreenPrivacyDefaults.excludedAppsKey)
     }
 
     static func isExcluded(bundleIdentifier: String?) -> Bool {

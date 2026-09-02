@@ -223,7 +223,7 @@ final class AudioPipeline {
             sysClient.onError = { [weak self] failure, didOpen in
                 guard let self else { return }
                 let message = failure.userMessage(didOpen: didOpen)
-                RTILog.log("system audio Soniox error — \(message)", category: "soniox")
+                RTILog.log("system audio Soniox error — \(message)", category: .soniox)
                 // System-audio failure is non-fatal for the session (mic
                 // continues). Surface it once via the same `onError`
                 // callback the mic leg uses, with `isAuth=false` so the
@@ -245,7 +245,7 @@ final class AudioPipeline {
                 lastSystemBufferAt = Date()
                 systemBufferCount += 1
                 if systemBufferCount == 1 || systemBufferCount % 200 == 0 {
-                    RTILog.log("system PCM buffer #\(systemBufferCount): frames=\(buffer.frameLength) int16=\(buffer.int16ChannelData != nil)", category: "audio")
+                    RTILog.log("system PCM buffer #\(systemBufferCount): frames=\(buffer.frameLength) int16=\(buffer.int16ChannelData != nil)", category: .audio)
                 }
                 if !systemSTTLinkArmed {
                     systemSTTLinkArmed = true
@@ -265,7 +265,7 @@ final class AudioPipeline {
                 systemSoniox?.sendAudio(data)
             }
             let onErr: (String) -> Void = { msg in
-                RTILog.log("system audio capture error — \(msg)", category: "audio")
+                RTILog.log("system audio capture error — \(msg)", category: .audio)
             }
             systemPCMHandler = onPCM
             systemCaptureErrorHandler = onErr
@@ -287,7 +287,7 @@ final class AudioPipeline {
                     markSystemAudioStarted()
                     return
                 } catch {
-                    RTILog.log("CoreAudio tap unavailable, falling back to ScreenCaptureKit — \(error)", category: "audio")
+                    RTILog.log("CoreAudio tap unavailable, falling back to ScreenCaptureKit — \(error)", category: .audio)
                 }
             }
 
@@ -301,7 +301,7 @@ final class AudioPipeline {
                 systemAudio = sck
                 markSystemAudioStarted()
             } catch {
-                RTILog.log("system audio start failed — \(error)", category: "audio")
+                RTILog.log("system audio start failed — \(error)", category: .audio)
             }
         }
     }
@@ -311,7 +311,7 @@ final class AudioPipeline {
     private func connectSystemSTTIfNeeded() {
         guard isCapturing, !systemSTTConnected, let client = systemSoniox else { return }
         systemSTTConnected = true
-        RTILog.log("system audio flowing — connecting system STT leg", category: "audio")
+        RTILog.log("system audio flowing — connecting system STT leg", category: .audio)
         client.connect()
         startSystemIdleMonitor()
     }
@@ -339,7 +339,7 @@ final class AudioPipeline {
         guard systemSTTConnected, let client = systemSoniox else { return }
         let last = lastSystemBufferAt ?? .distantPast
         guard Date().timeIntervalSince(last) > systemIdleDisconnectThreshold else { return }
-        RTILog.log("system audio idle \(Int(Date().timeIntervalSince(last)))s — parking system STT leg until audio resumes", category: "audio")
+        RTILog.log("system audio idle \(Int(Date().timeIntervalSince(last)))s — parking system STT leg until audio resumes", category: .audio)
         systemSTTConnected = false
         systemSTTLinkArmed = false
         client.disconnect()
@@ -505,7 +505,7 @@ final class AudioPipeline {
                 systemAudioRecoveryAttempts += 1
                 RTILog.log(
                     "system audio backend recovered after \(reason) (\(systemAudioRecoveryAttempts)/\(systemAudioMaxRecoveryAttempts), captured=\(String(format: "%.1f", health.duration))s audible=\(String(format: "%.1f", health.audibleDuration))s peakRMS=\(String(format: "%.4f", health.peakRMSLevel)))",
-                    category: "audio"
+                    category: .audio
                 )
                 systemAudioOutageReported = false
                 onSystemAudioHealth?(.live)
@@ -531,7 +531,7 @@ final class AudioPipeline {
               let onPCM = systemPCMHandler, let onErr = systemCaptureErrorHandler else { return false }
         guard #available(macOS 14.2, *), systemAudio is CoreAudioTapCapture else { return false }
         didFallBackToSCK = true
-        RTILog.log("CoreAudio tap delivered no audio — falling back to ScreenCaptureKit", category: "audio")
+        RTILog.log("CoreAudio tap delivered no audio — falling back to ScreenCaptureKit", category: .audio)
         systemAudio?.stop()
         systemAudio = nil
         let sck = SystemAudioCapture()
@@ -544,7 +544,7 @@ final class AudioPipeline {
             markSystemAudioStarted()
             return true
         } catch {
-            RTILog.log("ScreenCaptureKit fallback failed — \(error)", category: "audio")
+            RTILog.log("ScreenCaptureKit fallback failed — \(error)", category: .audio)
             onSystemAudioHealth?(.failed)
             return false
         }
@@ -560,7 +560,7 @@ final class AudioPipeline {
         systemAudioOutageReported = true
         RTILog.log(
             "system audio \(reason) for \(Int(elapsed))s (captured=\(String(format: "%.1f", health.duration))s audible=\(String(format: "%.1f", health.audibleDuration))s peakRMS=\(String(format: "%.4f", health.peakRMSLevel)))",
-            category: "audio"
+            category: .audio
         )
         onSystemAudioHealth?(.failed)
     }

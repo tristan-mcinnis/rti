@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 public struct SonioxWord {
     public let text: String
@@ -110,7 +111,7 @@ public struct SonioxConfigMessage: Codable {
             api_key: apiKey,
             model: "stt-rt-v5",
             audio_format: "pcm_s16le",
-            sample_rate: 16_000,
+            sample_rate: AudioFormat.sampleRateHz,
             num_channels: 1,
             language_hints: Array(hints),
             enable_speaker_diarization: true,

@@ -161,7 +161,7 @@ enum SessionArchive {
         )
         let movedFrames = VisualFrameStore.promoteStagedFrames(stagingDirectory: staging, into: dir)
         if movedFrames > 0 {
-            RTILog.log("Archived \(movedFrames) screen frame(s) into \(dir.lastPathComponent)/frames.", category: "screenshot")
+            RTILog.log("Archived \(movedFrames) screen frame(s) into \(dir.lastPathComponent)/frames.", category: .screenshot)
         }
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
@@ -235,12 +235,12 @@ enum SessionArchive {
             smart: true,
             timeoutOverride: 300
         ) else {
-            RTILog.log("auto-summary: LLM call failed/timed out for \(dir.lastPathComponent)", category: "summary")
+            RTILog.log("auto-summary: LLM call failed/timed out for \(dir.lastPathComponent)", category: .summary)
             return nil
         }
         let payload = payloadRaw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !payload.isEmpty else {
-            RTILog.log("auto-summary: empty response for \(dir.lastPathComponent)", category: "summary")
+            RTILog.log("auto-summary: empty response for \(dir.lastPathComponent)", category: .summary)
             return nil
         }
         // Pull the `TITLE:` first line out of the response (best-effort — if
@@ -261,7 +261,7 @@ enum SessionArchive {
         let md = (frontmatter(kind: "Summary", startedAt: startedAt) + [title, "", body, ""]).joined(separator: "\n")
         let url = dir.appendingPathComponent("summary.md")
         writeOwnerOnly(md, to: url)
-        RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)" + (sessionTitle.map { ", title: \($0)" } ?? ""), category: "summary")
+        RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)" + (sessionTitle.map { ", title: \($0)" } ?? ""), category: .summary)
         notifySummaryReady(sessionFolder: dir.lastPathComponent)
         return url
     }
@@ -393,7 +393,7 @@ enum SessionArchive {
 
     static func runMeetingProcessor(transcriptURL: URL) {
         guard let claude = ExternalTools.claude() else {
-            RTILog.log("meeting processor: claude CLI not found; skipped \(transcriptURL.lastPathComponent)", category: "archive")
+            RTILog.log("meeting processor: claude CLI not found; skipped \(transcriptURL.lastPathComponent)", category: .archive)
             return
         }
         let workdir = vaultRoot(startingAt: transcriptURL.deletingLastPathComponent())
@@ -418,10 +418,10 @@ enum SessionArchive {
         }
         do {
             try proc.run()
-            RTILog.log("meeting processor started for \(transcriptURL.lastPathComponent)", category: "archive")
+            RTILog.log("meeting processor started for \(transcriptURL.lastPathComponent)", category: .archive)
         } catch {
             try? logHandle?.close()
-            RTILog.log("meeting processor failed to start: \(error.localizedDescription)", category: "archive")
+            RTILog.log("meeting processor failed to start: \(error.localizedDescription)", category: .archive)
         }
     }
 
@@ -488,7 +488,7 @@ enum SessionArchive {
             sidecarURL = nil
         }
 
-        RTILog.log("canonical meeting transcript exported: \(transcriptURL.path)", category: "archive")
+        RTILog.log("canonical meeting transcript exported: \(transcriptURL.path)", category: .archive)
         return CanonicalMeetingExport(transcriptURL: transcriptURL, sidecarURL: sidecarURL)
     }
 

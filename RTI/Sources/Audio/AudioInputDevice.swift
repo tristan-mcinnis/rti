@@ -16,12 +16,10 @@ struct AudioInputDevice: Identifiable, Hashable {
 }
 
 enum AudioInputDeviceStore {
-    private static let preferredUIDKey = "rti.audio.preferredInputUID"
-
     /// UID currently chosen by the user, or `systemDefaultUID` if untouched.
     static var preferredUID: String {
-        get { UserDefaults.standard.string(forKey: preferredUIDKey) ?? AudioInputDevice.systemDefaultUID }
-        set { UserDefaults.standard.set(newValue, forKey: preferredUIDKey) }
+        get { UserDefaults.standard.string(forKey: AudioSettingsDefaults.preferredInputUIDKey) ?? AudioInputDevice.systemDefaultUID }
+        set { UserDefaults.standard.set(newValue, forKey: AudioSettingsDefaults.preferredInputUIDKey) }
     }
 
     /// True when the user explicitly picked a device other than the system
@@ -243,10 +241,9 @@ enum AudioInputDeviceStore {
     /// Bundle ID of the app whose audio the system tap should capture, or ""
     /// for the default global tap (everything except RTI). Helper processes
     /// (e.g. browser renderers) are matched by bundle-ID prefix.
-    private static let captureAppKey = "rti.audio.captureAppBundleID"
     static var captureAppBundleID: String {
-        get { UserDefaults.standard.string(forKey: captureAppKey) ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: captureAppKey) }
+        get { UserDefaults.standard.string(forKey: AudioSettingsDefaults.captureAppBundleIDKey) ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: AudioSettingsDefaults.captureAppBundleIDKey) }
     }
 
     struct CaptureApp: Identifiable, Hashable {

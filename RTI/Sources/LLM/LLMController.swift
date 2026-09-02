@@ -24,25 +24,25 @@ final class LLMController {
     /// when idle or when only content tokens are streaming.
     private(set) var toolStatus: String?
     var smartMode: Bool {
-        didSet { UserDefaults.standard.set(smartMode, forKey: Self.smartModeKey) }
+        didSet { UserDefaults.standard.set(smartMode, forKey: LLMSettingsDefaults.smartModeKey) }
     }
 
     /// Which assistant action ⌘⏎ fires, by `AssistantAction.id`. Remappable per
     /// meeting; persisted. Defaults to "assist". (Was a `PrimaryAction` enum;
     /// the id strings are the same, so the stored value is compatible.)
     var primaryActionID: String {
-        didSet { UserDefaults.standard.set(primaryActionID, forKey: Self.primaryActionKey) }
+        didSet { UserDefaults.standard.set(primaryActionID, forKey: LLMSettingsDefaults.primaryActionKey) }
     }
 
     var recapDepth: RecapDepth {
-        didSet { UserDefaults.standard.set(recapDepth.rawValue, forKey: Self.recapDepthKey) }
+        didSet { UserDefaults.standard.set(recapDepth.rawValue, forKey: LLMSettingsDefaults.recapDepthKey) }
     }
 
     /// Passive-listener sessions: the user is observing the meeting, not
     /// speaking. Swaps the moderator-voiced quick actions ("what should I say
     /// next") for observer ones ("what's notable, what could I pass along").
     var listenerMode: Bool {
-        didSet { UserDefaults.standard.set(listenerMode, forKey: Self.listenerModeKey) }
+        didSet { UserDefaults.standard.set(listenerMode, forKey: LLMSettingsDefaults.listenerModeKey) }
     }
 
     /// Stop listener framing from leaking across sessions. `listenerMode` is a
@@ -87,20 +87,16 @@ final class LLMController {
         var sources: [String]
     }
 
-    private static let smartModeKey = "rti.llm.smartMode"
-    private static let primaryActionKey = "rti.llm.primaryAction"
-    private static let listenerModeKey = "rti.llm.listenerMode"
-    private static let recapDepthKey = "rti.llm.recapDepth"
     private static let iso8601 = ISO8601DateFormatter()
 
     private static let contextWindowSeconds: Double = 900
 
     init(request: LLMRequest = LLMRequest()) {
         self.request = request
-        smartMode = UserDefaults.standard.bool(forKey: Self.smartModeKey)
-        primaryActionID = UserDefaults.standard.string(forKey: Self.primaryActionKey) ?? "answerLatest"
-        listenerMode = UserDefaults.standard.bool(forKey: Self.listenerModeKey)
-        recapDepth = RecapDepth(rawValue: UserDefaults.standard.string(forKey: Self.recapDepthKey) ?? "") ?? .standard
+        smartMode = UserDefaults.standard.bool(forKey: LLMSettingsDefaults.smartModeKey)
+        primaryActionID = UserDefaults.standard.string(forKey: LLMSettingsDefaults.primaryActionKey) ?? "answerLatest"
+        listenerMode = UserDefaults.standard.bool(forKey: LLMSettingsDefaults.listenerModeKey)
+        recapDepth = RecapDepth(rawValue: UserDefaults.standard.string(forKey: LLMSettingsDefaults.recapDepthKey) ?? "") ?? .standard
     }
 
     /// Dispatch the remappable ⌘⏎ action.
@@ -603,7 +599,7 @@ final class LLMController {
                             self.pruneTrailingEmptyAssistant()
                             self.streamingEntryID = nil
                             self.pendingTurn = nil
-                            RTILog.log("LLM stream error: \(message)", category: "llm")
+                            RTILog.log("LLM stream error: \(message)", category: .llm)
                         }
                     }
                 }
@@ -634,7 +630,7 @@ final class LLMController {
         let firstTokenMS = pending.firstTokenAt.map { Int($0.timeIntervalSince(pending.startedAt) * 1000) }
         RTILog.log(
             "turn \(pending.action) total=\(totalMS)ms firstToken=\(firstTokenMS.map(String.init) ?? "n/a")ms tools=\(pending.toolCount) toolMs=\(pending.toolElapsedMS) sources=\(pending.sources.count)",
-            category: "latency"
+            category: .latency
         )
         VaultLogStore.append(.init(
             ts: pending.ts, action: pending.action, mode: pending.mode,

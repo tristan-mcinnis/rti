@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import CoreAudio
 import Foundation
+import RTICore
 
 enum AudioCaptureError: Error {
     case permissionDenied
@@ -13,7 +14,7 @@ final class AudioCaptureManager: @unchecked Sendable {
     static let targetFormat: AVAudioFormat = {
         guard let fmt = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
-            sampleRate: 16_000,
+            sampleRate: Double(AudioFormat.sampleRateHz),
             channels: 1,
             interleaved: true
         ) else {
@@ -102,9 +103,9 @@ final class AudioCaptureManager: @unchecked Sendable {
         let echoCancellation = echoSetting && !onBluetoothOutput
         do {
             try input.setVoiceProcessingEnabled(echoCancellation)
-            RTILog.log("voice processing (echo cancellation) = \(echoCancellation)\(onBluetoothOutput && echoSetting ? " [forced off: Bluetooth output]" : "")", category: "audio")
+            RTILog.log("voice processing (echo cancellation) = \(echoCancellation)\(onBluetoothOutput && echoSetting ? " [forced off: Bluetooth output]" : "")", category: .audio)
         } catch {
-            RTILog.log("voice processing unavailable on this device — using raw input: \(error)", category: "audio")
+            RTILog.log("voice processing unavailable on this device — using raw input: \(error)", category: .audio)
         }
 
         if let preferred = AudioInputDeviceStore.resolvePreferredDeviceID(),
@@ -116,7 +117,7 @@ final class AudioCaptureManager: @unchecked Sendable {
             // 2026-08-31: preferred input was AirPods; the user's side of a
             // meeting was silently lost). Fall through to the system default,
             // which the guard has already steered to the built-in mic.
-            RTILog.log("preferred input is a Bluetooth mic — ignoring it (A2DP guard keeps its mic off); using system default input", category: "audio")
+            RTILog.log("preferred input is a Bluetooth mic — ignoring it (A2DP guard keeps its mic off); using system default input", category: .audio)
         } else if let preferred = AudioInputDeviceStore.resolvePreferredDeviceID(),
            let unit = input.audioUnit {
             var deviceID = preferred
@@ -129,12 +130,12 @@ final class AudioCaptureManager: @unchecked Sendable {
                 UInt32(MemoryLayout.size(ofValue: deviceID))
             )
             if setStatus != noErr {
-                RTILog.log("failed to bind input device (status=\(setStatus)) — using system default", category: "audio")
+                RTILog.log("failed to bind input device (status=\(setStatus)) — using system default", category: .audio)
             } else {
-                RTILog.log("bound to input device id=\(deviceID)", category: "audio")
+                RTILog.log("bound to input device id=\(deviceID)", category: .audio)
             }
         } else {
-            RTILog.log("using system default input device", category: "audio")
+            RTILog.log("using system default input device", category: .audio)
         }
         let nativeFormat = input.outputFormat(forBus: 0)
 
@@ -172,7 +173,7 @@ final class AudioCaptureManager: @unchecked Sendable {
             do {
                 try input.setVoiceProcessingEnabled(false)
             } catch {
-                RTILog.log("failed to disable voice processing on stop: \(error)", category: "audio")
+                RTILog.log("failed to disable voice processing on stop: \(error)", category: .audio)
             }
         }
         converter = nil
@@ -211,7 +212,7 @@ final class AudioCaptureManager: @unchecked Sendable {
         let status = converter.convert(to: output, error: &error, withInputFrom: inputBlock)
         guard status != .error, output.frameLength > 0 else {
             if let error = error {
-                RTILog.log("converter error: \(error)", category: "audio")
+                RTILog.log("converter error: \(error)", category: .audio)
             }
             return
         }

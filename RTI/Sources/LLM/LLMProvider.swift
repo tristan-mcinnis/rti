@@ -72,13 +72,12 @@ enum LLMProviders {
 
     static let all: [LLMProviderOption] = [deepseek, openai, openrouter]
 
-    static let activeIdKey = "rti.llm.activeProviderId"
 
     /// Id of the active provider. Defaults to `deepseek`.
     /// Setting this persists to UserDefaults so it survives relaunch.
     static var activeId: String {
-        get { UserDefaults.standard.string(forKey: activeIdKey) ?? deepseek.id }
-        set { UserDefaults.standard.set(newValue, forKey: activeIdKey) }
+        get { UserDefaults.standard.string(forKey: LLMSettingsDefaults.activeProviderIdKey) ?? deepseek.id }
+        set { UserDefaults.standard.set(newValue, forKey: LLMSettingsDefaults.activeProviderIdKey) }
     }
 
     static var activeOption: LLMProviderOption {

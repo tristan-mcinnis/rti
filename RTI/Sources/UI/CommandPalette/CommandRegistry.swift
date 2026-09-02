@@ -103,7 +103,6 @@ final class CommandRegistry {
     /// `isAvailable` at query time.
     private(set) var commands: [RTICommand] = []
 
-    nonisolated private static let recentsKey = "rti.palette.recents"
     nonisolated private static let recentsCap = 5
 
     private init() {}
@@ -150,7 +149,7 @@ final class CommandRegistry {
         if recents.count > Self.recentsCap {
             recents = Array(recents.prefix(Self.recentsCap))
         }
-        UserDefaults.standard.set(recents, forKey: Self.recentsKey)
+        UserDefaults.standard.set(recents, forKey: UISettingsDefaults.paletteRecentsKey)
     }
 
     /// Available commands ordered by recency. Internal helper exposed for
@@ -164,7 +163,7 @@ final class CommandRegistry {
     // MARK: - private
 
     private func persistedRecents() -> [String] {
-        UserDefaults.standard.array(forKey: Self.recentsKey) as? [String] ?? []
+        UserDefaults.standard.array(forKey: UISettingsDefaults.paletteRecentsKey) as? [String] ?? []
     }
 
     private func matchPosition(_ cmd: RTICommand, needle: String) -> Int? {

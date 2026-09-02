@@ -18,6 +18,7 @@ final class AppLog {
     struct Entry: Identifiable, Equatable {
         let id: UUID = UUID()
         let timestamp: Date
+        let level: LogLevel
         let category: String
         let message: String
     }
@@ -47,14 +48,17 @@ final class AppLog {
         Self.fileQueue.async { Self.pruneOldFiles() }
     }
 
-    func log(_ message: String, category: String = "RTI") {
-        let entry = Entry(timestamp: Date(), category: category, message: message)
+    func log(_ message: String, level: LogLevel = .info, category: String = LogCategory.general.rawValue) {
+        let entry = Entry(timestamp: Date(), level: level, category: category, message: message)
         entries.append(entry)
         if entries.count > maxEntries {
             entries.removeFirst(entries.count - maxEntries)
         }
-        NSLog("[%@] %@", category, message)
-        let line = "\(Self.lineStamp.string(from: entry.timestamp)) [\(category)] \(message)\n"
+        // `.info` is the historical default and keeps the line shape unchanged;
+        // other levels gain a tag so they stand out in the file and console.
+        let tagged = level == .info ? message : "\(level.tag) \(message)"
+        NSLog("[%@] %@", category, tagged)
+        let line = "\(Self.lineStamp.string(from: entry.timestamp)) [\(category)] \(tagged)\n"
         let day = Self.dayStamp.string(from: entry.timestamp)
         Self.fileQueue.async { Self.append(line, day: day) }
     }
@@ -98,19 +102,71 @@ final class AppLog {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss.SSS"
         return entries.map { e in
-            "\(formatter.string(from: e.timestamp)) [\(e.category)] \(e.message)"
+            let tagged = e.level == .info ? e.message : "\(e.level.tag) \(e.message)"
+            return "\(formatter.string(from: e.timestamp)) [\(e.category)] \(tagged)"
         }.joined(separator: "\n")
     }
+}
+
+/// Severity of a log line. `.info` is the default and matches what every
+/// pre-level call site produced; the others add a tag to the rendered line.
+enum LogLevel: Int, Comparable, Sendable {
+    case debug
+    case info
+    case warning
+    case error
+
+    var tag: String {
+        switch self {
+        case .debug: "DEBUG"
+        case .info: "INFO"
+        case .warning: "WARN"
+        case .error: "ERROR"
+        }
+    }
+
+    static func < (lhs: LogLevel, rhs: LogLevel) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+/// The subsystem a log line belongs to. Raw values are the strings shown in
+/// the Logs window and written to disk; they predate the enum, so keep them.
+enum LogCategory: String, Sendable {
+    case general = "RTI"
+    case analysis
+    case archive
+    case audio
+    case credentials
+    case discussionGuide
+    case findings
+    case guide
+    case hotkey
+    case latency
+    case launchAtLogin = "launch-at-login"
+    case llm
+    case modes
+    case notes
+    case screenshot
+    case soniox
+    case summary
+    case systemAudio = "system-audio"
+    case vault
+    case vision
 }
 
 /// `RTILog.log("…")` is the call-site form so existing NSLog locations are
 /// trivially upgradable. `RTILog.log(...)` always lands on the main actor.
 enum RTILog {
-    static func log(_ message: String, category: String = "RTI") {
+    static func log(_ message: String, level: LogLevel = .info, category: LogCategory = .general) {
+        log(message, level: level, category: category.rawValue)
+    }
+
+    /// String-category form, for messages that arrive from RTICore's
+    /// `CoreLog` sink with a category the app does not model.
+    static func log(_ message: String, level: LogLevel = .info, category: String) {
         if Thread.isMainThread {
-            MainActor.assumeIsolated { AppLog.shared.log(message, category: category) }
+            MainActor.assumeIsolated { AppLog.shared.log(message, level: level, category: category) }
         } else {
-            DispatchQueue.main.async { AppLog.shared.log(message, category: category) }
+            DispatchQueue.main.async { AppLog.shared.log(message, level: level, category: category) }
         }
     }
 }

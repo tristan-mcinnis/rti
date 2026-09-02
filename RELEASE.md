@@ -133,5 +133,17 @@ RTI uses a lightweight GitHub-Releases check rather than Sparkle/appcasts:
 
 Ad-hoc-signed DMGs are built via `./scripts/release-unsigned.sh <version>`. They are **not** notarized — right-click → **Open** on first launch. Signed/notarized DMGs follow the recipe above.
 
+### Tags (from `git tag`, 2026-09-02)
+
+| Tag | Date | Commit | What it marks |
+|---|---|---|---|
+| `v0.1.0-beta9` | 2026-05-26 | `8d8f4b7` | Last release tag; the ad-hoc DMG line before the personal refocus. |
+| `pre-strip-20260819` | 2026-08-14 | `c36810e` | Snapshot before the 2026-08-19 minimal strip experiment. |
+| `pre-restore-20260828` | 2026-08-23 | `484423b` | Snapshot before the strip was reverted wholesale. |
+
+No tag has been cut since `v0.1.0-beta9`; installs come from
+`scripts/install-local.sh` (Apple Development identity, stamped build number),
+not from a tagged DMG. The narrative milestone below predates the tags list.
+
 ### Personal refocus (baseline)
 - **Stripped to real-time-only.** Removed everything that wasn't live meeting assistance: the SQLite database + markdown corpus, session history/detail UI, audio/video import, cross-corpus "Ask" + project Q&A, FTS5 + dense-embedding search, the periodic post-hoc analysis (notes / dossiers / themes / discussion guide), the `rti-mcp` JSON-RPC server, and calendar integration. The app is now **ephemeral**: the live transcript and chat are held in memory for the session and dropped when it ends; the WAV recording is deleted on stop. Dropped the GRDB dependency — modes are stored as a small JSON file, user counter-panels are in-memory.

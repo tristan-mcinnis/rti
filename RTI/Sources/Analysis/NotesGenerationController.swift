@@ -64,7 +64,7 @@ final class NotesGenerationController {
         // Nothing new spoken since the last note → skip quietly (no error).
         let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
         guard !window.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        RTILog.log("notes: generating from \(window.count) chars (since \(windowStartMs)ms)", category: "notes")
+        RTILog.log("notes: generating from \(window.count) chars (since \(windowStartMs)ms)", category: .notes)
 
         // Continuity: each tick only sees its 2-minute slice, so feed the
         // previous block back in — the model stops re-introducing people and
@@ -85,7 +85,7 @@ final class NotesGenerationController {
             // There WAS transcript to summarize but the model returned nothing —
             // a real failure worth surfacing (don't leave the user guessing).
             lastError = "Couldn't generate notes just now — will retry."
-            RTILog.log("notes: model returned nothing for \(window.count)-char window", category: "notes")
+            RTILog.log("notes: model returned nothing for \(window.count)-char window", category: .notes)
             return nil
         }
 

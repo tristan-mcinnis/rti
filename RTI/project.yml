@@ -117,6 +117,7 @@ targets:
       - path: Sources/Audio/WAVWriter.swift
       - path: Sources/Audio/AudioInputDevice.swift
       - path: Sources/Support/AppLog.swift
+      - path: Sources/Support/SettingsKeys.swift
       - path: Sources/Support/ExternalTools.swift
       - path: Sources/LLM/RetrievalHeuristics.swift
     dependencies:

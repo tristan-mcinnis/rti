@@ -46,7 +46,7 @@ final class LLMRequest: @unchecked Sendable {
                 return nil
             } catch {
                 // Anything else is unexpected — don't let it vanish silently.
-                RTILog.log("LLMRequest unexpected error: \(error)", category: "llm")
+                RTILog.log("LLMRequest unexpected error: \(error)", category: .llm)
                 return nil
             }
         }

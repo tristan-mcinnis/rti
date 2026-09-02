@@ -107,10 +107,8 @@ enum RTIDesign {
             }
         }
 
-        static let storageKey = "rti.sessionDetail.density"
-
         static var current: Density {
-            let raw = UserDefaults.standard.string(forKey: storageKey) ?? Density.comfortable.rawValue
+            let raw = UserDefaults.standard.string(forKey: UISettingsDefaults.sessionDetailDensityKey) ?? Density.comfortable.rawValue
             return Density(rawValue: raw) ?? .comfortable
         }
     }

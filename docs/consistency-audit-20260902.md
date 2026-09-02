@@ -20,8 +20,8 @@ this one ranks "same mechanism, N implementations".
   stale; it is a roadmap, not a status file. **Left**, noted below.
 - `RELEASE.md` "Released versions" lists narrative milestones, not tags;
   the last tag is `v0.1.0-beta9`. **Left**, noted below.
-- `rti_feature_tracker.tsv` / `.xlsx` are tracked in git at the repo root.
-  **Left** as instructed; they belong in `docs/` or out of git.
+- `rti_feature_tracker.tsv` / `.xlsx` were tracked in git at the repo root.
+  **Moved** to `docs/` in the follow-up pass (2026-09-02, second commit).
 
 ### Duplicated mechanisms (counts before this pass)
 | Mechanism | Count | Locations | Verdict |
@@ -92,3 +92,55 @@ the same order, same detached launch semantics.
 7. **Double meeting processing** (app `claude -p` + vault drain): pick one
    owner; the drain is the safer one since it is not launched with
    `--dangerously-skip-permissions` from meeting audio (audit-0901 item 2).
+
+## Follow-up pass (2026-09-02, second commit)
+
+Leftovers 1 to 6 are done; behaviour is unchanged.
+
+1. **Settings keys**: `Support/SettingsKeys.swift` (new) now holds every
+   `*Defaults` enum; `NotificationNames.swift` keeps only the
+   `Notification.Name` extension. The real count of ad-hoc key constants
+   was 15, not ~24 (the audit over-counted; `AnalysisScheduler` takes its
+   keys as parameters and never owned any): `LLMController` 4,
+   `SonioxClient` 2, `AudioInputDevice` 2, `PromptStore` 2, and one each in
+   `LLMProvider`, `ModeStore`, `ScreenPrivacy`, `RTIDesign`,
+   `CommandRegistry`. All 15 moved; every key string is byte-identical, so
+   saved settings persist. The one remaining literal is the migration flag
+   inside `CredentialStore.migrateLegacyIfNeeded`, a one-shot local.
+2. **Log levels + categories**: `LogLevel` (debug/info/warning/error) and
+   `LogCategory` (20 cases, raw values = the old strings) in `AppLog.swift`.
+   `RTILog.log(_:level:category:)` defaults to `.info`, which renders exactly
+   as before; other levels prefix a tag. 102 call sites migrated to enum
+   categories; the `CoreLog` bridge keeps the string overload. No call site
+   was assigned a non-default level (mechanical migration only).
+3. **16 kHz**: `RTI/Core/Support/AudioFormat.swift`, `AudioFormat.sampleRateHz`;
+   the five sites derive from it (the sixth hit, `VaultFiles.maxReadChars =
+   16000`, is a character budget, not audio).
+4. **`KeychainStore` → `CredentialStore`**: the file primitives merged into
+   the existing `CredentialStore` enum (file renamed with `git mv`), path and
+   JSON format untouched. Docs, `flows.json`, and the code comment updated.
+5. **`PRODUCTION-GOAL.md`** progress block refreshed to 2026-09-02;
+   `RELEASE.md` lists the three real tags from `git tag`.
+6. **Feature tracker** moved to `docs/`.
+
+### Leftover 7 — recommendation (owner's decision, not made here)
+
+Make the vault `rti-meeting-drain` LaunchAgent the sole owner of `/meeting`
+processing and drop the app-side `runMeetingProcessor` (`claude -p`) call.
+Reasons, in order of weight:
+
+1. Safety. The app launches `claude -p --dangerously-skip-permissions` with
+   meeting audio as its input (audit-0901 item 2). The drain runs under the
+   vault's own permission profile and can be tightened without an app build.
+2. One writer. Today both consumers race on the same `-transcript.txt`; the
+   drain's already-processed check is what prevents double notes. Removing
+   the app-side call turns a belt-and-braces guard into the only path.
+3. Failure visibility. The drain has a log and a schedule; a failed app-side
+   run dies silently with the app process and is only found in AppLog.
+4. Retry. The drain re-scans on its interval, so a transient `claude` outage
+   self-heals; the app fires once and never retries.
+5. Cost of the change: delete one call site in `SessionArchive` plus the
+   `auto_process*` config keys; keep the canonical export, which the drain
+   already reads. Latency rises from seconds to one drain interval, which is
+   acceptable for a note nobody reads mid-meeting.
+

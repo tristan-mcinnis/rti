@@ -551,7 +551,7 @@ final class SessionCoordinator {
                             SessionArchive.clearAutomaticUpgradePending(in: archiveDir)
                             url = result.summaryURL
                         } catch {
-                            RTILog.log("automatic Soniox transcript upgrade failed; retained audio is available for retry: \(error.localizedDescription)", category: "archive")
+                            RTILog.log("automatic Soniox transcript upgrade failed; retained audio is available for retry: \(error.localizedDescription)", category: .archive)
                             self?.postProcessingStatus = "Upgrade failed · audio retained"
                             url = nil
                         }

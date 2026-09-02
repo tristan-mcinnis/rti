@@ -124,7 +124,7 @@ enum LLMToolRegistry {
             // Focus on the meeting's project when one is picked (nil = whole vault).
             let scope = MeetingContextStore.shared.workstreamScopePath
             let response = await VaultRetrieval.search(query: query, scopeRelativePath: scope)
-            RTILog.log("search_vault '\(query)' took \(response.elapsedMS)ms", category: "vault")
+            RTILog.log("search_vault '\(query)' took \(response.elapsedMS)ms", category: .vault)
             return response.formattedResults
         },
         runningStatus: "Searching the vault…"

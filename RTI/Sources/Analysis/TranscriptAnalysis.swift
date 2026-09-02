@@ -43,7 +43,7 @@ enum TranscriptAnalysis {
         do {
             payload = try JSONExtractor.decode(response, as: Payload.self)
         } catch {
-            RTILog.log("TranscriptAnalysis[\(category)] decode failed: \(error)", category: "analysis")
+            RTILog.log("TranscriptAnalysis[\(category)] decode failed: \(error)", category: .analysis)
             return nil
         }
         return Result(payload: payload, endMs: endMs)

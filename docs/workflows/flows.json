@@ -46,7 +46,7 @@
     { "id": "LLMClient",                  "subsystem": "llm",        "file": "RTI/Sources/LLM/LLMClient.swift",                              "description": "Low-level OpenAI-compatible SSE client." },
     { "id": "PromptBuilder",              "subsystem": "llm",        "file": "RTI/Sources/LLM/PromptBuilder.swift",                          "description": "Assembles system + conversation messages from PromptContext + active mode." },
     { "id": "ToolLoop",                   "subsystem": "llm",        "file": "RTI/Sources/LLM/ToolLoop.swift",                               "description": "Streaming + tool-use loop. Emits content / reasoning / tool-call events." },
-    { "id": "LLMProviders",               "subsystem": "llm",        "file": "RTI/Sources/LLM/LLMProvider.swift",                            "description": "Provider registry + active selection (DeepSeek default). Reads keys from KeychainStore." },
+    { "id": "LLMProviders",               "subsystem": "llm",        "file": "RTI/Sources/LLM/LLMProvider.swift",                            "description": "Provider registry + active selection (DeepSeek default). Reads keys from CredentialStore." },
 
     { "id": "CorpusManager",              "subsystem": "corpus",     "file": "RTI/Sources/Corpus/CorpusManager.swift",                       "description": "Session-finalise render pipeline: writes markdown then triggers FTS + dense reindex." },
     { "id": "CorpusWriter",               "subsystem": "corpus",     "file": "RTI/Sources/Corpus/CorpusWriter.swift",                        "description": "Atomic markdown writes to ~/meetings/*.md (canonical record)." },
@@ -68,7 +68,7 @@
     { "id": "AskCorpusView",              "subsystem": "ui",         "file": "RTI/Sources/UI/SessionsControl/AskCorpusView.swift",           "description": "Cross-corpus Q&A SwiftUI view. Calls AskCorpusController on submit." },
 
     { "id": "ModeStore",                  "subsystem": "settings",   "file": "RTI/Sources/Modes/ModeStore.swift",                            "description": "Holds active mode + reference files. Reads/writes UserDefaults." },
-    { "id": "KeychainStore",              "subsystem": "settings",   "file": "RTI/Sources/Settings/KeychainStore.swift",                     "description": "API key storage at ~/Library/Application Support/RTI/credentials.json (mode 0600)." }
+    { "id": "CredentialStore",              "subsystem": "settings",   "file": "RTI/Sources/Settings/CredentialStore.swift",                     "description": "API key storage at ~/Library/Application Support/RTI/credentials.json (mode 0600)." }
   ],
   "flows": [
     {
@@ -80,7 +80,7 @@
         { "from": "RTICommand",          "to": "SessionCoordinator",   "label": "toggleSession()",       "passes": "Command action calls into the SessionCoordinator singleton's toggleSession entry point.",                                                                          "ref": "RTI/Sources/AppDelegate.swift:62-69" },
         { "from": "SessionCoordinator",  "to": "AudioPipeline",        "label": "prepare(sessionId)",    "passes": "After mic permission resolves, SessionCoordinator builds an AudioPipeline for the new session id.",                                                                "ref": "RTI/Sources/Session/SessionCoordinator.swift:274-365" },
         { "from": "AudioPipeline",       "to": "AudioCaptureManager",  "label": "start tap",             "passes": "AVAudioEngine input tap delivers 16 kHz mono PCM buffers.",                                                                                                       "ref": "RTI/Sources/Audio/AudioPipeline.swift:69-122" },
-        { "from": "AudioPipeline",       "to": "SonioxClient",         "label": "connect + send PCM",    "passes": "Opens wss://api.soniox.com/transcribe-websocket with API key from KeychainStore; pipes PCM frames as binary websocket messages.",                                "ref": "RTI/Sources/Audio/AudioPipeline.swift:43-122" },
+        { "from": "AudioPipeline",       "to": "SonioxClient",         "label": "connect + send PCM",    "passes": "Opens wss://api.soniox.com/transcribe-websocket with API key from CredentialStore; pipes PCM frames as binary websocket messages.",                                "ref": "RTI/Sources/Audio/AudioPipeline.swift:43-122" },
         { "from": "SonioxClient",        "to": "SessionCoordinator",   "label": "onWords callback",      "passes": "Parses SonioxResponse JSON; emits SonioxWord arrays (interim is_final=false, commit is_final=true) back to the coordinator.",                                       "ref": "RTI/Sources/Soniox/SonioxClient.swift:233-235" },
         { "from": "SessionCoordinator",  "to": "TranscriptPipeline",   "label": "process(words)",        "passes": "Routes by speaker channel (0 → self, 1+ → them_N); pipeline aggregates words into turn objects.",                                                                  "ref": "RTI/Sources/Session/SessionCoordinator.swift:523-526" },
         { "from": "TranscriptPipeline",  "to": "LiveSessionStore",     "label": "writeJSONL(turn)",      "passes": "Final turns get appended to the per-session JSONL live file. Interim updates stay in memory until they finalise.",                                                  "ref": "RTI/Sources/Session/TranscriptPipeline.swift:27-32" }
@@ -202,13 +202,13 @@
     {
       "id": "change-provider",
       "title": "Change LLM provider / API key",
-      "summary": "Settings writes the API key to KeychainStore and updates the active provider id. The next LLMRequest reads the fresh key + base URL on demand.",
+      "summary": "Settings writes the API key to CredentialStore and updates the active provider id. The next LLMRequest reads the fresh key + base URL on demand.",
       "steps": [
-        { "from": "OverlayPanelView",  "to": "KeychainStore",   "label": "set(apiKey)",           "passes": "Settings UI writes the key to ~/Library/Application Support/RTI/credentials.json (mode 0600). Never stored in UserDefaults.",                                  "ref": "RTI/Sources/Settings/KeychainStore.swift:29-39" },
+        { "from": "OverlayPanelView",  "to": "CredentialStore",   "label": "set(apiKey)",           "passes": "Settings UI writes the key to ~/Library/Application Support/RTI/credentials.json (mode 0600). Never stored in UserDefaults.",                                  "ref": "RTI/Sources/Settings/CredentialStore.swift:29-39" },
         { "from": "OverlayPanelView",  "to": "LLMProviders",    "label": "activeId = newId",      "passes": "Provider selection persists; LLMProviders.active resolves to the matching LLMProviderConfig (DeepSeek / OpenAI / etc.).",                                       "ref": "RTI/Sources/LLM/LLMProvider.swift:33-62" },
         { "from": "LLMController",     "to": "LLMRequest",      "label": "next turn",             "passes": "Subsequent send() builds an LLMRequest with no cached provider info — it asks LLMProviders.active fresh each time.",                                              "ref": "RTI/Sources/LLM/LLMController.swift" },
-        { "from": "LLMRequest",        "to": "LLMProviders",    "label": "config lookup",         "passes": "Resolves baseURL + model + apiKey closure; the closure reads from KeychainStore so rotated keys take effect immediately.",                                          "ref": "RTI/Sources/LLM/LLMProvider.swift:19-46" },
-        { "from": "LLMProviders",      "to": "KeychainStore",   "label": "apiKey closure",        "passes": "Keychain read returns the freshly-written key; LLMClient uses it for the Authorization header on the next SSE call.",                                              "ref": "RTI/Sources/Settings/KeychainStore.swift" },
+        { "from": "LLMRequest",        "to": "LLMProviders",    "label": "config lookup",         "passes": "Resolves baseURL + model + apiKey closure; the closure reads from CredentialStore so rotated keys take effect immediately.",                                          "ref": "RTI/Sources/LLM/LLMProvider.swift:19-46" },
+        { "from": "LLMProviders",      "to": "CredentialStore",   "label": "apiKey closure",        "passes": "Keychain read returns the freshly-written key; LLMClient uses it for the Authorization header on the next SSE call.",                                              "ref": "RTI/Sources/Settings/CredentialStore.swift" },
         { "from": "LLMRequest",        "to": "LLMClient",       "label": "stream(request)",       "passes": "Streaming OpenAI-compatible SSE call against the new provider's base URL.",                                                                                          "ref": "RTI/Sources/LLM/LLMClient.swift" }
       ]
     }

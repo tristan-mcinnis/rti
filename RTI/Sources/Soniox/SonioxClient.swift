@@ -88,7 +88,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             let dropped = preConfigDropCount + 1
             preConfigDropCount = dropped
             if dropped == 1 || dropped % 500 == 0 {
-                RTILog.log("sendAudio dropped pre-config frame #\(dropped) (\(data.count) bytes)", category: "soniox")
+                RTILog.log("sendAudio dropped pre-config frame #\(dropped) (\(data.count) bytes)", category: .soniox)
             }
             return
         }
@@ -100,7 +100,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         sentByteCount += data.count
         lock.unlock()
         if sent == 1 || sent % 500 == 0 {
-            RTILog.log("sent audio frame #\(sent) (total \(sentByteCount) bytes)", category: "soniox")
+            RTILog.log("sent audio frame #\(sent) (total \(sentByteCount) bytes)", category: .soniox)
         }
     }
 
@@ -137,7 +137,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             didOpen = true
             retryCount = 0
             lock.unlock()
-            RTILog.log("connected — sending config", category: "soniox")
+            RTILog.log("connected — sending config", category: .soniox)
             emitStatus(.live)
             sendConfig()
 
@@ -171,7 +171,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         let blocked = intentionalDisconnect
         let phaseDidOpen = didOpen
         lock.unlock()
-        RTILog.log("dropped — \(failure)", category: "soniox")
+        RTILog.log("dropped — \(failure)", category: .soniox)
         guard !blocked else { return }
         if failure.shouldRetry {
             scheduleReconnect(after: failure)
@@ -210,7 +210,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         guard retryCount < Self.maxRetries else {
             retryWorkItem = nil
             lock.unlock()
-            RTILog.log("SonioxClient: max retries reached", category: "soniox")
+            RTILog.log("SonioxClient: max retries reached", category: .soniox)
             emitStatus(.failed)
             DispatchQueue.main.async { [weak self] in
                 self?.onError?(failure, phaseDidOpen)
@@ -233,7 +233,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         retryWorkItem = item
         lock.unlock()
 
-        RTILog.log("SonioxClient: reconnect attempt \(attempt) in \(delay)s", category: "soniox")
+        RTILog.log("SonioxClient: reconnect attempt \(attempt) in \(delay)s", category: .soniox)
         emitStatus(.reconnecting)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
@@ -260,10 +260,10 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
                 configSent = true
                 lock.unlock()
                 let hasTranslation = translationConfig != nil
-                RTILog.log("sent config (translation=\(hasTranslation), contextTerms=\(contextTerms.count))", category: "soniox")
+                RTILog.log("sent config (translation=\(hasTranslation), contextTerms=\(contextTerms.count))", category: .soniox)
             }
         } catch {
-            RTILog.log("SonioxClient: config encode failed: \(error)", category: "soniox")
+            RTILog.log("SonioxClient: config encode failed: \(error)", category: .soniox)
         }
     }
 
@@ -274,7 +274,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             let msg = try JSONDecoder().decode(SonioxTranscriptMessage.self, from: data)
             if let code = msg.error_code {
                 let detail = msg.error_message ?? "no detail"
-                RTILog.log("server error code=\(code) \(detail)", category: "soniox")
+                RTILog.log("server error code=\(code) \(detail)", category: .soniox)
                 // Route server application errors through the same retry/fatal
                 // gate as transport drops. A transient code (408 decode timeout,
                 // 429, 5xx) must RECONNECT, not fire onError — otherwise a brief
@@ -288,13 +288,13 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             let words = raw.map { $0.toSonioxWord() }
             let finalCount = words.filter(\.isFinal).count
             if finalCount > 0 {
-                RTILog.log("received \(words.count) tokens (\(finalCount) final)", category: "soniox")
+                RTILog.log("received \(words.count) tokens (\(finalCount) final)", category: .soniox)
             }
             DispatchQueue.main.async { [weak self] in
                 self?.onWords?(words)
             }
         } catch {
-            RTILog.log("SonioxClient: decode failed: \(error)", category: "soniox")
+            RTILog.log("SonioxClient: decode failed: \(error)", category: .soniox)
         }
     }
 }
@@ -366,10 +366,9 @@ enum STTProviders {
 
     static var all: [STTProviderConfig] { [soniox] }
 
-    static let activeIdKey = "rti.stt.activeProviderId"
     static var activeId: String {
-        get { UserDefaults.standard.string(forKey: activeIdKey) ?? soniox.id }
-        set { UserDefaults.standard.set(soniox.id, forKey: activeIdKey) }
+        get { UserDefaults.standard.string(forKey: STTSettingsDefaults.activeProviderIdKey) ?? soniox.id }
+        set { UserDefaults.standard.set(soniox.id, forKey: STTSettingsDefaults.activeProviderIdKey) }
     }
     static var active: STTProviderConfig { all.first { $0.id == activeId } ?? soniox }
 
@@ -413,10 +412,9 @@ enum AsyncTranscriptProviders {
 
     static let all: [AsyncTranscriptProviderOption] = [soniox, aliyun]
 
-    static let activeIdKey = "rti.stt.asyncProviderId"
     static var activeId: String {
-        get { UserDefaults.standard.string(forKey: activeIdKey) ?? soniox.id }
-        set { UserDefaults.standard.set(newValue, forKey: activeIdKey) }
+        get { UserDefaults.standard.string(forKey: STTSettingsDefaults.asyncProviderIdKey) ?? soniox.id }
+        set { UserDefaults.standard.set(newValue, forKey: STTSettingsDefaults.asyncProviderIdKey) }
     }
 
     static var active: AsyncTranscriptProviderOption {
@@ -470,7 +468,7 @@ final class AssemblyAIClient: WebSocketDelegate, STTClient, @unchecked Sendable 
         comps?.queryItems = [
             URLQueryItem(name: "speech_model", value: "u3-rt-pro"),
             URLQueryItem(name: "encoding", value: "pcm_s16le"),
-            URLQueryItem(name: "sample_rate", value: "16000"),
+            URLQueryItem(name: "sample_rate", value: String(AudioFormat.sampleRateHz)),
             URLQueryItem(name: "format_turns", value: "true"),
             URLQueryItem(name: "speaker_labels", value: "true"),
             URLQueryItem(name: "token", value: apiKey)
@@ -546,7 +544,7 @@ final class AssemblyAIClient: WebSocketDelegate, STTClient, @unchecked Sendable 
             didOpen = true
             retryCount = 0
             lock.unlock()
-            RTILog.log("assemblyai connected", category: "soniox")
+            RTILog.log("assemblyai connected", category: .soniox)
             emitStatus(.live)
 
         case .text(let string):
@@ -629,7 +627,7 @@ final class AssemblyAIClient: WebSocketDelegate, STTClient, @unchecked Sendable 
         let blocked = intentionalDisconnect
         let phaseDidOpen = didOpen
         lock.unlock()
-        RTILog.log("assemblyai dropped — \(failure)", category: "soniox")
+        RTILog.log("assemblyai dropped — \(failure)", category: .soniox)
         guard !blocked else { return }
         if failure.shouldRetry {
             scheduleReconnect(after: failure)
@@ -651,7 +649,7 @@ final class AssemblyAIClient: WebSocketDelegate, STTClient, @unchecked Sendable 
         guard retryCount < Self.maxRetries else {
             retryWorkItem = nil
             lock.unlock()
-            RTILog.log("assemblyai: max retries reached", category: "soniox")
+            RTILog.log("assemblyai: max retries reached", category: .soniox)
             emitStatus(.failed)
             DispatchQueue.main.async { [weak self] in self?.onError?(failure, phaseDidOpen) }
             return
@@ -669,7 +667,7 @@ final class AssemblyAIClient: WebSocketDelegate, STTClient, @unchecked Sendable 
         }
         retryWorkItem = item
         lock.unlock()
-        RTILog.log("assemblyai: reconnect attempt \(attempt) in \(delay)s", category: "soniox")
+        RTILog.log("assemblyai: reconnect attempt \(attempt) in \(delay)s", category: .soniox)
         emitStatus(.reconnecting)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }

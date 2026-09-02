@@ -19,7 +19,7 @@ final class GlobalHotkey {
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetEventDispatcherTarget(), 0, &ref)
         guard status == noErr, let ref = ref else {
-            RTILog.log("RegisterEventHotKey failed for id=\(id), status=\(status)", category: "hotkey")
+            RTILog.log("RegisterEventHotKey failed for id=\(id), status=\(status)", category: .hotkey)
             return
         }
         refs[id] = ref

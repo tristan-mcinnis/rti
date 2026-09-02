@@ -23,12 +23,9 @@ final class PromptStore {
     /// id → default hash at the time the override was saved.
     private var baseHashes: [String: String]
 
-    private static let overridesKey = "rti.prompts.overridesV1"
-    private static let baseHashesKey = "rti.prompts.baseHashesV1"
-
     private init() {
-        overrides = Self.loadMap(Self.overridesKey)
-        baseHashes = Self.loadMap(Self.baseHashesKey)
+        overrides = Self.loadMap(PromptSettingsDefaults.overridesKey)
+        baseHashes = Self.loadMap(PromptSettingsDefaults.baseHashesKey)
     }
 
     // MARK: - Resolution
@@ -142,8 +139,8 @@ final class PromptStore {
     // MARK: - Persistence
 
     private func persist() {
-        UserDefaults.standard.set(overrides, forKey: Self.overridesKey)
-        UserDefaults.standard.set(baseHashes, forKey: Self.baseHashesKey)
+        UserDefaults.standard.set(overrides, forKey: PromptSettingsDefaults.overridesKey)
+        UserDefaults.standard.set(baseHashes, forKey: PromptSettingsDefaults.baseHashesKey)
     }
 
     private static func loadMap(_ key: String) -> [String: String] {

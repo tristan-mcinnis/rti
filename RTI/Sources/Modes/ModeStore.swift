@@ -10,14 +10,12 @@ final class ModeStore {
     var activeModeId: String? {
         didSet {
             if let id = activeModeId {
-                UserDefaults.standard.set(id, forKey: Self.activeKey)
+                UserDefaults.standard.set(id, forKey: ModeSettingsDefaults.activeIdKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: Self.activeKey)
+                UserDefaults.standard.removeObject(forKey: ModeSettingsDefaults.activeIdKey)
             }
         }
     }
-
-    private static let activeKey = "rti.modes.activeId"
 
     private init() {
         let loaded = Self.fileURL.flatMap { ModeStorage.load(from: $0) } ?? ModeStorage.builtinSeeds()
@@ -25,7 +23,7 @@ final class ModeStore {
         // without a migration; user-added modes are untouched.
         modes = ModeStorage.upgradingBuiltins(in: loaded)
         persist()
-        let stored = UserDefaults.standard.string(forKey: Self.activeKey)
+        let stored = UserDefaults.standard.string(forKey: ModeSettingsDefaults.activeIdKey)
         self.activeModeId = stored ?? "builtin.meeting"
     }
 
@@ -84,7 +82,7 @@ final class ModeStore {
         do {
             try ModeStorage.save(modes, to: url)
         } catch {
-            RTILog.log("ModeStore persist failed: \(error)", category: "modes")
+            RTILog.log("ModeStore persist failed: \(error)", category: .modes)
         }
     }
 }

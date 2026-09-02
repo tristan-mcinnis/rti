@@ -158,7 +158,7 @@ RTI/
     Modes/                         # ModeStore (JSON-backed prompt presets)
     Analysis/                      # Real-time Notes / Dossiers / Discussion Guide panels (in-memory)
     Widgets/                       # Recording-pill widget
-    Settings/                      # Tabbed Settings, KeychainStore, LaunchAtLogin, Logs
+    Settings/                      # Tabbed Settings, CredentialStore, LaunchAtLogin, Logs
     Support/                       # AppLog, CrashLog, NotificationNames, formatters
     UI/                            # WindowCoordinator, MenuCoordinator, HotkeyCoordinator, design system, SwiftUI views
   Tests/                           # XCTest unit tests

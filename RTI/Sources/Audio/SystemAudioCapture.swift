@@ -85,7 +85,7 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         try await stream.startCapture()
         self.stream = stream
         isRunning = true
-        RTILog.log("started — capturing system audio", category: "audio")
+        RTILog.log("started — capturing system audio", category: .audio)
     }
 
     func stop() {
@@ -94,17 +94,17 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         do {
             try stream.removeStreamOutput(self, type: .audio)
         } catch {
-            RTILog.log("system audio: removeStreamOutput error: \(error)", category: "system-audio")
+            RTILog.log("system audio: removeStreamOutput error: \(error)", category: .systemAudio)
         }
         stream.stopCapture { error in
             if let error {
-                RTILog.log("system audio: stopCapture error: \(error)", category: "system-audio")
+                RTILog.log("system audio: stopCapture error: \(error)", category: .systemAudio)
             }
         }
         self.stream = nil
         converter = nil
         sourceFormat = nil
-        RTILog.log("stopped", category: "audio")
+        RTILog.log("stopped", category: .audio)
     }
 
     func captureHealth() -> SystemAudioCaptureHealth {
@@ -139,8 +139,8 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         converter = nil
         sourceFormat = nil
         let msg = error.localizedDescription
-        RTILog.log("system audio: stream stopped with error: \(msg)", category: "system-audio")
-        RTILog.log("stream error — \(msg)", category: "audio")
+        RTILog.log("system audio: stream stopped with error: \(msg)", category: .systemAudio)
+        RTILog.log("stream error — \(msg)", category: .audio)
         onError?(msg)
     }
 
@@ -209,7 +209,7 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         var error: NSError?
         let status = converter.convert(to: outputBuffer, error: &error, withInputFrom: inputBlock)
         guard status != .error, outputBuffer.frameLength > 0 else {
-            if let error { RTILog.log("system audio: converter error: \(error)", category: "system-audio") }
+            if let error { RTILog.log("system audio: converter error: \(error)", category: .systemAudio) }
             return
         }
 

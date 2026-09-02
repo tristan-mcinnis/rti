@@ -52,7 +52,7 @@ final class ScreenshotManager {
             } catch ScreenshotError.empty {
                 LLMController.shared.setScreenAttachError("No content found on the captured screen.")
             } catch {
-                RTILog.log("Screenshot capture failed: \(error)", category: "screenshot")
+                RTILog.log("Screenshot capture failed: \(error)", category: .screenshot)
                 let msg = self.errorDescription(for: error)
                 LLMController.shared.setScreenAttachError(msg)
                 if Self.isScreenRecordingDenied(error) {
@@ -98,10 +98,10 @@ final class ScreenshotManager {
                 if let visionSummary {
                     context += "\n\nWhat the image looks like (local vision model): \(visionSummary)"
                 }
-                RTILog.log("Dropped image: OCR=\(trimmed.count) chars vision=\(visionSummary != nil).", category: "screenshot")
+                RTILog.log("Dropped image: OCR=\(trimmed.count) chars vision=\(visionSummary != nil).", category: .screenshot)
                 LLMController.shared.attachScreenContext(context)
             } catch {
-                RTILog.log("Dropped-image OCR failed: \(error)", category: "screenshot")
+                RTILog.log("Dropped-image OCR failed: \(error)", category: .screenshot)
                 LLMController.shared.setScreenAttachError("Couldn't read text from that image.")
             }
         }
@@ -132,7 +132,7 @@ final class ScreenshotManager {
                         configuration: visionConfig
                     )
                 } catch {
-                    RTILog.log("Local vision describe failed; capture continues OCR-only: \(error)", category: "vision")
+                    RTILog.log("Local vision describe failed; capture continues OCR-only: \(error)", category: .vision)
                 }
             }
 
@@ -156,7 +156,7 @@ final class ScreenshotManager {
             LLMController.shared.setScreenCaptureStatus(nil)
             RTILog.log(
                 "Screenshot: screens=\(nonEmpty.count) context=\(combined.count) chars vision=\(visionSummary != nil).",
-                category: "screenshot"
+                category: .screenshot
             )
             return combined
         } catch {

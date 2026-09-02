@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import RTICore
 
 final class WAVWriter {
     private var file: AVAudioFile?
@@ -30,7 +31,7 @@ final class WAVWriter {
     func open(at url: URL) throws {
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: 16_000,
+            AVSampleRateKey: AudioFormat.sampleRateHz,
             AVNumberOfChannelsKey: 1,
             AVLinearPCMBitDepthKey: 16,
             AVLinearPCMIsFloatKey: false,
@@ -46,7 +47,7 @@ final class WAVWriter {
         do {
             try file.write(from: buffer)
         } catch {
-            RTILog.log("WAVWriter.append failed: \(error)", category: "audio")
+            RTILog.log("WAVWriter.append failed: \(error)", category: .audio)
         }
     }
 
@@ -87,7 +88,7 @@ final class MeetingRecorder {
             micURL = mic
             systemURL = system
         } catch {
-            RTILog.log("MeetingRecorder.open failed: \(error)", category: "audio")
+            RTILog.log("MeetingRecorder.open failed: \(error)", category: .audio)
             micFile = nil
             systemFile = nil
             micURL = nil
@@ -119,7 +120,7 @@ final class MeetingRecorder {
             return true
         } catch {
             let message = "Durable meeting audio write failed: \(error.localizedDescription)"
-            RTILog.log(message, category: "audio")
+            RTILog.log(message, category: .audio)
             onWriteFailure?(message)
             return false
         }
@@ -134,7 +135,7 @@ final class MeetingRecorder {
             return true
         } catch {
             let message = "Durable meeting audio write failed: \(error.localizedDescription)"
-            RTILog.log(message, category: "audio")
+            RTILog.log(message, category: .audio)
             onWriteFailure?(message)
             return false
         }
@@ -164,7 +165,7 @@ final class MeetingRecorder {
 /// invalidating the whole meeting.
 private final class DurableWAVFile {
     private static let headerBytes = 44
-    private static let sampleRate: UInt32 = 16_000
+    private static let sampleRate = UInt32(AudioFormat.sampleRateHz)
     private static let bytesPerSample: UInt16 = 2
 
     private let handle: FileHandle

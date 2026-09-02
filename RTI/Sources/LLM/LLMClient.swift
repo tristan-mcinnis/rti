@@ -175,10 +175,10 @@ final class LLMClient: @unchecked Sendable {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.httpBody = httpBody
 
-        RTILog.log("POST provider=\(providerName) \(logDetail)", category: "llm")
+        RTILog.log("POST provider=\(providerName) \(logDetail)", category: .llm)
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else { throw LLMError.badResponse }
-        RTILog.log("HTTP \(http.statusCode) provider=\(providerName)", category: "llm")
+        RTILog.log("HTTP \(http.statusCode) provider=\(providerName)", category: .llm)
         guard (200..<300).contains(http.statusCode) else {
             let errText = try await readAll(bytes)
             if http.statusCode == 401 { throw LLMError.unauthorized }

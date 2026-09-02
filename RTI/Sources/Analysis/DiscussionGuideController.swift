@@ -62,7 +62,7 @@ final class DiscussionGuideController {
             raw = try GuideTextExtractor.text(from: url)
         } catch {
             lastError = "Could not read file: \(error.localizedDescription)"
-            RTILog.log("guide: extract failed for \(url.lastPathComponent): \(error.localizedDescription)", category: "guide")
+            RTILog.log("guide: extract failed for \(url.lastPathComponent): \(error.localizedDescription)", category: .guide)
             return
         }
         await parse(text: raw, fileName: url.lastPathComponent)
@@ -94,12 +94,12 @@ final class DiscussionGuideController {
                 objectives: objectives
             )
             lastError = nil
-            RTILog.log("guide: parsed deterministically — \(objectives.count) objectives, \(questionCount) questions", category: "guide")
+            RTILog.log("guide: parsed deterministically — \(objectives.count) objectives, \(questionCount) questions", category: .guide)
             return
         }
 
         // 2) Fallback: LLM normalisation for messy / non-house-format input.
-        RTILog.log("guide: no house structure detected, falling back to LLM parse", category: "guide")
+        RTILog.log("guide: no house structure detected, falling back to LLM parse", category: .guide)
         guard let parsed = await llmParse(trimmed, fileName: fileName) else {
             lastError = "Couldn't turn that into a guide. Try a cleaner paste or a different file."
             return
@@ -113,14 +113,14 @@ final class DiscussionGuideController {
     private func llmParse(_ text: String, fileName: String) async -> DiscussionGuide? {
         let base = [LLMMessage(role: "user", content: PromptStore.shared.text(.dgParse) + "\n" + text)]
         guard let response = await request.collectAsync(messages: base, smart: true) else {
-            RTILog.log("guide: LLM parse returned no response", category: "guide")
+            RTILog.log("guide: LLM parse returned no response", category: .guide)
             return nil
         }
         if let guide = Self.parseGuide(response, fileName: fileName) { return guide }
 
         // Models sometimes wrap JSON in prose or emit trailing commas — one
         // targeted repair pass recovers most of those.
-        RTILog.log("guide: LLM JSON invalid, retrying once. Raw head: \(response.prefix(240))", category: "guide")
+        RTILog.log("guide: LLM JSON invalid, retrying once. Raw head: \(response.prefix(240))", category: .guide)
         let repair = base + [
             LLMMessage(role: "assistant", content: response),
             LLMMessage(role: "user", content: "That was not valid JSON in the required shape. Output ONLY the JSON object — no prose, no markdown fences."),
@@ -128,7 +128,7 @@ final class DiscussionGuideController {
         guard let retry = await request.collectAsync(messages: repair, smart: true),
               let guide = Self.parseGuide(retry, fileName: fileName)
         else {
-            RTILog.log("guide: LLM parse failed after repair retry", category: "guide")
+            RTILog.log("guide: LLM parse failed after repair retry", category: .guide)
             return nil
         }
         return guide
@@ -181,7 +181,7 @@ final class DiscussionGuideController {
         let questionsList = unanswered.map { q in
             "- [\(q.id)] " + q.text.replacingOccurrences(of: "\n", with: " / ")
         }.joined(separator: "\n")
-        RTILog.log("guide: matching \(unanswered.count) unanswered questions", category: "guide")
+        RTILog.log("guide: matching \(unanswered.count) unanswered questions", category: .guide)
 
         // Resolve on the actor; the closure may run off the main actor.
         let matchPrompt = PromptStore.shared.text(.dgMatch)
@@ -199,17 +199,17 @@ final class DiscussionGuideController {
                     + "\n\nTranscript window (with [mm:ss] timestamps):\n" + $0
             }
         ) else {
-            RTILog.log("guide: matcher got no result (empty transcript or LLM/parse failure)", category: "guide")
+            RTILog.log("guide: matcher got no result (empty transcript or LLM/parse failure)", category: .guide)
             return nil
         }
 
         let returned = result.payload
         let allIds = Set(guide.objectives.flatMap { $0.sections.flatMap { $0.questions.map(\.id) } })
         let validCount = returned.count(where: { allIds.contains($0.questionId) })
-        RTILog.log("guide: LLM returned \(returned.count) matches, \(validCount) map to known ids", category: "guide")
+        RTILog.log("guide: LLM returned \(returned.count) matches, \(validCount) map to known ids", category: .guide)
         if returned.count > 0, validCount == 0 {
             let sample = returned.prefix(3).map(\.questionId).joined(separator: ", ")
-            RTILog.log("guide: NONE matched known ids — returned ids e.g. [\(sample)]", category: "guide")
+            RTILog.log("guide: NONE matched known ids — returned ids e.g. [\(sample)]", category: .guide)
         }
 
         guard !returned.isEmpty else { return nil }

@@ -34,12 +34,12 @@ final class BluetoothMicGuard {
         else { return }
 
         guard AudioInputDeviceStore.setDefaultInputDevice(builtIn) else {
-            RTILog.log("bluetooth mic guard: failed to switch default input", category: "audio")
+            RTILog.log("bluetooth mic guard: failed to switch default input", category: .audio)
             return
         }
         savedDefaultInput = current
         routedTo = builtIn
-        RTILog.log("bluetooth mic guard: default input → built-in mic (headphones stay in A2DP)", category: "audio")
+        RTILog.log("bluetooth mic guard: default input → built-in mic (headphones stay in A2DP)", category: .audio)
     }
 
     /// Call after the capture engine has stopped. Restores the user's original
@@ -49,6 +49,6 @@ final class BluetoothMicGuard {
         defer { savedDefaultInput = nil; routedTo = nil }
         if let now = AudioInputDeviceStore.defaultInputDeviceID(), now != routedTo { return }
         AudioInputDeviceStore.setDefaultInputDevice(saved)
-        RTILog.log("bluetooth mic guard: restored default input", category: "audio")
+        RTILog.log("bluetooth mic guard: restored default input", category: .audio)
     }
 }

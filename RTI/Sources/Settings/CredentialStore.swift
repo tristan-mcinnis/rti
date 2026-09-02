@@ -3,17 +3,18 @@ import Foundation
 /// File-backed credential storage at
 /// ~/Library/Application Support/RTI/credentials.json (mode 0600).
 ///
-/// The file name `KeychainStore` is historical — we used to round-trip through
-/// the macOS Keychain via SecItem*. With ad-hoc code signing (the default for
-/// the non-distribution build configured in project.yml) the bundle's code-
-/// signing identity changes on every rebuild, so the Keychain ACL refuses the
-/// new binary and prompts the user for their login password each launch. For
-/// a non-sandboxed local-only app this prompt provides no real security
-/// benefit, so we store credentials in an owner-only JSON file instead.
+/// Formerly `KeychainStore` (renamed 2026-09-02): an earlier build round-
+/// tripped through the macOS Keychain via SecItem*. With ad-hoc code signing
+/// (the default for the non-distribution build configured in project.yml) the
+/// bundle's code-signing identity changes on every rebuild, so the Keychain
+/// ACL refuses the new binary and prompts the user for their login password
+/// each launch. For a non-sandboxed local-only app this prompt provides no
+/// real security benefit, so we store credentials in an owner-only JSON file
+/// instead. The file path and format are unchanged by the rename.
 ///
-/// If you set up a stable Developer ID and want Keychain back, swap this
-/// implementation; the public API is the same.
-enum KeychainStore {
+/// If you set up a stable Developer ID and want Keychain back, swap the
+/// `get`/`set`/`delete` primitives; the account accessors stay the same.
+enum CredentialStore {
     nonisolated(unsafe) private static var cached: [String: String]?
     private static let queue = DispatchQueue(label: "com.tristan.rti.credentials", attributes: .concurrent)
 
@@ -83,7 +84,7 @@ enum KeychainStore {
                 ofItemAtPath: parent.path
             )
         } catch {
-            RTILog.log("KeychainStore save failed: \(error)", category: "credentials")
+            RTILog.log("CredentialStore save failed: \(error)", category: .credentials)
         }
     }
 
@@ -129,7 +130,9 @@ enum KeychainStore {
     }
 }
 
-enum CredentialStore {
+// MARK: - Named accounts
+
+extension CredentialStore {
     private static let deepseekAccount = "deepseek"
     private static let openAIAccount = "openai"
     private static let openRouterAccount = "openrouter"
@@ -139,11 +142,11 @@ enum CredentialStore {
     private static let aliyunAccessKeySecretAccount = "aliyun_access_key_secret"
     private static let aliyunNLSAppKeyAccount = "aliyun_nls_app_key"
 
-    static var deepseek: String? { KeychainStore.get(deepseekAccount) }
-    static var openai: String? { KeychainStore.get(openAIAccount) }
-    static var openrouter: String? { KeychainStore.get(openRouterAccount) }
-    static var soniox: String? { KeychainStore.get(sonioxAccount) }
-    static var assemblyai: String? { KeychainStore.get(assemblyaiAccount) }
+    static var deepseek: String? { Self.get(deepseekAccount) }
+    static var openai: String? { Self.get(openAIAccount) }
+    static var openrouter: String? { Self.get(openRouterAccount) }
+    static var soniox: String? { Self.get(sonioxAccount) }
+    static var assemblyai: String? { Self.get(assemblyaiAccount) }
     static var aliyunAccessKeyID: String? {
         firstCredential([aliyunAccessKeyIDAccount, "aliyun_access_key", "alibaba_cloud_access_key_id"], env: ["ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIYUN_ACCESS_KEY_ID"])
     }
@@ -154,26 +157,26 @@ enum CredentialStore {
         firstCredential([aliyunNLSAppKeyAccount, "aliyun_app_key", "nls_app_key"], env: ["NLS_APP_KEY", "ALIYUN_NLS_APPKEY", "ALIYUN_NLS_APP_KEY"])
     }
 
-    static func setDeepSeek(_ value: String) { KeychainStore.set(value, for: deepseekAccount) }
-    static func setOpenAI(_ value: String) { KeychainStore.set(value, for: openAIAccount) }
-    static func setOpenRouter(_ value: String) { KeychainStore.set(value, for: openRouterAccount) }
-    static func setSoniox(_ value: String) { KeychainStore.set(value, for: sonioxAccount) }
-    static func setAssemblyAI(_ value: String) { KeychainStore.set(value, for: assemblyaiAccount) }
-    static func setAliyunAccessKeyID(_ value: String) { KeychainStore.set(value, for: aliyunAccessKeyIDAccount) }
-    static func setAliyunAccessKeySecret(_ value: String) { KeychainStore.set(value, for: aliyunAccessKeySecretAccount) }
-    static func setAliyunNLSAppKey(_ value: String) { KeychainStore.set(value, for: aliyunNLSAppKeyAccount) }
+    static func setDeepSeek(_ value: String) { set(value, for: deepseekAccount) }
+    static func setOpenAI(_ value: String) { set(value, for: openAIAccount) }
+    static func setOpenRouter(_ value: String) { set(value, for: openRouterAccount) }
+    static func setSoniox(_ value: String) { set(value, for: sonioxAccount) }
+    static func setAssemblyAI(_ value: String) { set(value, for: assemblyaiAccount) }
+    static func setAliyunAccessKeyID(_ value: String) { set(value, for: aliyunAccessKeyIDAccount) }
+    static func setAliyunAccessKeySecret(_ value: String) { set(value, for: aliyunAccessKeySecretAccount) }
+    static func setAliyunNLSAppKey(_ value: String) { set(value, for: aliyunNLSAppKeyAccount) }
 
     static func value(for account: String) -> String? {
-        KeychainStore.get(account)
+        get(account)
     }
 
     static func setValue(_ value: String, for account: String) {
-        KeychainStore.set(value, for: account)
+        set(value, for: account)
     }
 
     private static func firstCredential(_ accounts: [String], env names: [String]) -> String? {
         for account in accounts {
-            if let value = KeychainStore.get(account)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
+            if let value = get(account)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
                 return value
             }
         }
@@ -187,7 +190,7 @@ enum CredentialStore {
 
     /// One-time migration of any plaintext keys still living in Secrets.swift.
     /// Earlier versions also wrote into the macOS Keychain; we no longer touch
-    /// the system Keychain at all (see KeychainStore comment). Any orphaned
+    /// the system Keychain at all (see the CredentialStore comment above). Any orphaned
     /// entries from older builds (under com.tristan.rti) linger there
     /// harmlessly until the user clears them via Keychain Access. We don't
     /// try to read them because reading would trigger the very prompt this
@@ -202,13 +205,13 @@ enum CredentialStore {
         if soniox == nil, !Secrets._legacySonioxKey.isEmpty, !Secrets._legacySonioxKey.hasPrefix("<") {
             setSoniox(Secrets._legacySonioxKey)
         }
-        if KeychainStore.get(aliyunAccessKeyIDAccount) == nil, let value = aliyunAccessKeyID {
+        if get(aliyunAccessKeyIDAccount) == nil, let value = aliyunAccessKeyID {
             setAliyunAccessKeyID(value)
         }
-        if KeychainStore.get(aliyunAccessKeySecretAccount) == nil, let value = aliyunAccessKeySecret {
+        if get(aliyunAccessKeySecretAccount) == nil, let value = aliyunAccessKeySecret {
             setAliyunAccessKeySecret(value)
         }
-        if KeychainStore.get(aliyunNLSAppKeyAccount) == nil, let value = aliyunNLSAppKey {
+        if get(aliyunNLSAppKeyAccount) == nil, let value = aliyunNLSAppKey {
             setAliyunNLSAppKey(value)
         }
         defaults.set(true, forKey: flag)

@@ -84,9 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
                     // A sub-minute session that transcribes to nothing is a
                     // test blip, not a meeting — stop re-queueing it forever.
                     SessionArchive.clearAutomaticUpgradePending(in: session.url)
-                    RTILog.log("cleared pending upgrade for \(session.url.lastPathComponent): \(provider) returned an empty transcript and the retained audio is under a minute", category: "archive")
+                    RTILog.log("cleared pending upgrade for \(session.url.lastPathComponent): \(provider) returned an empty transcript and the retained audio is under a minute", category: .archive)
                 } catch {
-                    RTILog.log("pending transcript upgrade remains queued for \(session.url.lastPathComponent): \(error.localizedDescription)", category: "archive")
+                    RTILog.log("pending transcript upgrade remains queued for \(session.url.lastPathComponent): \(error.localizedDescription)", category: .archive)
                 }
             }
         }

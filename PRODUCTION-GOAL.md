@@ -54,41 +54,36 @@ Runtime artifact: `~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/De
 
 ---
 
-## Progress (updated 2026-06-07)
+## Progress (updated 2026-09-02)
 
-Merged to `main` (each its own CI-green PR):
+The June phases below all landed (Phases 0 to 6, PRs #3 to #13; see the
+2026-06-07 record in git history for the per-phase detail). What changed since,
+from `git log`:
 
-- **Phase 0 — CI** ✅ (PR #3). Build+test+lint on `macos-15`/Xcode 26.x; red-gate proven.
-- **Phase 1 — RTICore extraction** ✅ (PRs #4–#6). Pure-Swift `RTICore` static lib now holds
-  the transcription/LLM/analysis value+logic types; app + tests link it; no `@MainActor` on
-  core types. Seams extracted: TranscriptPipeline, ModeStorage, the LLM wire types +
-  `PromptBuilder` + `LLMProviderConfig`/`LLMToolDefinition`, and the **SSE parser**. `CoreLog`
-  logging seam added.
-- **Phase 3 — tests for the seams** ✅ (PRs #6, #8, #12). 63 → **103 tests**: SSE parser (12),
-  ModeStorage (7), TranscriptPipeline (6), PromptBuilder (6), SemanticVersion (9).
-- **Phase 5 — security** ✅ (PR #7). No transcript content in logs; session files `0600`/dirs
-  `0700`; stale-WAV sweep at launch.
-- **Phase 2 — resilience** ✅ (PRs #11, #13). Mic dead-air watchdog (covers device-drop, mute,
-  mid-session permission loss — 2.1/2.6), double-start guard (2.4), LLMRequest error visibility
-  (2.3), connection-health state model (2.7), and system-audio non-fatal notice (2.2).
-- **Phase 4 — onboarding/UX** ✅ (PRs #10, #13). Guided first-run window (keys + permissions,
-  screenshot-verified) and the connection-health indicator in the Live Transcript header.
-- **Phase 6 — distribution** ✅/⏳ (PR #12). GitHub-Releases auto-update + `SemanticVersion`;
-  ad-hoc DMG packaging verified. **Signed/notarized DMG still needs your Apple Developer ID.**
+- **Scope moved past this document (2026-08-13 → 08-28).** RTI became the sole
+  meeting recorder: durable per-leg WAVs, automatic offline transcript upgrade,
+  vault archive with a Sessions browser, and `search_vault` grounding. The
+  "ephemeral, no audio retention, no session browser" rules in §"Rules of
+  engagement" and §"Out of scope" are **superseded by `CLAUDE.md`**, which is
+  the current contract. Meeting Sentinel was deleted 2026-08-28.
+- **A strip experiment (2026-08-19, tag `pre-strip-20260819`) was reverted
+  wholesale (2026-08-28, tag `pre-restore-20260828`).** Do not re-strip.
+- **Resilience since June:** system-audio leg lazy connect + SCK fallback +
+  idle park/resume (08-31), Bluetooth-mic guard and never-delivering-mic alarm
+  (08-31), Soniox 400 race at start fixed (08-31), screen-privacy deny-list at
+  the `SCContentFilter` choke point (08-30).
+- **Window model:** a normal titled Dock-app `NSWindow` since 2026-09-01
+  (`LSUIElement=NO`, no float, no translucency).
+- **CI:** runs on a self-hosted macOS runner (2026-08-23). Test suite:
+  278 passed, 1 skipped on 2026-09-02.
+- **Consistency passes:** `docs/engineering-audit-20260901.md` and
+  `docs/consistency-audit-20260902.md` (one resolver per path/binary, settings
+  keys, log levels, 16 kHz constant, `CredentialStore` rename).
 
-**Deliberately deferred** (diminishing value / higher risk than the rest):
-
-- Moving the *live networking classes* (`LLMClient`/`ToolLoop`/`LLMRequest`/`SonioxClient`)
-  fully into RTICore. The bug-prone kernel (SSE parsing) is already extracted + tested; moving
-  the network shells needs a mock-transport seam and refactors live code for limited extra
-  value.
-- A dedicated dismissible error banner in the **overlay** (4.3): the overlay already shows
-  `lastError`, and the overlay is `sharingType = .none` so it can't be screenshot-verified.
-
-**Remaining — needs a hands-on Mac (can't be verified headlessly):** see the
-"Production-readiness checklist" in `RTI/VERIFY.md`. In short: signed/notarized DMG (your Apple
-cert), and a real-meeting smoke test (both-sides transcription, watchdog no-false-positive,
-overlay invisibility, archive-on-stop).
+**Still open from the original gate:** a signed + notarized Developer ID DMG
+(6.1) has never been cut; local installs use `scripts/install-local.sh` with an
+Apple Development identity so TCC grants survive. The last tag is
+`v0.1.0-beta9` (2026-05-26); nothing since has been tagged as a release.
 
 ---
 
@@ -274,7 +269,7 @@ Beta = other people's meetings on their machines. Close the leaks.
     default log stream.
 - **5.2 — Lock down session-archive files.** `SessionArchive` writes Markdown with default
   umask (world-readable on multi-user Macs). Write each file `0600` and the session dirs
-  `0700` (reuse `KeychainStore`'s owner-only write pattern).
+  `0700` (reuse `CredentialStore`'s owner-only write pattern).
   - `verify:` finish a session, `ls -le ~/Library/Application\ Support/RTI/sessions/*/` and
     confirm `-rw-------` on files, `drwx------` on dirs.
 - **5.3 — Log-copy hygiene.** The Logs view can copy the whole buffer. Ensure copied logs
