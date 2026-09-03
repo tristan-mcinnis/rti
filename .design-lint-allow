@@ -1,0 +1,9 @@
+# design-lint exceptions for RTI. Each line is a deliberate, argued exception,
+# not debt: debt lives in .design-lint-baseline.json and must only fall.
+# Form: <glob>            whole file exempt
+#       <glob>:<regex>    exempt only lines matching the regex
+
+# DESIGN.md, "One allowed categorical palette": the six speaker colours are
+# data, so Speaker 1, 2, 3 stay distinct. They stay local to RTI. The rest of
+# RTIDesign.swift is linted normally.
+RTI/Sources/UI/RTIDesign.swift:SwiftUI\.Color\(red:.*// (blue|red|green|purple|amber|teal)

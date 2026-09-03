@@ -24,7 +24,12 @@ xcuserdata/
 # Local harness state
 .omc/
 .omx/
-.claude/
+# .claude is local state, except the design hooks, which are project contract.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/design-*.sh
 .deepseek/
 .deepseek-run/
 .gnhf/

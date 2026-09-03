@@ -1,0 +1,8 @@
+{
+  "_": "design-lint ratchet. Counts may only fall. Regenerate: design-lint --baseline write",
+  "total": 5,
+  "files": {
+    "RTI/Sources/Support/SettingsKeys.swift": 1,
+    "RTI/Sources/UI/SessionsControl/SessionsBrowserView.swift": 4
+  }
+}
