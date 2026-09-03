@@ -13,29 +13,11 @@ extension Color {
         }
     })
 
-    static let overlayPanel = Color(nsColor: NSColor(name: nil) { appearance in
-        if OverlayThemeSettings.isDark(appearance) {
-            return NSColor(white: 0.095, alpha: 1)
-        } else {
-            return NSColor.white
-        }
-    })
-
-    static let overlayInput = Color(nsColor: NSColor(name: nil) { appearance in
-        if OverlayThemeSettings.isDark(appearance) {
-            return NSColor(white: 0.15, alpha: 1)
-        } else {
-            return NSColor.white
-        }
-    })
-
-    static let overlayBorder = Color(nsColor: NSColor(name: nil) { appearance in
-        if OverlayThemeSettings.isDark(appearance) {
-            return NSColor.white.withAlphaComponent(0.12)
-        } else {
-            return NSColor.black.withAlphaComponent(0.08)
-        }
-    })
+    // Panel, input, and border come from the house tokens (HouseDesign.swift);
+    // ink keeps the user's contrast slider above.
+    static let overlayPanel = House.ColorToken.surface
+    static let overlayInput = House.ColorToken.surfaceRaised
+    static let overlayBorder = House.ColorToken.stroke
 
     static let overlayAccent = Color(nsColor: NSColor(name: nil) { _ in
         OverlayThemeSettings.accentColor

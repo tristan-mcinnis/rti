@@ -12,6 +12,7 @@
 		09134A425DE98D87EF637352 /* PromptsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ECDBE0AD8BEB1498F046DB7 /* PromptsTab.swift */; };
 		092230D9E172C90A017D9E5A /* AudioMonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8E5E704EDD3D13DDA39981 /* AudioMonitorView.swift */; };
 		09EE3A5B652AAC12410FD905 /* TranscriptUpgrade.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BA84476B0498B93A04A5C8 /* TranscriptUpgrade.swift */; };
+		0A3589CE4BD8F50FF57C7AAC /* HouseDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710DD4A7AC66EEECFFD2DBF4 /* HouseDesign.swift */; };
 		0ABBE9B45EFEFFE5FE58CAE6 /* ExternalDocumentAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EC5E0A29165C90D2D210EA5 /* ExternalDocumentAttachment.swift */; };
 		0ADC2423E06D78C0A0620D42 /* DiscussionGuideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F669AF6E63C8DB76F75D4E8E /* DiscussionGuideTests.swift */; };
 		0C930D4CA1010E41BF1CF1E1 /* WAVWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857295A827688BF13CBC8A7E /* WAVWriter.swift */; };
@@ -323,6 +324,7 @@
 		6E938720C8D72A2A78950C66 /* NotesGenerationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesGenerationController.swift; sourceTree = "<group>"; };
 		70BF29F58CC613A81C10A4E8 /* SessionsBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsBrowserView.swift; sourceTree = "<group>"; };
 		7104F2A4B593908F81C592F9 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
+		710DD4A7AC66EEECFFD2DBF4 /* HouseDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseDesign.swift; sourceTree = "<group>"; };
 		7312C46675D7A04D3CFDDEB1 /* SpeakerNameStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerNameStore.swift; sourceTree = "<group>"; };
 		738970E302C3E0FF78ABC3D1 /* MeetingRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecorderTests.swift; sourceTree = "<group>"; };
 		73922AAADA102ECEF611A7B6 /* RTIDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIDesign.swift; sourceTree = "<group>"; };
@@ -838,6 +840,7 @@
 			children = (
 				FD66419CB55DD2F36238313A /* DotMatrixText.swift */,
 				C94121B6360402223C2126D9 /* HotkeyCoordinator.swift */,
+				710DD4A7AC66EEECFFD2DBF4 /* HouseDesign.swift */,
 				74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */,
 				73922AAADA102ECEF611A7B6 /* RTIDesign.swift */,
 				73D64733E271DE5F43A278DD /* RTIMarkdown.swift */,
@@ -1192,6 +1195,7 @@
 				5362588127D91DE0922C562C /* GuideParser.swift in Sources */,
 				72EE506B6FE5EA089C69288B /* GuideTextExtractor.swift in Sources */,
 				9421B9781A59E76C30C2AF34 /* HotkeyCoordinator.swift in Sources */,
+				0A3589CE4BD8F50FF57C7AAC /* HouseDesign.swift in Sources */,
 				22E2768F36E8699A7021E985 /* KeysTab.swift in Sources */,
 				4FF035DE4019A89D57FF2612 /* LLMClient.swift in Sources */,
 				FFD5B192F9BB067609DF60FD /* LLMController.swift in Sources */,

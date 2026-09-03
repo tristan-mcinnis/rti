@@ -1,40 +1,43 @@
 import SwiftUI
 
 enum RTIDesign {
+    // Values come from the generated HouseDesign.swift (design-system/tokens.json).
+    // Only the speaker palette (data, not chrome) is local to RTI.
+
     // MARK: - Color
     enum Color {
-        static let appBackground = SwiftUI.Color(nsColor: NSColor(red: 0.953, green: 0.953, blue: 0.961, alpha: 1))
-        static let panelBackground = SwiftUI.Color(nsColor: NSColor(red: 0.969, green: 0.969, blue: 0.973, alpha: 1))
-        static let trackBackground = SwiftUI.Color(nsColor: NSColor(red: 0.925, green: 0.925, blue: 0.937, alpha: 1))
-        static let cardBackground = SwiftUI.Color.white
-        static let inputBackground = SwiftUI.Color.white
+        static let appBackground = House.ColorToken.surface
+        static let panelBackground = House.ColorToken.surface
+        static let trackBackground = House.ColorToken.surfaceSunken
+        static let cardBackground = House.ColorToken.surfaceRaised
+        static let inputBackground = House.ColorToken.surfaceRaised
 
-        static let border = SwiftUI.Color(nsColor: NSColor(red: 0.851, green: 0.851, blue: 0.871, alpha: 1))
-        static let borderLight = SwiftUI.Color(nsColor: NSColor(red: 0.812, green: 0.812, blue: 0.831, alpha: 1))
-        static let borderStrong = SwiftUI.Color(nsColor: NSColor(red: 0.745, green: 0.745, blue: 0.769, alpha: 1))
+        static let border = House.ColorToken.stroke
+        static let borderLight = House.ColorToken.stroke
+        static let borderStrong = House.ColorToken.strokeStrong
         static let divider = border.opacity(0.6)
 
-        static let textPrimary = SwiftUI.Color(nsColor: NSColor(red: 0.067, green: 0.067, blue: 0.078, alpha: 1))
-        static let textSecondary = SwiftUI.Color(nsColor: NSColor(red: 0.345, green: 0.345, blue: 0.380, alpha: 1))
-        // Bumped from (0.557,...) to (0.480,...) so it clears 4.5:1 contrast on panelBackground.
-        static let textTertiary = SwiftUI.Color(nsColor: NSColor(red: 0.480, green: 0.480, blue: 0.510, alpha: 1))
+        static let textPrimary = House.ColorToken.textPrimary
+        static let textSecondary = House.ColorToken.textSecondary
+        static let textTertiary = House.ColorToken.textTertiary
 
-        static let accent = SwiftUI.Color(red: 0.039, green: 0.518, blue: 1.0)
-        static let accentText = SwiftUI.Color(red: 0.024, green: 0.463, blue: 0.847)
-        static let accentBg = SwiftUI.Color(red: 0.902, green: 0.949, blue: 1.0)
+        static let accent = House.ColorToken.accent
+        static let accentText = House.ColorToken.accent
+        static let accentBg = House.ColorToken.accentSoft
 
         static let chipActiveBg = accentBg
-        static let chipActiveText = SwiftUI.Color(red: 0.140, green: 0.514, blue: 0.820)
+        static let chipActiveText = House.ColorToken.accent
 
         // Soft tinted card for AI/assistant outputs (Summary blocks, Q&A assistant turns).
-        static let aiCardBackground = SwiftUI.Color(nsColor: NSColor(red: 0.965, green: 0.973, blue: 0.984, alpha: 1))
-        static let aiCardBorder = accent.opacity(0.18)
+        static let aiCardBackground = House.ColorToken.surfaceTint
+        static let aiCardBorder = House.ColorToken.stroke
 
         // Toast (top-right pill).
-        static let toastBackground = SwiftUI.Color.black.opacity(0.85)
-        static let toastText = SwiftUI.Color.white
+        static let toastBackground = House.ColorToken.hudFill
+        static let toastText = House.ColorToken.hudText
 
-        // Speaker chip palette — indexed by trailing digit so Speaker 1 / 2 / 3 are stable across sessions.
+        // Speaker chip palette — the one allowed categorical palette (DESIGN.md).
+        // Indexed by trailing digit so Speaker 1 / 2 / 3 are stable across sessions.
         static let speakerPalette: [SwiftUI.Color] = [
             SwiftUI.Color(red: 0.024, green: 0.463, blue: 0.847), // blue (self/0)
             SwiftUI.Color(red: 0.847, green: 0.314, blue: 0.235), // red
@@ -47,49 +50,49 @@ enum RTIDesign {
 
     // MARK: - Spacing
     enum Spacing {
-        static let xxs: CGFloat = 4
-        static let xs: CGFloat = 8
-        static let sm: CGFloat = 12
-        static let md: CGFloat = 16
-        static let lg: CGFloat = 24
-        static let xl: CGFloat = 32
-        static let xxl: CGFloat = 48
-        static let xxxl: CGFloat = 64
+        static let xxs = House.Spacing.xxs
+        static let xs = House.Spacing.xs
+        static let sm = House.Spacing.sm
+        static let md = House.Spacing.md
+        static let lg = House.Spacing.xl
+        static let xl = House.Spacing.xxl
+        static let xxl = House.Spacing.xxxl
+        static let xxxl = House.Spacing.xxxxl
     }
 
     // MARK: - Radius
     enum Radius {
-        static let sm: CGFloat = 8
-        static let md: CGFloat = 12
-        static let lg: CGFloat = 18
-        static let xl: CGFloat = 28
+        static let sm = House.Radius.md
+        static let md = House.Radius.lg
+        static let lg = House.Radius.xl
+        static let xl = House.Radius.xxl
     }
 
     // MARK: - Font
     enum Font {
-        static let pageTitle = SwiftUI.Font.system(size: 28, weight: .semibold)
-        static let sectionTitle = SwiftUI.Font.system(size: 20, weight: .semibold)
-        static let heading = SwiftUI.Font.system(size: 16, weight: .semibold)
-        static let body = SwiftUI.Font.system(size: 14)
-        static let bodySmall = SwiftUI.Font.system(size: 13)
-        static let meta = SwiftUI.Font.system(size: 12)
-        static let caption = SwiftUI.Font.system(size: 11)
-        static let button = SwiftUI.Font.system(size: 13, weight: .medium)
-        static let tab = SwiftUI.Font.system(size: 13, weight: .semibold)
+        static let pageTitle = House.TypeToken.display
+        static let sectionTitle = House.TypeToken.title
+        static let heading = House.TypeToken.heading
+        static let body = House.TypeToken.body
+        static let bodySmall = House.TypeToken.bodySmall
+        static let meta = House.TypeToken.meta
+        static let caption = House.TypeToken.caption
+        static let button = House.TypeToken.label
+        static let tab = SwiftUI.Font.system(size: House.TypeToken.Size.label, weight: .semibold)
     }
 
     // MARK: - Controls
     enum Control {
-        static let heightSm: CGFloat = 32
-        static let heightMd: CGFloat = 40
-        static let heightLg: CGFloat = 48
-        static let heightXl: CGFloat = 56
+        static let heightSm = House.Control.small
+        static let heightMd = House.Control.medium
+        static let heightLg = House.Control.xlarge
+        static let heightXl = House.Control.hero
 
-        static let segTrackHeight: CGFloat = 40
-        static let segItemHeight: CGFloat = 32
+        static let segTrackHeight = House.Control.medium
+        static let segItemHeight = House.Control.small
 
-        static let composerHeight: CGFloat = 56
-        static let composerSendSize: CGFloat = 44
+        static let composerHeight = House.Control.hero
+        static let composerSendSize = House.Control.large
     }
 
     // MARK: - Density

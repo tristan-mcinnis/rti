@@ -21,7 +21,7 @@ enum OverlayAppearanceDefaults {
     static let defaultWidth: Double = 700
     static let defaultHeight: Double = 440
     static let defaultAppearanceMode = RTIAppearanceMode.system.rawValue
-    static let defaultAccentColor = "#339CFF"
+    static let defaultAccentColor = "#0866D6" // House accent (light); see design-system/tokens.json
     static let defaultContrast: Double = 60
     static let defaultUIFontSize: Double = 14
     static let defaultReduceMotion = RTIReduceMotionMode.system.rawValue
