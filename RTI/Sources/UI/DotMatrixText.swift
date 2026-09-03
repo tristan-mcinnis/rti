@@ -11,7 +11,7 @@ struct DotMatrixText: View {
     var dot: CGFloat = 2
     var spacing: CGFloat = 1
     var gap: CGFloat = 1
-    var color: Color = .white
+    var color: Color = RTIDesign.Color.textPrimary
     var dim: Color? = nil
 
     private static let glyphWidth = 5

@@ -37,7 +37,11 @@ struct OnboardingView: View {
             .padding(28)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(RTIDesign.Color.appBackground)
         .frame(width: 520, height: 640)
+        // Chrome is ink, not the system accent: segmented pickers, prominent
+        // buttons, and menus all take their colour from here.
+        .tint(RTIDesign.Color.textPrimary)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // User may have flipped a toggle in System Settings and come back.
             micState = AppPermissions.microphone
@@ -52,10 +56,11 @@ struct OnboardingView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Welcome to RTI")
-                .font(.system(size: 24, weight: .bold))
+                .font(RTIDesign.Font.sectionTitle)
+                .foregroundStyle(RTIDesign.Color.textPrimary)
             Text("A real-time meeting copilot — live transcription and an on-call assistant, in an overlay that stays out of your screen shares. Two quick steps and you're live.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.bodySmall)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -81,35 +86,39 @@ struct OnboardingView: View {
                 linkURL: LLMProviders.activeOption.consoleURL
             )
             if let saveError {
-                Text(saveError).font(.system(size: 11)).foregroundStyle(.red)
+                Text(saveError).font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.danger)
             }
             HStack(spacing: 10) {
                 Button("Save provider keys") { saveKeys() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
                 if justSaved || keysConfigured {
-                    Label(justSaved ? "Saved" : "Saved earlier", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12)).foregroundStyle(.green)
+                    SettingsStatusLabel(text: justSaved ? "Saved" : "Saved earlier",
+                                        systemImage: "checkmark.circle.fill",
+                                        color: RTIDesign.Color.success)
                 }
             }
             Text("Stored in an owner-only file on this Mac (~/Library/Application Support/RTI), never synced.")
-                .font(.system(size: 11)).foregroundStyle(.tertiary)
+                .font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.textTertiary)
         }
     }
 
     private func keyField(_ label: String, placeholder: String, text: Binding<String>, help: String, linkTitle: String, linkURL: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text(label).font(.system(size: 12, weight: .medium))
-                Text(help).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(label).font(RTIDesign.Font.label).foregroundStyle(RTIDesign.Color.textPrimary)
+                Text(help).font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.textSecondary)
                 Spacer()
                 if let url = URL(string: linkURL) {
-                    Link(linkTitle, destination: url).font(.system(size: 11))
+                    // Links are the one place the accent is allowed.
+                    Link(linkTitle, destination: url)
+                        .font(RTIDesign.Font.caption)
+                        .foregroundStyle(RTIDesign.Color.accent)
                 }
             }
             SecureField(placeholder, text: text)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 13, design: .monospaced))
+                .font(.system(size: House.TypeToken.Size.bodySmall, design: .monospaced))
         }
     }
 
@@ -141,14 +150,14 @@ struct OnboardingView: View {
     private func permissionRow(title: String, subtitle: String, state: AppPermissions.State, grant: @escaping () -> Void, openSettings: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .medium))
-                Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(title).font(RTIDesign.Font.label).foregroundStyle(RTIDesign.Color.textPrimary)
+                Text(subtitle).font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.textSecondary)
             }
             Spacer()
             switch state {
             case .granted:
-                Label("Granted", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12)).foregroundStyle(.green).labelStyle(.titleAndIcon)
+                SettingsStatusLabel(text: "Granted", systemImage: "checkmark.circle.fill",
+                                    color: RTIDesign.Color.success)
             case .notDetermined:
                 Button("Grant", action: grant)
             case .denied:
@@ -165,15 +174,15 @@ struct OnboardingView: View {
             HStack(alignment: .firstTextBaseline) {
                 if isReady {
                     Text("You're all set. Press ⌘⇧R anytime to start a session, ⌘\\ to toggle the overlay.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(RTIDesign.Font.meta).foregroundStyle(RTIDesign.Color.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if !keysConfigured {
                     Text("Add both keys to get started. You can finish later from the menubar → Settings.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(RTIDesign.Font.meta).foregroundStyle(RTIDesign.Color.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Microphone access is still needed before your first session.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(RTIDesign.Font.meta).foregroundStyle(RTIDesign.Color.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
@@ -188,20 +197,25 @@ struct OnboardingView: View {
 
     private func card(number: String, title: String, @ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+            HStack(spacing: RTIDesign.Spacing.xs + 2) {
+                // An ink tile, not a blue circle: the accent paints no chrome.
                 Text(number)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 20, height: 20)
-                    .background(Circle().fill(Color.accentColor))
-                Text(title).font(.system(size: 15, weight: .semibold))
+                    .font(RTIDesign.Font.keyCap)
+                    .foregroundStyle(RTIDesign.Color.textInverse)
+                    .frame(width: RTIDesign.Control.keyCap, height: RTIDesign.Control.keyCap)
+                    .background(
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
+                            .fill(RTIDesign.Color.textPrimary)
+                    )
+                Text(title)
+                    .font(RTIDesign.Font.heading)
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
             }
             content()
         }
-        .padding(16)
+        .padding(RTIDesign.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
+        .slateGroupCard()
     }
 
     private func saveKeys() {

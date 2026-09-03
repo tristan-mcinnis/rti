@@ -62,12 +62,26 @@ struct SessionsBrowserView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .background(SessionReadingBackground())
+
+                    SlateFooter(
+                        statusColor: hasTranscript(selected) ? RTIDesign.Color.success : RTIDesign.Color.textTertiary,
+                        status: sessionFooterStatus(for: selected)
+                    ) {
+                        SlateKeyHint(label: "Ask about this", keys: ["↩"])
+                    }
                 } else {
                     emptyState
                 }
             }
             .frame(minWidth: 380)
+            // The reading column needs an opaque ground: the footer well and
+            // the toolbar are painted OVER it, not instead of it.
+            .background(RTIDesign.Color.appBackground)
         }
+        .background(RTIDesign.Color.appBackground)
+        // Chrome is ink, never the system accent; toggles are ink too.
+        .tint(RTIDesign.Color.textPrimary)
+        .toggleStyle(SlateToggleStyle())
         .onAppear(perform: reload)
         .onChange(of: selected) { _, _ in
             loadFiles()
@@ -119,35 +133,37 @@ struct SessionsBrowserView: View {
     private var sessionList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Sessions")
-                        .font(.system(size: 24, weight: .semibold))
+                        .font(RTIDesign.Font.heading)
+                        .foregroundStyle(RTIDesign.Color.textPrimary)
                     Text("\(sessions.count) saved meeting\(sessions.count == 1 ? "" : "s")")
-                        .font(.system(size: 12))
+                        .font(RTIDesign.Font.meta)
                         .foregroundStyle(RTIDesign.Color.textSecondary)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 20)
+                .padding(.horizontal, RTIDesign.Spacing.sm + 2)
+                .padding(.top, RTIDesign.Spacing.sm)
 
                 ForEach(groupedSessions, id: \.label) { group in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(group.label.uppercased())
-                            .font(.system(size: 11, weight: .bold))
-                            .tracking(0.8)
-                            .foregroundStyle(RTIDesign.Color.textTertiary)
-                            .padding(.horizontal, 18)
-                        VStack(spacing: 5) {
-                            ForEach(group.sessions) { session in
-                                sessionRow(session)
-                            }
+                    VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxs - 1) {
+                        SlateSectionLabel(text: group.label)
+                            .padding(.horizontal, RTIDesign.Spacing.md)
+                            .padding(.top, RTIDesign.Spacing.xs)
+                        ForEach(group.sessions) { session in
+                            sessionRow(session)
                         }
-                        .padding(.horizontal, 12)
                     }
+                    .padding(.horizontal, RTIDesign.Spacing.xs + 2)
                 }
             }
+            .padding(.bottom, RTIDesign.Spacing.sm)
         }
         .scrollContentBackground(.hidden)
-        .background(.thinMaterial)
+        // A well, like the launcher's list column — not a floating material.
+        .background(RTIDesign.Color.trackBackground)
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(RTIDesign.Color.divider).frame(width: House.hairline)
+        }
     }
 
     /// One row: AI-generated title as the primary label, the start time as a
@@ -158,43 +174,31 @@ struct SessionsBrowserView: View {
         Button {
             selected = session
         } label: {
-            HStack(alignment: .center, spacing: 10) {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(selected == session ? RTIDesign.Color.accent : Color.clear)
-                    .frame(width: 3, height: 30)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(session.title ?? "Untitled session")
-                        .font(.system(size: 13, weight: selected == session ? .semibold : .medium))
-                        .lineLimit(2)
-                        .foregroundStyle(session.title == nil ? RTIDesign.Color.textSecondary : RTIDesign.Color.textPrimary)
-                    HStack(spacing: 6) {
-                        Text(timeString(for: session))
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(RTIDesign.Color.textTertiary)
-                        if session.title == nil {
-                            Circle()
-                                .fill(Color.secondary.opacity(0.5))
-                                .frame(width: 4, height: 4)
-                                .help("No summary yet — the title appears once the end-of-session summary finishes.")
-                        }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.title ?? "Untitled session")
+                    .font(RTIDesign.Font.label)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .foregroundStyle(session.title == nil ? RTIDesign.Color.textSecondary : RTIDesign.Color.textPrimary)
+                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
+                    Text(timeString(for: session))
+                        .font(RTIDesign.Font.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(RTIDesign.Color.textTertiary)
+                    if session.title == nil {
+                        SlateStatusDot(color: RTIDesign.Color.textTertiary, size: 4)
+                            .help("No summary yet — the title appears once the end-of-session summary finishes.")
                     }
                 }
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(selected == session ? RTIDesign.Color.cardBackground : Color.clear)
-                    .shadow(
-                        color: selected == session ? .black.opacity(0.05) : .clear,
-                        radius: 3,
-                        y: 1
-                    )
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, RTIDesign.Spacing.xs + 2)
+            .frame(height: RTIDesign.Control.sessionRow)
+            .slateRaisedTile(selected == session, cornerRadius: RTIDesign.Radius.row)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected == session ? [.isButton, .isSelected] : .isButton)
     }
 
     // MARK: - Detail toolbar
@@ -208,11 +212,11 @@ struct SessionsBrowserView: View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(session.title ?? "Untitled session")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(RTIDesign.Font.heading)
                         .foregroundStyle(RTIDesign.Color.textPrimary)
                         .lineLimit(1)
                     Text(sessionDetailLine(for: session))
-                        .font(.system(size: 11))
+                        .font(RTIDesign.Font.meta)
                         .foregroundStyle(RTIDesign.Color.textSecondary)
                 }
 
@@ -248,32 +252,25 @@ struct SessionsBrowserView: View {
                             selectedFile = file
                         } label: {
                             Text(displayName(for: file))
-                                .font(.system(size: 12, weight: selectedFile == file ? .semibold : .medium))
+                                .font(RTIDesign.Font.meta)
                                 .foregroundStyle(
                                     selectedFile == file
                                         ? RTIDesign.Color.textPrimary
                                         : RTIDesign.Color.textSecondary
                                 )
-                                .padding(.horizontal, 11)
-                                .frame(height: 28)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(selectedFile == file ? RTIDesign.Color.cardBackground : Color.clear)
-                                        .shadow(
-                                            color: selectedFile == file ? .black.opacity(0.06) : .clear,
-                                            radius: 2,
-                                            y: 1
-                                        )
+                                .padding(.horizontal, RTIDesign.Spacing.xs + 2)
+                                .frame(height: RTIDesign.Control.tile)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: RTIDesign.Radius.tile, style: .continuous)
+                                        .strokeBorder(RTIDesign.Color.keyCapStroke, lineWidth: House.hairline)
                                 )
+                                .slateRaisedTile(selectedFile == file, cornerRadius: RTIDesign.Radius.tile)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityAddTraits(selectedFile == file ? [.isButton, .isSelected] : .isButton)
                     }
                 }
-                .padding(3)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(RTIDesign.Color.trackBackground)
-                )
                 .layoutPriority(1)
 
                 Spacer(minLength: 0)
@@ -366,7 +363,7 @@ struct SessionsBrowserView: View {
         .padding(.top, 14)
         .padding(.bottom, 12)
         .background(
-            Color(nsColor: .windowBackgroundColor)
+            RTIDesign.Color.appBackground
                 .overlay(alignment: .bottom) {
                     Rectangle()
                         .fill(RTIDesign.Color.divider)
@@ -407,7 +404,7 @@ struct SessionsBrowserView: View {
                 }
             case "log":
                 Text(fileText)
-                    .font(.system(size: 11.5, design: .monospaced))
+                    .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             default:
@@ -473,8 +470,8 @@ struct SessionsBrowserView: View {
                     .scaleEffect(0.7)
             }
             Text(text)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -488,18 +485,25 @@ struct SessionsBrowserView: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "tray")
-                .font(.system(size: 30))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: House.TypeToken.Size.display))
+                .foregroundStyle(RTIDesign.Color.textTertiary)
             Text(sessions.isEmpty ? "No saved sessions yet" : "Select a session")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.label)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
             if !sessions.isEmpty {
                 Text("Sessions appear here once they're saved on stop.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(RTIDesign.Color.textTertiary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Footer line for the reading pane: what this record is made of.
+    private func sessionFooterStatus(for session: SessionArchive.ArchivedSession) -> String {
+        var parts: [String] = [hasTranscript(session) ? "Transcript ready" : "No transcript"]
+        if let file = selectedFile { parts.append(displayName(for: file)) }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Date grouping
@@ -889,10 +893,10 @@ struct SessionsBrowserView: View {
     private var titleEditor: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Edit session title")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: House.TypeToken.Size.title, weight: .semibold))
             Text("Use the real study or meeting name. This replaces the AI-generated label in the Sessions list.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.meta)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
             TextField("Session title", text: $titleDraft)
                 .textFieldStyle(.roundedBorder)
             HStack {
@@ -909,13 +913,13 @@ struct SessionsBrowserView: View {
     private var summaryEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Edit summary")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: House.TypeToken.Size.title, weight: .semibold))
             TextEditor(text: $summaryDraft)
-                .font(.system(size: 13))
+                .font(RTIDesign.Font.bodySmall)
                 .frame(minHeight: 440)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 7)
-                        .stroke(Color.secondary.opacity(0.25))
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.tile)
+                        .stroke(RTIDesign.Color.border)
                 }
         }
     }
@@ -923,20 +927,20 @@ struct SessionsBrowserView: View {
     private var transcriptEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Edit transcript")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: House.TypeToken.Size.title, weight: .semibold))
             Text("Correct text or assign each turn to a named speaker. Notes stay distinct from spoken turns.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.meta)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
             ForEach($transcriptTurns) { $turn in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text(turn.timestamp)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
+                            .foregroundStyle(RTIDesign.Color.textSecondary)
                         if turn.isNote {
                             Label("Note", systemImage: "note.text")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.orange)
+                                .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
+                                .foregroundStyle(RTIDesign.Color.warning)
                         } else {
                             TextField("Speaker", text: $turn.speaker)
                                 .textFieldStyle(.roundedBorder)
@@ -950,16 +954,16 @@ struct SessionsBrowserView: View {
                         }
                     }
                     TextEditor(text: $turn.text)
-                        .font(.system(size: 13))
+                        .font(RTIDesign.Font.bodySmall)
                         .frame(minHeight: 58)
                         .padding(4)
                         .overlay {
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.secondary.opacity(0.2))
+                            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip)
+                                .stroke(RTIDesign.Color.border)
                         }
                 }
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.05)))
+                .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.row).fill(RTIDesign.Color.chipFill))
             }
         }
     }
@@ -973,20 +977,20 @@ struct SessionsBrowserView: View {
     private var speakerEditor: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Name speakers")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: House.TypeToken.Size.title, weight: .semibold))
             Text("These names are saved only for this session and replace anonymous speaker labels in its transcript and summary.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.meta)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
             if speakerLabels.isEmpty {
                 Text("No anonymous speakers found in this transcript.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .font(RTIDesign.Font.bodySmall)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
             } else {
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
                     ForEach(speakerLabels, id: \.self) { label in
                         GridRow {
                             Text(label)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(RTIDesign.Font.label)
                             VStack(alignment: .leading, spacing: 3) {
                                 TextField("Name", text: speakerBinding(for: label))
                                     .textFieldStyle(.roundedBorder)
@@ -1025,11 +1029,11 @@ struct SessionsBrowserView: View {
            entry.isAccept || entry.isMaybe {
             HStack(spacing: 6) {
                 Text("Voice match: \(name) (\(String(format: "%.2f", entry.score ?? 0))\(entry.isMaybe ? ", weak" : ""))")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
                 Button("Use") { speakerNames[label] = name }
                     .buttonStyle(.link)
-                    .font(.system(size: 11))
+                    .font(RTIDesign.Font.caption)
             }
         }
     }
@@ -1084,17 +1088,7 @@ struct SessionsBrowserView: View {
 
 private struct SessionReadingBackground: View {
     var body: some View {
-        Color(nsColor: .textBackgroundColor)
-            .overlay(
-                LinearGradient(
-                    colors: [
-                        Color.secondary.opacity(0.018),
-                        Color.clear
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+        RTIDesign.Color.appBackground
     }
 }
 
@@ -1112,7 +1106,7 @@ private struct SessionDocumentSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
                 .foregroundStyle(RTIDesign.Color.textSecondary)
             content
         }
@@ -1137,18 +1131,18 @@ private struct SessionTranscriptReader: View {
                                 .frame(width: 7, height: 7)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(turn.isNote ? "Note" : turn.speaker)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
                                     .foregroundStyle(RTIDesign.Color.textSecondary)
                                     .lineLimit(1)
                                 Text(turn.timestamp)
-                                    .font(.system(size: 10, design: .monospaced))
+                                    .font(.system(size: House.TypeToken.Size.micro, design: .monospaced))
                                     .foregroundStyle(RTIDesign.Color.textTertiary)
                             }
                         }
                         .frame(width: 118, alignment: .leading)
 
                         Text(turn.text)
-                            .font(.system(size: 14))
+                            .font(RTIDesign.Font.body)
                             .foregroundStyle(turn.isNote ? RTIDesign.Color.textSecondary : RTIDesign.Color.textPrimary)
                             .italic(turn.isNote)
                             .lineSpacing(4)
@@ -1237,28 +1231,28 @@ private struct LiveIntelligenceReader: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .firstTextBaseline, spacing: 9) {
                             Label(item.tag, systemImage: icon(for: item.tag))
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
                                 .foregroundStyle(color(for: item.tag))
                                 .padding(.horizontal, 8)
                                 .frame(height: 23)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    RoundedRectangle(cornerRadius: RTIDesign.Radius.tile, style: .continuous)
                                         .fill(color(for: item.tag).opacity(0.10))
                                 )
                             Text(item.timestamp)
-                                .font(.system(size: 10, design: .monospaced))
+                                .font(.system(size: House.TypeToken.Size.micro, design: .monospaced))
                                 .foregroundStyle(RTIDesign.Color.textTertiary)
                             Spacer(minLength: 0)
                         }
 
                         Text(item.headline)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.heading, weight: .semibold))
                             .foregroundStyle(RTIDesign.Color.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
 
                         if !item.matters.isEmpty {
                             Text(item.matters)
-                                .font(.system(size: 13))
+                                .font(RTIDesign.Font.bodySmall)
                                 .foregroundStyle(RTIDesign.Color.textSecondary)
                                 .lineSpacing(3)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -1267,11 +1261,11 @@ private struct LiveIntelligenceReader: View {
                         if let quote = item.quote {
                             HStack(alignment: .top, spacing: 9) {
                                 Image(systemName: "quote.opening")
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
                                     .foregroundStyle(RTIDesign.Color.accentText)
                                     .padding(.top, 2)
                                 Text(([item.speaker, quote].compactMap { $0 }).joined(separator: ": "))
-                                    .font(.system(size: 12))
+                                    .font(RTIDesign.Font.meta)
                                     .foregroundStyle(RTIDesign.Color.textSecondary)
                                     .italic()
                                     .lineSpacing(3)
@@ -1280,7 +1274,7 @@ private struct LiveIntelligenceReader: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 10)
                             .background(
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                RoundedRectangle(cornerRadius: RTIDesign.Radius.row, style: .continuous)
                                     .fill(RTIDesign.Color.accentBg.opacity(0.55))
                             )
                         }

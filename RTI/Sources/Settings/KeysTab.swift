@@ -89,7 +89,7 @@ struct ProvidersTab: View {
                         ForEach(AsyncTranscriptProviders.all) { provider in
                             VStack(alignment: .leading, spacing: 10) {
                                 Text(provider.displayName)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
                                 ForEach(provider.credentialFields) { credential in
                                     field(
                                         credential.label,
@@ -106,30 +106,30 @@ struct ProvidersTab: View {
                     SettingsStatusLabel(
                         text: "The selected assistant provider (\(activeLLMOption.displayName)) is missing its API key.",
                         systemImage: "exclamationmark.triangle.fill",
-                        color: .orange
+                        color: RTIDesign.Color.warning
                     )
                 }
                 if !activeRealtimeSTTHasKey {
                     SettingsStatusLabel(
                         text: "Live transcription needs a Soniox key.",
                         systemImage: "exclamationmark.triangle.fill",
-                        color: .orange
+                        color: RTIDesign.Color.warning
                     )
                 }
                 if !activeAsyncTranscriptHasKey {
                     SettingsStatusLabel(
                         text: "The selected transcript-upgrade provider (\(activeAsyncTranscriptOption.displayName)) is missing one or more required credentials.",
                         systemImage: "exclamationmark.triangle.fill",
-                        color: .orange
+                        color: RTIDesign.Color.warning
                     )
                 }
                 if let saveError {
-                    SettingsStatusLabel(text: saveError, systemImage: "xmark.octagon.fill", color: .red)
+                    SettingsStatusLabel(text: saveError, systemImage: "xmark.octagon.fill", color: RTIDesign.Color.danger)
                 }
 
                 HStack {
                     if saved {
-                        SettingsStatusLabel(text: "Saved", systemImage: "checkmark.circle.fill", color: .green)
+                        SettingsStatusLabel(text: "Saved", systemImage: "checkmark.circle.fill", color: RTIDesign.Color.success)
                     }
                     Spacer()
                     Button("Save Provider Settings") { save() }
@@ -143,17 +143,17 @@ struct ProvidersTab: View {
     private var storageLocation: some View {
         HStack(spacing: 8) {
             Image(systemName: "lock.doc")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
             Text("~/Library/Application Support/RTI/credentials.json")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .textSelection(.enabled)
             Text("0600")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .font(.system(size: House.TypeToken.Size.micro, weight: .semibold, design: .monospaced))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(Capsule().fill(Color.secondary.opacity(0.10)))
+                .background(Capsule().fill(RTIDesign.Color.chipFill))
         }
     }
 
@@ -166,11 +166,11 @@ struct ProvidersTab: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
                 Spacer()
                 Text(detail)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: House.TypeToken.Size.micro, design: .monospaced))
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.trailing)
             }
@@ -188,22 +188,22 @@ struct ProvidersTab: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
                 Spacer()
                 Text(detail)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: House.TypeToken.Size.micro, design: .monospaced))
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.trailing)
             }
             Text(value)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.08))
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
+                        .fill(RTIDesign.Color.chipFill)
                 )
         }
     }
@@ -217,10 +217,10 @@ struct ProvidersTab: View {
 
     private func field(_ label: String, _ placeholder: String, _ text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 12, weight: .medium))
+            Text(label).font(.system(size: House.TypeToken.Size.meta, weight: .medium))
             SecureField(placeholder, text: text)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 13, design: .monospaced))
+                .font(.system(size: House.TypeToken.Size.bodySmall, design: .monospaced))
         }
     }
 

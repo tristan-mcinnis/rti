@@ -34,14 +34,13 @@ private struct ScreenPrivacySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Screen Privacy")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Screen Privacy")
             Text("Windows of these apps are cut out of every screen capture — ambient context, attached screenshots, and the assistant's capture tool. Their content can never reach OCR text, kept frames, notes, or meeting summaries. One bundle id per line.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             TextEditor(text: $listText)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
                 .frame(minHeight: 120, maxHeight: 160)
                 .settingsEditorBorder()
                 .onChange(of: listText) { _, newValue in
@@ -92,8 +91,8 @@ private struct LaunchAtLoginSection: View {
             ))
             if let launchError {
                 Text(launchError)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(RTIDesign.Color.danger)
             }
         }
     }
@@ -107,8 +106,7 @@ private struct CaptureAccessSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Capture Setup")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Capture Setup")
             accessRow(
                 title: "Microphone",
                 detail: "Required for live transcription.",
@@ -143,18 +141,18 @@ private struct CaptureAccessSection: View {
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 12, weight: .medium))
+                Text(title).font(.system(size: House.TypeToken.Size.meta, weight: .medium))
                 Text(detail)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             switch state {
             case .granted:
                 Label("Ready", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.green)
+                    .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
+                    .foregroundStyle(RTIDesign.Color.success)
             case .notDetermined:
                 Button("Allow", action: grant)
                     .controlSize(.small)
@@ -182,8 +180,7 @@ private struct AudioInputSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Audio Input")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Audio Input")
             Picker("Capture from", selection: $selectedInputUID) {
                 Text("System default microphone").tag(AudioInputDevice.systemDefaultUID)
                 if !inputDevices.isEmpty { Divider() }
@@ -196,39 +193,38 @@ private struct AudioInputSection: View {
                 AudioInputDeviceStore.preferredUID = newValue
             }
             Text("Pick BlackHole or an aggregate device to capture system audio from calls. Applies on the next session.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Toggle("Echo cancellation", isOn: $echoCancellation)
                 .padding(.top, 4)
             Text("Cancels the other party's voice bleeding from your speakers into the mic. Off by default: on some Macs Apple's voice-processing silences the mic entirely (no transcript). Only enable if you're on speakers and transcription still works. Applies on the next session.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Toggle("Protect Bluetooth headphone volume", isOn: $protectBluetoothVolume)
                 .padding(.top, 4)
             Text("Keeps Bluetooth headphones at full volume by using the built-in mic while recording, then restores your original mic on stop.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider().padding(.vertical, 6)
-            Text("Live levels")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Live levels")
             Text(session.isRunning
                 ? "Confirm both sides are being captured. The same monitor is available from the menubar."
                 : "Levels are available only while a session is recording.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             if session.isRunning {
                 AudioMonitorContent()
                     .padding(12)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.secondary.opacity(0.06))
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
+                            .fill(RTIDesign.Color.chipFill)
                     )
                     .padding(.top, 6)
             }
@@ -250,8 +246,7 @@ private struct RealTimeAnalysisSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Real-Time Analysis")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Real-Time Analysis")
 
             Toggle("Enable notes generation", isOn: $notesEnabled)
             Toggle("Enable discussion guide matching", isOn: $guideEnabled)
@@ -261,11 +256,11 @@ private struct RealTimeAnalysisSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("Notes interval")
-                        .font(.system(size: 12))
+                        .font(RTIDesign.Font.meta)
                     Spacer()
                     Text("\(Int(notesInterval / 60)) min")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
                 }
                 Slider(value: $notesInterval, in: AnalysisSettingsDefaults.intervalRange, step: 60) {}
             }
@@ -273,8 +268,8 @@ private struct RealTimeAnalysisSection: View {
             .opacity(notesEnabled ? 1 : 0.5)
 
             Text("Runs automatically while recording.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
@@ -305,29 +300,45 @@ private struct OverlayAppearanceSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Overlay Appearance")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Overlay Appearance")
 
-            Picker("Theme", selection: $appearanceMode) {
-                ForEach(RTIAppearanceMode.allCases) { mode in
-                    Text(mode.label).tag(mode.rawValue)
+            HStack(spacing: RTIDesign.Spacing.sm) {
+                Text("Appearance")
+                    .font(RTIDesign.Font.label)
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
+                Spacer(minLength: RTIDesign.Spacing.xs)
+                Picker("Appearance", selection: $appearanceMode) {
+                    ForEach(RTIAppearanceMode.allCases) { mode in
+                        Text(mode.label).tag(mode.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .onChange(of: appearanceMode) { _, _ in postAppearanceChanged() }
+            }
+            .frame(height: RTIDesign.Control.heightMd)
+
+            // The accent no longer paints chrome (DESIGN.md: focus rings and
+            // links only), so the old accent picker is gone. What is left of
+            // the palette is the six-colour SPEAKER palette, which is data
+            // colour and stays local to RTI.
+            HStack(spacing: RTIDesign.Spacing.sm) {
+                Text("Speaker palette")
+                    .font(RTIDesign.Font.label)
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
+                Spacer(minLength: RTIDesign.Spacing.xs)
+                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
+                    ForEach(Array(RTIDesign.Color.speakerPalette.enumerated()), id: \.offset) { index, colour in
+                        Circle()
+                            .fill(colour)
+                            .frame(width: 10, height: 10)
+                            .accessibilityLabel("Speaker \(index + 1)")
+                    }
                 }
             }
-            .pickerStyle(.segmented)
-            .onChange(of: appearanceMode) { _, _ in postAppearanceChanged() }
-
-            HStack {
-                ColorPicker("Accent", selection: accentBinding, supportsOpacity: false)
-                    .labelsHidden()
-                    .frame(width: 36)
-                Text("Accent")
-                    .font(.system(size: 12))
-                Spacer()
-                Text(accentColorHex.uppercased())
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-            .onChange(of: accentColorHex) { _, _ in postAppearanceChanged() }
+            .frame(height: RTIDesign.Control.heightMd)
+            .help("Transcript speaker chips use these six colours so speakers stay distinct.")
 
             sliderRow(
                 label: "Contrast",
@@ -349,13 +360,22 @@ private struct OverlayAppearanceSection: View {
                 postsAppearance: true
             )
 
-            Picker("Reduce motion", selection: $reduceMotion) {
-                ForEach(RTIReduceMotionMode.allCases) { mode in
-                    Text(mode.label).tag(mode.rawValue)
+            HStack(spacing: RTIDesign.Spacing.sm) {
+                Text("Reduce motion")
+                    .font(RTIDesign.Font.label)
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
+                Spacer(minLength: RTIDesign.Spacing.xs)
+                Picker("Reduce motion", selection: $reduceMotion) {
+                    ForEach(RTIReduceMotionMode.allCases) { mode in
+                        Text(mode.label).tag(mode.rawValue)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .onChange(of: reduceMotion) { _, _ in postAppearanceChanged() }
             }
-            .pickerStyle(.segmented)
-            .onChange(of: reduceMotion) { _, _ in postAppearanceChanged() }
+            .frame(height: RTIDesign.Control.heightMd)
 
             Divider().padding(.vertical, 4)
 
@@ -396,17 +416,6 @@ private struct OverlayAppearanceSection: View {
         }
     }
 
-    private var accentBinding: Binding<Color> {
-        Binding(
-            get: {
-                Color(nsColor: NSColor.rtiColor(hex: accentColorHex) ?? NSColor.systemBlue)
-            },
-            set: { newValue in
-                accentColorHex = NSColor(newValue).rtiHexString
-            }
-        )
-    }
-
     private func postAppearanceChanged() {
         NotificationCenter.default.post(name: .rtiOverlayAppearanceChanged, object: nil)
     }
@@ -425,11 +434,11 @@ private struct OverlayAppearanceSection: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
-                    .font(.system(size: 12))
+                    .font(RTIDesign.Font.meta)
                 Spacer()
                 Text(String(format: format, displayTransform?(value.wrappedValue) ?? value.wrappedValue))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
             }
             Slider(value: value, in: range, step: step) { editing in
                 if !editing && postsResize {
@@ -448,8 +457,7 @@ private struct OverlayAppearanceSection: View {
 private struct HotkeysSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Hotkeys")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Hotkeys")
             VStack(alignment: .leading, spacing: 4) {
                 hotkeyRow("Toggle overlay", "⌘ \\")
                 hotkeyRow("Start / stop session", "⌘ ⇧ R")
@@ -458,12 +466,12 @@ private struct HotkeysSection: View {
                 hotkeyRow("Note mode (type into transcript)", "⌘ ⌥ N")
                 hotkeyRow("Attach screenshot", "⌘ ⇧ H")
             }
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
+            .font(RTIDesign.Font.meta)
+            .foregroundStyle(RTIDesign.Color.textSecondary)
 
             Text("⌘⏎ is the remappable primary action. Quick AI actions are also available from the command palette.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
         }
     }
 
@@ -483,11 +491,10 @@ private struct DataAndSupportSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Data & Support")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Data & Support")
             Text("Audio is streamed to your transcription provider. Transcripts and prompts are sent to your configured LLM provider. Session records are written to your vault on stop and checkpointed every 5 minutes while recording.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
@@ -530,8 +537,7 @@ private struct DiagnosticsSection: View {
         let build = info?["CFBundleVersion"] as? String ?? "?"
 
         VStack(alignment: .leading, spacing: 6) {
-            Text("Diagnostics")
-                .font(.system(size: 13, weight: .medium))
+            SlateSectionLabel(text: "Diagnostics")
             diagRow("Version", "RTI \(version) (\(build))")
             diagRow("Assistant", "\(LLMProviders.active.displayName) · \(LLMProviders.active.model)")
             diagRow("Transcribe", STTProviders.active.displayName)
@@ -546,12 +552,12 @@ private struct DiagnosticsSection: View {
     private func diagRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .frame(width: 80, alignment: .leading)
             Text(value)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.primary)
+                .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
+                .foregroundStyle(RTIDesign.Color.textPrimary)
                 .textSelection(.enabled)
                 .lineLimit(2)
                 .truncationMode(.middle)

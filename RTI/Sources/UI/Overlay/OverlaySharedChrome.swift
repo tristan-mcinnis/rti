@@ -15,13 +15,11 @@ struct OverlayToolbarButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.overlayInk.opacity(disabled ? 0.25 : hovering ? 0.82 : 0.6))
-                .frame(width: 24, height: 22)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.overlayInk.opacity(hovering && !disabled ? 0.06 : 0))
-                )
+                .font(.system(size: House.TypeToken.Size.bodySmall, weight: .regular))
+                .foregroundStyle(disabled ? Color.overlayInkTertiary
+                                 : (hovering ? Color.overlayInk : Color.overlayInkSecondary))
+                .frame(width: RTIDesign.Control.tile, height: RTIDesign.Control.tile)
+                .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.tile, hovering: hovering && !disabled)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
@@ -33,14 +31,16 @@ struct OverlayToolbarButton: View {
 }
 
 func overlayEmptyState(_ icon: String, _ title: String, _ subtitle: String) -> some View {
-    VStack(spacing: 6) {
-        Image(systemName: icon).font(.system(size: 26)).foregroundStyle(Color.overlayInk.opacity(0.35))
-        Text(title).font(.system(size: 13)).foregroundStyle(Color.overlayInk.opacity(0.6))
-        Text(subtitle).font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.4))
+    VStack(spacing: RTIDesign.Spacing.xs) {
+        Image(systemName: icon)
+            .font(.system(size: House.TypeToken.Size.display, weight: .regular))
+            .foregroundStyle(Color.overlayInkTertiary)
+        Text(title).font(RTIDesign.Font.label).foregroundStyle(Color.overlayInkSecondary)
+        Text(subtitle).font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkTertiary)
             .multilineTextAlignment(.center)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding(.horizontal, 24)
+    .padding(.horizontal, RTIDesign.Spacing.lg)
 }
 
 // MARK: - Hover highlight (Swift 6 teardown-crash workaround)

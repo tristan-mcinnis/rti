@@ -10,8 +10,8 @@ struct GlossaryTab: View {
             VStack(alignment: .leading, spacing: 14) {
                 SettingsCard("How Glossary Terms Are Used", detail: "Names, acronyms, and domain terms are sent as a system instruction before every chat, summary, and recall call.") {
                     Text("Use this for proper names, client-specific jargon, and in-house spellings that the model should preserve exactly.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .font(RTIDesign.Font.meta)
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -25,7 +25,7 @@ struct GlossaryTab: View {
                                 if store.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                     Text("Add terms here — one per line:\nTerm — meaning\n# Section header")
                                         .font(.system(.body, design: .monospaced))
-                                        .foregroundStyle(.tertiary)
+                                        .foregroundStyle(RTIDesign.Color.textTertiary)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 8)
                                         .allowsHitTesting(false)
@@ -34,9 +34,9 @@ struct GlossaryTab: View {
 
                         let count = store.entries.count
                         if count == 0 {
-                            SettingsStatusLabel(text: "No entries parsed yet. The glossary is not currently sent to the model.", systemImage: "info.circle", color: .secondary)
+                            SettingsStatusLabel(text: "No entries parsed yet. The glossary is not currently sent to the model.", systemImage: "info.circle", color: RTIDesign.Color.textSecondary)
                         } else {
-                            SettingsStatusLabel(text: "\(count) entr\(count == 1 ? "y" : "ies") parsed and sent with every LLM call.", systemImage: "checkmark.circle.fill", color: .green)
+                            SettingsStatusLabel(text: "\(count) entr\(count == 1 ? "y" : "ies") parsed and sent with every LLM call.", systemImage: "checkmark.circle.fill", color: RTIDesign.Color.success)
                         }
                     }
                 }
@@ -52,7 +52,7 @@ struct GlossaryTab: View {
                     ICP — Ideal Customer Profile
                     """)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
                     .textSelection(.enabled)
                 }
             }

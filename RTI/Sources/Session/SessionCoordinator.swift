@@ -116,6 +116,19 @@ final class SessionCoordinator {
     /// WAV path for the active recording, deleted when the session ends.
     private var activeWavPath: String?
 
+#if DEBUG
+    /// Debug-only seam for the offscreen render proof (`RTIRenderTests`). It
+    /// pushes transcript rows and a phase straight into the published state so
+    /// the design can be compared against the mockups without a live meeting.
+    /// Never compiled into a Release build and never called by the app.
+    func seedForRenderProof(entries: [LiveEntry], interim: String?, phase: Phase, startedAt: Date?) {
+        self.liveEntries = entries
+        self.interimLine = interim
+        self.phase = phase
+        self.startedAt = startedAt
+    }
+#endif
+
     private init() {
         commonInit()
     }

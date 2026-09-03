@@ -20,7 +20,8 @@ enum OverlayAppearanceDefaults {
     static let invisibilityKey = "rti.invisible"
     static let defaultWidth: Double = 700
     static let defaultHeight: Double = 440
-    static let defaultAppearanceMode = RTIAppearanceMode.system.rawValue
+    /// Slate is a dark-first system; light stays first-class.
+    static let defaultAppearanceMode = RTIAppearanceMode.dark.rawValue
     static let defaultAccentColor = "#0866D6" // House accent (light); see design-system/tokens.json
     static let defaultContrast: Double = 60
     static let defaultUIFontSize: Double = 14
@@ -39,7 +40,24 @@ enum OverlayAppearanceDefaults {
         if defaults.object(forKey: lightModeKey) != nil {
             return defaults.bool(forKey: lightModeKey) ? .light : .dark
         }
-        return .system
+        return RTIAppearanceMode(rawValue: defaultAppearanceMode) ?? .dark
+    }
+
+    /// The NSAppearance every RTI window (and `NSApp`) should carry, per the
+    /// Settings theme. `nil` means "follow the system".
+    static func nsAppearance() -> NSAppearance? {
+        switch effectiveAppearanceMode() {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+
+    /// Apply the configured appearance app-wide. Called at launch and whenever
+    /// the setting changes, so every window follows without per-window code.
+    @MainActor
+    static func applyAppAppearance() {
+        NSApp.appearance = nsAppearance()
     }
 
     static func effectiveReduceMotion() -> Bool {

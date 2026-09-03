@@ -28,25 +28,25 @@ struct MarkdownView: View {
         if raw.trimmingCharacters(in: .whitespaces).isEmpty {
             Spacer().frame(height: 4)
         } else if let stripped = raw.mdStripPrefix("### ") {
-            inline(stripped).font(.system(size: 13, weight: .semibold))
+            inline(stripped).font(RTIDesign.Font.label)
         } else if let stripped = raw.mdStripPrefix("## ") {
-            inline(stripped).font(.system(size: 15, weight: .bold)).padding(.top, 4)
+            inline(stripped).font(RTIDesign.Font.heading).padding(.top, RTIDesign.Spacing.xxs)
         } else if let stripped = raw.mdStripPrefix("# ") {
-            inline(stripped).font(.system(size: 17, weight: .bold)).padding(.top, 4)
+            inline(stripped).font(RTIDesign.Font.heading).padding(.top, RTIDesign.Spacing.xxs)
         } else if let stripped = raw.mdStripPrefix("- [ ] ") ?? raw.mdStripPrefix("* [ ] ") {
             HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "square").font(.system(size: 11)).foregroundStyle(.secondary)
+                Image(systemName: "square").font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.textSecondary)
                 inline(stripped).fixedSize(horizontal: false, vertical: true)
             }
         } else if let stripped = raw.mdStripPrefix("- [x] ") ?? raw.mdStripPrefix("* [x] ")
             ?? raw.mdStripPrefix("- [X] ") ?? raw.mdStripPrefix("* [X] ") {
             HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "checkmark.square.fill").font(.system(size: 11)).foregroundStyle(.green)
+                Image(systemName: "checkmark.square.fill").font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.success)
                 inline(stripped).fixedSize(horizontal: false, vertical: true)
             }
         } else if let stripped = raw.mdStripPrefix("- ") ?? raw.mdStripPrefix("* ") {
             HStack(alignment: .top, spacing: 6) {
-                Text("•").foregroundStyle(.secondary)
+                Text("•").foregroundStyle(RTIDesign.Color.textSecondary)
                 inline(stripped).fixedSize(horizontal: false, vertical: true)
             }
         } else {
@@ -110,7 +110,7 @@ enum MarkdownRTF {
             }
 
             let (text, style) = classify(line: raw)
-            let inlineAttr = renderInline(text, baseFont: style.font, baseColor: NSColor.labelColor)
+            let inlineAttr = renderInline(text, baseFont: style.font, baseColor: House.NSColorToken.textPrimary)
             let para = NSMutableParagraphStyle()
             para.paragraphSpacingBefore = style.spacingBefore
             para.paragraphSpacing = style.spacingAfter

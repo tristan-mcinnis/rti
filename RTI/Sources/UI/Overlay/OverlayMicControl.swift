@@ -23,9 +23,16 @@ struct OverlayMicControl: View {
             muteButton
             deviceMenu
         }
-        .background(Capsule(style: .continuous).fill(backgroundColor))
-        .overlay(Capsule(style: .continuous).stroke(borderColor, lineWidth: 1))
-        .clipShape(Capsule(style: .continuous))
+        .frame(height: RTIDesign.Control.chip)
+        .background(
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                .fill(backgroundColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                .strokeBorder(borderColor, lineWidth: House.hairline)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous))
         .hoverHighlight($hovering)
     }
 
@@ -35,22 +42,22 @@ struct OverlayMicControl: View {
         } label: {
             ZStack(alignment: .bottom) {
                 Image(systemName: session.micMuted ? "mic.slash.fill" : "mic.fill")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(session.micMuted ? Color.orange : Color.overlayInk.opacity(0.52))
+                    .font(RTIDesign.Font.meta)
+                    .foregroundStyle(session.micMuted ? RTIDesign.Color.warning : Color.overlayInkSecondary)
                 // Zoom-style reassurance: a faint green level bar under the
                 // mic while recording, so you can SEE it's hearing you.
                 if session.isRunning, !session.micMuted {
                     TimelineView(.periodic(from: .now, by: 0.15)) { _ in
                         let level = CGFloat(min(1, max(0, session.audioLevels().mic)))
                         Capsule()
-                            .fill(Color.green.opacity(0.85))
+                            .fill(RTIDesign.Color.success)
                             .frame(width: 3 + 11 * level, height: 2)
                             .animation(.linear(duration: 0.12), value: level)
                     }
                     .padding(.bottom, 3)
                 }
             }
-            .frame(width: 24, height: 28)
+            .frame(width: 24, height: RTIDesign.Control.chip)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(session.micMuted ? "Unmute microphone" : "Mute microphone")
@@ -109,9 +116,9 @@ struct OverlayMicControl: View {
             }
         } label: {
             Image(systemName: "chevron.down")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(Color.overlayInk.opacity(0.40))
-                .frame(width: 14, height: 28)
+                .font(.system(size: House.TypeToken.Size.micro, weight: .bold))
+                .foregroundStyle(Color.overlayInkTertiary)
+                .frame(width: 14, height: RTIDesign.Control.chip)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -162,13 +169,11 @@ struct OverlayMicControl: View {
     }
 
     private var backgroundColor: Color {
-        if session.micMuted { return Color.orange.opacity(0.16) }
-        return Color.overlayInk.opacity(hovering ? 0.08 : 0.045)
+        if session.micMuted { return RTIDesign.Color.warning.opacity(0.12) }
+        return hovering ? RTIDesign.Color.selectionFill : RTIDesign.Color.chipFill
     }
 
     private var borderColor: Color {
-        session.micMuted
-            ? Color.orange.opacity(0.5)
-            : Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
+        session.micMuted ? RTIDesign.Color.warning.opacity(0.4) : RTIDesign.Color.border
     }
 }

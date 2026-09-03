@@ -17,11 +17,11 @@ struct PromptsTab: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Prompt Library")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
                     Spacer()
                     if store.hasAnyOverride {
-                        SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: .blue)
+                        SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: RTIDesign.Color.textSecondary)
                     }
                 }
                 .padding(.horizontal, 10)
@@ -30,7 +30,7 @@ struct PromptsTab: View {
                 promptList
             }
             .frame(minWidth: 230, idealWidth: 250, maxWidth: 310)
-            .background(.thinMaterial)
+            .background(RTIDesign.Color.trackBackground)
 
             VStack(alignment: .leading, spacing: 0) {
                 header
@@ -48,10 +48,10 @@ struct PromptsTab: View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Prompts")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: House.TypeToken.Size.body, weight: .semibold))
                 Text("Edits take effect on the next call. Reset returns to the shipped default.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: false)
             }
@@ -90,12 +90,12 @@ struct PromptsTab: View {
                             if store.defaultChangedSinceEdit(id) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.caption2)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(RTIDesign.Color.warning)
                                     .help("The shipped default changed since you edited this.")
                             } else if store.isOverridden(id) {
                                 Image(systemName: "pencil.circle.fill")
                                     .font(.caption2)
-                                    .foregroundStyle(.blue)
+                                    .foregroundStyle(RTIDesign.Color.textSecondary)
                                     .help("Edited — overrides the default.")
                             }
                         }
@@ -147,7 +147,7 @@ private struct PromptEditorView: View {
                 SettingsCard(id.title, detail: id.help) {
                     VStack(alignment: .leading, spacing: 10) {
                         if store.defaultChangedSinceEdit(id) {
-                            SettingsStatusLabel(text: "The shipped default changed since you edited this.", systemImage: "exclamationmark.triangle.fill", color: .orange)
+                            SettingsStatusLabel(text: "The shipped default changed since you edited this.", systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
                         }
 
                         TextEditor(text: $text)
@@ -156,7 +156,7 @@ private struct PromptEditorView: View {
                             .settingsEditorBorder()
 
                         ForEach(warnings, id: \.self) { w in
-                            SettingsStatusLabel(text: w, systemImage: "exclamationmark.octagon.fill", color: .red)
+                            SettingsStatusLabel(text: w, systemImage: "exclamationmark.octagon.fill", color: RTIDesign.Color.danger)
                         }
                     }
                 }
@@ -165,7 +165,7 @@ private struct PromptEditorView: View {
                     SettingsCard("Preview Assembled Prompt") {
                         Text(assembled)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RTIDesign.Color.textSecondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -173,9 +173,9 @@ private struct PromptEditorView: View {
 
                 HStack {
                     if store.isOverridden(id) {
-                        SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: .blue)
+                        SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: RTIDesign.Color.textSecondary)
                     } else {
-                        SettingsStatusLabel(text: "Default", systemImage: "checkmark.circle", color: .secondary)
+                        SettingsStatusLabel(text: "Default", systemImage: "checkmark.circle", color: RTIDesign.Color.textSecondary)
                     }
                     Spacer()
                     Button("Reset to Default") {

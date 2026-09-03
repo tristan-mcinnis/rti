@@ -51,6 +51,10 @@ final class OverlayWindowController {
         // button hides it (⌘\ or the menubar brings it back).
         win.isReleasedWhenClosed = false
         win.sharingType = .none
+        // The panel ground is glass (blur + panelTint + top highlight), so the
+        // window must not paint an opaque fill behind it.
+        win.isOpaque = false
+        win.backgroundColor = .clear
 
         win.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
         win.appearance = Self.configuredAppearance()
@@ -98,6 +102,7 @@ final class OverlayWindowController {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
+                OverlayAppearanceDefaults.applyAppAppearance()
                 self?.window.appearance = Self.configuredAppearance()
             }
         }
@@ -117,15 +122,9 @@ final class OverlayWindowController {
     }
 
     /// The NSAppearance the window should use, per the Settings theme mode.
+    /// One resolver for every RTI window (`OverlayAppearanceDefaults`).
     private static func configuredAppearance() -> NSAppearance? {
-        switch OverlayAppearanceDefaults.effectiveAppearanceMode() {
-        case .system:
-            return nil
-        case .light:
-            return NSAppearance(named: .aqua)
-        case .dark:
-            return NSAppearance(named: .darkAqua)
-        }
+        OverlayAppearanceDefaults.nsAppearance()
     }
 
     private static func configuredSize() -> NSSize {

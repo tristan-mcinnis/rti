@@ -46,7 +46,7 @@ struct ResponseView: View {
         ScrollViewReader { proxy in
             GeometryReader { outer in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: RTIDesign.Spacing.md) {
                         if entries.isEmpty, !streaming, error == nil {
                             emptyStateBody
                         }
@@ -57,10 +57,10 @@ struct ResponseView: View {
                         }
 
                         if let displayedError, !displayedError.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxs + 2) {
                                 Text(displayedError)
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.red.opacity(0.9))
+                                    .font(RTIDesign.Font.meta)
+                                    .foregroundStyle(RTIDesign.Color.danger)
                                     .textSelection(.enabled)
                                 if errorIsAuth {
                                     Button("Open Settings…", action: onOpenSettings)
@@ -130,11 +130,11 @@ struct ResponseView: View {
     private var missingKeysBody: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Add API keys to get started")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.overlayInk.opacity(0.85))
+                .font(RTIDesign.Font.heading)
+                .foregroundStyle(Color.overlayInk)
             Text("RTI needs a Soniox key for live transcription and a \(LLMProviders.active.displayName) key for the assistant. Both stay on this Mac.")
-                .font(.system(size: 12))
-                .foregroundStyle(Color.overlayInk.opacity(0.55))
+                .font(RTIDesign.Font.meta)
+                .foregroundStyle(Color.overlayInkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Open Settings…", action: onOpenSettings)
                 .buttonStyle(.borderedProminent)
@@ -145,20 +145,23 @@ struct ResponseView: View {
     private var readyBody: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Ready when you are")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.overlayInk.opacity(0.6))
-            VStack(alignment: .leading, spacing: 6) {
+                .font(RTIDesign.Font.body)
+                .foregroundStyle(Color.overlayInkSecondary)
+            VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxs + 2) {
                 ForEach(["Summarize the last few minutes",
                          "What did they decide?",
                          "Help me reply"], id: \.self)
                 { example in
                     Button { llm.sendAskAnything(example) } label: {
                         Text(example)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.overlayInk.opacity(0.7))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(Capsule().fill(Color.overlayInk.opacity(0.06)))
+                            .font(RTIDesign.Font.meta)
+                            .foregroundStyle(Color.overlayInkSecondary)
+                            .padding(.horizontal, RTIDesign.Spacing.sm)
+                            .frame(height: RTIDesign.Control.chip)
+                            .background(
+                                RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                                    .fill(RTIDesign.Color.chipFill)
+                            )
                     }
                     .buttonStyle(.plain)
                     .help("Ask this")
@@ -189,13 +192,17 @@ struct ResponseView: View {
     @ViewBuilder
     private func entryRow(_ entry: ChatEntry) -> some View {
         if entry.role == "user" {
-            HStack {
-                Spacer(minLength: 40)
-                // Canned actions (Assist, Recap, …) show a compact chip rather
-                // than dumping the full internal prompt as a bubble.
-                if let action = entry.action, action != "Ask" {
+            if let action = entry.action, action != "Ask" {
+                // Canned actions (Assist, Recap, …) are a LEFT-aligned action
+                // header chip, not a right-aligned bubble: the answer that
+                // follows is the content, and the chip only names its origin.
+                HStack {
                     cannedActionChip(action)
-                } else {
+                    Spacer(minLength: 0)
+                }
+            } else {
+                HStack {
+                    Spacer(minLength: 40)
                     userBubble(entry)
                 }
             }
@@ -257,16 +264,27 @@ struct ResponseView: View {
         case "Recap": "arrow.clockwise"
         default: "sparkles"
         }
-        return HStack(spacing: 5) {
+        return HStack(spacing: RTIDesign.Spacing.xxs + 2) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
-            Text(action)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: House.TypeToken.Size.caption, weight: .regular))
+            Text(actionHeaderLabel(action))
+                .font(RTIDesign.Font.meta)
         }
-        .foregroundStyle(Color.overlayInk.opacity(0.6))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(Color.overlayInk.opacity(0.06)))
+        .foregroundStyle(Color.overlayInkSecondary)
+        .padding(.horizontal, RTIDesign.Spacing.xs)
+        .frame(height: House.Control.keyCap + 2)
+        .background(
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                .fill(RTIDesign.Color.chipFill)
+        )
+    }
+
+    /// The action plus, for a recap, its depth — so the header says where the
+    /// answer came from without a second line. RTI has no fixed "last N
+    /// minutes" window, so the mockup's literal wording is not invented here.
+    private func actionHeaderLabel(_ action: String) -> String {
+        guard action == "Recap" else { return action }
+        return "\(action) · \(llm.recapDepth.rawValue)"
     }
 }
 
@@ -285,27 +303,28 @@ private struct UserMessageRow: View {
                 HStack(spacing: 8) {
                     if entry.screenContextUsed {
                         Text("Viewed screen")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.overlayInk.opacity(0.4))
+                            .font(RTIDesign.Font.caption)
+                            .foregroundStyle(Color.overlayInkTertiary)
                     }
                     if entry.contextUsed {
                         Text("Viewed conversation")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.overlayInk.opacity(0.4))
+                            .font(RTIDesign.Font.caption)
+                            .foregroundStyle(Color.overlayInkTertiary)
                     }
                 }
             }
             Text(entry.text)
-                .font(.system(size: 14))
+                .font(RTIDesign.Font.body)
+                .lineSpacing(RTIDesign.Font.bodyLineSpacing)
                 .foregroundStyle(Color.overlayInk)
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, RTIDesign.Spacing.sm)
+                .padding(.vertical, RTIDesign.Spacing.xs)
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.overlayInk.opacity(0.07))
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.md, style: .continuous)
+                        .fill(RTIDesign.Color.chipFill)
                 )
 
             if !entry.referencedPaths.isEmpty {
@@ -319,9 +338,9 @@ private struct UserMessageRow: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
                 } label: {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.overlayInk.opacity(0.45))
-                        .frame(width: 24, height: 20)
+                        .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
+                        .foregroundStyle(Color.overlayInkTertiary)
+                        .frame(width: 24, height: House.Control.keyCap)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -342,27 +361,29 @@ private struct UserMessageRow: View {
                 ForEach(entry.referencedPaths, id: \.self) { path in
                     HStack(spacing: 5) {
                         Image(systemName: "doc.text")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
                         Text(Self.displayName(for: path))
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-                    .foregroundStyle(Color.overlayInk.opacity(0.58))
-                    .padding(.leading, 8)
-                    .padding(.trailing, 9)
-                    .padding(.vertical, 5)
+                    .foregroundStyle(Color.overlayInkSecondary)
+                    .padding(.horizontal, RTIDesign.Spacing.xs)
+                    .frame(height: House.Control.keyCap + 4)
                     .background(
-                        Capsule()
-                            .fill(Color.overlayInk.opacity(0.045))
-                            .overlay(Capsule().stroke(Color.overlayInk.opacity(0.08), lineWidth: 1))
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                            .fill(RTIDesign.Color.chipFill)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                                    .strokeBorder(RTIDesign.Color.border, lineWidth: House.hairline)
+                            )
                     )
                     .help(path)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .frame(maxWidth: 620, alignment: .trailing)
+        .frame(maxWidth: RTIDesign.Layout.answerMaxWidth, alignment: .trailing)
     }
 
     private static func displayName(for path: String) -> String {
@@ -424,7 +445,7 @@ private struct AssistantMessageRow: View {
                             .padding(.bottom, 6)
                     }
                 }
-                .frame(maxWidth: 780, alignment: .leading)
+                .frame(maxWidth: RTIDesign.Layout.answerMaxWidth, alignment: .leading)
             }
         }
         // Track hover over the whole row rectangle (incl. transparent gaps),
@@ -454,17 +475,16 @@ private struct AssistantMessageRow: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: copiedSources ? "checkmark" : "text.page")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: House.TypeToken.Size.micro, weight: .medium))
                 Text(count == 0 ? "Sources" : "\(count) source\(count == 1 ? "" : "s")")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
             }
-            .foregroundStyle(Color.overlayInk.opacity(0.56))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .foregroundStyle(Color.overlayInkSecondary)
+            .padding(.horizontal, RTIDesign.Spacing.xs)
+            .frame(height: House.Control.keyCap)
             .background(
-                Capsule()
-                    .fill(Color.overlayInk.opacity(0.045))
-                    .overlay(Capsule().stroke(Color.overlayInk.opacity(0.075), lineWidth: 1))
+                RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
+                    .strokeBorder(RTIDesign.Color.keyCapStroke, lineWidth: House.hairline)
             )
         }
         .buttonStyle(.plain)
@@ -485,8 +505,8 @@ private struct AssistantMessageRow: View {
             showingSources = true
         } label: {
             Image(systemName: copiedSources ? "checkmark" : "text.page")
-                .font(.system(size: 12))
-                .foregroundStyle(Color.overlayInk.opacity(0.58))
+                .font(RTIDesign.Font.meta)
+                .foregroundStyle(Color.overlayInkSecondary)
                 .frame(width: 30, height: 24)
                 .contentShape(Rectangle())
         }
@@ -506,8 +526,8 @@ private struct AssistantMessageRow: View {
     private func iconButton(systemName: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 12))
-                .foregroundStyle(Color.overlayInk.opacity(0.45))
+                .font(RTIDesign.Font.meta)
+                .foregroundStyle(Color.overlayInkTertiary)
                 .frame(width: 30, height: 24)
                 .contentShape(Rectangle())
         }
@@ -536,15 +556,15 @@ private struct WorkingStatusView: View {
                 .controlSize(.small)
                 .scaleEffect(0.65)
             Text(text)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.overlayInk.opacity(0.62))
+                .font(RTIDesign.Font.meta)
+                .foregroundStyle(Color.overlayInkSecondary)
                 .lineLimit(2)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, RTIDesign.Spacing.sm)
+        .frame(height: RTIDesign.Control.chip)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.overlayInk.opacity(0.045))
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                .fill(RTIDesign.Color.chipFill)
         )
     }
 }
@@ -561,24 +581,24 @@ private struct SourceTracePopover: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "text.page")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
                 Text(sources.isEmpty ? "Sources" : "\(sources.count) Source\(sources.count == 1 ? "" : "s")")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(RTIDesign.Font.label)
                 Spacer()
                 Button(action: onCopy) {
                     Image(systemName: "doc.on.doc")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
                         .frame(width: 24, height: 22)
                 }
                 .buttonStyle(.plain)
                 .help("Copy sources")
             }
-            .foregroundStyle(Color.overlayInk.opacity(0.72))
+            .foregroundStyle(Color.overlayInkSecondary)
 
             if sources.isEmpty {
                 Text(displayTrace)
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Color.overlayInk.opacity(0.62))
+                    .font(RTIDesign.Font.code)
+                    .foregroundStyle(Color.overlayInkSecondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
@@ -590,44 +610,47 @@ private struct SourceTracePopover: View {
 
                 if let timing = DisplaySource.timingLine(in: trace) {
                     Text(timing)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.overlayInk.opacity(0.42))
+                        .font(RTIDesign.Font.micro)
+                        .foregroundStyle(Color.overlayInkTertiary)
                 }
             }
         }
-        .padding(12)
+        .padding(RTIDesign.Spacing.sm)
         .frame(width: 390, alignment: .leading)
-        .background(Color.white)
+        .background(SlateGlassBackground())
     }
 
     private func sourceRow(_ source: DisplaySource) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(source.kind)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.overlayInk.opacity(0.55))
-                    .padding(.horizontal, 6)
+                    .font(RTIDesign.Font.micro)
+                    .foregroundStyle(Color.overlayInkSecondary)
+                    .padding(.horizontal, RTIDesign.Spacing.xxs + 2)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.overlayInk.opacity(0.055)))
+                    .background(
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
+                            .fill(RTIDesign.Color.chipFill)
+                    )
                 Text(source.title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.overlayInk.opacity(0.76))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInk)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             Text(source.path)
-                .font(.system(size: 10, weight: .regular, design: .monospaced))
-                .foregroundStyle(Color.overlayInk.opacity(0.48))
+                .font(RTIDesign.Font.code)
+                .foregroundStyle(Color.overlayInkTertiary)
                 .lineLimit(2)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, RTIDesign.Spacing.xs)
         .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.overlayInk.opacity(0.035))
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.row, style: .continuous)
+                .fill(RTIDesign.Color.chipFill)
         )
     }
 

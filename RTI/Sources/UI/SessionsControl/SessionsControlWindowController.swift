@@ -27,8 +27,8 @@ final class SessionsControlWindowController {
         w.setFrameAutosaveName("rti.sessionscontrol")
         w.isReleasedWhenClosed = false
         w.minSize = NSSize(width: 860, height: 560)
-        w.backgroundColor = NSColor(red: 0.969, green: 0.969, blue: 0.973, alpha: 1)
-        w.appearance = NSAppearance(named: .aqua)
+        w.backgroundColor = House.NSColorToken.surface
+        w.appearance = OverlayAppearanceDefaults.nsAppearance()
         w.contentView = NSHostingView(rootView: SessionsControlView(initialTab: tab))
         w.center()
         keepWindowVisible(w)

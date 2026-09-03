@@ -15,8 +15,8 @@ struct ModesTab: View {
         HSplitView {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Modes")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
                     .padding(.horizontal, 10)
                     .padding(.top, 10)
 
@@ -28,11 +28,11 @@ struct ModesTab: View {
                             Spacer(minLength: 4)
                             if mode.id == store.activeModeId {
                                 Text("Active")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(.blue)
+                                    .font(.system(size: House.TypeToken.Size.micro, weight: .medium))
+                                    .foregroundStyle(RTIDesign.Color.textSecondary)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(Capsule().fill(Color.blue.opacity(0.10)))
+                                    .background(Capsule().fill(RTIDesign.Color.chipFill))
                             }
                         }
                         .tag(Optional(mode.id))
@@ -69,7 +69,7 @@ struct ModesTab: View {
                 .padding(.bottom, 4)
             }
             .frame(minWidth: 190, idealWidth: 210, maxWidth: 260)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(RTIDesign.Color.trackBackground)
 
             SettingsPage(maxWidth: 720) {
                 if selection != nil {
@@ -81,14 +81,14 @@ struct ModesTab: View {
 
                         SettingsCard("System Prompt", detail: "Baseline behavior for this mode. Keep it short, specific, and operational.") {
                             TextEditor(text: $prompt)
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(RTIDesign.Font.code)
                                 .frame(minHeight: 150)
                                 .settingsEditorBorder()
                         }
 
                         SettingsCard("Reference Text", detail: "Prepended to every turn and capped at 8k characters. Useful for stable project or client context.") {
                             TextEditor(text: $reference)
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(RTIDesign.Font.code)
                                 .frame(minHeight: 110)
                                 .settingsEditorBorder()
                         }
@@ -102,7 +102,7 @@ struct ModesTab: View {
                             Spacer()
 
                             if saved {
-                                SettingsStatusLabel(text: "Saved", systemImage: "checkmark.circle.fill", color: .green)
+                                SettingsStatusLabel(text: "Saved", systemImage: "checkmark.circle.fill", color: RTIDesign.Color.success)
                             }
 
                             Button("Save Mode") { save() }

@@ -78,8 +78,8 @@ final class WindowCoordinator {
         let credits = NSMutableAttributedString(
             string: "Real-time meeting intelligence.\nAudio is transcribed by Soniox; transcripts and prompts are answered by your configured LLM provider. Everything else stays on this Mac.\n\nhttps://github.com/tristan-mcinnis/rti",
             attributes: [
-                .foregroundColor: NSColor.secondaryLabelColor,
-                .font: NSFont.systemFont(ofSize: 11)
+                .foregroundColor: House.NSColorToken.textSecondary,
+                .font: NSFont.systemFont(ofSize: House.TypeToken.Size.caption)
             ]
         )
         let options: [NSApplication.AboutPanelOptionKey: Any] = [

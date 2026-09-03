@@ -102,6 +102,7 @@ targets:
     sources:
       - path: Tests
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
+      - path: Sources/UI/StatusItemSymbol.swift
       - path: Sources/Session/VaultWorkstreamStore.swift
       - path: Sources/Session/VaultPaths.swift
       - path: Sources/LLM/VaultSearch.swift
@@ -132,17 +133,55 @@ targets:
         TEST_HOST: ""
         BUNDLE_LOADER: ""
 
+  # Offscreen render proof. Compiles the whole app module (minus the @main
+  # entry point) into a standalone test bundle so SwiftUI surfaces can be
+  # rendered headlessly with NSHostingView + cacheDisplay and compared against
+  # the design mockups. No window is ever ordered on screen.
+  RTIRenderTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: RenderTests
+      - path: Sources
+        excludes:
+          - Info.plist
+          - RTI.entitlements
+          - Secrets.swift.example
+          - RTIApp.swift
+    dependencies:
+      - target: RTICore
+      - package: Starscream
+      - package: Yams
+      - package: MarkdownUI
+        product: MarkdownUI
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti.personal.rendertests
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+        # The app's Info.plist declares NSPrincipalClass = NSApplication. In a
+        # host-less test bundle that makes NSBundle instantiate a *second*
+        # NSApplication behind +sharedApplication's back, which traps as soon
+        # as anything creates a view. Generate a plain bundle plist instead.
+        INFOPLIST_FILE: ""
+        CODE_SIGN_ENTITLEMENTS: ""
+
 schemes:
   RTI:
     build:
       targets:
         RTI: all
         RTITests: [test]
+        RTIRenderTests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
         - RTITests
+        - RTIRenderTests
     archive:
       config: Release

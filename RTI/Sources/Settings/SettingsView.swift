@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Top-level Settings shell. Each tab lives in its own file
@@ -45,31 +46,25 @@ struct SettingsView: View {
     }
 
     var onClose: (() -> Void)?
+    /// Which pane opens first. Defaults to Providers, as it always has; the
+    /// offscreen render proof uses it to capture General.
+    var initialSection: SettingsTab = .providers
 
-    @State private var section: SettingsTab = .providers
+    @State private var section: SettingsTab?
 
     var body: some View {
         HSplitView {
-            SettingsSidebar(selection: $section)
-                .frame(minWidth: 210, idealWidth: 224, maxWidth: 250)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            Color(nsColor: .controlBackgroundColor),
-                            Color(nsColor: .windowBackgroundColor)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+            SettingsSidebar(selection: Binding(
+                get: { section ?? initialSection },
+                set: { section = $0 }
+            ))
+                .frame(width: RTIDesign.Layout.settingsRail)
 
             VStack(alignment: .leading, spacing: 0) {
-                SettingsHeader(tab: section, onClose: onClose)
-
-                Divider()
+                SettingsHeader(tab: section ?? initialSection, onClose: onClose)
 
                 Group {
-                    switch section {
+                    switch section ?? initialSection {
                     case .providers: ProvidersTab()
                     case .modes: ModesTab()
                     case .prompts: PromptsTab()
@@ -79,95 +74,93 @@ struct SettingsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(SettingsSurfaceBackground())
+                .toggleStyle(SlateToggleStyle())
+
+                SlateFooter(statusColor: RTIDesign.Color.success, status: "Applies immediately") {
+                    SlateKeyHint(label: "Close", keys: ["esc"])
+                }
             }
         }
-        .frame(minWidth: 720, idealWidth: 860, maxWidth: .infinity,
-               minHeight: 520, idealHeight: 680, maxHeight: .infinity)
+        .background(SettingsSurfaceBackground())
+        // Chrome is ink, never the system accent.
+        .tint(RTIDesign.Color.textPrimary)
+        .frame(minWidth: House.Layout.settingsWidth, idealWidth: 860, maxWidth: .infinity,
+               minHeight: House.Layout.settingsHeight, idealHeight: 680, maxHeight: .infinity)
     }
 }
 
+/// The 220 px rail: `surfaceSunken`, 36 px rows, an icon tile per row, and a
+/// raised tile for the selected one. No accent anywhere.
 private struct SettingsSidebar: View {
     @Binding var selection: SettingsView.SettingsTab
+    @State private var hovered: SettingsView.SettingsTab?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.black.opacity(0.06))
-                        .frame(width: 38, height: 38)
-                    Image(systemName: "waveform.path.ecg.rectangle")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-
+        VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm + 2) {
+            HStack(spacing: RTIDesign.Spacing.xs + 2) {
+                SlateIconTile(systemName: "waveform", size: RTIDesign.Control.chip, glyphSize: 14)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("RTI")
-                        .font(.system(size: 22, weight: .semibold))
-                    Text("Preferences")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .font(RTIDesign.Font.label)
+                        .foregroundStyle(RTIDesign.Color.textPrimary)
+                    SlateSectionLabel(text: "Preferences")
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 22)
+            .padding(.horizontal, RTIDesign.Spacing.xxs)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxs - 1) {
                 ForEach(SettingsView.SettingsTab.allCases) { tab in
                     Button {
                         selection = tab
                     } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: tab.systemImage)
-                                .font(.system(size: 15, weight: .semibold))
-                                .frame(width: 18)
+                        HStack(spacing: RTIDesign.Spacing.sm) {
+                            SlateIconTile(systemName: tab.systemImage, glyphSize: 13)
                             Text(tab.label)
-                                .font(.system(size: 15, weight: .medium))
+                                .font(RTIDesign.Font.label)
                             Spacer(minLength: 0)
                         }
-                        .foregroundStyle(selection == tab ? Color.primary : Color.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(selection == tab ? Color.black.opacity(0.07) : Color.clear)
-                        )
+                        .foregroundStyle(selection == tab ? RTIDesign.Color.textPrimary : RTIDesign.Color.textSecondary)
+                        .padding(.horizontal, RTIDesign.Spacing.xs + 2)
+                        .frame(height: RTIDesign.Control.railRow)
+                        .slateRaisedTile(selection == tab,
+                                         cornerRadius: RTIDesign.Radius.row,
+                                         hovering: hovered == tab)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .hoverHighlight($hovered, id: tab)
+                    .accessibilityAddTraits(selection == tab ? [.isButton, .isSelected] : .isButton)
                 }
             }
-            .padding(.horizontal, 12)
 
             Spacer(minLength: 0)
+        }
+        .padding(RTIDesign.Spacing.sm)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RTIDesign.Color.trackBackground)
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(RTIDesign.Color.divider)
+                .frame(width: House.hairline)
         }
     }
 }
 
+/// Pane title in `title` with a `meta` subtitle. No tile, no uppercase kicker:
+/// the rail already says where you are.
 private struct SettingsHeader: View {
     let tab: SettingsView.SettingsTab
     let onClose: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: tab.systemImage)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Color.primary.opacity(0.75))
-                .frame(width: 36, height: 36)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.black.opacity(0.05))
-                )
-
+        HStack(spacing: RTIDesign.Spacing.sm) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(tab.label.uppercased())
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(0.8)
-                    .foregroundStyle(.secondary)
                 Text(tab.label)
-                    .font(.system(size: 23, weight: .semibold))
+                    .font(RTIDesign.Font.sectionTitle)
+                    .foregroundStyle(RTIDesign.Color.textPrimary)
                 Text(tab.description)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .font(RTIDesign.Font.meta)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
             }
 
             Spacer()
@@ -177,33 +170,22 @@ private struct SettingsHeader: View {
                     .keyboardShortcut(.cancelAction)
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
-        .background(
-            Color(nsColor: .windowBackgroundColor)
-                .overlay(
-                    Rectangle()
-                        .fill(Color.black.opacity(0.03))
-                        .frame(height: 1),
-                    alignment: .bottom
-                )
-        )
+        .padding(.horizontal, RTIDesign.Spacing.lg - 2)
+        .padding(.vertical, RTIDesign.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SettingsSurfaceBackground())
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(RTIDesign.Color.divider)
+                .frame(height: House.hairline)
+        }
     }
 }
 
+/// Settings sits in an opaque window, so its ground is `surface`, not glass.
 struct SettingsSurfaceBackground: View {
     var body: some View {
-        Color(nsColor: .windowBackgroundColor)
-            .overlay(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.35),
-                        Color.secondary.opacity(0.025)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+        RTIDesign.Color.appBackground
     }
 }
 
@@ -211,7 +193,7 @@ struct SettingsPage<Content: View>: View {
     let maxWidth: CGFloat
     private let content: Content
 
-    init(maxWidth: CGFloat = 760, @ViewBuilder content: () -> Content) {
+    init(maxWidth: CGFloat = House.Layout.settingsWidth, @ViewBuilder content: () -> Content) {
         self.maxWidth = maxWidth
         self.content = content()
     }
@@ -223,13 +205,16 @@ struct SettingsPage<Content: View>: View {
                     .frame(maxWidth: maxWidth, alignment: .leading)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
+            .padding(.horizontal, RTIDesign.Spacing.lg - 2)
+            .padding(.vertical, RTIDesign.Spacing.md)
         }
         .background(SettingsSurfaceBackground())
+        // Toggles are ink, never blue (DESIGN.md).
+        .toggleStyle(SlateToggleStyle())
     }
 }
 
+/// A settings group: a card at `Radius.lg` with an uppercase `section` label.
 struct SettingsCard<Content: View>: View {
     let title: String?
     let detail: String?
@@ -242,17 +227,16 @@ struct SettingsCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: RTIDesign.Spacing.sm) {
             if title != nil || detail != nil {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxs) {
                     if let title {
-                        Text(title)
-                            .font(.system(size: 13, weight: .semibold))
+                        SlateSectionLabel(text: title)
                     }
                     if let detail {
                         Text(detail)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                            .font(RTIDesign.Font.caption)
+                            .foregroundStyle(RTIDesign.Color.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -260,45 +244,36 @@ struct SettingsCard<Content: View>: View {
 
             content
         }
-        .padding(14)
+        .padding(RTIDesign.Spacing.sm + 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .textBackgroundColor).opacity(0.96))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.secondary.opacity(0.13), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.035), radius: 8, y: 2)
-        )
+        .slateGroupCard()
     }
 }
 
+/// A status pill inside a settings group: outlined, with a status dot. Never a
+/// tinted capsule.
 struct SettingsStatusLabel: View {
     let text: String
     let systemImage: String
     let color: Color
 
     var body: some View {
-        Label(text, systemImage: systemImage)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Capsule().fill(color.opacity(0.12))
-            )
+        SlateOutlineChip(height: House.Control.keyCap + 2) {
+            SlateStatusDot(color: color)
+            Text(text)
+        }
+        .accessibilityLabel(text)
     }
 }
 
 extension View {
-    func settingsEditorBorder(cornerRadius: CGFloat = 8) -> some View {
+    func settingsEditorBorder(cornerRadius: CGFloat = RTIDesign.Radius.sm) -> some View {
         self
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .background(RTIDesign.Color.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(Color.secondary.opacity(0.24), lineWidth: 1)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(RTIDesign.Color.border, lineWidth: House.hairline)
             )
     }
 }

@@ -27,8 +27,8 @@ struct LogsView: View {
                 .frame(width: 130)
                 if mode == .live {
                     Text("\(log.entries.count) entries")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(RTIDesign.Font.caption)
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
                 } else {
                     Picker("", selection: $selectedPast) {
                         ForEach(pastFiles, id: \.self) { url in
@@ -51,14 +51,14 @@ struct LogsView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color(nsColor: .windowBackgroundColor).opacity(0.9))
+            .background(RTIDesign.Color.well)
 
             Divider()
 
             if mode == .past {
                 ScrollView {
                     Text(pastText.isEmpty ? "No log file for this day." : pastText)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
@@ -75,8 +75,8 @@ struct LogsView: View {
                         }
                         if log.entries.isEmpty {
                             Text("No log entries yet. Recent activity — Soniox connect/error, audio device binding, LLM requests, regen progress — will appear here as it fires.")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
+                                .font(RTIDesign.Font.meta)
+                                .foregroundStyle(RTIDesign.Color.textSecondary)
                                 .padding(.vertical, 16)
                                 .padding(.horizontal, 12)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -97,7 +97,7 @@ struct LogsView: View {
             DisclosureGroup("Crash log (\(crashLogPath))") {
                 ScrollView {
                     Text(crashLogText.isEmpty ? "No crashes recorded." : crashLogText)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                         .padding(8)
@@ -120,16 +120,16 @@ struct LogsView: View {
     private func row(_ entry: AppLog.Entry) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text(Self.timeFormatter.string(from: entry.timestamp))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
+                .foregroundStyle(RTIDesign.Color.textTertiary)
                 .frame(width: 90, alignment: .leading)
             Text(entry.category)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .font(.system(size: House.TypeToken.Size.caption, weight: .semibold, design: .monospaced))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .frame(width: 80, alignment: .leading)
             Text(entry.message)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.primary)
+                .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
+                .foregroundStyle(RTIDesign.Color.textPrimary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

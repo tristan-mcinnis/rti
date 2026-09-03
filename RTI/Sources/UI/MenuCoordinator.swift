@@ -73,7 +73,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
             button?.imagePosition = .imageLeading
             button?.attributedTitle = NSAttributedString(
                 string: " " + TimeFormat.elapsed(session.elapsed(at: Date())),
-                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)]
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: House.TypeToken.Size.meta, weight: .regular)]
             )
         } else {
             button?.attributedTitle = NSAttributedString(string: "")
@@ -88,16 +88,20 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     }
 
     private static func statusImage(running: Bool) -> NSImage? {
-        let symbol = running ? "r.circle.fill" : "r.circle"
-        let base = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        let symbol = StatusItemSymbol.name(running: running)
+        let description = StatusItemSymbol.accessibilityDescription(running: running)
+        let base = NSImage.SymbolConfiguration(pointSize: StatusItemSymbol.pointSize, weight: .medium)
         if running {
-            let palette = base.applying(.init(paletteColors: [.white, .systemRed]))
-            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "RTI recording")?
+            // Ring in ink, centre in `danger`. `labelColor` is the ink the menu
+            // bar itself uses, so the ring tracks the menu bar's appearance
+            // rather than the app's chosen theme.
+            let palette = base.applying(.init(paletteColors: [.labelColor, House.NSColorToken.danger]))
+            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)?
                 .withSymbolConfiguration(palette)
             image?.isTemplate = false
             return image
         }
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "RTI")?
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)?
             .withSymbolConfiguration(base)
         image?.isTemplate = true
         return image

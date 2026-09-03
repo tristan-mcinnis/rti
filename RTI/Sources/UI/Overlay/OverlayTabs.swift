@@ -28,15 +28,17 @@ struct TranscriptTabView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Circle().fill(healthColor).frame(width: 8, height: 8)
-                Text(healthLabel).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.overlayInk.opacity(0.75))
+            HStack(spacing: RTIDesign.Spacing.xs) {
+                SlateStatusDot(color: healthColor)
+                Text(healthLabel)
+                    .font(RTIDesign.Font.meta)
+                    .foregroundStyle(Color.overlayInkSecondary)
                 if session.isRunning, let startedAt = session.startedAt {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         Text(TimeFormat.elapsed(context.date.timeIntervalSince(startedAt)))
-                            .font(.system(size: 10))
+                            .font(RTIDesign.Font.caption)
                             .monospacedDigit()
-                            .foregroundStyle(Color.overlayInk.opacity(0.38))
+                            .foregroundStyle(Color.overlayInkTertiary)
                     }
                 }
                 Spacer()
@@ -46,7 +48,7 @@ struct TranscriptTabView: View {
                 }
             }
             if let notice = session.systemAudioNotice {
-                Text(notice).font(.system(size: 10)).foregroundStyle(.orange)
+                Text(notice).font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.warning)
             }
             if session.liveEntries.isEmpty {
                 overlayEmptyState("text.bubble", "No transcript yet", "Start a session with ⌘⇧R.")
@@ -96,16 +98,21 @@ struct TranscriptTabView: View {
             Button {
                 translationEnabled.toggle()
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "globe").font(.system(size: 10, weight: .medium))
+                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
+                    Image(systemName: "globe").font(.system(size: House.TypeToken.Size.caption, weight: .regular))
                     Text(translationEnabled ? pillLabel : "Translate")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(RTIDesign.Font.caption)
                 }
-                .foregroundStyle(translationEnabled ? Color.blue : Color.overlayInk.opacity(0.55))
-                .padding(.horizontal, 7).padding(.vertical, 3)
+                .foregroundStyle(translationEnabled ? Color.overlayInk : Color.overlayInkSecondary)
+                .padding(.horizontal, RTIDesign.Spacing.xs + 1)
+                .frame(height: RTIDesign.Control.tile)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(translationEnabled ? Color.blue.opacity(0.18) : Color.overlayInk.opacity(0.08))
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.tile, style: .continuous)
+                        .fill(translationEnabled ? RTIDesign.Color.selectionFill : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: RTIDesign.Radius.tile, style: .continuous)
+                                .strokeBorder(RTIDesign.Color.keyCapStroke, lineWidth: House.hairline)
+                        )
                 )
             }
             .buttonStyle(.plain)
@@ -126,8 +133,8 @@ struct TranscriptTabView: View {
                         Picker("Target", selection: $targetLanguage) { languageItems }
                     }
                 } label: {
-                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(Color.overlayInk.opacity(0.5))
+                    Image(systemName: "chevron.down").font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
+                        .foregroundStyle(Color.overlayInkTertiary)
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 14)
                 .accessibilityLabel("Translation mode and languages")
@@ -179,38 +186,50 @@ struct TranscriptTabView: View {
         let speakerColor = SpeakerLabels.chipColor(for: para.speakerId)
         let original = para.original.trimmingCharacters(in: .whitespacesAndNewlines)
         let translation = para.translation.trimmingCharacters(in: .whitespacesAndNewlines)
-        return VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                if isNote {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(speakerColor)
-                } else {
-                    Circle()
-                        .fill(speakerColor)
-                        .frame(width: 6, height: 6)
+        return VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxs + 2) {
+            HStack(spacing: RTIDesign.Spacing.xs) {
+                // The speaker label is an OUTLINED chip carrying the one
+                // sanctioned data colour: a 6 px dot in the speaker's hue.
+                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
+                    if isNote {
+                        Image(systemName: "note.text")
+                            .font(.system(size: House.TypeToken.Size.micro, weight: .regular))
+                            .foregroundStyle(speakerColor)
+                    } else {
+                        SlateStatusDot(color: speakerColor)
+                    }
+                    speakerChip(para, isNote: isNote, speakerColor: speakerColor)
                 }
-                speakerChip(para, isNote: isNote, speakerColor: speakerColor)
+                .padding(.leading, RTIDesign.Spacing.xxs + 2)
+                .padding(.trailing, RTIDesign.Spacing.xs)
+                .frame(height: RTIDesign.Control.keyCap)
+                .overlay(
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
+                        .strokeBorder(RTIDesign.Color.keyCapStroke, lineWidth: House.hairline)
+                )
                 Text(TimeFormat.elapsedMs(para.startMs))
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(Color.overlayInk.opacity(0.38))
+                    .font(RTIDesign.Font.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(Color.overlayInkTertiary)
             }
             if !original.isEmpty {
                 Text(original)
-                    .font(.system(size: 13))
-                    .lineSpacing(2)
-                    .foregroundStyle(Color.overlayInk.opacity(0.92))
+                    .font(RTIDesign.Font.bodySmall)
+                    .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
+                    .foregroundStyle(Color.overlayInk)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+                    .answerWidth()
             }
             if translationEnabled, !translation.isEmpty {
                 Text(translation)
-                    .font(.system(size: 13))
+                    .font(RTIDesign.Font.bodySmall)
                     .italic()
-                    .lineSpacing(2)
-                    .foregroundStyle(Color.blue.opacity(0.95))
+                    .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
+                    .foregroundStyle(Color.overlayInkSecondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+                    .answerWidth()
             }
         }
         .padding(.vertical, 1)
@@ -223,12 +242,12 @@ struct TranscriptTabView: View {
     private func speakerChip(_ para: LiveTranscriptPresentation.Row, isNote: Bool, speakerColor: Color) -> some View {
         if isNote {
             Text(para.speakerLabel)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(speakerColor)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(Color.overlayInkSecondary)
         } else if renamingSpeakerId == para.speakerId {
             TextField("Name", text: $renameDraft)
                 .textFieldStyle(.plain)
-                .font(.system(size: 10, weight: .semibold))
+                .font(RTIDesign.Font.caption)
                 .frame(width: 110)
                 .focused($renameFieldFocused)
                 .onSubmit {
@@ -243,8 +262,8 @@ struct TranscriptTabView: View {
                 renamingSpeakerId = para.speakerId
             } label: {
                 Text(speakerNames.name(for: para.speakerId) ?? para.speakerLabel)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.overlayInk.opacity(0.65))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInkSecondary)
             }
             .buttonStyle(.plain)
             .help("Click to name this speaker")
@@ -254,14 +273,12 @@ struct TranscriptTabView: View {
     private func interimRow(_ raw: String) -> some View {
         let displayText = LiveTranscriptPresentation.displayInterim(raw)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Circle()
-                .fill(Color.overlayAccent)
-                .frame(width: 5, height: 5)
+            SlateStatusDot(color: RTIDesign.Color.success, size: 5)
             Text(displayText)
-                .font(.system(size: 12))
+                .font(RTIDesign.Font.meta)
                 .italic()
                 .lineSpacing(2)
-                .foregroundStyle(Color.overlayInk.opacity(0.52))
+                .foregroundStyle(Color.overlayInkTertiary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -278,13 +295,12 @@ struct TranscriptTabView: View {
     }
 
     private var healthColor: Color {
-        if session.isPaused { return .orange }
-        guard session.isRunning else { return Color.overlayInk.opacity(0.3) }
+        if session.isPaused { return RTIDesign.Color.warning }
+        guard session.isRunning else { return Color.overlayInkTertiary }
         switch session.transcriptionHealth {
-        case .live: return .green
-        case .connecting: return .yellow
-        case .reconnecting: return .orange
-        case .failed, .idle: return .red
+        case .live: return RTIDesign.Color.success
+        case .connecting, .reconnecting: return RTIDesign.Color.warning
+        case .failed, .idle: return RTIDesign.Color.danger
         }
     }
 
@@ -309,7 +325,7 @@ struct NotesTabView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Notes").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
+                Text("Notes").font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
                 if controller.isGenerating {
                     ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
                 }
@@ -325,7 +341,7 @@ struct NotesTabView: View {
                 OverlayToolbarButton(icon: "square.and.arrow.down", help: "Export as .md", disabled: controller.notes.isEmpty, action: export)
             }
             if let error = controller.lastError {
-                Text(error).font(.system(size: 10)).foregroundStyle(.red)
+                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
             }
             if controller.notes.isEmpty {
                 overlayEmptyState("note.text", "No notes yet", "Notes appear as the conversation develops.")
@@ -369,16 +385,16 @@ struct NotesTabView: View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 6) {
                 Text("\(mmss(note.rangeStartMs)) – \(mmss(note.rangeEndMs))")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.system(size: House.TypeToken.Size.caption, weight: .semibold, design: .monospaced))
                 if !note.title.isEmpty {
-                    Text("·").foregroundStyle(Color.overlayInk.opacity(0.3))
-                    Text(note.title).font(.system(size: 11, weight: .semibold))
+                    Text("·").foregroundStyle(Color.overlayInkTertiary)
+                    Text(note.title).font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
                 }
             }
-            .foregroundStyle(Color.overlayInk.opacity(0.85))
+            .foregroundStyle(Color.overlayInk)
             if let local = localRange(note) {
                 Text("Local time: \(local)")
-                    .font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.45))
+                    .font(RTIDesign.Font.micro).foregroundStyle(Color.overlayInkSecondary)
             }
         }
     }
@@ -433,7 +449,7 @@ struct FindingsTabView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Intelligence").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
+                Text("Intelligence").font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
                 if controller.isGenerating {
                     ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
                 }
@@ -449,7 +465,7 @@ struct FindingsTabView: View {
                 OverlayToolbarButton(icon: "square.and.arrow.down", help: "Export as .md", disabled: controller.findings.isEmpty, action: export)
             }
             if let error = controller.lastError {
-                Text(error).font(.system(size: 10)).foregroundStyle(.red)
+                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
             }
             if controller.findings.isEmpty {
                 overlayEmptyState("checklist.checked", "No intelligence yet", "Decisions, actions, open questions, risks, and marked notes appear here.")
@@ -478,29 +494,29 @@ struct FindingsTabView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 HStack(spacing: 4) {
-                    Image(systemName: f.tag.icon).font(.system(size: 9, weight: .bold))
-                    Text(f.tag.label.uppercased()).font(.system(size: 9, weight: .bold))
+                    Image(systemName: f.tag.icon).font(.system(size: House.TypeToken.Size.micro, weight: .bold))
+                    Text(f.tag.label.uppercased()).font(.system(size: House.TypeToken.Size.micro, weight: .bold))
                 }
                 .foregroundStyle(tagColor(f.tag))
                 .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(RoundedRectangle(cornerRadius: 4).fill(tagColor(f.tag).opacity(0.14)))
+                .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.xs).fill(tagColor(f.tag).opacity(0.14)))
                 Text(mmss(f.rangeMs))
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Color.overlayInk.opacity(0.4))
+                    .font(.system(size: House.TypeToken.Size.micro, weight: .regular, design: .monospaced))
+                    .foregroundStyle(Color.overlayInkTertiary)
                 Spacer()
                 OverlayToolbarButton(icon: "doc.on.doc", help: "Copy this finding") {
                     NSPasteboard.copyMarkdownRich(findingMarkdown(f))
                 }
             }
             Text(f.headline)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.overlayInk.opacity(0.95))
+                .font(RTIDesign.Font.label)
+                .foregroundStyle(Color.overlayInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
             if !f.matters.isEmpty {
                 Text("Why: \(f.matters)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.overlayInk.opacity(0.6))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
@@ -509,9 +525,9 @@ struct FindingsTabView: View {
                     Rectangle().fill(tagColor(f.tag).opacity(0.4)).frame(width: 2)
                     VStack(alignment: .leading, spacing: 1) {
                         if let speaker = f.speaker, !speaker.isEmpty {
-                            Text(speaker).font(.system(size: 10, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.6))
+                            Text(speaker).font(.system(size: House.TypeToken.Size.micro, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
                         }
-                        Text(quote).font(.system(size: 11)).italic().foregroundStyle(Color.overlayInk.opacity(0.85))
+                        Text(quote).font(RTIDesign.Font.caption).italic().foregroundStyle(Color.overlayInk)
                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     }
                 }
@@ -523,14 +539,14 @@ struct FindingsTabView: View {
     private func tagColor(_ tag: FindingTag) -> Color {
         switch tag {
         case .decision: .green
-        case .action: .blue
+        case .action: RTIDesign.Color.textSecondary
         case .openQuestion: .teal
         case .risk: .orange
         case .followUp: .purple
         case .finding: .green
         case .tension: .orange
         case .contradiction: .red
-        case .newThread: .blue
+        case .newThread: RTIDesign.Color.textSecondary
         case .missed: .yellow
         }
     }
@@ -578,7 +594,7 @@ struct AutoTabView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Auto").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
+                Text("Auto").font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
                 if controller.isGenerating {
                     ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
                 }
@@ -590,7 +606,7 @@ struct AutoTabView: View {
                 }
             }
             if let error = controller.lastError {
-                Text(error).font(.system(size: 10)).foregroundStyle(.red)
+                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
             }
             if controller.cards.isEmpty {
                 overlayEmptyState("wand.and.stars", "Listening…",
@@ -622,34 +638,34 @@ struct AutoTabView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 HStack(spacing: 4) {
-                    Image(systemName: c.kind.icon).font(.system(size: 9, weight: .bold))
-                    Text(c.kind.label.uppercased()).font(.system(size: 9, weight: .bold))
+                    Image(systemName: c.kind.icon).font(.system(size: House.TypeToken.Size.micro, weight: .bold))
+                    Text(c.kind.label.uppercased()).font(.system(size: House.TypeToken.Size.micro, weight: .bold))
                 }
                 .foregroundStyle(kindColor(c.kind))
                 .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(RoundedRectangle(cornerRadius: 4).fill(kindColor(c.kind).opacity(0.14)))
+                .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.xs).fill(kindColor(c.kind).opacity(0.14)))
                 Spacer()
                 OverlayToolbarButton(icon: "doc.on.doc", help: "Copy") {
                     NSPasteboard.copyMarkdownRich(c.text)
                 }
             }
             Text(c.text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.overlayInk.opacity(0.95))
+                .font(RTIDesign.Font.label)
+                .foregroundStyle(Color.overlayInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
             if !c.why.isEmpty {
                 Text(c.why)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.overlayInk.opacity(0.55))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let source = c.source, !source.isEmpty {
                 HStack(spacing: 3) {
-                    Image(systemName: "doc.text").font(.system(size: 8))
-                    Text(source).font(.system(size: 10)).lineLimit(1)
+                    Image(systemName: "doc.text").font(.system(size: House.TypeToken.Size.micro))
+                    Text(source).font(RTIDesign.Font.micro).lineLimit(1)
                 }
-                .foregroundStyle(Color.overlayInk.opacity(0.4))
+                .foregroundStyle(Color.overlayInkTertiary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -658,7 +674,7 @@ struct AutoTabView: View {
     /// Monochrome-friendly tint per kind (kept subtle, like the Findings tags).
     private func kindColor(_ kind: AutoCardKind) -> Color {
         switch kind {
-        case .say: .blue
+        case .say: RTIDesign.Color.textSecondary
         case .ask: .teal
         case .recall: .green
         case .flag: .orange
@@ -787,11 +803,11 @@ struct SetupTabView: View {
     private var prepareHeader: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("Meeting options")
-                .font(.system(size: 16, weight: .semibold))
+                .font(RTIDesign.Font.heading)
                 .foregroundStyle(Color.overlayInk)
             Text("RTI captures the meeting, improves the transcript after Finish, then writes the notes. Client and project context are optional.")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.overlayInk.opacity(0.58))
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(Color.overlayInkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 2)
@@ -819,10 +835,10 @@ struct SetupTabView: View {
                 case .notDetermined:
                     HStack(spacing: 9) {
                         Image(systemName: "calendar")
-                            .foregroundStyle(Color.overlayInk.opacity(0.55))
+                            .foregroundStyle(Color.overlayInkSecondary)
                         Text("Use a calendar event for the title and invitees")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.overlayInk.opacity(0.62))
+                            .font(RTIDesign.Font.caption)
+                            .foregroundStyle(Color.overlayInkSecondary)
                         Spacer(minLength: 6)
                         Button("Allow access") { calendarStore.requestAccess() }
                             .buttonStyle(.bordered)
@@ -832,10 +848,10 @@ struct SetupTabView: View {
                 case .denied:
                     HStack(spacing: 8) {
                         Image(systemName: "calendar.badge.exclamationmark")
-                            .foregroundStyle(.orange.opacity(0.9))
+                            .foregroundStyle(RTIDesign.Color.warning)
                         Text("Calendar access is off. Enable it in System Settings to choose a meeting.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.overlayInk.opacity(0.62))
+                            .font(RTIDesign.Font.caption)
+                            .foregroundStyle(Color.overlayInkSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(10)
@@ -851,20 +867,20 @@ struct SetupTabView: View {
             if let selected = store.calendarMeeting {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green.opacity(0.9))
+                        .foregroundStyle(RTIDesign.Color.success)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(selected.title)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
                             .foregroundStyle(Color.overlayInk)
                             .lineLimit(1)
                         Text(calendarDetail(selected))
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.overlayInk.opacity(0.5))
+                            .font(RTIDesign.Font.micro)
+                            .foregroundStyle(Color.overlayInkSecondary)
                     }
                     Spacer(minLength: 4)
                     Button { store.clearCalendarMeeting() } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(Color.overlayInk.opacity(0.38))
+                            .foregroundStyle(Color.overlayInkTertiary)
                     }
                     .buttonStyle(.plain)
                     .help("Remove calendar meeting context")
@@ -874,15 +890,15 @@ struct SetupTabView: View {
             } else if let suggestion = calendarStore.suggestion {
                 HStack(spacing: 8) {
                     Image(systemName: "calendar.badge.clock")
-                        .foregroundStyle(.blue.opacity(0.85))
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Suggested: \(suggestion.title)")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
                             .foregroundStyle(Color.overlayInk)
                             .lineLimit(1)
                         Text(calendarDetail(suggestion))
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.overlayInk.opacity(0.5))
+                            .font(RTIDesign.Font.micro)
+                            .foregroundStyle(Color.overlayInkSecondary)
                     }
                     Spacer(minLength: 4)
                     Button("Use") { store.selectCalendarMeeting(suggestion) }
@@ -893,8 +909,8 @@ struct SetupTabView: View {
                 .padding(.top, 9)
             } else {
                 Text("No event overlaps the current time.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.overlayInk.opacity(0.52))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInkSecondary)
                     .padding(.horizontal, 10)
                     .padding(.top, 9)
             }
@@ -908,7 +924,7 @@ struct SetupTabView: View {
                     }
                 } label: {
                     Label("Choose calendar event", systemImage: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
                 }
                 .menuStyle(.borderlessButton)
                 .padding(.horizontal, 10)
@@ -943,12 +959,12 @@ struct SetupTabView: View {
     private func sectionHeader(_ title: String, detail: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.overlayInk.opacity(0.86))
+                .font(.system(size: House.TypeToken.Size.bodySmall, weight: .semibold))
+                .foregroundStyle(Color.overlayInk)
             if let detail {
                 Text(detail)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.overlayInk.opacity(0.42))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInkTertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -960,8 +976,8 @@ struct SetupTabView: View {
         VStack(spacing: 0) {
             content()
         }
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.overlayInk.opacity(0.050)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.overlayInk.opacity(0.075), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.row).fill(RTIDesign.Color.chipFill))
+        .overlay(RoundedRectangle(cornerRadius: RTIDesign.Radius.row).stroke(RTIDesign.Color.border, lineWidth: House.hairline))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -971,11 +987,11 @@ struct SetupTabView: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.overlayInk.opacity(0.45))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInkSecondary)
                 TextField(store.workstreamName == nil ? "Search client or project" : "Change client or project", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
                     .foregroundStyle(Color.overlayInk)
                     .focused($searchFocused)
                     .onTapGesture { openPicker() }
@@ -997,8 +1013,8 @@ struct SetupTabView: View {
                         query = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.overlayInk.opacity(0.35))
+                            .font(RTIDesign.Font.caption)
+                            .foregroundStyle(Color.overlayInkTertiary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1006,14 +1022,14 @@ struct SetupTabView: View {
                     togglePicker()
                 } label: {
                     Image(systemName: pickerOpen ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(Color.overlayInk.opacity(0.55))
+                        .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
+                        .foregroundStyle(Color.overlayInkSecondary)
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.09)))
+            .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.chipFill))
 
             HStack(spacing: 8) {
                 Picker("", selection: $scopeFilter) {
@@ -1029,8 +1045,8 @@ struct SetupTabView: View {
                 }
                 if let hint = scopeHint {
                     Text(hint)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.overlayInk.opacity(0.38))
+                        .font(RTIDesign.Font.micro)
+                        .foregroundStyle(Color.overlayInkTertiary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
@@ -1061,8 +1077,8 @@ struct SetupTabView: View {
         VStack(spacing: 0) {
             if filteredItems.isEmpty {
                 Text(emptyPickerMessage)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.overlayInk.opacity(0.4))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInkTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
             } else {
@@ -1080,28 +1096,28 @@ struct SetupTabView: View {
                 .frame(maxHeight: 178)
                 if scopeFilter == .all, !query.isEmpty, !filteredProjects.isEmpty, filteredClients.isEmpty {
                     Text("Showing individual projects for “\(query)”.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.overlayInk.opacity(0.42))
+                        .font(RTIDesign.Font.micro)
+                        .foregroundStyle(Color.overlayInkTertiary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
                         .padding(.bottom, 10)
                 }
             }
         }
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.overlayInk.opacity(0.10), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.chipFill))
+        .overlay(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).stroke(RTIDesign.Color.border, lineWidth: House.hairline))
     }
 
     private func pickerSection(_ title: String, items: [VaultItem], total: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text(title)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Color.overlayInk.opacity(0.48))
+                    .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
+                    .foregroundStyle(Color.overlayInkSecondary)
                 Spacer()
                 Text("\(total)")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Color.overlayInk.opacity(0.30))
+                    .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
+                    .foregroundStyle(Color.overlayInkTertiary)
             }
             .padding(.horizontal, 10)
             .padding(.top, 6)
@@ -1117,25 +1133,25 @@ struct SetupTabView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: item.isProject ? "folder" : "person.crop.circle")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.overlayInk.opacity(0.48))
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(Color.overlayInkSecondary)
                     .frame(width: 16)
                 Text(item.name)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.overlayInk.opacity(0.9))
+                    .font(RTIDesign.Font.meta)
+                    .foregroundStyle(Color.overlayInk)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
                 Text(item.isProject ? "Project" : "Client")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.overlayInk.opacity(0.36))
+                    .font(.system(size: House.TypeToken.Size.micro, weight: .medium))
+                    .foregroundStyle(Color.overlayInkTertiary)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.overlayInk.opacity(store.workstreamItem == item ? 0.10 : 0.0001))
+                RoundedRectangle(cornerRadius: RTIDesign.Radius.xs)
+                    .fill(store.workstreamItem == item ? RTIDesign.Color.selectionFill : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -1144,31 +1160,31 @@ struct SetupTabView: View {
     private var usingBanner: some View {
         HStack(spacing: 7) {
             Image(systemName: store.workstreamItem?.isProject == false ? "person.crop.circle.fill" : "folder.fill")
-                .font(.system(size: 11))
-                .foregroundStyle(.green.opacity(0.85))
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.success)
                 .frame(width: 16)
             Text(store.workstreamName ?? "")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
                 .foregroundStyle(Color.overlayInk)
                 .lineLimit(1)
                 .truncationMode(.middle)
             if let item = store.workstreamItem {
                 Text(item.isProject ? "Project scope" : "Client note")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.overlayInk.opacity(0.42))
+                    .font(.system(size: House.TypeToken.Size.micro, weight: .medium))
+                    .foregroundStyle(Color.overlayInkTertiary)
             }
             Spacer(minLength: 8)
             Button { store.clearWorkstream() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.overlayInk.opacity(0.38))
+                    .font(RTIDesign.Font.meta)
+                    .foregroundStyle(Color.overlayInkTertiary)
             }
             .buttonStyle(.plain)
             .help("Clear meeting focus")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.green.opacity(0.10)))
+        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.success.opacity(0.10)))
     }
 
     private var allItems: [VaultItem] {
@@ -1249,16 +1265,16 @@ struct SetupTabView: View {
     private var liveTranscriptionRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "waveform")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.overlayInk.opacity(0.55))
+                .font(RTIDesign.Font.label)
+                .foregroundStyle(Color.overlayInkSecondary)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Transcription")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.overlayInk.opacity(0.88))
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
+                    .foregroundStyle(Color.overlayInk)
                 Text(captureReadiness)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.overlayInk.opacity(0.42))
+                    .font(RTIDesign.Font.micro)
+                    .foregroundStyle(Color.overlayInkTertiary)
                     .lineLimit(1)
             }
             Spacer(minLength: 12)
@@ -1266,7 +1282,7 @@ struct SetupTabView: View {
                 WindowCoordinator.shared.showSessionsControl(tab: .general)
             }
             .buttonStyle(.borderless)
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
             .foregroundStyle(Color.overlayAccent)
         }
         .padding(.horizontal, 10)
@@ -1281,7 +1297,7 @@ struct SetupTabView: View {
 
     private var settingsRowDivider: some View {
         Divider()
-            .overlay(Color.overlayInk.opacity(0.07))
+            .overlay(RTIDesign.Color.divider)
             .padding(.leading, 42)
     }
 
@@ -1289,23 +1305,23 @@ struct SetupTabView: View {
         Toggle(isOn: isOn) {
             HStack(spacing: 10) {
                 Image(systemName: option.icon)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.overlayInk.opacity(0.50))
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
+                    .foregroundStyle(Color.overlayInkSecondary)
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(option.title)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.overlayInk.opacity(0.88))
+                            .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
+                            .foregroundStyle(Color.overlayInk)
                         if option == .notes {
                             Text("Default")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(Color.overlayInk.opacity(0.42))
+                                .font(.system(size: House.TypeToken.Size.micro, weight: .medium))
+                                .foregroundStyle(Color.overlayInkTertiary)
                         }
                     }
                     Text(option.detail)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.overlayInk.opacity(0.42))
+                        .font(RTIDesign.Font.micro)
+                        .foregroundStyle(Color.overlayInkTertiary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 12)
@@ -1314,7 +1330,7 @@ struct SetupTabView: View {
         }
         .toggleStyle(.switch)
         .controlSize(.small)
-        .tint(.blue)
+        .tint(RTIDesign.Color.textPrimary)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1325,12 +1341,12 @@ struct SetupTabView: View {
             sectionHeader("Prep note", detail: "Optional")
             ZStack(alignment: .topLeading) {
                 TextEditor(text: Binding(get: { store.note }, set: { store.note = $0 }))
-                    .font(.system(size: 12)).foregroundStyle(Color.overlayInk).scrollContentBackground(.hidden)
+                    .font(RTIDesign.Font.meta).foregroundStyle(Color.overlayInk).scrollContentBackground(.hidden)
                     .frame(height: 64).padding(6)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.overlayInk.opacity(0.075)))
+                    .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.row).fill(RTIDesign.Color.chipFill))
                 if store.note.isEmpty {
                     Text("Anything extra for the assistant…")
-                        .font(.system(size: 12)).foregroundStyle(Color.overlayInk.opacity(0.35))
+                        .font(RTIDesign.Font.meta).foregroundStyle(Color.overlayInkTertiary)
                         .padding(.horizontal, 11).padding(.vertical, 13).allowsHitTesting(false)
                 }
             }
@@ -1374,43 +1390,43 @@ struct SetupTabView: View {
             }
 
             if let error = guideController.lastError {
-                Text(error).font(.system(size: 10)).foregroundStyle(.red)
+                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
             }
         }
     }
 
     private func committedGuideRow(_ guide: DiscussionGuide) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "list.bullet.clipboard").font(.system(size: 12)).foregroundStyle(.green.opacity(0.85))
+            Image(systemName: "list.bullet.clipboard").font(RTIDesign.Font.meta).foregroundStyle(RTIDesign.Color.success)
             VStack(alignment: .leading, spacing: 1) {
-                Text(guide.fileName).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.overlayInk.opacity(0.9))
+                Text(guide.fileName).font(.system(size: House.TypeToken.Size.meta, weight: .medium)).foregroundStyle(Color.overlayInk)
                     .lineLimit(1).truncationMode(.middle)
                 Text("\(guide.objectives.count) objectives • \(guide.coverage.total) questions")
-                    .font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.5))
+                    .font(RTIDesign.Font.micro).foregroundStyle(Color.overlayInkSecondary)
             }
             Spacer()
             Button { guideController.remove() } label: {
-                Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(Color.overlayInk.opacity(0.45))
+                Image(systemName: "xmark.circle.fill").font(RTIDesign.Font.meta).foregroundStyle(Color.overlayInkSecondary)
             }
             .buttonStyle(.plain).help("Remove this guide")
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.12)))
+        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.sm).fill(RTIDesign.Color.success.opacity(0.12)))
     }
 
     private func pendingGuidePreview(_ guide: DiscussionGuide) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Parsed \(guide.objectives.count) objectives • \(guide.coverage.total) questions — does this look right?")
-                .font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.7))
+                .font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 5) {
                     ForEach(guide.objectives, id: \.id) { obj in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(obj.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.85))
+                            Text(obj.title).font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInk)
                             ForEach(obj.sections, id: \.id) { sec in
                                 Text("\(sec.title) — \(sec.questions.count) Qs")
-                                    .font(.system(size: 10)).foregroundStyle(Color.overlayInk.opacity(0.5))
+                                    .font(RTIDesign.Font.micro).foregroundStyle(Color.overlayInkSecondary)
                                     .padding(.leading, 8)
                             }
                         }
@@ -1420,17 +1436,17 @@ struct SetupTabView: View {
             }
             .frame(maxHeight: 150)
             .padding(8)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.05)))
+            .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.chipFill))
             HStack(spacing: 8) {
                 Button { guideController.confirmPending() } label: {
-                    Text("Use this guide").font(.system(size: 11, weight: .medium))
+                    Text("Use this guide").font(.system(size: House.TypeToken.Size.caption, weight: .medium))
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.accentColor.opacity(0.85)))
+                        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.textPrimary))
                         .foregroundStyle(Color.overlayInk)
                 }
                 .buttonStyle(.plain)
                 Button { guideController.discardPending() } label: {
-                    Text("Discard").font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.6))
+                    Text("Discard").font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkSecondary)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
@@ -1451,15 +1467,15 @@ struct SetupTabView: View {
 
         if !projectGuides.isEmpty {
             Text("In \(store.workstreamItem?.name ?? "this project"):")
-                .font(.system(size: 10, weight: .medium)).foregroundStyle(Color.overlayInk.opacity(0.5))
+                .font(.system(size: House.TypeToken.Size.micro, weight: .medium)).foregroundStyle(Color.overlayInkSecondary)
                 .padding(.top, 2)
             VStack(spacing: 0) {
                 ForEach(projectGuides, id: \.self) { url in
                     Button { Task { await guideController.loadFile(from: url) } } label: {
                         HStack(spacing: 7) {
-                            Image(systemName: "doc.text").font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.5)).frame(width: 16)
+                            Image(systemName: "doc.text").font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkSecondary).frame(width: 16)
                             Text(url.deletingPathExtension().lastPathComponent)
-                                .font(.system(size: 12)).foregroundStyle(Color.overlayInk.opacity(0.9))
+                                .font(RTIDesign.Font.meta).foregroundStyle(Color.overlayInk)
                                 .lineLimit(1).truncationMode(.middle)
                             Spacer()
                         }
@@ -1468,19 +1484,19 @@ struct SetupTabView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.overlayInk.opacity(0.05)))
+            .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.sm).fill(RTIDesign.Color.chipFill))
         }
     }
 
     private func guideInputButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 10))
-                Text(title).font(.system(size: 11, weight: .medium))
+                Image(systemName: icon).font(RTIDesign.Font.micro)
+                Text(title).font(.system(size: House.TypeToken.Size.caption, weight: .medium))
             }
-            .foregroundStyle(Color.overlayInk.opacity(0.85))
+            .foregroundStyle(Color.overlayInk)
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.1)))
+            .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.selectionFill))
         }
         .buttonStyle(.plain)
     }
@@ -1488,20 +1504,20 @@ struct SetupTabView: View {
     private var pasteBox: some View {
         VStack(alignment: .leading, spacing: 6) {
             TextEditor(text: $pasteText)
-                .font(.system(size: 12)).foregroundStyle(Color.overlayInk).scrollContentBackground(.hidden)
+                .font(RTIDesign.Font.meta).foregroundStyle(Color.overlayInk).scrollContentBackground(.hidden)
                 .frame(height: 90).padding(6)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.overlayInk.opacity(0.08)))
+                .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.chipFill))
             HStack(spacing: 8) {
                 Button { parsePasted() } label: {
-                    Text("Parse").font(.system(size: 11, weight: .medium))
+                    Text("Parse").font(.system(size: House.TypeToken.Size.caption, weight: .medium))
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.accentColor.opacity(0.85)))
+                        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.textPrimary))
                         .foregroundStyle(Color.overlayInk)
                 }
                 .buttonStyle(.plain)
                 .disabled(pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || guideController.isImporting)
                 Button { pasteOpen = false; pasteText = "" } label: {
-                    Text("Cancel").font(.system(size: 11)).foregroundStyle(Color.overlayInk.opacity(0.6))
+                    Text("Cancel").font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkSecondary)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
@@ -1550,18 +1566,18 @@ struct GuideTabView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Discussion guide").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.75))
+                Text("Discussion guide").font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
                 if controller.isMatching {
                     ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
                 }
                 Spacer()
                 if let guide = controller.guide {
                     Text("\(guide.coverage.answered)/\(guide.coverage.total) • \(guide.coverage.percent)%")
-                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(Color.overlayInk.opacity(0.7))
+                        .font(.system(size: House.TypeToken.Size.micro, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
                 }
             }
             if let error = controller.lastError {
-                Text(error).font(.system(size: 10)).foregroundStyle(.red)
+                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
             }
             if let guide = controller.guide {
                 ScrollView {

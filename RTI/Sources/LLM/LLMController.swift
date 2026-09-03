@@ -91,6 +91,16 @@ final class LLMController {
 
     private static let contextWindowSeconds: Double = 900
 
+#if DEBUG
+    /// Debug-only seam for the offscreen render proof (`RTIRenderTests`).
+    /// Never compiled into a Release build and never called by the app.
+    func seedForRenderProof(entries: [ChatEntry]) {
+        self.entries = entries
+        self.streaming = false
+        self.lastError = nil
+    }
+#endif
+
     init(request: LLMRequest = LLMRequest()) {
         self.request = request
         smartMode = UserDefaults.standard.bool(forKey: LLMSettingsDefaults.smartModeKey)

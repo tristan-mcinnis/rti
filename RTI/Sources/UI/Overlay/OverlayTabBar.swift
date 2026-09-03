@@ -48,7 +48,7 @@ struct OverlayTabBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: RTIDesign.Spacing.xxs - 1) {
             ForEach(tabs) { tab in
                 OverlayTabButton(
                     tab: tab,
@@ -72,24 +72,29 @@ private struct OverlayTabButton: View {
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 13, weight: .regular))
-                    .frame(width: 30, height: 28)
+                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
+                    Image(systemName: tab.icon)
+                        .font(RTIDesign.Font.bodySmall)
+                    // Selection is a raised tile that names itself; the rest
+                    // stay icon-only in secondary ink. No accent anywhere.
+                    if isSelected {
+                        Text(tab.title)
+                            .font(RTIDesign.Font.tab)
+                            .fixedSize()
+                    }
+                }
+                .padding(.horizontal, isSelected ? 10 : 0)
+                .frame(minWidth: isSelected ? 0 : 30, minHeight: RTIDesign.Control.chip)
                 // Unread badge: Auto surfaced cards the user hasn't seen.
                 if tab == .auto, !isSelected, autoUnseen > 0 {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 6, height: 6)
+                    SlateStatusDot(color: RTIDesign.Color.danger)
                         .offset(x: -3, y: 5)
                 }
             }
-            .foregroundStyle(isSelected ? Color.overlayAccent : Color.overlayInk.opacity(hovering ? 0.68 : 0.46))
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected
-                        ? Color.overlayAccent.opacity(0.12)
-                        : Color.overlayInk.opacity(hovering ? 0.055 : 0))
-            )
+            .foregroundStyle(isSelected
+                ? Color.overlayInk
+                : (hovering ? Color.overlayInkSecondary : Color.overlayInkTertiary))
+            .slateRaisedTile(isSelected, hovering: hovering)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -119,16 +124,13 @@ struct OverlaySetupButton: View {
             }
         } label: {
             Image(systemName: OverlayTab.setup.icon)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(selection == .setup ? Color.overlayAccent : Color.overlayInk.opacity(hovering ? 0.68 : 0.46))
-                .frame(width: 30, height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(selection == .setup
-                        ? Color.overlayAccent.opacity(0.12)
-                        : Color.overlayInk.opacity(hovering ? 0.055 : 0))
-            )
-            .contentShape(Rectangle())
+                .font(RTIDesign.Font.body)
+                .foregroundStyle(selection == .setup
+                    ? Color.overlayInk
+                    : (hovering ? Color.overlayInkSecondary : Color.overlayInkTertiary))
+                .frame(width: 30, height: RTIDesign.Control.chip)
+                .slateRaisedTile(selection == .setup, hovering: hovering)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .hoverHighlight($hovering)

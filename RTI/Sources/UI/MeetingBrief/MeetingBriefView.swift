@@ -14,10 +14,10 @@ struct MeetingBriefView: View {
                 ForEach(briefs) { brief in
                     VStack(alignment: .leading, spacing: 1) {
                         Text(brief.displayTitle)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(RTIDesign.Font.label)
                             .lineLimit(2)
                         if let date = brief.datePrefix {
-                            Text(date).font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text(date).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.textSecondary)
                         }
                     }
                     .tag(brief)
@@ -39,10 +39,14 @@ struct MeetingBriefView: View {
         } detail: {
             ScrollView {
                 RTIMarkdown(content, style: .panel)
-                    .padding(20)
+                    .padding(RTIDesign.Spacing.lg - 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .background(RTIDesign.Color.appBackground)
         }
+        .background(RTIDesign.Color.appBackground)
+        // Chrome is ink, never the system accent.
+        .tint(RTIDesign.Color.textPrimary)
         .onAppear(perform: reload)
         .onChange(of: selected) { _, newValue in
             content = newValue.map(MeetingBriefStore.content) ?? ""
@@ -52,13 +56,13 @@ struct MeetingBriefView: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 28))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: House.TypeToken.Size.display, weight: .regular))
+                .foregroundStyle(RTIDesign.Color.textTertiary)
             Text("No briefs found")
-                .font(.system(size: 13, weight: .semibold))
+                .font(RTIDesign.Font.label)
             Text("Hermes' Meeting Prep job writes briefs into the vault. They'll appear here once generated.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .padding(24)

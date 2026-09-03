@@ -14,7 +14,8 @@ enum SpeakerLabels {
     }
 
     static func chipColor(for raw: String) -> Color {
-        if raw == "note" { return .orange }
+        // Notes are not a speaker; they take the warning token, not a raw hue.
+        if raw == "note" { return RTIDesign.Color.warning }
         if raw == "self" { return RTIDesign.Color.speakerPalette[0] }
 
         let numbered = raw.hasPrefix("them_")

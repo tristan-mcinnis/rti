@@ -31,12 +31,12 @@ private extension Theme {
     static let rtiPanel: Theme = Theme()
         .text {
             ForegroundColor(RTIDesign.Color.textPrimary)
-            FontSize(14)
+            FontSize(House.TypeToken.Size.body)
         }
         .code {
             FontFamilyVariant(.monospaced)
             FontSize(.em(0.92))
-            BackgroundColor(RTIDesign.Color.trackBackground)
+            BackgroundColor(RTIDesign.Color.chipFill)
         }
         .strong { FontWeight(.semibold) }
         .link { ForegroundColor(RTIDesign.Color.accentText) }
@@ -44,7 +44,7 @@ private extension Theme {
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(20)
+                    FontSize(House.TypeToken.Size.title)
                 }
                 .markdownMargin(top: 12, bottom: 6)
         }
@@ -52,7 +52,7 @@ private extension Theme {
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(17)
+                    FontSize(House.TypeToken.Size.heading)
                 }
                 .markdownMargin(top: 10, bottom: 4)
         }
@@ -60,7 +60,7 @@ private extension Theme {
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(15)
+                    FontSize(House.TypeToken.Size.body)
                 }
                 .markdownMargin(top: 8, bottom: 2)
         }
@@ -80,13 +80,13 @@ private extension Theme {
                 config.label
                     .markdownTextStyle {
                         FontFamilyVariant(.monospaced)
-                        FontSize(12.5)
+                        FontSize(House.TypeToken.Size.code)
                         ForegroundColor(RTIDesign.Color.textPrimary)
                     }
                     .padding(10)
             }
-            .background(RTIDesign.Color.trackBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(RTIDesign.Color.well)
+            .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.sm, style: .continuous))
             .markdownMargin(top: 6, bottom: 6)
         }
         .blockquote { config in
@@ -94,7 +94,7 @@ private extension Theme {
                 .padding(.leading, 10)
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .fill(RTIDesign.Color.accent.opacity(0.6))
+                        .fill(RTIDesign.Color.textTertiary)
                         .frame(width: 2)
                 }
                 .foregroundStyle(RTIDesign.Color.textSecondary)
@@ -103,7 +103,7 @@ private extension Theme {
             ScrollView(.horizontal, showsIndicators: false) {
                 config.label
                     .fixedSize(horizontal: false, vertical: true)
-                    .markdownTableBorderStyle(.init(.horizontalBorders, color: RTIDesign.Color.border.opacity(0.65)))
+                    .markdownTableBorderStyle(.init(.horizontalBorders, color: RTIDesign.Color.divider))
                     .markdownTableBackgroundStyle(
                         .alternatingRows(Color.clear, Color.clear)
                     )
@@ -130,21 +130,22 @@ private extension Theme {
 
     static let rtiOverlay: Theme = Theme()
         .text {
-            ForegroundColor(Color.overlayInk.opacity(0.92))
-            FontSize(13.5)
+            ForegroundColor(Color.overlayInk)
+            FontSize(House.TypeToken.Size.body)
         }
         .code {
             FontFamilyVariant(.monospaced)
             FontSize(.em(0.92))
-            BackgroundColor(Color.overlayInk.opacity(0.10))
+            BackgroundColor(RTIDesign.Color.chipFill)
         }
         .strong { FontWeight(.semibold) }
-        .link { ForegroundColor(Color(red: 0.55, green: 0.78, blue: 1.0)) }
+        // Links are the one place the accent is allowed (DESIGN.md).
+        .link { ForegroundColor(RTIDesign.Color.accent) }
         .heading1 { config in
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(16)
+                    FontSize(House.TypeToken.Size.heading)
                     ForegroundColor(Color.overlayInk)
                 }
                 .markdownMargin(top: 12, bottom: 5)
@@ -153,7 +154,7 @@ private extension Theme {
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(14.5)
+                    FontSize(House.TypeToken.Size.body)
                     ForegroundColor(Color.overlayInk)
                 }
                 .markdownMargin(top: 10, bottom: 4)
@@ -162,7 +163,7 @@ private extension Theme {
             config.label
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(13.5)
+                    FontSize(House.TypeToken.Size.bodySmall)
                     ForegroundColor(Color.overlayInk)
                 }
                 .markdownMargin(top: 8, bottom: 2)
@@ -170,7 +171,7 @@ private extension Theme {
         .paragraph { config in
             config.label
                 .fixedSize(horizontal: false, vertical: true)
-                .relativeLineSpacing(.em(0.24))
+                .relativeLineSpacing(.em(House.TypeToken.LineHeight.body - 1))
                 .markdownMargin(top: 0, bottom: 9)
         }
         .listItem { config in
@@ -183,13 +184,13 @@ private extension Theme {
                 config.label
                     .markdownTextStyle {
                         FontFamilyVariant(.monospaced)
-                        FontSize(12.5)
-                        ForegroundColor(Color.overlayInk.opacity(0.95))
+                        FontSize(House.TypeToken.Size.code)
+                        ForegroundColor(Color.overlayInk)
                     }
-                    .padding(10)
+                    .padding(RTIDesign.Spacing.sm)
             }
-            .background(Color.overlayInk.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(RTIDesign.Color.well)
+            .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.sm, style: .continuous))
             .markdownMargin(top: 6, bottom: 6)
         }
         .blockquote { config in
@@ -197,16 +198,16 @@ private extension Theme {
                 .padding(.leading, 10)
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .fill(Color.overlayInk.opacity(0.35))
+                        .fill(RTIDesign.Color.border)
                         .frame(width: 2)
                 }
-                .foregroundStyle(Color.overlayInk.opacity(0.75))
+                .foregroundStyle(Color.overlayInkSecondary)
         }
         .table { config in
             ScrollView(.horizontal, showsIndicators: false) {
                 config.label
                     .fixedSize(horizontal: false, vertical: true)
-                    .markdownTableBorderStyle(.init(.horizontalBorders, color: Color.overlayInk.opacity(0.14)))
+                    .markdownTableBorderStyle(.init(.horizontalBorders, color: RTIDesign.Color.divider))
                     .markdownTableBackgroundStyle(
                         .alternatingRows(Color.clear, Color.clear)
                     )

@@ -28,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         guard ensureSingleInstance() else { return }
         isPrimaryInstance = true
 
+        // Slate is dark-first: apply the configured theme app-wide before any
+        // window exists, so every RTI surface opens in the right appearance.
+        OverlayAppearanceDefaults.applyAppAppearance()
+
         // Route RTICore's logs (CoreLog) into the app's log buffer via RTILog.
         CoreLog.installSink { message, category in
             RTILog.log(message, category: category)

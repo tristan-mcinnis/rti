@@ -14,12 +14,12 @@ struct OverlayVisualContextButton: View {
     var body: some View {
         if session.isRunning {
             Button(action: act) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 30, height: 28)
-                    .background(Capsule(style: .continuous).fill(background))
-                    .overlay(Capsule(style: .continuous).stroke(border, lineWidth: 1))
+                SlateChip(stroked: true, emphasised: false) {
+                    Image(systemName: icon)
+                        .font(RTIDesign.Font.meta)
+                        .foregroundStyle(tint)
+                }
+                .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.chip, hovering: hovering)
             }
             .buttonStyle(.plain)
             .hoverHighlight($hovering)
@@ -39,28 +39,13 @@ struct OverlayVisualContextButton: View {
         }
     }
 
+    /// Status is the only chroma a chip may carry, and it is paired with the
+    /// accessibility value + tooltip, never colour alone.
     private var tint: Color {
         switch trail.state {
-        case .permissionRequired, .failed, .paused: .orange
-        case .disabled: Color.overlayInk.opacity(0.38)
-        case .capturing, .active: .blue
-        default: Color.overlayInk.opacity(0.52)
-        }
-    }
-
-    private var background: Color {
-        switch trail.state {
-        case .permissionRequired, .failed, .paused: Color.orange.opacity(0.12)
-        case .capturing, .active: Color.blue.opacity(0.12)
-        default: Color.overlayInk.opacity(hovering ? 0.08 : 0.045)
-        }
-    }
-
-    private var border: Color {
-        switch trail.state {
-        case .permissionRequired, .failed, .paused: Color.orange.opacity(0.45)
-        case .capturing, .active: Color.blue.opacity(0.35)
-        default: Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
+        case .permissionRequired, .failed, .paused: RTIDesign.Color.warning
+        case .disabled: Color.overlayInkTertiary
+        default: Color.overlayInkSecondary
         }
     }
 
@@ -130,23 +115,17 @@ struct OverlayProjectPicker: View {
                 Button("No project") { context.clearWorkstream() }
             }
         } label: {
-            HStack(spacing: 3) {
+            SlateChip(emphasised: selectedName != nil) {
                 Image(systemName: selectedName == nil ? "folder.badge.questionmark" : "folder.fill")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(RTIDesign.Font.meta)
                 if let name = selectedName {
                     Text(name)
-                        .font(.system(size: 10.5, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: 96, alignment: .leading)
                 }
             }
-            .foregroundStyle(tint)
-            .padding(.horizontal, selectedName == nil ? 0 : 7)
-            .frame(minWidth: 30)
-            .frame(height: 28)
-            .background(Capsule(style: .continuous).fill(background))
-            .overlay(Capsule(style: .continuous).stroke(border, lineWidth: 1))
+            .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.chip, hovering: hovering)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -156,20 +135,6 @@ struct OverlayProjectPicker: View {
         .accessibilityLabel("Meeting project")
         .accessibilityValue(selectedName ?? "No project selected")
         .help(helpText)
-    }
-
-    private var tint: Color {
-        return selectedName == nil ? Color.overlayInk.opacity(0.52) : Color.blue.opacity(0.9)
-    }
-
-    private var background: Color {
-        if selectedName != nil { return Color.blue.opacity(0.10) }
-        return Color.overlayInk.opacity(hovering ? 0.08 : 0.045)
-    }
-
-    private var border: Color {
-        if selectedName != nil { return Color.blue.opacity(0.30) }
-        return Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
     }
 
     private var helpText: String {
@@ -191,16 +156,18 @@ struct OverlayRecordButton: View {
 
     var body: some View {
         Button(action: primaryAction) {
-            glyph
-                .frame(width: 30, height: 28)
-            .background(background)
-            .overlay(Capsule(style: .continuous).stroke(borderColor, lineWidth: 1))
-            .clipShape(Capsule(style: .continuous))
+            SlateChip(emphasised: false, content: { chipContent })
+                .overlay(
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                        .strokeBorder(recordingBorder, lineWidth: House.hairline)
+                )
+                .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.chip, hovering: hovering)
         }
         .buttonStyle(.plain)
         .disabled(session.phase == .finishing)
         .hoverHighlight($hovering)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(elapsedAccessibilityValue)
         .accessibilityHint(helpText)
         .help(helpText)
     }
@@ -213,6 +180,12 @@ struct OverlayRecordButton: View {
         }
     }
 
+    private var elapsedAccessibilityValue: String {
+        guard let startedAt = session.startedAt, isLive else { return "" }
+        _ = startedAt
+        return TimeFormat.elapsed(session.elapsed(at: Date()))
+    }
+
     private func primaryAction() {
         if session.phase == .done, let url = session.summaryURL {
             WindowCoordinator.shared.showSession(folder: url.deletingLastPathComponent().lastPathComponent)
@@ -221,37 +194,38 @@ struct OverlayRecordButton: View {
         }
     }
 
+    private var isLive: Bool {
+        session.phase == .recording || session.phase == .paused
+    }
+
+    /// Recording is the only chroma in the chrome: a `danger` dot beside the
+    /// captured-time clock, in one chip.
     @ViewBuilder
-    private var glyph: some View {
+    private var chipContent: some View {
         if session.phase == .finishing || session.phase == .summarizing {
             ProgressView()
                 .controlSize(.small)
                 .scaleEffect(0.62)
                 .frame(width: 9, height: 9)
-        } else if session.phase == .recording || session.phase == .paused {
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(Color(red: 1.0, green: 0.27, blue: 0.27))
+        } else if isLive {
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.xs / 2, style: .continuous)
+                .fill(RTIDesign.Color.danger)
                 .frame(width: 8, height: 8)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(TimeFormat.elapsed(session.elapsed(at: context.date)))
+                    .font(RTIDesign.Font.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(Color.overlayInk)
+            }
         } else {
             Circle()
-                .fill(Color(red: 1.0, green: 0.27, blue: 0.27).opacity(0.85))
+                .fill(RTIDesign.Color.danger.opacity(0.85))
                 .frame(width: 7, height: 7)
         }
     }
 
-    private var background: some View {
-        ZStack {
-            Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.08 : 0.045))
-            if session.phase == .recording || session.phase == .paused {
-                Capsule(style: .continuous).fill(Color(red: 1.0, green: 0.20, blue: 0.20).opacity(0.12))
-            }
-        }
-    }
-
-    private var borderColor: Color {
-        (session.phase == .recording || session.phase == .paused)
-            ? Color(red: 1.0, green: 0.30, blue: 0.30).opacity(0.45)
-            : Color.overlayInk.opacity(hovering ? 0.16 : 0.08)
+    private var recordingBorder: Color {
+        isLive ? RTIDesign.Color.danger.opacity(0.3) : Color.clear
     }
 
     private var helpText: String {
@@ -285,12 +259,12 @@ struct OverlaySessionAuxButton: View {
     var body: some View {
         if kind != .none {
             Button(action: act) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(tint)
-                .frame(width: 30, height: 28)
-                .background(Capsule(style: .continuous).fill(Color.overlayInk.opacity(hovering ? 0.08 : 0.045)))
-                .overlay(Capsule(style: .continuous).stroke(Color.overlayInk.opacity(0.08), lineWidth: 1))
+                SlateChip {
+                    Image(systemName: icon)
+                        .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+                .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.chip, hovering: hovering)
             }
             .buttonStyle(.plain)
             .hoverHighlight($hovering)
@@ -318,8 +292,8 @@ struct OverlaySessionAuxButton: View {
 
     private var tint: Color {
         switch kind {
-        case .resume: Color.green.opacity(0.9)
-        default: Color.overlayInk.opacity(0.7)
+        case .resume: RTIDesign.Color.success
+        default: Color.overlayInkSecondary
         }
     }
 

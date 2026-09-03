@@ -23,6 +23,8 @@ final class OnboardingWindowController {
         w.title = "Welcome to RTI"
         w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false
+        w.backgroundColor = House.NSColorToken.surface
+        w.appearance = OverlayAppearanceDefaults.nsAppearance()
         w.contentView = NSHostingView(rootView: OnboardingView(onDone: { [weak self] in self?.window?.close() }))
         w.center()
         w.makeKeyAndOrderFront(nil)

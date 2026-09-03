@@ -20,8 +20,8 @@ struct VoicesTab: View {
                 SettingsCard("How Voice Profiles Work", detail: "These clips are the voice fingerprints used to suggest speaker names after every session. Suggestions never rename anything on their own — you confirm names in Sessions, and confirms grow this store.") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Play a clip to hear exactly what was enrolled. Delete anything that isn't that person, or move it to the right one — a wrong sample makes future suggestions worse, so pruning here is the highest-leverage fix.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .font(RTIDesign.Font.meta)
+                            .foregroundStyle(RTIDesign.Color.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack {
                             statusLabel
@@ -82,11 +82,11 @@ struct VoicesTab: View {
     @ViewBuilder
     private var statusLabel: some View {
         if !store.toolAvailable {
-            SettingsStatusLabel(text: "Vault voice tool not reachable (vault or python stack missing) — nothing to review.", systemImage: "exclamationmark.triangle.fill", color: .orange)
+            SettingsStatusLabel(text: "Vault voice tool not reachable (vault or python stack missing) — nothing to review.", systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
         } else if let error = store.lastError {
-            SettingsStatusLabel(text: error, systemImage: "exclamationmark.triangle.fill", color: .orange)
+            SettingsStatusLabel(text: error, systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
         } else if store.isLoading {
-            SettingsStatusLabel(text: "Loading samples…", systemImage: "hourglass", color: .secondary)
+            SettingsStatusLabel(text: "Loading samples…", systemImage: "hourglass", color: RTIDesign.Color.textSecondary)
         } else {
             let total = store.people.reduce(0) { $0 + $1.samples.count }
             SettingsStatusLabel(
@@ -109,7 +109,7 @@ struct VoicesTab: View {
                 }
             } label: {
                 Image(systemName: player.playingSampleID == sample.id ? "stop.circle.fill" : "play.circle")
-                    .font(.system(size: 17))
+                    .font(.system(size: House.TypeToken.Size.heading))
             }
             .buttonStyle(.plain)
             .disabled(!sample.canAudition)
@@ -117,10 +117,10 @@ struct VoicesTab: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(clipTitle(sample))
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
                 Text(clipSubtitle(sample))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .font(RTIDesign.Font.caption)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
             }
 
             Spacer()

@@ -55,9 +55,9 @@ private final class HighlightView: NSView {
         super.draw(dirtyRect)
         let rect = bounds.insetBy(dx: 2, dy: 2)
         let path = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
-        NSColor.systemBlue.withAlphaComponent(0.16).setFill()
+        House.NSColorToken.accent.withAlphaComponent(0.16).setFill()
         path.fill()
-        NSColor.systemBlue.withAlphaComponent(0.92).setStroke()
+        House.NSColorToken.accent.withAlphaComponent(0.92).setStroke()
         path.lineWidth = 2
         path.stroke()
     }

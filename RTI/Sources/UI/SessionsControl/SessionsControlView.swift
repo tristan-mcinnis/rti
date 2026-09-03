@@ -57,6 +57,10 @@ struct SessionsControlView: View {
             contentForTab
                 .id(selectedTab)
         }
+        // Chrome is ink, never the system accent; toggles are ink too.
+        .tint(RTIDesign.Color.textPrimary)
+        .toggleStyle(SlateToggleStyle())
+        .background(RTIDesign.Color.appBackground)
         .onReceive(NotificationCenter.default.publisher(for: .rtiShowLogs)) { _ in
             selectedTab = .logs
         }
@@ -68,26 +72,18 @@ struct SessionsControlView: View {
 
     private var sessionsSidebar: some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 11) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(RTIDesign.Color.accentBg)
-                        .frame(width: 36, height: 36)
-                    Image(systemName: "waveform.path.ecg.rectangle")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(RTIDesign.Color.accentText)
-                }
+            HStack(spacing: RTIDesign.Spacing.xs + 2) {
+                SlateIconTile(systemName: "waveform", size: RTIDesign.Control.chip, glyphSize: 14)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("RTI")
-                        .font(.system(size: 20, weight: .semibold))
-                    Text("Library & preferences")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(RTIDesign.Color.textSecondary)
+                        .font(RTIDesign.Font.label)
+                        .foregroundStyle(RTIDesign.Color.textPrimary)
+                    SlateSectionLabel(text: "Library & preferences")
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 20)
+            .padding(.horizontal, RTIDesign.Spacing.md)
+            .padding(.top, RTIDesign.Spacing.md)
 
             // Derived from Tab.allCases so a newly added tab can never be
             // silently missing from the sidebar (bitten 2026-08-30: Voices
@@ -99,57 +95,38 @@ struct SessionsControlView: View {
             Spacer(minLength: 0)
             versionFooter
         }
-        .frame(minWidth: 196, idealWidth: 212, maxWidth: 232, maxHeight: .infinity, alignment: .topLeading)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(nsColor: .controlBackgroundColor),
-                    Color(nsColor: .windowBackgroundColor)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .frame(minWidth: 196, idealWidth: RTIDesign.Layout.settingsRail, maxWidth: 232,
+               maxHeight: .infinity, alignment: .topLeading)
+        .background(RTIDesign.Color.trackBackground)
     }
 
     private func sidebarSection(_ title: String, tabs: [Tab]) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .bold))
-                .tracking(0.8)
-                .foregroundStyle(RTIDesign.Color.textTertiary)
-                .padding(.horizontal, 18)
+            SlateSectionLabel(text: title)
+                .padding(.horizontal, RTIDesign.Spacing.md)
 
-            VStack(spacing: 4) {
+            VStack(spacing: RTIDesign.Spacing.xxs - 1) {
                 ForEach(tabs) { tab in
                     Button {
                         selectedTab = tab
                     } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 15, weight: .semibold))
-                                .frame(width: 18)
+                        HStack(spacing: RTIDesign.Spacing.sm) {
+                            SlateIconTile(systemName: tab.icon, glyphSize: 13)
                             Text(tab.rawValue)
-                                .font(.system(size: 14, weight: selectedTab == tab ? .semibold : .medium))
+                                .font(RTIDesign.Font.label)
                             Spacer(minLength: 0)
                         }
                         .foregroundStyle(selectedTab == tab ? RTIDesign.Color.textPrimary : RTIDesign.Color.textSecondary)
-                        .padding(.horizontal, 12)
-                        .frame(height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(selectedTab == tab ? RTIDesign.Color.cardBackground : Color.clear)
-                                .shadow(
-                                    color: selectedTab == tab ? .black.opacity(0.05) : .clear,
-                                    radius: 3,
-                                    y: 1
-                                )
-                        )
+                        .padding(.horizontal, RTIDesign.Spacing.xs + 2)
+                        .frame(height: RTIDesign.Control.railRow)
+                        .slateRaisedTile(selectedTab == tab, cornerRadius: RTIDesign.Radius.row)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(selectedTab == tab ? [.isButton, .isSelected] : .isButton)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, RTIDesign.Spacing.sm)
         }
     }
 
@@ -182,11 +159,11 @@ struct SessionsControlView: View {
         VStack(spacing: 6) {
             Divider()
             Text(versionString)
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
+                .font(RTIDesign.Font.micro)
+                .foregroundStyle(RTIDesign.Color.textTertiary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 10)
+                .padding(.horizontal, RTIDesign.Spacing.md)
+                .padding(.bottom, RTIDesign.Spacing.xs + 2)
         }
     }
 

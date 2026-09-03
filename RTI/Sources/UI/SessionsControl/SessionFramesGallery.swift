@@ -20,13 +20,13 @@ struct SessionFramesGallery: View {
         Group {
             if frames.isEmpty {
                 Text("No screenshots were kept for this session.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .font(RTIDesign.Font.meta)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("\(frames.count) frame\(frames.count == 1 ? "" : "s") captured during the session, in order.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(RTIDesign.Font.caption)
+                        .foregroundStyle(RTIDesign.Color.textSecondary)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 14) {
                         ForEach(frames) { frame in
                             Button {
@@ -35,8 +35,8 @@ struct SessionFramesGallery: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     FrameThumbnail(url: frame.url)
                                     Text(frame.caption)
-                                        .font(.system(size: 10.5))
-                                        .foregroundStyle(.secondary)
+                                        .font(.system(size: House.TypeToken.Size.section))
+                                        .foregroundStyle(RTIDesign.Color.textSecondary)
                                         .lineLimit(1)
                                 }
                             }
@@ -85,15 +85,15 @@ private struct FrameThumbnail: View {
                     .scaledToFill()
             } else {
                 Rectangle().fill(.quaternary)
-                    .overlay(Image(systemName: "photo").foregroundStyle(.tertiary))
+                    .overlay(Image(systemName: "photo").foregroundStyle(RTIDesign.Color.textTertiary))
             }
         }
         .frame(height: 126)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.sm))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
+                .stroke(RTIDesign.Color.border, lineWidth: 1)
         )
         .task(id: url) {
             image = Self.thumbnail(for: url)
@@ -124,14 +124,14 @@ private struct FramePreviewSheet: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: 980, maxHeight: 640)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.sm))
             } else {
                 Text("Couldn't load \(frame.lastPathComponent)")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
             }
             HStack {
                 Text(caption)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
                 Spacer()
                 Button("Reveal in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([frame])

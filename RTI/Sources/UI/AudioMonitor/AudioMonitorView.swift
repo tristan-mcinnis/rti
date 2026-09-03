@@ -17,18 +17,18 @@ struct AudioMonitorContent: View {
                 leg(
                     title: "You", icon: "mic.fill", device: inputName,
                     level: levels.mic, flowing: levels.micFlowing,
-                    running: levels.isRunning, active: true, accent: .blue
+                    running: levels.isRunning, active: true, accent: RTIDesign.Color.textPrimary
                 )
                 leg(
                     title: "Them", icon: "speaker.wave.2.fill", device: outputName,
                     level: levels.system, flowing: levels.systemFlowing,
-                    running: levels.isRunning, active: levels.systemActive, accent: .purple
+                    running: levels.isRunning, active: levels.systemActive, accent: RTIDesign.Color.textSecondary
                 )
                 Text(levels.isRunning
                     ? "A bar that stays flat while that side is talking means the wrong device is selected — fix it in Settings → Audio."
                     : "Start a session (⌘⇧R) to see live levels.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .font(RTIDesign.Font.micro)
+                    .foregroundStyle(RTIDesign.Color.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -39,14 +39,14 @@ struct AudioMonitorContent: View {
     private func leg(title: String, icon: String, device: String, level: Float, flowing: Bool, running: Bool, active: Bool, accent: Color) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11)).foregroundStyle(accent)
-                Text(title).font(.system(size: 13, weight: .semibold))
+                Image(systemName: icon).font(RTIDesign.Font.caption).foregroundStyle(accent)
+                Text(title).font(RTIDesign.Font.label)
                 Spacer()
                 status(running: running, active: active, flowing: flowing)
             }
             Text(device)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(RTIDesign.Font.caption)
+                .foregroundStyle(RTIDesign.Color.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             meter(level: running && active ? CGFloat(level) : 0, accent: accent)
@@ -56,8 +56,11 @@ struct AudioMonitorContent: View {
     private func meter(level: CGFloat, accent: Color) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.secondary.opacity(0.18))
-                Capsule().fill(accent).frame(width: max(2, geo.size.width * min(1, level)))
+                RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
+                    .fill(RTIDesign.Color.well)
+                RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
+                    .fill(accent)
+                    .frame(width: max(2, geo.size.width * min(1, level)))
             }
         }
         .frame(height: 12)
@@ -67,13 +70,13 @@ struct AudioMonitorContent: View {
     @ViewBuilder
     private func status(running: Bool, active: Bool, flowing: Bool) -> some View {
         if !running {
-            statusBadge("Idle", .secondary, dotColor: .secondary.opacity(0.5), pulsing: false)
+            statusBadge("Idle", RTIDesign.Color.textSecondary, dotColor: RTIDesign.Color.textTertiary, pulsing: false)
         } else if !active {
-            statusBadge("Off", .secondary, dotColor: .secondary.opacity(0.5), pulsing: false)
+            statusBadge("Off", RTIDesign.Color.textSecondary, dotColor: RTIDesign.Color.textTertiary, pulsing: false)
         } else if !flowing {
-            statusBadge("No audio", .red, dotColor: .red, pulsing: false, icon: "exclamationmark.triangle.fill")
+            statusBadge("No audio", RTIDesign.Color.danger, dotColor: RTIDesign.Color.danger, pulsing: false, icon: "exclamationmark.triangle.fill")
         } else {
-            statusBadge("Live", .green, dotColor: .green, pulsing: true)
+            statusBadge("Live", RTIDesign.Color.success, dotColor: RTIDesign.Color.success, pulsing: true)
         }
     }
 
@@ -85,13 +88,13 @@ struct AudioMonitorContent: View {
                     .frame(width: 7, height: 7)
                     .modifier(PulsingDot())
             } else if let icon {
-                Image(systemName: icon).font(.system(size: 9))
+                Image(systemName: icon).font(.system(size: House.TypeToken.Size.micro))
             } else {
                 Circle()
                     .fill(dotColor)
                     .frame(width: 7, height: 7)
             }
-            Text(text).font(.system(size: 10, weight: .medium))
+            Text(text).font(RTIDesign.Font.micro)
         }
         .foregroundStyle(color)
     }

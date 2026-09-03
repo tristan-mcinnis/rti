@@ -29,6 +29,20 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "5762F1005DB18D2F989436F8"
+               BuildableName = "RTIRenderTests.xctest"
+               BlueprintName = "RTIRenderTests"
+               ReferencedContainer = "container:RTI.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "352ADB10DB522064276CBE6A"
                BuildableName = "RTITests.xctest"
                BlueprintName = "RTITests"
@@ -61,6 +75,17 @@
                BlueprintIdentifier = "352ADB10DB522064276CBE6A"
                BuildableName = "RTITests.xctest"
                BlueprintName = "RTITests"
+               ReferencedContainer = "container:RTI.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "5762F1005DB18D2F989436F8"
+               BuildableName = "RTIRenderTests.xctest"
+               BlueprintName = "RTIRenderTests"
                ReferencedContainer = "container:RTI.xcodeproj">
             </BuildableReference>
          </TestableReference>

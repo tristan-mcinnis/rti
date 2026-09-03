@@ -1,3 +1,4 @@
+import RTICore
 import SwiftUI
 
 struct OverlayPanelView: View {
@@ -37,27 +38,22 @@ struct OverlayPanelView: View {
             panelBackground
 
             VStack(spacing: 0) {
-                HStack(spacing: 6) {
+                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
                     OverlaySetupButton(selection: $tab)
                     OverlayTabBar(selection: $tab, tabs: visibleTabs)
-                    Divider()
-                        .frame(height: 18)
-                        .opacity(0.55)
-                        .padding(.horizontal, 2)
                     OverlayMicControl()
                     OverlayVisualContextButton()
                     OverlayProjectPicker()
                     OverlayRecordButton()
                     OverlaySessionAuxButton()
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
-                .background(Color.overlayInk.opacity(0.018))
+                .padding(.horizontal, RTIDesign.Spacing.sm + 2)
+                .padding(.vertical, RTIDesign.Spacing.xs + 2)
+                // No tint band. A divider is the only line the top bar draws.
                 .overlay(alignment: .bottom) {
                     Rectangle()
-                        .fill(Color.overlayBorder.opacity(0.65))
-                        .frame(height: 1)
+                        .fill(RTIDesign.Color.divider)
+                        .frame(height: House.hairline)
                 }
                 // If the active tab gets turned off in Prepare, fall back to Assist.
                 .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
@@ -99,20 +95,24 @@ struct OverlayPanelView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                OverlayFooterBar(tab: tab)
             }
         }
         .font(.system(size: CGFloat(uiFontSize), weight: .regular))
-        .tint(Color.overlayAccent)
-        .accentColor(Color.overlayAccent)
+        .foregroundStyle(Color.overlayInk)
+        // Chrome is ink: system controls (menus, pickers, prominent buttons)
+        // must not paint themselves the system accent blue.
+        .tint(Color.overlayInk)
         .preferredColorScheme(preferredColorScheme)
         .overlay(themeRefreshToken)
     }
 
-    /// Hosted in a standard titled window — the window supplies chrome
-    /// (corners, border, shadow), so the background is just a solid fill of
-    /// the content area.
+    /// Hosted in a standard titled window. The ground is the same glass as the
+    /// launcher: blur material, `panelTint`, and a 1 px top highlight. The
+    /// window's own chrome supplies corners, border, and shadow.
     private var panelBackground: some View {
-        Rectangle().fill(Color.overlayPanel)
+        SlateGlassBackground()
     }
 
     private var preferredColorScheme: ColorScheme? {
@@ -147,12 +147,12 @@ struct OverlayPanelView: View {
                 onOpenSettings: onOpenSettings
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.horizontal, 18)
+            .padding(.horizontal, RTIDesign.Spacing.lg - 4)
 
             AssistantInputView()
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 14)
+                .padding(.horizontal, RTIDesign.Spacing.sm + 2)
+                .padding(.top, RTIDesign.Spacing.xs + 2)
+                .padding(.bottom, RTIDesign.Spacing.sm)
         }
     }
 }
@@ -160,6 +160,63 @@ struct OverlayPanelView: View {
 private extension View {
     /// Uniform padding for the non-assist tab contents.
     func tabContentPadding() -> some View {
-        padding(.horizontal, 16).padding(.bottom, 14)
+        padding(.horizontal, RTIDesign.Spacing.lg - 4).padding(.top, RTIDesign.Spacing.sm)
+    }
+}
+
+/// The house footer: a sunken well carrying "state · model · mode" on the left
+/// and outlined key caps for the live shortcuts on the right. The same table
+/// drives the status item and the command registry.
+struct OverlayFooterBar: View {
+    let tab: OverlayTab
+
+    private let session = SessionCoordinator.shared
+    private let llm = LLMController.shared
+    private let modes = ModeStore.shared
+
+    var body: some View {
+        SlateFooter(statusColor: statusColor, status: statusLine) {
+            HStack(spacing: 0) {
+                if tab == .assist {
+                    SlateKeyHint(label: primaryActionLabel, keys: ["⌘", "↩"])
+                }
+                SlateKeyHint(label: "Note", keys: ["⌘", "⌥", "N"])
+                if tab != .assist {
+                    SlateKeyHint(label: session.isRunning ? "Finish" : "Record", keys: ["⌘", "⇧", "R"])
+                }
+            }
+        }
+    }
+
+    private var primaryActionLabel: String {
+        AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist"
+    }
+
+    /// Never colour alone: the dot always sits beside the word.
+    private var statusColor: Color {
+        switch session.phase {
+        case .recording: RTIDesign.Color.danger
+        case .paused: RTIDesign.Color.warning
+        case .finishing, .summarizing: RTIDesign.Color.warning
+        case .idle, .done: RTIDesign.Color.success
+        }
+    }
+
+    private var statusLine: String {
+        var parts: [String] = [phaseWord]
+        parts.append(LLMProviders.active.displayName)
+        if let mode = modes.activeMode?.name { parts.append("\(mode) mode") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var phaseWord: String {
+        switch session.phase {
+        case .idle: "Ready"
+        case .recording: "Recording"
+        case .paused: "Paused"
+        case .finishing: "Saving"
+        case .summarizing: "Improving"
+        case .done: "Ready"
+        }
     }
 }

@@ -71,7 +71,7 @@ private final class MentionSuggestionStore: ObservableObject {
 }
 
 private struct ComposerTextView: NSViewRepresentable {
-    static let fontSize: CGFloat = 14
+    static let fontSize = House.TypeToken.Size.body
     static let verticalTextInset: CGFloat = 3
 
     @Binding var text: String
@@ -98,8 +98,8 @@ private struct ComposerTextView: NSViewRepresentable {
         textView.string = text
         textView.font = .systemFont(ofSize: fontSize)
         textView.placeholderFont = .systemFont(ofSize: fontSize)
-        textView.placeholderColor = NSColor.labelColor.withAlphaComponent(0.45)
-        textView.textColor = NSColor.labelColor.withAlphaComponent(0.95)
+        textView.placeholderColor = OverlayInk.nsColor(tier: .tertiary)
+        textView.textColor = OverlayInk.nsColor(tier: .primary)
         textView.drawsBackground = false
         textView.isRichText = false
         textView.importsGraphics = false
@@ -110,7 +110,7 @@ private struct ComposerTextView: NSViewRepresentable {
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainerInset = NSSize(width: 0, height: Self.verticalTextInset)
-        textView.insertionPointColor = .systemBlue
+        textView.insertionPointColor = House.NSColorToken.textPrimary
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         scrollView.documentView = textView
@@ -128,8 +128,8 @@ private struct ComposerTextView: NSViewRepresentable {
         }
         textView.font = .systemFont(ofSize: fontSize)
         textView.placeholderFont = .systemFont(ofSize: fontSize)
-        textView.placeholderColor = NSColor.labelColor.withAlphaComponent(0.45)
-        textView.textColor = NSColor.labelColor.withAlphaComponent(0.95)
+        textView.placeholderColor = OverlayInk.nsColor(tier: .tertiary)
+        textView.textColor = OverlayInk.nsColor(tier: .primary)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -155,7 +155,7 @@ private struct ComposerTextView: NSViewRepresentable {
         var placeholderFont: NSFont = .systemFont(ofSize: 14) {
             didSet { needsDisplay = true }
         }
-        var placeholderColor: NSColor = NSColor.labelColor.withAlphaComponent(0.45) {
+        var placeholderColor: NSColor = OverlayInk.nsColor(tier: .tertiary) {
             didSet { needsDisplay = true }
         }
 
@@ -194,15 +194,16 @@ private struct ComposerTextView: NSViewRepresentable {
 
 struct AssistantInputView: View {
     private enum ComposerMetrics {
-        static let fontSize: CGFloat = 14
-        static let iconFontSize: CGFloat = 14
-        static let controlSize: CGFloat = 30
-        static let sendSize: CGFloat = 30
-        static let rowSpacing: CGFloat = 6
-        static let rowHorizontalPadding: CGFloat = 8
+        static let fontSize = House.TypeToken.Size.body
+        static let iconFontSize = House.TypeToken.Size.body
+        static let controlSize = House.Control.chip
+        static let sendSize = House.Control.chip
+        static let rowSpacing = House.Spacing.xxs + 2
+        static let rowHorizontalPadding = House.Spacing.xs
         static let rowVerticalPadding: CGFloat = 7
-        static let minRowHeight: CGFloat = 46
-        static let textLeadingPadding: CGFloat = 4
+        /// The house composer: a 52 px raised card at Radius.lg.
+        static let minRowHeight = House.Control.composer
+        static let textLeadingPadding = House.Spacing.xxs
         static let textVerticalInset: CGFloat = 3
         static let minTextHeight: CGFloat = 24
         static let maxTextHeight: CGFloat = 128
@@ -276,23 +277,15 @@ struct AssistantInputView: View {
                     sendButton
                 }
             }
-            .padding(.horizontal, ComposerMetrics.rowHorizontalPadding)
+            .padding(.leading, RTIDesign.Spacing.xs + 2)
+            .padding(.trailing, ComposerMetrics.rowHorizontalPadding)
             .padding(.vertical, ComposerMetrics.rowVerticalPadding)
             .frame(minHeight: ComposerMetrics.minRowHeight)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color.overlayInput)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(isDropTargeted
-                                ? Color.blue.opacity(0.7)
-                                : (inputState.isNoteMode
-                                    ? Color.yellow.opacity(0.45)
-                                    : Color.overlayInk.opacity(0.08)),
-                                lineWidth: isDropTargeted ? 1.5 : 1)
-                    )
+            .slateRaisedCard(cornerRadius: RTIDesign.Radius.md)
+            .overlay(
+                RoundedRectangle(cornerRadius: RTIDesign.Radius.md, style: .continuous)
+                    .strokeBorder(composerFocusStroke, lineWidth: composerFocusStroke == .clear ? 0 : 1.5)
             )
-            .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 5)
         }
         // Drop an image here → it's OCR'd on-device and attached as context for
         // the next message (same path as ⌘⇧H screen capture; no image is sent
@@ -401,6 +394,14 @@ struct AssistantInputView: View {
         }
     }
 
+    /// Drop / note mode are the only states that repaint the composer edge, and
+    /// both use a house token — never a raw blue or yellow.
+    private var composerFocusStroke: Color {
+        if isDropTargeted { return RTIDesign.Color.accent }
+        if inputState.isNoteMode { return RTIDesign.Color.warning.opacity(0.5) }
+        return .clear
+    }
+
     private var contextDashboard: some View {
         HStack(spacing: 6) {
             let labels = llm.contextPreviewLabels().filter { $0 != "Screen OCR" }
@@ -455,11 +456,14 @@ struct AssistantInputView: View {
                         Text("Screen · once")
                         Image(systemName: "xmark")
                     }
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.blue.opacity(0.95))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.blue.opacity(0.16)))
+                    .font(RTIDesign.Font.meta)
+                    .foregroundStyle(Color.overlayInkSecondary)
+                    .padding(.horizontal, RTIDesign.Spacing.xs)
+                    .frame(height: House.Control.keyCap + 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                            .fill(RTIDesign.Color.chipFill)
+                    )
                 }
                 .buttonStyle(.plain)
                 .help("Remove screen OCR from the next message")
@@ -474,7 +478,7 @@ struct AssistantInputView: View {
 
             if let attachmentError {
                 miniPill(attachmentError, icon: "exclamationmark.triangle", active: true)
-                    .foregroundStyle(Color.orange.opacity(0.92))
+                    .foregroundStyle(RTIDesign.Color.warning)
             }
 
             Spacer(minLength: 0)
@@ -520,8 +524,8 @@ struct AssistantInputView: View {
 
     private func screenStatusColor(_ status: String) -> Color {
         status.lowercased().contains("permission") || status.lowercased().contains("failed")
-            ? Color.orange.opacity(0.92)
-            : Color.blue.opacity(0.92)
+            ? RTIDesign.Color.warning
+            : Color.overlayInkSecondary
     }
 
     private var showSlashCommands: Bool {
@@ -551,22 +555,18 @@ struct AssistantInputView: View {
                 Button {
                     applyMention(path)
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 10, weight: .medium))
+                    HStack(spacing: RTIDesign.Spacing.xs) {
+                        SlateIconTile(systemName: "doc.text", size: House.Control.keyCap, glyphSize: 10)
                         Text(path)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(RTIDesign.Font.label)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-                    .foregroundStyle(Color.overlayInk.opacity(idx == selectedMentionIndex ? 0.90 : 0.62))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
+                    .foregroundStyle(idx == selectedMentionIndex ? Color.overlayInk : Color.overlayInkSecondary)
+                    .padding(.horizontal, RTIDesign.Spacing.xs)
+                    .frame(height: RTIDesign.Control.heightSm)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.overlayInk.opacity(idx == selectedMentionIndex ? 0.08 : 0.035))
-                    )
+                    .slateRaisedTile(idx == selectedMentionIndex, cornerRadius: RTIDesign.Radius.sm)
                 }
                 .buttonStyle(.plain)
             }
@@ -580,58 +580,64 @@ struct AssistantInputView: View {
                 ForEach(selectedMentionPaths, id: \.self) { path in
                     HStack(spacing: 5) {
                         Image(systemName: "doc.text")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
                         Text(displayName(forMentionPath: path))
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Button {
                             selectedMentionPaths.removeAll { $0 == path }
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: House.TypeToken.Size.micro, weight: .bold))
                                 .frame(width: 14, height: 14)
                         }
                         .buttonStyle(.plain)
                         .help("Remove file")
                     }
-                    .foregroundStyle(Color.overlayInk.opacity(0.72))
-                    .padding(.leading, 8)
-                    .padding(.trailing, 5)
-                    .padding(.vertical, 5)
+                    .foregroundStyle(Color.overlayInkSecondary)
+                    .padding(.leading, RTIDesign.Spacing.xs)
+                    .padding(.trailing, RTIDesign.Spacing.xxs + 1)
+                    .frame(height: House.Control.keyCap + 4)
                     .background(
-                        Capsule()
-                            .fill(Color.overlayInk.opacity(0.055))
-                            .overlay(Capsule().stroke(Color.overlayInk.opacity(0.08), lineWidth: 1))
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                            .fill(RTIDesign.Color.chipFill)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                                    .strokeBorder(RTIDesign.Color.border, lineWidth: House.hairline)
+                            )
                     )
                     .help(path)
                 }
                 ForEach(selectedAttachments) { attachment in
                     HStack(spacing: 5) {
                         Image(systemName: "paperclip")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
                         Text(attachment.name)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Button {
                             selectedAttachments.removeAll { $0.id == attachment.id }
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: House.TypeToken.Size.micro, weight: .bold))
                                 .frame(width: 14, height: 14)
                         }
                         .buttonStyle(.plain)
                         .help("Remove attachment")
                     }
-                    .foregroundStyle(Color.blue.opacity(0.82))
-                    .padding(.leading, 8)
-                    .padding(.trailing, 5)
-                    .padding(.vertical, 5)
+                    .foregroundStyle(Color.overlayInkSecondary)
+                    .padding(.leading, RTIDesign.Spacing.xs)
+                    .padding(.trailing, RTIDesign.Spacing.xxs + 1)
+                    .frame(height: House.Control.keyCap + 4)
                     .background(
-                        Capsule()
-                            .fill(Color.blue.opacity(0.08))
-                            .overlay(Capsule().stroke(Color.blue.opacity(0.15), lineWidth: 1))
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                            .fill(RTIDesign.Color.selectionFill)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                                    .strokeBorder(RTIDesign.Color.borderStrong, lineWidth: House.hairline)
+                            )
                     )
                     .help("Attached for this message only")
                 }
@@ -652,13 +658,13 @@ struct AssistantInputView: View {
                         Image(systemName: command.symbol)
                         Text(command.label)
                     }
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.overlayInk.opacity(idx == selectedSlashIndex ? 0.92 : 0.68))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(Color.overlayInk.opacity(idx == selectedSlashIndex ? 0.12 : 0.06)))
-                    .overlay(
-                        Capsule().stroke(Color.overlayInk.opacity(idx == selectedSlashIndex ? 0.16 : 0), lineWidth: 1)
+                    .font(RTIDesign.Font.meta)
+                    .foregroundStyle(idx == selectedSlashIndex ? Color.overlayInk : Color.overlayInkSecondary)
+                    .padding(.horizontal, RTIDesign.Spacing.xs)
+                    .frame(height: House.Control.keyCap + 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                            .fill(idx == selectedSlashIndex ? RTIDesign.Color.selectionFill : RTIDesign.Color.chipFill)
                     )
                 }
                 .buttonStyle(.plain)
@@ -741,19 +747,15 @@ struct AssistantInputView: View {
     }
 
     private func miniPill(_ text: String, icon: String?, active: Bool) -> some View {
-        HStack(spacing: 4) {
+        SlateChip(height: House.Control.keyCap + 2, stroked: false) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: House.TypeToken.Size.caption, weight: .regular))
             }
             Text(text)
                 .truncationMode(.tail)
         }
-        .font(.system(size: 10, weight: .medium))
-        .foregroundStyle(active ? Color.overlayInk.opacity(0.58) : Color.overlayInk.opacity(0.38))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(Color.overlayInk.opacity(active ? 0.055 : 0.035)))
+        .foregroundStyle(active ? Color.overlayInkSecondary : Color.overlayInkTertiary)
     }
 
     private var noteModeToggle: some View {
@@ -765,27 +767,20 @@ struct AssistantInputView: View {
             }
         } label: {
             Label("Note", systemImage: noteModeSymbol)
-                .font(.system(size: 11, weight: .medium))
+                .font(RTIDesign.Font.meta)
                 .labelStyle(.titleAndIcon)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, RTIDesign.Spacing.xs)
                 .frame(height: ComposerMetrics.controlSize)
-            .foregroundStyle(inputState.isNoteMode ? Color.yellow.opacity(0.95) : Color.overlayInk.opacity(0.7))
-            .background(
-                Capsule().fill(
-                    inputState.isNoteMode
-                        ? Color.yellow.opacity(0.12)
-                        : Color.clear
+                .foregroundStyle(inputState.isNoteMode ? RTIDesign.Color.warning : Color.overlayInkSecondary)
+                .background(
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                        .fill(inputState.isNoteMode ? RTIDesign.Color.warning.opacity(0.12) : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                                .strokeBorder(inputState.isNoteMode ? RTIDesign.Color.warning.opacity(0.4) : Color.clear,
+                                              lineWidth: House.hairline)
+                        )
                 )
-            )
-            .overlay(
-                Capsule()
-                    .stroke(
-                        inputState.isNoteMode
-                            ? Color.yellow.opacity(0.4)
-                            : Color.clear,
-                        lineWidth: 1
-                    )
-            )
         }
         .buttonStyle(.plain)
         .fixedSize()
@@ -867,13 +862,13 @@ struct AssistantInputView: View {
             Image(systemName: "sparkles")
                 .symbolRenderingMode(.monochrome)
                 .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
-                .foregroundColor(llm.smartMode ? Color.blue.opacity(0.9) : Color.overlayInk.opacity(0.50))
+                .foregroundStyle(llm.smartMode ? Color.overlayInk : Color.overlayInkSecondary)
                 .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
-                .background(Capsule().fill(llm.smartMode ? Color.blue.opacity(0.10) : Color.clear))
+                .slateRaisedTile(llm.smartMode, cornerRadius: RTIDesign.Radius.chip)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .tint(Color.overlayInk.opacity(0.7))
+        .tint(Color.overlayInkSecondary)
         .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
         .accessibilityLabel("Assist actions")
         .accessibilityHint(llm.smartMode ? "Assist actions. Smart mode is on." : "Assist actions")
@@ -884,7 +879,7 @@ struct AssistantInputView: View {
         Button { fileImporterPresented = true } label: {
             Image(systemName: "paperclip")
                 .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
-                .foregroundStyle(Color.overlayInk.opacity(0.58))
+                .foregroundStyle(Color.overlayInkSecondary)
                 .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
         }
         .buttonStyle(.plain)
@@ -897,11 +892,13 @@ struct AssistantInputView: View {
         let isEmpty = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedMentionPaths.isEmpty && selectedAttachments.isEmpty
         return Button(action: submit) {
             Image(systemName: "arrow.up")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color.overlayInk.opacity(isEmpty ? 0.45 : 1.0))
+                .font(.system(size: House.TypeToken.Size.bodySmall, weight: .bold))
+                // A square ink tile: textPrimary fill, textInverse arrow.
+                .foregroundStyle(isEmpty ? Color.overlayInkTertiary : Color.overlayInkInverse)
                 .frame(width: ComposerMetrics.sendSize, height: ComposerMetrics.sendSize)
                 .background(
-                    Circle().fill(Color.overlayInk.opacity(isEmpty ? 0.045 : 0.10))
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                        .fill(isEmpty ? RTIDesign.Color.chipFill : RTIDesign.Color.textPrimary)
                 )
         }
         .buttonStyle(.plain)
@@ -914,10 +911,13 @@ struct AssistantInputView: View {
     private var stopButton: some View {
         Button(action: { llm.cancel() }) {
             Image(systemName: "stop.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
+                .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
+                .foregroundStyle(RTIDesign.Color.textInverse)
                 .frame(width: ComposerMetrics.sendSize, height: ComposerMetrics.sendSize)
-                .background(Circle().fill(Color.red.opacity(0.85)))
+                .background(
+                    RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+                        .fill(RTIDesign.Color.danger)
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Stop streaming")
