@@ -64,6 +64,17 @@ final class MeetingContextStore {
         return VaultWorkstreamStore.fileAccessRelativePath(for: item)
     }
 
+    /// Add a note before recording starts. Pre-call notes remain visible in
+    /// Setup → Prep note and are supplied to the assistant as meeting context.
+    @discardableResult
+    func appendPrepNote(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let existing = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        note = existing.isEmpty ? trimmed : "\(existing)\n\(trimmed)"
+        return true
+    }
+
     func clearWorkstream() {
         workstreamName = nil
         workstreamContext = nil
@@ -103,15 +114,19 @@ final class MeetingContextStore {
         return lines.joined(separator: "\n")
     }
 
-    /// Reference material for end-of-session summaries. Project context gives
-    /// the model the correct vocabulary and spellings; the confirmed calendar
-    /// event provides names that are safe to label as invitees.
+    /// Reference material for end-of-session summaries. Project context and
+    /// the user's prep note give the model the right vocabulary and priorities;
+    /// the confirmed calendar event provides names safe to label as invitees.
     var summaryContext: String? {
         var parts: [String] = []
         if let workstream = workstreamContext?.trimmingCharacters(in: .whitespacesAndNewlines), !workstream.isEmpty {
             parts.append("Selected project/wiki context:\n\(String(workstream.prefix(8_000)))")
         }
         if let calendar = calendarContext { parts.append(calendar) }
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedNote.isEmpty {
+            parts.append("User prep note for this meeting:\n\(trimmedNote)")
+        }
         return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
     }
 

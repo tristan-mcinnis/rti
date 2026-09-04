@@ -266,7 +266,6 @@ enum CommandBuilder {
                 subtitle: "⌘⌥N",
                 keywords: ["note", "annotate", "inline", "mark"],
                 perform: {
-                    guard SessionCoordinator.shared.isRunning else { return }
                     let state = OverlayInputState.shared
                     state.mode = state.isNoteMode ? .chat : .liveNote
                 },

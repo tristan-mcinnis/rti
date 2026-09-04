@@ -267,9 +267,7 @@ struct AssistantInputView: View {
 
                 attachmentButton
 
-                if session.isRunning {
-                    noteModeToggle
-                }
+                noteModeToggle
 
                 if llm.streaming {
                     stopButton
@@ -407,18 +405,23 @@ struct AssistantInputView: View {
             let labels = llm.contextPreviewLabels().filter { $0 != "Screen OCR" }
             if !labels.isEmpty {
                 Menu {
-                    Section("Context") {
+                    Section("Included in the next answer") {
+                        ForEach(labels, id: \.self) { label in
+                            Label(label, systemImage: "checkmark")
+                        }
+                    }
+                    Section("Vault search scope") {
                         if let name = MeetingContextStore.shared.workstreamName {
-                            Label(name, systemImage: "checkmark")
-                            Button("Clear project/client") {
+                            Label(name, systemImage: "folder.fill")
+                            Button("Use whole vault") {
                                 MeetingContextStore.shared.clearWorkstream()
                                 refreshMentionSuggestions()
                             }
                         } else {
-                            Text("Vault-wide")
+                            Label("Whole vault", systemImage: "checkmark")
                         }
                     }
-                    Section("Projects") {
+                    Section("Choose a project") {
                         ForEach(VaultWorkstreamStore.projects().prefix(8), id: \.id) { item in
                             Button(item.name) {
                                 MeetingContextStore.shared.selectWorkstream(item)
@@ -426,7 +429,7 @@ struct AssistantInputView: View {
                             }
                         }
                     }
-                    Section("Clients") {
+                    Section("Choose a client") {
                         ForEach(VaultWorkstreamStore.clients().prefix(6), id: \.id) { item in
                             Button(item.name) {
                                 MeetingContextStore.shared.selectWorkstream(item)
@@ -434,17 +437,12 @@ struct AssistantInputView: View {
                             }
                         }
                     }
-                    Section("Tools") {
-                        ForEach(llm.toolPreviewLabels(), id: \.self) { label in
-                            Text(label)
-                        }
-                    }
                 } label: {
                     miniPill(contextSummary(labels), icon: "text.bubble", active: true)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
-                .help("Context and tools available to the next message")
+                .help("View what the next answer can use, or change its vault search scope")
             }
 
             if llm.pendingScreenContext != nil {
@@ -517,9 +515,7 @@ struct AssistantInputView: View {
     }
 
     private func contextSummary(_ labels: [String]) -> String {
-        guard let first = labels.first else { return "Context" }
-        if labels.count == 1 { return first }
-        return "\(first) +\(labels.count - 1)"
+        labels.count == 1 ? "Context · 1 source" : "Context · \(labels.count) sources"
     }
 
     private func screenStatusColor(_ status: String) -> Color {
@@ -760,7 +756,6 @@ struct AssistantInputView: View {
 
     private var noteModeToggle: some View {
         Button {
-            guard session.isRunning else { return }
             inputState.mode = inputState.isNoteMode ? .chat : .liveNote
             DispatchQueue.main.async {
                 isInputFocused = true
@@ -928,7 +923,7 @@ struct AssistantInputView: View {
     private var textFieldPrompt: String {
         switch inputState.mode {
         case .liveNote:
-            return "Quick note"
+            return session.isRunning ? "Quick transcript note" : "Prep note for this meeting"
         case .chat:
             return "Ask the vault, @file, or attach a PDF/text file"
         }
@@ -1068,10 +1063,8 @@ struct AssistantInputView: View {
             llm.sendSummary()
         case "note":
             if argument.isEmpty {
-                if session.isRunning {
-                    inputState.mode = inputState.isNoteMode ? .chat : .liveNote
-                }
-            } else if !applyNoteModeArgument(argument), session.isRunning {
+                inputState.mode = inputState.isNoteMode ? .chat : .liveNote
+            } else if !applyNoteModeArgument(argument) {
                 inputState.mode = .liveNote
             }
         case "chat":
@@ -1109,10 +1102,8 @@ struct AssistantInputView: View {
     @discardableResult
     private func applyNoteModeArgument(_ argument: String) -> Bool {
         switch argument.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "meeting", "meet", "live", "transcript", "on":
-            if session.isRunning {
-                inputState.mode = .liveNote
-            }
+        case "meeting", "meet", "live", "transcript", "on", "prep":
+            inputState.mode = .liveNote
         case "off", "exit", "cancel", "chat":
             inputState.mode = .chat
         default:
@@ -1131,16 +1122,21 @@ struct AssistantInputView: View {
     private var noteModeHelpText: String {
         switch inputState.mode {
         case .liveNote:
-            return "Transcript note mode on — next Enter inserts inline, then returns to chat"
+            return session.isRunning
+                ? "Transcript note mode on — next Enter inserts inline, then returns to chat"
+                : "Prep note mode on — next Enter adds context for this meeting, then returns to chat"
         case .chat:
             return session.isRunning
                 ? "Chat mode on — toggle to drop a quick note into the transcript"
-                : "Start a live session to add transcript notes"
+                : "Chat mode on — toggle to add a prep note before recording"
         }
     }
 
     private func submitLiveNote(_ text: String) -> Bool {
-        SessionCoordinator.shared.insertNote(text)
+        if session.isRunning {
+            return session.insertNote(text)
+        }
+        return MeetingContextStore.shared.appendPrepNote(text)
     }
 }
 

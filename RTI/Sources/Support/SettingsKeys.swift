@@ -26,7 +26,9 @@ enum OverlayAppearanceDefaults {
     static let defaultContrast: Double = 60
     static let defaultUIFontSize: Double = 14
     static let defaultReduceMotion = RTIReduceMotionMode.system.rawValue
-    static let widthRange: ClosedRange<Double> = 320...800
+    // The overlay's single-row chrome and footer remain legible at 600 pt.
+    // Below that, tab names and shortcut labels compress into wrapped glyphs.
+    static let widthRange: ClosedRange<Double> = 600...800
     static let heightRange: ClosedRange<Double> = 400...900
     static let contrastRange: ClosedRange<Double> = 35...85
     static let uiFontSizeRange: ClosedRange<Double> = 12...18

@@ -1032,8 +1032,4 @@ extension LLMController {
         }
         return labels
     }
-
-    func toolPreviewLabels() -> [String] {
-        ["Screen", "Vault", "Recent", "Docs", "Grep", "Files"]
-    }
 }

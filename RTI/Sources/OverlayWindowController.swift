@@ -55,6 +55,10 @@ final class OverlayWindowController {
         // window must not paint an opaque fill behind it.
         win.isOpaque = false
         win.backgroundColor = .clear
+        win.contentMinSize = NSSize(
+            width: OverlayAppearanceDefaults.widthRange.lowerBound,
+            height: OverlayAppearanceDefaults.heightRange.lowerBound
+        )
 
         win.contentView = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
         win.appearance = Self.configuredAppearance()
@@ -129,11 +133,13 @@ final class OverlayWindowController {
 
     private static func configuredSize() -> NSSize {
         let d = UserDefaults.standard
-        let w = d.double(forKey: OverlayAppearanceDefaults.widthKey)
-        let h = d.double(forKey: OverlayAppearanceDefaults.heightKey)
+        let storedWidth = d.double(forKey: OverlayAppearanceDefaults.widthKey)
+        let storedHeight = d.double(forKey: OverlayAppearanceDefaults.heightKey)
+        let width = storedWidth > 0 ? storedWidth : OverlayAppearanceDefaults.defaultWidth
+        let height = storedHeight > 0 ? storedHeight : OverlayAppearanceDefaults.defaultHeight
         return NSSize(
-            width: w > 0 ? w : OverlayAppearanceDefaults.defaultWidth,
-            height: h > 0 ? h : OverlayAppearanceDefaults.defaultHeight
+            width: min(max(width, OverlayAppearanceDefaults.widthRange.lowerBound), OverlayAppearanceDefaults.widthRange.upperBound),
+            height: min(max(height, OverlayAppearanceDefaults.heightRange.lowerBound), OverlayAppearanceDefaults.heightRange.upperBound)
         )
     }
 
@@ -220,7 +226,12 @@ final class OverlayWindowController {
     private static func loadSavedFrame() -> NSRect? {
         guard let dict = UserDefaults.standard.dictionary(forKey: savedFrameKey) as? [String: CGFloat],
               let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"] else { return nil }
-        let frame = NSRect(x: x, y: y, width: w, height: h)
+        let frame = NSRect(
+            x: x,
+            y: y,
+            width: max(w, OverlayAppearanceDefaults.widthRange.lowerBound),
+            height: max(h, OverlayAppearanceDefaults.heightRange.lowerBound)
+        )
         // Validate the frame is still on some screen
         guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) else { return nil }
         return frame

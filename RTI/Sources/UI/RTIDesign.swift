@@ -396,6 +396,8 @@ struct SlateKeyHint: View {
             Text(label)
                 .font(RTIDesign.Font.meta)
                 .foregroundStyle(RTIDesign.Color.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
             HStack(spacing: RTIDesign.Spacing.xxs) {
                 ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
                     SlateKeyCap(symbol: key)
@@ -431,6 +433,7 @@ struct SlateFooter<Trailing: View>: View {
                 .truncationMode(.tail)
             Spacer(minLength: RTIDesign.Spacing.xs)
             trailing
+                .layoutPriority(1)
         }
         .padding(.leading, RTIDesign.Spacing.md)
         .padding(.trailing, RTIDesign.Spacing.sm)

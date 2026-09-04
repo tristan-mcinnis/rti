@@ -52,6 +52,62 @@ final class SlateRenderProofTests: XCTestCase {
         )
     }
 
+    func testOverlayMinimumWidth() throws {
+        let originalPrimaryActionID = LLMController.shared.primaryActionID
+        defer {
+            LLMController.shared.primaryActionID = originalPrimaryActionID
+            SessionCoordinator.shared.seedForRenderProof(entries: [], interim: nil, phase: .idle, startedAt: nil)
+        }
+        LLMController.shared.primaryActionID = "recap"
+        SessionCoordinator.shared.seedForRenderProof(
+            entries: Fixtures.speakerTurns,
+            interim: nil,
+            phase: .recording,
+            startedAt: Date().addingTimeInterval(-211)
+        )
+        try renderBothAppearances(
+            name: "overlay-minimum-width",
+            size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: 440),
+            view: OverlayPanelView()
+        )
+        XCTAssertEqual(OverlayAppearanceDefaults.widthRange.lowerBound, 600)
+    }
+
+    func testOverlayTranscriptAtMinimumWidth() throws {
+        defer {
+            SpeakerNameStore.shared.reset()
+            SessionCoordinator.shared.seedForRenderProof(entries: [], interim: nil, phase: .idle, startedAt: nil)
+        }
+        SpeakerNameStore.shared.rename("them_1", to: "A deliberately long participant name")
+        SessionCoordinator.shared.seedForRenderProof(
+            entries: Fixtures.speakerTurns,
+            interim: nil,
+            phase: .recording,
+            startedAt: Date().addingTimeInterval(-211)
+        )
+        try renderBothAppearances(
+            name: "overlay-transcript-minimum-width",
+            size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: 440),
+            view: OverlayPanelView()
+                .onAppear { NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.transcript.rawValue) }
+        )
+    }
+
+    func testIdleNoteAppendsToMeetingPrepNote() {
+        let store = MeetingContextStore.shared
+        store.resetAfterSession()
+        store.note = "Existing context"
+
+        XCTAssertTrue(store.appendPrepNote("  Ask about pricing  "))
+        XCTAssertEqual(store.note, "Existing context\nAsk about pricing")
+        XCTAssertEqual(
+            store.summaryContext,
+            "User prep note for this meeting:\nExisting context\nAsk about pricing"
+        )
+
+        store.resetAfterSession()
+    }
+
     func testSettingsGeneral() throws {
         try renderBothAppearances(
             name: "settings-general",

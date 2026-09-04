@@ -195,8 +195,10 @@ struct TranscriptTabView: View {
                         Image(systemName: "note.text")
                             .font(.system(size: House.TypeToken.Size.micro, weight: .regular))
                             .foregroundStyle(speakerColor)
+                            .fixedSize()
                     } else {
                         SlateStatusDot(color: speakerColor)
+                            .fixedSize()
                     }
                     speakerChip(para, isNote: isNote, speakerColor: speakerColor)
                 }
@@ -264,6 +266,9 @@ struct TranscriptTabView: View {
                 Text(speakerNames.name(for: para.speakerId) ?? para.speakerLabel)
                     .font(RTIDesign.Font.caption)
                     .foregroundStyle(Color.overlayInkSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 140)
             }
             .buttonStyle(.plain)
             .help("Click to name this speaker")
