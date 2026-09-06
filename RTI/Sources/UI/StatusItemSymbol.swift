@@ -13,7 +13,7 @@ enum StatusItemSymbol {
     /// Recording. Rendered with a palette so the centre reads as a red dot.
     static let recording = "record.circle.fill"
     /// Point size of the status item glyph.
-    static let pointSize: CGFloat = 15
+    static let pointSize: CGFloat = House.Control.statusGlyph
 
     static func name(running: Bool) -> String {
         running ? recording : idle
