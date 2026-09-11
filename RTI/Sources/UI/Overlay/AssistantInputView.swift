@@ -3,6 +3,19 @@ import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
 
+// The overlay's composer: the house composer row (`HouseComposer`), its
+// attachment strip, and the layers that float over it (`@` vault files,
+// `/` commands, Add Context, the `⌘K` palette). This file is the adapter:
+// it reads `LLMController`, `SessionCoordinator`, and `OverlayInputState`,
+// works out the composer's words through `ComposerState`, routes keys
+// through `ComposerKeyRouter`, and hands plain values to the views.
+//
+// Kept from before: the multi-line NSTextView field, `↩` sends and `⇧↩`
+// adds a line, the draft clears when a session stops, the Sessions window
+// seeds an @mention (`rtiSeedChatMention`), the mention cache and prewarm,
+// the 512 KB and 24,000-character document limits, and no document is ever
+// copied into the vault.
+
 @MainActor
 private final class MentionSuggestionStore: ObservableObject {
     @Published var candidates: [String] = []
@@ -70,17 +83,90 @@ private final class MentionSuggestionStore: ObservableObject {
     }
 }
 
+// MARK: - Documents in the strip
+
+/// One document chosen for the next question: reading, read, or failed.
+struct ComposerDocument: Identifiable, Equatable {
+    enum Phase: Equatable {
+        case reading
+        case ready(ExternalDocumentAttachment)
+        case failed(String)
+    }
+
+    let id: UUID
+    let name: String
+    var phase: Phase
+
+    init(id: UUID = UUID(), name: String, phase: Phase) {
+        self.id = id
+        self.name = name
+        self.phase = phase
+    }
+
+    var attachment: ExternalDocumentAttachment? {
+        if case .ready(let attachment) = phase { return attachment }
+        return nil
+    }
+
+    var isReading: Bool { phase == .reading }
+
+    var chip: AttachmentChipModel {
+        switch phase {
+        case .ready(let attachment):
+            return AttachmentChipModel(ref: attachment.ref, id: id.uuidString)
+        case .reading:
+            let kind: ChatAttachmentRef.Kind = name.lowercased().hasSuffix(".pdf") ? .pdf : .text
+            return AttachmentChipModel(id: id.uuidString, kind: kind, name: name, phase: .reading)
+        case .failed(let reason):
+            let kind: ChatAttachmentRef.Kind = name.lowercased().hasSuffix(".pdf") ? .pdf : .text
+            return AttachmentChipModel(id: id.uuidString, kind: kind, name: name, phase: .failed(reason))
+        }
+    }
+}
+
+/// Render-proof seam: a composer state set up front, so a proof can draw a
+/// state the live controllers cannot be put in (a stream, an open layer).
+/// Nil in the app.
+struct ComposerRenderSeed {
+    enum Layer {
+        case none, addContext, searchScope, palette
+    }
+
+    var draft = ""
+    /// Overrides `LLMController.streaming`.
+    var isStreaming: Bool?
+    var isQueued = false
+    var layer: Layer = .none
+    /// Stands in for the vault's mention search.
+    var mentionCandidates: [String]?
+    var mentionPaths: [String] = []
+    var documents: [ComposerDocument] = []
+    var isDropTargeted = false
+    var focusedChipID: String?
+    var chooserIndex = 0
+}
+
+// MARK: - The field
+
+/// The composer's text field: a growing, multi-line NSTextView. It asks
+/// `onKey` about each key first; marked text (IME composition) always goes
+/// to the text system, so Return that commits a pinyin syllable never sends.
 private struct ComposerTextView: NSViewRepresentable {
-    static let fontSize = House.TypeToken.Size.body
-    static let verticalTextInset: CGFloat = 3
+    enum KeyOutcome {
+        case handled
+        case passThrough
+        case moveFocus(forward: Bool)
+    }
 
     @Binding var text: String
-    var placeholder: String
-    var fontSize: CGFloat = Self.fontSize
-    var onSubmit: () -> Void
+    var fontSize: CGFloat
+    /// Bump to put the keys in this field.
+    var focusToken: Int
+    var accessibilityName: String
+    var onKey: (ComposerKey, ComposerKeyModifiers, Bool) -> KeyOutcome
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, onSubmit: onSubmit)
+        Coordinator(text: $text, focusToken: focusToken)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -91,15 +177,12 @@ private struct ComposerTextView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.verticalScrollElasticity = .automatic
 
-        let textView = ReturnHandlingTextView()
+        let textView = RoutingTextView()
         textView.delegate = context.coordinator
-        textView.onSubmit = onSubmit
-        textView.placeholder = placeholder
+        textView.onKey = onKey
         textView.string = text
         textView.font = .systemFont(ofSize: fontSize)
-        textView.placeholderFont = .systemFont(ofSize: fontSize)
-        textView.placeholderColor = OverlayInk.nsColor(tier: .tertiary)
-        textView.textColor = OverlayInk.nsColor(tier: .primary)
+        textView.textColor = House.NSColorToken.textPrimary
         textView.drawsBackground = false
         textView.isRichText = false
         textView.importsGraphics = false
@@ -109,36 +192,43 @@ private struct ComposerTextView: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainerInset = NSSize(width: 0, height: Self.verticalTextInset)
+        textView.textContainerInset = .zero
         textView.insertionPointColor = House.NSColorToken.textPrimary
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.setAccessibilityLabel(accessibilityName)
 
         scrollView.documentView = textView
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? ReturnHandlingTextView else { return }
+        guard let textView = scrollView.documentView as? RoutingTextView else { return }
         context.coordinator.text = $text
-        context.coordinator.onSubmit = onSubmit
-        textView.onSubmit = onSubmit
-        textView.placeholder = placeholder
-        if textView.string != text {
+        textView.onKey = onKey
+        if textView.string != text, !textView.hasMarkedText() {
             textView.string = text
         }
         textView.font = .systemFont(ofSize: fontSize)
-        textView.placeholderFont = .systemFont(ofSize: fontSize)
-        textView.placeholderColor = OverlayInk.nsColor(tier: .tertiary)
-        textView.textColor = OverlayInk.nsColor(tier: .primary)
+        textView.textColor = House.NSColorToken.textPrimary
+        textView.setAccessibilityLabel(accessibilityName)
+        if context.coordinator.focusToken != focusToken {
+            context.coordinator.focusToken = focusToken
+            // One hop, so the focus change lands after the window finishes
+            // its becomeKey transition and SwiftUI finishes this update.
+            DispatchQueue.main.async { [weak textView] in
+                guard let textView, let window = textView.window else { return }
+                window.makeFirstResponder(textView)
+            }
+        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var text: Binding<String>
-        var onSubmit: () -> Void
+        var focusToken: Int
 
-        init(text: Binding<String>, onSubmit: @escaping () -> Void) {
+        init(text: Binding<String>, focusToken: Int) {
             self.text = text
-            self.onSubmit = onSubmit
+            self.focusToken = focusToken
         }
 
         func textDidChange(_ notification: Notification) {
@@ -147,385 +237,153 @@ private struct ComposerTextView: NSViewRepresentable {
         }
     }
 
-    final class ReturnHandlingTextView: NSTextView {
-        var onSubmit: (() -> Void)?
-        var placeholder: String = "" {
-            didSet { needsDisplay = true }
-        }
-        var placeholderFont: NSFont = .systemFont(ofSize: 14) {
-            didSet { needsDisplay = true }
-        }
-        var placeholderColor: NSColor = OverlayInk.nsColor(tier: .tertiary) {
-            didSet { needsDisplay = true }
-        }
-
-        override func draw(_ dirtyRect: NSRect) {
-            super.draw(dirtyRect)
-
-            guard string.isEmpty, !placeholder.isEmpty else { return }
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.lineBreakMode = .byTruncatingTail
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: placeholderFont,
-                .foregroundColor: placeholderColor,
-                .paragraphStyle: paragraphStyle,
-            ]
-            let x = textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0)
-            let y = textContainerInset.height
-            let rect = NSRect(
-                x: x,
-                y: y,
-                width: max(0, bounds.width - x),
-                height: placeholderFont.ascender - placeholderFont.descender + placeholderFont.leading
-            )
-            placeholder.draw(in: rect, withAttributes: attributes)
-        }
+    final class RoutingTextView: NSTextView {
+        var onKey: ((ComposerKey, ComposerKeyModifiers, Bool) -> KeyOutcome)?
 
         override func keyDown(with event: NSEvent) {
-            let isReturn = event.keyCode == 36 || event.keyCode == 76
-            if isReturn && !event.modifierFlags.contains(.shift) {
-                onSubmit?()
+            // IME composition owns every key until it commits.
+            guard !hasMarkedText(), let onKey else {
+                super.keyDown(with: event)
                 return
             }
-            super.keyDown(with: event)
+            let (key, modifiers) = Self.map(event)
+            switch onKey(key, modifiers, hasMarkedText()) {
+            case .handled:
+                return
+            case .passThrough:
+                super.keyDown(with: event)
+            case .moveFocus(let forward):
+                if forward {
+                    window?.selectNextKeyView(self)
+                } else {
+                    window?.selectPreviousKeyView(self)
+                }
+            }
+        }
+
+        static func map(_ event: NSEvent) -> (ComposerKey, ComposerKeyModifiers) {
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            var modifiers: ComposerKeyModifiers = []
+            if flags.contains(.shift) { modifiers.insert(.shift) }
+            if flags.contains(.command) { modifiers.insert(.command) }
+            if flags.contains(.option) { modifiers.insert(.option) }
+            if flags.contains(.control) { modifiers.insert(.control) }
+
+            let key: ComposerKey
+            switch event.keyCode {
+            case 36, 76: key = .returnKey
+            case 53: key = .escape
+            case 48: key = modifiers.contains(.shift) ? .backTab : .tab
+            case 126: key = .upArrow
+            case 125: key = .downArrow
+            case 123: key = .leftArrow
+            case 124: key = .rightArrow
+            case 51: key = .backspace
+            default:
+                key = event.charactersIgnoringModifiers?.lowercased() == "k" ? .k : .other
+            }
+            if key == .backTab { modifiers.remove(.shift) }
+            return (key, modifiers)
         }
     }
 }
 
+// MARK: - Composer
+
 struct AssistantInputView: View {
-    private enum ComposerMetrics {
-        static let fontSize = House.TypeToken.Size.body
-        static let iconFontSize = House.TypeToken.Size.body
-        static let controlSize = House.Control.chip
-        static let sendSize = House.Control.chip
-        static let rowSpacing = House.Spacing.xxs + 2
-        static let rowHorizontalPadding = House.Spacing.xs
-        static let rowVerticalPadding: CGFloat = 7
-        /// The house composer: a 52 px raised card at Radius.lg.
-        static let minRowHeight = House.Control.composer
-        static let textLeadingPadding = House.Spacing.xxs
-        static let textVerticalInset: CGFloat = 3
-        static let minTextHeight: CGFloat = 24
-        static let maxTextHeight: CGFloat = 128
+    private enum AddContextPage { case root, scope }
+
+    /// A project or client on the Search Scope page.
+    struct ScopeItem {
+        let item: VaultItem
+        let isClient: Bool
     }
 
-    @State private var input: String = ""
-    @State private var isDropTargeted = false
-    @State private var selectedSlashIndex = 0
-    @State private var selectedMentionIndex = 0
-    @State private var selectedMentionPaths: [String] = []
-    @State private var selectedAttachments: [ExternalDocumentAttachment] = []
-    @State private var attachmentError: String?
+    @State private var input: String
+    @State private var isDropTargeted: Bool
+    @State private var isQueued: Bool
+    @State private var chooserIndex: Int
+    @State private var selectedMentionPaths: [String]
+    @State private var documents: [ComposerDocument]
+    @State private var focusedChipID: String?
+    @State private var isPaletteOpen: Bool
+    @State private var paletteQuery = ""
+    @State private var isAddContextOpen: Bool
+    @State private var addContextPage: AddContextPage
+    @State private var scopeItems: [ScopeItem] = []
+    /// `esc` closed the `@` or `/` chooser for this exact draft; typing
+    /// brings it back.
+    @State private var dismissedChooserDraft: String?
     @State private var fileImporterPresented = false
     @State private var inputFieldWidth: CGFloat = 360
+    @State private var focusToken = 0
     @StateObject private var mentionSuggestions = MentionSuggestionStore()
-    @FocusState private var isInputFocused: Bool
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     private let llm = LLMController.shared
-    private let modes = ModeStore.shared
     private let session = SessionCoordinator.shared
     private let inputState = OverlayInputState.shared
+    private let streamingOverride: Bool?
+    private let seededCandidates: [String]?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if showSlashCommands {
-                slashCommandBar
-            }
+    init() {
+        self.init(seed: nil)
+    }
 
-            if showMentionSuggestions {
-                mentionBar
-            }
-
-            if shouldShowContextDashboard {
-                contextDashboard
-            }
-
-            if !selectedMentionPaths.isEmpty || !selectedAttachments.isEmpty {
-                selectedMentionChips
-            }
-
-            // One composer pill: ask for help, compose, choose an explicit
-            // attachment or live-note target, then send. It deliberately has
-            // no miscellaneous overflow menu.
-            HStack(alignment: .center, spacing: ComposerMetrics.rowSpacing) {
-                actionsMenu
-
-                ComposerTextView(text: $input, placeholder: textFieldPrompt, fontSize: CGFloat(uiFontSize)) {
-                    submit()
-                }
-                .focused($isInputFocused)
-                .frame(height: composerInputHeight)
-                .frame(maxWidth: .infinity)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear
-                            .onAppear { updateInputFieldWidth(proxy.size.width) }
-                            .onChange(of: proxy.size.width) { _, width in updateInputFieldWidth(width) }
-                    }
-                )
-                .padding(.leading, ComposerMetrics.textLeadingPadding)
-
-                attachmentButton
-
-                noteModeToggle
-
-                if llm.streaming {
-                    stopButton
-                } else {
-                    sendButton
-                }
-            }
-            .padding(.leading, RTIDesign.Spacing.xs + 2)
-            .padding(.trailing, ComposerMetrics.rowHorizontalPadding)
-            .padding(.vertical, ComposerMetrics.rowVerticalPadding)
-            .frame(minHeight: ComposerMetrics.minRowHeight)
-            .slateRaisedCard(cornerRadius: RTIDesign.Radius.md)
-            .overlay(
-                RoundedRectangle(cornerRadius: RTIDesign.Radius.md, style: .continuous)
-                    .strokeBorder(composerFocusStroke, lineWidth: composerFocusStroke == .clear ? 0 : 1.5)
-            )
+    /// The composer in a state set up front. Render proofs only; the app
+    /// uses `init()`.
+    init(seed: ComposerRenderSeed?) {
+        let seed = seed ?? ComposerRenderSeed()
+        _input = State(initialValue: seed.draft)
+        _isDropTargeted = State(initialValue: seed.isDropTargeted)
+        _isQueued = State(initialValue: seed.isQueued)
+        _chooserIndex = State(initialValue: seed.chooserIndex)
+        _selectedMentionPaths = State(initialValue: seed.mentionPaths)
+        _documents = State(initialValue: seed.documents)
+        _focusedChipID = State(initialValue: seed.focusedChipID)
+        _isPaletteOpen = State(initialValue: seed.layer == .palette)
+        _isAddContextOpen = State(initialValue: seed.layer == .addContext || seed.layer == .searchScope)
+        _addContextPage = State(initialValue: seed.layer == .searchScope ? .scope : .root)
+        if seed.layer == .searchScope {
+            _scopeItems = State(initialValue: Self.loadScopeItems())
         }
-        // Drop an image here → it's OCR'd on-device and attached as context for
-        // the next message (same path as ⌘⇧H screen capture; no image is sent
-        // to the model, only the extracted text).
-        .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
-            handleDrop(providers)
-        }
-        .fileImporter(
-            isPresented: $fileImporterPresented,
-            allowedContentTypes: [.pdf, .plainText, .utf8PlainText, .text,
-                                  UTType(filenameExtension: "md") ?? .plainText,
-                                  UTType(filenameExtension: "markdown") ?? .plainText],
-            allowsMultipleSelection: true,
-            onCompletion: handleFileImport
+        streamingOverride = seed.isStreaming
+        seededCandidates = seed.mentionCandidates
+    }
+
+    // MARK: Derived state
+
+    private var isStreaming: Bool { streamingOverride ?? llm.streaming }
+
+    /// The field's text size: `bodySmall` at the default text size, scaled
+    /// with the user's text size setting (meeting legibility).
+    private var fieldFontSize: CGFloat {
+        House.TypeToken.Size.bodySmall * CGFloat(uiFontSize / OverlayAppearanceDefaults.defaultUIFontSize)
+    }
+
+    private var readyAttachments: [ExternalDocumentAttachment] {
+        documents.compactMap(\.attachment)
+    }
+
+    /// Chips `↩` sends: vault files and read documents.
+    private var hasSendableChips: Bool {
+        !selectedMentionPaths.isEmpty || !readyAttachments.isEmpty
+    }
+
+    private var composerState: ComposerState {
+        ComposerState(
+            draft: input,
+            hasAttachments: hasSendableChips,
+            isStreaming: isStreaming,
+            isQueued: isQueued,
+            isNoteMode: inputState.isNoteMode,
+            isRecording: session.isRunning,
+            layer: layer,
+            primaryActionLabel: AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist"
         )
-        // A draft typed during one meeting must not survive into the next —
-        // an accidental ⏎ would send stale text into the wrong conversation.
-        .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
-            input = ""
-            selectedAttachments = []
-            if inputState.mode == .liveNote {
-                inputState.mode = .chat
-            }
-        }
-        // "Ask about this session" (Sessions browser) hands us a vault-relative
-        // path to seed as an @mention, same shape as picking one from the
-        // mention bar.
-        .onReceive(NotificationCenter.default.publisher(for: .rtiSeedChatMention)) { notif in
-            guard let path = notif.object as? String, !selectedMentionPaths.contains(path) else { return }
-            selectedMentionPaths.append(path)
-            inputState.mode = .chat
-            DispatchQueue.main.async { isInputFocused = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
-            // Defer so the focus change lands after the panel finishes its
-            // becomeKey transition; otherwise SwiftUI sometimes drops it.
-            DispatchQueue.main.async {
-                isInputFocused = true
-                mentionSuggestions.prewarm()
-                refreshMentionSuggestions()
-            }
-        }
-        .onChange(of: input) { _, _ in
-            selectedSlashIndex = 0
-            selectedMentionIndex = 0
-            refreshMentionSuggestions()
-        }
-        .onAppear {
-            mentionSuggestions.prewarm()
-            refreshMentionSuggestions()
-        }
-        .onMoveCommand { direction in
-            if showMentionSuggestions {
-                switch direction {
-                case .down, .right: moveMentionSelection(1)
-                case .up, .left: moveMentionSelection(-1)
-                default: break
-                }
-            } else if showSlashCommands {
-                switch direction {
-                case .right: moveSlashSelection(1)
-                case .left: moveSlashSelection(-1)
-                default: break
-                }
-            }
-        }
-        .onKeyPress(.return) {
-            submit()
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            if showMentionSuggestions {
-                moveMentionSelection(1)
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress(.upArrow) {
-            if showMentionSuggestions {
-                moveMentionSelection(-1)
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress(.rightArrow) {
-            if showMentionSuggestions {
-                moveMentionSelection(1)
-                return .handled
-            }
-            if showSlashCommands {
-                moveSlashSelection(1)
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress(.leftArrow) {
-            if showMentionSuggestions {
-                moveMentionSelection(-1)
-                return .handled
-            }
-            if showSlashCommands {
-                moveSlashSelection(-1)
-                return .handled
-            }
-            return .ignored
-        }
     }
 
-    /// Drop / note mode are the only states that repaint the composer edge, and
-    /// both use a house token — never a raw blue or yellow.
-    private var composerFocusStroke: Color {
-        if isDropTargeted { return RTIDesign.Color.accent }
-        if inputState.isNoteMode { return RTIDesign.Color.warning.opacity(0.5) }
-        return .clear
-    }
-
-    private var contextDashboard: some View {
-        HStack(spacing: 6) {
-            let labels = llm.contextPreviewLabels().filter { $0 != "Screen OCR" }
-            if !labels.isEmpty {
-                Menu {
-                    Section("Included in the next answer") {
-                        ForEach(labels, id: \.self) { label in
-                            Label(label, systemImage: "checkmark")
-                        }
-                    }
-                    Section("Vault search scope") {
-                        if let name = MeetingContextStore.shared.workstreamName {
-                            Label(name, systemImage: "folder.fill")
-                            Button("Use whole vault") {
-                                MeetingContextStore.shared.clearWorkstream()
-                                refreshMentionSuggestions()
-                            }
-                        } else {
-                            Label("Whole vault", systemImage: "checkmark")
-                        }
-                    }
-                    Section("Choose a project") {
-                        ForEach(VaultWorkstreamStore.projects().prefix(8), id: \.id) { item in
-                            Button(item.name) {
-                                MeetingContextStore.shared.selectWorkstream(item)
-                                refreshMentionSuggestions()
-                            }
-                        }
-                    }
-                    Section("Choose a client") {
-                        ForEach(VaultWorkstreamStore.clients().prefix(6), id: \.id) { item in
-                            Button(item.name) {
-                                MeetingContextStore.shared.selectWorkstream(item)
-                                refreshMentionSuggestions()
-                            }
-                        }
-                    }
-                } label: {
-                    miniPill(contextSummary(labels), icon: "text.bubble", active: true)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .help("View what the next answer can use, or change its vault search scope")
-            }
-
-            if llm.pendingScreenContext != nil {
-                Button {
-                    llm.clearPendingScreenContext()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "camera.viewfinder")
-                        Text("Screen · once")
-                        Image(systemName: "xmark")
-                    }
-                    .font(RTIDesign.Font.meta)
-                    .foregroundStyle(Color.overlayInkSecondary)
-                    .padding(.horizontal, RTIDesign.Spacing.xs)
-                    .frame(height: House.Control.keyCap + 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                            .fill(RTIDesign.Color.chipFill)
-                    )
-                }
-                .buttonStyle(.plain)
-                .help("Remove screen OCR from the next message")
-            } else if let status = llm.screenCaptureStatus {
-                miniPill(status, icon: "camera.viewfinder", active: true)
-                    .foregroundStyle(screenStatusColor(status))
-            }
-
-            if llm.smartMode {
-                miniPill("Smart", icon: "sparkles", active: true)
-            }
-
-            if let attachmentError {
-                miniPill(attachmentError, icon: "exclamationmark.triangle", active: true)
-                    .foregroundStyle(RTIDesign.Color.warning)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .lineLimit(1)
-    }
-
-    private var shouldShowContextDashboard: Bool {
-        !llm.contextPreviewLabels().filter { $0 != "Screen OCR" }.isEmpty
-            || llm.pendingScreenContext != nil
-            || llm.screenCaptureStatus != nil
-            || attachmentError != nil
-    }
-
-    private var composerInputHeight: CGFloat {
-        let text = input.isEmpty ? " " : input
-        let width = max(120, inputFieldWidth - 8)
-        let attr = NSAttributedString(
-            string: text,
-            attributes: [.font: NSFont.systemFont(ofSize: CGFloat(uiFontSize))]
-        )
-        let rect = attr.boundingRect(
-            with: NSSize(width: width, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]
-        )
-        let fittedHeight = ceil(rect.height) + (ComposerMetrics.textVerticalInset * 2)
-        return min(max(ComposerMetrics.minTextHeight, fittedHeight), ComposerMetrics.maxTextHeight)
-    }
-
-    private func updateInputFieldWidth(_ width: CGFloat) {
-        guard abs(inputFieldWidth - width) > 1 else { return }
-        DispatchQueue.main.async {
-            inputFieldWidth = width
-        }
-    }
-
-    private func contextSummary(_ labels: [String]) -> String {
-        labels.count == 1 ? "Context · 1 source" : "Context · \(labels.count) sources"
-    }
-
-    private func screenStatusColor(_ status: String) -> Color {
-        status.lowercased().contains("permission") || status.lowercased().contains("failed")
-            ? RTIDesign.Color.warning
-            : Color.overlayInkSecondary
-    }
-
-    private var showSlashCommands: Bool {
-        input.hasPrefix("/") && !input.contains(" ") && !input.contains("\n")
+    private var mentionCandidates: [String] {
+        seededCandidates ?? mentionSuggestions.candidates
     }
 
     private var currentMentionQuery: String? {
@@ -537,182 +395,589 @@ struct AssistantInputView: View {
         return String(after).trimmingCharacters(in: .whitespaces)
     }
 
-    private var showMentionSuggestions: Bool {
-        currentMentionQuery != nil && !mentionSuggestions.candidates.isEmpty
-    }
-
     private var visibleMentionCandidates: [String] {
-        currentMentionQuery == nil ? [] : mentionSuggestions.candidates
+        currentMentionQuery == nil ? [] : mentionCandidates
     }
 
-    private var mentionBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(visibleMentionCandidates.enumerated()), id: \.element) { idx, path in
-                Button {
-                    applyMention(path)
-                } label: {
-                    HStack(spacing: RTIDesign.Spacing.xs) {
-                        SlateIconTile(systemName: "doc.text", size: House.Control.keyCap, glyphSize: 10)
-                        Text(path)
-                            .font(RTIDesign.Font.label)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .foregroundStyle(idx == selectedMentionIndex ? Color.overlayInk : Color.overlayInkSecondary)
-                    .padding(.horizontal, RTIDesign.Spacing.xs)
-                    .frame(height: RTIDesign.Control.heightSm)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .slateRaisedTile(idx == selectedMentionIndex, cornerRadius: RTIDesign.Radius.sm)
+    private var visibleSlashCommands: [ComposerSlashCommand] {
+        ComposerSlashCommand.isChooserDraft(input) ? ComposerSlashCommand.matches(input) : []
+    }
+
+    private var layer: ComposerLayer {
+        if isPaletteOpen { return .palette }
+        if isAddContextOpen { return .addContext }
+        guard dismissedChooserDraft != input else { return .none }
+        if !visibleMentionCandidates.isEmpty { return .mention }
+        if !visibleSlashCommands.isEmpty { return .slash }
+        return .none
+    }
+
+    // MARK: Body
+
+    var body: some View {
+        let state = composerState
+        HouseComposer(
+            action: state.action,
+            placeholder: state.placeholder,
+            showsPlaceholder: input.isEmpty,
+            fontSize: fieldFontSize,
+            error: errorLine,
+            chips: chips,
+            focusedChipID: focusedChipID,
+            isAddContextOpen: isAddContextOpen,
+            isPaletteOpen: isPaletteOpen,
+            isDropTargeted: isDropTargeted,
+            onFix: { SettingsWindowController.shared.show(pane: .providers) },
+            onAddContext: toggleAddContext,
+            onAction: { performAction(state.action) },
+            onPalette: togglePalette,
+            onRemoveChip: removeChip,
+            onClearChips: clearChips
+        ) {
+            ComposerTextView(
+                text: $input,
+                fontSize: fieldFontSize,
+                focusToken: focusToken,
+                accessibilityName: "Message",
+                onKey: handleKey
+            )
+            .frame(height: fieldHeight)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { updateInputFieldWidth(proxy.size.width) }
+                        .onChange(of: proxy.size.width) { _, width in updateInputFieldWidth(width) }
                 }
-                .buttonStyle(.plain)
+            )
+        }
+        .overlay(alignment: .bottom) { floatingLayer }
+        // Drop a file to attach it for the next question; drop an image and
+        // it is read on-device (OCR) as context, the same path as ⌘⇧H. No
+        // image is sent to the model, only the text read from it.
+        .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers)
+        }
+        .fileImporter(
+            isPresented: $fileImporterPresented,
+            allowedContentTypes: [.pdf, .plainText, .utf8PlainText, .text,
+                                  UTType(filenameExtension: "md") ?? .plainText,
+                                  UTType(filenameExtension: "markdown") ?? .plainText],
+            allowsMultipleSelection: true,
+            onCompletion: handleFileImport
+        )
+        // A draft typed during one meeting must not survive into the next:
+        // an accidental ↩ would send stale text into the wrong conversation.
+        .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
+            input = ""
+            documents = []
+            isQueued = false
+            if inputState.mode == .liveNote {
+                inputState.mode = .chat
             }
         }
-        .padding(.horizontal, 2)
-    }
-
-    private var selectedMentionChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(selectedMentionPaths, id: \.self) { path in
-                    HStack(spacing: 5) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
-                        Text(displayName(forMentionPath: path))
-                            .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Button {
-                            selectedMentionPaths.removeAll { $0 == path }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: House.TypeToken.Size.micro, weight: .bold))
-                                .frame(width: 14, height: 14)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove file")
-                    }
-                    .foregroundStyle(Color.overlayInkSecondary)
-                    .padding(.leading, RTIDesign.Spacing.xs)
-                    .padding(.trailing, RTIDesign.Spacing.xxs + 1)
-                    .frame(height: House.Control.keyCap + 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                            .fill(RTIDesign.Color.chipFill)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                                    .strokeBorder(RTIDesign.Color.border, lineWidth: House.hairline)
-                            )
-                    )
-                    .help(path)
-                }
-                ForEach(selectedAttachments) { attachment in
-                    HStack(spacing: 5) {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
-                        Text(attachment.name)
-                            .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Button {
-                            selectedAttachments.removeAll { $0.id == attachment.id }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: House.TypeToken.Size.micro, weight: .bold))
-                                .frame(width: 14, height: 14)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove attachment")
-                    }
-                    .foregroundStyle(Color.overlayInkSecondary)
-                    .padding(.leading, RTIDesign.Spacing.xs)
-                    .padding(.trailing, RTIDesign.Spacing.xxs + 1)
-                    .frame(height: House.Control.keyCap + 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                            .fill(RTIDesign.Color.selectionFill)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                                    .strokeBorder(RTIDesign.Color.borderStrong, lineWidth: House.hairline)
-                            )
-                    )
-                    .help("Attached for this message only")
-                }
+        // "Ask about this session" (Sessions window) hands us a vault-relative
+        // path to seed as an @mention, the same as picking one from the list.
+        .onReceive(NotificationCenter.default.publisher(for: .rtiSeedChatMention)) { notif in
+            guard let path = notif.object as? String, !selectedMentionPaths.contains(path) else { return }
+            selectedMentionPaths.append(path)
+            inputState.mode = .chat
+            focusField()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
+            focusField()
+            mentionSuggestions.prewarm()
+            refreshMentionSuggestions()
+        }
+        .onChange(of: inputState.focusRequest) { _, _ in focusField() }
+        .onChange(of: inputState.paletteRequest) { _, _ in openPalette() }
+        .onChange(of: input) { _, newValue in
+            chooserIndex = 0
+            if dismissedChooserDraft != nil, dismissedChooserDraft != newValue { dismissedChooserDraft = nil }
+            // Clearing the field unqueues it.
+            if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !hasSendableChips {
+                isQueued = false
             }
-            .padding(.horizontal, 2)
+            refreshMentionSuggestions()
+        }
+        .onChange(of: llm.streaming) { _, streaming in
+            // The queued follow-up goes when the answer ends.
+            guard !streaming, isQueued else { return }
+            isQueued = false
+            submit()
+        }
+        .onAppear {
+            guard seededCandidates == nil else { return }
+            mentionSuggestions.prewarm()
+            refreshMentionSuggestions()
         }
     }
 
-    private var slashCommandBar: some View {
-        HStack(spacing: 5) {
-            ForEach(Array(visibleSlashCommands.enumerated()), id: \.element.id) { idx, command in
-                Button {
-                    performSlashCommand(command.id)
+    // MARK: Field height
+
+    private var fieldHeight: CGFloat {
+        let line = HouseComposerMetrics.lineHeight(fontSize: fieldFontSize)
+        var text = input.isEmpty ? " " : input
+        if text.hasSuffix("\n") { text += " " }
+        let width = max(line, inputFieldWidth)
+        let rect = NSAttributedString(
+            string: text,
+            attributes: [.font: NSFont.systemFont(ofSize: fieldFontSize)]
+        ).boundingRect(
+            with: NSSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let maxHeight = line * CGFloat(HouseComposerMetrics.maxLines)
+        return min(max(line, ceil(rect.height)), maxHeight)
+    }
+
+    private func updateInputFieldWidth(_ width: CGFloat) {
+        guard abs(inputFieldWidth - width) > 1 else { return }
+        inputFieldWidth = width
+    }
+
+    private func focusField() {
+        focusToken &+= 1
+    }
+
+    // MARK: Error above the row
+
+    /// Errors that belong to no turn: a capture error, or a missing or bad
+    /// key (with the fix-it). Turn errors stay in the thread.
+    private var errorLine: ComposerErrorLine? {
+        if let message = session.lastError, !message.isEmpty {
+            return .init(message: message, fixTitle: session.lastErrorIsAuth ? "Open Settings" : nil)
+        }
+        if llm.lastErrorIsAuth, let message = llm.lastError, !message.isEmpty {
+            return .init(message: message, fixTitle: "Open Settings")
+        }
+        return nil
+    }
+
+    // MARK: Chips
+
+    private static let screenChipID = "screen"
+    private static let vaultChipPrefix = "vault:"
+
+    private var chips: [AttachmentChipModel] {
+        var chips = selectedMentionPaths.map { path in
+            AttachmentChipModel(
+                ref: ChatAttachmentRef(kind: .vaultFile, name: MentionChooserPane.fileName(path), path: path),
+                id: Self.vaultChipPrefix + path
+            )
+        }
+        chips += documents.map(\.chip)
+        if let screen = screenChip { chips.append(screen) }
+        return chips
+    }
+
+    /// One read of the screen: ready ("Screen · once"), reading, or failed.
+    private var screenChip: AttachmentChipModel? {
+        if llm.pendingScreenContext != nil {
+            return AttachmentChipModel(ref: ChatAttachmentRef(kind: .screen, name: "Screen"), id: Self.screenChipID)
+        }
+        guard let status = llm.screenCaptureStatus, !status.isEmpty else { return nil }
+        // The capture posts its steps ("Reading all screens…") and, on a
+        // failure, the reason; a step ends with an ellipsis.
+        let isStep = status.hasSuffix("…")
+        return AttachmentChipModel(
+            id: Self.screenChipID,
+            kind: .screen,
+            name: "Screen",
+            phase: isStep ? .reading : .failed(status),
+            detail: isStep ? status : ""
+        )
+    }
+
+    private func removeChip(_ id: String) {
+        if id == Self.screenChipID {
+            llm.clearPendingScreenContext()
+        } else if id.hasPrefix(Self.vaultChipPrefix) {
+            let path = String(id.dropFirst(Self.vaultChipPrefix.count))
+            selectedMentionPaths.removeAll { $0 == path }
+        } else {
+            documents.removeAll { $0.id.uuidString == id }
+        }
+        if focusedChipID == id {
+            focusedChipID = nil
+        }
+        focusField()
+    }
+
+    private func clearChips() {
+        selectedMentionPaths = []
+        documents = []
+        llm.clearPendingScreenContext()
+        focusedChipID = nil
+        focusField()
+    }
+
+    private func moveStrip(_ delta: Int) {
+        let ids = chips.map(\.id)
+        guard !ids.isEmpty else { return }
+        let current = focusedChipID.flatMap { ids.firstIndex(of: $0) } ?? ids.count - 1
+        focusedChipID = ids[min(max(current + delta, 0), ids.count - 1)]
+    }
+
+    // MARK: Keys
+
+    private func handleKey(_ key: ComposerKey, _ modifiers: ComposerKeyModifiers, _ hasMarkedText: Bool) -> ComposerTextView.KeyOutcome {
+        let chipIDs = chips.map(\.id)
+        let context = ComposerKeyContext(
+            hasMarkedText: hasMarkedText,
+            layer: layer,
+            isStreaming: isStreaming,
+            isQueued: isQueued,
+            isNoteMode: inputState.isNoteMode,
+            draft: input,
+            hasAttachments: hasSendableChips,
+            hasOtherChips: !chipIDs.isEmpty,
+            isStripFocused: focusedChipID.map { id in chipIDs.contains(id) } ?? false
+        )
+        switch ComposerKeyRouter.route(key, modifiers: modifiers, context: context) {
+        case .passThrough:
+            return .passThrough
+        case .consume:
+            return .handled
+        case .submit:
+            submit()
+        case .queue:
+            isQueued = true
+        case .runPrimary:
+            llm.sendPrimary()
+        case .acceptChooser:
+            acceptChooser()
+        case .moveChooser(let delta):
+            moveChooser(delta)
+        case .closeLayer:
+            closeLayer()
+        case .stopStream:
+            stopStream()
+        case .clearDraft:
+            input = ""
+        case .recallLastQuestion:
+            guard let last = inputState.lastQuestion, !last.isEmpty else { return .passThrough }
+            input = last
+        case .togglePalette:
+            togglePalette()
+        case .enterStrip:
+            focusedChipID = chipIDs.last
+        case .moveStrip(let delta):
+            moveStrip(delta)
+        case .removeFocusedChip:
+            if let id = focusedChipID {
+                let index = chipIDs.firstIndex(of: id) ?? 0
+                removeChip(id)
+                let remaining = chips.map(\.id)
+                focusedChipID = remaining.isEmpty ? nil : remaining[min(index, remaining.count - 1)]
+            }
+        case .removeNewestChip:
+            if let id = chipIDs.last { removeChip(id) }
+        case .leaveStrip(let alsoPassThrough):
+            focusedChipID = nil
+            return alsoPassThrough ? .passThrough : .handled
+        case .moveFocus(let forward):
+            return .moveFocus(forward: forward)
+        }
+        return .handled
+    }
+
+    private func performAction(_ action: ComposerAction) {
+        switch action.kind {
+        case .ask, .addNote: submit()
+        case .runPrimary: llm.sendPrimary()
+        case .stop: stopStream()
+        case .queued: break
+        case .acceptChooser: acceptChooser()
+        }
+        focusField()
+    }
+
+    private func stopStream() {
+        llm.cancel()
+        // The queued draft stays in the field, unsent.
+        isQueued = false
+    }
+
+    // MARK: Layers
+
+    private func closeLayer() {
+        switch layer {
+        case .palette:
+            closePalette()
+        case .addContext:
+            if addContextPage == .scope {
+                addContextPage = .root
+                chooserIndex = 0
+            } else {
+                isAddContextOpen = false
+            }
+        case .mention, .slash:
+            dismissedChooserDraft = input
+        case .none:
+            break
+        }
+    }
+
+    private func toggleAddContext() {
+        if isAddContextOpen {
+            isAddContextOpen = false
+        } else {
+            isPaletteOpen = false
+            addContextPage = .root
+            chooserIndex = 0
+            isAddContextOpen = true
+        }
+        focusField()
+    }
+
+    private func togglePalette() {
+        if isPaletteOpen { closePalette() } else { openPalette() }
+    }
+
+    private func openPalette() {
+        isAddContextOpen = false
+        paletteQuery = ""
+        isPaletteOpen = true
+    }
+
+    private func closePalette() {
+        isPaletteOpen = false
+        focusField()
+    }
+
+    private func moveChooser(_ delta: Int) {
+        let count: Int
+        switch layer {
+        case .mention: count = visibleMentionCandidates.count
+        case .slash: count = visibleSlashCommands.count
+        case .addContext: count = addContextRows.count
+        case .palette, .none: count = 0
+        }
+        guard count > 0 else { return }
+        chooserIndex = (chooserIndex + delta + count) % count
+    }
+
+    private func acceptChooser() {
+        switch layer {
+        case .mention:
+            if let path = visibleMentionCandidates[safe: chooserIndex] { applyMention(path) }
+        case .slash:
+            if let command = visibleSlashCommands[safe: chooserIndex] {
+                input = ""
+                performSlashCommand(command.id)
+            }
+        case .addContext:
+            if let row = addContextRows[safe: chooserIndex] { activate(row) }
+        case .palette, .none:
+            break
+        }
+    }
+
+    @ViewBuilder
+    private var floatingLayer: some View {
+        switch layer {
+        case .palette:
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                CommandPaletteView(
+                    query: $paletteQuery,
+                    onRun: runPaletteCommand,
+                    onClose: closePalette,
+                    leadingCommands: paletteLeadingCommands,
+                    hiddenRegistryIDs: ["note.toggle", "capture.screen"],
+                    maxVisibleRows: 5
+                )
+                .frame(maxWidth: HouseChatMetrics.paletteWidth)
+                .panelGlass(radius: House.Radius.lg)
+                .panelShadows()
+            }
+            .padding(.trailing, House.Spacing.sm)
+            .padding(.bottom, HouseComposerMetrics.rowHeight)
+            .fixedSize(horizontal: false, vertical: true)
+        case .addContext:
+            HouseFloatingChooser {
+                AddContextPane(
+                    rows: addContextRows,
+                    selectedIndex: chooserIndex,
+                    title: addContextPage == .scope ? "Search Scope" : "Add Context",
+                    isSubpage: addContextPage == .scope,
+                    footnote: addContextPage == .root ? contextFootnote : nil,
+                    onActivate: activate
+                )
+            }
+            .padding(.bottom, HouseComposerMetrics.rowHeight)
+            .fixedSize(horizontal: false, vertical: true)
+        case .mention:
+            HouseFloatingChooser {
+                MentionChooserPane(candidates: visibleMentionCandidates, selectedIndex: chooserIndex, onPick: applyMention)
+            }
+            .padding(.bottom, HouseComposerMetrics.rowHeight)
+            .fixedSize(horizontal: false, vertical: true)
+        case .slash:
+            HouseFloatingChooser {
+                SlashChooserPane(commands: visibleSlashCommands, selectedIndex: chooserIndex) { command in
                     input = ""
-                    DispatchQueue.main.async { isInputFocused = true }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: command.symbol)
-                        Text(command.label)
-                    }
-                    .font(RTIDesign.Font.meta)
-                    .foregroundStyle(idx == selectedSlashIndex ? Color.overlayInk : Color.overlayInkSecondary)
-                    .padding(.horizontal, RTIDesign.Spacing.xs)
-                    .frame(height: House.Control.keyCap + 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                            .fill(idx == selectedSlashIndex ? RTIDesign.Color.selectionFill : RTIDesign.Color.chipFill)
-                    )
+                    performSlashCommand(command.id)
+                    focusField()
                 }
-                .buttonStyle(.plain)
-                .help(command.help)
             }
-            Spacer(minLength: 0)
+            .padding(.bottom, HouseComposerMetrics.rowHeight)
+            .fixedSize(horizontal: false, vertical: true)
+        case .none:
+            EmptyView()
         }
     }
 
-    private var visibleSlashCommands: [SlashCommand] {
-        Array(filteredSlashCommands.prefix(6))
+    // MARK: Add Context
+
+    private var addContextRows: [AddContextRow] {
+        switch addContextPage {
+        case .root:
+            let scope = MeetingContextStore.shared.workstreamName ?? "Whole vault"
+            return [
+                AddContextRow(kind: .attachFile, symbol: "paperclip", title: "Attach File…",
+                              detail: "PDF, Markdown, or text, for the next question"),
+                AddContextRow(kind: .vaultFile, symbol: "at", title: "Vault File",
+                              detail: "Type @ and part of a name"),
+                AddContextRow(kind: .readScreen, symbol: "camera.viewfinder", title: "Read Screen Once",
+                              detail: "Text read on this Mac; no image leaves it", keys: ["⌘", "⇧", "H"]),
+                AddContextRow(kind: .searchScope, symbol: "scope", title: "Search Scope", detail: scope),
+                AddContextRow(
+                    kind: .noteMode,
+                    symbol: "note.text",
+                    title: inputState.isNoteMode ? "Back to Chat" : "Note Mode",
+                    detail: session.isRunning ? "↩ adds a note to the transcript" : "↩ adds a prep note",
+                    keys: ["⌘", "⌥", "N"]
+                ),
+            ]
+        case .scope:
+            let current = MeetingContextStore.shared.workstreamName
+            let whole = AddContextRow(kind: .scope(id: nil), symbol: "archivebox", title: "Whole vault",
+                                      detail: "Search every note", isCurrent: current == nil)
+            return [whole] + scopeItems.map { scope in
+                AddContextRow(
+                    kind: .scope(id: scope.item.id),
+                    symbol: scope.isClient ? "person.2" : "folder",
+                    title: scope.item.name,
+                    detail: scope.isClient ? "Client" : "Project",
+                    isCurrent: current == scope.item.name
+                )
+            }
+        }
     }
 
-    private var filteredSlashCommands: [SlashCommand] {
-        let q = input.dropFirst().lowercased()
-        guard !q.isEmpty else { return slashCommands }
-        return slashCommands.filter { $0.id.contains(q) || $0.label.lowercased().contains(q) }
+    /// "Next answer uses: Live transcript, Northwind app, Glossary".
+    private var contextFootnote: String? {
+        let labels = llm.contextPreviewLabels().filter { $0 != "Screen OCR" }
+        guard !labels.isEmpty else { return nil }
+        return "Next answer uses: " + labels.joined(separator: ", ")
     }
 
-    private var slashCommands: [SlashCommand] {
-        [
-            SlashCommand(id: "assist", label: "Assist", symbol: "sparkles", help: "Suggest what to do next"),
-            SlashCommand(id: "answer", label: "Answer latest", symbol: "quote.bubble", help: "Answer the latest live question using project context"),
-            SlashCommand(id: "say", label: "Say next", symbol: "wand.and.rays", help: "Draft a quick reply"),
-            SlashCommand(id: "followups", label: "Follow-ups", symbol: "bubble.left.and.text.bubble.right", help: "Generate follow-up questions"),
-            SlashCommand(id: "recap", label: "Recap", symbol: "arrow.clockwise", help: "Recap the recent conversation"),
-            SlashCommand(id: "summary", label: "Summary", symbol: "doc.text", help: "Summarize the full session"),
-            SlashCommand(id: "note", label: "Note", symbol: "note.text", help: "Toggle live note mode, or use /note <text>"),
-            SlashCommand(id: "chat", label: "Chat", symbol: "text.bubble", help: "Exit note mode and return to chat"),
-            SlashCommand(id: "screen", label: "Screen", symbol: "camera.viewfinder", help: "Attach screen OCR to the next message"),
-            SlashCommand(id: "recent", label: "Recent", symbol: "calendar", help: "Ask about recent project meetings"),
-            SlashCommand(id: "search", label: "Search", symbol: "doc.text", help: "Search the vault or selected project/client"),
-            SlashCommand(id: "sources", label: "Sources", symbol: "text.page", help: "Show source hits for a query or last question"),
-            SlashCommand(id: "project", label: "Project", symbol: "folder", help: "Show, set, or clear project/client context"),
-            SlashCommand(id: "help", label: "Help", symbol: "questionmark.circle", help: "Show slash commands"),
-            SlashCommand(id: "new", label: "New chat", symbol: "plus.message", help: "Clear the current chat"),
-        ]
+    /// Projects (8) then clients (6), read once when the page opens.
+    private static func loadScopeItems() -> [ScopeItem] {
+        VaultWorkstreamStore.projects().prefix(8).map { ScopeItem(item: $0, isClient: false) }
+            + VaultWorkstreamStore.clients().prefix(6).map { ScopeItem(item: $0, isClient: true) }
     }
 
-    private func moveSlashSelection(_ delta: Int) {
-        let count = visibleSlashCommands.count
-        guard count > 0 else { return }
-        selectedSlashIndex = (selectedSlashIndex + delta + count) % count
+    private func activate(_ row: AddContextRow) {
+        switch row.kind {
+        case .attachFile:
+            isAddContextOpen = false
+            fileImporterPresented = true
+        case .vaultFile:
+            isAddContextOpen = false
+            if !input.hasSuffix("@") {
+                input += (input.isEmpty || input.hasSuffix(" ") ? "" : " ") + "@"
+            }
+        case .readScreen:
+            isAddContextOpen = false
+            ScreenshotManager.shared.captureAndAttach()
+        case .searchScope:
+            scopeItems = Self.loadScopeItems()
+            addContextPage = .scope
+            chooserIndex = 0
+            return
+        case .noteMode:
+            isAddContextOpen = false
+            toggleNoteMode()
+        case .scope(let id):
+            if let id, let scope = scopeItems.first(where: { $0.item.id == id }) {
+                MeetingContextStore.shared.selectWorkstream(scope.item)
+            } else {
+                MeetingContextStore.shared.clearWorkstream()
+            }
+            refreshMentionSuggestions()
+            addContextPage = .root
+            isAddContextOpen = false
+        }
+        focusField()
     }
 
-    private func moveMentionSelection(_ delta: Int) {
-        let count = visibleMentionCandidates.count
-        guard count > 0 else { return }
-        selectedMentionIndex = (selectedMentionIndex + delta + count) % count
+    // MARK: ⌘K palette
+
+    /// The composer's own rows, ahead of the registry: the mode's quick
+    /// actions (the primary one carries ⌘↩), then note mode, attach, one
+    /// screen read, and the sticky recap depth (the old ✦ menu's items).
+    private var paletteLeadingCommands: [RTICommand] {
+        let llm = llm
+        var rows: [RTICommand] = llm.availableQuickActions().map { action in
+            RTICommand(
+                id: "chat.\(action.id)",
+                title: action.label,
+                subtitle: action.id == llm.primaryActionID ? "⌘↩" : action.hotkey?.display,
+                keywords: action.keywords + [action.paletteTitle.lowercased()],
+                perform: { llm.perform(actionID: action.id) }
+            )
+        }
+        rows.append(RTICommand(
+            id: "composer.note",
+            title: inputState.isNoteMode ? "Back to Chat" : "Note Mode",
+            subtitle: "⌘⌥N",
+            keywords: ["note", "annotate", "transcript", "prep"],
+            perform: toggleNoteMode
+        ))
+        rows.append(RTICommand(
+            id: "composer.attach",
+            title: "Attach File…",
+            keywords: ["pdf", "document", "file", "attach", "markdown"],
+            perform: { fileImporterPresented = true }
+        ))
+        rows.append(RTICommand(
+            id: "composer.screen",
+            title: "Read Screen Once",
+            subtitle: "⌘⇧H",
+            keywords: ["screen", "ocr", "capture", "screenshot"],
+            perform: { ScreenshotManager.shared.captureAndAttach() }
+        ))
+        rows += RecapDepth.allCases.map { depth in
+            RTICommand(
+                id: "composer.recap.\(depth.rawValue)",
+                title: "Recap Depth: \(depth.label)",
+                keywords: ["recap", "length", "depth", "brief", "detailed"],
+                perform: { llm.recapDepth = depth },
+                menuStateProvider: { llm.recapDepth == depth }
+            )
+        }
+        return rows
     }
+
+    private func runPaletteCommand(_ command: RTICommand) {
+        closePalette()
+        command.perform()
+        if !command.id.hasPrefix("composer.") {
+            CommandRegistry.shared.recordExecution(command.id)
+        }
+    }
+
+    private func toggleNoteMode() {
+        inputState.mode = inputState.isNoteMode ? .chat : .liveNote
+        focusField()
+    }
+
+    // MARK: Mentions
 
     private func refreshMentionSuggestions() {
+        guard seededCandidates == nil else { return }
         mentionSuggestions.update(
             query: currentMentionQuery,
             scopeRelativePath: MeetingContextStore.shared.fileAccessScopePath
@@ -727,7 +992,7 @@ struct AssistantInputView: View {
             selectedMentionPaths.append(path)
         }
         mentionSuggestions.update(query: nil, scopeRelativePath: nil)
-        DispatchQueue.main.async { isInputFocused = true }
+        focusField()
     }
 
     private func inputWithSelectedMentions(_ text: String) -> String {
@@ -736,330 +1001,139 @@ struct AssistantInputView: View {
         return text.isEmpty ? mentions : "\(mentions) \(text)"
     }
 
-    private func displayName(forMentionPath path: String) -> String {
-        let file = path.split(separator: "/").last.map(String.init) ?? path
-        if file.count <= 34 { return file }
-        return String(file.prefix(15)) + "…" + String(file.suffix(14))
-    }
+    // MARK: Drop and import
 
-    private func miniPill(_ text: String, icon: String?, active: Bool) -> some View {
-        SlateChip(height: House.Control.keyCap + 2, stroked: false) {
-            if let icon {
-                Image(systemName: icon)
-                    .font(.system(size: House.TypeToken.Size.caption, weight: .regular))
-            }
-            Text(text)
-                .truncationMode(.tail)
-        }
-        .foregroundStyle(active ? Color.overlayInkSecondary : Color.overlayInkTertiary)
-    }
-
-    private var noteModeToggle: some View {
-        Button {
-            inputState.mode = inputState.isNoteMode ? .chat : .liveNote
-            DispatchQueue.main.async {
-                isInputFocused = true
-            }
-        } label: {
-            Label("Note", systemImage: noteModeSymbol)
-                .font(RTIDesign.Font.meta)
-                .labelStyle(.titleAndIcon)
-                .padding(.horizontal, RTIDesign.Spacing.xs)
-                .frame(height: ComposerMetrics.controlSize)
-                .foregroundStyle(inputState.isNoteMode ? RTIDesign.Color.warning : Color.overlayInkSecondary)
-                .background(
-                    RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                        .fill(inputState.isNoteMode ? RTIDesign.Color.warning.opacity(0.12) : Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                                .strokeBorder(inputState.isNoteMode ? RTIDesign.Color.warning.opacity(0.4) : Color.clear,
-                                              lineWidth: House.hairline)
-                        )
-                )
-        }
-        .buttonStyle(.plain)
-        .fixedSize()
-        .accessibilityLabel(inputState.isNoteMode ? "Switch to chat mode" : "Switch to note mode")
-        .help(noteModeHelpText)
-    }
-
-    /// Leading "✦" button contains assistant behavior only. Composer target
-    /// (chat versus note) remains visible beside Send instead of hiding inside
-    /// a second competing menu.
-    private var actionsMenu: some View {
-        Menu {
-            // Mode-aware: the visible actions follow the active mode + listener
-            // state (a fieldwork observer gets "Key tensions / What's unsaid /
-            // Themes", not "What should I say"). One source of truth lives in
-            // AssistantAction.all (RTICore).
-            ForEach(llm.availableQuickActions()) { action in
-                Button { llm.perform(actionID: action.id) } label: {
-                    Label(actionLabel(action), systemImage: action.symbol)
-                }
-            }
-
-            Divider()
-
-            Menu("⌘⏎ runs: \(AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist")") {
-                ForEach(AssistantAction.primaryEligibleActions) { action in
-                    Button {
-                        llm.primaryActionID = action.id
-                    } label: {
-                        if llm.primaryActionID == action.id {
-                            Label(action.label, systemImage: "checkmark")
-                        } else {
-                            Text(action.label)
-                        }
-                    }
-                }
-            }
-
-            // How long ⌘⌥R (and the primary action, when set to Recap) runs.
-            // Sticky default; one-shot brief/detailed live in the palette.
-            Menu("Recap depth: \(llm.recapDepth.label)") {
-                ForEach(RecapDepth.allCases, id: \.rawValue) { depth in
-                    Button {
-                        llm.recapDepth = depth
-                    } label: {
-                        if llm.recapDepth == depth {
-                            Label(depth.label, systemImage: "checkmark")
-                        } else {
-                            Text(depth.label)
-                        }
-                    }
-                }
-            }
-
-            Button { llm.listenerMode.toggle() } label: {
-                if llm.listenerMode {
-                    Label("Listener mode (I'm not speaking)", systemImage: "checkmark")
-                } else {
-                    Label("Listener mode (I'm not speaking)", systemImage: "ear")
-                }
-            }
-
-            Button(action: applyFieldworkPreset) {
-                Label("Fieldwork preset (interview + listener)", systemImage: "person.2.wave.2")
-            }
-            .help("Interview mode + listener mode + ⌘⏎ → Assist in one click; pick the project in Setup")
-
-            Divider()
-
-            Button { llm.smartMode.toggle() } label: {
-                if llm.smartMode {
-                    Label("Smart mode (slower, deeper)", systemImage: "checkmark")
-                } else {
-                    Label("Smart mode (slower, deeper)", systemImage: "sparkles")
-                }
-            }
-
-        } label: {
-            Image(systemName: "sparkles")
-                .symbolRenderingMode(.monochrome)
-                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
-                .foregroundStyle(llm.smartMode ? Color.overlayInk : Color.overlayInkSecondary)
-                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
-                .slateRaisedTile(llm.smartMode, cornerRadius: RTIDesign.Radius.chip)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .tint(Color.overlayInkSecondary)
-        .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
-        .accessibilityLabel("Assist actions")
-        .accessibilityHint(llm.smartMode ? "Assist actions. Smart mode is on." : "Assist actions")
-        .help(llm.smartMode ? "Assist actions · Smart on" : "Assist actions")
-    }
-
-    private var attachmentButton: some View {
-        Button { fileImporterPresented = true } label: {
-            Image(systemName: "paperclip")
-                .font(.system(size: ComposerMetrics.iconFontSize, weight: .regular))
-                .foregroundStyle(Color.overlayInkSecondary)
-                .frame(width: ComposerMetrics.controlSize, height: ComposerMetrics.controlSize)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Attach file")
-        .accessibilityHint("Attach a PDF, Markdown, or text file to the next message")
-        .help("Attach file")
-    }
-
-    private var sendButton: some View {
-        let isEmpty = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedMentionPaths.isEmpty && selectedAttachments.isEmpty
-        return Button(action: submit) {
-            Image(systemName: "arrow.up")
-                .font(.system(size: House.TypeToken.Size.bodySmall, weight: .bold))
-                // A square ink tile: textPrimary fill, textInverse arrow.
-                .foregroundStyle(isEmpty ? Color.overlayInkTertiary : Color.overlayInkInverse)
-                .frame(width: ComposerMetrics.sendSize, height: ComposerMetrics.sendSize)
-                .background(
-                    RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                        .fill(isEmpty ? RTIDesign.Color.chipFill : RTIDesign.Color.textPrimary)
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(isEmpty || llm.streaming)
-        .accessibilityLabel("Send message")
-        .accessibilityHint("Send the current message")
-        .help("Send message (return)")
-    }
-
-    private var stopButton: some View {
-        Button(action: { llm.cancel() }) {
-            Image(systemName: "stop.fill")
-                .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                .foregroundStyle(RTIDesign.Color.textInverse)
-                .frame(width: ComposerMetrics.sendSize, height: ComposerMetrics.sendSize)
-                .background(
-                    RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                        .fill(RTIDesign.Color.danger)
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Stop streaming")
-        .accessibilityHint("Stop the current assistant response")
-        .help("Stop streaming response")
-    }
-
-    private var textFieldPrompt: String {
-        switch inputState.mode {
-        case .liveNote:
-            return session.isRunning ? "Quick transcript note" : "Prep note for this meeting"
-        case .chat:
-            return "Ask the vault, @file, or attach a PDF/text file"
-        }
-    }
-
-    /// Menu label for a quick action: append "⌘⏎" when it's the bound primary,
-    /// otherwise its own hotkey hint (if any). Hints mirror CommandPaletteFactory.
-    private func actionLabel(_ action: AssistantAction) -> String {
-        if action.id == llm.primaryActionID {
-            return "\(action.label)  ⌘⏎"
-        }
-        let hint = action.hotkey?.display ?? ""
-        return hint.isEmpty ? action.label : "\(action.label)  \(hint)"
-    }
-
-    /// One-click setup for sitting in on fieldwork (FGD/IDI as an observer):
-    /// Interview mode + listener mode + ⌘⏎ bound to Assist. The workstream
-    /// (project) still gets picked in Prepare — that's a per-meeting fact.
-    private func applyFieldworkPreset() {
-        if let interview = modes.modes.first(where: { $0.name.localizedCaseInsensitiveContains("interview") }) {
-            modes.activeModeId = interview.id
-        }
-        llm.listenerMode = true
-        llm.primaryActionID = "assist"
-    }
-
-    /// Load the first dropped image and hand it to ScreenshotManager for
-    /// on-device OCR → attach as pending context. Returns true if we took it.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        if handleImageDrop(providers) { return true }
-        return handleFileDrop(providers)
+        var took = false
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                took = true
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    guard let data = item as? Data,
+                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    Task { @MainActor in dropFile(url) }
+                }
+            } else if provider.canLoadObject(ofClass: NSImage.self) {
+                took = true
+                provider.loadObject(ofClass: NSImage.self) { object, _ in
+                    guard let image = object as? NSImage else { return }
+                    Task { @MainActor in ScreenshotManager.shared.attachDroppedImage(image) }
+                }
+            }
+        }
+        return took
     }
 
-    private func handleImageDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSImage.self) }) else {
-            return false
+    /// An image file is read on-device like a screen; any other file loads
+    /// as a document.
+    private func dropFile(_ url: URL) {
+        if UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true,
+           let image = NSImage(contentsOf: url) {
+            ScreenshotManager.shared.attachDroppedImage(image)
+        } else {
+            addDocument(url)
         }
-        provider.loadObject(ofClass: NSImage.self) { object, _ in
-            guard let image = object as? NSImage else { return }
-            Task { @MainActor in ScreenshotManager.shared.attachDroppedImage(image) }
-        }
-        return true
-    }
-
-    private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-            guard let data = item as? Data,
-                  let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-            Task { @MainActor in addAttachment(url) }
-        }
-        return true
     }
 
     private func handleFileImport(_ result: Result<[URL], Error>) {
         guard case let .success(urls) = result else { return }
-        urls.forEach(addAttachment)
+        urls.forEach(addDocument)
     }
 
-    private func addAttachment(_ url: URL) {
-        do {
-            let attachment = try ExternalDocumentLoader.load(url: url)
-            guard !selectedAttachments.contains(where: { $0.name == attachment.name && $0.text == attachment.text }) else { return }
-            selectedAttachments.append(attachment)
-            attachmentError = nil
-        } catch {
-            attachmentError = error.localizedDescription
+    /// Reads the file off the main thread; the chip says "Reading…" until
+    /// then, and the reason if it fails.
+    private func addDocument(_ url: URL) {
+        let name = url.lastPathComponent
+        // The same file twice is one chip; a failed read may be tried again.
+        guard !documents.contains(where: { $0.name == name && !isFailed($0) }) else { return }
+        documents.removeAll { $0.name == name }
+        let item = ComposerDocument(name: name, phase: .reading)
+        documents.append(item)
+        Task {
+            let phase: ComposerDocument.Phase
+            do {
+                let attachment = try await Task.detached(priority: .userInitiated) {
+                    try ExternalDocumentLoader.load(url: url)
+                }.value
+                phase = .ready(attachment)
+            } catch let error as ExternalDocumentLoader.LoadError {
+                phase = .failed(error.chipReason)
+            } catch {
+                phase = .failed("Could not be read")
+            }
+            guard let index = documents.firstIndex(where: { $0.id == item.id }) else { return }
+            documents[index].phase = phase
         }
     }
 
+    private func isFailed(_ document: ComposerDocument) -> Bool {
+        if case .failed = document.phase { return true }
+        return false
+    }
+
+    // MARK: Submit
+
     private func submit() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || (inputState.mode == .chat && (!selectedMentionPaths.isEmpty || !selectedAttachments.isEmpty)) else { return }
         switch inputState.mode {
         case .liveNote:
+            guard !text.isEmpty else { return }
             if submitLiveNote(text) {
                 input = ""
-                selectedMentionPaths = []
-                selectedAttachments = []
                 inputState.mode = .chat
-                DispatchQueue.main.async { isInputFocused = true }
+                focusField()
             }
         case .chat:
-            if showMentionSuggestions, let path = visibleMentionCandidates[safe: selectedMentionIndex] {
-                applyMention(path)
-                return
-            }
+            guard !text.isEmpty || hasSendableChips else { return }
+            // A document still reading would be left behind; wait for it.
+            guard !documents.contains(where: \.isReading) else { return }
             if text.hasPrefix("/") {
                 if performSlashSubmit(String(text.dropFirst())) {
                     input = ""
                     selectedMentionPaths = []
-                    selectedAttachments = []
+                    documents = []
                 }
-                DispatchQueue.main.async { isInputFocused = true }
+                focusField()
                 return
             }
-            llm.sendAskAnything(inputWithSelectedMentions(text), attachments: selectedAttachments)
+            if !text.isEmpty { inputState.lastQuestion = text }
+            llm.sendAskAnything(inputWithSelectedMentions(text), attachments: readyAttachments)
             input = ""
             selectedMentionPaths = []
-            selectedAttachments = []
+            documents = []
+            focusedChipID = nil
         }
     }
 
     @discardableResult
     private func performSlashSubmit(_ raw: String) -> Bool {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let split = splitSlash(trimmed)
+        let split = splitSlash(raw)
         if split.command == "note", !split.argument.isEmpty {
             if applyNoteModeArgument(split.argument) {
                 return true
             }
-            let noteText = split.argument
-            return submitLiveNote(noteText)
+            return submitLiveNote(split.argument)
         }
-
-        if showSlashCommands, let command = visibleSlashCommands[safe: selectedSlashIndex] {
-            return performSlashCommand(command.id)
-        }
-
         return performSlashCommand(split.command, argument: split.argument)
     }
 
     @discardableResult
     private func performSlashCommand(_ raw: String, argument: String = "") -> Bool {
-        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        guard let command = ComposerSlashCommand.command(named: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return false
+        }
+        switch command.id {
         case "assist":
             llm.sendAssist()
-        case "answer", "latest":
+        case "answer":
             llm.sendAnswerLatest()
-        case "say", "saynext":
+        case "say":
             llm.sendSaySomething()
-        case "followups", "followup":
+        case "followups":
             llm.sendFollowupQuestions()
         case "recap":
             llm.sendRecap()
-        case "summary", "summarize":
+        case "summary":
             llm.sendSummary()
         case "note":
             if argument.isEmpty {
@@ -1073,15 +1147,15 @@ struct AssistantInputView: View {
             ScreenshotManager.shared.captureAndAttach()
         case "recent":
             llm.sendAskAnything("What were the most recent meetings or sessions for this project? Use the recent meetings tool if project context is available.")
-        case "search", "grep", "rag":
+        case "search":
             llm.sendVaultSearchCommand(argument)
-        case "sources", "source":
+        case "sources":
             llm.sendVaultSourcesCommand(argument.isEmpty ? nil : argument)
-        case "project", "client", "context":
+        case "project":
             llm.runProjectCommand(argument)
-        case "help", "?":
+        case "help":
             llm.showSlashHelp()
-        case "new", "clear":
+        case "new":
             AppDelegate.clearChatNow()
         default:
             return false
@@ -1112,39 +1186,12 @@ struct AssistantInputView: View {
         return true
     }
 
-    private var noteModeSymbol: String {
-        switch inputState.mode {
-        case .chat: return "note.text"
-        case .liveNote: return "checkmark"
-        }
-    }
-
-    private var noteModeHelpText: String {
-        switch inputState.mode {
-        case .liveNote:
-            return session.isRunning
-                ? "Transcript note mode on — next Enter inserts inline, then returns to chat"
-                : "Prep note mode on — next Enter adds context for this meeting, then returns to chat"
-        case .chat:
-            return session.isRunning
-                ? "Chat mode on — toggle to drop a quick note into the transcript"
-                : "Chat mode on — toggle to add a prep note before recording"
-        }
-    }
-
     private func submitLiveNote(_ text: String) -> Bool {
         if session.isRunning {
             return session.insertNote(text)
         }
         return MeetingContextStore.shared.appendPrepNote(text)
     }
-}
-
-private struct SlashCommand: Identifiable {
-    let id: String
-    let label: String
-    let symbol: String
-    let help: String
 }
 
 private extension Array {
