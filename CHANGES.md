@@ -1,5 +1,20 @@
 # RTI Change Log
 
+## 2026-09-12: Assist thread in the house look
+
+The Assist answers now read like Quick Launch's Quick AI (`docs/house-style-migration-20260912.md`, package A).
+
+- Questions sit on the right as pills; a canned action shows its name and glyph ("Recap · brief"), not its prompt. Long questions fold behind Show more (⇧⌘M).
+- Answers are plain prose with no card. Above each answer, quiet lines say what it read or did ("Used the last 6 min of the transcript", "Searched vault · 6 results"). Its sources sit under it; a row opens the file.
+- Attached files, `@` vault files, and a screen read show as chips over the question.
+- While an answer runs, a status line with thinking dots replaces the spinner chip. A failed answer shows its error under the question with Retry (⌘R).
+- Scrolled up while an answer streams, the view stays still and a Latest chip (⌘↓) brings you back.
+- Find in Chat (⌘F): hits are marked in questions and answers; ↩ and ⇧↩ step through them, esc closes.
+- Code blocks get a strip with the language, Wrap, and Copy.
+- Errors with no turn (missing keys, a capture fault) sit above the composer with a fix. The sources popover is gone.
+- Copies from RTI carry the transient markers, so clipboard managers skip them.
+- Fixed: a question with several attachments showed "(prepared.references.count) attached sources" instead of the number.
+
 ## 2026-09-12: House chat seams
 
 No visible change. Groundwork for the house chat look (`docs/house-style-migration-20260912.md`, package 0).
