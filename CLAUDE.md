@@ -88,7 +88,7 @@ Layout:
 
 - `RTI/` — Xcode project. Generated via `xcodegen` from `RTI/project.yml`. Build with `xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug build`. Runtime artifact at `~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app`. Bundle id `com.tristan.rti.personal`, macOS 14+, regular Dock app (`LSUIElement=NO` since 2026-09-01, so window managers and ⌘Tab see its window; menubar status item retained).
 - `RTI/Sources/` — all Swift sources (overlay, audio, Soniox, LLM, screenshot, session, modes, panels, widgets, settings, UI).
-- `RTI/Tests/` — XCTest unit tests.
+- `RTI/Tests/` — XCTest unit tests. Test with `xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test -only-testing:RTITests`; render proofs with `-only-testing:RTIRenderTests/<ProofClass>` (PNGs in `/tmp/rti-render-proof/`; proof classes subclass `RenderProofTestCase`, which points RTI at an invented fixture vault, never the real one).
 - `RTI/POC*-findings.md` — historical per-POC validation logs. Reference for "why was this built this way?" — but note much of what they describe (persistence, corpus) is gone.
 - `RTI/VERIFY.md` — manual verification steps for running builds.
 - `docs/adr/` — architecture decision records (ADR 0001 is superseded — it describes the removed corpus).

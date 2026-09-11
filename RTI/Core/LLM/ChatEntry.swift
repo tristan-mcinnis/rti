@@ -11,6 +11,14 @@ public struct ChatEntry: Identifiable, Equatable {
     public let contextUsed: Bool // user entries only — transcript attached
     public let screenContextUsed: Bool // user entries only — OCR screen attached
     public let referencedPaths: [String] // user entries only — vault docs attached with @mentions
+    /// User entries only: what was sent with the question, drawn as chips
+    /// over the question pill.
+    public let attachments: [ChatAttachmentRef]
+    /// Assistant entries only: tool and status lines, appended while the
+    /// answer streams.
+    public var tools: [ChatToolLine]
+    /// Assistant entries only: the sources the answer cited.
+    public var sources: [ChatSource]
 
     public init(
         role: String,
@@ -18,7 +26,10 @@ public struct ChatEntry: Identifiable, Equatable {
         action: String?,
         contextUsed: Bool,
         screenContextUsed: Bool,
-        referencedPaths: [String] = []
+        referencedPaths: [String] = [],
+        attachments: [ChatAttachmentRef] = [],
+        tools: [ChatToolLine] = [],
+        sources: [ChatSource] = []
     ) {
         self.role = role
         self.text = text
@@ -26,5 +37,8 @@ public struct ChatEntry: Identifiable, Equatable {
         self.contextUsed = contextUsed
         self.screenContextUsed = screenContextUsed
         self.referencedPaths = referencedPaths
+        self.attachments = attachments
+        self.tools = tools
+        self.sources = sources
     }
 }

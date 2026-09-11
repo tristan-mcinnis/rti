@@ -103,6 +103,8 @@ targets:
       - path: Tests
       - path: Sources/UI/CommandPalette/CommandRegistry.swift
       - path: Sources/UI/StatusItemSymbol.swift
+      # StatusItemSymbol reads House.Control.statusGlyph (fed0289).
+      - path: Sources/UI/HouseDesign.swift
       - path: Sources/Session/VaultWorkstreamStore.swift
       - path: Sources/Session/VaultPaths.swift
       - path: Sources/LLM/VaultSearch.swift
