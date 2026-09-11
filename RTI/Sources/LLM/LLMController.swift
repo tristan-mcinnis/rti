@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import RTICore
@@ -18,7 +19,14 @@ final class LLMController {
     private(set) var lastErrorIsAuth: Bool = false
     private(set) var pendingScreenContext: String?
     private(set) var screenCaptureStatus: String?
-    private(set) var toolTraces: [UUID: String] = [:]
+    /// The question a provider error belongs to: the thread draws the error
+    /// under it with Retry. Nil when `lastError` belongs to no turn (a
+    /// missing file, no transcript yet, a screen permission).
+    private(set) var lastErrorTurnID: UUID?
+    /// Local work before an answer starts (the vault search ahead of an Ask,
+    /// `/search`): the placeholder assistant entry's id and the status the
+    /// thread draws in its place. The entry's own text is left as it was.
+    private(set) var progressStatus: [UUID: String] = [:]
     /// Human-readable status shown beneath the streaming assistant entry
     /// while a tool is running (e.g. "📷 Looking at your screen…"). Nil
     /// when idle or when only content tokens are streaming.
@@ -62,7 +70,6 @@ final class LLMController {
 
     private let request: LLMRequest
     private var streamingEntryID: UUID?
-    private var activeToolTraceLines: [String] = []
     /// Metadata for the in-flight turn, written to the vault turn log on
     /// successful completion (see VaultLogStore).
     private var pendingTurn: PendingTurn?
@@ -161,6 +168,7 @@ final class LLMController {
         guard let userInput = prepared.userInput else {
             lastError = prepared.error
             lastErrorIsAuth = false
+            lastErrorTurnID = nil
             return
         }
         guard !streaming else { return }
@@ -172,12 +180,13 @@ final class LLMController {
         if !prepared.references.isEmpty {
             let label = prepared.references.count == 1
                 ? "Attached source"
-                : "(prepared.references.count) attached sources"
+                : "\(prepared.references.count) attached sources"
             performSend(
                 userInput: userInput,
                 action: "Ask",
                 referencedDocuments: prepared.references,
-                initialTrace: label
+                initialTrace: label,
+                attachments: Self.attachmentRefs(references: prepared.references, files: attachments)
             )
             return
         }
@@ -214,7 +223,15 @@ final class LLMController {
                     : "Found \(sources.count) source\(sources.count == 1 ? "" : "s") (\(scopeLabel), \(retrieval.elapsedMS)ms). Drafting answer…"
             )
             removeLocalProgress(progressID)
-            performSend(userInput: userInput, action: "Ask", referencedDocuments: prepared.references, retrievalContext: retrieval.modelContextForQuestion, initialTrace: retrieval.trace)
+            performSend(
+                userInput: userInput,
+                action: "Ask",
+                referencedDocuments: prepared.references,
+                retrievalContext: retrieval.modelContextForQuestion,
+                initialTrace: retrieval.trace,
+                initialTools: [ToolTraceParser.searchLine(resultCount: retrieval.results.count, scoped: scope != nil)],
+                initialSources: Self.chatSources(retrieval)
+            )
         }
     }
 
@@ -228,6 +245,7 @@ final class LLMController {
         guard !window.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             lastError = "No live transcript yet."
             lastErrorIsAuth = false
+            lastErrorTurnID = nil
             return
         }
         let progressID = beginLocalProgress(
@@ -257,7 +275,12 @@ final class LLMController {
             \(vaultBlock)
             """
             removeLocalProgress(progressID)
-            performSend(userInput: prompt, action: "Answer latest")
+            performSend(
+                userInput: prompt,
+                action: "Answer latest",
+                initialTools: [ToolTraceParser.searchLine(resultCount: retrieval.results.count, scoped: scope != nil)],
+                initialSources: Self.chatSources(retrieval)
+            )
         }
     }
 
@@ -285,9 +308,15 @@ final class LLMController {
         let userIdx = assistantIdx - 1
         guard userIdx >= 0, entries[userIdx].role == "user" else { return }
         let userEntry = entries[userIdx]
-        let action = userEntry.action ?? "Ask"
         // performSend re-appends the user turn, so drop it here too.
         entries.removeSubrange(userIdx...)
+        resend(userEntry)
+    }
+
+    /// Ask the turn `userEntry` asked again, through the path that first
+    /// sent it. The entry must already be out of `entries`.
+    private func resend(_ userEntry: ChatEntry) {
+        let action = userEntry.action ?? "Ask"
         // Summary is special: it runs over the FULL transcript on the smart
         // model. The stored user text is the (possibly now-stale) prompt, so
         // re-dispatch through the live summary path rather than replaying it as
@@ -305,11 +334,54 @@ final class LLMController {
         }
     }
 
+    /// `⌘R` and the error line's Retry: a question whose answer failed is
+    /// asked again in its place (one pill, not two); otherwise the newest
+    /// answer is regenerated.
+    func retryLastTurn() {
+        guard !streaming else { return }
+        if let failedID = lastErrorTurnID,
+           let idx = entries.firstIndex(where: { $0.id == failedID }),
+           entries[idx].role == "user"
+        {
+            let userEntry = entries[idx]
+            entries.removeSubrange(idx...)
+            lastError = nil
+            lastErrorIsAuth = false
+            lastErrorTurnID = nil
+            resend(userEntry)
+        } else if let answer = latestAnswer {
+            regenerate(assistantID: answer.id)
+        }
+    }
+
+    /// The newest finished answer, for Copy Response and Regenerate.
+    var latestAnswer: ChatEntry? {
+        entries.last { $0.role == "assistant" && !$0.text.isEmpty && $0.id != streamingEntryID && progressStatus[$0.id] == nil }
+    }
+
+    /// Copy Response: the newest answer, as Markdown. False when there is none.
+    @discardableResult
+    func copyLatestAnswer() -> Bool {
+        guard let answer = latestAnswer else { return false }
+        NSPasteboard.copyString(answer.text)
+        return true
+    }
+
+    /// Copy Sources: the newest answer's source paths, one a line. False
+    /// when it cited none.
+    @discardableResult
+    func copyLatestSources() -> Bool {
+        guard let sources = latestAnswer?.sources, !sources.isEmpty else { return false }
+        NSPasteboard.copyString(ChatTurnRecordBuilder.sourcesText(sources))
+        return true
+    }
+
     func attachScreenContext(_ text: String) {
         pendingScreenContext = text
         screenCaptureStatus = nil
         lastError = nil
         lastErrorIsAuth = false
+        lastErrorTurnID = nil
     }
 
     func clearPendingScreenContext() {
@@ -321,6 +393,7 @@ final class LLMController {
         screenCaptureStatus = message
         lastError = message
         lastErrorIsAuth = false
+        lastErrorTurnID = nil
     }
 
     func setScreenCaptureStatus(_ message: String?) {
@@ -332,7 +405,6 @@ final class LLMController {
         streaming = false
         reasoning = false
         toolStatus = nil
-        activeToolTraceLines = []
         pruneTrailingEmptyAssistant()
         streamingEntryID = nil
         pendingTurn = nil
@@ -343,9 +415,10 @@ final class LLMController {
     func resetMemory() {
         cancel()
         entries = []
-        toolTraces = [:]
+        progressStatus = [:]
         lastError = nil
         lastErrorIsAuth = false
+        lastErrorTurnID = nil
     }
 
     /// Clear the in-memory chat. Ephemeral build: there's no persisted history.
@@ -386,11 +459,12 @@ final class LLMController {
         entries.append(ChatEntry(role: "user", text: userInput, action: "Search", contextUsed: false, screenContextUsed: false))
         entries.append(assistant)
         let assistantID = assistant.id
+        progressStatus[assistantID] = "Searching the vault…"
         Task { @MainActor in
             let scope = Self.retrievalScope(for: trimmed)
             let retrieval = await VaultRetrieval.search(query: trimmed, scopeRelativePath: scope)
             let label = scope == nil ? "Vault-wide search" : "Scoped search"
-            toolTraces[assistantID] = retrieval.trace
+            finishLocalProgress(assistantID, retrieval: retrieval, scoped: scope != nil)
             updateLocalAssistant(assistantID, text: "**\(label)**\n\n\(retrieval.formattedResults)")
         }
     }
@@ -409,11 +483,12 @@ final class LLMController {
         entries.append(ChatEntry(role: "user", text: userInput, action: "Sources", contextUsed: false, screenContextUsed: false))
         entries.append(assistant)
         let assistantID = assistant.id
+        progressStatus[assistantID] = "Finding sources…"
         Task { @MainActor in
             let scope = Self.retrievalScope(for: effective)
             let retrieval = await VaultRetrieval.search(query: effective, scopeRelativePath: scope)
             let label = scope == nil ? "Vault-wide sources" : "Scoped sources"
-            toolTraces[assistantID] = retrieval.trace
+            finishLocalProgress(assistantID, retrieval: retrieval, scoped: scope != nil)
             updateLocalAssistant(assistantID, text: "**\(label) for:** \(effective)\n\n\(retrieval.formattedResults)")
         }
     }
@@ -454,13 +529,17 @@ final class LLMController {
         forceSmart: Bool = false,
         referencedDocuments: [ReferencedDocument] = [],
         retrievalContext: String? = nil,
-        initialTrace: String? = nil
+        initialTrace: String? = nil,
+        attachments: [ChatAttachmentRef] = [],
+        initialTools: [ChatToolLine] = [],
+        initialSources: [ChatSource] = []
     ) {
         guard !streaming else { return }
         request.cancel()
         let effectiveSmart = smartMode || forceSmart
         lastError = nil
         lastErrorIsAuth = false
+        lastErrorTurnID = nil
         toolStatus = nil
 
         let transcript = recentTranscriptText(fullWindow: fullTranscript)
@@ -510,24 +589,42 @@ final class LLMController {
             existingEntries: entries
         ))
 
+        // Turn records for the thread: what went with the question, and what
+        // the answer read before the model ran. Display only.
+        let manualScreenRead = !(manualScreenContext?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let ambientScreenRead = !(ambientScreenContext?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        var sentAttachments = attachments
+        if manualScreenRead, !sentAttachments.contains(where: { $0.kind == .screen }) {
+            sentAttachments.append(ChatAttachmentRef(kind: .screen, name: "Screen"))
+        }
+        var answerTools = ChatTurnRecordBuilder.contextLines(
+            transcriptMinutes: turn.contextUsed ? transcriptWindowMinutes(fullWindow: fullTranscript) : nil,
+            wholeTranscript: fullTranscript,
+            screenRead: manualScreenRead,
+            screenFromTrail: ambientScreenRead
+        )
+        for line in initialTools {
+            answerTools = ChatTurnRecordBuilder.appending(line, to: answerTools)
+        }
+
         entries.append(ChatEntry(
             role: "user",
             text: userInput,
             action: action,
             contextUsed: turn.contextUsed,
             screenContextUsed: screenUsed,
-            referencedPaths: referencedDocuments.map(\.path)
+            referencedPaths: referencedDocuments.map(\.path),
+            attachments: sentAttachments
         ))
 
         let apiMessages = turn.apiMessages
 
-        let assistantEntry = ChatEntry(role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false)
+        let assistantEntry = ChatEntry(
+            role: "assistant", text: "", action: nil, contextUsed: false, screenContextUsed: false,
+            tools: answerTools, sources: initialSources
+        )
         streamingEntryID = assistantEntry.id
-        activeToolTraceLines = []
         entries.append(assistantEntry)
-        if let initialTrace, !initialTrace.isEmpty {
-            toolTraces[assistantEntry.id] = initialTrace
-        }
 
         pendingTurn = PendingTurn(
             id: assistantEntry.id,
@@ -576,9 +673,8 @@ final class LLMController {
                             self.reasoning = false
                         case let .toolStatus(status):
                             self.toolStatus = status
-                        case let .toolStarted(name, status):
+                        case .toolStarted:
                             self.clearStreamingEntry(thisEntryID)
-                            self.recordToolStarted(name: name, status: status, assistantID: thisEntryID)
                         case let .toolFinished(name, elapsedMS, result):
                             self.recordToolFinished(name: name, elapsedMS: elapsedMS, result: result, assistantID: thisEntryID)
                         case .toolStatusDone:
@@ -605,8 +701,9 @@ final class LLMController {
                             self.streaming = false
                             self.reasoning = false
                             self.toolStatus = nil
-                            self.activeToolTraceLines = []
                             self.pruneTrailingEmptyAssistant()
+                            // The failed question stays; its error draws under it.
+                            self.lastErrorTurnID = self.entries.last?.role == "user" ? self.entries.last?.id : nil
                             self.streamingEntryID = nil
                             self.pendingTurn = nil
                             RTILog.log("LLM stream error: \(message)", category: .llm)
@@ -622,7 +719,6 @@ final class LLMController {
         streaming = false
         reasoning = false
         toolStatus = nil
-        activeToolTraceLines = []
         logCompletedTurn(thisEntryID)
         pruneTrailingEmptyAssistant()
         streamingEntryID = nil
@@ -834,17 +930,32 @@ final class LLMController {
     private func updateLocalAssistant(_ id: UUID, text: String) {
         guard let idx = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[idx].text = text
+        if progressStatus[id] != nil { progressStatus[id] = text }
+    }
+
+    /// A local search finished: the entry stops being a status and carries
+    /// the search's line and sources.
+    private func finishLocalProgress(_ id: UUID, retrieval: VaultRetrieval.Response, scoped: Bool) {
+        progressStatus[id] = nil
+        guard let idx = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[idx].tools = ChatTurnRecordBuilder.appending(
+            ToolTraceParser.searchLine(resultCount: retrieval.results.count, scoped: scoped),
+            to: entries[idx].tools
+        )
+        entries[idx].sources = ChatTurnRecordBuilder.merging(Self.chatSources(retrieval), into: entries[idx].sources)
     }
 
     private func beginLocalProgress(userInput: String, action: String, text: String) -> UUID {
         lastError = nil
         lastErrorIsAuth = false
+        lastErrorTurnID = nil
         streaming = true
         toolStatus = nil
         entries.append(ChatEntry(role: "user", text: userInput, action: action, contextUsed: false, screenContextUsed: false))
         let assistant = ChatEntry(role: "assistant", text: text, action: nil, contextUsed: false, screenContextUsed: false)
         entries.append(assistant)
         streamingEntryID = assistant.id
+        progressStatus[assistant.id] = text
         return assistant.id
     }
 
@@ -856,55 +967,55 @@ final class LLMController {
         }
         let userIdx = idx > 0 && entries[idx - 1].role == "user" ? idx - 1 : idx
         entries.removeSubrange(userIdx...idx)
-        toolTraces[assistantID] = nil
+        progressStatus[assistantID] = nil
         streaming = false
         streamingEntryID = nil
         toolStatus = nil
     }
 
-    func toolTrace(for id: UUID) -> String? {
-        toolTraces[id]
-    }
-
-    private func recordToolStarted(name: String, status: String, assistantID: UUID) {
-        guard name == "search_vault" || name == "grep_vault" || name == "recent_meetings" || name == "list_files" else {
-            return
-        }
-        activeToolTraceLines.append("Running \(displayName(forTool: name))")
-        toolTraces[assistantID] = activeToolTraceLines.joined(separator: "\n")
-    }
-
+    /// A tool call finished: log it (the four retrieval tools, as before)
+    /// and leave its line and sources on the answer for the thread.
     private func recordToolFinished(name: String, elapsedMS: Int, result: String, assistantID: UUID) {
-        guard name == "search_vault" || name == "grep_vault" || name == "recent_meetings" || name == "list_files" else {
-            return
+        if name == "search_vault" || name == "grep_vault" || name == "recent_meetings" || name == "list_files" {
+            recordPendingTool(elapsedMS: elapsedMS, sources: sourcePaths(in: result))
         }
-        let display = displayName(forTool: name)
-        let sources = sourcePaths(in: result)
-        recordPendingTool(elapsedMS: elapsedMS, sources: sources)
-        var line = "\(display) · \(elapsedMS)ms"
-        if !sources.isEmpty {
-            line += " · \(sources.count) source\(sources.count == 1 ? "" : "s")"
-            line += ": " + sources.prefix(3).joined(separator: ", ")
-            if sources.count > 3 { line += ", +" + String(sources.count - 3) }
+        guard let idx = entries.firstIndex(where: { $0.id == assistantID }) else { return }
+        if let line = ToolTraceParser.toolLine(forTool: name, result: result) {
+            entries[idx].tools = ChatTurnRecordBuilder.appending(line, to: entries[idx].tools)
         }
-        if let last = activeToolTraceLines.indices.last {
-            activeToolTraceLines[last] = line
-        } else {
-            activeToolTraceLines.append(line)
+        if name == "search_vault" {
+            entries[idx].sources = ChatTurnRecordBuilder.merging(
+                ToolTraceParser.sources(inSearchResult: result),
+                into: entries[idx].sources
+            )
         }
-        toolTraces[assistantID] = activeToolTraceLines.joined(separator: "\n")
     }
 
-    private func displayName(forTool name: String) -> String {
-        switch name {
-        case "search_vault": return "Vault search"
-        case "grep_vault": return "Vault grep"
-        case "read_document": return "Read document"
-        case "recent_meetings": return "Recent meetings"
-        case "list_files": return "List files"
-        case "capture_screen": return "Screen OCR"
-        default: return name
-        }
+    /// A search's hits as sources: title, vault path, and the day it was
+    /// last updated.
+    private static func chatSources(_ retrieval: VaultRetrieval.Response) -> [ChatSource] {
+        retrieval.results.map { ChatSource(title: $0.title, path: $0.relativePath, date: $0.modified) }
+    }
+
+    /// The chips over an Ask that went with attachments: `@` vault files by
+    /// path, then files from disk (their name only for now).
+    private static func attachmentRefs(references: [ReferencedDocument], files: [ExternalDocumentAttachment]) -> [ChatAttachmentRef] {
+        let mentionPaths = references.map(\.path).filter { !$0.hasPrefix("Attached file: ") }
+        return ChatTurnRecordBuilder.attachments(
+            mentionPaths: mentionPaths,
+            files: files.map { ChatTurnRecordBuilder.AttachedFile(name: $0.name) },
+            screenAttached: false
+        )
+    }
+
+    /// Minutes of transcript the next turn reads: the same window
+    /// `recentTranscriptText` builds, first line to last.
+    private func transcriptWindowMinutes(fullWindow: Bool) -> Int {
+        let all = SessionCoordinator.shared.liveEntries.filter { $0.translationStatus != "translation" }
+        guard let maxMs = all.map(\.startMs).max() else { return 1 }
+        let threshold = fullWindow ? 0 : max(0, maxMs - Int(Self.contextWindowSeconds * 1000))
+        let firstMs = all.lazy.filter { $0.startMs >= threshold }.map(\.startMs).min() ?? maxMs
+        return ChatTurnRecordBuilder.transcriptMinutes(firstStartMs: firstMs, lastStartMs: maxMs)
     }
 
     private func sourcePaths(in text: String) -> [String] {
