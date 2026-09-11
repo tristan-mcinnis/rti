@@ -1,1312 +1,1354 @@
-import SwiftUI
-import UniformTypeIdentifiers
+// Rail, find bar, and header copied from quick-launch@8ee19aa Sources/Views/AIChatWindowView.swift
+// (AIChatRail, OpenChatMarker, AIChatFindBar, header) and CatalogPanes.swift (ChatSnippetText),
+// adapted to RTI's macOS 14 floor and to reading archived sessions.
+import AppKit
 import RTICore
+import SwiftUI
 
-/// Read-only browser for archived session records (the Markdown folders
-/// SessionArchive writes to the vault on stop). Browse and read — never
-/// resume: past sessions are vault content, and anything beyond reading
-/// (search, analysis, Q&A) is a vault job, not an app feature.
+/// The Sessions window: archived meetings in the AI Chat window shape
+/// (design-system docs/chat-surfaces.md sections 1, 5, 6, 7). A header in
+/// the traffic-light row, the open session's files as chips, one centred
+/// reading column, and the session list as a rail hidden until ⌃⌘S or the
+/// header toggle. Read-only reading; past sessions belong to the vault.
+///
+/// State lives in `SessionsWindowModel`, so the window's keys and the render
+/// proofs drive the same object.
 struct SessionsBrowserView: View {
-    @State private var sessions: [SessionArchive.ArchivedSession] = []
-    @State private var selected: SessionArchive.ArchivedSession?
-    @State private var files: [SessionFile] = []
-    @State private var selectedFile: SessionFile?
-    @State private var fileText: String = ""
-    @State private var upgradeStatus: String?
-    @State private var upgradeStatusSessionID: URL?
-    @State private var upgradingSessionID: URL?
-    @State private var pendingUpgradeSession: SessionArchive.ArchivedSession?
-    @State private var showingUpgradeProviderChoice = false
-    @State private var showingTitleEditor = false
-    @State private var titleDraft = ""
-    @State private var editingSummary = false
-    @State private var summaryDraft = ""
-    @State private var showingSpeakerEditor = false
-    @State private var speakerNames: [String: String] = [:]
-    @State private var speakerSuggestions: [String: SpeakerSuggestions.Entry] = [:]
-    @State private var regeneratingSummaryID: URL?
-    @State private var editingTranscript = false
-    @State private var transcriptTurns: [SessionTranscriptTurn] = []
+    @Bindable var model: SessionsWindowModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode = OverlayAppearanceDefaults.defaultAppearanceMode
 
-    struct SessionFile: Identifiable, Hashable {
-        var id: URL { url }
-        let url: URL
-        let name: String
+    init(model: SessionsWindowModel = SessionsWindowModel()) {
+        self.model = model
     }
 
-    /// Preferred reading order when a session folder is opened. The "frames"
-    /// (screenshots) and "log" (headless /meeting processor output) pills are
-    /// appended by loadFiles() when present — they aren't markdown documents.
-    private static let fileOrder = ["summary.md", "live-intelligence.md", "notes.md", "transcript.md", "chat.md", "discussion-guide.md", "screen-context.md"]
+    /// The reading column: at most the Quick AI panel width less its sides.
+    static let columnWidth = House.Layout.panelWidth - 2 * House.Spacing.lg
 
     var body: some View {
-        HSplitView {
-            sessionList
-                .frame(minWidth: 228, idealWidth: 260, maxWidth: 320)
-
-            VStack(alignment: .leading, spacing: 0) {
-                if let selected {
-                    detailToolbar(for: selected)
-                    if let upgradeStatus, upgradeStatusSessionID == selected.id {
-                        upgradeStatusLine(upgradeStatus)
-                    }
-                    Divider()
-                    ScrollView {
-                        HStack(alignment: .top, spacing: 0) {
-                            readerContent
-                                .frame(maxWidth: 760, alignment: .leading)
-                                .padding(.horizontal, 32)
-                                .padding(.vertical, 28)
-                            Spacer(minLength: 0)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .background(SessionReadingBackground())
-
-                    SlateFooter(
-                        statusColor: hasTranscript(selected) ? RTIDesign.Color.success : RTIDesign.Color.textTertiary,
-                        status: sessionFooterStatus(for: selected)
-                    ) {
-                        SlateKeyHint(label: "Ask about this", keys: ["↩"])
-                    }
-                } else {
-                    emptyState
-                }
+        HStack(spacing: 0) {
+            if model.isRailVisible {
+                SessionsRail(model: model)
+                    .frame(width: House.Layout.chatRail)
+                    .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
+                Rectangle()
+                    .fill(House.ColorToken.divider)
+                    .frame(width: House.hairline)
+                    .accessibilityHidden(true)
             }
-            .frame(minWidth: 380)
-            // The reading column needs an opaque ground: the footer well and
-            // the toolbar are painted OVER it, not instead of it.
-            .background(RTIDesign.Color.appBackground)
+            conversation
         }
-        .background(RTIDesign.Color.appBackground)
-        // Chrome is ink, never the system accent; toggles are ink too.
-        .tint(RTIDesign.Color.textPrimary)
+        .frame(
+            minWidth: House.Layout.chatMinWidth,
+            maxWidth: .infinity,
+            minHeight: House.Layout.chatMinHeight,
+            maxHeight: .infinity
+        )
+        .background(House.ColorToken.surface)
+        // The header shares the title-bar row with the traffic lights.
+        .ignoresSafeArea(.container, edges: .top)
+        .animation(reduceMotion ? nil : .easeOut(duration: House.Motion.select), value: model.isRailVisible)
+        // Chrome is ink, never the system accent.
+        .tint(House.ColorToken.textPrimary)
         .toggleStyle(SlateToggleStyle())
-        .onAppear(perform: reload)
-        .onChange(of: selected) { _, _ in
-            loadFiles()
-            loadSpeakerNames()
+        .preferredColorScheme(preferredColorScheme)
+        .task { await model.loadIfNeeded() }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiOpenSessionInBrowser)) { note in
+            guard let folder = note.object as? String else { return }
+            model.open(folder: folder)
         }
-        .onChange(of: selectedFile) { _, _ in loadText() }
-        .onReceive(NotificationCenter.default.publisher(for: .rtiOpenSessionInBrowser)) { notif in
-            guard let folder = notif.object as? String else { return }
-            selectSession(folder: folder)
-        }
-        .sheet(isPresented: $showingTitleEditor) {
-            titleEditor
-        }
-        .sheet(isPresented: $showingSpeakerEditor) {
-            speakerEditor
+        .sheet(isPresented: $model.isSpeakerEditorPresented) {
+            SpeakerEditorSheet(model: model)
         }
         .confirmationDialog(
             "Upgrade transcript with",
-            isPresented: $showingUpgradeProviderChoice,
-            titleVisibility: .visible,
-            presenting: pendingUpgradeSession
-        ) { session in
-            ForEach(upgradeProviderChoices) { provider in
-                Button(upgradeProviderButtonTitle(provider)) {
-                    startTranscriptUpgrade(for: session, provider: provider)
+            isPresented: $model.isUpgradeChoicePresented,
+            titleVisibility: .visible
+        ) {
+            ForEach(model.upgradeProviderChoices) { provider in
+                Button(model.upgradeProviderTitle(provider)) {
+                    model.startTranscriptUpgrade(provider: provider)
                 }
             }
-            Button("Cancel", role: .cancel) {
-                pendingUpgradeSession = nil
-            }
-        } message: { _ in
-            Text("Soniox is the default general-purpose file transcript provider. Choose Aliyun when this archived session is Chinese-heavy and you want the upgraded transcript generated by Aliyun.")
+            Button("Cancel", role: .cancel) { model.cancelUpgradeChoice() }
+        } message: {
+            Text("Soniox is the default. Choose Aliyun when the session is mostly Chinese.")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Sessions")
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch RTIAppearanceMode(rawValue: appearanceMode) ?? .system {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
         }
     }
 
-    /// Deep-link target for the "summary ready" notification and the overlay's
-    /// "Notes ready" control: refresh the list, select the matching session
-    /// folder, and land on its summary. Re-selecting the same session still
-    /// snaps the reader back to summary.md (loadFiles picks files.first).
-    private func selectSession(folder: String) {
-        sessions = SessionArchive.recentSessions(limit: 100)
-        guard let match = sessions.first(where: { $0.url.lastPathComponent == folder }) else { return }
-        selected = match
-        loadFiles()
-    }
+    // MARK: - Conversation column
 
-    // MARK: - Session list
-
-    private var sessionList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Sessions")
-                        .font(RTIDesign.Font.heading)
-                        .foregroundStyle(RTIDesign.Color.textPrimary)
-                    Text("\(sessions.count) saved meeting\(sessions.count == 1 ? "" : "s")")
-                        .font(RTIDesign.Font.meta)
-                        .foregroundStyle(RTIDesign.Color.textSecondary)
-                }
-                .padding(.horizontal, RTIDesign.Spacing.sm + 2)
-                .padding(.top, RTIDesign.Spacing.sm)
-
-                ForEach(groupedSessions, id: \.label) { group in
-                    VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxs - 1) {
-                        SlateSectionLabel(text: group.label)
-                            .padding(.horizontal, RTIDesign.Spacing.md)
-                            .padding(.top, RTIDesign.Spacing.xs)
-                        ForEach(group.sessions) { session in
-                            sessionRow(session)
-                        }
-                    }
-                    .padding(.horizontal, RTIDesign.Spacing.xs + 2)
-                }
+    private var conversation: some View {
+        VStack(spacing: 0) {
+            SessionsHeader(model: model)
+            if model.isFindPresented {
+                SessionsFindBar(model: model)
             }
-            .padding(.bottom, RTIDesign.Spacing.sm)
-        }
-        .scrollContentBackground(.hidden)
-        // A well, like the launcher's list column — not a floating material.
-        .background(RTIDesign.Color.trackBackground)
-        .overlay(alignment: .trailing) {
-            Rectangle().fill(RTIDesign.Color.divider).frame(width: House.hairline)
-        }
-    }
-
-    /// One row: AI-generated title as the primary label, the start time as a
-    /// quiet secondary. No redundant clock icon — every row is a past session,
-    /// so the icon was just clutter. A small dot marks sessions whose
-    /// auto-summary hasn't landed yet (still "Untitled").
-    private func sessionRow(_ session: SessionArchive.ArchivedSession) -> some View {
-        Button {
-            selected = session
-        } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.title ?? "Untitled session")
-                    .font(RTIDesign.Font.label)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(session.title == nil ? RTIDesign.Color.textSecondary : RTIDesign.Color.textPrimary)
-                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
-                    Text(timeString(for: session))
-                        .font(RTIDesign.Font.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(RTIDesign.Color.textTertiary)
-                    if session.title == nil {
-                        SlateStatusDot(color: RTIDesign.Color.textTertiary, size: 4)
-                            .help("No summary yet — the title appears once the end-of-session summary finishes.")
-                    }
+            if model.openRow != nil {
+                SessionFileChips(model: model)
+                    .frame(maxWidth: Self.columnWidth, alignment: .leading)
+                    .padding(.horizontal, House.Spacing.lg)
+                    .frame(maxWidth: .infinity)
+                if let notice = model.openNotice {
+                    SessionNoticeLine(text: notice.text, isRunning: notice.isRunning)
+                        .frame(maxWidth: Self.columnWidth, alignment: .leading)
+                        .padding(.horizontal, House.Spacing.lg)
+                        .padding(.top, House.Spacing.xs)
+                        .frame(maxWidth: .infinity)
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, RTIDesign.Spacing.xs + 2)
-            .frame(height: RTIDesign.Control.sessionRow)
-            .slateRaisedTile(selected == session, cornerRadius: RTIDesign.Radius.row)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected == session ? [.isButton, .isSelected] : .isButton)
-    }
-
-    // MARK: - Detail toolbar
-
-    /// File picker (summary / notes / transcript / …) aligned with the
-    /// reading column, with contextual actions trailing in the titlebar-style
-    /// header.
-    @ViewBuilder
-    private func detailToolbar(for session: SessionArchive.ArchivedSession) -> some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(session.title ?? "Untitled session")
-                        .font(RTIDesign.Font.heading)
-                        .foregroundStyle(RTIDesign.Color.textPrimary)
-                        .lineLimit(1)
-                    Text(sessionDetailLine(for: session))
-                        .font(RTIDesign.Font.meta)
-                        .foregroundStyle(RTIDesign.Color.textSecondary)
-                }
-
-                Spacer(minLength: 12)
-
-                Menu {
-                    if session.isRTIArchive {
-                        Button("Edit title…") { beginTitleEdit(for: session) }
-                        Button("Name speakers…") {
-                            loadSpeakerSuggestions()
-                            showingSpeakerEditor = true
-                        }
-                        Divider()
-                    }
-                    Button("Save as Markdown…") { exportMarkdown() }
-                    Button("Save as PDF…") { exportPDF() }
-                    Divider()
-                    Button("Reveal in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([session.url])
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 26, height: 26)
-                }
-                .menuStyle(.borderlessButton)
-                .help("More session actions")
-            }
-
-            HStack(alignment: .center, spacing: 10) {
-                HStack(spacing: 3) {
-                    ForEach(files) { file in
-                        Button {
-                            selectedFile = file
-                        } label: {
-                            Text(displayName(for: file))
-                                .font(RTIDesign.Font.meta)
-                                .foregroundStyle(
-                                    selectedFile == file
-                                        ? RTIDesign.Color.textPrimary
-                                        : RTIDesign.Color.textSecondary
-                                )
-                                .padding(.horizontal, RTIDesign.Spacing.xs + 2)
-                                .frame(height: RTIDesign.Control.tile)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: RTIDesign.Radius.tile, style: .continuous)
-                                        .strokeBorder(RTIDesign.Color.keyCapStroke, lineWidth: House.hairline)
-                                )
-                                .slateRaisedTile(selectedFile == file, cornerRadius: RTIDesign.Radius.tile)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(selectedFile == file ? [.isButton, .isSelected] : .isButton)
-                    }
-                }
-                .layoutPriority(1)
-
-                Spacer(minLength: 0)
-
-                Button {
-                    NSPasteboard.copyMarkdownRich(fileText)
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Copy as Markdown")
-                .disabled(fileText.isEmpty)
-
-                if selectedFile?.name == "summary" {
-                    Button(editingSummary ? "Cancel" : "Edit") {
-                        if editingSummary {
-                            editingSummary = false
-                        } else {
-                            summaryDraft = fileText
-                            editingSummary = true
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(fileText.isEmpty)
-                    .help("Correct this saved summary")
-
-                    if editingSummary {
-                        Button("Save", action: saveSummary)
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                    } else {
-                        Button(regeneratingSummaryID == session.id ? "Regenerating" : "Regenerate") {
-                            regenerateSummary(for: session)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(regeneratingSummaryID != nil || !hasTranscript(session))
-                        .help("Regenerate using this session's transcript and named speakers")
-                    }
-                }
-
-                if selectedFile?.name == "transcript" {
-                    if session.isRTIArchive {
-                        Button(editingTranscript ? "Cancel" : "Edit transcript") {
-                            if editingTranscript {
-                                editingTranscript = false
-                            } else {
-                                loadTranscriptTurns()
-                                editingTranscript = true
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(fileText.isEmpty)
-                        .help("Correct transcript turns and reassign speakers")
-
-                        if editingTranscript {
-                            Button("Save", action: saveTranscript)
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                                .disabled(transcriptTurns.isEmpty)
-                        }
-
-                        Button {
-                            promptTranscriptUpgrade(for: session)
-                        } label: {
-                            Label(upgradingSessionID == session.id ? "Upgrading" : "Upgrade", systemImage: "waveform.badge.magnifyingglass")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(upgradingSessionID != nil || !canUpgrade(session))
-                        .help(canUpgrade(session) ? "Run the configured async transcript provider over this session's retained audio." : "No retained session audio was found.")
-                    }
-                }
-
-                Button {
-                    askAboutSession(session)
-                } label: {
-                    Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(vaultRelativePath(for: session, file: "transcript.md") == nil)
-                .help("Ask the overlay chat about this session's transcript.")
+                SessionReader(model: model)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The scroll view would otherwise draw up under the header.
+                    .clipped()
+            } else {
+                emptyState
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
-        .background(
-            RTIDesign.Color.appBackground
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(RTIDesign.Color.divider)
-                        .frame(height: 1)
-                }
-        )
-    }
-
-    @ViewBuilder
-    private var readerContent: some View {
-        if editingSummary {
-            summaryEditor
-        } else if editingTranscript {
-            transcriptEditor
-        } else {
-            switch selectedFile?.name {
-            case "transcript":
-                SessionTranscriptReader(turns: SessionTranscriptReview.turns(from: fileText))
-            case "live-intelligence":
-                LiveIntelligenceReader(items: ArchivedFinding.parse(fileText))
-            case "summary":
-                if let split = summarySplit {
-                    VStack(alignment: .leading, spacing: 28) {
-                        SessionDocumentSection(title: "Share brief", systemImage: "paperplane") {
-                            RTIMarkdown(split.brief, style: .panel)
-                        }
-                        Divider()
-                        SessionDocumentSection(title: "Full record", systemImage: "doc.text") {
-                            RTIMarkdown(split.record, style: .panel)
-                        }
-                    }
-                } else {
-                    RTIMarkdown(fileText, style: .panel)
-                }
-            case "frames":
-                if let dir = selectedFile?.url {
-                    SessionFramesGallery(directory: dir)
-                }
-            case "log":
-                Text(fileText)
-                    .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            default:
-                RTIMarkdown(fileText, style: .panel)
+        .overlay(alignment: .topTrailing) {
+            if model.actionsPlacement == .header {
+                SessionActionsCard(model: model, showsKeys: true)
+                    .frame(width: House.Layout.chatRail + House.Spacing.xxxxl)
+                    .padding(.top, House.Control.composer)
             }
         }
     }
 
-    private func displayName(for file: SessionFile) -> String {
-        switch file.name {
-        case "summary": "Summary"
-        case "live-intelligence": "Intelligence"
-        case "notes": "Notes"
-        case "transcript": "Transcript"
-        case "chat": "Chat"
-        case "discussion-guide": "Guide"
-        case "screen-context": "Screen"
-        case "frames": "Screenshots"
-        case "log": "Log"
-        default: file.name.capitalized
-        }
-    }
-
-    private func sessionDetailLine(for session: SessionArchive.ArchivedSession) -> String {
-        var parts: [String] = []
-        if let date = session.date {
-            parts.append(Self.detailDateStamp.string(from: date))
-        }
-        if let duration = sessionMetadata(for: session)?.durationSeconds {
-            parts.append(durationString(duration))
-        }
-        return parts.isEmpty ? session.displayName : parts.joined(separator: "  ·  ")
-    }
-
-    private func sessionMetadata(for session: SessionArchive.ArchivedSession) -> SessionArchiveMetadata? {
-        guard session.isRTIArchive else { return nil }
-        let url = session.url.appendingPathComponent("session.json")
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data)
-    }
-
-    private func durationString(_ seconds: Int) -> String {
-        let hours = seconds / 3600
-        let minutes = (seconds % 3600) / 60
-        let remainder = seconds % 60
-        if hours > 0 {
-            return "\(hours) hr \(minutes) min"
-        }
-        return remainder > 0 ? "\(minutes) min \(remainder) sec" : "\(minutes) min"
-    }
-
-    private static let detailDateStamp: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy 'at' HH:mm"
-        return formatter
-    }()
-
-    private func upgradeStatusLine(_ text: String) -> some View {
-        HStack(spacing: 8) {
-            if upgradingSessionID == upgradeStatusSessionID {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.7)
-            }
-            Text(text)
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: 28)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 5)
-        .background(.bar)
-    }
-
+    /// No session to show: three hint lines, each with its real key.
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray")
-                .font(.system(size: House.TypeToken.Size.display))
-                .foregroundStyle(RTIDesign.Color.textTertiary)
-            Text(sessions.isEmpty ? "No saved sessions yet" : "Select a session")
-                .font(RTIDesign.Font.label)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-            if !sessions.isEmpty {
-                Text("Sessions appear here once they're saved on stop.")
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(RTIDesign.Color.textTertiary)
+        VStack(spacing: House.Spacing.xs) {
+            Text(model.hasLoaded ? "No saved sessions yet" : "Loading sessions…")
+            if model.hasLoaded {
+                Text("⌘⇧R starts a recording")
+                Text("A session saves here when it finishes")
             }
         }
+        .font(House.TypeToken.bodySmall)
+        .foregroundStyle(House.ColorToken.textTertiary)
+        .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    /// Footer line for the reading pane: what this record is made of.
-    private func sessionFooterStatus(for session: SessionArchive.ArchivedSession) -> String {
-        var parts: [String] = [hasTranscript(session) ? "Transcript ready" : "No transcript"]
-        if let file = selectedFile { parts.append(displayName(for: file)) }
-        return parts.joined(separator: " · ")
-    }
-
-    // MARK: - Date grouping
-
-    /// Buckets sessions into native macOS-style date sections: Today,
-    /// Yesterday, This Week, then one section per older month
-    /// ("June 2026"). Sessions with an unparseable folder stamp fall into
-    /// "Earlier". Removes the repetitive month/day text from individual rows
-    /// — the section header carries the date, the row carries just the time.
-    private var groupedSessions: [(label: String, sessions: [SessionArchive.ArchivedSession])] {
-        let cal = Calendar.current
-        let now = Date()
-        var today: [SessionArchive.ArchivedSession] = []
-        var yesterday: [SessionArchive.ArchivedSession] = []
-        var thisWeek: [SessionArchive.ArchivedSession] = []
-        var byMonth: [(label: String, key: String, sessions: [SessionArchive.ArchivedSession])] = []
-        var earlier: [SessionArchive.ArchivedSession] = []
-
-        for session in sessions {
-            guard let date = session.date else {
-                earlier.append(session)
-                continue
-            }
-            if cal.isDateInToday(date) {
-                today.append(session)
-            } else if cal.isDateInYesterday(date) {
-                yesterday.append(session)
-            } else if let days = cal.dateComponents([.day], from: date, to: now).day, days < 7 {
-                thisWeek.append(session)
-            } else {
-                let key = monthKey(date)
-                let label = monthLabel(date)
-                if let idx = byMonth.firstIndex(where: { $0.key == key }) {
-                    byMonth[idx].sessions.append(session)
-                } else {
-                    byMonth.append((label, key, [session]))
-                }
-            }
-        }
-
-        var out: [(label: String, sessions: [SessionArchive.ArchivedSession])] = []
-        if !today.isEmpty { out.append(("Today", today)) }
-        if !yesterday.isEmpty { out.append(("Yesterday", yesterday)) }
-        if !thisWeek.isEmpty { out.append(("This Week", thisWeek)) }
-        // Months are newest-first because `sessions` is newest-first.
-        for m in byMonth.sorted(by: { $0.key > $1.key }) {
-            out.append((m.label, m.sessions))
-        }
-        if !earlier.isEmpty { out.append(("Earlier", earlier)) }
-        return out
-    }
-
-    /// "16:13" for the row's quiet secondary text. Falls back to the pretty
-    /// name when the folder stamp can't be parsed.
-    private func timeString(for session: SessionArchive.ArchivedSession) -> String {
-        guard let date = session.date else { return session.displayName }
-        return Self.rowTimeStamp.string(from: date)
-    }
-
-    private static let rowTimeStamp: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f
-    }()
-
-    private func monthKey(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM"
-        return f.string(from: date)
-    }
-
-    private func monthLabel(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "MMMM yyyy"
-        return f.string(from: date)
-    }
-
-    // MARK: - Loading
-
-    private func reload() {
-        sessions = SessionArchive.recentSessions(limit: 100)
-        if selected == nil { selected = sessions.first }
-        loadSpeakerNames()
-    }
-
-    private func loadFiles() {
-        guard let selected else { files = []; selectedFile = nil; return }
-        guard selected.isRTIArchive else {
-            files = [SessionFile(url: selected.transcriptURL, name: "transcript")]
-            selectedFile = files.first
-            return
-        }
-        let present = (try? FileManager.default.contentsOfDirectory(at: selected.url, includingPropertiesForKeys: nil)) ?? []
-        let byName = Dictionary(uniqueKeysWithValues: present.map { ($0.lastPathComponent, $0) })
-        var loaded = Self.fileOrder.compactMap { name in
-            byName[name].map { SessionFile(url: $0, name: String(name.dropLast(3))) }
-        }
-        // Screenshots kept by the local-vision lane live in frames/.
-        let framesDir = selected.url.appendingPathComponent("frames", isDirectory: true)
-        if let frames = try? FileManager.default.contentsOfDirectory(at: framesDir, includingPropertiesForKeys: nil),
-           frames.contains(where: { ["jpg", "jpeg", "png"].contains($0.pathExtension.lowercased()) }) {
-            loaded.append(SessionFile(url: framesDir, name: "frames"))
-        }
-        // The headless /meeting processor's log for this session, if it ran.
-        if let startedAt = selected.date {
-            let log = SessionArchive.processingLogURL(forSessionStartedAt: startedAt)
-            if FileManager.default.fileExists(atPath: log.path) {
-                loaded.append(SessionFile(url: log, name: "log"))
-            }
-        }
-        files = loaded
-        selectedFile = files.first
-    }
-
-    private func canUpgrade(_ session: SessionArchive.ArchivedSession) -> Bool {
-        session.isRTIArchive && !TranscriptUpgradeService.audioInputs(in: session.url).isEmpty
-    }
-
-    private func hasTranscript(_ session: SessionArchive.ArchivedSession) -> Bool {
-        FileManager.default.fileExists(atPath: session.transcriptURL.path)
-    }
-
-    /// This session's `transcript.md` as a path relative to `databases/`, the
-    /// shape the chat's `@mention` / vault tools resolve. Nil if the file is
-    /// missing or the vault can't be located.
-    private func vaultRelativePath(for session: SessionArchive.ArchivedSession, file: String) -> String? {
-        guard let dbs = VaultWorkstreamStore.databasesDir() else { return nil }
-        let fileURL = file == "transcript.md"
-            ? session.transcriptURL
-            : session.url.appendingPathComponent(file)
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
-        let base = dbs.standardizedFileURL.path
-        let path = fileURL.standardizedFileURL.path
-        guard path.hasPrefix(base + "/") else { return nil }
-        return String(path.dropFirst(base.count + 1))
-    }
-
-    /// Bring up the overlay's Assist tab with this session's transcript
-    /// pre-attached as an `@mention` so the user can ask about it — read-only,
-    /// the browser itself never analyzes or answers.
-    private func askAboutSession(_ session: SessionArchive.ArchivedSession) {
-        guard let path = vaultRelativePath(for: session, file: "transcript.md") else { return }
-        WindowCoordinator.shared.showOverlay()
-        NotificationCenter.default.post(name: .rtiSelectTab, object: "assist")
-        NotificationCenter.default.post(name: .rtiSeedChatMention, object: path)
-    }
-
-    private var upgradeProviderChoices: [AsyncTranscriptProviderOption] {
-        let active = AsyncTranscriptProviders.active
-        return [active] + AsyncTranscriptProviders.all.filter { $0.id != active.id }
-    }
-
-    private func upgradeProviderButtonTitle(_ provider: AsyncTranscriptProviderOption) -> String {
-        if provider.id == AsyncTranscriptProviders.aliyun.id {
-            return "Aliyun (Chinese-heavy)"
-        }
-        if provider.id == AsyncTranscriptProviders.soniox.id {
-            return provider.id == AsyncTranscriptProviders.active.id ? "Soniox (default)" : "Soniox"
-        }
-        return provider.displayName
-    }
-
-    private func promptTranscriptUpgrade(for session: SessionArchive.ArchivedSession) {
-        pendingUpgradeSession = session
-        showingUpgradeProviderChoice = true
-    }
-
-    private func startTranscriptUpgrade(for session: SessionArchive.ArchivedSession, provider: AsyncTranscriptProviderOption) {
-        pendingUpgradeSession = nil
-        upgradingSessionID = session.id
-        upgradeStatusSessionID = session.id
-        upgradeStatus = "Starting transcript upgrade with \(provider.displayName)…"
-        Task {
-            do {
-                let result = try await TranscriptUpgradeService.upgrade(session: session, provider: provider) { progress in
-                    Task { @MainActor in
-                        upgradeStatusSessionID = session.id
-                        upgradeStatus = progress.message
-                        if progress.isTerminal { upgradingSessionID = nil }
-                    }
-                }
-                await MainActor.run {
-                    SessionArchive.clearAutomaticUpgradePending(in: session.url)
-                    upgradeStatus = result.summaryURL == nil
-                        ? "Transcript upgraded with \(result.provider); summary regeneration failed."
-                        : "Transcript upgraded with \(result.provider); summary regenerated."
-                    upgradeStatusSessionID = session.id
-                    upgradingSessionID = nil
-                    reload()
-                    selected = sessions.first(where: { $0.id == session.id }) ?? selected
-                    loadFiles()
-                    selectedFile = files.first(where: { $0.name == "transcript" }) ?? files.first
-                }
-            } catch {
-                await MainActor.run {
-                    upgradeStatus = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                    upgradeStatusSessionID = session.id
-                    upgradingSessionID = nil
-                }
-            }
-        }
-    }
-
-    private func exportMarkdown() {
-        guard let selectedFile, let selected else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "rti-\(selectedFile.name)-\(selected.displayName.replacingOccurrences(of: " · ", with: "-").replacingOccurrences(of: ":", with: "")).md"
-        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
-        let content = fileText
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            try? content.write(to: url, atomically: true, encoding: .utf8)
-        }
-    }
-
-    /// Render the markdown to a paginated PDF via NSAttributedString printing.
-    private func exportPDF() {
-        guard let selectedFile else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = panelBaseName(selectedFile) + ".pdf"
-        panel.allowedContentTypes = [.pdf]
-        let content = fileText
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            let attributed = (try? NSAttributedString(
-                markdown: content,
-                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-            )) ?? NSAttributedString(string: content)
-            let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 540, height: 720))
-            textView.textStorage?.setAttributedString(attributed)
-            textView.font = .systemFont(ofSize: 11)
-            let printInfo = NSPrintInfo()
-            printInfo.jobDisposition = .save
-            printInfo.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = url
-            printInfo.topMargin = 36; printInfo.bottomMargin = 36
-            printInfo.leftMargin = 36; printInfo.rightMargin = 36
-            let op = NSPrintOperation(view: textView, printInfo: printInfo)
-            op.showsPrintPanel = false
-            op.showsProgressPanel = false
-            op.run()
-        }
-    }
-
-    private func panelBaseName(_ file: SessionFile) -> String {
-        let stamp = selected?.displayName
-            .replacingOccurrences(of: " · ", with: "-")
-            .replacingOccurrences(of: ":", with: "") ?? "session"
-        return "rti-\(file.name)-\(stamp)"
-    }
-
-    private func loadText() {
-        guard let selectedFile else { fileText = ""; return }
-        if selectedFile.name == "frames" { fileText = ""; return }
-        var text = (try? String(contentsOf: selectedFile.url, encoding: .utf8)) ?? "(couldn't read file)"
-        // Hide the machine-facing frontmatter block from the reading view.
-        if text.hasPrefix("---"), let end = text.range(of: "\n---\n") {
-            text = String(text[end.upperBound...])
-        }
-        fileText = applyingSpeakerNames(to: text)
-    }
-
-    private func loadTranscriptTurns() {
-        guard let selectedFile, selectedFile.name == "transcript",
-              let text = try? String(contentsOf: selectedFile.url, encoding: .utf8)
-        else {
-            transcriptTurns = []
-            return
-        }
-        transcriptTurns = SessionTranscriptReview.turns(from: text)
-    }
-
-    private func saveTranscript() {
-        guard let selectedFile, selectedFile.name == "transcript",
-              let original = try? String(contentsOf: selectedFile.url, encoding: .utf8)
-        else { return }
-        let updated = SessionTranscriptReview.replacingTurns(in: original, with: transcriptTurns)
-        try? updated.write(to: selectedFile.url, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: selectedFile.url.path)
-        editingTranscript = false
-        loadText()
-    }
-
-    private func loadSpeakerNames() {
-        guard let selected else {
-            speakerNames = [:]
-            return
-        }
-        guard selected.isRTIArchive else {
-            speakerNames = [:]
-            loadText()
-            return
-        }
-        let url = selected.url.appendingPathComponent("speaker-names.json")
-        guard let data = try? Data(contentsOf: url),
-              let names = try? JSONDecoder().decode([String: String].self, from: data)
-        else {
-            speakerNames = [:]
-            return
-        }
-        // Legacy files are keyed by raw ids (`remote_1`) from live renames;
-        // current files by display labels. Normalize so both render.
-        speakerNames = SpeakerLabelMapping.displayKeyedNames(names)
-        loadText()
-    }
-
-    private func applyingSpeakerNames(to text: String) -> String {
-        speakerNames
-            .filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .sorted { $0.key.count > $1.key.count }
-            .reduce(text) { result, pair in
-                result.replacingOccurrences(of: pair.key, with: pair.value.trimmingCharacters(in: .whitespacesAndNewlines))
-            }
-    }
-
-    private var speakerLabels: [String] {
-        guard let selected else { return [] }
-        let transcript = selected.transcriptURL
-        let text = (try? String(contentsOf: transcript, encoding: .utf8)) ?? ""
-        return SpeakerLabelMapping.archivedSpeakerLabels(in: text)
-    }
-
-    private func beginTitleEdit(for session: SessionArchive.ArchivedSession) {
-        titleDraft = session.title ?? ""
-        showingTitleEditor = true
-    }
-
-    private func saveTitle() {
-        guard let selected, selected.isRTIArchive else { return }
-        let title = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let url = selected.url.appendingPathComponent("title.txt")
-        if title.isEmpty {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: selected.url.appendingPathComponent("title-manual.txt"))
-        } else {
-            try? title.write(to: url, atomically: true, encoding: .utf8)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-            FileManager.default.createFile(atPath: selected.url.appendingPathComponent("title-manual.txt").path, contents: nil)
-        }
-        showingTitleEditor = false
-        let id = selected.id
-        reload()
-        self.selected = sessions.first(where: { $0.id == id })
-    }
-
-    private func saveSummary() {
-        guard let selectedFile, selectedFile.name == "summary" else { return }
-        let original = (try? String(contentsOf: selectedFile.url, encoding: .utf8)) ?? ""
-        let frontmatter: String
-        if original.hasPrefix("---"), let end = original.range(of: "\n---\n") {
-            frontmatter = String(original[..<end.upperBound])
-        } else {
-            frontmatter = ""
-        }
-        let content = frontmatter + summaryDraft.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
-        try? content.write(to: selectedFile.url, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: selectedFile.url.path)
-        editingSummary = false
-        loadText()
-    }
-
-    private func regenerateSummary(for session: SessionArchive.ArchivedSession) {
-        guard session.isRTIArchive else { return }
-        let transcriptURL = session.transcriptURL
-        guard var transcript = try? String(contentsOf: transcriptURL, encoding: .utf8) else { return }
-        if transcript.hasPrefix("---"), let end = transcript.range(of: "\n---\n") {
-            transcript = String(transcript[end.upperBound...])
-        }
-        regeneratingSummaryID = session.id
-        Task {
-            let summaryURL = await SessionArchive.writeAutoSummary(
-                transcriptText: transcript,
-                to: session.url,
-                startedAt: session.date ?? Date(),
-                speakerNames: speakerNames
-            )
-            await MainActor.run {
-                regeneratingSummaryID = nil
-                guard summaryURL != nil else { return }
-                let id = session.id
-                reload()
-                selected = sessions.first(where: { $0.id == id })
-                loadFiles()
-            }
-        }
-    }
-
-    private var titleEditor: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Edit session title")
-                .font(.system(size: House.TypeToken.Size.title, weight: .semibold))
-            Text("Use the real study or meeting name. This replaces the AI-generated label in the Sessions list.")
-                .font(RTIDesign.Font.meta)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-            TextField("Session title", text: $titleDraft)
-                .textFieldStyle(.roundedBorder)
-            HStack {
-                Spacer()
-                Button("Cancel") { showingTitleEditor = false }
-                Button("Save", action: saveTitle)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(22)
-        .frame(width: 420)
-    }
-
-    private var summaryEditor: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Edit summary")
-                .font(.system(size: House.TypeToken.Size.title, weight: .semibold))
-            TextEditor(text: $summaryDraft)
-                .font(RTIDesign.Font.bodySmall)
-                .frame(minHeight: 440)
-                .overlay {
-                    RoundedRectangle(cornerRadius: RTIDesign.Radius.tile)
-                        .stroke(RTIDesign.Color.border)
-                }
-        }
-    }
-
-    private var transcriptEditor: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Edit transcript")
-                .font(.system(size: House.TypeToken.Size.title, weight: .semibold))
-            Text("Correct text or assign each turn to a named speaker. Notes stay distinct from spoken turns.")
-                .font(RTIDesign.Font.meta)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-            ForEach($transcriptTurns) { $turn in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text(turn.timestamp)
-                            .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
-                            .foregroundStyle(RTIDesign.Color.textSecondary)
-                        if turn.isNote {
-                            Label("Note", systemImage: "note.text")
-                                .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
-                                .foregroundStyle(RTIDesign.Color.warning)
-                        } else {
-                            TextField("Speaker", text: $turn.speaker)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 150)
-                            Menu("Assign") {
-                                ForEach(transcriptSpeakerOptions, id: \.self) { speaker in
-                                    Button(speaker) { turn.speaker = speaker }
-                                }
-                            }
-                            .controlSize(.small)
-                        }
-                    }
-                    TextEditor(text: $turn.text)
-                        .font(RTIDesign.Font.bodySmall)
-                        .frame(minHeight: 58)
-                        .padding(4)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip)
-                                .stroke(RTIDesign.Color.border)
-                        }
-                }
-                .padding(12)
-                .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.row).fill(RTIDesign.Color.chipFill))
-            }
-        }
-    }
-
-    private var transcriptSpeakerOptions: [String] {
-        let directNames = speakerNames.values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        return Array(Set(transcriptTurns.filter { !$0.isNote }.map(\.speaker) + directNames))
-            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-    }
-
-    private var speakerEditor: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Name speakers")
-                .font(.system(size: House.TypeToken.Size.title, weight: .semibold))
-            Text("These names are saved only for this session and replace anonymous speaker labels in its transcript and summary.")
-                .font(RTIDesign.Font.meta)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-            if speakerLabels.isEmpty {
-                Text("No anonymous speakers found in this transcript.")
-                    .font(RTIDesign.Font.bodySmall)
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
-            } else {
-                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
-                    ForEach(speakerLabels, id: \.self) { label in
-                        GridRow {
-                            Text(label)
-                                .font(RTIDesign.Font.label)
-                            VStack(alignment: .leading, spacing: 3) {
-                                TextField("Name", text: speakerBinding(for: label))
-                                    .textFieldStyle(.roundedBorder)
-                                speakerSuggestionHint(for: label)
-                            }
-                        }
-                    }
-                }
-            }
-            HStack {
-                Spacer()
-                Button("Cancel") { showingSpeakerEditor = false }
-                Button("Save", action: saveSpeakerNames)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(22)
-        .frame(width: 470)
-    }
-
-    private func speakerBinding(for label: String) -> Binding<String> {
-        Binding(
-            get: { speakerNames[label, default: ""] },
-            set: { speakerNames[label] = $0 }
-        )
-    }
-
-    /// Voice-profile hint under a rename field: shows the vault matcher's
-    /// suggestion (accept or maybe band) with its cosine score. "Use" fills
-    /// the field; nothing is applied until Save — the human confirm the
-    /// suggestion-only doctrine requires.
-    @ViewBuilder
-    private func speakerSuggestionHint(for label: String) -> some View {
-        if let entry = speakerSuggestions[label],
-           let name = entry.suggestion,
-           entry.isAccept || entry.isMaybe {
-            HStack(spacing: 6) {
-                Text("Voice match: \(name) (\(String(format: "%.2f", entry.score ?? 0))\(entry.isMaybe ? ", weak" : ""))")
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
-                Button("Use") { speakerNames[label] = name }
-                    .buttonStyle(.link)
-                    .font(RTIDesign.Font.caption)
-            }
-        }
-    }
-
-    private func loadSpeakerSuggestions() {
-        guard let selected, selected.isRTIArchive,
-              let file = SpeakerSuggestions.load(fromSessionDir: selected.url) else {
-            speakerSuggestions = [:]
-            return
-        }
-        speakerSuggestions = file.speakers.reduce(into: [:]) { $0[$1.label] = $1 }
-    }
-
-    private func saveSpeakerNames() {
-        guard let selected else { return }
-        let names = speakerNames.reduce(into: [String: String]()) { result, pair in
-            let name = pair.value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !name.isEmpty { result[pair.key] = name }
-        }
-        let url = selected.url.appendingPathComponent("speaker-names.json")
-        if names.isEmpty {
-            try? FileManager.default.removeItem(at: url)
-        } else if let data = try? JSONEncoder().encode(names) {
-            try? data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-            // Save is the human confirm — let the vault flywheel enroll these
-            // voices so future sessions get suggested automatically.
-            SpeakerEnrollment.fireAndForget(sessionDir: selected.url)
-        }
-        speakerNames = names
-        showingSpeakerEditor = false
-        loadText()
-    }
-
-    /// The two-part summary format (`=== SHARE BRIEF ===` / `=== FULL RECORD
-    /// ===`): split so the brief renders as a plain preformatted block (it's
-    /// meant to paste verbatim) and the record as markdown. Falls back to
-    /// rendering `fileText` unsplit, exactly as before, when the marker is
-    /// absent — legacy summaries and every other file type are unaffected.
-    private var summarySplit: (brief: String, record: String)? {
-        guard let recordRange = fileText.range(of: "=== FULL RECORD ===") else { return nil }
-        var brief = String(fileText[..<recordRange.lowerBound])
-        if let briefMarkerRange = brief.range(of: "=== SHARE BRIEF ===") {
-            brief = String(brief[briefMarkerRange.upperBound...])
-        }
-        brief = brief.trimmingCharacters(in: .whitespacesAndNewlines)
-        let record = String(fileText[recordRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !brief.isEmpty else { return nil }
-        return (brief, record)
     }
 }
 
-private struct SessionReadingBackground: View {
+// MARK: - Header
+
+/// Rail toggle, the session title over its date line, then "Ask in RTI"
+/// and the `⌘K` glyph. No divider under it.
+private struct SessionsHeader: View {
+    @Bindable var model: SessionsWindowModel
+
     var body: some View {
-        RTIDesign.Color.appBackground
+        HStack(spacing: House.Spacing.sm) {
+            QuickAIGlyphButton(
+                symbol: "sidebar.left",
+                font: HouseChatType.glyphSmall,
+                color: House.ColorToken.textSecondary,
+                label: model.isRailVisible ? "Hide Session List" : "Show Session List",
+                help: "\(model.isRailVisible ? "Hide" : "Show") session list (⌃⌘S)",
+                accessibilityValue: model.isRailVisible ? "Open" : "Closed"
+            ) {
+                model.toggleRail()
+            }
+            HouseTitleBlock(
+                title: model.openRow?.title.text ?? "Sessions",
+                // One segment, so a narrow window cuts the line once.
+                line: model.headerLine.isEmpty ? [] : [.text(model.headerLine)]
+            )
+            .layoutPriority(1)
+            Spacer(minLength: House.Spacing.sm)
+            if let row = model.openRow, row.vaultTranscriptPath != nil {
+                // The labelled chip; a narrow window keeps its glyph only.
+                ViewThatFits(in: .horizontal) {
+                    askChip(label: true)
+                    askChip(label: false)
+                }
+            }
+            if model.openRow != nil {
+                QuickAIGlyphButton(
+                    symbol: "command",
+                    font: HouseChatType.glyphMedium,
+                    color: House.ColorToken.textPrimary,
+                    label: "Session Actions",
+                    help: "Session actions (⌘K)",
+                    accessibilityValue: model.actionsPlacement == .header ? "Open" : "Closed"
+                ) {
+                    if model.actionsPlacement == .header {
+                        model.closeActions()
+                    } else {
+                        model.showActions(placement: .header)
+                    }
+                }
+                .background(
+                    Circle()
+                        .fill(model.actionsPlacement == .header ? House.ColorToken.hoverFill : Color.clear)
+                )
+            }
+        }
+        // The traffic lights share this row while the rail is in.
+        .padding(.leading, model.isRailVisible || model.isWindowFullScreen ? House.Spacing.sm : HouseChatMetrics.trafficLightInset)
+        .padding(.trailing, House.Spacing.lg)
+        .frame(height: House.Control.composer)
+        .background {
+            ZStack {
+                House.ColorToken.surface
+                // A press on the header's empty space moves the window.
+                WindowDragArea()
+            }
+        }
+        .zIndex(1)
+    }
+
+    private func askChip(label: Bool) -> some View {
+        Button {
+            model.perform(.ask)
+        } label: {
+            HStack(spacing: House.Spacing.xs) {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(House.TypeToken.label)
+                if label {
+                    Text("Ask in RTI")
+                        .font(House.TypeToken.label)
+                        .lineLimit(1)
+                    KeyCapGroup(keys: ["⌘", "J"])
+                }
+            }
+            .foregroundStyle(House.ColorToken.textPrimary)
+            .padding(.horizontal, label ? House.Spacing.sm : House.Spacing.xs)
+            .frame(height: House.Control.chip)
+            .background(
+                RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                    .fill(House.ColorToken.chipFill)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help("Ask about this session in RTI's chat (⌘J)")
+        .accessibilityLabel("Ask in RTI")
+    }
+}
+
+// MARK: - File chips and notice
+
+/// The open session's files: Summary, Notes, Transcript, Chat, and so on.
+/// The selected chip carries the house selection; hover is half of it.
+private struct SessionFileChips: View {
+    @Bindable var model: SessionsWindowModel
+    @State private var hovered: URL?
+
+    var body: some View {
+        HStack(spacing: House.Spacing.xxs) {
+            ForEach(model.files) { file in
+                let isSelected = model.selectedFile == file
+                Button {
+                    model.select(file)
+                } label: {
+                    Text(file.displayName)
+                        .font(House.TypeToken.meta)
+                        .foregroundStyle(isSelected ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, House.Spacing.xs)
+                        .frame(height: House.Control.chip)
+                        .background {
+                            RowHighlight(isSelected: isSelected, isHovering: hovered == file.url, radius: House.Radius.sm)
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight($hovered, id: file.url)
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, House.Spacing.xxs)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Session files")
+    }
+}
+
+/// One tool-style line for a long job: the transcript upgrade or a summary
+/// regeneration. Thinking dots while it runs.
+private struct SessionNoticeLine: View {
+    let text: String
+    let isRunning: Bool
+
+    var body: some View {
+        HStack(spacing: House.Spacing.xs) {
+            Group {
+                if isRunning {
+                    ThinkingIndicator()
+                } else {
+                    Image(systemName: "checkmark")
+                        .font(House.TypeToken.bodySmall)
+                        .foregroundStyle(House.ColorToken.textTertiary)
+                }
+            }
+            .frame(width: House.Control.keyCap)
+            Text(text)
+                .font(House.TypeToken.bodySmall)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(minHeight: House.Control.keyCap)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Find bar
+
+/// `⌘F`: find in the open file. `↩` or `⌘G` next, `⇧↩` or `⇧⌘G` previous,
+/// `esc` closes. Every hit on `hoverFill`, the current one on
+/// `selectionFill`.
+private struct SessionsFindBar: View {
+    @Bindable var model: SessionsWindowModel
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: House.Spacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .font(House.TypeToken.bodySmall)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .accessibilityHidden(true)
+            TextField(text: $model.findQuery, prompt: Text("")) {
+                Text("Find in session")
+            }
+            .textFieldStyle(.plain)
+            .labelsHidden()
+            .font(House.TypeToken.bodySmall)
+            .foregroundStyle(House.ColorToken.textPrimary)
+            .overlay(alignment: .leading) {
+                if model.findQuery.isEmpty {
+                    Text("Find in session")
+                        .font(House.TypeToken.bodySmall)
+                        .foregroundStyle(House.ColorToken.textTertiary)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .focused($focused)
+            .onSubmit { model.findNext() }
+            Text(model.findStatus)
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize()
+            KeyHint(label: "Next", keys: ["↩"])
+            KeyHint(label: "Previous", keys: ["⇧", "↩"])
+            QuickAIGlyphButton(
+                symbol: "xmark",
+                font: HouseChatType.glyphSmall,
+                color: House.ColorToken.textSecondary,
+                label: "Close Find",
+                help: "Close find (esc)"
+            ) {
+                model.closeFind()
+            }
+        }
+        .padding(.horizontal, House.Spacing.md)
+        .frame(height: House.Control.pill)
+        .background(
+            RoundedRectangle(cornerRadius: House.Radius.md, style: .continuous)
+                .fill(House.ColorToken.surfaceTint)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: House.Radius.md, style: .continuous)
+                .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
+        )
+        .padding(.horizontal, House.Spacing.lg)
+        .padding(.bottom, House.Spacing.xs)
+        .onAppear { focused = true }
+        .onChange(of: model.findFocusRequest) { _, _ in focused = true }
+        .onChange(of: focused) { _, isFocused in
+            if isFocused { model.focus = .find } else if model.focus == .find { model.focus = .none }
+        }
+        .onChange(of: model.findStatus) { _, status in
+            guard !status.isEmpty else { return }
+            QuickAIAnnouncement.post(status, priority: .medium)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Find in session")
+    }
+}
+
+// MARK: - Rail
+
+/// The session list: search, then Live, Today, This week, Earlier, or one
+/// Results list while a query is typed. `↑↓` move, `↩` opens, `⌘K` the
+/// highlighted row's actions, `⌘1`…`⌘9` jump (every number shows while `⌘`
+/// is held), `esc` clears the search and then hides the list.
+private struct SessionsRail: View {
+    @Bindable var model: SessionsWindowModel
+    @FocusState private var searchFocused: Bool
+    @FocusState private var renameFocused: Bool
+    @State private var hoveredRowID: String?
+
+    var body: some View {
+        let sections = model.railSections
+        let total = sections.reduce(0) { $0 + $1.rows.count }
+        VStack(alignment: .leading, spacing: 0) {
+            // The traffic lights' row.
+            Color.clear.frame(height: House.Control.composer)
+            searchField
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                        if !model.isSearching {
+                            SessionsLiveSection()
+                        }
+                        if total == 0, !(model.isSearching && model.contentSearchState == .searching) {
+                            Text(model.railEmptyText)
+                                .font(House.TypeToken.bodySmall)
+                                .foregroundStyle(House.ColorToken.textTertiary)
+                                .frame(maxWidth: .infinity, minHeight: House.Control.row)
+                        }
+                        ForEach(Array(sections.enumerated()), id: \.element.title) { sectionIndex, section in
+                            let offset = sections[..<sectionIndex].reduce(0) { $0 + $1.rows.count }
+                            sectionView(section.title, rows: section.rows, offset: offset, total: total)
+                        }
+                        if model.isSearching {
+                            contentSearchLine
+                        }
+                    }
+                    .padding(.horizontal, House.Spacing.xs)
+                    .padding(.bottom, House.Spacing.sm)
+                }
+                .onChange(of: model.railIndex) { _, index in
+                    let rows = model.railRows
+                    guard rows.indices.contains(index) else { return }
+                    proxy.scrollTo(rows[index].id)
+                }
+            }
+            if model.actionsPlacement == .rail {
+                // The rail is narrow: titles win, and only ↩ shows.
+                SessionActionsCard(model: model, showsKeys: false)
+            }
+        }
+        .background(House.ColorToken.surfaceSunken)
+        .clipped()
+        .onAppear { if model.focus == .railSearch { searchFocused = true } }
+        .onChange(of: model.railFocusRequest) { _, _ in searchFocused = true }
+        .onChange(of: model.renameFocusRequest) { _, _ in renameFocused = true }
+        .onChange(of: searchFocused) { _, focused in
+            if focused { model.focus = .railSearch } else if model.focus == .railSearch { model.focus = .none }
+        }
+        .onChange(of: renameFocused) { _, focused in
+            if focused { model.focus = .rename } else if model.focus == .rename { model.focus = .none }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Session list")
+    }
+
+    private var searchField: some View {
+        HStack(spacing: House.Spacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .accessibilityHidden(true)
+            TextField(text: $model.railQuery, prompt: Text("")) {
+                Text("Search sessions")
+            }
+            .textFieldStyle(.plain)
+            .labelsHidden()
+            .font(House.TypeToken.bodySmall)
+            .foregroundStyle(House.ColorToken.textPrimary)
+            .overlay(alignment: .leading) {
+                if model.railQuery.isEmpty {
+                    Text("Search sessions…")
+                        .font(House.TypeToken.bodySmall)
+                        .foregroundStyle(House.ColorToken.textTertiary)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .focused($searchFocused)
+        }
+        .padding(.horizontal, House.Spacing.sm)
+        .frame(height: House.Control.chip)
+        .background(
+            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                .fill(House.ColorToken.surfaceTint)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
+        )
+        .padding(.horizontal, House.Spacing.sm)
+        .padding(.bottom, House.Spacing.xs)
+    }
+
+    /// Under the results: content search is running, unavailable, or done.
+    @ViewBuilder
+    private var contentSearchLine: some View {
+        switch model.contentSearchState {
+        case .searching:
+            HStack(spacing: House.Spacing.xs) {
+                ThinkingIndicator()
+                    .frame(width: House.Control.keyCap)
+                Text("Searching transcripts…")
+            }
+            .font(House.TypeToken.meta)
+            .foregroundStyle(House.ColorToken.textTertiary)
+            .padding(.horizontal, House.Spacing.xs)
+            .padding(.top, House.Spacing.xs)
+        case .unavailable:
+            Text("Content search unavailable")
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .frame(maxWidth: .infinity)
+                .padding(.top, House.Spacing.xs)
+                .help("Titles still filter. Transcript search needs the vault search.")
+        case .idle, .done:
+            EmptyView()
+        }
+    }
+
+    private func sectionView(_ title: String, rows: [SessionsWindowModel.Row], offset: Int, total: Int) -> some View {
+        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            SlateSectionLabel(text: title)
+                .padding(.horizontal, House.Spacing.xs)
+                .padding(.top, House.Spacing.sm)
+                .padding(.bottom, House.Spacing.xxs)
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                rowView(row, index: offset + index, total: total)
+                    .id(row.id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rowView(_ row: SessionsWindowModel.Row, index: Int, total: Int) -> some View {
+        let isSelected = index == model.railIndex
+        let isOpen = row.id == model.openRowID
+        let detail = model.detail(for: row)
+        let snippet = model.snippet(for: row)
+        let number = model.railNumber(at: index)
+        let showsNumber = number != nil && (model.isCommandHeld || isSelected || isOpen)
+        Group {
+            if row.id == model.renamingRowID {
+                // The rename field sits outside the row's button, so a click
+                // in it edits the title and never opens the session.
+                rowLayout(isSelected: isSelected, isOpen: isOpen, isHovering: false, number: showsNumber ? number : nil) {
+                    TextField(text: $model.renameText, prompt: Text(row.title.text)) {
+                        Text("Session title")
+                    }
+                    .textFieldStyle(.plain)
+                    .labelsHidden()
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                    .focused($renameFocused)
+                    .onSubmit { model.commitRename() }
+                    secondLine(detail: detail, snippet: snippet)
+                }
+            } else {
+                Button {
+                    model.railIndex = index
+                    model.open(row.id)
+                } label: {
+                    rowLayout(isSelected: isSelected, isOpen: isOpen, isHovering: hoveredRowID == row.id, number: showsNumber ? number : nil) {
+                        Text(row.title.text)
+                            .font(House.TypeToken.label)
+                            .foregroundStyle(House.ColorToken.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        secondLine(detail: detail, snippet: snippet)
+                    }
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight($hoveredRowID, id: row.id)
+                // A row found by its text shows the snippet; the detail moves here.
+                .help(snippet == nil ? row.title.text : "\(row.title.text), \(detail)")
+            }
+        }
+        .contextMenu {
+            ForEach(model.actions(for: row)) { action in
+                Button {
+                    model.perform(action, rowID: row.id)
+                } label: {
+                    Label(action.title, systemImage: action.systemImage)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(row.title.text), \(snippet?.plainText ?? detail)\(isOpen ? ", open" : "")")
+        .accessibilityValue(isSelected ? "Selected, \(index + 1) of \(total)" : "\(index + 1) of \(total)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityActions {
+            ForEach(model.actions(for: row)) { action in
+                Button(action.title) { model.perform(action, rowID: row.id) }
+            }
+        }
+    }
+
+    /// One rail row: the open marker, two lines, and the `⌘` number.
+    private func rowLayout<Lines: View>(
+        isSelected: Bool,
+        isOpen: Bool,
+        isHovering: Bool,
+        number: Int?,
+        @ViewBuilder lines: () -> Lines
+    ) -> some View {
+        HStack(spacing: House.Spacing.xs) {
+            VStack(alignment: .leading, spacing: 0) {
+                lines()
+            }
+            Spacer(minLength: 0)
+            if let number {
+                KeyCap(text: "⌘\(number)")
+            }
+        }
+        .padding(.horizontal, House.Spacing.xs)
+        .frame(height: House.Control.row)
+        .background { RowHighlight(isSelected: isSelected, isHovering: isHovering) }
+        .overlay(alignment: .leading) {
+            if isOpen { OpenSessionMarker() }
+        }
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func secondLine(detail: String, snippet: SessionSnippet?) -> some View {
+        if let snippet {
+            SessionSnippetText(snippet: snippet)
+        } else {
+            Text(detail)
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+}
+
+/// The open session's mark in the rail: a short ink bar on the row's
+/// leading edge. Ink, not colour, and apart from the keyboard highlight.
+private struct OpenSessionMarker: View {
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(House.ColorToken.textPrimary)
+            .frame(width: HouseChatMetrics.openChatMarkerWidth, height: House.Control.keyCap)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A row's snippet: "Transcript: …thin **zero** scope…", the matches in
+/// `meta` medium `textPrimary`, the rest `textTertiary`.
+private struct SessionSnippetText: View {
+    let snippet: SessionSnippet
+
+    var body: some View {
+        Text(Self.attributed(snippet))
+            .font(House.TypeToken.meta)
+            .foregroundStyle(House.ColorToken.textTertiary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .accessibilityLabel(snippet.plainText)
+    }
+
+    static func attributed(_ snippet: SessionSnippet) -> AttributedString {
+        var text = AttributedString(snippet.label.isEmpty ? "" : snippet.label + " ")
+        for run in snippet.runs {
+            var piece = AttributedString(run.text)
+            if run.isMatch {
+                piece.font = House.TypeToken.meta.weight(.medium)
+                piece.foregroundColor = House.ColorToken.textPrimary
+            }
+            text.append(piece)
+        }
+        return text
+    }
+}
+
+/// While a recording runs: one LIVE row on top of the list. It opens the
+/// overlay. The `danger` dot plus its word is the only chroma, as in the
+/// record chip; the clock ticks in this leaf only.
+private struct SessionsLiveSection: View {
+    @State private var isHovering = false
+
+    private var session: SessionCoordinator { SessionCoordinator.shared }
+
+    private var isLive: Bool {
+        switch session.phase {
+        case .recording, .paused, .finishing: true
+        case .idle, .summarizing, .done: false
+        }
+    }
+
+    var body: some View {
+        if isLive {
+            VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                SlateSectionLabel(text: "Live")
+                    .padding(.horizontal, House.Spacing.xs)
+                    .padding(.top, House.Spacing.sm)
+                    .padding(.bottom, House.Spacing.xxs)
+                Button {
+                    WindowCoordinator.shared.showOverlay()
+                } label: {
+                    HStack(spacing: House.Spacing.xs) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(title)
+                                .font(House.TypeToken.label)
+                                .foregroundStyle(House.ColorToken.textPrimary)
+                                .lineLimit(1)
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                HStack(spacing: House.Spacing.xxs) {
+                                    SlateStatusDot(color: House.ColorToken.danger)
+                                    Text(stateText(at: context.date))
+                                        .font(House.TypeToken.meta)
+                                        .foregroundStyle(House.ColorToken.textTertiary)
+                                        .monospacedDigit()
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, House.Spacing.xs)
+                    .frame(height: House.Control.row)
+                    .background { RowHighlight(isSelected: false, isHovering: isHovering) }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight($isHovering)
+                .help("Show the live session in RTI (⌘\\)")
+                .accessibilityLabel("\(title), \(stateText(at: Date()))")
+                .accessibilityHint("Shows the live session")
+            }
+        }
+    }
+
+    private var title: String {
+        let context = MeetingContextStore.shared
+        return SessionTitleResolver.liveTitle(calendarTitle: context.calendarMeeting?.title, project: context.workstreamName)
+    }
+
+    private func stateText(at date: Date) -> String {
+        let seconds = Int(session.elapsed(at: date))
+        let clock = String(format: "%d:%02d", seconds / 60, seconds % 60)
+        switch session.phase {
+        case .paused: return "Paused · \(clock)"
+        case .finishing: return "Finishing"
+        default: return "Recording · \(clock)"
+        }
+    }
+}
+
+// MARK: - Actions card
+
+/// `⌘K`: the session's actions on a raised card, over the rail's foot or
+/// under the header's `⌘K` glyph. `↑↓` move, `↩` runs, `esc` closes. The
+/// same actions are on the row's context menu and its VoiceOver actions.
+private struct SessionActionsCard: View {
+    @Bindable var model: SessionsWindowModel
+    /// Draw each action's own keys (the wider header card).
+    let showsKeys: Bool
+    @State private var hoveredAction: SessionsWindowModel.SessionAction?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            if let row = model.actionsRow {
+                Text(row.title.text)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, House.Spacing.xs)
+                    .padding(.top, House.Spacing.xxs)
+            }
+            ForEach(Array(model.visibleActions.enumerated()), id: \.element.id) { index, action in
+                Button {
+                    model.actionIndex = index
+                    model.performHighlightedAction()
+                } label: {
+                    HStack(spacing: House.Spacing.xs) {
+                        Image(systemName: action.systemImage)
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textSecondary)
+                            .frame(width: House.Control.keyCap)
+                        Text(action.title)
+                            .font(House.TypeToken.label)
+                            .foregroundStyle(House.ColorToken.textPrimary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        if index == model.actionIndex {
+                            KeyCapGroup(keys: ["↩"])
+                        } else if showsKeys, !action.keys.isEmpty {
+                            KeyCapGroup(keys: action.keys)
+                        }
+                    }
+                    .padding(.horizontal, House.Spacing.xs)
+                    .frame(height: House.Control.railRow)
+                    .background {
+                        RowHighlight(isSelected: index == model.actionIndex, isHovering: hoveredAction == action)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight($hoveredAction, id: action)
+                .accessibilityAddTraits(index == model.actionIndex ? .isSelected : [])
+            }
+        }
+        .padding(House.Spacing.xs)
+        .raisedCard(radius: House.Radius.lg, fill: House.ColorToken.surfaceRaised)
+        .houseShadow(House.Shadow.card)
+        .padding(House.Spacing.xs)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Session actions")
+    }
+}
+
+// MARK: - Reader
+
+/// The open file in one centred reading column.
+private struct SessionReader: View {
+    @Bindable var model: SessionsWindowModel
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                content
+                    .frame(maxWidth: SessionsBrowserView.columnWidth, alignment: .leading)
+                    .padding(.top, House.Spacing.md)
+                    .padding(.horizontal, House.Spacing.lg)
+                    .padding(.bottom, House.Spacing.xl)
+                    .frame(maxWidth: .infinity)
+            }
+            .onChange(of: model.currentFindHit) { _, hit in
+                guard let hit else { return }
+                withAnimation(.easeOut(duration: House.Motion.select)) {
+                    proxy.scrollTo(hit.block, anchor: UnitPoint(x: 0.5, y: 0.33))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if model.isEditingSummary {
+            SummaryEditor(model: model)
+        } else if model.isEditingTranscript {
+            TranscriptEditor(model: model)
+        } else {
+            switch model.document {
+            case .empty:
+                Text("This file is empty.")
+                    .font(House.TypeToken.bodySmall)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+            case let .transcript(turns):
+                SessionTranscriptReader(turns: turns, model: model)
+            case let .chat(turns):
+                ArchivedChatThread(turns: turns, model: model)
+            case let .summary(brief, record):
+                VStack(alignment: .leading, spacing: House.Spacing.xl) {
+                    SessionDocumentSection(title: "Share brief") {
+                        MarkdownBlocks(blocks: brief, offset: 0, model: model)
+                    }
+                    HouseDivider()
+                    SessionDocumentSection(title: "Full record") {
+                        MarkdownBlocks(blocks: record, offset: brief.count, model: model)
+                    }
+                }
+            case let .markdown(blocks):
+                MarkdownBlocks(blocks: blocks, offset: 0, model: model)
+            case let .intelligence(items):
+                LiveIntelligenceReader(items: items, model: model)
+            case let .log(text):
+                let marks = model.findHighlights(inBlock: 0)
+                Text(highlighted(text, marks.all, marks.current))
+                    .font(House.TypeToken.code)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .id(0)
+            case let .frames(directory):
+                SessionFramesGallery(directory: directory)
+            }
+        }
+    }
+}
+
+/// `text` with every find hit on `hoverFill` and the current one on
+/// `selectionFill`.
+private func highlighted(_ text: String, _ all: [Range<String.Index>], _ current: Range<String.Index>?) -> AttributedString {
+    var attributed = AttributedString(text)
+    for range in all {
+        guard let lower = AttributedString.Index(range.lowerBound, within: attributed),
+              let upper = AttributedString.Index(range.upperBound, within: attributed) else { continue }
+        attributed[lower..<upper].backgroundColor = range == current
+            ? House.ColorToken.selectionFill
+            : House.ColorToken.hoverFill
+    }
+    return attributed
+}
+
+/// A block with a find hit: `hoverFill` behind it, the house selection
+/// behind the block that holds the current hit. MarkdownUI cannot mark a
+/// word, so Markdown files mark the block (transcripts and chat questions
+/// mark the word).
+private struct FindBlockMark: ViewModifier {
+    let hasHit: Bool
+    let isCurrent: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, hasHit ? House.Spacing.xs : 0)
+            .padding(.vertical, hasHit ? House.Spacing.xxs : 0)
+            .background {
+                if hasHit {
+                    RowHighlight(isSelected: isCurrent, isHovering: !isCurrent, radius: House.Radius.sm)
+                }
+            }
+    }
+}
+
+private struct MarkdownBlocks: View {
+    let blocks: [String]
+    /// Index of the first block in the document's block list.
+    let offset: Int
+    let model: SessionsWindowModel
+
+    var body: some View {
+        LazyVStack(alignment: .leading, spacing: House.Spacing.sm) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                let marks = model.findHighlights(inBlock: offset + index)
+                RTIMarkdown(block, style: .panel)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .modifier(FindBlockMark(hasHit: !marks.all.isEmpty, isCurrent: marks.current != nil))
+                    .id(offset + index)
+            }
+        }
     }
 }
 
 private struct SessionDocumentSection<Content: View>: View {
     let title: String
-    let systemImage: String
     let content: Content
 
-    init(title: String, systemImage: String, @ViewBuilder content: () -> Content) {
+    init(title: String, @ViewBuilder content: () -> Content) {
         self.title = title
-        self.systemImage = systemImage
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                .foregroundStyle(RTIDesign.Color.textSecondary)
+        VStack(alignment: .leading, spacing: House.Spacing.sm) {
+            SlateSectionLabel(text: title)
             content
         }
     }
 }
 
+// MARK: - Transcript reader
+
+/// Transcript rows as on the live surface: a speaker chip (its speaker
+/// colour is data, and the only colour here), the time, then the text in
+/// `bodySmall` at line height 1.5.
 private struct SessionTranscriptReader: View {
     let turns: [SessionTranscriptTurn]
+    let model: SessionsWindowModel
+
+    static let lineSpacing: CGFloat = {
+        let font = NSFont.systemFont(ofSize: House.TypeToken.Size.bodySmall)
+        let native = font.ascender - font.descender + font.leading
+        return max(0, House.TypeToken.Size.bodySmall * House.TypeToken.LineHeight.bodySmall - native)
+    }()
 
     var body: some View {
         if turns.isEmpty {
             Text("No transcript turns found.")
-                .font(RTIDesign.Font.body)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
+                .font(House.TypeToken.bodySmall)
+                .foregroundStyle(House.ColorToken.textTertiary)
         } else {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: House.Spacing.md) {
                 ForEach(Array(turns.enumerated()), id: \.element.id) { index, turn in
-                    HStack(alignment: .top, spacing: 18) {
-                        HStack(alignment: .firstTextBaseline, spacing: 7) {
-                            Circle()
-                                .fill(speakerColor(turn.speaker, isNote: turn.isNote))
-                                .frame(width: 7, height: 7)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(turn.isNote ? "Note" : turn.speaker)
-                                    .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                                    .foregroundStyle(RTIDesign.Color.textSecondary)
-                                    .lineLimit(1)
-                                Text(turn.timestamp)
-                                    .font(.system(size: House.TypeToken.Size.micro, design: .monospaced))
-                                    .foregroundStyle(RTIDesign.Color.textTertiary)
-                            }
+                    let marks = model.findHighlights(inBlock: index)
+                    VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                        HStack(spacing: House.Spacing.xs) {
+                            SpeakerChip(name: turn.isNote ? "Note" : turn.speaker, color: speakerColor(turn))
+                            Text(turn.timestamp)
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.textTertiary)
+                                .monospacedDigit()
                         }
-                        .frame(width: 118, alignment: .leading)
-
-                        Text(turn.text)
-                            .font(RTIDesign.Font.body)
-                            .foregroundStyle(turn.isNote ? RTIDesign.Color.textSecondary : RTIDesign.Color.textPrimary)
+                        Text(highlighted(turn.text, marks.all, marks.current))
+                            .font(House.TypeToken.bodySmall)
+                            .foregroundStyle(turn.isNote ? House.ColorToken.textSecondary : House.ColorToken.textPrimary)
                             .italic(turn.isNote)
-                            .lineSpacing(4)
+                            .lineSpacing(Self.lineSpacing)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.vertical, 15)
+                    .id(index)
+                }
+            }
+        }
+    }
 
-                    if index < turns.count - 1 {
-                        Divider()
-                            .padding(.leading, 136)
+    /// Speaker colours are data (DESIGN.md: RTI's one categorical palette).
+    /// A note has no speaker, so its dot is plain ink.
+    private func speakerColor(_ turn: SessionTranscriptTurn) -> Color {
+        let palette = RTIDesign.Color.speakerPalette
+        guard !turn.isNote else { return House.ColorToken.textTertiary }
+        let digits = turn.speaker.reversed().prefix { $0.isNumber }.reversed()
+        guard let number = Int(String(digits)), !palette.isEmpty else { return House.ColorToken.textTertiary }
+        return palette[(max(number, 1) - 1) % palette.count]
+    }
+}
+
+private struct SpeakerChip: View {
+    let name: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: House.Spacing.xxs) {
+            SlateStatusDot(color: color)
+            Text(name)
+                .font(House.TypeToken.meta.weight(.medium))
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, House.Spacing.xs)
+        .frame(minHeight: HouseChatMetrics.collapseControlHeight)
+        .background(
+            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                .fill(House.ColorToken.chipFill)
+        )
+    }
+}
+
+// MARK: - Archived chat (thread grammar, read only)
+
+/// A past Assist chat as it looked live: the question as a pill on the
+/// right (a canned action shows its name and glyph, never its prompt), the
+/// context it used as tool lines, then the answer as prose with no card.
+private struct ArchivedChatThread: View {
+    let turns: [ArchivedChatTurn]
+    let model: SessionsWindowModel
+
+    var body: some View {
+        LazyVStack(alignment: .leading, spacing: House.Spacing.md) {
+            ForEach(Array(turns.enumerated()), id: \.element.id) { index, turn in
+                Group {
+                    if turn.role == .user {
+                        question(turn, index: index)
+                    } else {
+                        answer(turn, index: index, askedBy: index > 0 ? turns[index - 1] : nil)
+                    }
+                }
+                .id(index)
+            }
+        }
+    }
+
+    private func question(_ turn: ArchivedChatTurn, index: Int) -> some View {
+        let marks = model.findHighlights(inBlock: index)
+        return VStack(alignment: .trailing, spacing: House.Spacing.xs) {
+            if !turn.referencedPaths.isEmpty {
+                HStack(spacing: House.Spacing.xs) {
+                    ForEach(turn.referencedPaths, id: \.self) { path in
+                        HouseChip(text: (path as NSString).lastPathComponent, icon: "doc.text")
+                            .help(path)
                     }
                 }
             }
+            HStack(spacing: House.Spacing.xs) {
+                if turn.action != nil, !turn.text.hasPrefix("/") {
+                    Image(systemName: "sparkles")
+                        .font(House.TypeToken.caption)
+                        .foregroundStyle(House.ColorToken.textTertiary)
+                        .accessibilityHidden(true)
+                }
+                Text(highlighted(turn.pillText, marks.all, marks.current))
+                    .font(House.TypeToken.bodySmall)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            .padding(.horizontal, House.Spacing.sm)
+            .padding(.vertical, House.Spacing.xs)
+            .background(
+                RoundedRectangle(cornerRadius: House.Radius.pill, style: .circular)
+                    .fill(House.ColorToken.chipFill)
+            )
+            .frame(maxWidth: House.Layout.quickAIAnswerMaxWidth, alignment: .trailing)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("You: \(turn.pillText)")
         }
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
-    private func speakerColor(_ speaker: String, isNote: Bool) -> Color {
-        if isNote { return .orange }
-        let digits = speaker.reversed().prefix { $0.isNumber }.reversed()
-        guard let number = Int(String(digits)), !RTIDesign.Color.speakerPalette.isEmpty else {
-            return RTIDesign.Color.accent
-        }
-        return RTIDesign.Color.speakerPalette[(max(number, 1) - 1) % RTIDesign.Color.speakerPalette.count]
-    }
-}
-
-private struct ArchivedFinding: Identifiable {
-    let id = UUID()
-    let tag: String
-    let timestamp: String
-    let headline: String
-    var matters: String = ""
-    var quote: String?
-    var speaker: String?
-
-    static func parse(_ markdown: String) -> [ArchivedFinding] {
-        let headlinePattern = #"^- \*\*\[([^\]]+)\]\*\* `([^`]+)` (.+)$"#
-        guard let regex = try? NSRegularExpression(pattern: headlinePattern) else { return [] }
-        var result: [ArchivedFinding] = []
-        var current: ArchivedFinding?
-
-        for line in markdown.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let range = NSRange(trimmed.startIndex..., in: trimmed)
-            if let match = regex.firstMatch(in: trimmed, range: range),
-               let tagRange = Range(match.range(at: 1), in: trimmed),
-               let timeRange = Range(match.range(at: 2), in: trimmed),
-               let headlineRange = Range(match.range(at: 3), in: trimmed) {
-                if let current { result.append(current) }
-                current = ArchivedFinding(
-                    tag: String(trimmed[tagRange]),
-                    timestamp: String(trimmed[timeRange]),
-                    headline: String(trimmed[headlineRange])
-                )
-            } else if trimmed.hasPrefix("- _Why:_ "), current != nil {
-                current?.matters = String(trimmed.dropFirst("- _Why:_ ".count))
-            } else if trimmed.hasPrefix("- > "), current != nil {
-                let evidence = String(trimmed.dropFirst("- > ".count))
-                if let split = evidence.range(of: ": ") {
-                    current?.speaker = String(evidence[..<split.lowerBound])
-                    current?.quote = String(evidence[split.upperBound...])
-                } else {
-                    current?.quote = evidence
+    private func answer(_ turn: ArchivedChatTurn, index: Int, askedBy question: ArchivedChatTurn?) -> some View {
+        let marks = model.findHighlights(inBlock: index)
+        return VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            if let question, question.role == .user {
+                VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                    if question.usedTranscript { toolLine("waveform", "Used the transcript") }
+                    if question.usedScreen { toolLine("camera.viewfinder", "Read the screen") }
                 }
             }
+            RTIMarkdown(turn.text, style: .panel)
+                .frame(maxWidth: House.Layout.quickAIAnswerMaxWidth, alignment: .leading)
+                .modifier(FindBlockMark(hasHit: !marks.all.isEmpty, isCurrent: marks.current != nil))
         }
+    }
 
-        if let current { result.append(current) }
-        return result
+    private func toolLine(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: House.Spacing.xs) {
+            Image(systemName: symbol)
+                .font(House.TypeToken.bodySmall)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .frame(width: House.Control.keyCap)
+            Text(text)
+                .font(House.TypeToken.bodySmall)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .lineLimit(1)
+        }
+        .frame(minHeight: House.Control.keyCap)
+        .accessibilityElement(children: .combine)
     }
 }
 
+// MARK: - Live intelligence reader
+
+/// The session's findings, monochrome: the tag as a chip with its glyph,
+/// the headline, why it matters, and the quote on a quiet card.
 private struct LiveIntelligenceReader: View {
     let items: [ArchivedFinding]
+    let model: SessionsWindowModel
 
     var body: some View {
         if items.isEmpty {
             Text("No intelligence items found.")
-                .font(RTIDesign.Font.body)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
+                .font(House.TypeToken.bodySmall)
+                .foregroundStyle(House.ColorToken.textTertiary)
         } else {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: House.Spacing.lg) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .firstTextBaseline, spacing: 9) {
-                            Label(item.tag, systemImage: icon(for: item.tag))
-                                .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
-                                .foregroundStyle(color(for: item.tag))
-                                .padding(.horizontal, 8)
-                                .frame(height: 23)
-                                .background(
-                                    RoundedRectangle(cornerRadius: RTIDesign.Radius.tile, style: .continuous)
-                                        .fill(color(for: item.tag).opacity(0.10))
-                                )
+                    let marks = model.findHighlights(inBlock: index)
+                    VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                        HStack(spacing: House.Spacing.xs) {
+                            HouseChip(text: item.tag, icon: icon(for: item.tag))
                             Text(item.timestamp)
-                                .font(.system(size: House.TypeToken.Size.micro, design: .monospaced))
-                                .foregroundStyle(RTIDesign.Color.textTertiary)
-                            Spacer(minLength: 0)
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.textTertiary)
+                                .monospacedDigit()
                         }
-
                         Text(item.headline)
-                            .font(.system(size: House.TypeToken.Size.heading, weight: .semibold))
-                            .foregroundStyle(RTIDesign.Color.textPrimary)
+                            .font(House.TypeToken.heading)
+                            .foregroundStyle(House.ColorToken.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
-
                         if !item.matters.isEmpty {
                             Text(item.matters)
-                                .font(RTIDesign.Font.bodySmall)
-                                .foregroundStyle(RTIDesign.Color.textSecondary)
-                                .lineSpacing(3)
+                                .font(House.TypeToken.bodySmall)
+                                .foregroundStyle(House.ColorToken.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-
                         if let quote = item.quote {
-                            HStack(alignment: .top, spacing: 9) {
-                                Image(systemName: "quote.opening")
-                                    .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
-                                    .foregroundStyle(RTIDesign.Color.accentText)
-                                    .padding(.top, 2)
-                                Text(([item.speaker, quote].compactMap { $0 }).joined(separator: ": "))
-                                    .font(RTIDesign.Font.meta)
-                                    .foregroundStyle(RTIDesign.Color.textSecondary)
-                                    .italic()
-                                    .lineSpacing(3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: RTIDesign.Radius.row, style: .continuous)
-                                    .fill(RTIDesign.Color.accentBg.opacity(0.55))
-                            )
+                            Text(([item.speaker, quote].compactMap { $0 }).joined(separator: ": "))
+                                .font(House.TypeToken.meta)
+                                .italic()
+                                .foregroundStyle(House.ColorToken.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(House.Spacing.sm)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .raisedCard(radius: House.Radius.row)
                         }
                     }
-                    .padding(.vertical, 17)
-
-                    if index < items.count - 1 {
-                        Divider()
-                    }
+                    .modifier(FindBlockMark(hasHit: !marks.all.isEmpty, isCurrent: marks.current != nil))
+                    .id(index)
                 }
             }
-        }
-    }
-
-    private func color(for tag: String) -> Color {
-        switch tag.lowercased() {
-        case "decision": return Color(red: 0.10, green: 0.48, blue: 0.28)
-        case "action", "follow-up": return RTIDesign.Color.accentText
-        case "open question": return Color(red: 0.45, green: 0.28, blue: 0.68)
-        case "risk", "tension", "contradiction": return Color(red: 0.72, green: 0.36, blue: 0.08)
-        default: return Color(red: 0.12, green: 0.45, blue: 0.52)
         }
     }
 
     private func icon(for tag: String) -> String {
         switch tag.lowercased() {
-        case "decision": return "checkmark.circle.fill"
-        case "action": return "checklist"
-        case "open question": return "questionmark.circle"
-        case "risk": return "exclamationmark.triangle"
-        case "follow-up": return "arrowshape.turn.up.right"
-        default: return "lightbulb"
+        case "decision": "checkmark.circle"
+        case "action": "checklist"
+        case "open question": "questionmark.circle"
+        case "risk": "exclamationmark.triangle"
+        case "follow-up": "arrowshape.turn.up.right"
+        default: "lightbulb"
+        }
+    }
+}
+
+// MARK: - Editors
+
+private struct SummaryEditor: View {
+    @Bindable var model: SessionsWindowModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.sm) {
+            HStack {
+                Text("Edit summary")
+                    .font(House.TypeToken.heading)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                Spacer()
+                Button("Cancel") { model.isEditingSummary = false }
+                    .buttonStyle(.plain)
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+                Button("Save") { model.saveSummary() }
+                    .buttonStyle(InkButtonStyle())
+            }
+            TextEditor(text: $model.summaryDraft)
+                .font(House.TypeToken.bodySmall)
+                .scrollContentBackground(.hidden)
+                .padding(House.Spacing.xs)
+                .frame(minHeight: House.Layout.chatMinHeight - House.Control.composer * 2)
+                .background(
+                    RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                        .fill(House.ColorToken.surfaceTint)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                        .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
+                )
+        }
+    }
+}
+
+private struct TranscriptEditor: View {
+    @Bindable var model: SessionsWindowModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.sm) {
+            HStack {
+                VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                    Text("Edit transcript")
+                        .font(House.TypeToken.heading)
+                        .foregroundStyle(House.ColorToken.textPrimary)
+                    Text("Correct text or give a turn to a named speaker. Notes stay apart from speech.")
+                        .font(House.TypeToken.meta)
+                        .foregroundStyle(House.ColorToken.textSecondary)
+                }
+                Spacer()
+                Button("Cancel") { model.isEditingTranscript = false }
+                    .buttonStyle(.plain)
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+                Button("Save") { model.saveTranscript() }
+                    .buttonStyle(InkButtonStyle())
+                    .disabled(model.transcriptTurns.isEmpty)
+            }
+            ForEach($model.transcriptTurns) { $turn in
+                VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                    HStack(spacing: House.Spacing.xs) {
+                        Text(turn.timestamp)
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textTertiary)
+                            .monospacedDigit()
+                        if turn.isNote {
+                            Label("Note", systemImage: "note.text")
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.textSecondary)
+                        } else {
+                            TextField("Speaker", text: $turn.speaker)
+                                .textFieldStyle(.roundedBorder)
+                                .font(House.TypeToken.meta)
+                                .frame(maxWidth: House.Layout.chatRail)
+                            Menu("Assign") {
+                                ForEach(model.transcriptSpeakerOptions, id: \.self) { speaker in
+                                    Button(speaker) { turn.speaker = speaker }
+                                }
+                            }
+                            .controlSize(.small)
+                            .fixedSize()
+                        }
+                    }
+                    TextEditor(text: $turn.text)
+                        .font(House.TypeToken.bodySmall)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: House.Control.hero)
+                        .padding(House.Spacing.xxs)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                                .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
+                        )
+                }
+                .padding(House.Spacing.sm)
+                .raisedCard(radius: House.Radius.row)
+            }
+        }
+    }
+}
+
+/// Name the anonymous speakers of one session. Saved only for that session.
+private struct SpeakerEditorSheet: View {
+    @Bindable var model: SessionsWindowModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.md) {
+            Text("Name speakers")
+                .font(House.TypeToken.title)
+                .foregroundStyle(House.ColorToken.textPrimary)
+            Text("Names save for this session only. They replace the anonymous labels in its transcript and summary.")
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            let labels = model.speakerLabels
+            if labels.isEmpty {
+                Text("No anonymous speakers in this transcript.")
+                    .font(House.TypeToken.bodySmall)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+            } else {
+                Grid(alignment: .leading, horizontalSpacing: House.Spacing.md, verticalSpacing: House.Spacing.sm) {
+                    ForEach(labels, id: \.self) { label in
+                        GridRow {
+                            Text(label)
+                                .font(House.TypeToken.label)
+                                .foregroundStyle(House.ColorToken.textPrimary)
+                            VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                                TextField("Name", text: Binding(
+                                    get: { model.speakerName(for: label) },
+                                    set: { model.setSpeakerName($0, for: label) }
+                                ))
+                                .textFieldStyle(.roundedBorder)
+                                suggestion(for: label)
+                            }
+                        }
+                    }
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { model.cancelSpeakerEditor() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") { model.saveSpeakerNames() }
+                    .buttonStyle(InkButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(House.Spacing.xl)
+        .frame(width: House.Layout.chatRail * 2)
+        .background(House.ColorToken.surface)
+    }
+
+    /// The vault voice matcher's suggestion (accept or maybe band) with its
+    /// score. "Use" fills the field; nothing applies until Save.
+    @ViewBuilder
+    private func suggestion(for label: String) -> some View {
+        if let entry = model.speakerSuggestions[label], let name = entry.suggestion, entry.isAccept || entry.isMaybe {
+            HStack(spacing: House.Spacing.xs) {
+                Text("Voice match: \(name) (\(String(format: "%.2f", entry.score ?? 0))\(entry.isMaybe ? ", weak" : ""))")
+                    .font(House.TypeToken.caption)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+                Button("Use") { model.setSpeakerName(name, for: label) }
+                    .buttonStyle(.link)
+                    .font(House.TypeToken.caption)
+            }
         }
     }
 }

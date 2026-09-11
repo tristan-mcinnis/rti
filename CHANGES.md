@@ -42,6 +42,16 @@ The overlay takes the house window shape (`docs/house-style-migration-20260912.m
 - New menus: Session (record, pause, note, mute, read screen, project), View (tabs, Show Session List ⌃⌘S in Sessions), Edit › Find (⌘F), Window › Keep on Top (off at every launch), RTI, Sessions.
 - ⌘\ stays RTI's global show and hide. The window frame now saves itself; the old size sliders only set the first size.
 - Empty tabs show short hint lines with their keys. Prepare uses the settings card style.
+## 2026-09-12: Sessions window and titles
+
+Past sessions have their own window in the house chat shape (`docs/house-style-migration-20260912.md`, package D).
+
+- Sessions opens in its own window: the session title and date line on top, the files as chips, one reading column.
+- The session list is a rail, hidden until ⌃⌘S or the header button. Search filters titles; with the vault search up, it also finds words in transcripts and shows where.
+- No more "Untitled session". A title comes from your rename, the summary, the vault meeting note, the calendar event, a short title made from the notes, or the date and length.
+- ⌘K shows the session's actions (rename, name speakers, upgrade, regenerate, export, reveal). ⌘J asks about it in RTI. ⌘F finds in the open file.
+- A past Assist chat reads like it did live: your questions on the right, answers on the left.
+- Preferences keep their own window until the new settings window lands.
 
 ## 2026-09-12: House chat seams
 

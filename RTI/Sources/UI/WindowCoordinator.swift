@@ -12,6 +12,7 @@ final class WindowCoordinator {
 
     private var overlayController: OverlayWindowController?
     private var sessionsControl: SessionsControlWindowController?
+    private let sessionsWindow = SessionsWindowController()
     private var meetingBrief: MeetingBriefWindowController?
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
@@ -45,22 +46,28 @@ final class WindowCoordinator {
     func hideOverlay() { overlayController?.hide() }
     func toggleOverlay() { overlayController?.toggle() }
 
-    // MARK: - Library & Preferences
+    // MARK: - Sessions and Preferences
 
+    /// `.sessions` opens the Sessions window; every other tab opens the
+    /// Preferences window on that pane (until the settings shell replaces it).
     func showSessionsControl(tab: SessionsControlView.Tab = .sessions) {
-        sessionsControl?.show(tab: tab)
+        if tab == .sessions {
+            showSessions()
+        } else {
+            sessionsControl?.show(tab: tab)
+        }
     }
 
-    /// Open the Sessions browser focused on one archived session folder (e.g.
-    /// from the "summary ready" notification or the overlay's "Notes ready"
-    /// control). Shows the window on the Sessions tab, then tells the browser
-    /// which folder to select. The post is deferred a tick so a freshly-created
-    /// browser has mounted its observer before the selection lands.
+    /// The Sessions window, on the last session it showed.
+    func showSessions() {
+        sessionsWindow.show()
+    }
+
+    /// Open the Sessions window on one archived session folder, with the
+    /// list hidden (the "summary ready" notification, the overlay's "Notes
+    /// ready" control).
     func showSession(folder: String) {
-        showSessionsControl(tab: .sessions)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            NotificationCenter.default.post(name: .rtiOpenSessionInBrowser, object: folder)
-        }
+        sessionsWindow.show(folder: folder)
     }
 
     /// Open the read-only pre-meeting brief browser (Hermes-authored briefs).
@@ -70,7 +77,7 @@ final class WindowCoordinator {
 
     // MARK: - Convenience wrappers used by AppDelegate / menu
 
-    func openSettings() { showSessionsControl(tab: .providers) }
+    func openSettings() { SettingsWindowController.shared.show() }
 
     // MARK: - About
 
@@ -86,7 +93,7 @@ final class WindowCoordinator {
             .credits: credits,
             NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "© 2026 Tristan McInnis"
         ]
-        NSApp.activate(ignoringOtherApps: true)
+        RTIActivation.activateApp()
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
 }

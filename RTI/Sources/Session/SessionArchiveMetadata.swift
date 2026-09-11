@@ -20,4 +20,9 @@ struct SessionArchiveMetadata: Codable {
     let workstream: String?
     /// Wall-clock session length in seconds (endedAt - startedAt).
     let durationSeconds: Int?
+    /// The calendar event picked in Prepare, if any. The Sessions window
+    /// uses it as a title when the summary and the vault note have none
+    /// (`SessionTitleResolver` rule 4). Defaults to nil, so existing call
+    /// sites and legacy `session.json` files are unchanged.
+    var calendarTitle: String? = nil
 }

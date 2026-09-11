@@ -30,5 +30,22 @@ final class SessionArchiveMetadataTests: XCTestCase {
         XCTAssertNil(decoded.mode)
         XCTAssertNil(decoded.workstream)
         XCTAssertNil(decoded.durationSeconds)
+        XCTAssertNil(decoded.calendarTitle)
+    }
+
+    func testCalendarTitleRoundTripsAndDefaultsToNil() throws {
+        let plain = SessionArchiveMetadata(
+            sessionId: "abc123", systemAudioStartOffsetMs: nil, micAudioFile: nil,
+            systemAudioFile: nil, mode: nil, workstream: nil, durationSeconds: 60
+        )
+        XCTAssertNil(plain.calendarTitle)
+
+        let withEvent = SessionArchiveMetadata(
+            sessionId: "abc123", systemAudioStartOffsetMs: nil, micAudioFile: nil,
+            systemAudioFile: nil, mode: "Meeting", workstream: nil, durationSeconds: 60,
+            calendarTitle: "Weekly sync"
+        )
+        let decoded = try JSONDecoder().decode(SessionArchiveMetadata.self, from: JSONEncoder().encode(withEvent))
+        XCTAssertEqual(decoded.calendarTitle, "Weekly sync")
     }
 }
