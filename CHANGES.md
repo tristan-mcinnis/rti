@@ -1,5 +1,14 @@
 # RTI Change Log
 
+## 2026-09-12: House chat seams
+
+No visible change. Groundwork for the house chat look (`docs/house-style-migration-20260912.md`, package 0).
+
+- Chat turns can carry attachments, tool lines, and sources as data.
+- Shared house chat pieces copied from Quick Launch (key hints, thinking dots, title block, row highlight, glass, cards).
+- `RTIActivation.bringToFront` and a `SettingsWindowController` stub for later windows.
+- Render proofs share one harness and an invented fixture vault, so no proof reads real meetings.
+
 ## 2026-09-02 — Consistency pass: one resolver per path and binary
 
 No feature change. See `docs/consistency-audit-20260902.md` for the audit.
