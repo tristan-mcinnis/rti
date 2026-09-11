@@ -15,36 +15,31 @@ struct VoicesTab: View {
     @State private var newPersonName = ""
 
     var body: some View {
-        SettingsPage(maxWidth: 760) {
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsCard("How Voice Profiles Work", detail: "These clips are the voice fingerprints used to suggest speaker names after every session. Suggestions never rename anything on their own — you confirm names in Sessions, and confirms grow this store.") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Play a clip to hear exactly what was enrolled. Delete anything that isn't that person, or move it to the right one — a wrong sample makes future suggestions worse, so pruning here is the highest-leverage fix.")
-                            .font(RTIDesign.Font.meta)
-                            .foregroundStyle(RTIDesign.Color.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        HStack {
-                            statusLabel
-                            Spacer()
-                            Button {
-                                store.reload()
-                            } label: {
-                                Label("Refresh", systemImage: "arrow.clockwise")
-                            }
-                            .disabled(store.isLoading)
+        SettingsPage {
+            VStack(alignment: .leading, spacing: House.Spacing.sm) {
+                SettingsCard("How Voice Profiles Work", detail: "These clips are the voice prints behind the speaker names RTI suggests after each session. A suggestion never renames anything by itself: you confirm names in Sessions, and each confirm adds to this store.", rows: true) {
+                    CardNote(isFirst: true) {
+                        CardText("Play a clip to hear what was enrolled. Delete a clip that is not that person, or move it to the right person. A wrong sample makes later suggestions worse, so this is the best fix.")
+                    }
+                    CardNote {
+                        statusLabel
+                        Spacer(minLength: House.Spacing.sm)
+                        Button {
+                            store.reload()
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
                         }
+                        .disabled(store.isLoading)
                     }
                 }
 
                 if store.toolAvailable {
                     ForEach(store.people, id: \.name) { person in
-                        SettingsCard(person.name, detail: "\(person.samples.count) sample\(person.samples.count == 1 ? "" : "s")") {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(person.samples) { sample in
+                        SettingsCard(person.name, detail: "\(person.samples.count) sample\(person.samples.count == 1 ? "" : "s")", rows: true) {
+                            ForEach(Array(person.samples.enumerated()), id: \.element.id) { index, sample in
+                                VStack(spacing: 0) {
+                                    if index > 0 { HouseDivider() }
                                     sampleRow(sample)
-                                    if sample.id != person.samples.last?.id {
-                                        Divider()
-                                    }
                                 }
                             }
                         }
@@ -68,7 +63,7 @@ struct VoicesTab: View {
                 newPersonName = ""
             }
         } message: {
-            Text("Use the person's real full name — it becomes the label future transcripts get.")
+            Text("Use the person's full name. Later transcripts get this label.")
         }
     }
 
@@ -82,25 +77,25 @@ struct VoicesTab: View {
     @ViewBuilder
     private var statusLabel: some View {
         if !store.toolAvailable {
-            SettingsStatusLabel(text: "Vault voice tool not reachable (vault or python stack missing) — nothing to review.", systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
+            SettingsStatusLabel(text: "The vault voice tool is not reachable (no vault or no Python stack), so there is nothing to review.", systemImage: "exclamationmark.triangle.fill", color: House.ColorToken.warning)
         } else if let error = store.lastError {
-            SettingsStatusLabel(text: error, systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
+            SettingsStatusLabel(text: error, systemImage: "exclamationmark.triangle.fill", color: House.ColorToken.warning)
         } else if store.isLoading {
-            SettingsStatusLabel(text: "Loading samples…", systemImage: "hourglass", color: RTIDesign.Color.textSecondary)
+            SettingsStatusLabel(text: "Loading samples…", systemImage: "hourglass", color: House.ColorToken.textTertiary)
         } else {
             let total = store.people.reduce(0) { $0 + $1.samples.count }
             SettingsStatusLabel(
                 text: total == 0
-                    ? "No voice samples enrolled yet. Confirm speaker names in Sessions to start the store."
+                    ? "No voice samples yet. Confirm speaker names in Sessions to start the store."
                     : "\(total) sample\(total == 1 ? "" : "s") across \(store.people.count) \(store.people.count == 1 ? "person" : "people").",
                 systemImage: total == 0 ? "info.circle" : "checkmark.circle.fill",
-                color: total == 0 ? .secondary : .green
+                color: total == 0 ? House.ColorToken.textTertiary : House.ColorToken.success
             )
         }
     }
 
     private func sampleRow(_ sample: VoiceSampleCatalog.Sample) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: House.Spacing.sm) {
             Button {
                 if player.playingSampleID == sample.id {
                     player.stop()
@@ -109,21 +104,26 @@ struct VoicesTab: View {
                 }
             } label: {
                 Image(systemName: player.playingSampleID == sample.id ? "stop.circle.fill" : "play.circle")
-                    .font(.system(size: House.TypeToken.Size.heading))
+                    .font(HouseChatType.glyphMedium)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                    .frame(width: House.Control.compact, height: House.Control.compact)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!sample.canAudition)
             .help(sample.canAudition ? "Play this clip" : "Audio file not found")
+            .accessibilityLabel(player.playingSampleID == sample.id ? "Stop clip" : "Play clip")
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: House.Spacing.xxs / 2) {
                 Text(clipTitle(sample))
-                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textPrimary)
                 Text(clipSubtitle(sample))
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                    .font(House.TypeToken.caption)
+                    .foregroundStyle(House.ColorToken.textTertiary)
             }
 
-            Spacer()
+            Spacer(minLength: House.Spacing.sm)
 
             Menu {
                 Menu("Move to") {
@@ -140,11 +140,14 @@ struct VoicesTab: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(House.ColorToken.textSecondary)
             }
             .menuStyle(.borderlessButton)
-            .frame(width: 28)
+            .menuIndicator(.hidden)
+            .frame(width: House.Control.compact)
+            .accessibilityLabel("Sample actions")
         }
-        .padding(.vertical, 3)
+        .frame(minHeight: House.Control.row)
     }
 
     private func clipTitle(_ sample: VoiceSampleCatalog.Sample) -> String {
@@ -168,7 +171,7 @@ struct VoicesTab: View {
             parts.append("enrolled \(created.prefix(10))")
         }
         if !(sample.playable ?? false) { parts.append("audio missing") }
-        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+        return parts.isEmpty ? "No details" : parts.joined(separator: " · ")
     }
 }
 
