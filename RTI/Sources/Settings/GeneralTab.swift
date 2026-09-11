@@ -4,66 +4,20 @@ import SwiftUI
 // MARK: - General
 
 /// Settings → General. Composed of independent section views so each section
-/// re-renders only when its own bindings change — previously every toggle on
-/// this tab invalidated every other section.
+/// re-renders only when its own bindings change: one toggle never
+/// invalidates every other card on the pane.
 struct GeneralTab: View {
     var body: some View {
         SettingsPage {
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsCard { LaunchAtLoginSection() }
-                SettingsCard { CaptureAccessSection() }
-                SettingsCard { ScreenPrivacySection() }
-                SettingsCard { AudioInputSection() }
-                SettingsCard { RealTimeAnalysisSection() }
-                SettingsCard { OverlayAppearanceSection() }
-                SettingsCard { HotkeysSection() }
-                SettingsCard { DataAndSupportSection() }
-                SettingsCard { DiagnosticsSection() }
-            }
-        }
-    }
-}
-
-// MARK: - Screen Privacy
-
-/// Deny-list of apps whose windows are removed from every screen capture at
-/// the ScreenCaptureKit filter — their pixels never reach OCR, frames, notes,
-/// summaries, or the vault meeting note.
-private struct ScreenPrivacySection: View {
-    @State private var listText: String = ScreenPrivacy.excludedBundleIds.joined(separator: "\n")
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SlateSectionLabel(text: "Screen Privacy")
-            Text("Windows of these apps are cut out of every screen capture — ambient context, attached screenshots, and the assistant's capture tool. Their content can never reach OCR text, kept frames, notes, or meeting summaries. One bundle id per line.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            TextEditor(text: $listText)
-                .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
-                .frame(minHeight: 120, maxHeight: 160)
-                .settingsEditorBorder()
-                .onChange(of: listText) { _, newValue in
-                    ScreenPrivacy.excludedBundleIds = newValue
-                        .split(separator: "\n")
-                        .map { $0.trimmingCharacters(in: .whitespaces) }
-                        .filter { !$0.isEmpty }
-                }
-            HStack {
-                let count = ScreenPrivacy.excludedBundleIds.count
-                SettingsStatusLabel(
-                    text: count == 0
-                        ? "No apps excluded — everything visible on screen can be captured."
-                        : "\(count) app\(count == 1 ? "" : "s") never captured. Applies immediately.",
-                    systemImage: count == 0 ? "exclamationmark.triangle.fill" : "eye.slash.fill",
-                    color: count == 0 ? .orange : .green
-                )
-                Spacer()
-                Button("Reset to Defaults") {
-                    ScreenPrivacy.resetToDefaults()
-                    listText = ScreenPrivacy.excludedBundleIds.joined(separator: "\n")
-                }
-                .controlSize(.small)
+            VStack(alignment: .leading, spacing: House.Spacing.sm) {
+                LaunchAtLoginSection()
+                CaptureAccessSection()
+                ScreenPrivacySection()
+                AudioInputSection()
+                RealTimeAnalysisSection()
+                AppearanceSection()
+                HotkeysSection()
+                DataAndSupportSection()
             }
         }
     }
@@ -76,8 +30,8 @@ private struct LaunchAtLoginSection: View {
     @State private var launchError: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle("Launch RTI at login", isOn: Binding(
+        SettingsCard("Startup", rows: true) {
+            SettingsToggleRow(title: "Launch RTI at login", isFirst: true, isOn: Binding(
                 get: { launchAtLogin },
                 set: { newValue in
                     if let err = LaunchAtLogin.setEnabled(newValue) {
@@ -90,9 +44,7 @@ private struct LaunchAtLoginSection: View {
                 }
             ))
             if let launchError {
-                Text(launchError)
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(RTIDesign.Color.danger)
+                CardNote { CardText(launchError, tone: House.ColorToken.danger) }
             }
         }
     }
@@ -105,26 +57,27 @@ private struct CaptureAccessSection: View {
     @State private var screenPermission = AppPermissions.screenRecording
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SlateSectionLabel(text: "Capture Setup")
-            accessRow(
-                title: "Microphone",
-                detail: "Required for live transcription.",
-                state: microphonePermission,
-                grant: { AppPermissions.requestMicrophone { _ in refreshPermissions() } },
-                openSettings: AppPermissions.openMicrophoneSettings
-            )
-            Divider()
-            accessRow(
-                title: "Screen & OCR",
-                detail: "Optional — reads the active screen and attached images. With the local vision lane on, session frames are kept in the session archive; otherwise images are discarded.",
-                state: screenPermission,
-                grant: {
-                    _ = AppPermissions.requestScreenRecording()
-                    refreshPermissions()
-                },
-                openSettings: AppPermissions.openScreenRecordingSettings
-            )
+        SettingsCard("Capture Access", rows: true) {
+            SettingsRow(title: "Microphone", detail: "Needed for live transcription.", isFirst: true) {
+                accessControl(
+                    state: microphonePermission,
+                    grant: { AppPermissions.requestMicrophone { _ in refreshPermissions() } },
+                    openSettings: AppPermissions.openMicrophoneSettings
+                )
+            }
+            SettingsRow(
+                title: "Screen and OCR",
+                detail: "Optional. Reads the screen and the images you attach. Frames are kept in the session only with the local vision lane on."
+            ) {
+                accessControl(
+                    state: screenPermission,
+                    grant: {
+                        _ = AppPermissions.requestScreenRecording()
+                        refreshPermissions()
+                    },
+                    openSettings: AppPermissions.openScreenRecordingSettings
+                )
+            }
         }
         .onAppear(perform: refreshPermissions)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -132,40 +85,70 @@ private struct CaptureAccessSection: View {
         }
     }
 
-    private func accessRow(
-        title: String,
-        detail: String,
+    @ViewBuilder
+    private func accessControl(
         state: AppPermissions.State,
         grant: @escaping () -> Void,
         openSettings: @escaping () -> Void
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: House.TypeToken.Size.meta, weight: .medium))
-                Text(detail)
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 12)
-            switch state {
-            case .granted:
-                Label("Ready", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
-                    .foregroundStyle(RTIDesign.Color.success)
-            case .notDetermined:
-                Button("Allow", action: grant)
-                    .controlSize(.small)
-            case .denied:
-                Button("Open Settings", action: openSettings)
-                    .controlSize(.small)
-            }
+        switch state {
+        case .granted:
+            SettingsStatusLabel(text: "Allowed", systemImage: "checkmark.circle.fill", color: House.ColorToken.success)
+                .fixedSize()
+        case .notDetermined:
+            Button("Allow", action: grant)
+        case .denied:
+            Button("Open System Settings", action: openSettings)
         }
     }
 
     private func refreshPermissions() {
         microphonePermission = AppPermissions.microphone
         screenPermission = AppPermissions.screenRecording
+    }
+}
+
+// MARK: - Screen Privacy
+
+/// Deny-list of apps whose windows are removed from every screen capture at
+/// the ScreenCaptureKit filter: their pixels never reach OCR, frames, notes,
+/// summaries, or the vault meeting note.
+private struct ScreenPrivacySection: View {
+    @State private var listText: String = ScreenPrivacy.excludedBundleIds.joined(separator: "\n")
+
+    var body: some View {
+        SettingsCard(
+            "Screen Privacy",
+            detail: "Windows of these apps are cut out of every screen capture: ambient context, attached screenshots, and the assistant's capture tool. Their content never reaches OCR text, kept frames, notes, or summaries. One bundle ID per line."
+        ) {
+            TextEditor(text: $listText)
+                .font(House.TypeToken.code)
+                .scrollContentBackground(.hidden)
+                .padding(House.Spacing.xxs)
+                .frame(minHeight: House.Control.hero * 2, maxHeight: House.Control.hero * 3)
+                .settingsEditorBorder()
+                .onChange(of: listText) { _, newValue in
+                    ScreenPrivacy.excludedBundleIds = newValue
+                        .split(separator: "\n")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }
+                }
+            HStack(spacing: House.Spacing.sm) {
+                let count = ScreenPrivacy.excludedBundleIds.count
+                SettingsStatusLabel(
+                    text: count == 0
+                        ? "No apps excluded. Everything on screen can be captured."
+                        : "\(count) app\(count == 1 ? "" : "s") never captured.",
+                    systemImage: count == 0 ? "exclamationmark.triangle.fill" : "eye.slash.fill",
+                    color: count == 0 ? House.ColorToken.warning : House.ColorToken.success
+                )
+                Spacer(minLength: House.Spacing.sm)
+                Button("Reset to Defaults") {
+                    ScreenPrivacy.resetToDefaults()
+                    listText = ScreenPrivacy.excludedBundleIds.joined(separator: "\n")
+                }
+            }
+        }
     }
 }
 
@@ -179,54 +162,53 @@ private struct AudioInputSection: View {
     private let session = SessionCoordinator.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SlateSectionLabel(text: "Audio Input")
-            Picker("Capture from", selection: $selectedInputUID) {
-                Text("System default microphone").tag(AudioInputDevice.systemDefaultUID)
-                if !inputDevices.isEmpty { Divider() }
-                ForEach(inputDevices, id: \.uid) { device in
-                    Text(device.name).tag(device.uid)
+        SettingsCard("Audio Input", rows: true) {
+            SettingsRow(
+                title: "Capture from",
+                detail: "Pick BlackHole or an aggregate device to capture call audio. Applies on the next recording.",
+                isFirst: true
+            ) {
+                Picker("Capture from", selection: $selectedInputUID) {
+                    Text("System default microphone").tag(AudioInputDevice.systemDefaultUID)
+                    if !inputDevices.isEmpty { Divider() }
+                    ForEach(inputDevices, id: \.uid) { device in
+                        Text(device.name).tag(device.uid)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+                .onChange(of: selectedInputUID) { _, newValue in
+                    AudioInputDeviceStore.preferredUID = newValue
                 }
             }
-            .pickerStyle(.menu)
-            .onChange(of: selectedInputUID) { _, newValue in
-                AudioInputDeviceStore.preferredUID = newValue
+            SettingsToggleRow(
+                title: "Echo cancellation",
+                detail: "Removes the other side's voice that your mic picks up from your speakers. Off by default: on some Macs it silences the mic. Turn it on only if you use speakers and transcription still works. Applies on the next recording.",
+                isOn: $echoCancellation
+            )
+            SettingsToggleRow(
+                title: "Protect Bluetooth headphone volume",
+                detail: "Records from the built-in mic so Bluetooth headphones stay at full volume. Your mic comes back when you stop.",
+                isOn: $protectBluetoothVolume
+            )
+            SettingsRow(
+                title: "Live levels",
+                detail: session.isRunning
+                    ? "Check that both sides are heard. The menu bar has the same monitor."
+                    : "Shows only while a recording runs."
+            ) {
+                EmptyView()
             }
-            Text("Pick BlackHole or an aggregate device to capture system audio from calls. Applies on the next session.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Toggle("Echo cancellation", isOn: $echoCancellation)
-                .padding(.top, 4)
-            Text("Cancels the other party's voice bleeding from your speakers into the mic. Off by default: on some Macs Apple's voice-processing silences the mic entirely (no transcript). Only enable if you're on speakers and transcription still works. Applies on the next session.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Toggle("Protect Bluetooth headphone volume", isOn: $protectBluetoothVolume)
-                .padding(.top, 4)
-            Text("Keeps Bluetooth headphones at full volume by using the built-in mic while recording, then restores your original mic on stop.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Divider().padding(.vertical, 6)
-            SlateSectionLabel(text: "Live levels")
-            Text(session.isRunning
-                ? "Confirm both sides are being captured. The same monitor is available from the menubar."
-                : "Levels are available only while a session is recording.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
             if session.isRunning {
-                AudioMonitorContent()
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
-                            .fill(RTIDesign.Color.chipFill)
-                    )
-                    .padding(.top, 6)
+                CardNote {
+                    AudioMonitorContent()
+                        .padding(House.Spacing.sm)
+                        .background(
+                            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                                .fill(House.ColorToken.chipFill)
+                        )
+                }
             }
         }
         .onAppear {
@@ -245,35 +227,24 @@ private struct RealTimeAnalysisSection: View {
     @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled: Bool = AnalysisSettingsDefaults.defaultAutoAssistEnabled
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SlateSectionLabel(text: "Real-Time Analysis")
-
-            Toggle("Enable notes generation", isOn: $notesEnabled)
-            Toggle("Enable discussion guide matching", isOn: $guideEnabled)
-            Toggle("Enable live intelligence ledger", isOn: $findingsEnabled)
-            Toggle("Enable auto next-move cards", isOn: $autoAssistEnabled)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Notes interval")
-                        .font(RTIDesign.Font.meta)
-                    Spacer()
+        SettingsCard("Real-Time Analysis", detail: "Runs by itself while recording.", rows: true) {
+            SettingsToggleRow(title: "Write notes", isFirst: true, isOn: $notesEnabled)
+            SettingsRow(title: "Notes interval") {
+                HStack(spacing: House.Spacing.xs) {
+                    Slider(value: $notesInterval, in: AnalysisSettingsDefaults.intervalRange, step: 60) {}
+                        .labelsHidden()
+                        .frame(width: House.Layout.settingsRail)
                     Text("\(Int(notesInterval / 60)) min")
-                        .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
-                        .foregroundStyle(RTIDesign.Color.textSecondary)
+                        .font(House.TypeToken.meta)
+                        .monospacedDigit()
+                        .foregroundStyle(House.ColorToken.textSecondary)
                 }
-                Slider(value: $notesInterval, in: AnalysisSettingsDefaults.intervalRange, step: 60) {}
+                .disabled(!notesEnabled)
             }
-            .disabled(!notesEnabled)
-            .opacity(notesEnabled ? 1 : 0.5)
-
-            Text("Runs automatically while recording.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
+            SettingsToggleRow(title: "Match the discussion guide", isOn: $guideEnabled)
+            SettingsToggleRow(title: "Keep the intelligence ledger", isOn: $findingsEnabled)
+            SettingsToggleRow(title: "Show next-move cards (Auto)", isOn: $autoAssistEnabled)
+            CardNote {
                 Button("Reset to Defaults") {
                     notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
                     guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
@@ -281,137 +252,72 @@ private struct RealTimeAnalysisSection: View {
                     autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
                     notesInterval = AnalysisSettingsDefaults.defaultInterval
                 }
-                .controlSize(.small)
             }
         }
     }
 }
 
-// MARK: - Overlay Appearance
+// MARK: - Appearance
 
-private struct OverlayAppearanceSection: View {
-    @AppStorage(OverlayAppearanceDefaults.widthKey) private var overlayWidth: Double = OverlayAppearanceDefaults.defaultWidth
-    @AppStorage(OverlayAppearanceDefaults.heightKey) private var overlayHeight: Double = OverlayAppearanceDefaults.defaultHeight
+/// Theme, text size, speaker colours, and motion. The accent and contrast
+/// controls are gone (the accent paints no chrome), and so are the window
+/// size sliders: the RTI window keeps the frame you give it.
+private struct AppearanceSection: View {
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
-    @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
-    @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     @AppStorage(OverlayAppearanceDefaults.reduceMotionKey) private var reduceMotion: String = OverlayAppearanceDefaults.defaultReduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SlateSectionLabel(text: "Overlay Appearance")
-
-            HStack(spacing: RTIDesign.Spacing.sm) {
-                Text("Appearance")
-                    .font(RTIDesign.Font.label)
-                    .foregroundStyle(RTIDesign.Color.textPrimary)
-                Spacer(minLength: RTIDesign.Spacing.xs)
-                Picker("Appearance", selection: $appearanceMode) {
-                    ForEach(RTIAppearanceMode.allCases) { mode in
-                        Text(mode.label).tag(mode.rawValue)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .fixedSize()
+        SettingsCard("Appearance", rows: true) {
+            SettingsRow(title: "Appearance", isFirst: true) {
+                InkSegmentedControl(
+                    selection: $appearanceMode,
+                    options: RTIAppearanceMode.allCases.map { InkSegment(value: $0.rawValue, title: $0.label) }
+                )
+                .frame(maxWidth: House.Layout.settingsRail)
                 .onChange(of: appearanceMode) { _, _ in postAppearanceChanged() }
             }
-            .frame(height: RTIDesign.Control.heightMd)
-
-            // The accent no longer paints chrome (DESIGN.md: focus rings and
-            // links only), so the old accent picker is gone. What is left of
-            // the palette is the six-colour SPEAKER palette, which is data
-            // colour and stays local to RTI.
-            HStack(spacing: RTIDesign.Spacing.sm) {
-                Text("Speaker palette")
-                    .font(RTIDesign.Font.label)
-                    .foregroundStyle(RTIDesign.Color.textPrimary)
-                Spacer(minLength: RTIDesign.Spacing.xs)
-                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
+            SettingsRow(title: "Text size", detail: "Transcript and answer text in the RTI window.") {
+                HStack(spacing: House.Spacing.xs) {
+                    Slider(value: $uiFontSize, in: OverlayAppearanceDefaults.uiFontSizeRange, step: 1) { editing in
+                        if !editing { postAppearanceChanged() }
+                    }
+                    .labelsHidden()
+                    .frame(width: House.Layout.settingsRail)
+                    Text("\(Int(uiFontSize)) pt")
+                        .font(House.TypeToken.meta)
+                        .monospacedDigit()
+                        .foregroundStyle(House.ColorToken.textSecondary)
+                }
+            }
+            SettingsRow(title: "Speaker colours", detail: "Transcript speaker chips use these six colours so speakers stay distinct.") {
+                // The one allowed categorical palette (DESIGN.md): data
+                // colour, not chrome, local to RTI.
+                HStack(spacing: House.Spacing.xxs) {
                     ForEach(Array(RTIDesign.Color.speakerPalette.enumerated()), id: \.offset) { index, colour in
                         Circle()
                             .fill(colour)
-                            .frame(width: 10, height: 10)
+                            .frame(width: House.Control.keyCap / 2, height: House.Control.keyCap / 2)
                             .accessibilityLabel("Speaker \(index + 1)")
                     }
                 }
             }
-            .frame(height: RTIDesign.Control.heightMd)
-            .help("Transcript speaker chips use these six colours so speakers stay distinct.")
-
-            sliderRow(
-                label: "Contrast",
-                value: $contrast,
-                range: OverlayAppearanceDefaults.contrastRange,
-                step: 1,
-                format: "%.0f",
-                postsResize: false,
-                postsAppearance: true
-            )
-
-            sliderRow(
-                label: "UI font size",
-                value: $uiFontSize,
-                range: OverlayAppearanceDefaults.uiFontSizeRange,
-                step: 1,
-                format: "%.0f pt",
-                postsResize: false,
-                postsAppearance: true
-            )
-
-            HStack(spacing: RTIDesign.Spacing.sm) {
-                Text("Reduce motion")
-                    .font(RTIDesign.Font.label)
-                    .foregroundStyle(RTIDesign.Color.textPrimary)
-                Spacer(minLength: RTIDesign.Spacing.xs)
-                Picker("Reduce motion", selection: $reduceMotion) {
-                    ForEach(RTIReduceMotionMode.allCases) { mode in
-                        Text(mode.label).tag(mode.rawValue)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .fixedSize()
+            SettingsRow(title: "Reduce motion") {
+                InkSegmentedControl(
+                    selection: $reduceMotion,
+                    options: RTIReduceMotionMode.allCases.map { InkSegment(value: $0.rawValue, title: $0.label) }
+                )
+                .frame(maxWidth: House.Layout.settingsRail)
                 .onChange(of: reduceMotion) { _, _ in postAppearanceChanged() }
             }
-            .frame(height: RTIDesign.Control.heightMd)
-
-            Divider().padding(.vertical, 4)
-
-            sliderRow(
-                label: "Width",
-                value: $overlayWidth,
-                range: OverlayAppearanceDefaults.widthRange,
-                step: 10,
-                format: "%.0f px",
-                postsResize: true
-            )
-
-            sliderRow(
-                label: "Height",
-                value: $overlayHeight,
-                range: OverlayAppearanceDefaults.heightRange,
-                step: 10,
-                format: "%.0f px",
-                postsResize: true
-            )
-
-            HStack {
-                Spacer()
+            CardNote {
                 Button("Reset to Defaults") {
                     appearanceMode = OverlayAppearanceDefaults.defaultAppearanceMode
-                    accentColorHex = OverlayAppearanceDefaults.defaultAccentColor
-                    contrast = OverlayAppearanceDefaults.defaultContrast
                     uiFontSize = OverlayAppearanceDefaults.defaultUIFontSize
                     reduceMotion = OverlayAppearanceDefaults.defaultReduceMotion
-                    overlayWidth = OverlayAppearanceDefaults.defaultWidth
-                    overlayHeight = OverlayAppearanceDefaults.defaultHeight
                     UserDefaults.standard.removeObject(forKey: OverlayAppearanceDefaults.lightModeKey)
-                    NotificationCenter.default.post(name: .rtiOverlaySizeChanged, object: nil)
                     postAppearanceChanged()
                 }
-                .controlSize(.small)
             }
         }
     }
@@ -419,67 +325,41 @@ private struct OverlayAppearanceSection: View {
     private func postAppearanceChanged() {
         NotificationCenter.default.post(name: .rtiOverlayAppearanceChanged, object: nil)
     }
-
-    @ViewBuilder
-    private func sliderRow(
-        label: String,
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double,
-        format: String,
-        postsResize: Bool,
-        postsAppearance: Bool = false,
-        displayTransform: ((Double) -> Double)? = nil
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(label)
-                    .font(RTIDesign.Font.meta)
-                Spacer()
-                Text(String(format: format, displayTransform?(value.wrappedValue) ?? value.wrappedValue))
-                    .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
-            }
-            Slider(value: value, in: range, step: step) { editing in
-                if !editing && postsResize {
-                    NotificationCenter.default.post(name: .rtiOverlaySizeChanged, object: nil)
-                }
-                if !editing && postsAppearance {
-                    postAppearanceChanged()
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Hotkeys
 
 private struct HotkeysSection: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SlateSectionLabel(text: "Hotkeys")
-            VStack(alignment: .leading, spacing: 4) {
-                hotkeyRow("Toggle overlay", "⌘ \\")
-                hotkeyRow("Start / stop session", "⌘ ⇧ R")
-                hotkeyRow("Pause / resume", "⌘ ⇧ P")
-                hotkeyRow("Primary action (remappable)", "⌘ ↵")
-                hotkeyRow("Note mode (type into transcript)", "⌘ ⌥ N")
-                hotkeyRow("Attach screenshot", "⌘ ⇧ H")
-            }
-            .font(RTIDesign.Font.meta)
-            .foregroundStyle(RTIDesign.Color.textSecondary)
-
-            Text("⌘⏎ is the remappable primary action. Quick AI actions are also available from the command palette.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-        }
+    private struct Hotkey: Identifiable {
+        let title: String
+        var detail: String? = nil
+        let keys: [String]
+        var id: String { title }
     }
 
-    private func hotkeyRow(_ label: String, _ key: String) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            Text(key).font(.system(.body, design: .monospaced))
+    /// The Carbon hotkeys in `HotkeyCoordinator` (the source of truth), plus
+    /// the house list key in RTI's list windows.
+    private let hotkeys = [
+        Hotkey(title: "Show or hide RTI", detail: "Works from any app.", keys: ["⌘", "\\"]),
+        Hotkey(title: "Start or finish a recording", detail: "Works from any app.", keys: ["⌘", "⇧", "R"]),
+        Hotkey(title: "Pause or resume", keys: ["⌘", "⇧", "P"]),
+        Hotkey(title: "Primary action", detail: "The assistant action you picked as primary.", keys: ["⌘", "↩"]),
+        Hotkey(title: "Note mode", detail: "Type a note into the transcript.", keys: ["⌘", "⌥", "N"]),
+        Hotkey(title: "Read the screen", keys: ["⌘", "⇧", "H"]),
+        Hotkey(title: "Show the list", detail: "In the Sessions and Meeting Brief windows.", keys: ["⌃", "⌘", "S"]),
+    ]
+
+    var body: some View {
+        SettingsCard("Hotkeys", rows: true) {
+            ForEach(Array(hotkeys.enumerated()), id: \.element.id) { index, hotkey in
+                SettingsRow(title: hotkey.title, detail: hotkey.detail, isFirst: index == 0) {
+                    KeyCapGroup(keys: hotkey.keys)
+                        .accessibilityLabel(hotkey.keys.joined(separator: " "))
+                }
+            }
+            CardNote {
+                CardText("Pause, the primary action, note mode, and reading the screen work only while a recording runs.")
+            }
         }
     }
 }
@@ -490,22 +370,19 @@ private struct DataAndSupportSection: View {
     @State private var crashLogAvailable: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SlateSectionLabel(text: "Data & Support")
-            Text("Audio is streamed to your transcription provider. Transcripts and prompts are sent to your configured LLM provider. Session records are written to your vault on stop and checkpointed every 5 minutes while recording.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 8) {
+        SettingsCard(
+            "Data and Support",
+            detail: "Audio goes to your transcription provider. Transcripts and prompts go to your assistant provider. Session records save to your vault when you stop, and every 5 minutes while recording."
+        ) {
+            HStack(spacing: House.Spacing.xs) {
                 Button("Show RTI Folder") { revealRTIFolder() }
                 Button("Show Crash Log") { revealCrashLog() }
                     .disabled(!crashLogAvailable)
-                Button("View Logs…") { showLogs() }
+                Button("View Logs") { SettingsWindowController.shared.show(pane: .logs) }
             }
         }
         .onAppear {
-            crashLogAvailable = crashLogURL().map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+            crashLogAvailable = CrashLog.logURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         }
     }
 
@@ -514,17 +391,51 @@ private struct DataAndSupportSection: View {
         NSWorkspace.shared.open(rti)
     }
 
-    private func crashLogURL() -> URL? {
-        CrashLog.logURL
-    }
-
     private func revealCrashLog() {
-        guard let url = crashLogURL(), FileManager.default.fileExists(atPath: url.path) else { return }
+        guard let url = CrashLog.logURL, FileManager.default.fileExists(atPath: url.path) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
+}
 
-    private func showLogs() {
-        NotificationCenter.default.post(name: .rtiShowLogs, object: nil)
+// MARK: - About
+
+/// Settings → About: version, the update check, the diagnostics line, and
+/// the source.
+struct AboutTab: View {
+    var body: some View {
+        SettingsPage {
+            VStack(alignment: .leading, spacing: House.Spacing.sm) {
+                SettingsCard("Version", rows: true) {
+                    SettingsRow(title: "RTI", isFirst: true) {
+                        Text(Self.versionLine)
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textSecondary)
+                            .textSelection(.enabled)
+                    }
+                    SettingsRow(title: "Updates") {
+                        Button("Check for Updates") { UpdateChecker.checkAndReport() }
+                    }
+                }
+                DiagnosticsSection()
+                SettingsCard("Source", rows: true) {
+                    SettingsRow(title: "Repository", isFirst: true) {
+                        if let url = URL(string: "https://github.com/tristan-mcinnis/rti") {
+                            // Links are the one place the accent is allowed.
+                            Link("Source on GitHub", destination: url)
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.accent)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static var versionLine: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "Version \(version) (\(build))"
     }
 }
 
@@ -532,49 +443,34 @@ private struct DataAndSupportSection: View {
 
 private struct DiagnosticsSection: View {
     var body: some View {
-        let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info?["CFBundleVersion"] as? String ?? "?"
-
-        VStack(alignment: .leading, spacing: 6) {
-            SlateSectionLabel(text: "Diagnostics")
-            diagRow("Version", "RTI \(version) (\(build))")
-            diagRow("Assistant", "\(LLMProviders.active.displayName) · \(LLMProviders.active.model)")
-            diagRow("Transcribe", STTProviders.active.displayName)
-            HStack {
-                Spacer()
-                Button("Copy diagnostics") { copyDiagnostics() }
-                    .controlSize(.small)
+        SettingsCard("Diagnostics", rows: true) {
+            diagRow("Assistant", "\(LLMProviders.active.displayName) · \(LLMProviders.active.model)", isFirst: true)
+            diagRow("Transcription", STTProviders.active.displayName)
+            diagRow("macOS", ProcessInfo.processInfo.operatingSystemVersionString)
+            CardNote {
+                Button("Copy Diagnostics") { copyDiagnostics() }
             }
         }
     }
 
-    private func diagRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .frame(width: 80, alignment: .leading)
+    private func diagRow(_ label: String, _ value: String, isFirst: Bool = false) -> some View {
+        SettingsRow(title: label, isFirst: isFirst) {
             Text(value)
-                .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
-                .foregroundStyle(RTIDesign.Color.textPrimary)
+                .font(House.TypeToken.code)
+                .foregroundStyle(House.ColorToken.textSecondary)
                 .textSelection(.enabled)
-                .lineLimit(2)
+                .lineLimit(1)
                 .truncationMode(.middle)
-            Spacer()
         }
     }
 
     private func copyDiagnostics() {
-        let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info?["CFBundleVersion"] as? String ?? "?"
         let provider = LLMProviders.active
         let lines = [
-            "RTI \(version) (\(build))",
+            "RTI \(AboutTab.versionLine)",
             "Platform: \(ProcessInfo.processInfo.operatingSystemVersionString)",
             "Assistant: \(provider.displayName) · \(provider.model) · \(provider.baseURL.absoluteString)",
-            "Transcription: \(STTProviders.active.displayName)"
+            "Transcription: \(STTProviders.active.displayName)",
         ]
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)

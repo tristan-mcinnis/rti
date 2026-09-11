@@ -12,6 +12,12 @@ The Assist composer now looks and works like Quick AI (`docs/house-style-migrati
 - `esc` in the composer closes a list, stops an answer, then clears the text. It no longer hides the window from there.
 - Fix: `↩` while typing Chinese (pinyin) commits the text and no longer sends the draft.
 - Fix: the stop button is no longer red. Red is for recording only.
+## 2026-09-12: House style for Settings, the welcome window, and Meeting Brief
+
+- Settings has its own window (860 × 620): a rail with "Search settings…" and ⌘1 to ⌘8, cards with 40 pt rows, and "Next ⌘n" in the footer. Voices, Logs, and a new About pane join the others. `esc` (with an empty search) and ⌘W close it; the Close button is gone.
+- General drops the accent, contrast, and window size controls. Appearance and Reduce Motion use ink segmented controls. Hotkeys show real key caps.
+- The welcome window follows Quick Launch's: the RTI mark, one line, five key hints, the two setup cards, and one Get Started that turns on once both keys are saved and the microphone is allowed.
+- Meeting Brief opens in the AI Chat window shape: the brief in one reading column, and the brief list as a rail, hidden until ⌃⌘S. `esc` clears the search, then hides the list; it never closes the window.
 
 ## 2026-09-12: House chat seams
 

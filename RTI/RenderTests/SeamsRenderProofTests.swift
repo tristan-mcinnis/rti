@@ -45,14 +45,11 @@ final class SeamsRenderProofTests: RenderProofTestCase {
         )
     }
 
-    /// The settings stub opens the same pane today's window shows.
-    func testSettingsStubMapsEveryPane() {
-        let expected: [SettingsView.SettingsTab: SessionsControlView.Tab] = [
-            .providers: .providers, .modes: .modes, .prompts: .prompts, .glossary: .glossary, .general: .general,
-        ]
-        for pane in SettingsView.SettingsTab.allCases {
-            XCTAssertEqual(SettingsWindowController.libraryTab(for: pane), expected[pane], "\(pane)")
-        }
+    /// Every settings pane has its own title and `⌘`-number, in rail order.
+    func testSettingsPanesHaveUniqueTitlesAndNumbers() {
+        let panes = SettingsView.SettingsTab.allCases
+        XCTAssertEqual(panes.map(\.number), Array(1...panes.count))
+        XCTAssertEqual(Set(panes.map(\.label)).count, panes.count)
     }
 }
 

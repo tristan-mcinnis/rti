@@ -1,237 +1,358 @@
+// Welcome block copied from quick-launch@8ee19aa Sources/Views/WelcomeOverlayView.swift
+import RTICore
 import SwiftUI
 
-/// First-run setup: API keys + permissions, with a clear "you're ready" state.
-/// Shown once on a fresh machine (no keys); dismisses to the menubar.
+/// First-run setup, in the shape of Quick Launch's welcome card: the RTI
+/// mark, one line, the five keys that make up the app, then the two setup
+/// cards (API keys; microphone and screen access) and one full-width Get
+/// Started. Get Started turns on when both keys are saved and the
+/// microphone is allowed; until then the footnote says what is missing.
 struct OnboardingView: View {
+    /// A fixed state for render proofs, so a proof never reads the real
+    /// credentials file or the real privacy grants. Nil in the app.
+    struct Fixture {
+        var soniox = ""
+        var assistantKey = ""
+        var keysSaved = false
+        var microphone: AppPermissions.State = .notDetermined
+        var screenRecording: AppPermissions.State = .notDetermined
+    }
+
+    /// One line of the welcome: a glyph in a tile and a short sentence.
+    struct Line: Identifiable, Equatable {
+        let systemImage: String
+        let text: String
+        var id: String { text }
+    }
+
+    static let summary = "Records, transcribes, and answers during your meetings, out of screen shares."
+
+    static let lines: [Line] = [
+        Line(systemImage: "record.circle", text: "⌘⇧R starts and finishes a recording"),
+        Line(systemImage: "macwindow", text: "⌘\\ shows or hides RTI"),
+        Line(systemImage: "sparkles", text: "⌘↩ asks the assistant during a meeting"),
+        Line(systemImage: "at", text: "@ adds a vault file to a question"),
+        Line(systemImage: "archivebox", text: "Notes and transcripts save to the vault"),
+    ]
+
     var onDone: () -> Void
+    var fixture: Fixture? = nil
 
     @State private var soniox = ""
-    @State private var llmKey = ""
-    @State private var keysConfigured = LLMProviders.activeHasKey && STTProviders.activeHasKey
+    @State private var assistantKey = ""
+    @State private var keysSaved = false
     @State private var justSaved = false
     @State private var saveError: String?
-    @State private var micState = AppPermissions.microphone
-    @State private var screenState = AppPermissions.screenRecording
+    @State private var micState: AppPermissions.State = .notDetermined
+    @State private var screenState: AppPermissions.State = .notDetermined
 
-    private var providerName: String {
-        LLMProviders.active.displayName
-    }
+    private var providerName: String { LLMProviders.active.displayName }
 
     private var canSave: Bool {
         !soniox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !llmKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !assistantKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var isReady: Bool {
-        keysConfigured && micState == .granted
+    private var checklist: OnboardingChecklist {
+        OnboardingChecklist(
+            keysSaved: keysSaved,
+            microphone: Self.access(micState),
+            screenRecording: Self.access(screenState)
+        )
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                header
-                keysCard
-                permissionsCard
-                footer
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: House.Spacing.md) {
+                    welcome
+                    keysCard
+                    accessCard
+                }
+                .padding(.horizontal, House.Spacing.xl)
+                // Clears the transparent title bar's traffic lights.
+                .padding(.top, House.Spacing.xxl)
+                .padding(.bottom, House.Spacing.md)
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            HouseDivider()
+            footer
         }
-        .background(RTIDesign.Color.appBackground)
-        .frame(width: 520, height: 640)
-        // Chrome is ink, not the system accent: segmented pickers, prominent
-        // buttons, and menus all take their colour from here.
-        .tint(RTIDesign.Color.textPrimary)
+        .background(House.ColorToken.surface)
+        // Chrome is ink, not the system accent.
+        .tint(House.ColorToken.textPrimary)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // User may have flipped a toggle in System Settings and come back.
-            micState = AppPermissions.microphone
-            screenState = AppPermissions.screenRecording
+            // The user may have flipped a switch in System Settings and come back.
+            refreshPermissions()
         }
-        .onAppear {
-            soniox = CredentialStore.soniox ?? ""
-            llmKey = CredentialStore.value(for: LLMProviders.activeOption.keychainAccount) ?? ""
-        }
+        .onAppear(perform: load)
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    // MARK: - Welcome
+
+    private var welcome: some View {
+        VStack(spacing: House.Spacing.md) {
+            // The app icon's own shape: one flat ink tile, one glyph.
+            RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous)
+                .fill(House.ColorToken.textPrimary)
+                .frame(width: House.Spacing.xxxxl, height: House.Spacing.xxxxl)
+                .overlay {
+                    Image(systemName: "record.circle")
+                        .font(House.TypeToken.display)
+                        .foregroundStyle(House.ColorToken.textInverse)
+                }
+                .accessibilityHidden(true)
+
             Text("Welcome to RTI")
-                .font(RTIDesign.Font.sectionTitle)
-                .foregroundStyle(RTIDesign.Color.textPrimary)
-            Text("A real-time meeting copilot — live transcription and an on-call assistant, in an overlay that stays out of your screen shares. Two quick steps and you're live.")
-                .font(RTIDesign.Font.bodySmall)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
+                .font(House.TypeToken.title)
+                .foregroundStyle(House.ColorToken.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+
+            Text(Self.summary)
+                .font(House.TypeToken.body)
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                ForEach(Self.lines) { line in
+                    HStack(spacing: House.Spacing.sm) {
+                        SlateIconTile(systemName: line.systemImage, glyphSize: House.TypeToken.Size.caption)
+                        Text(line.text)
+                            .font(House.TypeToken.bodySmall)
+                            .foregroundStyle(House.ColorToken.textSecondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .padding(.top, House.Spacing.xxs)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, House.Spacing.xs)
     }
 
     // MARK: - Step 1: keys
 
     private var keysCard: some View {
-        card(number: "1", title: "Add your API keys") {
-            keyField(
-                "Soniox API key",
+        SettingsCard("API Keys", rows: true) {
+            keyRow(
+                "Soniox",
+                detail: "Live transcription.",
                 placeholder: "soniox-…",
                 text: $soniox,
-                help: "Live transcription.",
-                linkTitle: "Get a key",
-                linkURL: "https://console.soniox.com"
+                linkURL: "https://console.soniox.com",
+                isFirst: true
             )
-            keyField(
-                "\(providerName) API key",
+            keyRow(
+                providerName,
+                detail: "The assistant.",
                 placeholder: LLMProviders.activeOption.apiKeyPlaceholder,
-                text: $llmKey,
-                help: "The assistant.",
-                linkTitle: "Get a key",
+                text: $assistantKey,
                 linkURL: LLMProviders.activeOption.consoleURL
             )
-            if let saveError {
-                Text(saveError).font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.danger)
-            }
-            HStack(spacing: 10) {
-                Button("Save provider keys") { saveKeys() }
-                    .keyboardShortcut(.defaultAction)
+            CardNote {
+                Button("Save Keys") { saveKeys() }
                     .disabled(!canSave)
-                if justSaved || keysConfigured {
-                    SettingsStatusLabel(text: justSaved ? "Saved" : "Saved earlier",
+                if let saveError {
+                    SettingsStatusLabel(text: saveError, systemImage: "xmark.octagon.fill", color: House.ColorToken.danger)
+                } else if keysSaved {
+                    SettingsStatusLabel(text: justSaved ? "Saved" : "Saved on this Mac",
                                         systemImage: "checkmark.circle.fill",
-                                        color: RTIDesign.Color.success)
+                                        color: House.ColorToken.success)
+                        .fixedSize()
                 }
+                Text("Kept in an owner-only file on this Mac. Never synced.")
+                    .font(House.TypeToken.caption)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            Text("Stored in an owner-only file on this Mac (~/Library/Application Support/RTI), never synced.")
-                .font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.textTertiary)
         }
     }
 
-    private func keyField(_ label: String, placeholder: String, text: Binding<String>, help: String, linkTitle: String, linkURL: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(label).font(RTIDesign.Font.label).foregroundStyle(RTIDesign.Color.textPrimary)
-                Text(help).font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.textSecondary)
-                Spacer()
-                if let url = URL(string: linkURL) {
-                    // Links are the one place the accent is allowed.
-                    Link(linkTitle, destination: url)
-                        .font(RTIDesign.Font.caption)
-                        .foregroundStyle(RTIDesign.Color.accent)
+    private func keyRow(
+        _ title: String,
+        detail: String,
+        placeholder: String,
+        text: Binding<String>,
+        linkURL: String,
+        isFirst: Bool = false
+    ) -> some View {
+        VStack(spacing: 0) {
+            if !isFirst { HouseDivider() }
+            HStack(spacing: House.Spacing.sm) {
+                VStack(alignment: .leading, spacing: House.Spacing.xxs / 2) {
+                    Text(title)
+                        .font(House.TypeToken.label)
+                        .foregroundStyle(House.ColorToken.textPrimary)
+                    HStack(spacing: House.Spacing.xxs) {
+                        Text(detail)
+                            .font(House.TypeToken.caption)
+                            .foregroundStyle(House.ColorToken.textTertiary)
+                        if let url = URL(string: linkURL) {
+                            // Links are the one place the accent is allowed.
+                            Link("Get a key", destination: url)
+                                .font(House.TypeToken.caption)
+                                .foregroundStyle(House.ColorToken.accent)
+                        }
+                    }
                 }
+                Spacer(minLength: House.Spacing.sm)
+                SecureField(text: text, prompt: Text("")) {
+                    Text("\(title) API key")
+                }
+                .textFieldStyle(.plain)
+                .font(House.TypeToken.code)
+                .foregroundStyle(House.ColorToken.textPrimary)
+                // The placeholder is an overlay: a styled prompt takes the
+                // field's ink on macOS.
+                .overlay(alignment: .leading) {
+                    if text.wrappedValue.isEmpty {
+                        Text(placeholder)
+                            .font(House.TypeToken.code)
+                            .foregroundStyle(House.ColorToken.textTertiary)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .settingsField()
+                .frame(width: House.Layout.settingsRail)
+                .onSubmit { if canSave { saveKeys() } }
             }
-            SecureField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: House.TypeToken.Size.bodySmall, design: .monospaced))
+            .padding(.vertical, House.Spacing.xs)
+            .frame(minHeight: House.Control.row)
         }
     }
 
-    // MARK: - Step 2: permissions
+    // MARK: - Step 2: access
 
-    private var permissionsCard: some View {
-        card(number: "2", title: "Grant permissions") {
-            permissionRow(
-                title: "Microphone",
-                subtitle: "Required — RTI can't transcribe without it.",
-                state: micState,
-                grant: { AppPermissions.requestMicrophone { _ in micState = AppPermissions.microphone } },
-                openSettings: AppPermissions.openMicrophoneSettings
-            )
-            Divider()
-            permissionRow(
-                title: "Screen Recording",
-                subtitle: "Optional — lets ⌘⇧H read what's on your screen.",
-                state: screenState,
-                grant: {
-                    _ = AppPermissions.requestScreenRecording()
-                    screenState = AppPermissions.screenRecording
-                },
-                openSettings: AppPermissions.openScreenRecordingSettings
-            )
+    private var accessCard: some View {
+        SettingsCard("Access", rows: true) {
+            SettingsRow(title: "Microphone", detail: "Needed to transcribe.", isFirst: true) {
+                accessControl(
+                    state: micState,
+                    grant: { AppPermissions.requestMicrophone { _ in micState = AppPermissions.microphone } },
+                    openSettings: AppPermissions.openMicrophoneSettings
+                )
+            }
+            SettingsRow(title: "Screen Recording", detail: "Optional. Lets ⌘⇧H read your screen.") {
+                accessControl(
+                    state: screenState,
+                    grant: {
+                        _ = AppPermissions.requestScreenRecording()
+                        screenState = AppPermissions.screenRecording
+                    },
+                    openSettings: AppPermissions.openScreenRecordingSettings
+                )
+            }
         }
     }
 
-    private func permissionRow(title: String, subtitle: String, state: AppPermissions.State, grant: @escaping () -> Void, openSettings: @escaping () -> Void) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(RTIDesign.Font.label).foregroundStyle(RTIDesign.Color.textPrimary)
-                Text(subtitle).font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.textSecondary)
-            }
-            Spacer()
-            switch state {
-            case .granted:
-                SettingsStatusLabel(text: "Granted", systemImage: "checkmark.circle.fill",
-                                    color: RTIDesign.Color.success)
-            case .notDetermined:
-                Button("Grant", action: grant)
-            case .denied:
-                Button("Open Settings", action: openSettings)
-            }
+    @ViewBuilder
+    private func accessControl(
+        state: AppPermissions.State,
+        grant: @escaping () -> Void,
+        openSettings: @escaping () -> Void
+    ) -> some View {
+        switch state {
+        case .granted:
+            SettingsStatusLabel(text: "Allowed", systemImage: "checkmark.circle.fill", color: House.ColorToken.success)
+                .fixedSize()
+        case .notDetermined:
+            Button("Allow", action: grant)
+        case .denied:
+            Button("Open System Settings", action: openSettings)
         }
     }
 
     // MARK: - Footer
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
-            HStack(alignment: .firstTextBaseline) {
-                if isReady {
-                    Text("You're all set. Press ⌘⇧R anytime to start a session, ⌘\\ to toggle the overlay.")
-                        .font(RTIDesign.Font.meta).foregroundStyle(RTIDesign.Color.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if !keysConfigured {
-                    Text("Add both keys to get started. You can finish later from the menubar → Settings.")
-                        .font(RTIDesign.Font.meta).foregroundStyle(RTIDesign.Color.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text("Microphone access is still needed before your first session.")
-                        .font(RTIDesign.Font.meta).foregroundStyle(RTIDesign.Color.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Button(isReady ? "Start using RTI" : "Done") { onDone() }
-                    .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
-            }
+        VStack(spacing: House.Spacing.xs) {
+            Text(checklist.footnote)
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .multilineTextAlignment(.center)
+            Button("Get Started") { onDone() }
+                .buttonStyle(GetStartedButtonStyle())
+                .disabled(!checklist.isReady)
+                .keyboardShortcut(checklist.isReady ? .defaultAction : nil)
+                .padding(.top, House.Spacing.xxs)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, House.Spacing.xl)
+        .padding(.vertical, House.Spacing.md)
+        .accessibilityElement(children: .contain)
     }
 
-    // MARK: - Card chrome
+    // MARK: - State
 
-    private func card(number: String, title: String, @ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: RTIDesign.Spacing.xs + 2) {
-                // An ink tile, not a blue circle: the accent paints no chrome.
-                Text(number)
-                    .font(RTIDesign.Font.keyCap)
-                    .foregroundStyle(RTIDesign.Color.textInverse)
-                    .frame(width: RTIDesign.Control.keyCap, height: RTIDesign.Control.keyCap)
-                    .background(
-                        RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
-                            .fill(RTIDesign.Color.textPrimary)
-                    )
-                Text(title)
-                    .font(RTIDesign.Font.heading)
-                    .foregroundStyle(RTIDesign.Color.textPrimary)
-            }
-            content()
+    private func load() {
+        if let fixture {
+            soniox = fixture.soniox
+            assistantKey = fixture.assistantKey
+            keysSaved = fixture.keysSaved
+            micState = fixture.microphone
+            screenState = fixture.screenRecording
+            return
         }
-        .padding(RTIDesign.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .slateGroupCard()
+        soniox = CredentialStore.soniox ?? ""
+        assistantKey = CredentialStore.value(for: LLMProviders.activeOption.keychainAccount) ?? ""
+        keysSaved = LLMProviders.activeHasKey && STTProviders.activeHasKey
+        refreshPermissions()
+    }
+
+    private func refreshPermissions() {
+        guard fixture == nil else { return }
+        micState = AppPermissions.microphone
+        screenState = AppPermissions.screenRecording
     }
 
     private func saveKeys() {
+        guard fixture == nil else { return }
         let s = soniox.trimmingCharacters(in: .whitespacesAndNewlines)
-        let k = llmKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !s.isEmpty, !k.isEmpty else { saveError = "Both keys are required."; return }
+        let k = assistantKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty, !k.isEmpty else { saveError = "Both keys are needed."; return }
         CredentialStore.setSoniox(s)
         CredentialStore.setValue(k, for: LLMProviders.activeOption.keychainAccount)
         guard CredentialStore.soniox == s,
               CredentialStore.value(for: LLMProviders.activeOption.keychainAccount) == k else {
-            saveError = "Couldn't save keys. Check that ~/Library/Application Support/RTI is writable."
+            saveError = "Could not save the keys. Check that ~/Library/Application Support/RTI can be written."
             return
         }
         saveError = nil
-        keysConfigured = true
+        keysSaved = true
         justSaved = true
-        Task { try? await Task.sleep(for: .seconds(1.5)); await MainActor.run { justSaved = false } }
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            justSaved = false
+        }
+    }
+
+    private static func access(_ state: AppPermissions.State) -> OnboardingChecklist.Access {
+        switch state {
+        case .granted: .granted
+        case .denied: .denied
+        case .notDetermined: .notAsked
+        }
+    }
+}
+
+/// The one primary action of the welcome window: full width, ink fill,
+/// inverse text. Disabled, it is a quiet chip fill with tertiary text.
+private struct GetStartedButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(House.TypeToken.label)
+            .foregroundStyle(isEnabled ? House.ColorToken.textInverse : House.ColorToken.textTertiary)
+            .frame(maxWidth: .infinity)
+            .frame(height: House.Control.row)
+            .background(
+                RoundedRectangle(cornerRadius: House.Radius.md, style: .continuous)
+                    .fill(isEnabled ? House.ColorToken.textPrimary : House.ColorToken.chipFill)
+            )
+            .opacity(configuration.isPressed ? HouseChatMetrics.pressedOpacity : 1)
+            .contentShape(Rectangle())
     }
 }
