@@ -1,5 +1,18 @@
 # RTI Change Log
 
+## 2026-09-12: House composer
+
+The Assist composer now looks and works like Quick AI (`docs/house-style-migration-20260912.md`, package B).
+
+- One row: a plus circle, a pill field with the next action inside it, and a `⌘K` circle. The field says what `↩` does: the primary action ("Assist ⌘↩") when empty, "Ask ↩" with text, "Stop esc" while an answer streams, "Add Note ↩" in note mode.
+- The ✦ menu moved to `⌘K`: quick actions, note mode, attach, read screen, recap depth, and every RTI command, in one palette.
+- The paperclip, context pills, and Note toggle moved to the plus circle (Add Context): attach a file, a vault file, read the screen once, search scope, note mode.
+- Files, vault files, and screen reads show as chips above the field, with page count, size, and "cut" when the text was cut. A file that fails says why on its chip.
+- `↩` during an answer queues the follow-up; it sends when the answer ends.
+- `esc` in the composer closes a list, stops an answer, then clears the text. It no longer hides the window from there.
+- Fix: `↩` while typing Chinese (pinyin) commits the text and no longer sends the draft.
+- Fix: the stop button is no longer red. Red is for recording only.
+
 ## 2026-09-12: House chat seams
 
 No visible change. Groundwork for the house chat look (`docs/house-style-migration-20260912.md`, package 0).
