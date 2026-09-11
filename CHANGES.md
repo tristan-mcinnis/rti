@@ -1,5 +1,16 @@
 # RTI Change Log
 
+## 2026-09-12: Sessions window and titles
+
+Past sessions have their own window in the house chat shape (`docs/house-style-migration-20260912.md`, package D).
+
+- Sessions opens in its own window: the session title and date line on top, the files as chips, one reading column.
+- The session list is a rail, hidden until ⌃⌘S or the header button. Search filters titles; with the vault search up, it also finds words in transcripts and shows where.
+- No more "Untitled session". A title comes from your rename, the summary, the vault meeting note, the calendar event, a short title made from the notes, or the date and length.
+- ⌘K shows the session's actions (rename, name speakers, upgrade, regenerate, export, reveal). ⌘J asks about it in RTI. ⌘F finds in the open file.
+- A past Assist chat reads like it did live: your questions on the right, answers on the left.
+- Preferences keep their own window until the new settings window lands.
+
 ## 2026-09-12: House chat seams
 
 No visible change. Groundwork for the house chat look (`docs/house-style-migration-20260912.md`, package 0).

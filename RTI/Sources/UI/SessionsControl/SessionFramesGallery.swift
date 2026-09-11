@@ -20,23 +20,27 @@ struct SessionFramesGallery: View {
         Group {
             if frames.isEmpty {
                 Text("No screenshots were kept for this session.")
-                    .font(RTIDesign.Font.meta)
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                    .font(House.TypeToken.bodySmall)
+                    .foregroundStyle(House.ColorToken.textTertiary)
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("\(frames.count) frame\(frames.count == 1 ? "" : "s") captured during the session, in order.")
-                        .font(RTIDesign.Font.caption)
-                        .foregroundStyle(RTIDesign.Color.textSecondary)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 14) {
+                VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                    Text("\(frames.count) frame\(frames.count == 1 ? "" : "s") from the session, in order.")
+                        .font(House.TypeToken.meta)
+                        .foregroundStyle(House.ColorToken.textSecondary)
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: House.Layout.chatRail), spacing: House.Spacing.sm)],
+                        spacing: House.Spacing.md
+                    ) {
                         ForEach(frames) { frame in
                             Button {
                                 previewed = frame
                             } label: {
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                                     FrameThumbnail(url: frame.url)
                                     Text(frame.caption)
-                                        .font(.system(size: House.TypeToken.Size.section))
-                                        .foregroundStyle(RTIDesign.Color.textSecondary)
+                                        .font(House.TypeToken.caption)
+                                        .foregroundStyle(House.ColorToken.textSecondary)
+                                        .monospacedDigit()
                                         .lineLimit(1)
                                 }
                             }
@@ -77,6 +81,9 @@ private struct FrameThumbnail: View {
     let url: URL
     @State private var image: NSImage?
 
+    /// Thumbnails share one screen-shaped frame (16:10), whatever the capture.
+    static let aspect: CGFloat = 16.0 / 10.0
+
     var body: some View {
         ZStack {
             if let image {
@@ -84,16 +91,16 @@ private struct FrameThumbnail: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                Rectangle().fill(.quaternary)
-                    .overlay(Image(systemName: "photo").foregroundStyle(RTIDesign.Color.textTertiary))
+                Rectangle().fill(House.ColorToken.tileFill)
+                    .overlay(Image(systemName: "photo").foregroundStyle(House.ColorToken.textTertiary))
             }
         }
-        .frame(height: 126)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.sm))
+        .aspectRatio(Self.aspect, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: RTIDesign.Radius.sm)
-                .stroke(RTIDesign.Color.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
         )
         .task(id: url) {
             image = Self.thumbnail(for: url)
@@ -118,20 +125,22 @@ private struct FramePreviewSheet: View {
     let dismiss: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: House.Spacing.sm) {
             if let image = NSImage(contentsOf: frame) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 980, maxHeight: 640)
-                    .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.sm))
+                    .frame(maxWidth: House.Layout.chatWidth, maxHeight: House.Layout.chatHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous))
             } else {
                 Text("Couldn't load \(frame.lastPathComponent)")
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
+                    .font(House.TypeToken.bodySmall)
+                    .foregroundStyle(House.ColorToken.textSecondary)
             }
             HStack {
                 Text(caption)
-                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textPrimary)
                 Spacer()
                 Button("Reveal in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([frame])
@@ -140,7 +149,8 @@ private struct FramePreviewSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(18)
-        .frame(minWidth: 560)
+        .padding(House.Spacing.lg)
+        .frame(minWidth: House.Layout.chatMinWidth - House.Layout.chatRail)
+        .background(House.ColorToken.surface)
     }
 }

@@ -1,16 +1,16 @@
 import AppKit
 import SwiftUI
 
-/// Owns the Library & Preferences window: completed meetings, durable
-/// configuration, and diagnostics. The live meeting belongs in the overlay.
+/// Owns the Preferences window: durable configuration and diagnostics.
+/// Past sessions have their own window (`SessionsWindowController`); the
+/// live meeting belongs in the overlay.
 @MainActor
 final class SessionsControlWindowController {
     private var window: NSWindow?
 
-    func show(tab: SessionsControlView.Tab = .sessions) {
+    func show(tab: SessionsControlView.Tab = .providers) {
         if let window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            RTIActivation.bringToFront(window)
             // Notify the existing view to switch tabs.
             NotificationCenter.default.post(name: .rtiSelectSessionsControlTab, object: tab)
             return
@@ -22,7 +22,7 @@ final class SessionsControlWindowController {
             backing: .buffered,
             defer: false
         )
-        w.title = "RTI Library & Preferences"
+        w.title = "RTI Preferences"
         w.titlebarAppearsTransparent = true
         w.setFrameAutosaveName("rti.sessionscontrol")
         w.isReleasedWhenClosed = false
@@ -32,11 +32,10 @@ final class SessionsControlWindowController {
         w.contentView = NSHostingView(rootView: SessionsControlView(initialTab: tab))
         w.center()
         keepWindowVisible(w)
-        w.makeKeyAndOrderFront(nil)
+        RTIActivation.bringToFront(w)
         DispatchQueue.main.async {
             self.keepWindowVisible(w)
         }
-        NSApp.activate(ignoringOtherApps: true)
         window = w
     }
 

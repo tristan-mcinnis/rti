@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// RTI's durable workspace: completed meetings, preferences, and diagnostics.
-/// The live transcript intentionally lives only in the overlay, avoiding two
-/// competing places to follow an active meeting.
+/// RTI's preferences and diagnostics window (Providers, Modes, Prompts,
+/// Glossary, Voices, General, Logs).
+///
+/// Shim during the house-style migration: past sessions moved to their own
+/// window (`SessionsWindowController`), so this window no longer lists them.
+/// `Tab.sessions` stays so existing callers compile; `WindowCoordinator`
+/// sends it to the Sessions window. The settings shell (`SettingsView` in
+/// `SettingsWindowController`) replaces this window when it lands.
 struct SessionsControlView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case sessions = "Sessions"
@@ -42,8 +47,8 @@ struct SessionsControlView: View {
 
     @State private var selectedTab: Tab
 
-    init(initialTab: Tab = .sessions) {
-        _selectedTab = State(initialValue: initialTab)
+    init(initialTab: Tab = .providers) {
+        _selectedTab = State(initialValue: initialTab == .sessions ? .providers : initialTab)
     }
 
     var body: some View {
@@ -65,7 +70,7 @@ struct SessionsControlView: View {
             selectedTab = .logs
         }
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectSessionsControlTab)) { notif in
-            guard let tab = notif.object as? Tab else { return }
+            guard let tab = notif.object as? Tab, tab != .sessions else { return }
             selectedTab = tab
         }
     }
@@ -79,7 +84,7 @@ struct SessionsControlView: View {
                     Text("RTI")
                         .font(RTIDesign.Font.label)
                         .foregroundStyle(RTIDesign.Color.textPrimary)
-                    SlateSectionLabel(text: "Library & preferences")
+                    SlateSectionLabel(text: "Preferences")
                 }
             }
             .padding(.horizontal, RTIDesign.Spacing.md)
@@ -88,7 +93,6 @@ struct SessionsControlView: View {
             // Derived from Tab.allCases so a newly added tab can never be
             // silently missing from the sidebar (bitten 2026-08-30: Voices
             // existed in the enum + content switch but not in this list).
-            sidebarSection("Meetings", tabs: Tab.allCases.filter { $0.section == .meetings })
             sidebarSection("Preferences", tabs: Tab.allCases.filter { $0.section == .preferences })
             sidebarSection("Support", tabs: Tab.allCases.filter { $0.section == .support })
 
@@ -133,10 +137,7 @@ struct SessionsControlView: View {
     @ViewBuilder
     private var contentForTab: some View {
         switch selectedTab {
-        case .sessions:
-            SessionsBrowserView()
-
-        case .providers:
+        case .sessions, .providers:
             ProvidersTab()
         case .modes:
             ModesTab()
