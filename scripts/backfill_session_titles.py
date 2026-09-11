@@ -7,7 +7,7 @@ from urllib import request, error
 
 
 API_URL = "https://api.deepseek.com/v1/chat/completions"
-MODEL = "deepseek-v4-flash"
+MODEL = "deepseek-flash"
 
 TITLE_INSTRUCTION = """SESSION TITLE — on the VERY FIRST LINE of your response, output exactly:
 TITLE: <a 4–7 word title for this session>

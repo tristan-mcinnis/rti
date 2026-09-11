@@ -30,7 +30,7 @@ enum LLMProviders {
             id: "deepseek",
             displayName: "DeepSeek",
             baseURL: URL(string: "https://api.deepseek.com/v1")!,
-            model: "deepseek-v4-flash",
+            model: "deepseek-flash",
             supportsThinking: true,
             apiKey: { CredentialStore.deepseek ?? "" }
         ),
