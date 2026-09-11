@@ -1,8 +1,9 @@
 import RTICore
 import SwiftUI
 
-/// The tabs of the consolidated overlay. One window, one toggle (⌘\), tabs
-/// across the top — instead of a constellation of floating panels.
+/// The tabs of the consolidated overlay. One window, one global toggle (⌘\),
+/// tabs in a row under the header, instead of a constellation of floating
+/// panels. ⌘1…⌘7 pick a tab while the overlay is key (View menu).
 enum OverlayTab: String, CaseIterable, Identifiable {
     // Prepare is the meeting home; the rest are live surfaces.
     case setup, assist, auto, transcript, notes, guide, findings
@@ -33,6 +34,28 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         case .findings: "checklist.checked"
         }
     }
+
+    /// The tab's ⌘ digit (⌘1 Prepare … ⌘7 Intel), fixed whether or not an
+    /// opt-in tab is showing. Local to the overlay (View menu), never global.
+    var shortcutNumber: Int {
+        OverlayTabShortcut.number(forTab: rawValue) ?? 0
+    }
+
+    /// "⌘2", for help text and palette rows.
+    var shortcutLabel: String { "⌘\(shortcutNumber)" }
+
+    /// The live tabs showing, in order. Prepare is not listed: it is the
+    /// leading button and always there. Notes defaults on; Auto, Guide, and
+    /// Intel are opt-in from Prepare.
+    static func visibleTabs(notes: Bool, guide: Bool, findings: Bool, auto: Bool) -> [OverlayTab] {
+        var tabs: [OverlayTab] = [.assist]
+        if auto { tabs.append(.auto) }
+        tabs.append(.transcript)
+        if notes { tabs.append(.notes) }
+        if guide { tabs.append(.guide) }
+        if findings { tabs.append(.findings) }
+        return tabs
+    }
 }
 
 struct OverlayTabBar: View {
@@ -48,7 +71,7 @@ struct OverlayTabBar: View {
     }
 
     var body: some View {
-        HStack(spacing: RTIDesign.Spacing.xxs - 1) {
+        HStack(spacing: House.Spacing.xxs) {
             ForEach(tabs) { tab in
                 OverlayTabButton(
                     tab: tab,
@@ -72,9 +95,9 @@ private struct OverlayTabButton: View {
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
-                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
+                HStack(spacing: HouseChatMetrics.chipGap) {
                     Image(systemName: tab.icon)
-                        .font(RTIDesign.Font.bodySmall)
+                        .font(House.TypeToken.bodySmall)
                     // Selection is a raised tile that names itself; the rest
                     // stay icon-only in secondary ink. No accent anywhere.
                     if isSelected {
@@ -83,12 +106,12 @@ private struct OverlayTabButton: View {
                             .fixedSize()
                     }
                 }
-                .padding(.horizontal, isSelected ? 10 : 0)
-                .frame(minWidth: isSelected ? 0 : 30, minHeight: RTIDesign.Control.chip)
+                .padding(.horizontal, isSelected ? House.Spacing.sm : 0)
+                .frame(minWidth: isSelected ? 0 : House.Control.compact, minHeight: House.Control.chip)
                 // Unread badge: Auto surfaced cards the user hasn't seen.
                 if tab == .auto, !isSelected, autoUnseen > 0 {
-                    SlateStatusDot(color: RTIDesign.Color.danger)
-                        .offset(x: -3, y: 5)
+                    SlateStatusDot(color: House.ColorToken.danger)
+                        .padding(House.Spacing.xxs)
                 }
             }
             .foregroundStyle(isSelected
@@ -101,7 +124,7 @@ private struct OverlayTabButton: View {
         .hoverHighlight($hovering)
         .accessibilityLabel(tab.title)
         .accessibilityValue(isSelected ? "Selected" : "")
-        .help(tab.title)
+        .help("\(tab.title) (\(tab.shortcutLabel))")
     }
 }
 
@@ -124,11 +147,11 @@ struct OverlaySetupButton: View {
             }
         } label: {
             Image(systemName: OverlayTab.setup.icon)
-                .font(RTIDesign.Font.body)
+                .font(House.TypeToken.body)
                 .foregroundStyle(selection == .setup
                     ? Color.overlayInk
                     : (hovering ? Color.overlayInkSecondary : Color.overlayInkTertiary))
-                .frame(width: 30, height: RTIDesign.Control.chip)
+                .frame(width: House.Control.compact, height: House.Control.chip)
                 .slateRaisedTile(selection == .setup, hovering: hovering)
                 .contentShape(Rectangle())
         }
@@ -136,6 +159,6 @@ struct OverlaySetupButton: View {
         .hoverHighlight($hovering)
         .accessibilityLabel("Prepare meeting")
         .accessibilityHint("Project, calendar, screen context, discussion guide, and live-analysis toggles")
-        .help("Prepare meeting — project, calendar, screen context, discussion guide, and live-analysis toggles (⌘⌥0)")
+        .help("Prepare the meeting: project, calendar, screen context, guide, and live aids (\(OverlayTab.setup.shortcutLabel))")
     }
 }

@@ -18,6 +18,9 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
 
     var isRunningProvider: (() -> Bool)?
 
+    /// ⌘\ is RTI's global show and hide.
+    private static let idleToolTip = "RTI. Click for the menu. ⌘\\ shows or hides RTI."
+
     /// Build the small, stable menu from the shared command registry. The full
     /// registry remains available to the command palette and global hotkeys.
     func install(commands: [RTICommand]) {
@@ -25,7 +28,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         applyStatusAppearance(to: item.button, running: false)
-        item.button?.toolTip = "RTI — click for menu (⌘\\ to toggle overlay)"
+        item.button?.toolTip = Self.idleToolTip
         let menu = NSMenu()
         menu.delegate = self
 
@@ -61,8 +64,8 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         let button = statusItem?.button
         button?.image = Self.statusImage(running: running)
         button?.toolTip = running
-            ? "RTI — recording in progress"
-            : "RTI — click for menu (⌘\\ to toggle overlay)"
+            ? "RTI is recording"
+            : Self.idleToolTip
 
         let session = SessionCoordinator.shared
         let showElapsed: Bool = switch session.phase {

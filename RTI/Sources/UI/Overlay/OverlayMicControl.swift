@@ -23,16 +23,16 @@ struct OverlayMicControl: View {
             muteButton
             deviceMenu
         }
-        .frame(height: RTIDesign.Control.chip)
+        .frame(height: House.Control.chip)
         .background(
-            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
                 .fill(backgroundColor)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
+            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: House.hairline)
         )
-        .clipShape(RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous))
         .hoverHighlight($hovering)
     }
 
@@ -57,16 +57,16 @@ struct OverlayMicControl: View {
                     .padding(.bottom, 3)
                 }
             }
-            .frame(width: 24, height: RTIDesign.Control.chip)
+            .frame(width: House.Control.keyCap + House.Spacing.xxs, height: House.Control.chip)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(session.micMuted ? "Unmute microphone" : "Mute microphone")
         .accessibilityHint(session.micMuted
             ? "Your mic isn't being captured; system audio still is."
-            : "Mute your mic. System audio keeps recording. Don't mute in-person sessions — the mic captures the room.")
+            : "Mute your mic. System audio keeps recording. Do not mute an in-person session: the mic records the room.")
         .help(session.micMuted
-            ? "Mic muted — your mic isn't being captured (system audio still is). Click to unmute."
-            : "Mute your mic (system audio keeps recording). Don't mute in-person sessions — the mic captures the room.")
+            ? "Mic muted. Your mic is not recorded; system audio still is. Click to unmute."
+            : "Mute your mic. System audio keeps recording. Do not mute an in-person session: the mic records the room.")
     }
 
     private var deviceMenu: some View {
@@ -80,7 +80,7 @@ struct OverlayMicControl: View {
             if session.isRunning {
                 Text("Input changes apply on the next session")
             }
-            Section("Output device (speaker — capture follows it)") {
+            Section("Speaker output (capture follows it)") {
                 ForEach(outputDevices) { device in
                     Button {
                         if AudioInputDeviceStore.setDefaultOutputDevice(device.id) {
@@ -118,7 +118,7 @@ struct OverlayMicControl: View {
             Image(systemName: "chevron.down")
                 .font(.system(size: House.TypeToken.Size.micro, weight: .bold))
                 .foregroundStyle(Color.overlayInkTertiary)
-                .frame(width: 14, height: RTIDesign.Control.chip)
+                .frame(width: House.Spacing.md, height: House.Control.chip)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

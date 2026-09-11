@@ -7,26 +7,29 @@ import SwiftUI
 /// is live: Littlebird's low-friction context should never become invisible
 /// surveillance. One click stops or resumes the screen trail immediately.
 struct OverlayVisualContextButton: View {
+    /// Capture is running (the header's phase).
+    let isLive: Bool
+
     private let session = SessionCoordinator.shared
     private let trail = VisualContextTrail.shared
     @State private var hovering = false
 
     var body: some View {
-        if session.isRunning {
+        if isLive {
             Button(action: act) {
                 SlateChip(stroked: true, emphasised: false) {
                     Image(systemName: icon)
-                        .font(RTIDesign.Font.meta)
+                        .font(House.TypeToken.meta)
                         .foregroundStyle(tint)
                 }
-                .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.chip, hovering: hovering)
+                .slateRaisedTile(false, cornerRadius: House.Radius.sm, hovering: hovering)
             }
             .buttonStyle(.plain)
             .hoverHighlight($hovering)
             .accessibilityLabel("Screen context")
             .accessibilityValue(statusText)
             .accessibilityHint(actionHint)
-            .help("\(statusText) — \(actionHint)")
+            .help("\(statusText). \(actionHint).")
         }
     }
 
@@ -43,7 +46,7 @@ struct OverlayVisualContextButton: View {
     /// accessibility value + tooltip, never colour alone.
     private var tint: Color {
         switch trail.state {
-        case .permissionRequired, .failed, .paused: RTIDesign.Color.warning
+        case .permissionRequired, .failed, .paused: House.ColorToken.warning
         case .disabled: Color.overlayInkTertiary
         default: Color.overlayInkSecondary
         }
@@ -86,11 +89,28 @@ struct OverlayVisualContextButton: View {
 /// Optional project context. Unclassified meetings remain valid and flow into
 /// the same meeting library and Neon index without a project declaration.
 struct OverlayProjectPicker: View {
+    /// The widest the project name draws in the chip before it truncates.
+    /// Not a token yet: half the chat rail.
+    private static let nameMaxWidth = House.Layout.chatRail / 2
+
+    /// The header allows the name before a recording, at its standard
+    /// width; not at 600 and not while capture runs.
+    var allowsName = true
+
     private let context = MeetingContextStore.shared
     @State private var hovering = false
 
     private var selectedName: String? {
         context.workstreamItem?.isProject == true ? context.workstreamName : nil
+    }
+
+    /// The header title already shows the project when no calendar event is
+    /// picked; the chip then draws its glyph only (the name stays in the
+    /// tooltip and for VoiceOver).
+    private var showsName: Bool {
+        guard allowsName, selectedName != nil else { return false }
+        let calendarTitle = context.calendarMeeting?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !calendarTitle.isEmpty
     }
 
     var body: some View {
@@ -117,15 +137,15 @@ struct OverlayProjectPicker: View {
         } label: {
             SlateChip(emphasised: selectedName != nil) {
                 Image(systemName: selectedName == nil ? "folder.badge.questionmark" : "folder.fill")
-                    .font(RTIDesign.Font.meta)
-                if let name = selectedName {
+                    .font(House.TypeToken.meta)
+                if showsName, let name = selectedName {
                     Text(name)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .frame(maxWidth: 96, alignment: .leading)
+                        .frame(maxWidth: Self.nameMaxWidth, alignment: .leading)
                 }
             }
-            .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.chip, hovering: hovering)
+            .slateRaisedTile(false, cornerRadius: House.Radius.sm, hovering: hovering)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -139,102 +159,114 @@ struct OverlayProjectPicker: View {
 
     private var helpText: String {
         if let name = selectedName {
-            return "This recording files to \(name) — click to change"
+            return "This recording files to \(name). Click to change."
         }
-        return "Optionally file this meeting to a project"
+        return "File this meeting to a project (optional)"
     }
 }
 
 // MARK: - Record control
 
-/// RTI is the single recording path: live transcript now, improved transcript
-/// and notes automatically after Finish.
+/// The header's one live action (chat-surfaces.md section 8): a labelled chip
+/// with its key caps. While capture runs it carries the registered recording
+/// chip, a `danger` mark plus the captured-time clock, the only chroma on
+/// screen. RTI is the single recording path: live transcript now, improved
+/// transcript and notes automatically after Finish.
 struct OverlayRecordButton: View {
-    private let session = SessionCoordinator.shared
+    let status: OverlayShellStatus
+    /// The action's word ("Finish"). The header drops it for a live chip
+    /// at the minimum width; it stays in the help and for VoiceOver.
+    var showsTitle = true
+    /// The key caps. The header drops them at the minimum width and while
+    /// the clock shows; the key stays in the help text.
+    var showsKeys = true
 
+    private let session = SessionCoordinator.shared
     @State private var hovering = false
+
+    private var chip: OverlayRecordChip { status.recordChip }
 
     var body: some View {
         Button(action: primaryAction) {
-            SlateChip(emphasised: false, content: { chipContent })
-                .overlay(
-                    RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
-                        .strokeBorder(recordingBorder, lineWidth: House.hairline)
-                )
-                .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.chip, hovering: hovering)
+            HStack(spacing: House.Spacing.xs) {
+                lead
+                if chip.showsClock {
+                    OverlayRecordClock()
+                }
+                if showsTitle {
+                    Text(chip.title)
+                        .font(House.TypeToken.label)
+                        .foregroundStyle(House.ColorToken.textPrimary)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                if showsKeys, !chip.keys.isEmpty {
+                    KeyCapGroup(keys: chip.keys)
+                }
+            }
+            .padding(.horizontal, House.Spacing.sm)
+            .frame(height: House.Control.chip)
+            .background(
+                RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                    .fill(hovering && chip.isEnabled ? House.ColorToken.hoverFill : House.ColorToken.chipFill)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(session.phase == .finishing)
+        .disabled(!chip.isEnabled)
         .hoverHighlight($hovering)
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(chip.accessibilityLabel)
         .accessibilityValue(elapsedAccessibilityValue)
-        .accessibilityHint(helpText)
-        .help(helpText)
+        .accessibilityHint(chip.help)
+        .help(chip.help)
     }
 
-    private var accessibilityLabel: String {
-        switch session.phase {
-        case .idle, .done: "Start recording"
-        case .recording, .paused: "Finish recording"
-        case .finishing, .summarizing: "Processing recording"
+    @ViewBuilder
+    private var lead: some View {
+        switch chip.lead {
+        case .recordDot:
+            SlateStatusDot(color: House.ColorToken.danger, size: House.Spacing.xs)
+        case .liveMark:
+            RoundedRectangle(cornerRadius: House.Radius.xs / 2, style: .continuous)
+                .fill(House.ColorToken.danger)
+                .frame(width: House.Spacing.xs, height: House.Spacing.xs)
+                .accessibilityHidden(true)
+        case .spinner:
+            ProgressView()
+                .controlSize(.mini)
+                .frame(width: House.Spacing.md, height: House.Spacing.md)
+        case let .glyph(name):
+            Image(systemName: name)
+                .font(House.TypeToken.label)
+                .foregroundStyle(House.ColorToken.textSecondary)
         }
     }
 
     private var elapsedAccessibilityValue: String {
-        guard let startedAt = session.startedAt, isLive else { return "" }
-        _ = startedAt
+        guard chip.showsClock else { return "" }
         return TimeFormat.elapsed(session.elapsed(at: Date()))
     }
 
     private func primaryAction() {
-        if session.phase == .done, let url = session.summaryURL {
+        if status.phase == .done, status.summaryReady, let url = session.summaryURL {
             WindowCoordinator.shared.showSession(folder: url.deletingLastPathComponent().lastPathComponent)
         } else {
             session.toggleSession()
         }
     }
+}
 
-    private var isLive: Bool {
-        session.phase == .recording || session.phase == .paused
-    }
+/// The captured-time clock. Its one-second tick lives in this small leaf so
+/// it never re-renders the header around it.
+private struct OverlayRecordClock: View {
+    private let session = SessionCoordinator.shared
 
-    /// Recording is the only chroma in the chrome: a `danger` dot beside the
-    /// captured-time clock, in one chip.
-    @ViewBuilder
-    private var chipContent: some View {
-        if session.phase == .finishing || session.phase == .summarizing {
-            ProgressView()
-                .controlSize(.small)
-                .scaleEffect(0.62)
-                .frame(width: 9, height: 9)
-        } else if isLive {
-            RoundedRectangle(cornerRadius: RTIDesign.Radius.xs / 2, style: .continuous)
-                .fill(RTIDesign.Color.danger)
-                .frame(width: 8, height: 8)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(TimeFormat.elapsed(session.elapsed(at: context.date)))
-                    .font(RTIDesign.Font.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(Color.overlayInk)
-            }
-        } else {
-            Circle()
-                .fill(RTIDesign.Color.danger.opacity(0.85))
-                .frame(width: 7, height: 7)
-        }
-    }
-
-    private var recordingBorder: Color {
-        isLive ? RTIDesign.Color.danger.opacity(0.3) : Color.clear
-    }
-
-    private var helpText: String {
-        switch session.phase {
-        case .idle: "Start recording (⌘⇧R)"
-        case .recording, .paused: "Finish recording and improve transcript (⌘⇧R)"
-        case .finishing: "Saving audio…"
-        case .summarizing: session.postProcessingStatus ?? "Improving transcript…"
-        case .done: session.summaryURL == nil ? "Session saved" : "Notes ready"
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            Text(TimeFormat.elapsed(session.elapsed(at: context.date)))
+                .font(House.TypeToken.label)
+                .monospacedDigit()
+                .foregroundStyle(House.ColorToken.textPrimary)
         }
     }
 }
@@ -243,13 +275,16 @@ struct OverlayRecordButton: View {
 /// session is live; "open summary" once notes are ready. Only shown when it has
 /// something to do, so the header stays uncluttered when idle.
 struct OverlaySessionAuxButton: View {
+    /// The header's phase.
+    let phase: OverlayLivePhase
+
     private let session = SessionCoordinator.shared
     @State private var hovering = false
 
     private enum Kind { case pause, resume, none }
 
     private var kind: Kind {
-        switch session.phase {
+        switch phase {
         case .recording: .pause
         case .paused: .resume
         default: .none
@@ -264,7 +299,7 @@ struct OverlaySessionAuxButton: View {
                         .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
                         .foregroundStyle(tint)
                 }
-                .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.chip, hovering: hovering)
+                .slateRaisedTile(false, cornerRadius: House.Radius.sm, hovering: hovering)
             }
             .buttonStyle(.plain)
             .hoverHighlight($hovering)
@@ -292,7 +327,7 @@ struct OverlaySessionAuxButton: View {
 
     private var tint: Color {
         switch kind {
-        case .resume: RTIDesign.Color.success
+        case .resume: House.ColorToken.success
         default: Color.overlayInkSecondary
         }
     }
