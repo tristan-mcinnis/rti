@@ -32,6 +32,16 @@ The Assist answers now read like Quick Launch's Quick AI (`docs/house-style-migr
 - Errors with no turn (missing keys, a capture fault) sit above the composer with a fix. The sources popover is gone.
 - Copies from RTI carry the transient markers, so clipboard managers skip them.
 - Fixed: a question with several attachments showed "(prepared.references.count) attached sources" instead of the number.
+## 2026-09-12: Overlay shell, menus, and keys
+
+The overlay takes the house window shape (`docs/house-style-migration-20260912.md`, package C).
+
+- The header shares the traffic-light row: meeting title over a state line ("Recording · Meeting · DeepSeek"), then the capture controls and the record chip. Mode and model open small choosers in the window.
+- The footer bar is gone. Tabs sit in a row under the header; ⌘1 to ⌘7 pick a tab.
+- `esc` no longer hides RTI. It closes a chooser, then stops an answer, then clears typed text. ⌘W, the close button, and ⌘\ still hide it.
+- New menus: Session (record, pause, note, mute, read screen, project), View (tabs, Show Session List ⌃⌘S in Sessions), Edit › Find (⌘F), Window › Keep on Top (off at every launch), RTI, Sessions.
+- ⌘\ stays RTI's global show and hide. The window frame now saves itself; the old size sliders only set the first size.
+- Empty tabs show short hint lines with their keys. Prepare uses the settings card style.
 
 ## 2026-09-12: House chat seams
 

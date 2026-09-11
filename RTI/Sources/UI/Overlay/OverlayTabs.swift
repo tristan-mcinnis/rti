@@ -27,31 +27,33 @@ struct TranscriptTabView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: RTIDesign.Spacing.xs) {
-                SlateStatusDot(color: healthColor)
-                Text(healthLabel)
-                    .font(RTIDesign.Font.meta)
-                    .foregroundStyle(Color.overlayInkSecondary)
-                if session.isRunning, let startedAt = session.startedAt {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text(TimeFormat.elapsed(context.date.timeIntervalSince(startedAt)))
-                            .font(RTIDesign.Font.caption)
-                            .monospacedDigit()
-                            .foregroundStyle(Color.overlayInkTertiary)
-                    }
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            // The strip lines up with the tabs row. The captured-time clock
+            // is the header's record chip; it is not repeated here.
+            OverlayTabStrip {
+                HStack(spacing: House.Spacing.xs) {
+                    SlateStatusDot(color: healthColor)
+                    Text(healthLabel)
+                        .font(House.TypeToken.meta)
+                        .foregroundStyle(House.ColorToken.textSecondary)
                 }
-                Spacer()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Transcription: \(healthLabel)")
+            } trailing: {
                 translateControl
                 OverlayToolbarButton(icon: "doc.on.doc", help: "Copy transcript", disabled: session.liveEntries.isEmpty) {
                     NSPasteboard.copyString(transcriptText())
                 }
             }
             if let notice = session.systemAudioNotice {
-                Text(notice).font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.warning)
+                Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
             }
             if session.liveEntries.isEmpty {
-                overlayEmptyState("text.bubble", "No transcript yet", "Start a session with ⌘⇧R.")
+                overlayEmptyHints([
+                    overlayRecordHint(),
+                    "Each speaker gets a line as they talk",
+                    "Click a speaker to give them a name",
+                ])
             } else {
                 let paras = paragraphs
                 ScrollViewReader { proxy in
@@ -98,31 +100,27 @@ struct TranscriptTabView: View {
             Button {
                 translationEnabled.toggle()
             } label: {
-                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
-                    Image(systemName: "globe").font(.system(size: House.TypeToken.Size.caption, weight: .regular))
+                HStack(spacing: HouseChatMetrics.chipGap) {
+                    Image(systemName: "globe").font(House.TypeToken.caption)
                     Text(translationEnabled ? pillLabel : "Translate")
-                        .font(RTIDesign.Font.caption)
+                        .font(House.TypeToken.meta)
                 }
-                .foregroundStyle(translationEnabled ? Color.overlayInk : Color.overlayInkSecondary)
-                .padding(.horizontal, RTIDesign.Spacing.xs + 1)
-                .frame(height: RTIDesign.Control.tile)
+                .foregroundStyle(translationEnabled ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
+                .padding(.horizontal, House.Spacing.xs)
+                .frame(height: House.Control.chip)
                 .background(
-                    RoundedRectangle(cornerRadius: RTIDesign.Radius.tile, style: .continuous)
-                        .fill(translationEnabled ? RTIDesign.Color.selectionFill : Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: RTIDesign.Radius.tile, style: .continuous)
-                                .strokeBorder(RTIDesign.Color.keyCapStroke, lineWidth: House.hairline)
-                        )
+                    RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                        .fill(translationEnabled ? House.ColorToken.selectionFill : House.ColorToken.chipFill)
                 )
             }
             .buttonStyle(.plain)
             .accessibilityLabel(translationEnabled ? "Turn translation off" : "Turn translation on")
-            .help(translationEnabled ? "Translation on — shown under each line" : "Translate the transcript inline")
+            .help(translationEnabled ? "Translation is on. It shows under each line." : "Translate the transcript inline")
 
             if translationEnabled {
                 Menu {
                     Picker("Mode", selection: $translationMode) {
-                        Text("One-way (everything → one language)").tag("one_way")
+                        Text("One-way (all into one language)").tag("one_way")
                         Text("Two-way (between two languages)").tag("two_way")
                     }
                     Divider()
@@ -138,7 +136,7 @@ struct TranscriptTabView: View {
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 14)
                 .accessibilityLabel("Translation mode and languages")
-                .help("Translation mode & languages")
+                .help("Translation mode and languages")
             }
         }
     }
@@ -328,14 +326,14 @@ struct NotesTabView: View {
     private let controller = NotesGenerationController.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Notes").font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            OverlayTabStrip {
+                overlayTabStripTitle("Notes")
                 if controller.isGenerating {
-                    ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
+                    ProgressView().controlSize(.mini)
                 }
-                Spacer()
-                OverlayToolbarButton(icon: "arrow.clockwise", help: "Regenerate now",
+            } trailing: {
+                OverlayToolbarButton(icon: "arrow.clockwise", help: "Write notes now",
                                      disabled: controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
                 {
                     if let sid = SessionCoordinator.shared.currentSessionId { Task { _ = await controller.generate(sessionId: sid) } }
@@ -343,13 +341,17 @@ struct NotesTabView: View {
                 OverlayToolbarButton(icon: "doc.on.doc", help: "Copy all notes", disabled: controller.notes.isEmpty) {
                     NSPasteboard.copyMarkdownRich(combinedMarkdown())
                 }
-                OverlayToolbarButton(icon: "square.and.arrow.down", help: "Export as .md", disabled: controller.notes.isEmpty, action: export)
+                OverlayToolbarButton(icon: "square.and.arrow.down", help: "Save as Markdown", disabled: controller.notes.isEmpty, action: export)
             }
             if let error = controller.lastError {
-                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
+                Text(error).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.danger)
             }
             if controller.notes.isEmpty {
-                overlayEmptyState("note.text", "No notes yet", "Notes appear as the conversation develops.")
+                overlayEmptyHints([
+                    "Notes appear every few minutes as the meeting goes on",
+                    overlayRecordHint(),
+                    "\(OverlayTab.setup.shortcutLabel) opens Prepare to turn notes on or off",
+                ])
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -452,28 +454,32 @@ struct FindingsTabView: View {
     private let controller = FindingsController.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Intelligence").font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            OverlayTabStrip {
+                overlayTabStripTitle("Intel")
                 if controller.isGenerating {
-                    ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
+                    ProgressView().controlSize(.mini)
                 }
-                Spacer()
-                OverlayToolbarButton(icon: "arrow.clockwise", help: "Scan for live intelligence now",
+            } trailing: {
+                OverlayToolbarButton(icon: "arrow.clockwise", help: "Scan for intel now",
                                      disabled: controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
                 {
                     if let sid = SessionCoordinator.shared.currentSessionId { Task { _ = await controller.generate(sessionId: sid) } }
                 }
-                OverlayToolbarButton(icon: "doc.on.doc", help: "Copy all intelligence", disabled: controller.findings.isEmpty) {
+                OverlayToolbarButton(icon: "doc.on.doc", help: "Copy all intel", disabled: controller.findings.isEmpty) {
                     NSPasteboard.copyMarkdownRich(combinedMarkdown())
                 }
-                OverlayToolbarButton(icon: "square.and.arrow.down", help: "Export as .md", disabled: controller.findings.isEmpty, action: export)
+                OverlayToolbarButton(icon: "square.and.arrow.down", help: "Save as Markdown", disabled: controller.findings.isEmpty, action: export)
             }
             if let error = controller.lastError {
-                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
+                Text(error).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.danger)
             }
             if controller.findings.isEmpty {
-                overlayEmptyState("checklist.checked", "No intelligence yet", "Decisions, actions, open questions, risks, and marked notes appear here.")
+                overlayEmptyHints([
+                    "Decisions, actions, open questions, and risks show here",
+                    "⌘⌥N adds a note you can mark",
+                    overlayRecordHint(),
+                ])
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -597,25 +603,28 @@ struct AutoTabView: View {
     private let controller = AutoAssistController.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Auto").font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            OverlayTabStrip {
+                overlayTabStripTitle("Auto")
                 if controller.isGenerating {
-                    ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
+                    ProgressView().controlSize(.mini)
                 }
-                Spacer()
-                OverlayToolbarButton(icon: "arrow.clockwise", help: "Surface suggestions now",
+            } trailing: {
+                OverlayToolbarButton(icon: "arrow.clockwise", help: "Suggest now",
                                      disabled: controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
                 {
                     if let sid = SessionCoordinator.shared.currentSessionId { Task { _ = await controller.generate(sessionId: sid) } }
                 }
             }
             if let error = controller.lastError {
-                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
+                Text(error).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.danger)
             }
             if controller.cards.isEmpty {
-                overlayEmptyState("wand.and.stars", "Listening…",
-                                  "As the meeting develops, Auto surfaces things to say, ask, or recall from this project. Set the project in Setup to ground it.")
+                overlayEmptyHints([
+                    "Things to say, ask, or recall show here as the meeting goes on",
+                    "\(OverlayTab.setup.shortcutLabel) opens Prepare to pick the project",
+                    overlayRecordHint(),
+                ])
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -757,6 +766,10 @@ struct SetupTabView: View {
         }
     }
 
+    /// Render proofs turn this off, so a proof never reads the Mac's real
+    /// calendar (real meeting titles). The app always reads it.
+    @MainActor static var readsCalendar = true
+
     private let store = MeetingContextStore.shared
     private let calendarStore = CalendarMeetingStore.shared
     private let guideController = DiscussionGuideController.shared
@@ -780,7 +793,7 @@ struct SetupTabView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: House.Spacing.lg) {
                 prepareHeader
                 meetingFocusSection
                 calendarMeetingSection
@@ -793,7 +806,7 @@ struct SetupTabView: View {
         .scrollContentBackground(.hidden)
         .onAppear {
             load()
-            calendarStore.refresh()
+            if Self.readsCalendar { calendarStore.refresh() }
         }
         .onChange(of: visualContextEnabled) { _, enabled in
             let session = SessionCoordinator.shared
@@ -806,22 +819,22 @@ struct SetupTabView: View {
     }
 
     private var prepareHeader: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("Meeting options")
-                .font(RTIDesign.Font.heading)
-                .foregroundStyle(Color.overlayInk)
-            Text("RTI captures the meeting, improves the transcript after Finish, then writes the notes. Client and project context are optional.")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(Color.overlayInkSecondary)
+        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            Text("Prepare the meeting")
+                .font(House.TypeToken.heading)
+                .foregroundStyle(House.ColorToken.textPrimary)
+            Text("RTI records the meeting, improves the transcript after Finish, then writes the notes. A client or project is optional.")
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.top, 2)
+        .padding(.top, House.Spacing.xs)
     }
 
     // MARK: - Meeting focus
 
     private var meetingFocusSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             sectionHeader("Focus", detail: "Client or project")
             if store.workstreamName != nil {
                 usingBanner
@@ -833,7 +846,7 @@ struct SetupTabView: View {
     // MARK: - Confirmed calendar meeting
 
     private var calendarMeetingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             sectionHeader("Meeting", detail: "Calendar (optional)")
             settingsGroup {
                 switch calendarStore.accessState {
@@ -961,15 +974,15 @@ struct SetupTabView: View {
         return formatter
     }()
 
+    /// A group's lead-in, as the settings shell draws it: the uppercase
+    /// `section` label, then a `meta` detail.
     private func sectionHeader(_ title: String, detail: String? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title)
-                .font(.system(size: House.TypeToken.Size.bodySmall, weight: .semibold))
-                .foregroundStyle(Color.overlayInk)
+        HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
+            SlateSectionLabel(text: title)
             if let detail {
                 Text(detail)
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(Color.overlayInkTertiary)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -977,13 +990,13 @@ struct SetupTabView: View {
         }
     }
 
+    /// A settings-shell group: a quiet card at `Radius.lg` holding 40 pt rows.
     private func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 0) {
             content()
         }
-        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.row).fill(RTIDesign.Color.chipFill))
-        .overlay(RoundedRectangle(cornerRadius: RTIDesign.Radius.row).stroke(RTIDesign.Color.border, lineWidth: House.hairline))
         .frame(maxWidth: .infinity, alignment: .leading)
+        .slateGroupCard(cornerRadius: House.Radius.lg)
     }
 
     // MARK: - Combined client/project picker
@@ -1249,7 +1262,7 @@ struct SetupTabView: View {
     // MARK: - Live call
 
     private var liveCallSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             sectionHeader("Live", detail: "Capture & analysis")
             settingsGroup {
                 liveTranscriptionRow
@@ -1268,21 +1281,21 @@ struct SetupTabView: View {
     }
 
     private var liveTranscriptionRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: House.Spacing.sm) {
             Image(systemName: "waveform")
-                .font(RTIDesign.Font.label)
-                .foregroundStyle(Color.overlayInkSecondary)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 1) {
+                .font(House.TypeToken.label)
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .frame(width: House.Control.tile)
+            VStack(alignment: .leading, spacing: 0) {
                 Text("Transcription")
-                    .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                    .foregroundStyle(Color.overlayInk)
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textPrimary)
                 Text(captureReadiness)
-                    .font(RTIDesign.Font.micro)
-                    .foregroundStyle(Color.overlayInkTertiary)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
                     .lineLimit(1)
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: House.Spacing.sm)
             Button("Configure") {
                 WindowCoordinator.shared.showSessionsControl(tab: .general)
             }
@@ -1290,9 +1303,9 @@ struct SetupTabView: View {
             .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
             .foregroundStyle(Color.overlayAccent)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, House.Spacing.sm)
+        .padding(.vertical, House.Spacing.xxs)
+        .frame(maxWidth: .infinity, minHeight: House.Control.row, alignment: .leading)
     }
 
     private var captureReadiness: String {
@@ -1300,49 +1313,49 @@ struct SetupTabView: View {
         return "Mic: \(devices.input) · call audio follows: \(devices.output)"
     }
 
+    /// The line between rows, inset to the rows' text column.
     private var settingsRowDivider: some View {
-        Divider()
-            .overlay(RTIDesign.Color.divider)
-            .padding(.leading, 42)
+        HouseDivider()
+            .padding(.leading, House.Spacing.sm + House.Control.tile + House.Spacing.sm)
     }
 
     private func livePanelToggle(_ option: LiveOption, _ isOn: Binding<Bool>) -> some View {
         Toggle(isOn: isOn) {
-            HStack(spacing: 10) {
+            HStack(spacing: House.Spacing.sm) {
                 Image(systemName: option.icon)
-                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
-                    .foregroundStyle(Color.overlayInkSecondary)
-                    .frame(width: 22)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 6) {
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+                    .frame(width: House.Control.tile)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: HouseChatMetrics.chipGap) {
                         Text(option.title)
-                            .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                            .foregroundStyle(Color.overlayInk)
+                            .font(House.TypeToken.label)
+                            .foregroundStyle(House.ColorToken.textPrimary)
                         if option == .notes {
                             Text("Default")
-                                .font(.system(size: House.TypeToken.Size.micro, weight: .medium))
-                                .foregroundStyle(Color.overlayInkTertiary)
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.textTertiary)
                         }
                     }
                     Text(option.detail)
-                        .font(RTIDesign.Font.micro)
-                        .foregroundStyle(Color.overlayInkTertiary)
+                        .font(House.TypeToken.meta)
+                        .foregroundStyle(House.ColorToken.textTertiary)
                         .lineLimit(1)
                 }
-                Spacer(minLength: 12)
+                Spacer(minLength: House.Spacing.sm)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .toggleStyle(.switch)
         .controlSize(.small)
-        .tint(RTIDesign.Color.textPrimary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .tint(House.ColorToken.textPrimary)
+        .padding(.horizontal, House.Spacing.sm)
+        .padding(.vertical, House.Spacing.xxs)
+        .frame(maxWidth: .infinity, minHeight: House.Control.row, alignment: .leading)
     }
 
     private var noteEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             sectionHeader("Prep note", detail: "Optional")
             ZStack(alignment: .topLeading) {
                 TextEditor(text: Binding(get: { store.note }, set: { store.note = $0 }))
@@ -1377,11 +1390,11 @@ struct SetupTabView: View {
     }
 
     private var discussionGuideSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            HStack(spacing: HouseChatMetrics.chipGap) {
                 sectionHeader("Guide", detail: guideController.guide == nil ? "Optional" : nil)
                 if guideController.isImporting {
-                    ProgressView().scaleEffect(0.55).progressViewStyle(.circular)
+                    ProgressView().controlSize(.mini)
                 }
                 Spacer()
             }
@@ -1421,7 +1434,7 @@ struct SetupTabView: View {
 
     private func pendingGuidePreview(_ guide: DiscussionGuide) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Parsed \(guide.objectives.count) objectives • \(guide.coverage.total) questions — does this look right?")
+            Text("Found \(guide.objectives.count) objectives and \(guide.coverage.total) questions. Does this look right?")
                 .font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             ScrollView {
@@ -1430,7 +1443,7 @@ struct SetupTabView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(obj.title).font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInk)
                             ForEach(obj.sections, id: \.id) { sec in
-                                Text("\(sec.title) — \(sec.questions.count) Qs")
+                                Text("\(sec.title) · \(sec.questions.count) questions")
                                     .font(RTIDesign.Font.micro).foregroundStyle(Color.overlayInkSecondary)
                                     .padding(.leading, 8)
                             }
@@ -1443,13 +1456,8 @@ struct SetupTabView: View {
             .padding(8)
             .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.chipFill))
             HStack(spacing: 8) {
-                Button { guideController.confirmPending() } label: {
-                    Text("Use this guide").font(.system(size: House.TypeToken.Size.caption, weight: .medium))
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.textPrimary))
-                        .foregroundStyle(Color.overlayInk)
-                }
-                .buttonStyle(.plain)
+                Button("Use this guide") { guideController.confirmPending() }
+                    .buttonStyle(InkButtonStyle())
                 Button { guideController.discardPending() } label: {
                     Text("Discard").font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkSecondary)
                         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -1513,13 +1521,8 @@ struct SetupTabView: View {
                 .frame(height: 90).padding(6)
                 .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.chipFill))
             HStack(spacing: 8) {
-                Button { parsePasted() } label: {
-                    Text("Parse").font(.system(size: House.TypeToken.Size.caption, weight: .medium))
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.textPrimary))
-                        .foregroundStyle(Color.overlayInk)
-                }
-                .buttonStyle(.plain)
+                Button("Read guide") { parsePasted() }
+                    .buttonStyle(InkButtonStyle())
                 .disabled(pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || guideController.isImporting)
                 Button { pasteOpen = false; pasteText = "" } label: {
                     Text("Cancel").font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkSecondary)
@@ -1569,20 +1572,22 @@ struct GuideTabView: View {
     private let controller = DiscussionGuideController.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Discussion guide").font(.system(size: House.TypeToken.Size.caption, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            OverlayTabStrip {
+                overlayTabStripTitle("Discussion guide")
                 if controller.isMatching {
-                    ProgressView().scaleEffect(0.6).progressViewStyle(.circular)
+                    ProgressView().controlSize(.mini)
                 }
-                Spacer()
+            } trailing: {
                 if let guide = controller.guide {
-                    Text("\(guide.coverage.answered)/\(guide.coverage.total) • \(guide.coverage.percent)%")
-                        .font(.system(size: House.TypeToken.Size.micro, weight: .semibold)).foregroundStyle(Color.overlayInkSecondary)
+                    Text("\(guide.coverage.answered) of \(guide.coverage.total) · \(guide.coverage.percent)%")
+                        .font(House.TypeToken.meta)
+                        .monospacedDigit()
+                        .foregroundStyle(House.ColorToken.textSecondary)
                 }
             }
             if let error = controller.lastError {
-                Text(error).font(RTIDesign.Font.micro).foregroundStyle(RTIDesign.Color.danger)
+                Text(error).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.danger)
             }
             if let guide = controller.guide {
                 ScrollView {
@@ -1593,7 +1598,11 @@ struct GuideTabView: View {
                 }
                 .scrollContentBackground(.hidden)
             } else {
-                overlayEmptyState("list.bullet.clipboard", "No guide loaded", "Attach a guide in the Setup tab; RTI pairs its questions with the conversation.")
+                overlayEmptyHints([
+                    "No guide yet",
+                    "\(OverlayTab.setup.shortcutLabel) opens Prepare to add one",
+                    "RTI ticks off its questions as they come up",
+                ])
             }
         }
     }

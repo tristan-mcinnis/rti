@@ -21,17 +21,11 @@ struct RTIApp: App {
 
     var body: some Scene {
         // Keep a real Settings scene so the app remains resident normally, but
-        // route the actual Settings command to RTI's own settings window below.
-        // That avoids stale scene-restoration state from the SwiftUI Settings
-        // scene being the primary user path.
+        // route the actual Settings command to RTI's own settings window
+        // (`RTIMainMenuCommands`). That avoids stale scene-restoration state
+        // from the SwiftUI Settings scene being the primary user path.
         Settings { SettingsView(onClose: nil) }
-            .commands {
-                CommandGroup(replacing: .appSettings) {
-                    Button("Settings…") {
-                        WindowCoordinator.shared.openSettings()
-                    }
-                    .keyboardShortcut(",", modifiers: .command)
-                }
-            }
+            // The whole menu bar: RTI, Edit, Session, View, Window.
+            .commands { RTIMainMenuCommands() }
     }
 }

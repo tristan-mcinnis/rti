@@ -3,8 +3,9 @@ import SwiftUI
 
 // MARK: - Shared tab chrome
 
-/// A compact icon button used in tab toolbars (copy / export / etc.), styled
-/// consistently across every tab.
+/// A tab toolbar glyph (copy, export, refresh): a `Control.compact` square
+/// in the shape of the house header glyph button (`QuickAIGlyphButton`),
+/// with hover and a disabled state.
 struct OverlayToolbarButton: View {
     let icon: String
     let help: String
@@ -15,32 +16,66 @@ struct OverlayToolbarButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: House.TypeToken.Size.bodySmall, weight: .regular))
-                .foregroundStyle(disabled ? Color.overlayInkTertiary
-                                 : (hovering ? Color.overlayInk : Color.overlayInkSecondary))
-                .frame(width: RTIDesign.Control.tile, height: RTIDesign.Control.tile)
-                .slateRaisedTile(false, cornerRadius: RTIDesign.Radius.tile, hovering: hovering && !disabled)
+                .font(House.TypeToken.bodySmall)
+                .foregroundStyle(disabled ? House.ColorToken.textTertiary : House.ColorToken.textSecondary)
+                .frame(width: House.Control.compact, height: House.Control.compact)
+                .background { RowHighlight(isSelected: false, isHovering: hovering && !disabled, radius: House.Radius.sm) }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(disabled)
         .hoverHighlight($hovering)
         .accessibilityLabel(help)
-        .accessibilityHint("Double-click or press VO-Space to activate")
         .help(help)
     }
 }
 
-func overlayEmptyState(_ icon: String, _ title: String, _ subtitle: String) -> some View {
-    VStack(spacing: RTIDesign.Spacing.xs) {
-        Image(systemName: icon)
-            .font(.system(size: House.TypeToken.Size.display, weight: .regular))
-            .foregroundStyle(Color.overlayInkTertiary)
-        Text(title).font(RTIDesign.Font.label).foregroundStyle(Color.overlayInkSecondary)
-        Text(subtitle).font(RTIDesign.Font.caption).foregroundStyle(Color.overlayInkTertiary)
-            .multilineTextAlignment(.center)
+/// The house empty state for a tab (chat-surfaces.md section 2, "Empty
+/// hints"): a few short lines in `bodySmall` `textTertiary`, centred,
+/// `Spacing.xs` apart, each naming a way in, with its real key when it has one.
+func overlayEmptyHints(_ lines: [String]) -> some View {
+    VStack(spacing: House.Spacing.xs) {
+        ForEach(lines, id: \.self) { line in
+            Text(line)
+                .font(House.TypeToken.bodySmall)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .multilineTextAlignment(.center)
+        }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding(.horizontal, RTIDesign.Spacing.lg)
+    .padding(.horizontal, House.Spacing.lg)
+    .accessibilityElement(children: .combine)
+}
+
+/// The record key's hint for an empty tab: what ⌘⇧R does now.
+@MainActor
+func overlayRecordHint() -> String {
+    SessionCoordinator.shared.isRunning ? "⌘⇧R finishes the recording" : "⌘⇧R starts a recording"
+}
+
+/// A tab's title strip: the tab's name (or its state) on the left and its
+/// glyph buttons on the right, `Control.railRow` high so it lines up with
+/// the tabs row above it.
+struct OverlayTabStrip<Leading: View, Trailing: View>: View {
+    @ViewBuilder var leading: Leading
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: House.Spacing.xs) {
+            leading
+            Spacer(minLength: House.Spacing.xs)
+            trailing
+        }
+        .frame(height: House.Control.railRow)
+    }
+}
+
+/// The name of a tab in its strip.
+func overlayTabStripTitle(_ title: String) -> some View {
+    Text(title)
+        .font(HouseChatType.subheading)
+        .foregroundStyle(House.ColorToken.textSecondary)
+        .lineLimit(1)
 }
 
 // MARK: - Hover highlight (Swift 6 teardown-crash workaround)

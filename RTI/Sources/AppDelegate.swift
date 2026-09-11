@@ -243,7 +243,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         let folder = response.notification.request.content.userInfo["sessionFolder"] as? String
         Task { @MainActor in
-            NSApp.activate(ignoringOtherApps: true)
+            RTIActivation.activateApp()
             if let folder {
                 WindowCoordinator.shared.showSession(folder: folder)
             } else {

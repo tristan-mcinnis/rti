@@ -68,33 +68,25 @@ enum CommandBuilder {
         }
     }
 
-    // MARK: - Tab navigation (palette only)
+    // MARK: - Tab navigation
 
-    /// Jump straight to an overlay tab. The tabs are one click away in the
-    /// overlay's top bar, so these carry no global hotkey and don't appear in
-    /// the menubar — they stay searchable in the command palette only, to keep
-    /// both the hotkey set and the menu uncluttered.
+    /// Jump straight to an overlay tab. ⌘1…⌘7 pick a tab while the overlay is
+    /// key (the View menu); they are local keys, never global hotkeys, and
+    /// the status-item menu stays uncluttered. The palette row shows the key.
     @MainActor
     private static func tabCommands(windows: WindowCoordinator) -> [RTICommand] {
-        func tabCmd(_ tab: String, _ title: String) -> RTICommand {
+        OverlayTab.allCases.map { tab in
             RTICommand(
-                id: "view.tab.\(tab)",
-                title: title,
-                keywords: ["tab", "switch", "jump", "go", tab],
+                id: "view.tab.\(tab.rawValue)",
+                title: tab == .setup ? "Go to Prepare" : "Go to \(tab.title)",
+                subtitle: tab.shortcutLabel,
+                keywords: ["tab", "switch", "jump", "go", tab.rawValue, tab.title.lowercased()],
                 perform: { [weak windows] in
                     windows?.showOverlay()
-                    NotificationCenter.default.post(name: .rtiSelectTab, object: tab)
+                    NotificationCenter.default.post(name: .rtiSelectTab, object: tab.rawValue)
                 }
             )
         }
-        return [
-            tabCmd("setup", "Go to Prepare meeting"),
-            tabCmd("assist", "Go to Assist"),
-            tabCmd("transcript", "Go to Transcript"),
-            tabCmd("notes", "Go to Notes"),
-            tabCmd("guide", "Go to Guide"),
-            tabCmd("findings", "Go to Intel"),
-        ]
     }
 
     // MARK: - Section builders
@@ -280,7 +272,7 @@ enum CommandBuilder {
             RTICommand(
                 id: "capture.screen",
                 title: "Capture Screen  ⌘⇧H",
-                subtitle: "⌘H",
+                subtitle: "⌘⇧H",
                 keywords: ["screenshot", "ocr"],
                 perform: { ScreenshotManager.shared.captureAndAttach() },
                 menuSection: .actions,
@@ -345,6 +337,13 @@ enum CommandBuilder {
                 menuStateProvider: { llm.smartMode }
             ),
             RTICommand(
+                id: "window.keepOnTop",
+                title: "Keep RTI on Top",
+                keywords: ["float", "pin", "always", "top", "window"],
+                perform: { OverlayWindowChrome.shared.isKeptOnTop.toggle() },
+                menuStateProvider: { OverlayWindowChrome.shared.isKeptOnTop }
+            ),
+            RTICommand(
                 id: "invisibility.toggle",
                 title: "Hidden from Screen Capture",
                 keywords: ["sharing", "screencap", "hide", "show", "stealth"],
@@ -404,18 +403,23 @@ enum CommandBuilder {
                 title: "Switch to: \(mode.name)",
                 keywords: ["mode", "preset"],
                 isAvailable: { modes.activeMode?.id != mode.id },
-                perform: {
-                    modes.activeModeId = mode.id
-                    // Per-mode ⌘⏎ binding: meeting mode defaults to
-                    // Answer-latest, fieldwork/interview mode keeps the
-                    // Assist template (see applyFieldworkPreset above).
-                    switch mode.kind {
-                    case .meeting: llm.primaryActionID = "answerLatest"
-                    case .interview: llm.primaryActionID = "assist"
-                    case .coding, .other: break
-                    }
-                }
+                perform: { switchMode(to: mode, modes: modes, llm: llm) }
             )
+        }
+    }
+
+    /// Make `mode` active and apply its ⌘⏎ binding. Shared by the palette's
+    /// "Switch to" rows and the overlay header's mode chooser.
+    @MainActor
+    static func switchMode(to mode: Mode, modes: ModeStore, llm: LLMController) {
+        modes.activeModeId = mode.id
+        // Per-mode ⌘⏎ binding: meeting mode defaults to Answer-latest,
+        // fieldwork/interview mode keeps the Assist template (see the
+        // fieldwork preset above).
+        switch mode.kind {
+        case .meeting: llm.primaryActionID = "answerLatest"
+        case .interview: llm.primaryActionID = "assist"
+        case .coding, .other: break
         }
     }
 }
