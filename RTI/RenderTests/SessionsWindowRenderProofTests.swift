@@ -48,7 +48,8 @@ final class SessionsWindowRenderProofTests: RenderProofTestCase {
     // MARK: - Titles
 
     /// Every fixture session gets a real title: summary, manual, vault
-    /// note, fallback, short test, legacy sidecar. None says "Untitled".
+    /// note, the first spoken line, short test, legacy sidecar. None says
+    /// "Untitled", and none of them needs the summary call to have worked.
     func testTitlesResolveWithoutTheSummary() async throws {
         let model = try await makeModel()
         let sources = Dictionary(model.rows.map { ($0.title.text, $0.title.source) }, uniquingKeysWith: { first, _ in first })
@@ -57,8 +58,10 @@ final class SessionsWindowRenderProofTests: RenderProofTestCase {
         XCTAssertEqual(sources["Fabrikam loyalty card research debrief"], .vaultNote)
         XCTAssertEqual(sources["Quarterly planning sync"], .summary)
         XCTAssertEqual(sources["Short test · 12 s"], .shortTest)
-        let meeting = try XCTUnwrap(model.rows.first { $0.title.text.hasPrefix("Meeting · ") })
-        XCTAssertTrue(meeting.title.text.hasSuffix(" · 16 min"), meeting.title.text)
+        // No summary, no vault note, no calendar event: this session names
+        // itself from its first spoken line instead of the date and length.
+        let spoken = try XCTUnwrap(model.rows.first { $0.title.source == .transcriptLine })
+        XCTAssertTrue(spoken.title.text.hasPrefix("The store map needs one change"), spoken.title.text)
         for row in model.rows {
             XCTAssertFalse(row.title.text.localizedCaseInsensitiveContains("untitled"), row.title.text)
         }
@@ -200,10 +203,12 @@ final class SessionsWindowRenderProofTests: RenderProofTestCase {
         try render("sessions-find", model)
     }
 
+    /// The session whose summary never landed: it is titled from its first
+    /// spoken line, and the header says "Summary unavailable".
     func testFallbackTitles() async throws {
         let model = try await makeModel()
         model.setRailVisible(true, remember: false)
-        model.open(try row(model, "Meeting · ").id)
+        model.open(try row(model, "The store map needs one change").id)
         model.selectFile(named: "notes")
         try render("sessions-fallback-titles", model)
     }

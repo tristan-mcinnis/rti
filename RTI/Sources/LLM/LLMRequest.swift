@@ -65,6 +65,22 @@ final class LLMRequest: @unchecked Sendable {
         }
     }
 
+    /// `collectAsync` that keeps the stream's finish reason and reasoning
+    /// volume. Use it where an EMPTY answer needs explaining rather than
+    /// silently discarding — a reasoning model can burn the whole token
+    /// budget on `reasoning_content` and return no text at all. nil still
+    /// means cancelled or failed; a non-nil value with empty `text` means the
+    /// call succeeded and the model said nothing.
+    func collectDetailedAsync(
+        messages: [LLMMessage],
+        smart: Bool,
+        timeoutOverride: Double? = nil
+    ) async -> LLMClient.CollectedResponse? {
+        return await withSingleFlight { client in
+            try await client.collectDetailedResponse(messages: messages, smart: smart, timeoutOverride: timeoutOverride)
+        }
+    }
+
     /// Tool-aware streaming turn. Yields content/reasoning via callbacks
     /// and returns the assembled tool calls so the caller can execute and
     /// loop. The single in-flight task slot is reused across loop iterations.

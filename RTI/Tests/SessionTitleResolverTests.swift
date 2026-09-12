@@ -171,4 +171,107 @@ final class SessionTitleResolverTests: XCTestCase {
         XCTAssertLessThanOrEqual(cut?.count ?? 0, SessionTitleResolver.generatedTitleMaxLength)
         XCTAssertFalse(cut?.hasSuffix(" ") ?? true)
     }
+
+    // MARK: - The first substantive transcript line
+
+    private let transcript = """
+    ---
+    title: "RTI session · 2026-09-04 15:00 · Transcript"
+    source: rti
+    ---
+
+    # Transcript
+
+    _Sep 4, 2026 at 15:00 · 16 min_
+
+    `0:00` **Speaker 1:** Okay, yeah, so.
+
+    `0:04` **📝 Note:** Remember to ask about the pricing table before the end.
+
+    `0:09` **Speaker 2:** Let's start with the Project Zeta scope and what Emma needs by Friday.
+    """
+
+    func testFirstSubstantiveLineSkipsHeadersFillerAndNotes() {
+        XCTAssertEqual(
+            SessionTitleResolver.firstSubstantiveLine(fromTranscriptMarkdown: transcript),
+            "Let's start with the Project Zeta scope and what Emma needs by Friday"
+        )
+    }
+
+    func testTranscriptLineTitlesASessionWhoseSummaryFailed() {
+        let resolved = resolve(SessionTitleInputs(
+            transcriptHead: transcript,
+            startedAt: date(2026, 9, 4, 15, 0),
+            durationSeconds: 16 * 60,
+            transcriptBytes: 21_000
+        ))
+        XCTAssertEqual(resolved.source, .transcriptLine)
+        XCTAssertEqual(resolved.text, "Let's start with the Project Zeta scope and what Emma needs by Friday")
+    }
+
+    func testTranscriptLineRanksBelowEveryNamedSource() {
+        let base = SessionTitleInputs(
+            transcriptHead: transcript,
+            startedAt: date(2026, 9, 4, 15, 0),
+            durationSeconds: 16 * 60,
+            transcriptBytes: 21_000
+        )
+        var withCalendar = base
+        withCalendar.calendarTitle = "Project Zeta scoping"
+        XCTAssertEqual(resolve(withCalendar).source, .calendar)
+
+        var withNote = base
+        withNote.vaultNoteTitle = "Acme Project Zeta scoping call"
+        XCTAssertEqual(resolve(withNote).source, .vaultNote)
+
+        var withSummary = base
+        withSummary.titleFile = "Project Zeta Proposal Scoping Call"
+        XCTAssertEqual(resolve(withSummary).source, .summary)
+    }
+
+    func testTranscriptLineBeatsTheDateAndTimeFallback() {
+        // The whole point: a new session is never "Meeting · Sep 4, 15:00".
+        let resolved = resolve(SessionTitleInputs(
+            transcriptHead: transcript,
+            startedAt: date(2026, 9, 4, 15, 0),
+            durationSeconds: 16 * 60,
+            transcriptBytes: 21_000
+        ))
+        XCTAssertNotEqual(resolved.source, .fallback)
+        XCTAssertFalse(resolved.text.localizedCaseInsensitiveContains("untitled"))
+    }
+
+    func testThinOrShortTranscriptLinesAreRejected() {
+        let thin = """
+        # Transcript
+
+        `0:00` **Speaker 1:** Yeah.
+        `0:02` **Speaker 2:** Okay so yeah alright.
+        """
+        XCTAssertNil(SessionTitleResolver.firstSubstantiveLine(fromTranscriptMarkdown: thin))
+        XCTAssertNil(SessionTitleResolver.firstSubstantiveLine(fromTranscriptMarkdown: "# Transcript\n\nno entries here at all\n"))
+    }
+
+    func testShortTestKeepsItsLabelRatherThanATranscriptLine() {
+        let resolved = resolve(SessionTitleInputs(
+            transcriptHead: transcript,
+            startedAt: now,
+            durationSeconds: 12,
+            transcriptBytes: 400
+        ))
+        XCTAssertEqual(resolved.source, .shortTest)
+    }
+
+    func testATranscriptLineStillInvitesAGeneratedTitle() {
+        let resolved = ResolvedSessionTitle(text: "Let's start with the Project Zeta scope", source: .transcriptLine)
+        XCTAssertTrue(SessionTitleResolver.wantsGeneratedTitle(resolved, hasNotes: true))
+        XCTAssertFalse(SessionTitleResolver.wantsGeneratedTitle(resolved, hasNotes: false))
+    }
+
+    func testLongTranscriptLineIsCutToATitleLength() {
+        let long = "`0:00` **Speaker 1:** " + String(repeating: "scope ", count: 40)
+        let title = SessionTitleResolver.firstSubstantiveLine(fromTranscriptMarkdown: long)
+        XCTAssertNotNil(title)
+        XCTAssertLessThanOrEqual(title?.count ?? 0, SessionTitleResolver.generatedTitleMaxLength)
+    }
 }

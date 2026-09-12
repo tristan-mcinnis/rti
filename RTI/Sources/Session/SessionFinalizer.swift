@@ -40,7 +40,12 @@ struct SessionFinalizer {
             workstreamSlug: Self.workstreamSlug(for: snapshot.workstreamItem),
             mode: snapshot.modeName,
             workstreamName: snapshot.workstreamItem?.name,
-            speakerNames: SpeakerNameStore.shared.names
+            speakerNames: SpeakerNameStore.shared.names,
+            // Stamp the calendar event picked in Prepare into session.json so
+            // the Sessions window can title this session without waiting on
+            // the end-of-session summary (SessionTitleResolver rule 4). Read
+            // from the store here, the same way speakerNames is.
+            calendarTitle: Self.calendarTitleForArchive()
         )
 
         return ArchiveResult(
@@ -48,6 +53,14 @@ struct SessionFinalizer {
             transcriptText: Self.transcriptText(snapshot.transcript),
             summaryContext: snapshot.summaryContext
         )
+    }
+
+    /// The title of the calendar event picked in Prepare, trimmed, or nil
+    /// when none was picked or it is blank. Stamped into `session.json`.
+    static func calendarTitleForArchive() -> String? {
+        let title = MeetingContextStore.shared.calendarMeeting?.title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (title?.isEmpty ?? true) ? nil : title
     }
 
     static func workstreamSlug(for item: VaultItem?) -> String? {
