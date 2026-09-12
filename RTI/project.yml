@@ -121,6 +121,8 @@ targets:
       - path: Sources/Audio/AudioInputDevice.swift
       - path: Sources/Support/AppLog.swift
       - path: Sources/Support/SettingsKeys.swift
+      # The elapsed readout MenuStatusTick drives (MenuStatusTickTests).
+      - path: Sources/Support/TimeFormat.swift
       - path: Sources/Support/ExternalTools.swift
       - path: Sources/LLM/RetrievalHeuristics.swift
     dependencies:

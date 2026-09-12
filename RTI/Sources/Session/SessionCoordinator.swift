@@ -14,18 +14,11 @@ final class SessionCoordinator {
     static let shared = SessionCoordinator()
 
     /// The session lifecycle as an explicit state machine, replacing the old
-    /// binary `isRunning`. Every phase is something the UI can name to the user
-    /// — the missing "what's it doing right now?" signal (Granola-style):
-    ///
-    ///   idle → recording ⇄ paused → finishing → summarizing → done → (idle/recording)
-    ///
-    /// `paused` keeps the Soniox socket warm (fed silence) so resume is instant.
-    /// `finishing` is the brief post-stop flush window; `summarizing` is the
-    /// end-of-session auto-summary running; `done` is the frozen, summary-ready
-    /// state. Starting a new session is allowed from `summarizing` onward.
-    enum Phase: Equatable {
-        case idle, recording, paused, finishing, summarizing, done
-    }
+    /// binary `isRunning` — the missing "what's it doing right now?" signal
+    /// (Granola-style). The cases and their transitions are documented on
+    /// `SessionPhase` in RTICore, where pure policy over the phase can be
+    /// tested without the app module.
+    typealias Phase = SessionPhase
 
     private(set) var phase: Phase = .idle
 

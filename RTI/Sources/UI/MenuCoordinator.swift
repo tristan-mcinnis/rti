@@ -1,4 +1,5 @@
 import AppKit
+import RTICore
 
 /// Owns the deliberately small status-item menu. The overlay is RTI's work
 /// surface; the menubar is only for opening it, controlling the recording,
@@ -6,9 +7,11 @@ import AppKit
 @MainActor
 final class MenuCoordinator: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
-    /// Drives the once-a-second elapsed readout in the status item while a
-    /// session is running (the "timer in the menubar" affordance).
-    private var elapsedTimer: Timer?
+    /// Drives the once-a-second elapsed readout in the status item. It exists
+    /// ONLY while a session is recording (`MenuStatusTick`) — an idle RTI holds
+    /// no repeating timer at all. Readable (not writable) from outside so a
+    /// test can prove that, and that a recording session holds exactly one.
+    private(set) var elapsedTimer: Timer?
 
     /// Commands keyed by id for fast lookup during menu-open refresh.
     private var commandsByID: [String: RTICommand] = [:]
@@ -50,15 +53,16 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         item.menu = menu
         statusItem = item
 
+        // Draws the current state and, only if a session is already recording,
+        // starts the tick.
         refreshTitle()
-        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshTitle() }
-        }
     }
 
     /// Called by AppDelegate's session-phase observation, and once a second by
-    /// the elapsed timer. While a session runs, the status item shows the
-    /// recording symbol plus a monospaced-digit elapsed readout ("3:07").
+    /// the elapsed timer while recording. While a session runs, the status item
+    /// shows the recording symbol plus a monospaced-digit elapsed readout
+    /// ("3:07"). Every call re-decides whether the tick should be running, so
+    /// the phase observation alone is enough to start and stop it.
     func refreshTitle() {
         let running = isRunningProvider?() ?? false
         let button = statusItem?.button
@@ -68,11 +72,9 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
             : Self.idleToolTip
 
         let session = SessionCoordinator.shared
-        let showElapsed: Bool = switch session.phase {
-        case .recording, .paused, .finishing: true
-        case .idle, .summarizing, .done: false
-        }
-        if showElapsed {
+        let phase = session.phase
+        syncElapsedTimer(for: phase)
+        if MenuStatusTick.showsElapsed(phase) {
             button?.imagePosition = .imageLeading
             button?.attributedTitle = NSAttributedString(
                 string: " " + TimeFormat.elapsed(session.elapsed(at: Date())),
@@ -82,6 +84,28 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
             button?.attributedTitle = NSAttributedString(string: "")
             button?.imagePosition = .imageOnly
         }
+    }
+
+    /// Own the 1 Hz tick from the phase, not from app launch. A recording
+    /// session gets exactly one timer: a second call while one is already
+    /// scheduled keeps it rather than stacking another. Every other phase —
+    /// idle, paused, finishing, summarizing, done — has a still readout, so the
+    /// timer is invalidated and the reference cleared in the same step, which
+    /// is what makes a double invalidate or a leak impossible.
+    private func syncElapsedTimer(for phase: SessionCoordinator.Phase) {
+        guard MenuStatusTick.needsRepeatingTimer(phase) else {
+            elapsedTimer?.invalidate()
+            elapsedTimer = nil
+            return
+        }
+        guard elapsedTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: MenuStatusTick.interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshTitle() }
+        }
+        // Let the OS coalesce this wakeup with others instead of forcing its
+        // own; a quarter-second of slack is invisible in a M:SS readout.
+        timer.tolerance = MenuStatusTick.tolerance
+        elapsedTimer = timer
     }
 
     private func applyStatusAppearance(to button: NSStatusBarButton?, running: Bool) {
