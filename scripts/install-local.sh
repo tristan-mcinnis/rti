@@ -18,6 +18,26 @@ IDENTITY="${RTI_SIGN_IDENTITY:-Apple Development: dev@example.com (TEAMID0001)}"
 DERIVED=".deriveddata"
 APP="$DERIVED/Build/Products/Release/RTI.app"
 
+# The build below compiles the WORKING TREE, not HEAD. Installing from a dirty
+# checkout therefore produces a binary that traces to no commit at all (bitten
+# 2026-09-12: an installed app ran for an hour answering in a socket reply
+# format that existed only in uncommitted edits, which is the only reason the
+# mismatch was ever noticed). Refuse by default; override deliberately with
+# RTI_ALLOW_DIRTY=1, in which case the stamp below records that it was dirty.
+COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  if [ "${RTI_ALLOW_DIRTY:-0}" = "1" ]; then
+    COMMIT="$COMMIT-dirty"
+    echo "== WARNING: dirty tree; this build traces to nothing, stamping $COMMIT"
+  else
+    echo "refusing to install from a dirty working tree." >&2
+    git status --short >&2
+    echo "commit or stash first, or re-run with RTI_ALLOW_DIRTY=1 to override." >&2
+    exit 1
+  fi
+fi
+echo "== building from $COMMIT"
+
 echo "== xcodegen + build (Release)"
 (cd RTI && xcodegen generate >/dev/null && \
   xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Release \
@@ -28,6 +48,10 @@ echo "== stamp build number with install time"
 # build am I actually running?" answerable at a glance (bitten 2026-08-30:
 # a June-frozen build number made a current build look four months stale).
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(date +%Y%m%d%H%M)" "$APP/Contents/Info.plist"
+# ...and record WHICH COMMIT went in, so a binary is always traceable even
+# when the build number alone cannot say.
+/usr/libexec/PlistBuddy -c "Add :RTIBuiltFromCommit string $COMMIT" "$APP/Contents/Info.plist" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c "Set :RTIBuiltFromCommit $COMMIT" "$APP/Contents/Info.plist"
 
 echo "== re-sign with stable identity"
 codesign --force --deep -s "$IDENTITY" --options runtime \
