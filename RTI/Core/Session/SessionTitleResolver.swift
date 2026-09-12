@@ -260,7 +260,8 @@ public enum SessionTitleResolver {
         }
         let marks = CharacterSet(charactersIn: "\"'“”‘’*_#`")
         line = line.trimmingCharacters(in: marks.union(.whitespaces))
-        while let last = line.last, ".,;:!".contains(last) {
+        // Full-width stops too: a Chinese line ends "\u{FF0C}" or "\u{3002}", not "," or ".".
+        while let last = line.last, ".,;:!\u{FF0C}\u{3002}\u{FF01}\u{FF1F}\u{FF1B}\u{FF1A}\u{3001}".contains(last) {
             line.removeLast()
         }
         line = line.split(whereSeparator: \.isWhitespace).joined(separator: " ")
@@ -279,6 +280,12 @@ public enum SessionTitleResolver {
     public static let transcriptLineMinimumCharacters = 25
     /// ...and the fewest words, so "Okay so yeah alright" never wins.
     public static let transcriptLineMinimumWords = 5
+    /// The fewest Chinese, Japanese or Korean characters that say as much.
+    /// Those scripts put no spaces between words, so the word count above
+    /// sees one "word" however long the line is and would reject every CJK
+    /// session. One character there carries roughly what a short English
+    /// word does, so it is counted directly instead.
+    public static let transcriptLineMinimumCJKCharacters = 8
 
     /// The first substantive spoken line of `transcript.md`, cleaned into a
     /// title. Entry lines are written as:
@@ -314,13 +321,40 @@ public enum SessionTitleResolver {
                 .split(whereSeparator: \.isWhitespace)
                 .joined(separator: " ")
 
-            guard spoken.count >= transcriptLineMinimumCharacters,
-                  spoken.split(whereSeparator: \.isWhitespace).count >= transcriptLineMinimumWords,
+            guard isSubstantialSpokenLine(spoken),
                   let title = cleanGeneratedTitle(spoken)
             else { continue }
             return title
         }
         return nil
+    }
+
+    /// Whether one spoken line says enough to name a session.
+    ///
+    /// A dense CJK line passes on its character count alone; everything else
+    /// must clear both the character and the word minimum. Checking CJK
+    /// first keeps a mixed line (an English sentence with one Chinese term
+    /// in it) on the English rule, where its word count is meaningful.
+    public static func isSubstantialSpokenLine(_ spoken: String) -> Bool {
+        if cjkCharacterCount(spoken) >= transcriptLineMinimumCJKCharacters { return true }
+        return spoken.count >= transcriptLineMinimumCharacters
+            && spoken.split(whereSeparator: \.isWhitespace).count >= transcriptLineMinimumWords
+    }
+
+    /// Han, kana and Hangul characters in `text`.
+    public static func cjkCharacterCount(_ text: String) -> Int {
+        text.unicodeScalars.reduce(into: 0) { total, scalar in
+            switch scalar.value {
+            case 0x3040...0x30FF,   // hiragana and katakana
+                 0x3400...0x4DBF,   // CJK unified ideographs extension A
+                 0x4E00...0x9FFF,   // CJK unified ideographs
+                 0xAC00...0xD7AF,   // hangul syllables
+                 0xF900...0xFAFF:   // CJK compatibility ideographs
+                total += 1
+            default:
+                break
+            }
+        }
     }
 
     // MARK: - Helpers

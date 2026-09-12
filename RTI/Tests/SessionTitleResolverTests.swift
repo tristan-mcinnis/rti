@@ -274,4 +274,56 @@ final class SessionTitleResolverTests: XCTestCase {
         XCTAssertNotNil(title)
         XCTAssertLessThanOrEqual(title?.count ?? 0, SessionTitleResolver.generatedTitleMaxLength)
     }
+
+    // MARK: - Chinese, Japanese and Korean transcript lines
+
+    /// Tristan records mostly in Chinese. Counting words by splitting on
+    /// spaces sees one "word" in any Chinese line, so before this the rule
+    /// rejected every Chinese session and left it on the date fallback.
+    func testAChineseLineNamesASession() {
+        let chinese = """
+        # Transcript
+
+        _Jun 8, 2026 at 15:58 \u{00B7} 9m 35s_
+
+        `0:01` **Them 1:** \u{6211}\u{4EEC}\u{4ECA}\u{5929}\u{5148}\u{8BA8}\u{8BBA}\u{5B9A}\u{4EF7}\u{8868}\u{548C}\u{4EA4}\u{671F}\u{3002}
+        """
+        let title = SessionTitleResolver.firstSubstantiveLine(fromTranscriptMarkdown: chinese)
+        XCTAssertEqual(title, "\u{6211}\u{4EEC}\u{4ECA}\u{5929}\u{5148}\u{8BA8}\u{8BBA}\u{5B9A}\u{4EF7}\u{8868}\u{548C}\u{4EA4}\u{671F}")
+    }
+
+    func testShortChineseFillerIsStillRejected() {
+        let filler = """
+        # Transcript
+
+        `0:00` **Them 1:** \u{597D}\u{7684}\u{3002}
+        `0:02` **Them 2:** \u{5BF9}\u{5BF9}\u{5BF9}\u{3002}
+        """
+        XCTAssertNil(SessionTitleResolver.firstSubstantiveLine(fromTranscriptMarkdown: filler))
+    }
+
+    /// A mixed line keeps the English rule, where its word count still means
+    /// something: one Chinese term does not let a three-word line through.
+    func testAMostlyEnglishLineKeepsTheWordRule() {
+        XCTAssertFalse(SessionTitleResolver.isSubstantialSpokenLine("The \u{4EA4}\u{671F} slipped"))
+        XCTAssertTrue(
+            SessionTitleResolver.isSubstantialSpokenLine("The \u{4EA4}\u{671F} slipped again so we moved the review to Friday")
+        )
+    }
+
+    func testFullWidthTrailingPunctuationIsTrimmed() {
+        XCTAssertEqual(
+            SessionTitleResolver.cleanGeneratedTitle("\u{5B9A}\u{4EF7}\u{8868}\u{8BA8}\u{8BBA}\u{FF0C}"),
+            "\u{5B9A}\u{4EF7}\u{8868}\u{8BA8}\u{8BBA}"
+        )
+        XCTAssertEqual(
+            SessionTitleResolver.cleanGeneratedTitle("\u{4EA4}\u{671F}\u{786E}\u{8BA4}\u{3002}"),
+            "\u{4EA4}\u{671F}\u{786E}\u{8BA4}"
+        )
+    }
+
+    func testCJKCharacterCountIgnoresLatinAndPunctuation() {
+        XCTAssertEqual(SessionTitleResolver.cjkCharacterCount("hello, world"), 0)
+        XCTAssertEqual(SessionTitleResolver.cjkCharacterCount("\u{5B9A}\u{4EF7}\u{8868} v2"), 3)
+    }
 }
