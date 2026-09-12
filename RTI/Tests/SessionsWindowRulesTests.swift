@@ -145,6 +145,22 @@ final class SessionsWindowRulesTests: XCTestCase {
         XCTAssertEqual(SessionsWindowRules.transcriptStatus(fileNames: ["chat.md"]), "No transcript")
     }
 
+    /// A session whose summary call came back empty must SAY so, not leave a
+    /// silent gap in the row.
+    func testSummaryStatusNamesAMissingSummary() {
+        XCTAssertEqual(SessionsWindowRules.summaryStatus(fileNames: ["transcript.md"]), "Summary unavailable")
+        XCTAssertEqual(
+            SessionsWindowRules.summaryStatus(fileNames: ["transcript.upgraded.md"]),
+            "Summary unavailable",
+            "an upgraded transcript with no summary is the same failure"
+        )
+        XCTAssertNil(SessionsWindowRules.summaryStatus(fileNames: ["transcript.md", "summary.md"]))
+        XCTAssertNil(
+            SessionsWindowRules.summaryStatus(fileNames: ["chat.md"]),
+            "nothing was transcribed, so there was nothing to summarise"
+        )
+    }
+
     func testFindRangesAndStatus() {
         let text = "The tour. No TOUR. Détour?"
         XCTAssertEqual(SessionsWindowRules.findRanges(of: "tour", in: text).count, 3)

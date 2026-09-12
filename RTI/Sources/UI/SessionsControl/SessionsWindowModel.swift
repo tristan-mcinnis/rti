@@ -67,6 +67,9 @@ final class SessionsWindowModel {
         let stamp: String?
         let hasNotes: Bool
         let transcriptStatus: String?
+        /// "Summary unavailable" when the end-of-session summary never
+        /// landed. The row says so rather than leaving a silent gap.
+        var summaryStatus: String?
         /// Read once at load (off the main thread), so row menus stay cheap.
         var hasTranscript = false
         var hasSummary = false
@@ -365,6 +368,7 @@ final class SessionsWindowModel {
         }
         if let project = row.project, !project.isEmpty { parts.append(project) }
         if let status = row.transcriptStatus { parts.append(status) }
+        if let status = row.summaryStatus { parts.append(status) }
         return parts.joined(separator: " · ")
     }
 
@@ -496,6 +500,7 @@ final class SessionsWindowModel {
             let inputs = SessionTitleInputs(
                 titleFile: named,
                 vaultNoteTitle: stamp.flatMap(titleMap.title(forStamp:)),
+                transcriptHead: transcriptHead(of: session.transcriptURL),
                 startedAt: session.date,
                 transcriptBytes: bytes
             )
@@ -531,6 +536,7 @@ final class SessionsWindowModel {
             generatedMarker: read(SessionTitleResolver.generatedMarkerFileName),
             vaultNoteTitle: stamp.flatMap(titleMap.title(forStamp:)),
             calendarTitle: metadata?.calendarTitle,
+            transcriptHead: transcriptHead(of: session.transcriptURL),
             startedAt: session.date,
             durationSeconds: metadata?.durationSeconds,
             transcriptBytes: bytes
@@ -544,8 +550,23 @@ final class SessionsWindowModel {
             speakerNames: speakers,
             stamp: stamp,
             hasNotes: names.contains("notes.md"),
-            transcriptStatus: SessionsWindowRules.transcriptStatus(fileNames: names)
+            transcriptStatus: SessionsWindowRules.transcriptStatus(fileNames: names),
+            summaryStatus: SessionsWindowRules.summaryStatus(fileNames: names)
         )
+    }
+
+    /// Bytes read from the head of a transcript for its opening line. A
+    /// transcript runs to 150 KB; the first spoken line is in the first few
+    /// hundred bytes, so never read more than this.
+    nonisolated static let transcriptHeadByteLimit = 8 * 1024
+
+    /// A bounded head of `transcript.md`, for `SessionTitleResolver`'s
+    /// first-substantive-line title. Nil when there is no transcript.
+    nonisolated private static func transcriptHead(of url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: transcriptHeadByteLimit), !data.isEmpty else { return nil }
+        return String(decoding: data, as: UTF8.self)
     }
 
     nonisolated private static func canonicalStamp(for date: Date) -> String {
@@ -576,7 +597,8 @@ final class SessionsWindowModel {
             guard let notes = try? String(contentsOf: notesURL, encoding: .utf8),
                   let title = await generate(notes) else { continue }
             dependencies.persistGeneratedTitle(title, row.session.url)
-            if let index = rows.firstIndex(where: { $0.id == row.id }), rows[index].title.source == .fallback {
+            if let index = rows.firstIndex(where: { $0.id == row.id }),
+               rows[index].title.source == .fallback || rows[index].title.source == .transcriptLine {
                 rows[index].title = ResolvedSessionTitle(text: title, source: .generated)
             }
         }

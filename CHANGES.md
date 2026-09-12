@@ -1,5 +1,24 @@
 # RTI Change Log
 
+## 2026-09-12: Session titles no longer depend on the summary
+
+A session's title used to be written only when the end-of-session summary
+succeeded. When that call came back empty, the session stayed "Untitled
+session" — 33 of 88 archived sessions had no title.
+
+- A session with no summary now still gets a real title: the calendar event
+  picked in Prepare, the vault meeting note, a generated title from the note
+  headings, or the first substantive line of the transcript. Only a session
+  with none of those shows the date and length, and none says "Untitled".
+- Fix: the summary call could return no text at all and be treated as a
+  success. The smart model reasons before it writes, and that reasoning spends
+  the same token budget as the answer, so a long deliberation ended the stream
+  with nothing written: HTTP 200, about 70 seconds, empty text. RTI now says
+  why in the log (finish reason and how much reasoning arrived) and asks again
+  with thinking off, which answers directly.
+- A session whose summary never landed says "Summary unavailable" in its row
+  instead of showing nothing.
+
 ## 2026-09-12: House composer
 
 The Assist composer now looks and works like Quick AI (`docs/house-style-migration-20260912.md`, package B).

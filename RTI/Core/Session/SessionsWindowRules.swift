@@ -308,6 +308,18 @@ public enum SessionsWindowRules {
         return "No transcript"
     }
 
+    /// The header's word for a missing summary: "Summary unavailable" when a
+    /// session has a transcript but the end-of-session summary never landed.
+    /// The summary call can return no text at all (a reasoning model can
+    /// spend its whole token budget thinking and emit nothing), and that
+    /// used to leave a silent gap. Saying it in the row makes the failure
+    /// visible without opening the log.
+    public static func summaryStatus(fileNames: Set<String>) -> String? {
+        guard !fileNames.contains("summary.md") else { return nil }
+        guard fileNames.contains("transcript.md") || fileNames.contains("transcript.upgraded.md") else { return nil }
+        return "Summary unavailable"
+    }
+
     // MARK: - Find
 
     /// Every range of `query` in `text`, case- and diacritic-insensitive.

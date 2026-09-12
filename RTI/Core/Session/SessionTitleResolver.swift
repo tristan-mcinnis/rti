@@ -15,6 +15,9 @@ public enum SessionTitleSource: String, Sendable, CaseIterable {
     /// The short title the Sessions window generated from the note headings
     /// (`title.txt` whose text matches `title-generated.txt`).
     case generated
+    /// The first substantive line of `transcript.md`. Needs no model call,
+    /// so a session that never got a summary still reads as itself.
+    case transcriptLine
     /// Built from the date and length. Never "Untitled session".
     case fallback
     /// "Short test · 12 s": a tiny transcript from a session under two
@@ -46,6 +49,9 @@ public struct SessionTitleInputs: Equatable, Sendable {
     public var vaultNoteTitle: String?
     /// `session.json` `calendarTitle`.
     public var calendarTitle: String?
+    /// The head of `transcript.md`, for the first-substantive-line title.
+    /// A bounded prefix is enough; the caller need not read the whole file.
+    public var transcriptHead: String?
     public var startedAt: Date?
     public var durationSeconds: Int?
     /// Size of `transcript.md` in bytes; nil when there is none.
@@ -57,6 +63,7 @@ public struct SessionTitleInputs: Equatable, Sendable {
         generatedMarker: String? = nil,
         vaultNoteTitle: String? = nil,
         calendarTitle: String? = nil,
+        transcriptHead: String? = nil,
         startedAt: Date? = nil,
         durationSeconds: Int? = nil,
         transcriptBytes: Int? = nil
@@ -66,6 +73,7 @@ public struct SessionTitleInputs: Equatable, Sendable {
         self.generatedMarker = generatedMarker
         self.vaultNoteTitle = vaultNoteTitle
         self.calendarTitle = calendarTitle
+        self.transcriptHead = transcriptHead
         self.startedAt = startedAt
         self.durationSeconds = durationSeconds
         self.transcriptBytes = transcriptBytes
@@ -122,6 +130,15 @@ public enum SessionTitleResolver {
             // Only reachable when title.txt is the generator's own text.
             return ResolvedSessionTitle(text: title, source: .generated)
         }
+        // Nothing named this session, so let it name itself: the first line
+        // anyone actually said. No model call, so it works for a session
+        // whose summary failed and for one recorded with no key at all.
+        // A short test keeps the "Short test · 12 s" label instead.
+        if !isShortTest(transcriptBytes: inputs.transcriptBytes, durationSeconds: inputs.durationSeconds),
+           let head = inputs.transcriptHead,
+           let title = firstSubstantiveLine(fromTranscriptMarkdown: head) {
+            return ResolvedSessionTitle(text: title, source: .transcriptLine)
+        }
         return ResolvedSessionTitle(
             text: fallbackTitle(
                 startedAt: inputs.startedAt,
@@ -143,9 +160,10 @@ public enum SessionTitleResolver {
     }
 
     /// Whether the window should try a generated title: nothing better than
-    /// the fallback, and notes to build it from.
+    /// a built label or a raw transcript line, and notes to build it from.
+    /// A generated title reads better than either, so both invite one.
     public static func wantsGeneratedTitle(_ resolved: ResolvedSessionTitle, hasNotes: Bool) -> Bool {
-        resolved.source == .fallback && hasNotes
+        (resolved.source == .fallback || resolved.source == .transcriptLine) && hasNotes
     }
 
     /// "Meeting · Sep 4, 15:00 · 16 min", "Short test · 12 s", or "Meeting".
@@ -253,6 +271,56 @@ public enum SessionTitleResolver {
             line = cut
         }
         return line.isEmpty ? nil : line
+    }
+
+    // MARK: - The first substantive transcript line
+
+    /// The fewest characters a transcript line needs to name a session.
+    public static let transcriptLineMinimumCharacters = 25
+    /// ...and the fewest words, so "Okay so yeah alright" never wins.
+    public static let transcriptLineMinimumWords = 5
+
+    /// The first substantive spoken line of `transcript.md`, cleaned into a
+    /// title. Entry lines are written as:
+    ///
+    ///     `0:00` **Speaker 1:** Let's start with the Project Zeta scope.
+    ///
+    /// Frontmatter, the `# Transcript` heading, the date line, and typed
+    /// notes (`📝 Note`) are skipped, as is any line too short or too thin to
+    /// say what the session was about. Nil when nothing qualifies.
+    ///
+    /// Pure: the caller reads a bounded head of the file, not all of it.
+    public static func firstSubstantiveLine(fromTranscriptMarkdown markdown: String) -> String? {
+        for line in markdown.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // Every entry opens with its `mm:ss` stamp in backticks; nothing
+            // else in the file does.
+            guard trimmed.hasPrefix("`"),
+                  let closingTick = trimmed.dropFirst().firstIndex(of: "`")
+            else { continue }
+
+            var spoken = String(trimmed[trimmed.index(after: closingTick)...])
+                .trimmingCharacters(in: .whitespaces)
+            if spoken.hasPrefix("**") {
+                let afterMarks = spoken.index(spoken.startIndex, offsetBy: 2)
+                if let close = spoken.range(of: "**", range: afterMarks..<spoken.endIndex) {
+                    // A typed note is the user's aside, not the meeting.
+                    guard !spoken[afterMarks..<close.lowerBound].contains("Note") else { continue }
+                    spoken = String(spoken[close.upperBound...])
+                }
+            }
+            spoken = spoken
+                .trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+                .split(whereSeparator: \.isWhitespace)
+                .joined(separator: " ")
+
+            guard spoken.count >= transcriptLineMinimumCharacters,
+                  spoken.split(whereSeparator: \.isWhitespace).count >= transcriptLineMinimumWords,
+                  let title = cleanGeneratedTitle(spoken)
+            else { continue }
+            return title
+        }
+        return nil
     }
 
     // MARK: - Helpers

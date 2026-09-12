@@ -44,9 +44,14 @@ final class LLMClient: @unchecked Sendable {
     // MARK: - Stream result
 
     /// Output from a single chat-completion stream.
-    struct StreamResult {
+    struct StreamResult: Sendable {
         let toolCalls: [LLMToolCall]
         let finishReason: String?
+        /// How many characters of `reasoning_content` arrived. Counted even
+        /// when no `onReasoning` listener is attached: when a reasoning model
+        /// returns no content at all, the reasoning volume plus
+        /// `finishReason` is the only evidence of why.
+        let reasoningCharacters: Int
     }
 
     // MARK: - Public streaming API
@@ -63,7 +68,8 @@ final class LLMClient: @unchecked Sendable {
         messages: [LLMMessage],
         smart: Bool = false,
         timeoutOverride: Double? = nil,
-        onReasoning: (@Sendable (String) -> Void)? = nil
+        onReasoning: (@Sendable (String) -> Void)? = nil,
+        onFinish: (@Sendable (StreamResult) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
         let temperature: Double? = smart ? nil : 0.6
         let thinking: LLMWireRequest.Thinking? = provider.supportsThinking
@@ -89,13 +95,14 @@ final class LLMClient: @unchecked Sendable {
                     ))
                     // Plain path yields each delta straight to the stream's
                     // consumer — no main-thread hop (the caller decides).
-                    _ = try await performChatStream(
+                    let result = try await performChatStream(
                         httpBody: body,
                         logDetail: logDetail,
                         timeoutSeconds: timeoutSeconds,
                         onContent: { continuation.yield($0) },
                         onReasoning: onReasoning
                     )
+                    onFinish?(result)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -191,7 +198,7 @@ final class LLMClient: @unchecked Sendable {
                 throw LLMError.streamError("Stream timed out after \(Int(timeoutSeconds))s")
             }
             group.addTask { [weak self] in
-                guard let self else { return StreamResult(toolCalls: [], finishReason: nil) }
+                guard let self else { return StreamResult(toolCalls: [], finishReason: nil, reasoningCharacters: 0) }
                 return try await self.processStreamBytes(bytes, onContent: onContent, onReasoning: onReasoning)
             }
             let result = try await group.next()!
@@ -214,6 +221,7 @@ final class LLMClient: @unchecked Sendable {
         // Parsing lives in RTICore's SSEStreamParser (unit-tested); this loop
         // only drives the byte stream and routes events.
         var parser = SSEStreamParser()
+        var reasoningCharacters = 0
         lines: for try await rawLine in bytes.lines {
             try Task.checkCancellation()
             for event in parser.consume(line: rawLine) {
@@ -221,6 +229,7 @@ final class LLMClient: @unchecked Sendable {
                 case .content(let content):
                     onContent(content)
                 case .reasoning(let reasoning):
+                    reasoningCharacters += reasoning.count
                     if let onReasoning {
                         DispatchQueue.main.async { onReasoning(reasoning) }
                     }
@@ -231,7 +240,11 @@ final class LLMClient: @unchecked Sendable {
                 }
             }
         }
-        return StreamResult(toolCalls: parser.assembledToolCalls(), finishReason: parser.finishReason)
+        return StreamResult(
+            toolCalls: parser.assembledToolCalls(),
+            finishReason: parser.finishReason,
+            reasoningCharacters: reasoningCharacters
+        )
     }
 
     // MARK: - Helpers
@@ -247,6 +260,25 @@ final class LLMClient: @unchecked Sendable {
         return arr
     }
 
+    /// A collected completion: the text, why the stream ended, and how much
+    /// hidden reasoning arrived on the way.
+    ///
+    /// `text` can be empty while nothing threw. A reasoning model spends its
+    /// `max_tokens` budget on `reasoning_content` BEFORE it writes a word, so
+    /// a long deliberation can end the stream (`finishReason == "length"`)
+    /// having emitted no content at all. Callers must treat empty text as a
+    /// failure; these fields let them log WHY instead of guessing.
+    struct CollectedResponse: Sendable {
+        let text: String
+        let finishReason: String?
+        let reasoningCharacters: Int
+
+        /// The reason, in words, for a log line.
+        var emptyReasonDescription: String {
+            "finish_reason=\(finishReason ?? "none"), \(reasoningCharacters) reasoning chars, 0 content chars"
+        }
+    }
+
     /// Drains a `streamChat` AsyncThrowingStream into a single String,
     /// honoring task cancellation between deltas.
     func collectStreamedResponse(
@@ -254,12 +286,56 @@ final class LLMClient: @unchecked Sendable {
         smart: Bool = false,
         timeoutOverride: Double? = nil
     ) async throws -> String {
+        try await collectDetailedResponse(
+            messages: messages,
+            smart: smart,
+            timeoutOverride: timeoutOverride
+        ).text
+    }
+
+    /// `collectStreamedResponse` plus the stream's finish reason and reasoning
+    /// volume, so a caller that gets no text can say why.
+    func collectDetailedResponse(
+        messages: [LLMMessage],
+        smart: Bool = false,
+        timeoutOverride: Double? = nil
+    ) async throws -> CollectedResponse {
+        let box = FinishBox()
         var full = ""
-        for try await delta in streamChat(messages: messages, smart: smart, timeoutOverride: timeoutOverride) {
+        for try await delta in streamChat(
+            messages: messages,
+            smart: smart,
+            timeoutOverride: timeoutOverride,
+            onFinish: { box.store($0) }
+        ) {
             try Task.checkCancellation()
             full += delta
         }
-        return full
+        let result = box.value
+        return CollectedResponse(
+            text: full,
+            finishReason: result?.finishReason,
+            reasoningCharacters: result?.reasoningCharacters ?? 0
+        )
+    }
+
+    /// Carries the stream's `StreamResult` out of the `onFinish` callback,
+    /// which fires on the streaming task rather than the awaiting one.
+    private final class FinishBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: StreamResult?
+
+        func store(_ result: StreamResult) {
+            lock.lock()
+            defer { lock.unlock() }
+            stored = result
+        }
+
+        var value: StreamResult? {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
     }
 
     private func readAll(_ bytes: URLSession.AsyncBytes) async throws -> String {

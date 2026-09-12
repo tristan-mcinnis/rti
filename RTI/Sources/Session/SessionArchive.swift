@@ -97,7 +97,8 @@ enum SessionArchive {
         workstreamSlug: String? = nil,
         mode: String? = nil,
         workstreamName: String? = nil,
-        speakerNames: [String: String] = [:]
+        speakerNames: [String: String] = [:],
+        calendarTitle: String? = nil
     ) -> URL? {
         let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
             .compactMap { $0 }
@@ -173,7 +174,8 @@ enum SessionArchive {
                 systemAudioFile: systemName,
                 mode: mode,
                 workstream: workstreamName,
-                durationSeconds: Int(max(0, endedAt.timeIntervalSince(startedAt)))
+                durationSeconds: Int(max(0, endedAt.timeIntervalSince(startedAt))),
+                calendarTitle: calendarTitle
             ),
             to: dir
         )
@@ -230,18 +232,45 @@ enum SessionArchive {
             + speakerContext
             + referenceBlock
             + "\n\nTranscript:\n" + transcript
-        guard let payloadRaw = await LLMRequest().collectAsync(
-            messages: [LLMMessage(role: "user", content: prompt)],
+        let message = LLMMessage(role: "user", content: prompt)
+        guard let smartAttempt = await LLMRequest().collectDetailedAsync(
+            messages: [message],
             smart: true,
             timeoutOverride: 300
         ) else {
             RTILog.log("auto-summary: LLM call failed/timed out for \(dir.lastPathComponent)", category: .summary)
             return nil
         }
-        let payload = payloadRaw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !payload.isEmpty else {
-            RTILog.log("auto-summary: empty response for \(dir.lastPathComponent)", category: .summary)
-            return nil
+        var payload = smartAttempt.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The smart model reasons BEFORE it writes, and that reasoning spends
+        // the same `max_tokens` budget as the answer. A long deliberation can
+        // therefore end the stream having emitted no answer at all: HTTP 200,
+        // ~70s of `reasoning_content`, empty text, nothing thrown. That silent
+        // case wrote neither summary.md nor title.txt and is what left 33 of
+        // 88 archived sessions untitled (docs/house-style-migration-20260912.md
+        // section 0). Say why in the log, then ask once more with thinking
+        // OFF, where the first token out is summary text, not reasoning.
+        if payload.isEmpty {
+            RTILog.log(
+                "auto-summary: smart model returned no text for \(dir.lastPathComponent) "
+                    + "(\(smartAttempt.emptyReasonDescription)) — retrying with thinking off",
+                category: .summary
+            )
+            let plainAttempt = await LLMRequest().collectDetailedAsync(
+                messages: [message],
+                smart: false,
+                timeoutOverride: 300
+            )
+            payload = (plainAttempt?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if payload.isEmpty {
+                let why = plainAttempt.map { "(\($0.emptyReasonDescription))" } ?? "(call failed or was cancelled)"
+                RTILog.log(
+                    "auto-summary: empty response for \(dir.lastPathComponent) \(why) — no summary.md written; "
+                        + "the title now comes from the calendar event, the vault note, or the transcript instead",
+                    category: .summary
+                )
+                return nil
+            }
         }
         // Pull the `TITLE:` first line out of the response (best-effort — if
         // the model didn't follow the format, we just get no title and the
