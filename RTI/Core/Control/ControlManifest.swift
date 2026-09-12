@@ -34,16 +34,17 @@ public enum ControlManifest {
     public static let transport = "socket"
     public static let statusVerb = ControlVerb.status
 
-    /// `pause` is offered whenever the app is not already paused: while idle it
-    /// is a harmless no-op. The status document carries only the two booleans
-    /// the contract names for RTI (`recording`, `paused`), and one clause per
-    /// command cannot say "recording AND not paused" — a no-op beats inventing
-    /// a field the contract does not describe.
+    /// `unavailableWhen` is a display hint: it tells the launcher to dim a
+    /// row, and never lets the socket refuse the command. Pause and Resume are
+    /// gated on `canPause` / `canResume` — status booleans that are true only
+    /// when the verb would actually do something — so the user is never
+    /// offered a command that does nothing. Both verbs stay idempotent no-ops
+    /// when they do not apply.
     public static let commands: [ControlCommand] = [
         ControlCommand(id: "record.start", title: "Start Recording", verb: .start, unavailableWhen: "recording"),
         ControlCommand(id: "record.stop", title: "Stop Recording", verb: .stop, unavailableWhen: "!recording"),
-        ControlCommand(id: "record.pause", title: "Pause Recording", verb: .pause, unavailableWhen: "paused"),
-        ControlCommand(id: "record.resume", title: "Resume Recording", verb: .resume, unavailableWhen: "!paused"),
+        ControlCommand(id: "record.pause", title: "Pause Recording", verb: .pause, unavailableWhen: "!canPause"),
+        ControlCommand(id: "record.resume", title: "Resume Recording", verb: .resume, unavailableWhen: "!canResume"),
         ControlCommand(id: "sessions.open", title: "Open Sessions", verb: .sessions),
     ]
 

@@ -50,12 +50,48 @@ final class ControlSocketTests: XCTestCase {
         let recorder = VerbRecorder()
         let server = ControlSocketServer(log: { _ in }, dispatch: { recorder.record($0) })
 
-        XCTAssertEqual(server.reply(to: "nonsense"), "error unknown verb")
+        XCTAssertEqual(server.reply(to: "nonsense"), #"err unknown command "nonsense""#)
         XCTAssertEqual(recorder.verbs, [])
     }
 
+    /// The error names the word that was not understood, so a typo is
+    /// recognisable to whoever sent it. Same shape as local-dictation's
+    /// `ipc.rs`.
+    func testTheErrorNamesTheOffendingWord() {
+        let server = ControlSocketServer(log: { _ in }, dispatch: { _ in })
+
+        XCTAssertEqual(server.reply(to: "frobnicate"), #"err unknown command "frobnicate""#)
+        XCTAssertEqual(server.reply(to: "Strt\n"), #"err unknown command "Strt""#)
+        // Argument text is not part of the offending word.
+        XCTAssertEqual(server.reply(to: "wibble now please"), #"err unknown command "wibble""#)
+        // An empty line names an empty word rather than replying nothing.
+        XCTAssertEqual(server.reply(to: ""), #"err unknown command """#)
+        XCTAssertEqual(server.reply(to: "   \n"), #"err unknown command """#)
+    }
+
+    /// A garbage request must never be able to forge a second reply line.
+    func testTheErrorReplyStaysOnOneLine() {
+        let server = ControlSocketServer(log: { _ in }, dispatch: { _ in })
+
+        let reply = server.reply(to: "a\u{7}b\"c\\d")
+        XCTAssertFalse(reply.contains("\n"))
+        XCTAssertTrue(reply.hasPrefix("err unknown command "))
+        XCTAssertTrue(reply.contains(#"\""#), "a quote must be escaped: \(reply)")
+        XCTAssertTrue(reply.contains(#"\u0007"#), "a control byte must be escaped: \(reply)")
+    }
+
+    /// Every reply is one line, whatever came in.
+    func testEveryReplyIsASingleLine() {
+        let server = ControlSocketServer(log: { _ in }, dispatch: { _ in })
+        for request in ["start", "status", "toggle", "nonsense", "", "stop extra words"] {
+            XCTAssertFalse(server.reply(to: request).contains("\n"), "reply to \(request) spans lines")
+        }
+    }
+
     /// The contract's idempotency rule: `stop` on a stopped app is a no-op
-    /// that replies success, not an error.
+    /// that replies success, not an error. Its manifest clause (`!recording`)
+    /// is a display hint that dims the launcher's row — it must never make the
+    /// socket refuse the command.
     func testStopWhileIdleRepliesSuccess() {
         let recorder = VerbRecorder()
         let server = ControlSocketServer(log: { _ in }, dispatch: { recorder.record($0) })
@@ -191,11 +227,63 @@ final class ControlSocketTests: XCTestCase {
         }
     }
 
+    /// Whatever the clauses say, every command in the manifest succeeds in
+    /// every session state. A dimmed row and a refused command are different
+    /// things.
+    func testNoManifestClauseEverRefusesACommand() {
+        let phases: [SessionPhase] = [.idle, .recording, .paused, .finishing, .summarizing, .done]
+        for phase in phases {
+            let recorder = VerbRecorder()
+            let server = ControlSocketServer(log: { _ in }, dispatch: { recorder.record($0) })
+            server.update(ControlSnapshot.forSession(phase: phase, elapsed: 10, now: Date()))
+            for command in ControlManifest.commands {
+                XCTAssertEqual(
+                    server.reply(to: command.verb.rawValue),
+                    "ok \(command.verb.rawValue)",
+                    "\(command.id) was refused while \(phase)"
+                )
+            }
+        }
+    }
+
     func testStartAndStopAreGatedOnTheRecordingFlag() throws {
         let byID = Dictionary(uniqueKeysWithValues: ControlManifest.commands.map { ($0.id, $0) })
         XCTAssertEqual(byID["record.start"]?.unavailableWhen, "recording")
         XCTAssertEqual(byID["record.stop"]?.unavailableWhen, "!recording")
-        XCTAssertEqual(byID["record.resume"]?.unavailableWhen, "!paused")
+        XCTAssertEqual(byID["record.pause"]?.unavailableWhen, "!canPause")
+        XCTAssertEqual(byID["record.resume"]?.unavailableWhen, "!canResume")
+    }
+
+    /// A row is offered only when the verb would actually do something. The
+    /// user is never shown a command that is a no-op.
+    func testCanPauseAndCanResumeAreTrueOnlyWhenTheVerbWouldDoSomething() {
+        let now = Date()
+        let expectations: [(SessionPhase, Bool, Bool)] = [
+            (.idle, false, false),
+            (.recording, true, false),
+            (.paused, false, true),
+            (.finishing, false, false),
+            (.summarizing, false, false),
+            (.done, false, false),
+        ]
+
+        for (phase, canPause, canResume) in expectations {
+            let snapshot = ControlSnapshot.forSession(phase: phase, elapsed: 10, now: now)
+            XCTAssertEqual(snapshot.canPause, canPause, "\(phase) canPause")
+            XCTAssertEqual(snapshot.canResume, canResume, "\(phase) canResume")
+            // The two are never both true: nothing is pausable and resumable.
+            XCTAssertFalse(snapshot.canPause && snapshot.canResume, "\(phase)")
+        }
+    }
+
+    func testStatusDocumentCarriesTheGatingBooleans() throws {
+        let now = Date()
+        for phase in [SessionPhase.idle, .recording, .paused, .finishing, .summarizing, .done] {
+            let snapshot = ControlSnapshot.forSession(phase: phase, elapsed: 10, now: now)
+            let document = try json(snapshot.statusLine(at: now))
+            XCTAssertEqual(document["canPause"] as? Bool, snapshot.canPause, "\(phase) canPause")
+            XCTAssertEqual(document["canResume"] as? Bool, snapshot.canResume, "\(phase) canResume")
+        }
     }
 
     /// The contract's safety rule: nothing that deletes or overwrites a
@@ -208,6 +296,20 @@ final class ControlSocketTests: XCTestCase {
                 XCTAssertFalse(command.title.lowercased().contains(word), command.title)
             }
         }
+    }
+
+    /// Readers never expand paths themselves, so the endpoint carries the
+    /// resolved absolute path.
+    func testManifestEndpointIsAnAbsolutePath() throws {
+        let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            .appendingPathComponent(".config/rti", isDirectory: true)
+        let socket = ControlPaths.socketURL(configHome: home, environment: [:])
+        let document = try json(String(decoding: try ControlManifest.json(socketPath: socket.path), as: UTF8.self))
+
+        let endpoint = try XCTUnwrap(document["endpoint"] as? String)
+        XCTAssertTrue(endpoint.hasPrefix("/"), endpoint)
+        XCTAssertFalse(endpoint.contains("~"), endpoint)
+        XCTAssertTrue(endpoint.hasSuffix("/.config/rti/control.sock"), endpoint)
     }
 
     func testManifestSerializationIsStable() throws {
@@ -265,7 +367,7 @@ final class ControlSocketTests: XCTestCase {
 
         server.update(ControlSnapshot.forSession(phase: .idle, elapsed: 0, now: Date()))
         XCTAssertEqual(try send("toggle", to: path), "ok start")
-        XCTAssertEqual(try send("nonsense", to: path), "error unknown verb")
+        XCTAssertEqual(try send("nonsense", to: path), #"err unknown command "nonsense""#)
 
         server.update(ControlSnapshot.forSession(phase: .recording, elapsed: 12, now: Date()))
         let status = try json(try send("status", to: path))

@@ -64,14 +64,42 @@ public final class ControlSocketServer: @unchecked Sendable {
     /// Action verbs are dispatched and acknowledged immediately rather than
     /// waited on: the contract says a command never blocks longer than a
     /// second, and every entry point on the app side guards its own phase, so
-    /// a `stop` while idle is a no-op that still replies success.
+    /// a `stop` while idle is a no-op that still replies success. A manifest
+    /// clause like `!recording` only dims the launcher's row; it never lets
+    /// this listener refuse a command.
     public func reply(to line: String, at now: Date = Date()) -> String {
-        guard let verb = ControlVerb.parse(line) else { return "error unknown verb" }
+        guard let verb = ControlVerb.parse(line) else {
+            return "err unknown command \(Self.quoted(ControlVerb.firstWord(line)))"
+        }
         let snapshot = currentSnapshot()
         if verb == .status { return snapshot.statusLine(app: app, at: now) }
         let resolved = verb.resolved(recording: snapshot.recording)
         dispatch(resolved)
         return "ok \(resolved.rawValue)"
+    }
+
+    /// Quote one word for an error reply, the way local-dictation's `ipc.rs`
+    /// does. Everything that could break the one-line framing (quotes,
+    /// backslashes, newlines, any other control byte) is escaped, so a garbage
+    /// request can never forge a second reply line.
+    private static func quoted(_ word: String) -> String {
+        var out = "\""
+        for scalar in word.unicodeScalars {
+            switch scalar {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            default:
+                if scalar.value < 0x20 || scalar.value == 0x7F {
+                    out += String(format: "\\u%04X", scalar.value)
+                } else {
+                    out.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return out + "\""
     }
 
     // MARK: - Listener

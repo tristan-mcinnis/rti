@@ -20,11 +20,19 @@ public enum ControlVerb: String, CaseIterable, Sendable {
 
     /// Parse one wire line. Case-insensitive, surrounding whitespace ignored,
     /// argument text dropped. An unknown or empty word is `nil`, which the
-    /// listener answers with `error unknown verb` — never a crash, never a hang.
+    /// listener answers with `err unknown command "…"` — never a crash, never
+    /// a hang.
     public static func parse(_ line: String) -> ControlVerb? {
+        ControlVerb(rawValue: firstWord(line).lowercased())
+    }
+
+    /// The first word of a line: the verb a client meant. Named back verbatim
+    /// (unlowercased) in the error reply, so a typo is recognisable to whoever
+    /// sent it. An empty or blank line yields "".
+    public static func firstWord(_ line: String) -> String {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let word = trimmed.split(whereSeparator: { $0 == " " || $0 == "\t" }).first else { return nil }
-        return ControlVerb(rawValue: word.lowercased())
+        guard let word = trimmed.split(whereSeparator: { $0 == " " || $0 == "\t" }).first else { return "" }
+        return String(word)
     }
 
     /// Resolve `toggle` to a concrete intent from the live session state, so

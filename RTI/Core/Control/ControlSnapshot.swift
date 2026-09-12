@@ -48,6 +48,15 @@ public struct ControlSnapshot: Equatable, Sendable {
 
     public static let idle = ControlSnapshot()
 
+    /// True only while capture is actually running, so a `pause` would do
+    /// something. False while idle, paused, finishing, summarizing and done.
+    /// The launcher dims the Pause row on `!canPause`; the socket still
+    /// accepts the verb and makes it a no-op.
+    public var canPause: Bool { recording && !paused }
+
+    /// True only while paused, so a `resume` would do something.
+    public var canResume: Bool { paused }
+
     /// The session state the socket should report, as a pure function of the
     /// phase and the captured-time elapsed. Kept here rather than in the app
     /// module so every phase's answer is unit-testable.
@@ -95,6 +104,8 @@ public struct ControlSnapshot: Equatable, Sendable {
             "busy": busy,
             "recording": recording,
             "paused": paused,
+            "canPause": canPause,
+            "canResume": canResume,
             "detail": detail(at: now),
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: document, options: [.sortedKeys]),
