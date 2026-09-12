@@ -20,6 +20,14 @@ enum AppSupportPaths {
         return dir
     }
 
+    /// `~/Library/Application Support` itself. The shared house command
+    /// manifest (`House/commands/rti.json`) lives beside RTI's folder, not
+    /// inside it, and still resolves the base through here rather than at the
+    /// call site.
+    static func applicationSupportBase() -> URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    }
+
     /// A file directly inside the RTI config home, e.g. `credentials.json`.
     static func file(_ name: String, createDirectory: Bool = true) -> URL? {
         rtiDirectory(createIfNeeded: createDirectory)?.appendingPathComponent(name)

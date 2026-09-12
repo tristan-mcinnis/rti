@@ -72,6 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // self-gate on their Settings toggles.
         SessionCoordinator.shared.registerAnalysisTasks()
 
+        // Publish the control socket and the command manifest, so Quick Launch
+        // can start and stop a recording. A bind failure is logged and ignored
+        // (design-system/docs/app-commands.md).
+        ControlService.shared.start()
+
         // A quit, crash, or network outage during the offline pass leaves a
         // durable marker beside retained audio. Resume those jobs on launch;
         // nothing is routed or indexed until an upgrade succeeds.
@@ -130,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
                     }
                 }
                 self?.menu.refreshTitle()
+                ControlService.shared.publish()
                 // ⌘⏎ and the quick-action chords are held only while
                 // recording; released here so other apps get them back.
                 self?.hotkeys.setSessionActive(SessionCoordinator.shared.isRunning)
@@ -207,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     func applicationWillTerminate(_ notification: Notification) {
         guard isPrimaryInstance else { return }
+        ControlService.shared.stop()
         SessionCoordinator.shared.emergencyShutdown()
         let dir = (Self.cleanExitFlag as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
