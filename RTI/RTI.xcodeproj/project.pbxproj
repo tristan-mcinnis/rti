@@ -181,6 +181,7 @@
 		72E3D86E70D7E96D80826ED9 /* VaultSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55E2800C1107C6FF8493D47 /* VaultSearch.swift */; };
 		72EE506B6FE5EA089C69288B /* GuideTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D446EF4AB49730460B1183 /* GuideTextExtractor.swift */; };
 		7315644A3C3A9DCECD6554BF /* AssistantTurnBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE4A11B0F3C9BB21EC5BFE82 /* AssistantTurnBuilderTests.swift */; };
+		7468C3900041B5DAE6677842 /* CommandPaletteFocusProofTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97E774387E8066A859D8805 /* CommandPaletteFocusProofTests.swift */; };
 		75F3BAB5A18F7CD5FB7F948A /* SeamsRenderProofTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B69210F7C42BF115A38E39 /* SeamsRenderProofTests.swift */; };
 		76BA6542559C0DC101550F33 /* BluetoothMicGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C50E7DEF1DAF80B9A47B19 /* BluetoothMicGuard.swift */; };
 		77544E05BCB5ECBEF956C3F1 /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F82DA748662ECAE4C0101F /* LLMProvider.swift */; };
@@ -673,6 +674,7 @@
 		D9114E8D3196B7C35E323929 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D929744F84265097DB100BCC /* ModeStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStorageTests.swift; sourceTree = "<group>"; };
 		D97A133FDA46631B3978EA60 /* TranscriptAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptAggregatorTests.swift; sourceTree = "<group>"; };
+		D97E774387E8066A859D8805 /* CommandPaletteFocusProofTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteFocusProofTests.swift; sourceTree = "<group>"; };
 		DAE824069FBC2ACAA2A93203 /* LiveTranscriptPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptPresentationTests.swift; sourceTree = "<group>"; };
 		DC72C3051C6A814C024A2F5F /* ToolTraceParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolTraceParser.swift; sourceTree = "<group>"; };
 		DCE9839BBDA43C2E5038E526 /* LLMRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMRequest.swift; sourceTree = "<group>"; };
@@ -776,6 +778,7 @@
 			isa = PBXGroup;
 			children = (
 				1A1046969F90CD23D1E09792 /* AssistThreadRenderProofTests.swift */,
+				D97E774387E8066A859D8805 /* CommandPaletteFocusProofTests.swift */,
 				D2CE0767A932C4A595D92A63 /* ComposerRenderProofTests.swift */,
 				D8DD28F1F7E08F9D9B73C214 /* MenuTickWiringTests.swift */,
 				BB0BEAF2000CE0DB4E38C845 /* OverlayShellRenderProofTests.swift */,
@@ -1492,6 +1495,7 @@
 				76BA6542559C0DC101550F33 /* BluetoothMicGuard.swift in Sources */,
 				93FC4D8378A6EC181B58D411 /* CalendarMeetingStore.swift in Sources */,
 				1218A89361F78494A1314F17 /* CommandPaletteFactory.swift in Sources */,
+				7468C3900041B5DAE6677842 /* CommandPaletteFocusProofTests.swift in Sources */,
 				E18EF8DABD75C83822048969 /* CommandPaletteView.swift in Sources */,
 				9C4030D6425C2C2DEB0370C2 /* CommandRegistry.swift in Sources */,
 				51F87ED21F242B557781723D /* ComposerRenderProofTests.swift in Sources */,

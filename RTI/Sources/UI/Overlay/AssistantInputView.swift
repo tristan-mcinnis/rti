@@ -536,6 +536,11 @@ struct AssistantInputView: View {
     }
 
     private func focusField() {
+        // While the palette is open it owns the keys. The overlay asks for the
+        // composer a runloop turn after the window becomes key, and again
+        // 50 ms after `show()`, so an ungated request lands after the palette
+        // has claimed focus and pulls typing out of its search field.
+        guard !isPaletteOpen else { return }
         focusToken &+= 1
     }
 

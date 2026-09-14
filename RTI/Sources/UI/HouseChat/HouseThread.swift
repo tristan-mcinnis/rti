@@ -489,8 +489,8 @@ private struct ViewportHeightKey: PreferenceKey {
 // MARK: - Settled answer
 
 /// A finished answer: its tool lines, the prose, its sources, and a Copy
-/// that shows on hover. Equatable, so an answer that has settled is not
-/// parsed again while a newer one streams.
+/// button that is always there. Equatable, so an answer that has settled is
+/// not parsed again while a newer one streams.
 private struct AssistAnswerRow: View, Equatable {
     /// The answer's Markdown, as copied.
     let text: String
@@ -543,8 +543,10 @@ private struct AssistAnswerRow: View, Equatable {
         }
     }
 
-    /// Copy on hover, at the row's top right. It takes no space, so a
-    /// hover never moves the text.
+    /// Copy, always at the row's top right: drawn in every state and always
+    /// clickable (user preference, 2026-09-14 — a control that appears only
+    /// on hover is a control that cannot be found). The hover only deepens
+    /// its ink. It takes no space, so the control never moves the text.
     private var copyButton: some View {
         Button {
             copy(text)
@@ -558,7 +560,7 @@ private struct AssistAnswerRow: View, Equatable {
                     Text("Copied").font(House.TypeToken.meta)
                 }
             }
-            .foregroundStyle(House.ColorToken.textSecondary)
+            .foregroundStyle(hovering || copied ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
             .padding(.horizontal, House.Spacing.xs)
             .frame(minWidth: House.Control.compact, minHeight: House.Control.compact)
             .background(
@@ -568,9 +570,7 @@ private struct AssistAnswerRow: View, Equatable {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(hovering || copied ? 1 : 0)
-        .allowsHitTesting(hovering || copied)
-        .accessibilityLabel("Copy answer")
+        .accessibilityLabel(copied ? "Copied" : "Copy answer")
         .help("Copy answer")
     }
 

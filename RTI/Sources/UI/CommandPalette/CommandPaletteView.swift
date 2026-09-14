@@ -27,7 +27,7 @@ struct CommandPaletteView: View {
     var maxVisibleRows = 6
 
     @State private var selection = 0
-    @FocusState private var searchFocused: Bool
+    @State private var focusToken = 0
     private let registry = CommandRegistry.shared
 
     /// The rows for a query: the host's rows that match, then the registry's
@@ -57,25 +57,14 @@ struct CommandPaletteView: View {
         let rows = entries
         VStack(spacing: House.Spacing.xs) {
             HStack(spacing: House.Spacing.sm) {
-                TextField(text: $query, prompt: Text("Search actions")) {
-                    Text("Search actions")
-                }
-                .textFieldStyle(.plain)
-                .labelsHidden()
-                .font(House.TypeToken.bodySmall)
-                .foregroundStyle(House.ColorToken.textPrimary)
-                .focused($searchFocused)
-                .onSubmit { run(at: selection, in: rows) }
-                .onKeyPress(.downArrow) { move(1, count: rows.count); return .handled }
-                .onKeyPress(.upArrow) { move(-1, count: rows.count); return .handled }
-                .onKeyPress(.escape) { onClose(); return .handled }
-                .onExitCommand { onClose() }
-                .onKeyPress(characters: CharacterSet(charactersIn: "k")) { press in
-                    guard press.modifiers == .command else { return .ignored }
-                    onClose()
-                    return .handled
-                }
-                .accessibilityLabel("Search actions")
+                PaletteSearchField(
+                    text: $query,
+                    focusToken: focusToken,
+                    onMove: { delta in move(delta, count: rows.count) },
+                    onSubmit: { run(at: selection, in: rows) },
+                    onClose: onClose
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
                 KeyCapGroup(keys: ["⌘", "K"])
             }
             .padding(.horizontal, House.Spacing.lg)
@@ -106,7 +95,12 @@ struct CommandPaletteView: View {
             .padding(.bottom, House.Spacing.sm)
             .accessibilityHidden(true)
         }
-        .onAppear { searchFocused = true }
+        // Claim the keys once the palette has appeared: `.task` defers the
+        // claim until after appearance, while an immediate on-appear claim
+        // did not reliably land. The composer's `focusField()` is gated on
+        // the palette being open, so a later become-key request cannot steal
+        // the keys back (`AssistantInputView.focusField`).
+        .task { focusToken &+= 1 }
         .onChange(of: query) { _, _ in selection = 0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Actions")
@@ -218,5 +212,131 @@ struct CommandPaletteView: View {
             ("app.quit", "power"),
         ]
         return table.first { id.hasPrefix($0.0) }?.1 ?? "command"
+    }
+}
+
+// MARK: - Search field
+
+/// The palette's search field. A SwiftUI `TextField` cannot serve here: its
+/// field editor consumes the arrow keys (`moveUp:` / `moveDown:`) before
+/// SwiftUI's `.onKeyPress` or `.onMoveCommand` can see them, so `↑↓` never
+/// moved the list. This is the same AppKit-with-a-router shape as the
+/// composer's `ComposerTextView`: the two arrows and Return are routed, and
+/// every other key, including IME composition, goes to the text system.
+private struct PaletteSearchField: NSViewRepresentable {
+    @Binding var text: String
+    /// Bumped once, after the palette appears, to put the keys in the field.
+    var focusToken: Int
+    var onMove: (Int) -> Void
+    var onSubmit: () -> Void
+    var onClose: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> PaletteTextField {
+        let field = PaletteTextField()
+        field.delegate = context.coordinator
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.isEditable = true
+        field.isSelectable = true
+        field.lineBreakMode = .byTruncatingTail
+        field.font = .systemFont(ofSize: House.TypeToken.Size.bodySmall)
+        field.textColor = House.NSColorToken.textPrimary
+        field.placeholderString = "Search actions"
+        field.setAccessibilityLabel("Search actions")
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.onCommandK = onClose
+        return field
+    }
+
+    func updateNSView(_ field: PaletteTextField, context: Context) {
+        context.coordinator.parent = self
+        field.onCommandK = onClose
+        // Never write over marked text: that would break pinyin input.
+        let isComposing = (field.currentEditor() as? NSTextView)?.hasMarkedText() ?? false
+        if field.stringValue != text, !isComposing {
+            field.stringValue = text
+        }
+        if context.coordinator.focusToken != focusToken {
+            context.coordinator.focusToken = focusToken
+            if focusToken > 0 {
+                // One hop, so the field is in the window before it is focused.
+                DispatchQueue.main.async { [weak field] in
+                    guard let field, let window = field.window else { return }
+                    window.makeFirstResponder(field)
+                }
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: PaletteSearchField
+        var focusToken = 0
+
+        init(_ parent: PaletteSearchField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            parent.text = field.stringValue
+        }
+
+        /// The field editor asks before it acts on a command selector. The
+        /// palette owns the arrows and Return; everything else is the text
+        /// system's.
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard !textView.hasMarkedText() else { return false }
+            switch commandSelector {
+            case #selector(NSResponder.moveDown(_:)):
+                parent.onMove(1)
+                return true
+            case #selector(NSResponder.moveUp(_:)):
+                parent.onMove(-1)
+                return true
+            case #selector(NSResponder.insertNewline(_:)):
+                parent.onSubmit()
+                return true
+            case #selector(NSResponder.cancelOperation(_:)):
+                parent.onClose()
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    /// `⌘K` closes the palette. While the field is being edited the first
+    /// responder is the field editor, not this field, so `keyDown` never sees
+    /// it; a command chord travels as a key equivalent through the view
+    /// hierarchy instead, which reaches this field either way. Return and the
+    /// arrows are command selectors and go through the delegate; Esc is
+    /// `cancelOperation:` and takes the same route.
+    final class PaletteTextField: NSTextField {
+        var onCommandK: (() -> Void)?
+
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            if event.type == .keyDown,
+               event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "k" {
+                onCommandK?()
+                return true
+            }
+            return super.performKeyEquivalent(with: event)
+        }
+
+        override func keyDown(with event: NSEvent) {
+            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "k" {
+                onCommandK?()
+                return
+            }
+            super.keyDown(with: event)
+        }
     }
 }
