@@ -26,6 +26,20 @@ final class ComposerKeyRouterTests: XCTestCase {
 
     // MARK: - Return
 
+    func test_shiftCommandAOpensAttachmentsWithoutTakingSelectAll() {
+        XCTAssertEqual(route(.a, [.command, .shift]), .toggleAttachments)
+        XCTAssertEqual(route(.a, .command), .passThrough)
+        XCTAssertEqual(route(.a, [.command, .shift], ComposerKeyContext(hasMarkedText: true)), .passThrough)
+    }
+
+    func test_readingOrFailedAttachmentsBlockSendAndQueue() {
+        for status in [ComposerAttachmentStatus.reading, .failed] {
+            XCTAssertEqual(route(.returnKey, [], ComposerKeyContext(draft: "Review this", attachmentStatus: status)), .consume)
+            XCTAssertEqual(route(.returnKey, [], ComposerKeyContext(isStreaming: true, draft: "Review this", attachmentStatus: status)), .consume)
+            XCTAssertEqual(route(.escape, [], ComposerKeyContext(isStreaming: true, attachmentStatus: status)), .stopStream)
+        }
+    }
+
     func test_return_sendsTypedText() {
         XCTAssertEqual(route(.returnKey, [], ComposerKeyContext(draft: "What did we decide?")), .submit)
     }

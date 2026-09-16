@@ -29,6 +29,8 @@ final class SessionsWindowModel {
         /// Save a generated title next to the session.
         var persistGeneratedTitle: @MainActor (_ title: String, _ sessionDirectory: URL) -> Void
         var now: @Sendable () -> Date
+        var trashSession: (@Sendable (URL) async throws -> Void)? = nil
+        var shareText: (@MainActor (String) -> Void)? = nil
 
         /// The running app: the vault search CLI and the title call. Both
         /// switch off outside RTI's own bundle (a test runner), so no test
@@ -41,6 +43,12 @@ final class SessionsWindowModel {
                 now: { Date() }
             )
             guard Bundle.main.bundleIdentifier == "com.tristan.rti.personal" else { return dependencies }
+            let archiveActions = SessionArchiveActions()
+            dependencies.trashSession = { directory in try await archiveActions.moveToTrash(directory) }
+            dependencies.shareText = { text in
+                guard let view = NSApp.keyWindow?.contentView else { return }
+                NSSharingServicePicker(items: [text]).show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+            }
             dependencies.contentSearch = { query in
                 await VaultSearchCLI.search(query: query, limit: contentResultLimit)
             }
@@ -157,10 +165,11 @@ final class SessionsWindowModel {
     enum Focus: Equatable { case none, railSearch, find, rename }
 
     /// A session action: in the `⌘K` card, the row's context menu, and its
-    /// VoiceOver actions. No Delete: the archive belongs to the vault.
+    /// VoiceOver actions. Removal is confirmed and moves only RTI's own
+    /// archive folder to Trash, never its separately exported meeting notes.
     enum SessionAction: String, CaseIterable, Identifiable {
         case ask, rename, nameSpeakers, editTranscript, editSummary
-        case upgradeTranscript, regenerateSummary, copy, saveMarkdown, savePDF, revealInFinder
+        case upgradeTranscript, regenerateSummary, copy, share, saveMarkdown, savePDF, revealInFinder, trash
 
         var id: String { rawValue }
 
@@ -174,6 +183,8 @@ final class SessionsWindowModel {
             case .upgradeTranscript: "Upgrade Transcript"
             case .regenerateSummary: "Regenerate Summary"
             case .copy: "Copy as Markdown"
+            case .share: "Share…"
+            case .trash: "Move to Trash…"
             case .saveMarkdown: "Save as Markdown"
             case .savePDF: "Save as PDF"
             case .revealInFinder: "Reveal in Finder"
@@ -190,6 +201,8 @@ final class SessionsWindowModel {
             case .upgradeTranscript: "waveform.badge.magnifyingglass"
             case .regenerateSummary: "arrow.clockwise"
             case .copy: "doc.on.doc"
+            case .share: "square.and.arrow.up"
+            case .trash: "trash"
             case .saveMarkdown: "arrow.down.doc"
             case .savePDF: "doc.richtext"
             case .revealInFinder: "folder"
@@ -211,6 +224,17 @@ final class SessionsWindowModel {
     // MARK: - State
 
     let dependencies: Dependencies
+    let playback = SessionPlaybackModel()
+    var isWindowVisible = true
+    var isDeleteConfirmationPresented = false
+    private(set) var pendingDeletionRowID: String?
+    private(set) var deletionRequest: UUID?
+    private(set) var isDeleting = false
+    var playbackDirectory: URL? {
+        guard isWindowVisible, openRow?.hasRetainedAudio == true else { return nil }
+        return openRow?.session.url
+    }
+    var deletionTitle: String { rows.first { $0.id == pendingDeletionRowID }?.title.text ?? "this session" }
 
     private(set) var rows: [Row] = []
     private(set) var titleMap: VaultMeetingTitleMap = .empty
@@ -237,6 +261,7 @@ final class SessionsWindowModel {
 
     var actionsPlacement: ActionsPlacement?
     var actionIndex = 0
+    var actionQuery = "" { didSet { if actionQuery != oldValue { actionIndex = 0 } } }
     private(set) var actionsRowID: String?
 
     private(set) var renamingRowID: String?
@@ -781,6 +806,16 @@ final class SessionsWindowModel {
                 return row.session.isRTIArchive && row.hasTranscript && regeneratingRowID == nil
             case .copy, .saveMarkdown, .savePDF:
                 return !isOpen || !fileText.isEmpty
+            case .share:
+                return dependencies.shareText != nil && (!isOpen || !fileText.isEmpty)
+            case .trash:
+                let coordinator = SessionCoordinator.shared
+                let sameStart = coordinator.startedAt.flatMap { started in
+                    row.session.date.map { abs(started.timeIntervalSince($0)) < 1 }
+                } ?? false
+                let active = coordinator.phase != .idle && coordinator.phase != .done && sameStart
+                return row.session.isRTIArchive && dependencies.trashSession != nil && !isDeleting
+                    && !active && upgradingRowID != row.id && regeneratingRowID != row.id
             case .revealInFinder:
                 return true
             }
@@ -792,17 +827,26 @@ final class SessionsWindowModel {
         guard let id = rowID ?? openRowID else { return }
         actionsRowID = id
         actionIndex = 0
+        actionQuery = ""
         actionsPlacement = placement
     }
 
     func closeActions() {
         actionsPlacement = nil
         actionsRowID = nil
+        actionQuery = ""
     }
 
     var actionsRow: Row? { rows.first { $0.id == actionsRowID } }
 
-    var visibleActions: [SessionAction] { actionsRow.map(actions(for:)) ?? [] }
+    var visibleActions: [SessionAction] {
+        let actions = actionsRow.map(actions(for:)) ?? []
+        guard !actionQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return actions }
+        return actions.enumerated().compactMap { index, action -> (Int, Int, SessionAction)? in
+            guard let score = CommandRegistry.matchScore(query: actionQuery, title: action.title) else { return nil }
+            return (score, index, action)
+        }.sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 > $1.0 }.map { $0.2 }
+    }
 
     func moveActionHighlight(_ delta: Int) {
         let count = visibleActions.count
@@ -843,10 +887,44 @@ final class SessionsWindowModel {
             pendingUpgradeRowID = id
             isUpgradeChoicePresented = true
         case .regenerateSummary: regenerateSummary(row)
-        case .copy: NSPasteboard.copyMarkdownRich(fileText)
+        case .copy:
+            NSPasteboard.copyMarkdownRich(fileText)
+            notice = (id, "Copied as Markdown")
+        case .share: dependencies.shareText?(fileText)
+        case .trash:
+            pendingDeletionRowID = id
+            isDeleteConfirmationPresented = true
         case .saveMarkdown: exportMarkdown()
         case .savePDF: exportPDF()
         case .revealInFinder: NSWorkspace.shared.activateFileViewerSelecting([row.session.url])
+        }
+    }
+
+    func cancelDeletion() {
+        isDeleteConfirmationPresented = false
+        pendingDeletionRowID = nil
+    }
+
+    func confirmDeletion() {
+        guard pendingDeletionRowID != nil else { return }
+        isDeleteConfirmationPresented = false
+        deletionRequest = UUID()
+    }
+
+    /// Called by the view's structured task only after explicit confirmation.
+    func deleteConfirmedSession() async {
+        guard deletionRequest != nil, let id = pendingDeletionRowID,
+              let row = rows.first(where: { $0.id == id }), actions(for: row).contains(.trash),
+              let trash = dependencies.trashSession else { return }
+        isDeleting = true
+        playback.pause()
+        defer { isDeleting = false; pendingDeletionRowID = nil; deletionRequest = nil }
+        do {
+            try await trash(row.session.url)
+            await reload()
+            if let openRowID { notice = (openRowID, "Session moved to Trash. Restore it in Finder if needed.") }
+        } catch {
+            notice = (id, error.localizedDescription)
         }
     }
 

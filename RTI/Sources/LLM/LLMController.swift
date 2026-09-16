@@ -19,6 +19,7 @@ final class LLMController {
     private(set) var lastErrorIsAuth: Bool = false
     private(set) var pendingScreenContext: String?
     private(set) var screenCaptureStatus: String?
+    private var screenAttachmentRequestID: UUID?
     /// The question a provider error belongs to: the thread draws the error
     /// under it with Retry. Nil when `lastError` belongs to no turn (a
     /// missing file, no transcript yet, a screen permission).
@@ -376,7 +377,25 @@ final class LLMController {
         return true
     }
 
-    func attachScreenContext(_ text: String) {
+    /// Replacing or removing an attachment invalidates every suspended reader.
+    func beginScreenAttachment(status: String) -> UUID {
+        let requestID = UUID()
+        screenAttachmentRequestID = requestID
+        pendingScreenContext = nil
+        screenCaptureStatus = status
+        lastError = nil
+        lastErrorIsAuth = false
+        lastErrorTurnID = nil
+        return requestID
+    }
+
+    func isCurrentScreenAttachment(_ requestID: UUID) -> Bool {
+        screenAttachmentRequestID == requestID
+    }
+
+    func attachScreenContext(_ text: String, requestID: UUID? = nil) {
+        if let requestID, !isCurrentScreenAttachment(requestID) { return }
+        screenAttachmentRequestID = nil
         pendingScreenContext = text
         screenCaptureStatus = nil
         lastError = nil
@@ -385,18 +404,23 @@ final class LLMController {
     }
 
     func clearPendingScreenContext() {
+        screenAttachmentRequestID = nil
         pendingScreenContext = nil
         screenCaptureStatus = nil
     }
 
-    func setScreenAttachError(_ message: String) {
+    func setScreenAttachError(_ message: String, requestID: UUID? = nil) {
+        if let requestID, !isCurrentScreenAttachment(requestID) { return }
+        screenAttachmentRequestID = nil
+        pendingScreenContext = nil
         screenCaptureStatus = message
         lastError = message
         lastErrorIsAuth = false
         lastErrorTurnID = nil
     }
 
-    func setScreenCaptureStatus(_ message: String?) {
+    func setScreenCaptureStatus(_ message: String?, requestID: UUID? = nil) {
+        if let requestID, !isCurrentScreenAttachment(requestID) { return }
         screenCaptureStatus = message
     }
 
@@ -414,6 +438,7 @@ final class LLMController {
     /// touching persisted chat_messages.
     func resetMemory() {
         cancel()
+        clearPendingScreenContext()
         entries = []
         progressStatus = [:]
         lastError = nil
@@ -544,7 +569,7 @@ final class LLMController {
 
         let transcript = recentTranscriptText(fullWindow: fullTranscript)
         let manualScreenContext = pendingScreenContext
-        pendingScreenContext = nil
+        clearPendingScreenContext()
         let ambientScreenContext = SessionCoordinator.shared.isRunning
             ? VisualContextTrail.shared.recentPromptContext()
             : nil

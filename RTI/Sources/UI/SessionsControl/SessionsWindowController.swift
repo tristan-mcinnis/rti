@@ -22,6 +22,7 @@ final class SessionsWindowController: NSObject, NSWindowDelegate {
     func show(folder: String? = nil) {
         let window = self.window ?? makeWindow()
         self.window = window
+        model.isWindowVisible = true
         if let folder {
             model.open(folder: folder)
         }
@@ -92,6 +93,7 @@ final class SessionsWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         model.isCommandHeld = false
+        model.isWindowVisible = false
         model.closeActions()
     }
 }

@@ -38,15 +38,9 @@ struct CommandPaletteView: View {
         registry: [RTICommand],
         hiding hidden: Set<String> = []
     ) -> [RTICommand] {
-        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-        let hosted = leading.filter { command in
-            guard command.isAvailable() else { return false }
-            guard !needle.isEmpty else { return true }
-            return command.title.lowercased().contains(needle)
-                || command.keywords.contains { $0.lowercased().contains(needle) }
-        }
+        let hosted = CommandRegistry.matching(leading, query: query)
         let taken = Set(hosted.map(\.id)).union(hidden)
-        return hosted + registry.filter { !taken.contains($0.id) }
+        return CommandRegistry.matching(hosted + registry.filter { !taken.contains($0.id) }, query: query)
     }
 
     private var entries: [RTICommand] {
@@ -145,7 +139,7 @@ struct CommandPaletteView: View {
     /// caps say it), and a submenu's name ahead of a bare choice ("Set ⌘⏎
     /// to: Recap").
     static func displayTitle(for command: RTICommand) -> String {
-        let title = command.title.components(separatedBy: "  ").first ?? command.title
+        let title = command.currentTitle.components(separatedBy: "  ").first ?? command.currentTitle
         if let parent = command.menuParent, !title.contains(":") {
             return "\(parent): \(title)"
         }

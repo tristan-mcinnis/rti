@@ -341,6 +341,7 @@ enum CommandBuilder {
                 title: "Keep RTI on Top",
                 keywords: ["float", "pin", "always", "top", "window"],
                 perform: { OverlayWindowChrome.shared.isKeptOnTop.toggle() },
+                menuTitleProvider: { OverlayWindowChrome.shared.isKeptOnTop ? "Unpin RTI Window" : "Pin RTI Window" },
                 menuStateProvider: { OverlayWindowChrome.shared.isKeptOnTop }
             ),
             RTICommand(

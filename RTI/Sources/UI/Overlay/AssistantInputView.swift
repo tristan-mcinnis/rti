@@ -95,12 +95,14 @@ struct ComposerDocument: Identifiable, Equatable {
 
     let id: UUID
     let name: String
+    let sourceURL: URL?
     var phase: Phase
 
-    init(id: UUID = UUID(), name: String, phase: Phase) {
+    init(id: UUID = UUID(), name: String, phase: Phase, sourceURL: URL? = nil) {
         self.id = id
         self.name = name
         self.phase = phase
+        self.sourceURL = sourceURL?.standardizedFileURL
     }
 
     var attachment: ExternalDocumentAttachment? {
@@ -109,6 +111,10 @@ struct ComposerDocument: Identifiable, Equatable {
     }
 
     var isReading: Bool { phase == .reading }
+
+    func isSameSource(as url: URL) -> Bool {
+        sourceURL == url.standardizedFileURL
+    }
 
     var chip: AttachmentChipModel {
         switch phase {
@@ -240,6 +246,15 @@ private struct ComposerTextView: NSViewRepresentable {
     final class RoutingTextView: NSTextView {
         var onKey: ((ComposerKey, ComposerKeyModifiers, Bool) -> KeyOutcome)?
 
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            let (key, modifiers) = Self.map(event)
+            if !hasMarkedText(), key == .a, modifiers == [.command, .shift],
+               let result = onKey?(key, modifiers, false), case .handled = result {
+                return true
+            }
+            return super.performKeyEquivalent(with: event)
+        }
+
         override func keyDown(with event: NSEvent) {
             // IME composition owns every key until it commits.
             guard !hasMarkedText(), let onKey else {
@@ -280,7 +295,11 @@ private struct ComposerTextView: NSViewRepresentable {
             case 124: key = .rightArrow
             case 51: key = .backspace
             default:
-                key = event.charactersIgnoringModifiers?.lowercased() == "k" ? .k : .other
+                switch event.charactersIgnoringModifiers?.lowercased() {
+                case "k": key = .k
+                case "a": key = .a
+                default: key = .other
+                }
             }
             if key == .backTab { modifiers.remove(.shift) }
             return (key, modifiers)
@@ -324,14 +343,16 @@ struct AssistantInputView: View {
     private let inputState = OverlayInputState.shared
     private let streamingOverride: Bool?
     private let seededCandidates: [String]?
+    private let availableHeight: CGFloat
 
-    init() {
-        self.init(seed: nil)
+    init(availableHeight: CGFloat = CGFloat(OverlayAppearanceDefaults.defaultHeight)) {
+        self.init(seed: nil, availableHeight: availableHeight)
     }
 
     /// The composer in a state set up front. Render proofs only; the app
     /// uses `init()`.
-    init(seed: ComposerRenderSeed?) {
+    init(seed: ComposerRenderSeed?, availableHeight: CGFloat = CGFloat(OverlayAppearanceDefaults.defaultHeight)) {
+        self.availableHeight = availableHeight
         let seed = seed ?? ComposerRenderSeed()
         _input = State(initialValue: seed.draft)
         _isDropTargeted = State(initialValue: seed.isDropTargeted)
@@ -369,6 +390,12 @@ struct AssistantInputView: View {
         !selectedMentionPaths.isEmpty || !readyAttachments.isEmpty
     }
 
+    private var attachmentStatus: ComposerAttachmentStatus {
+        if chips.contains(where: { if case .failed = $0.phase { return true }; return false }) { return .failed }
+        if chips.contains(where: { $0.phase == .reading }) { return .reading }
+        return .ready
+    }
+
     private var composerState: ComposerState {
         ComposerState(
             draft: input,
@@ -378,7 +405,8 @@ struct AssistantInputView: View {
             isNoteMode: inputState.isNoteMode,
             isRecording: session.isRunning,
             layer: layer,
-            primaryActionLabel: AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist"
+            primaryActionLabel: AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist",
+            attachmentStatus: attachmentStatus
         )
     }
 
@@ -422,6 +450,7 @@ struct AssistantInputView: View {
             showsPlaceholder: input.isEmpty,
             fontSize: fieldFontSize,
             error: errorLine,
+            notice: attachmentStatus.notice,
             chips: chips,
             focusedChipID: focusedChipID,
             isAddContextOpen: isAddContextOpen,
@@ -470,6 +499,8 @@ struct AssistantInputView: View {
         .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
             input = ""
             documents = []
+            selectedMentionPaths = []
+            focusedChipID = nil
             isQueued = false
             if inputState.mode == .liveNote {
                 inputState.mode = .chat
@@ -513,6 +544,10 @@ struct AssistantInputView: View {
     }
 
     // MARK: Field height
+
+    private var composerRowHeight: CGFloat {
+        HouseComposerMetrics.rowHeight(fieldHeight: fieldHeight, fontSize: fieldFontSize)
+    }
 
     private var fieldHeight: CGFloat {
         let line = HouseComposerMetrics.lineHeight(fontSize: fieldFontSize)
@@ -577,7 +612,7 @@ struct AssistantInputView: View {
 
     /// One read of the screen: ready ("Screen · once"), reading, or failed.
     private var screenChip: AttachmentChipModel? {
-        if llm.pendingScreenContext != nil {
+        if llm.pendingScreenContext != nil, llm.screenCaptureStatus?.isEmpty != false {
             return AttachmentChipModel(ref: ChatAttachmentRef(kind: .screen, name: "Screen"), id: Self.screenChipID)
         }
         guard let status = llm.screenCaptureStatus, !status.isEmpty else { return nil }
@@ -636,7 +671,8 @@ struct AssistantInputView: View {
             draft: input,
             hasAttachments: hasSendableChips,
             hasOtherChips: !chipIDs.isEmpty,
-            isStripFocused: focusedChipID.map { id in chipIDs.contains(id) } ?? false
+            isStripFocused: focusedChipID.map { id in chipIDs.contains(id) } ?? false,
+            attachmentStatus: attachmentStatus
         )
         switch ComposerKeyRouter.route(key, modifiers: modifiers, context: context) {
         case .passThrough:
@@ -664,6 +700,8 @@ struct AssistantInputView: View {
             input = last
         case .togglePalette:
             togglePalette()
+        case .toggleAttachments:
+            toggleAddContext()
         case .enterStrip:
             focusedChipID = chipIDs.last
         case .moveStrip(let delta):
@@ -691,7 +729,7 @@ struct AssistantInputView: View {
         case .ask, .addNote: submit()
         case .runPrimary: llm.sendPrimary()
         case .stop: stopStream()
-        case .queued: break
+        case .queued, .blocked: break
         case .acceptChooser: acceptChooser()
         }
         focusField()
@@ -728,6 +766,7 @@ struct AssistantInputView: View {
             isAddContextOpen = false
         } else {
             isPaletteOpen = false
+            focusedChipID = nil
             addContextPage = .root
             chooserIndex = 0
             isAddContextOpen = true
@@ -790,14 +829,14 @@ struct AssistantInputView: View {
                     onClose: closePalette,
                     leadingCommands: paletteLeadingCommands,
                     hiddenRegistryIDs: ["note.toggle", "capture.screen"],
-                    maxVisibleRows: 5
+                    maxVisibleRows: HouseComposerMetrics.paletteRows(availableHeight: availableHeight, composerHeight: composerRowHeight)
                 )
                 .frame(maxWidth: HouseChatMetrics.paletteWidth)
                 .panelGlass(radius: House.Radius.lg)
                 .panelShadows()
             }
             .padding(.trailing, House.Spacing.sm)
-            .padding(.bottom, HouseComposerMetrics.rowHeight)
+            .padding(.bottom, composerRowHeight)
             .fixedSize(horizontal: false, vertical: true)
         case .addContext:
             HouseFloatingChooser {
@@ -810,13 +849,13 @@ struct AssistantInputView: View {
                     onActivate: activate
                 )
             }
-            .padding(.bottom, HouseComposerMetrics.rowHeight)
+            .padding(.bottom, composerRowHeight)
             .fixedSize(horizontal: false, vertical: true)
         case .mention:
             HouseFloatingChooser {
                 MentionChooserPane(candidates: visibleMentionCandidates, selectedIndex: chooserIndex, onPick: applyMention)
             }
-            .padding(.bottom, HouseComposerMetrics.rowHeight)
+            .padding(.bottom, composerRowHeight)
             .fixedSize(horizontal: false, vertical: true)
         case .slash:
             HouseFloatingChooser {
@@ -826,7 +865,7 @@ struct AssistantInputView: View {
                     focusField()
                 }
             }
-            .padding(.bottom, HouseComposerMetrics.rowHeight)
+            .padding(.bottom, composerRowHeight)
             .fixedSize(horizontal: false, vertical: true)
         case .none:
             EmptyView()
@@ -943,9 +982,10 @@ struct AssistantInputView: View {
         ))
         rows.append(RTICommand(
             id: "composer.attach",
-            title: "Attach File…",
-            keywords: ["pdf", "document", "file", "attach", "markdown"],
-            perform: { fileImporterPresented = true }
+            title: "Attach…",
+            subtitle: "⇧⌘A",
+            keywords: ["pdf", "document", "file", "attach", "markdown", "context"],
+            perform: toggleAddContext
         ))
         rows.append(RTICommand(
             id: "composer.screen",
@@ -1013,16 +1053,35 @@ struct AssistantInputView: View {
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                 took = true
+                let pending = ComposerDocument(name: provider.suggestedName ?? "File", phase: .reading)
+                documents.append(pending)
                 provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                    guard let data = item as? Data,
-                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                    Task { @MainActor in dropFile(url) }
+                    let url = (item as? URL) ?? (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                    Task { @MainActor in
+                        guard let index = documents.firstIndex(where: { $0.id == pending.id }) else { return }
+                        guard let url else {
+                            documents[index].phase = .failed("Could not read the dropped file")
+                            return
+                        }
+                        documents.remove(at: index)
+                        dropFile(url)
+                    }
                 }
             } else if provider.canLoadObject(ofClass: NSImage.self) {
                 took = true
+                let pending = ComposerDocument(name: provider.suggestedName ?? "Image", phase: .reading)
+                documents.append(pending)
                 provider.loadObject(ofClass: NSImage.self) { object, _ in
-                    guard let image = object as? NSImage else { return }
-                    Task { @MainActor in ScreenshotManager.shared.attachDroppedImage(image) }
+                    let image = object as? NSImage
+                    Task { @MainActor in
+                        guard let index = documents.firstIndex(where: { $0.id == pending.id }) else { return }
+                        guard let image else {
+                            documents[index].phase = .failed("Could not read the dropped image")
+                            return
+                        }
+                        documents.remove(at: index)
+                        ScreenshotManager.shared.attachDroppedImage(image)
+                    }
                 }
             }
         }
@@ -1050,9 +1109,9 @@ struct AssistantInputView: View {
     private func addDocument(_ url: URL) {
         let name = url.lastPathComponent
         // The same file twice is one chip; a failed read may be tried again.
-        guard !documents.contains(where: { $0.name == name && !isFailed($0) }) else { return }
-        documents.removeAll { $0.name == name }
-        let item = ComposerDocument(name: name, phase: .reading)
+        guard !documents.contains(where: { $0.isSameSource(as: url) && !isFailed($0) }) else { return }
+        documents.removeAll { $0.isSameSource(as: url) }
+        let item = ComposerDocument(name: name, phase: .reading, sourceURL: url)
         documents.append(item)
         Task {
             let phase: ComposerDocument.Phase
@@ -1091,12 +1150,13 @@ struct AssistantInputView: View {
         case .chat:
             guard !text.isEmpty || hasSendableChips else { return }
             // A document still reading would be left behind; wait for it.
-            guard !documents.contains(where: \.isReading) else { return }
+            guard attachmentStatus == .ready else { return }
             if text.hasPrefix("/") {
                 if performSlashSubmit(String(text.dropFirst())) {
                     input = ""
-                    selectedMentionPaths = []
-                    documents = []
+                    // Commands such as /recap do not consume attached files.
+                    // Keep them for the next question; only /new discards them.
+                    if ["new", "clear"].contains(splitSlash(String(text.dropFirst())).command) { clearChips() }
                 }
                 focusField()
                 return

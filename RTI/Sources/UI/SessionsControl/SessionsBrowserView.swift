@@ -23,7 +23,7 @@ struct SessionsBrowserView: View {
     }
 
     /// The reading column: at most the Quick AI panel width less its sides.
-    static let columnWidth = House.Layout.panelWidth - 2 * House.Spacing.lg
+    static let columnWidth = House.Layout.answerMaxWidth
 
     var body: some View {
         HStack(spacing: 0) {
@@ -53,6 +53,14 @@ struct SessionsBrowserView: View {
         .toggleStyle(SlateToggleStyle())
         .preferredColorScheme(preferredColorScheme)
         .task { await model.loadIfNeeded() }
+        .task(id: model.playbackDirectory) { await model.playback.run(directory: model.playbackDirectory) }
+        .task(id: model.deletionRequest) { await model.deleteConfirmedSession() }
+        .alert("Move this session to Trash?", isPresented: $model.isDeleteConfirmationPresented) {
+            Button("Move to Trash", role: .destructive) { model.confirmDeletion() }
+            Button("Cancel", role: .cancel) { model.cancelDeletion() }
+        } message: {
+            Text("“\(model.deletionTitle)” and its saved audio, transcript, notes, and chat will move to Trash. Restore the folder in Finder if needed. Separately exported meeting notes are kept.")
+        }
         .onReceive(NotificationCenter.default.publisher(for: .rtiOpenSessionInBrowser)) { note in
             guard let folder = note.object as? String else { return }
             model.open(folder: folder)
@@ -99,6 +107,13 @@ struct SessionsBrowserView: View {
                     .frame(maxWidth: Self.columnWidth, alignment: .leading)
                     .padding(.horizontal, House.Spacing.lg)
                     .frame(maxWidth: .infinity)
+                if model.openRow?.hasRetainedAudio == true {
+                    SessionPlaybackBar(playback: model.playback)
+                        .frame(maxWidth: Self.columnWidth)
+                        .padding(.horizontal, House.Spacing.lg)
+                        .padding(.top, House.Spacing.xs)
+                        .frame(maxWidth: .infinity)
+                }
                 if let notice = model.openNotice {
                     SessionNoticeLine(text: notice.text, isRunning: notice.isRunning)
                         .frame(maxWidth: Self.columnWidth, alignment: .leading)
@@ -110,6 +125,25 @@ struct SessionsBrowserView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     // The scroll view would otherwise draw up under the header.
                     .clipped()
+                if model.selectedFile?.name == "chat", model.openRow?.vaultTranscriptPath != nil {
+                    HStack(spacing: House.Spacing.sm) {
+                        Text("Saved chat")
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textTertiary)
+                        Spacer(minLength: House.Spacing.sm)
+                        Button("Ask about this session", systemImage: "bubble.left.and.text.bubble.right") { model.perform(.ask) }
+                            .buttonStyle(.plain)
+                            .font(House.TypeToken.label)
+                            .padding(.horizontal, House.Spacing.sm)
+                            .frame(minHeight: House.Control.pill)
+                            .background(House.ColorToken.chipFill, in: Capsule())
+                            .help("Open RTI's chat composer with this session's transcript attached")
+                    }
+                    .frame(maxWidth: Self.columnWidth)
+                    .padding(.horizontal, House.Spacing.lg)
+                    .padding(.vertical, House.Spacing.xs)
+                    .frame(maxWidth: .infinity)
+                }
             } else {
                 emptyState
             }
@@ -172,25 +206,31 @@ private struct SessionsHeader: View {
                     askChip(label: false)
                 }
             }
-            if model.openRow != nil {
-                QuickAIGlyphButton(
-                    symbol: "command",
-                    font: HouseChatType.glyphMedium,
-                    color: House.ColorToken.textPrimary,
-                    label: "Session Actions",
-                    help: "Session actions (⌘K)",
-                    accessibilityValue: model.actionsPlacement == .header ? "Open" : "Closed"
-                ) {
-                    if model.actionsPlacement == .header {
-                        model.closeActions()
-                    } else {
-                        model.showActions(placement: .header)
-                    }
+            if let row = model.openRow {
+                Button("Copy current document", systemImage: "doc.on.doc") { model.perform(.copy) }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(SessionCircleButtonStyle())
+                    .disabled(model.fileText.isEmpty)
+                    .help("Copy current document as Markdown (⇧⌘C)")
+                Button("Share current document", systemImage: "square.and.arrow.up") { model.perform(.share) }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(SessionCircleButtonStyle())
+                    .disabled(!model.actions(for: row).contains(.share))
+                    .help("Choose where to share the current document")
+                if model.actions(for: row).contains(.trash) {
+                    Button("Move session to Trash", systemImage: "trash", role: .destructive) { model.perform(.trash) }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(SessionCircleButtonStyle())
+                        .help("Move this RTI session to Trash…")
                 }
-                .background(
-                    Circle()
-                        .fill(model.actionsPlacement == .header ? House.ColorToken.hoverFill : Color.clear)
-                )
+                Button("Session actions", systemImage: "command") {
+                    if model.actionsPlacement == .header { model.closeActions() }
+                    else { model.showActions(placement: .header) }
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(SessionCircleButtonStyle(isSelected: model.actionsPlacement == .header))
+                .help("Session actions, including export options (⌘K)")
+                .accessibilityValue(model.actionsPlacement == .header ? "Open" : "Closed")
             }
         }
         // The traffic lights share this row while the rail is in.
@@ -225,8 +265,7 @@ private struct SessionsHeader: View {
             .padding(.horizontal, label ? House.Spacing.sm : House.Spacing.xs)
             .frame(height: House.Control.chip)
             .background(
-                RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
-                    .fill(House.ColorToken.chipFill)
+                Capsule().fill(House.ColorToken.chipFill)
             )
             .contentShape(Rectangle())
         }
@@ -246,7 +285,8 @@ private struct SessionFileChips: View {
     @State private var hovered: URL?
 
     var body: some View {
-        HStack(spacing: House.Spacing.xxs) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: House.Spacing.xxs) {
             ForEach(model.files) { file in
                 let isSelected = model.selectedFile == file
                 Button {
@@ -259,7 +299,7 @@ private struct SessionFileChips: View {
                         .padding(.horizontal, House.Spacing.xs)
                         .frame(height: House.Control.chip)
                         .background {
-                            RowHighlight(isSelected: isSelected, isHovering: hovered == file.url, radius: House.Radius.sm)
+                            RowHighlight(isSelected: isSelected, isHovering: hovered == file.url, radius: House.Radius.pill)
                         }
                         .contentShape(Rectangle())
                 }
@@ -267,7 +307,7 @@ private struct SessionFileChips: View {
                 .hoverHighlight($hovered, id: file.url)
                 .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             }
-            Spacer(minLength: 0)
+            }
         }
         .padding(.bottom, House.Spacing.xxs)
         .accessibilityElement(children: .contain)
@@ -287,7 +327,7 @@ private struct SessionNoticeLine: View {
                 if isRunning {
                     ThinkingIndicator()
                 } else {
-                    Image(systemName: "checkmark")
+                    Image(systemName: "info.circle")
                         .font(House.TypeToken.bodySmall)
                         .foregroundStyle(House.ColorToken.textTertiary)
                 }
@@ -753,9 +793,19 @@ private struct SessionActionsCard: View {
     /// Draw each action's own keys (the wider header card).
     let showsKeys: Bool
     @State private var hoveredAction: SessionsWindowModel.SessionAction?
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            TextField("Search actions…", text: $model.actionQuery)
+                .textFieldStyle(.plain)
+                .font(House.TypeToken.bodySmall)
+                .padding(.horizontal, House.Spacing.xs)
+                .frame(minHeight: House.Control.chip)
+                .background(House.ColorToken.surfaceTint, in: Capsule())
+                .focused($searchFocused)
+                .onSubmit { model.performHighlightedAction() }
+                .accessibilityLabel("Search session actions")
             if let row = model.actionsRow {
                 Text(row.title.text)
                     .font(House.TypeToken.meta)
@@ -765,6 +815,9 @@ private struct SessionActionsCard: View {
                     .padding(.horizontal, House.Spacing.xs)
                     .padding(.top, House.Spacing.xxs)
             }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: House.Spacing.xxs) {
             ForEach(Array(model.visibleActions.enumerated()), id: \.element.id) { index, action in
                 Button {
                     model.actionIndex = index
@@ -796,6 +849,13 @@ private struct SessionActionsCard: View {
                 .buttonStyle(.plain)
                 .hoverHighlight($hoveredAction, id: action)
                 .accessibilityAddTraits(index == model.actionIndex ? .isSelected : [])
+                .id(index)
+            }
+                    }
+                }
+                .frame(maxHeight: House.Control.railRow * 8 + House.Spacing.xxs * 7)
+                .onChange(of: model.actionIndex) { _, index in proxy.scrollTo(index, anchor: .center) }
+                .onAppear { proxy.scrollTo(model.actionIndex, anchor: .center) }
             }
         }
         .padding(House.Spacing.xs)
@@ -804,6 +864,7 @@ private struct SessionActionsCard: View {
         .padding(House.Spacing.xs)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Session actions")
+        .onAppear { searchFocused = true }
     }
 }
 
@@ -944,6 +1005,8 @@ private struct SessionDocumentSection<Content: View>: View {
             SlateSectionLabel(text: title)
             content
         }
+        .padding(House.Spacing.md)
+        .background(House.ColorToken.surfaceTint, in: RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous))
     }
 }
 

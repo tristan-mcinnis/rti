@@ -27,6 +27,8 @@ public enum ComposerKey: Equatable, Sendable {
     case backspace
     /// The K key; with `⌘` it opens the action palette.
     case k
+    /// Shift-Command-A opens the composer's attachment menu.
+    case a
     /// Any other key.
     case other
 }
@@ -68,6 +70,7 @@ public enum ComposerKeyResult: Equatable, Sendable {
     case recallLastQuestion
     /// Open or close the `⌘K` palette.
     case togglePalette
+    case toggleAttachments
     /// Move the keys into the chip strip (on the newest chip).
     case enterStrip
     /// Move the strip's highlight by this many chips.
@@ -99,6 +102,7 @@ public struct ComposerKeyContext: Equatable, Sendable {
     public var hasOtherChips: Bool
     /// A chip in the strip has the keys.
     public var isStripFocused: Bool
+    public var attachmentStatus: ComposerAttachmentStatus
 
     public init(
         hasMarkedText: Bool = false,
@@ -109,7 +113,8 @@ public struct ComposerKeyContext: Equatable, Sendable {
         draft: String = "",
         hasAttachments: Bool = false,
         hasOtherChips: Bool = false,
-        isStripFocused: Bool = false
+        isStripFocused: Bool = false,
+        attachmentStatus: ComposerAttachmentStatus = .ready
     ) {
         self.hasMarkedText = hasMarkedText
         self.layer = layer
@@ -120,6 +125,7 @@ public struct ComposerKeyContext: Equatable, Sendable {
         self.hasAttachments = hasAttachments
         self.hasOtherChips = hasOtherChips
         self.isStripFocused = isStripFocused
+        self.attachmentStatus = attachmentStatus
     }
 
     var hasChips: Bool { hasAttachments || hasOtherChips }
@@ -136,7 +142,8 @@ public struct ComposerKeyContext: Equatable, Sendable {
             isStreaming: isStreaming,
             isQueued: isQueued,
             isNoteMode: isNoteMode,
-            layer: layer
+            layer: layer,
+            attachmentStatus: attachmentStatus
         )
     }
 }
@@ -152,6 +159,9 @@ public enum ComposerKeyRouter {
 
         if key == .k {
             return modifiers == .command ? .togglePalette : .passThrough
+        }
+        if key == .a {
+            return modifiers == [.command, .shift] ? .toggleAttachments : .passThrough
         }
 
         if context.isStripFocused {
@@ -179,7 +189,7 @@ public enum ComposerKeyRouter {
         case .backspace:
             if context.draft.isEmpty, context.hasChips, modifiers.isEmpty { return .removeNewestChip }
             return .passThrough
-        case .leftArrow, .rightArrow, .k, .other:
+        case .leftArrow, .rightArrow, .k, .a, .other:
             return .passThrough
         }
     }

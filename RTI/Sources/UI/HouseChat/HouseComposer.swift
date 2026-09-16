@@ -12,6 +12,20 @@ enum HouseComposerMetrics {
     /// The field grows to this many lines, then scrolls.
     static let maxLines = 8
 
+    static func rowHeight(fieldHeight: CGFloat, fontSize: CGFloat) -> CGFloat {
+        max(House.Control.pill, fieldHeight + 2 * textInset(fontSize: fontSize)) + 2 * House.Spacing.xs
+    }
+
+    /// Keep the palette search/footer visible as the field grows. Rows beyond
+    /// this budget remain reachable in the palette's existing scroll list.
+    static func paletteRows(availableHeight: CGFloat, composerHeight: CGFloat) -> Int {
+        let chrome = House.Control.input + House.Spacing.lg
+        let rowSpacing = House.Spacing.xxs / 2
+        let rows = Int(floor((availableHeight - composerHeight - chrome + rowSpacing)
+            / (House.Control.row + rowSpacing)))
+        return max(1, min(5, rows))
+    }
+
     /// One line of the field's text at `size`.
     static func lineHeight(fontSize size: CGFloat) -> CGFloat {
         let font = NSFont.systemFont(ofSize: size)
@@ -131,9 +145,10 @@ struct HouseComposer<Field: View>: View {
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
+            .keyboardShortcut("a", modifiers: [.command, .shift])
             .accessibilityLabel("Add Context")
             .accessibilityValue(isAddContextOpen ? "Open" : "Closed")
-            .help("Add context: a file, a vault file, the screen, or the search scope (or type @)")
+            .help("Attach (⇧⌘A): a file, a vault file, the screen, or the search scope")
 
             HStack(spacing: House.Spacing.xs) {
                 field
@@ -203,6 +218,7 @@ struct HouseComposer<Field: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(action.kind == .blocked)
         .accessibilityLabel(action.label)
         .help("\(action.label) (\(action.keys.joined()))")
     }

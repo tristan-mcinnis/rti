@@ -138,7 +138,8 @@ struct OverlayPanelView: View {
     /// The Assist chat: the thread over the composer row, which is the
     /// surface's footer (no footer well).
     private var assistTab: some View {
-        VStack(spacing: 0) {
+        GeometryReader { geometry in
+          VStack(spacing: 0) {
             ResponseView(
                 entries: llm.entries,
                 streaming: llm.streaming,
@@ -149,8 +150,9 @@ struct OverlayPanelView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, House.Spacing.lg)
 
-            AssistantInputView()
+            AssistantInputView(availableHeight: geometry.size.height - House.Spacing.xs)
                 .padding(House.Spacing.xs)
+          }
         }
     }
 }

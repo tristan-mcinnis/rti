@@ -108,6 +108,18 @@ final class CommandPaletteFocusProofTests: XCTestCase {
 
     // MARK: - Helpers
 
+    func test_shiftCommandAOpensAttachAndKeepsTheDraft() throws {
+        let composer = try mountComposer()
+        try type("Synthetic draft")
+        let original = composer.string
+        XCTAssertTrue(try keyEquivalent("a", keyCode: 0, modifiers: [.command, .shift]))
+        settle()
+        XCTAssertEqual(composer.string, original)
+        // Escape closes Add Context; it must not clear the text behind it.
+        try specialKey(0x1B, keyCode: 53)
+        XCTAssertEqual(composer.string, original)
+    }
+
     /// Hosts the live composer and leaves it holding the keys, as the overlay
     /// leaves it.
     private func mountComposer() throws -> NSTextView {

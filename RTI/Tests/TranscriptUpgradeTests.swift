@@ -288,6 +288,32 @@ final class TranscriptUpgradeTests: XCTestCase {
         )
     }
 
+    func testAudioDiscoveryReadsDataAfterExtraRIFFChunksAndKeepsCorruptLegVisible() throws {
+        let dir = try makeTemporarySessionDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func wave(dataBytes: UInt32) -> Data {
+            var bytes = Data("RIFF".utf8)
+            bytes.append(contentsOf: [0, 0, 0, 0])
+            bytes.append(Data("WAVEJUNK".utf8))
+            // Odd-sized metadata includes its RIFF padding byte.
+            bytes.append(contentsOf: [3, 0, 0, 0, 1, 2, 3, 0])
+            bytes.append(Data("fmt ".utf8))
+            bytes.append(contentsOf: [16, 0, 0, 0])
+            bytes.append(Data(repeating: 0, count: 16))
+            bytes.append(Data("data".utf8))
+            var size = dataBytes.littleEndian
+            withUnsafeBytes(of: &size) { bytes.append(contentsOf: $0) }
+            bytes.append(Data(repeating: 0, count: Int(dataBytes)))
+            return bytes
+        }
+        try wave(dataBytes: 2).write(to: dir.appendingPathComponent("audio-mic.wav"))
+        try wave(dataBytes: 0).write(to: dir.appendingPathComponent("audio-system.wav"))
+        XCTAssertEqual(TranscriptUpgradeAudioDiscovery.inputs(in: dir).map { $0.url.lastPathComponent }, ["audio-mic.wav"])
+        try Data(repeating: 0x41, count: 128).write(to: dir.appendingPathComponent("audio-system.wav"))
+        XCTAssertEqual(TranscriptUpgradeAudioDiscovery.inputs(in: dir).map { $0.url.lastPathComponent }, ["audio-mic.wav", "audio-system.wav"],
+                       "the decoder must report a broken retained leg rather than silently omit it")
+    }
+
     func testPipelineUpgradesArchivedSessionEndToEndWithFakeProvider() async throws {
         let dir = try makeTemporarySessionDir()
         defer { try? FileManager.default.removeItem(at: dir) }

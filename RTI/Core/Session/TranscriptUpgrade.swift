@@ -106,15 +106,40 @@ public enum TranscriptUpgradeAudioDiscovery {
     /// upgraded. Legacy retained formats keep their existing discovery rule.
     private static func hasAudioPayload(_ url: URL) -> Bool {
         guard url.pathExtension.lowercased() == "wav" else { return true }
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        // An unreadable/corrupt retained leg must reach the decoder, which can
+        // explain the failure. Treating it as absent silently drops a speaker.
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return true }
         defer { try? handle.close() }
-        guard let header = try? handle.read(upToCount: 44), header.count == 44,
-              String(data: header[0..<4], encoding: .ascii) == "RIFF",
-              String(data: header[36..<40], encoding: .ascii) == "data" else { return false }
-        let size = header[40..<44].enumerated().reduce(UInt32(0)) { result, byte in
-            result | (UInt32(byte.element) << UInt32(byte.offset * 8))
+        guard let length = try? handle.seekToEnd(), length > 0 else { return false }
+        do {
+            try handle.seek(toOffset: 0)
+            guard let header = try handle.read(upToCount: 44), header.count >= 12,
+                  String(data: header[0..<4], encoding: .ascii) == "RIFF" else { return true }
+            func size(_ bytes: Data.SubSequence) -> UInt64 {
+                bytes.enumerated().reduce(UInt64(0)) { result, byte in
+                    result | (UInt64(byte.element) << UInt64(byte.offset * 8))
+                }
+            }
+            // RTI's compact recorder uses this layout. Keep support for its
+            // durable, header-only file while the first buffer is pending.
+            if header.count == 44, String(data: header[36..<40], encoding: .ascii) == "data" {
+                return size(header[40..<44]) > 0
+            }
+            guard String(data: header[8..<12], encoding: .ascii) == "WAVE" else { return true }
+            // Native encoders may insert JUNK, FLLR, fact, or an extended fmt
+            // chunk before data. RIFF chunks are word-aligned, not fixed-size.
+            var offset: UInt64 = 12
+            while offset + 8 <= length {
+                try handle.seek(toOffset: offset)
+                guard let chunk = try handle.read(upToCount: 8), chunk.count == 8 else { return true }
+                let count = size(chunk[4..<8])
+                if String(data: chunk[0..<4], encoding: .ascii) == "data" { return count > 0 }
+                offset += 8 + count + (count % 2)
+            }
+            return true
+        } catch {
+            return true
         }
-        return size > 0
     }
 
     private static func safeAudioFileName(_ value: String?, fallbacks: [String], in dir: URL) -> String {

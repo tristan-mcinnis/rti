@@ -23,6 +23,8 @@ public struct ComposerAction: Equatable, Sendable {
         case addNote
         /// Pick the highlighted row of the open chooser.
         case acceptChooser
+        /// Attachments must finish reading or be removed before sending.
+        case blocked
     }
 
     public let kind: Kind
@@ -33,6 +35,18 @@ public struct ComposerAction: Equatable, Sendable {
         self.kind = kind
         self.label = label
         self.keys = keys
+    }
+}
+
+public enum ComposerAttachmentStatus: Equatable, Sendable {
+    case ready, reading, failed
+
+    public var notice: String? {
+        switch self {
+        case .ready: nil
+        case .reading: "Reading attachments. Your draft is kept."
+        case .failed: "Remove failed attachments or attach them again before sending."
+        }
     }
 }
 
@@ -63,6 +77,7 @@ public struct ComposerState: Equatable, Sendable {
     public var draft: String
     /// Chips in the strip (vault files, documents, a screen read).
     public var hasAttachments: Bool
+    public var attachmentStatus: ComposerAttachmentStatus
     /// An answer is streaming.
     public var isStreaming: Bool
     /// `↩` was pressed during the stream; the draft sends when it ends.
@@ -84,10 +99,12 @@ public struct ComposerState: Equatable, Sendable {
         isNoteMode: Bool = false,
         isRecording: Bool = false,
         layer: ComposerLayer = .none,
-        primaryActionLabel: String = "Assist"
+        primaryActionLabel: String = "Assist",
+        attachmentStatus: ComposerAttachmentStatus = .ready
     ) {
         self.draft = draft
         self.hasAttachments = hasAttachments
+        self.attachmentStatus = attachmentStatus
         self.isStreaming = isStreaming
         self.isQueued = isQueued
         self.isNoteMode = isNoteMode
@@ -139,6 +156,9 @@ public struct ComposerState: Equatable, Sendable {
             if isQueued { return ComposerAction(kind: .queued, label: "Queued", keys: ["↩"]) }
             return ComposerAction(kind: .stop, label: "Stop", keys: ["esc"])
         }
+        if attachmentStatus != .ready {
+            return ComposerAction(kind: .blocked, label: attachmentStatus == .reading ? "Reading…" : "Review", keys: [])
+        }
         if isDraftEmpty && !hasAttachments {
             return ComposerAction(kind: .runPrimary, label: primaryActionLabel, keys: ["⌘", "↩"])
         }
@@ -151,6 +171,7 @@ public struct ComposerState: Equatable, Sendable {
     /// `↩` would send something: typed text, or chips on their own in chat.
     public var canSubmit: Bool {
         if isNoteMode { return !isDraftEmpty }
+        guard attachmentStatus == .ready else { return false }
         return !isDraftEmpty || hasAttachments
     }
 

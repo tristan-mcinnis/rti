@@ -72,6 +72,47 @@ final class ComposerRenderProofTests: RenderProofTestCase {
         try render("composer-multiline", seed: ComposerRenderSeed(draft: draft))
     }
 
+    func testPaletteAndAttachStayAboveALongDraft() throws {
+        CommandRegistry.shared.replaceAll(RenderFixtures.commands)
+        let draft = Array(repeating: "Review the synthetic session notes before drafting a response.", count: 10).joined(separator: "\n")
+        try render("composer-long-palette", seed: ComposerRenderSeed(draft: draft, layer: .palette))
+        let minimumContentHeight = CGFloat(OverlayAppearanceDefaults.heightRange.lowerBound)
+            - House.Control.input - House.Control.railRow - House.Spacing.xs
+        try render("composer-long-palette-minimum", seed: ComposerRenderSeed(draft: draft, layer: .palette),
+                   size: CGSize(width: Self.narrow.width, height: minimumContentHeight))
+        try render("composer-long-attach", seed: ComposerRenderSeed(draft: draft, layer: .addContext), size: Self.narrow)
+        let oneLine = HouseComposerMetrics.rowHeight(fieldHeight: HouseComposerMetrics.lineHeight(fontSize: 13), fontSize: 13)
+        let long = HouseComposerMetrics.rowHeight(fieldHeight: 8 * HouseComposerMetrics.lineHeight(fontSize: 13), fontSize: 13)
+        XCTAssertGreaterThan(long, oneLine)
+        let rowLimit = HouseComposerMetrics.paletteRows(availableHeight: minimumContentHeight, composerHeight: long)
+        let palette = CommandPaletteView(query: .constant(""), onRun: { _ in },
+                                         leadingCommands: RenderFixtures.commands, maxVisibleRows: rowLimit)
+            .frame(width: HouseChatMetrics.paletteWidth)
+        let host = NSHostingView(rootView: palette)
+        XCTAssertLessThanOrEqual(host.fittingSize.height + long, minimumContentHeight,
+                                "Search, commands, footer and the full composer must fit at minimum window height")
+    }
+
+    func testFailedAttachmentKeepsDraftAndShowsBlockedAction() throws {
+        let document = ComposerDocument(name: "Synthetic notes.txt", phase: .failed("Could not be read"))
+        try render("composer-failed-keeps-draft", seed: ComposerRenderSeed(draft: "Review these notes", documents: [document]))
+    }
+
+    func testDocumentIdentityUsesFullPathInsteadOfBasename() {
+        let a = URL(fileURLWithPath: "/tmp/rti-fixture-one/notes.txt")
+        let b = URL(fileURLWithPath: "/tmp/rti-fixture-two/notes.txt")
+        let document = ComposerDocument(name: "notes.txt", phase: .reading, sourceURL: a)
+        XCTAssertTrue(document.isSameSource(as: a))
+        XCTAssertFalse(document.isSameSource(as: b))
+    }
+
+    func testComposerPaletteFuzzyMatchesHostedAndRegistryCommands() {
+        let hosted = RTICommand(id: "composer.attach", title: "Attach…", keywords: ["document"], perform: {})
+        let registry = RTICommand(id: "session.record", title: "Record Session", perform: {})
+        XCTAssertEqual(CommandPaletteView.entries(query: "ATCH", leading: [hosted], registry: [registry]).map(\.id), [hosted.id])
+        XCTAssertEqual(CommandPaletteView.entries(query: "rcdssn", leading: [hosted], registry: [registry]).map(\.id), [registry.id])
+    }
+
     // MARK: - Streaming
 
     func testStreamingStop() throws {
@@ -266,7 +307,8 @@ private struct ComposerProofHost: View {
     var showsThread = true
 
     var body: some View {
-        VStack(spacing: 0) {
+        GeometryReader { geometry in
+          VStack(spacing: 0) {
             Group {
                 if showsThread {
                     thread
@@ -275,7 +317,8 @@ private struct ComposerProofHost: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            AssistantInputView(seed: seed)
+            AssistantInputView(seed: seed, availableHeight: geometry.size.height)
+          }
         }
         .background(House.ColorToken.surface)
     }

@@ -32,6 +32,7 @@ final class ScreenshotManager {
     }
 
     private var lastCapturedRegions: [ScreenTextRegion] = []
+    private var attachmentTask: Task<Void, Never>?
 
     private init() {}
 
@@ -43,18 +44,23 @@ final class ScreenshotManager {
     /// description when the `local_vision` lane is enabled), and attach the
     /// result to `LLMController` as pending screen context for the next turn.
     func captureAndAttach() {
-        LLMController.shared.setScreenCaptureStatus("Reading all screens…")
-        Task { [weak self] in
+        attachmentTask?.cancel()
+        let requestID = LLMController.shared.beginScreenAttachment(status: "Reading all screens…")
+        attachmentTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let combined = try await self.captureAndDescribe(trigger: "manual")
-                LLMController.shared.attachScreenContext(combined)
+                let combined = try await self.captureAndDescribe(trigger: "manual", attachmentRequestID: requestID)
+                try self.checkAttachmentRequest(requestID)
+                LLMController.shared.attachScreenContext(combined, requestID: requestID)
+            } catch is CancellationError {
+                return
             } catch ScreenshotError.empty {
-                LLMController.shared.setScreenAttachError("No content found on the captured screen.")
+                LLMController.shared.setScreenAttachError("No content found on the captured screen.", requestID: requestID)
             } catch {
+                guard LLMController.shared.isCurrentScreenAttachment(requestID), !Task.isCancelled else { return }
                 RTILog.log("Screenshot capture failed: \(error)", category: .screenshot)
                 let msg = self.errorDescription(for: error)
-                LLMController.shared.setScreenAttachError(msg)
+                LLMController.shared.setScreenAttachError(msg, requestID: requestID)
                 if Self.isScreenRecordingDenied(error) {
                     self.promptForScreenRecordingAccess()
                 }
@@ -69,27 +75,33 @@ final class ScreenshotManager {
     /// the image is also described by the local model (127.0.0.1) so charts
     /// and imagery survive the trip.
     func attachDroppedImage(_ image: NSImage) {
+        attachmentTask?.cancel()
+        let requestID = LLMController.shared.beginScreenAttachment(status: "Reading image…")
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            LLMController.shared.setScreenAttachError("Couldn't read that image.")
+            LLMController.shared.setScreenAttachError("Couldn't read that image.", requestID: requestID)
             return
         }
-        Task { [weak self] in
+        attachmentTask = Task { [weak self] in
             guard let self else { return }
             do {
+                try self.checkAttachmentRequest(requestID)
                 let ocr = try await OCRService.recognizeText(in: cgImage)
+                try self.checkAttachmentRequest(requestID)
                 let trimmed = self.truncate(ocr)
                 let visionConfig = self.visionConfiguration()
                 var visionSummary: String?
                 if visionConfig.enabled,
                    let jpeg = ScreenFrameEncoder.jpegData(from: cgImage) {
+                    LLMController.shared.setScreenCaptureStatus("Asking the local vision model…", requestID: requestID)
                     visionSummary = try? await LocalVisionService.describe(
                         imageData: jpeg,
                         prompt: "Describe this image in 2-4 short sentences: what it shows, any charts, diagrams, or visual detail. Do not transcribe the text itself.",
                         configuration: visionConfig
                     )
                 }
+                try self.checkAttachmentRequest(requestID)
                 guard !trimmed.isEmpty || visionSummary != nil else {
-                    LLMController.shared.setScreenAttachError("No readable text found in that image.")
+                    LLMController.shared.setScreenAttachError("No readable text found in that image.", requestID: requestID)
                     return
                 }
                 var context = trimmed.isEmpty
@@ -99,10 +111,13 @@ final class ScreenshotManager {
                     context += "\n\nWhat the image looks like (local vision model): \(visionSummary)"
                 }
                 RTILog.log("Dropped image: OCR=\(trimmed.count) chars vision=\(visionSummary != nil).", category: .screenshot)
-                LLMController.shared.attachScreenContext(context)
+                LLMController.shared.attachScreenContext(context, requestID: requestID)
+            } catch is CancellationError {
+                return
             } catch {
+                guard LLMController.shared.isCurrentScreenAttachment(requestID), !Task.isCancelled else { return }
                 RTILog.log("Dropped-image OCR failed: \(error)", category: .screenshot)
-                LLMController.shared.setScreenAttachError("Couldn't read text from that image.")
+                LLMController.shared.setScreenAttachError("Couldn't read text from that image.", requestID: requestID)
             }
         }
     }
@@ -112,56 +127,64 @@ final class ScreenshotManager {
     /// nor the vision model produced anything. Used by the ⌘⇧H attach path and
     /// the LLM `capture_screen` tool. During a live session the primary frame
     /// is also staged into the session archive so the capture has a home.
-    func captureAndDescribe(trigger: String = "manual") async throws -> String {
-        LLMController.shared.setScreenCaptureStatus("Reading all screens…")
-        do {
-            let visionConfig = visionConfiguration()
-            let screens = try await captureDisplaysWithOCR(
-                activeOnly: false,
-                includeFrame: visionConfig.enabled
-            )
-            let nonEmpty = screens.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            let primaryJPEG = screens.first?.frameJPEG
+    func captureAndDescribe(trigger: String = "manual", attachmentRequestID: UUID? = nil) async throws -> String {
+        try checkAttachmentRequest(attachmentRequestID)
+        let visionConfig = visionConfiguration()
+        let screens = try await captureDisplaysWithOCR(
+            activeOnly: false,
+            includeFrame: visionConfig.enabled,
+            attachmentRequestID: attachmentRequestID
+        )
+        try checkAttachmentRequest(attachmentRequestID)
+        let nonEmpty = screens.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let primaryJPEG = screens.first?.frameJPEG
 
-            var visionSummary: String?
-            if visionConfig.enabled, let jpeg = primaryJPEG {
-                LLMController.shared.setScreenCaptureStatus("Asking the local vision model…")
-                do {
-                    visionSummary = try await LocalVisionService.describe(
-                        imageData: jpeg,
-                        configuration: visionConfig
-                    )
-                } catch {
-                    RTILog.log("Local vision describe failed; capture continues OCR-only: \(error)", category: .vision)
-                }
+        var visionSummary: String?
+        if visionConfig.enabled, let jpeg = primaryJPEG {
+            if let attachmentRequestID {
+                LLMController.shared.setScreenCaptureStatus("Asking the local vision model…", requestID: attachmentRequestID)
             }
+            do {
+                visionSummary = try await LocalVisionService.describe(
+                    imageData: jpeg,
+                    configuration: visionConfig
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                RTILog.log("Local vision describe failed; capture continues OCR-only: \(error)", category: .vision)
+            }
+        }
+        try checkAttachmentRequest(attachmentRequestID)
 
-            guard !nonEmpty.isEmpty || visionSummary != nil else {
-                throw ScreenshotError.empty
-            }
-            lastCapturedRegions = nonEmpty.flatMap(\.regions)
-            var combined = nonEmpty.isEmpty
-                ? "No machine-readable text was found on the screens."
-                : formatScreenContext(nonEmpty)
-            if let visionSummary {
-                combined += "\n\n## What the screen looks like (local vision model)\n\(visionSummary)"
-            }
-            recordCaptureInSessionTrail(
-                primaryText: screens.first?.text ?? "",
-                visionSummary: visionSummary,
-                frameJPEG: primaryJPEG,
-                trigger: trigger,
-                visionConfig: visionConfig
-            )
-            LLMController.shared.setScreenCaptureStatus(nil)
-            RTILog.log(
-                "Screenshot: screens=\(nonEmpty.count) context=\(combined.count) chars vision=\(visionSummary != nil).",
-                category: .screenshot
-            )
-            return combined
-        } catch {
-            LLMController.shared.setScreenCaptureStatus(errorDescription(for: error))
-            throw error
+        guard !nonEmpty.isEmpty || visionSummary != nil else {
+            throw ScreenshotError.empty
+        }
+        lastCapturedRegions = nonEmpty.flatMap(\.regions)
+        var combined = nonEmpty.isEmpty
+            ? "No machine-readable text was found on the screens."
+            : formatScreenContext(nonEmpty)
+        if let visionSummary {
+            combined += "\n\n## What the screen looks like (local vision model)\n\(visionSummary)"
+        }
+        recordCaptureInSessionTrail(
+            primaryText: screens.first?.text ?? "",
+            visionSummary: visionSummary,
+            frameJPEG: primaryJPEG,
+            trigger: trigger,
+            visionConfig: visionConfig
+        )
+        RTILog.log(
+            "Screenshot: screens=\(nonEmpty.count) context=\(combined.count) chars vision=\(visionSummary != nil).",
+            category: .screenshot
+        )
+        return combined
+    }
+
+    private func checkAttachmentRequest(_ requestID: UUID?) throws {
+        try Task.checkCancellation()
+        if let requestID, !LLMController.shared.isCurrentScreenAttachment(requestID) {
+            throw CancellationError()
         }
     }
 
@@ -244,8 +267,14 @@ final class ScreenshotManager {
         }
     }
 
-    private func captureDisplaysWithOCR(activeOnly: Bool, includeFrame: Bool = false) async throws -> [CapturedScreenOCR] {
+    private func captureDisplaysWithOCR(
+        activeOnly: Bool,
+        includeFrame: Bool = false,
+        attachmentRequestID: UUID? = nil
+    ) async throws -> [CapturedScreenOCR] {
+        try checkAttachmentRequest(attachmentRequestID)
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        try checkAttachmentRequest(attachmentRequestID)
         guard !content.displays.isEmpty else {
             throw ScreenshotError.noDisplay
         }
@@ -275,7 +304,9 @@ final class ScreenshotManager {
             config.capturesAudio = false
 
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            try checkAttachmentRequest(attachmentRequestID)
             let ocrRegions = try await OCRService.recognizeTextRegions(in: image)
+            try checkAttachmentRequest(attachmentRequestID)
             // Only the cursor display (index 0 after sorting) keeps a frame:
             // one compact JPEG bounds memory and archive size per capture.
             let frameJPEG = (includeFrame && index == 0)

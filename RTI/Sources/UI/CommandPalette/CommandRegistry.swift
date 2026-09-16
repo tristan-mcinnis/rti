@@ -22,6 +22,9 @@ struct RTICommand: Identifiable {
     /// Fired on Enter / menu click / hotkey press. Runs on the main actor.
     let perform: () -> Void
 
+    /// Menus and palettes describe the same current action, including toggles.
+    var currentTitle: String { menuTitleProvider?() ?? title }
+
     // MARK: - Menu integration
 
     /// Which section the menu item appears in. `nil` hides it from the
@@ -120,24 +123,59 @@ final class CommandRegistry {
 
     /// Search the available command set. Empty query returns recents first
     /// (filtered by availability), then everything else in registration
-    /// order. Non-empty query returns case-insensitive substring matches on
-    /// title or keywords, sorted by match position then registration order.
+    /// order. Non-empty queries fuzzy-match titles and keywords.
     func search(_ query: String) -> [RTICommand] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         let available = commands.filter { $0.isAvailable() }
         guard !trimmed.isEmpty else {
             return orderByRecency(available)
         }
-        let needle = trimmed.lowercased()
-        let scored: [(RTICommand, Int)] = available.compactMap { cmd in
-            if let pos = matchPosition(cmd, needle: needle) {
-                return (cmd, pos)
-            }
-            return nil
+        return Self.matching(available, query: trimmed)
+    }
+
+    /// Shared by registry commands and a composer's contextual commands.
+    static func matching(_ commands: [RTICommand], query: String) -> [RTICommand] {
+        let needle = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
+        let available = commands.filter { $0.isAvailable() }
+        guard !needle.isEmpty else { return available }
+        return available.enumerated().compactMap { index, command -> (RTICommand, Int, Int)? in
+            guard let score = matchScore(query: needle, title: command.currentTitle, keywords: command.keywords) else { return nil }
+            return (command, score, index)
         }
-        return scored
-            .sorted { $0.1 < $1.1 }
-            .map(\.0)
+        .sorted { $0.1 == $1.1 ? $0.2 < $1.2 : $0.1 > $1.1 }
+        .map(\.0)
+    }
+
+    /// One scorer for every command palette, including session actions.
+    nonisolated static func matchScore(query: String, title: String, keywords: [String] = []) -> Int? {
+        let needle = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !needle.isEmpty else { return 0 }
+        let titleScore = fuzzyScore(needle, candidate: fold(title)).map { $0 + 10_000 }
+        let keywordScore = keywords.compactMap { fuzzyScore(needle, candidate: fold($0)) }.max()
+        return [titleScore, keywordScore].compactMap { $0 }.max()
+    }
+
+    private nonisolated static func fold(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+
+    private nonisolated static func fuzzyScore(_ query: String, candidate: String) -> Int? {
+        if let range = candidate.range(of: query) {
+            return (candidate == query ? 2_000 : 1_000) - candidate.distance(from: candidate.startIndex, to: range.lowerBound)
+        }
+        let needle = Array(query.filter { !$0.isWhitespace })
+        guard !needle.isEmpty else { return 0 }
+        var next = 0
+        var previous: Int?
+        var score = 0
+        for (index, character) in candidate.enumerated() where next < needle.count {
+            guard character == needle[next] else { continue }
+            score += 10 - min(index, 12)
+            if previous == index - 1 { score += 5 }
+            previous = index
+            next += 1
+        }
+        return next == needle.count ? score - candidate.count : nil
     }
 
     /// Push `id` to the front of the persisted recents list. Called when a
@@ -164,21 +202,6 @@ final class CommandRegistry {
 
     private func persistedRecents() -> [String] {
         UserDefaults.standard.array(forKey: UISettingsDefaults.paletteRecentsKey) as? [String] ?? []
-    }
-
-    private func matchPosition(_ cmd: RTICommand, needle: String) -> Int? {
-        let title = cmd.title.lowercased()
-        if let r = title.range(of: needle) {
-            return title.distance(from: title.startIndex, to: r.lowerBound)
-        }
-        for kw in cmd.keywords {
-            if kw.lowercased().contains(needle) {
-                // Keyword matches rank below title matches by adding a large
-                // base offset.
-                return 1_000
-            }
-        }
-        return nil
     }
 
     private func orderByRecency(_ available: [RTICommand]) -> [RTICommand] {

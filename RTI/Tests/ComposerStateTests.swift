@@ -66,6 +66,17 @@ final class ComposerStateTests: XCTestCase {
 
     // MARK: - Placeholder
 
+    func test_unreadyAttachmentsKeepTheirDraftAndExplainWhySendIsUnavailable() {
+        let reading = ComposerState(draft: "Review this", attachmentStatus: .reading)
+        XCTAssertFalse(reading.canSubmit)
+        XCTAssertEqual(reading.action.kind, .blocked)
+        XCTAssertEqual(reading.action.label, "Reading…")
+        let failed = ComposerState(draft: "Review this", attachmentStatus: .failed)
+        XCTAssertFalse(failed.canSubmit)
+        XCTAssertEqual(failed.action.label, "Review")
+        XCTAssertEqual(ComposerState(isStreaming: true, attachmentStatus: .failed).action.kind, .stop)
+    }
+
     func test_placeholder_followsTheState() {
         XCTAssertEqual(ComposerState().placeholder, "Ask the vault, @ a file, or / for commands…")
         XCTAssertEqual(ComposerState(isRecording: true).placeholder, "Ask about this meeting…")

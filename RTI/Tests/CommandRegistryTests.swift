@@ -77,6 +77,28 @@ final class CommandRegistryTests: XCTestCase {
 
     // MARK: - recents
 
+    func test_search_matchesNoncontiguousLettersAndRanksExactTitlesFirst() {
+        registry.replaceAll([
+            cmd("long", "Pinned session notes"),
+            cmd("pin", "Pin"),
+            cmd("attach", "Attach File", keywords: ["document"])
+        ])
+        XCTAssertEqual(registry.search("PN").first?.id, "pin")
+        XCTAssertEqual(registry.search("attfl").map(\.id), ["attach"])
+        XCTAssertEqual(registry.search("dcmnt").map(\.id), ["attach"])
+    }
+
+    func test_searchUsesTheCurrentContextualTitle() {
+        var pinned = false
+        registry.replaceAll([RTICommand(
+            id: "window.pin", title: "Pin Window", perform: {},
+            menuTitleProvider: { pinned ? "Unpin Window" : "Pin Window" }
+        )])
+        XCTAssertTrue(registry.search("unpin").isEmpty)
+        pinned = true
+        XCTAssertEqual(registry.search("UNPN").map(\.id), ["window.pin"])
+    }
+
     func test_recordExecution_pushesToFront() {
         registry.replaceAll([cmd("a", "A"), cmd("b", "B"), cmd("c", "C")])
         registry.recordExecution("b")
