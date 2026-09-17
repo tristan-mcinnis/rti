@@ -120,6 +120,19 @@ final class CommandPaletteFocusProofTests: XCTestCase {
         XCTAssertEqual(composer.string, original)
     }
 
+    /// The same proof for the key Quick Launch binds: ⇧⌘S. The composer's
+    /// field editor must take it as a key equivalent, not hand it on.
+    func test_shiftCommandSOpensAttachAndKeepsTheDraft() throws {
+        let composer = try mountComposer()
+        try type("Synthetic draft")
+        let original = composer.string
+        XCTAssertTrue(try keyEquivalent("s", keyCode: 1, modifiers: [.command, .shift]))
+        settle()
+        XCTAssertEqual(composer.string, original)
+        try specialKey(0x1B, keyCode: 53)
+        XCTAssertEqual(composer.string, original)
+    }
+
     /// Hosts the live composer and leaves it holding the keys, as the overlay
     /// leaves it.
     private func mountComposer() throws -> NSTextView {

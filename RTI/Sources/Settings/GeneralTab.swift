@@ -338,12 +338,14 @@ private struct HotkeysSection: View {
     }
 
     /// The Carbon hotkeys in `HotkeyCoordinator` (the source of truth), plus
-    /// the house list key in RTI's list windows.
+    /// the composer's attach key and the house list key in RTI's list
+    /// windows.
     private let hotkeys = [
         Hotkey(title: "Show or hide RTI", detail: "Works from any app.", keys: ["⌘", "\\"]),
         Hotkey(title: "Start or finish a recording", detail: "Works from any app.", keys: ["⌘", "⇧", "R"]),
         Hotkey(title: "Pause or resume", keys: ["⌘", "⇧", "P"]),
         Hotkey(title: "Primary action", detail: "The assistant action you picked as primary.", keys: ["⌘", "↩"]),
+        Hotkey(title: "Attach or add context", detail: "In the composer: files, search scope, or a note. Same key Quick Launch uses to attach. ⇧⌘A also works.", keys: ["⌘", "⇧", "S"]),
         Hotkey(title: "Note mode", detail: "Type a note into the transcript.", keys: ["⌘", "⌥", "N"]),
         Hotkey(title: "Read the screen", keys: ["⌘", "⇧", "H"]),
         Hotkey(title: "Show the list", detail: "In the Sessions and Meeting Brief windows.", keys: ["⌃", "⌘", "S"]),
@@ -358,7 +360,7 @@ private struct HotkeysSection: View {
                 }
             }
             CardNote {
-                CardText("Pause, the primary action, note mode, and reading the screen work only while a recording runs.")
+                CardText("Attach works in the composer. Pause, the primary action, note mode, and reading the screen work only while a recording runs.")
             }
         }
     }

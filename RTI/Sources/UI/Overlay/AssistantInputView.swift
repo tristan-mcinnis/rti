@@ -19,6 +19,9 @@ import UniformTypeIdentifiers
 @MainActor
 private final class MentionSuggestionStore: ObservableObject {
     @Published var candidates: [String] = []
+    /// The first search after `@` has not answered yet; the chooser draws its
+    /// waiting row instead of showing nothing.
+    @Published private(set) var isSearching = false
 
     private var task: Task<Void, Never>?
     private var activeQuery: String?
@@ -37,22 +40,32 @@ private final class MentionSuggestionStore: ObservableObject {
 
         guard let normalizedQuery else {
             candidates = []
+            isSearching = false
             return
         }
 
         let cacheKey = Self.cacheKey(query: normalizedQuery, scope: normalizedScope)
         if let cached = cachedResults[cacheKey] {
             candidates = cached
+            isSearching = false
+        } else {
+            // The list is a fresh lookup: say so until it answers.
+            isSearching = true
         }
 
         task = Task { [normalizedQuery, normalizedScope] in
-            try? await Task.sleep(nanoseconds: 35_000_000)
-            guard !Task.isCancelled else { return }
+            // `@` alone is the moment the chooser opens, so the first lookup
+            // runs at once; only a typed query waits out the keystroke burst.
+            if !normalizedQuery.isEmpty {
+                try? await Task.sleep(nanoseconds: 35_000_000)
+                guard !Task.isCancelled else { return }
+            }
             let results = await Task.detached(priority: .userInitiated) {
                 VaultFiles.mentionCandidates(normalizedQuery, scopeRelativePath: normalizedScope, limit: 6)
             }.value
             guard !Task.isCancelled else { return }
             candidates = results
+            isSearching = false
             remember(results, for: cacheKey)
         }
     }
@@ -248,7 +261,7 @@ private struct ComposerTextView: NSViewRepresentable {
 
         override func performKeyEquivalent(with event: NSEvent) -> Bool {
             let (key, modifiers) = Self.map(event)
-            if !hasMarkedText(), key == .a, modifiers == [.command, .shift],
+            if !hasMarkedText(), key == .a || key == .s, modifiers == [.command, .shift],
                let result = onKey?(key, modifiers, false), case .handled = result {
                 return true
             }
@@ -298,6 +311,7 @@ private struct ComposerTextView: NSViewRepresentable {
                 switch event.charactersIgnoringModifiers?.lowercased() {
                 case "k": key = .k
                 case "a": key = .a
+                case "s": key = .s
                 default: key = .other
                 }
             }
@@ -423,6 +437,10 @@ struct AssistantInputView: View {
         return String(after).trimmingCharacters(in: .whitespaces)
     }
 
+    /// A mention is being typed: the chooser opens on the `@` itself, before
+    /// the vault list answers.
+    private var isMentionQueryActive: Bool { currentMentionQuery != nil }
+
     private var visibleMentionCandidates: [String] {
         currentMentionQuery == nil ? [] : mentionCandidates
     }
@@ -435,7 +453,7 @@ struct AssistantInputView: View {
         if isPaletteOpen { return .palette }
         if isAddContextOpen { return .addContext }
         guard dismissedChooserDraft != input else { return .none }
-        if !visibleMentionCandidates.isEmpty { return .mention }
+        if isMentionQueryActive { return .mention }
         if !visibleSlashCommands.isEmpty { return .slash }
         return .none
     }
@@ -853,7 +871,12 @@ struct AssistantInputView: View {
             .fixedSize(horizontal: false, vertical: true)
         case .mention:
             HouseFloatingChooser {
-                MentionChooserPane(candidates: visibleMentionCandidates, selectedIndex: chooserIndex, onPick: applyMention)
+                MentionChooserPane(
+                    candidates: visibleMentionCandidates,
+                    selectedIndex: chooserIndex,
+                    isSearching: mentionSuggestions.isSearching,
+                    onPick: applyMention
+                )
             }
             .padding(.bottom, composerRowHeight)
             .fixedSize(horizontal: false, vertical: true)
@@ -882,7 +905,7 @@ struct AssistantInputView: View {
                 AddContextRow(kind: .attachFile, symbol: "paperclip", title: "Attach File…",
                               detail: "PDF, Markdown, or text, for the next question"),
                 AddContextRow(kind: .vaultFile, symbol: "at", title: "Vault File",
-                              detail: "Type @ and part of a name"),
+                              detail: "Type @ and the vault list filters as you type"),
                 AddContextRow(kind: .readScreen, symbol: "camera.viewfinder", title: "Read Screen Once",
                               detail: "Text read on this Mac; no image leaves it", keys: ["⌘", "⇧", "H"]),
                 AddContextRow(kind: .searchScope, symbol: "scope", title: "Search Scope", detail: scope),

@@ -32,6 +32,14 @@ final class ComposerKeyRouterTests: XCTestCase {
         XCTAssertEqual(route(.a, [.command, .shift], ComposerKeyContext(hasMarkedText: true)), .passThrough)
     }
 
+    func test_shiftCommandSOpensAttachmentsAsQuickLaunchDoes() {
+        // Quick Launch binds its attach chooser to ⇧⌘S, so the hand reaches
+        // for it in RTI's composer too.
+        XCTAssertEqual(route(.s, [.command, .shift]), .toggleAttachments)
+        XCTAssertEqual(route(.s, .command), .passThrough)
+        XCTAssertEqual(route(.s, [.command, .shift], ComposerKeyContext(hasMarkedText: true)), .passThrough)
+    }
+
     func test_readingOrFailedAttachmentsBlockSendAndQueue() {
         for status in [ComposerAttachmentStatus.reading, .failed] {
             XCTAssertEqual(route(.returnKey, [], ComposerKeyContext(draft: "Review this", attachmentStatus: status)), .consume)

@@ -29,6 +29,9 @@ public enum ComposerKey: Equatable, Sendable {
     case k
     /// Shift-Command-A opens the composer's attachment menu.
     case a
+    /// Shift-Command-S opens the same attachment menu. Quick Launch binds its
+    /// capture/attach chooser to this key, so the hand reaches for it here.
+    case s
     /// Any other key.
     case other
 }
@@ -160,7 +163,7 @@ public enum ComposerKeyRouter {
         if key == .k {
             return modifiers == .command ? .togglePalette : .passThrough
         }
-        if key == .a {
+        if key == .a || key == .s {
             return modifiers == [.command, .shift] ? .toggleAttachments : .passThrough
         }
 
@@ -189,7 +192,7 @@ public enum ComposerKeyRouter {
         case .backspace:
             if context.draft.isEmpty, context.hasChips, modifiers.isEmpty { return .removeNewestChip }
             return .passThrough
-        case .leftArrow, .rightArrow, .k, .a, .other:
+        case .leftArrow, .rightArrow, .k, .a, .s, .other:
             return .passThrough
         }
     }

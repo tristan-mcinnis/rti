@@ -1,5 +1,20 @@
 # RTI Change Log
 
+## 2026-09-17: Attach on ⇧⌘S, and the `@` list opens at once
+
+The composer now pairs with Quick Launch on the attach key, and the vault
+list no longer waits for its first search to appear.
+
+- `⇧⌘S` opens Add Context (files, search scope, note mode), the same key Quick
+  Launch binds to its attach chooser. `⇧⌘A` still works, and the key shows in
+  Settings → General → Hotkeys.
+- Typing `@` opens the vault chooser immediately and filters as you keep
+  typing, instead of waiting for the lookup to answer. A fresh lookup says
+  "Searching the vault…", and a query with no match says so rather than
+  drawing an empty list.
+- The `@` list's first lookup runs without the keystroke debounce, so the
+  recent-files list lands as soon as the vault index is warm.
+
 ## 2026-09-12: Session titles no longer depend on the summary
 
 A session's title used to be written only when the end-of-session summary

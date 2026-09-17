@@ -147,10 +147,12 @@ struct ChooserList<Item, Row: View>: View {
 // MARK: - @ vault files
 
 /// `@` typed: the vault files that match, closest first. `↩` or Tab adds the
-/// highlighted file as a chip.
+/// highlighted file as a chip. The chooser opens on the `@` itself, so with no
+/// answer yet it says it is looking instead of drawing an empty list.
 struct MentionChooserPane: View {
     let candidates: [String]
     let selectedIndex: Int
+    var isSearching = false
     let onPick: (String) -> Void
 
     var body: some View {
@@ -158,15 +160,26 @@ struct MentionChooserPane: View {
             ChooserHeader(title: "Vault files", hints: [
                 ("Move", ["↑", "↓"]), ("Add", ["↩"]), ("Close", ["esc"]),
             ])
-            ChooserList(items: candidates, selectedIndex: selectedIndex, rowHeight: House.Control.railRow) { index, path in
-                ChooserRow(
-                    symbol: "doc.text",
-                    title: Self.fileName(path),
-                    detail: Self.folder(path),
-                    isSelected: index == selectedIndex,
-                    height: House.Control.railRow
-                ) { onPick(path) }
-                .help(path)
+            if candidates.isEmpty {
+                ChooserList(items: [0], selectedIndex: -1, rowHeight: House.Control.railRow) { _, _ in
+                    ChooserRow(
+                        symbol: "magnifyingglass",
+                        title: isSearching ? "Searching the vault…" : "No vault file matches",
+                        detail: isSearching ? "Files and folders as you type" : "Keep typing to narrow it",
+                        height: House.Control.railRow
+                    ) {}
+                }
+            } else {
+                ChooserList(items: candidates, selectedIndex: selectedIndex, rowHeight: House.Control.railRow) { index, path in
+                    ChooserRow(
+                        symbol: "doc.text",
+                        title: Self.fileName(path),
+                        detail: Self.folder(path),
+                        isSelected: index == selectedIndex,
+                        height: House.Control.railRow
+                    ) { onPick(path) }
+                    .help(path)
+                }
             }
         }
         .accessibilityElement(children: .contain)
