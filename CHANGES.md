@@ -1,5 +1,23 @@
 # RTI Change Log
 
+## 2026-09-17: Screenshots as context, and Quick recap as the default
+
+Attach what you are looking at, and make the mid-meeting turn a catch-up.
+
+- **Screenshot Window** (⌘⇧J) reads the frontmost window that is not RTI's own
+  and not on the Screen Privacy list, then attaches its OCR text (plus a local
+  vision description when the `local_vision` lane is on) to the next turn. The
+  window server's front-to-back order picks the window; the pixels never leave
+  the Mac. Available in Add Context, the ⌘K palette, and the Session menu.
+- **Screenshot Screen** is the existing whole-screen read, renamed from "Read
+  Screen Once" so the two live together in Add Context (⌘⇧H, unchanged).
+- **Quick recap** is the shipped ⌘⏎ primary action: the last 5 minutes of
+  transcript, one or two bullets. It replaces Assist / Answer-latest as the
+  default in Meeting and Interview modes and in the fieldwork preset. An
+  existing Assist or Answer-latest default is moved once; an explicit choice of
+  any other action is left alone. Full Recap (⌘⌥R) still uses the sticky depth
+  and the 15-minute window.
+
 ## 2026-09-17: Attach on ⇧⌘S, and the `@` list opens at once
 
 The composer now pairs with Quick Launch on the attach key, and the vault

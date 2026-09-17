@@ -7,6 +7,9 @@ enum AssistantTurnBuilder {
         let action: String
         let transcript: String
         let fullTranscript: Bool
+        /// Nominal minutes the trailing window covers, for the context label
+        /// (5 for Quick recap, 15 by default). Ignored when `fullTranscript`.
+        let transcriptWindowMinutes: Int
         let workstreamScopePath: String?
         let hasWorkstreamName: Bool
         let priorSuggestions: String
@@ -40,7 +43,7 @@ enum AssistantTurnBuilder {
         let contextUsed = !transcript.isEmpty
         let contextLabel = input.fullTranscript
             ? "Full meeting transcript (diarized)"
-            : "Recent conversation (last 15 minutes, diarized)"
+            : "Recent conversation (last \(input.transcriptWindowMinutes) minutes, diarized)"
         var fullContent = contextUsed
             ? "\(contextLabel):\n\(transcript)\n\nUser question: \(input.userInput)"
             : input.userInput

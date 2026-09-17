@@ -99,6 +99,11 @@ final class LLMController {
 
     private static let contextWindowSeconds: Double = 900
 
+    /// Quick recap's window: the last five minutes of transcript, the
+    /// "what just happened / catch me up" turn. Distinct from the sticky
+    /// `recapDepth`, which only picks how many bullets a full Recap writes.
+    static let quickRecapWindowSeconds: Double = 300
+
 #if DEBUG
     /// Debug-only seam for the offscreen render proof (`RTIRenderTests`).
     /// Never compiled into a Release build and never called by the app.
@@ -112,7 +117,25 @@ final class LLMController {
     init(request: LLMRequest = LLMRequest()) {
         self.request = request
         smartMode = UserDefaults.standard.bool(forKey: LLMSettingsDefaults.smartModeKey)
-        primaryActionID = UserDefaults.standard.string(forKey: LLMSettingsDefaults.primaryActionKey) ?? "answerLatest"
+        // The shipped primary action is Quick recap. An explicit user choice
+        // wins; the one-time migration below only moves the old defaults
+        // (Assist / Answer latest) that predate it.
+        let storedPrimary = UserDefaults.standard.string(forKey: LLMSettingsDefaults.primaryActionKey)
+        let alreadyMigrated = UserDefaults.standard.bool(forKey: LLMSettingsDefaults.primaryQuickRecapMigrationKey)
+        let resolvedPrimary = PrimaryActionMigration.resolve(stored: storedPrimary, alreadyMigrated: alreadyMigrated)
+        if !alreadyMigrated {
+            // Mark the migration run on EVERY first-run path, not only when it
+            // changes something: a stored value outside the old defaults must
+            // not leave the flag unset, or a later deliberate bind to Assist /
+            // Answer latest would be silently reverted on the next launch.
+            UserDefaults.standard.set(true, forKey: LLMSettingsDefaults.primaryQuickRecapMigrationKey)
+            // `didSet` does not fire for the assignment below (we are still in
+            // `init`), so persist a changed value explicitly.
+            if resolvedPrimary != storedPrimary {
+                UserDefaults.standard.set(resolvedPrimary, forKey: LLMSettingsDefaults.primaryActionKey)
+            }
+        }
+        primaryActionID = resolvedPrimary
         listenerMode = UserDefaults.standard.bool(forKey: LLMSettingsDefaults.listenerModeKey)
         recapDepth = RecapDepth(rawValue: UserDefaults.standard.string(forKey: LLMSettingsDefaults.recapDepthKey) ?? "") ?? .standard
     }
@@ -129,6 +152,7 @@ final class LLMController {
         switch actionID {
         case "assist": sendAssist()
         case "answerLatest": sendAnswerLatest()
+        case "quickRecap": sendQuickRecap()
         case "recap": sendRecap()
         case "sayNext": sendSaySomething()
         case "followups": sendFollowupQuestions()
@@ -296,7 +320,33 @@ final class LLMController {
     /// Recap at the given depth, or the user's sticky default when unspecified
     /// (⌘⌥R and the ⌘⏎ primary action both take the default).
     func sendRecap(depth: RecapDepth? = nil) {
+        guard hasLiveTranscriptForRecap() else { return }
         performSend(userInput: PromptStore.shared.recap(depth ?? recapDepth), action: "Recap")
+    }
+
+    /// Quick recap: the last five minutes, one or two bullets — the "catch me
+    /// up" turn. The shipped ⌘⏎ primary action, so a listener can glance at
+    /// RTI mid-meeting and read what just happened without picking a depth.
+    func sendQuickRecap() {
+        guard hasLiveTranscriptForRecap() else { return }
+        performSend(
+            userInput: PromptStore.shared.recap(.brief),
+            action: "Quick recap",
+            transcriptSeconds: Self.quickRecapWindowSeconds
+        )
+    }
+
+    /// A recap prompt presupposes a conversation. With an empty live
+    /// transcript (before the first line, or while paused) refuse the turn
+    /// with the same message Answer latest uses rather than spend a model call
+    /// on it. False also means a stream is already running.
+    private func hasLiveTranscriptForRecap() -> Bool {
+        guard !streaming else { return false }
+        guard recentTranscriptText().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return true }
+        lastError = "No live transcript yet."
+        lastErrorIsAuth = false
+        lastErrorTurnID = nil
+        return false
     }
 
     /// Re-run the turn that produced `assistantID`: drop that assistant reply
@@ -551,6 +601,7 @@ final class LLMController {
         userInput: String,
         action: String,
         fullTranscript: Bool = false,
+        transcriptSeconds: Double? = nil,
         forceSmart: Bool = false,
         referencedDocuments: [ReferencedDocument] = [],
         retrievalContext: String? = nil,
@@ -567,7 +618,7 @@ final class LLMController {
         lastErrorTurnID = nil
         toolStatus = nil
 
-        let transcript = recentTranscriptText(fullWindow: fullTranscript)
+        let transcript = recentTranscriptText(fullWindow: fullTranscript, maxSeconds: transcriptSeconds)
         let manualScreenContext = pendingScreenContext
         clearPendingScreenContext()
         let ambientScreenContext = SessionCoordinator.shared.isRunning
@@ -594,6 +645,7 @@ final class LLMController {
             action: action,
             transcript: transcript,
             fullTranscript: fullTranscript,
+            transcriptWindowMinutes: Int((transcriptSeconds ?? Self.contextWindowSeconds) / 60),
             workstreamScopePath: MeetingContextStore.shared.workstreamScopePath,
             hasWorkstreamName: MeetingContextStore.shared.workstreamName != nil,
             priorSuggestions: priorSuggestions(action: action),
@@ -623,7 +675,7 @@ final class LLMController {
             sentAttachments.append(ChatAttachmentRef(kind: .screen, name: "Screen"))
         }
         var answerTools = ChatTurnRecordBuilder.contextLines(
-            transcriptMinutes: turn.contextUsed ? transcriptWindowMinutes(fullWindow: fullTranscript) : nil,
+            transcriptMinutes: turn.contextUsed ? transcriptWindowMinutes(fullWindow: fullTranscript, maxSeconds: transcriptSeconds) : nil,
             wholeTranscript: fullTranscript,
             screenRead: manualScreenRead,
             screenFromTrail: ambientScreenRead
@@ -1035,10 +1087,11 @@ final class LLMController {
 
     /// Minutes of transcript the next turn reads: the same window
     /// `recentTranscriptText` builds, first line to last.
-    private func transcriptWindowMinutes(fullWindow: Bool) -> Int {
+    private func transcriptWindowMinutes(fullWindow: Bool, maxSeconds: Double? = nil) -> Int {
         let all = SessionCoordinator.shared.liveEntries.filter { $0.translationStatus != "translation" }
         guard let maxMs = all.map(\.startMs).max() else { return 1 }
-        let threshold = fullWindow ? 0 : max(0, maxMs - Int(Self.contextWindowSeconds * 1000))
+        let windowMs = Int((maxSeconds ?? Self.contextWindowSeconds) * 1000)
+        let threshold = fullWindow ? 0 : max(0, maxMs - windowMs)
         let firstMs = all.lazy.filter { $0.startMs >= threshold }.map(\.startMs).min() ?? maxMs
         return ChatTurnRecordBuilder.transcriptMinutes(firstStartMs: firstMs, lastStartMs: maxMs)
     }

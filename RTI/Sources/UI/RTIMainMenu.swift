@@ -167,6 +167,8 @@ private struct SessionMenuItems: View {
         )
         Button(MainMenuValidation.title(.readScreen, in: context)) { RTIMenuAction.run("capture.screen") }
             .keyboardShortcut("h", modifiers: [.command, .shift])
+        Button(MainMenuValidation.title(.readWindow, in: context)) { RTIMenuAction.run("capture.window") }
+            .keyboardShortcut("j", modifiers: [.command, .shift])
         Divider()
         Button(MainMenuValidation.title(.chooseProject, in: context)) { RTIMenuAction.run("meeting.project") }
     }

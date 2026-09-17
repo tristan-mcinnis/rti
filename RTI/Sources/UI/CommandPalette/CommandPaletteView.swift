@@ -157,7 +157,7 @@ struct CommandPaletteView: View {
         let id = command.id
         if id.hasPrefix("composer.") { return "Composer" }
         if id.hasPrefix("chat.") { return "Quick action" }
-        if id.hasPrefix("primary.") { return "Assist" }
+        if id.hasPrefix("primary.") { return "Primary" }
         if id.hasPrefix("session.") || id.hasPrefix("mic.") || id.hasPrefix("note.") || id.hasPrefix("capture.") {
             return "Session"
         }

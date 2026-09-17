@@ -72,7 +72,7 @@ struct ResponseView: View {
 
     /// Three ways in, each with its real key.
     private var readyHints: [String] {
-        let primary = AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist"
+        let primary = AssistantAction.byID(llm.primaryActionID)?.label ?? "Quick recap"
         return ["⌘↩ runs \(primary)", "@ adds a vault file", "⌘K for actions"]
     }
 

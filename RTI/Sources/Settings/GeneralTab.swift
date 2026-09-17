@@ -348,6 +348,7 @@ private struct HotkeysSection: View {
         Hotkey(title: "Attach or add context", detail: "In the composer: files, search scope, or a note. Same key Quick Launch uses to attach. ⇧⌘A also works.", keys: ["⌘", "⇧", "S"]),
         Hotkey(title: "Note mode", detail: "Type a note into the transcript.", keys: ["⌘", "⌥", "N"]),
         Hotkey(title: "Read the screen", keys: ["⌘", "⇧", "H"]),
+        Hotkey(title: "Read the frontmost window", keys: ["⌘", "⇧", "J"]),
         Hotkey(title: "Show the list", detail: "In the Sessions and Meeting Brief windows.", keys: ["⌃", "⌘", "S"]),
     ]
 

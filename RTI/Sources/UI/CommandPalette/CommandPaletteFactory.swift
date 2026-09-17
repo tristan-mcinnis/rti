@@ -210,15 +210,15 @@ enum CommandBuilder {
     ) -> [RTICommand] {
         [
             // ⌘⏎ is the remappable "primary" hotkey — it dispatches whatever
-            // quick action the user picked (Assist by default; e.g. Recap in
-            // a meeting where they're a passive listener).
+            // quick action the user picked (Quick recap by default: the
+            // mid-meeting "catch me up" turn).
             RTICommand(
                 id: "chat.primary",
                 title: "Primary Action (remappable)",
                 subtitle: "⌘⏎",
                 keywords: ["help", "suggestion", "assist", "primary"],
                 perform: { llm.sendPrimary() },
-                menuTitleProvider: { "\(AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist")  ⌘⏎" },
+                menuTitleProvider: { "\(AssistantAction.byID(llm.primaryActionID)?.label ?? "Quick recap")  ⌘⏎" },
                 hotkeyKeyCode: UInt32(kVK_Return),
                 hotkeyModifiers: UInt32(cmdKey),
                 hotkeySessionScoped: true
@@ -273,10 +273,21 @@ enum CommandBuilder {
                 id: "capture.screen",
                 title: "Capture Screen  ⌘⇧H",
                 subtitle: "⌘⇧H",
-                keywords: ["screenshot", "ocr"],
+                keywords: ["screenshot", "ocr", "display"],
                 perform: { ScreenshotManager.shared.captureAndAttach() },
                 menuSection: .actions,
                 hotkeyKeyCode: UInt32(kVK_ANSI_H),
+                hotkeyModifiers: UInt32(cmdKey | shiftKey),
+                hotkeySessionScoped: true
+            ),
+            RTICommand(
+                id: "capture.window",
+                title: "Capture Window",
+                subtitle: "⌘⇧J",
+                keywords: ["screenshot", "ocr", "window", "focused", "frontmost"],
+                perform: { ScreenshotManager.shared.captureFocusedWindowAndAttach() },
+                menuSection: .actions,
+                hotkeyKeyCode: UInt32(kVK_ANSI_J),
                 hotkeyModifiers: UInt32(cmdKey | shiftKey),
                 hotkeySessionScoped: true
             ),
@@ -309,7 +320,7 @@ enum CommandBuilder {
         [
             RTICommand(
                 id: "fieldwork.preset",
-                title: "Fieldwork Preset (interview + listener + ⌘⏎ Assist)",
+                title: "Fieldwork Preset (interview + listener + ⌘⏎ Quick recap)",
                 keywords: ["fgd", "idi", "observe", "research", "preset"],
                 perform: {
                     let modes = ModeStore.shared
@@ -317,7 +328,7 @@ enum CommandBuilder {
                         modes.activeModeId = interview.id
                     }
                     llm.listenerMode = true
-                    llm.primaryActionID = "assist"
+                    llm.primaryActionID = "quickRecap"
                 }
             ),
             RTICommand(
@@ -414,12 +425,11 @@ enum CommandBuilder {
     @MainActor
     static func switchMode(to mode: Mode, modes: ModeStore, llm: LLMController) {
         modes.activeModeId = mode.id
-        // Per-mode ⌘⏎ binding: meeting mode defaults to Answer-latest,
-        // fieldwork/interview mode keeps the Assist template (see the
-        // fieldwork preset above).
+        // Per-mode ⌘⏎ binding: meeting and fieldwork both default to Quick
+        // recap, the mid-session "catch me up" turn. Coding and other keep
+        // whatever the user has bound.
         switch mode.kind {
-        case .meeting: llm.primaryActionID = "answerLatest"
-        case .interview: llm.primaryActionID = "assist"
+        case .meeting, .interview: llm.primaryActionID = "quickRecap"
         case .coding, .other: break
         }
     }

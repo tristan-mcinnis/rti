@@ -8,12 +8,12 @@ Personal build: **real-time first, vault-backed** — the live transcript and ch
 
 - **Live transcription.** `AVAudioEngine` → 16 kHz PCM → realtime STT provider, both sides of the call, held in memory with rolling context for the assistant. RTI models realtime STT separately from post-hoc transcript-upgrade providers.
 - **Clear recording lifecycle.** The record control names every phase — **Recording → Paused → Saving → Summarizing → Notes ready** — so you always know what RTI is doing. **Pause/resume** (⌘⇧P) suspends transcription while holding the Soniox socket warm, so resume is instant (no re-handshake). On finish you watch the end-of-session summary generate (Granola-style "Summarizing…"), then **start a new recording with one click** — the previous session is saved, not cleared, and the new one can begin even while the last summary is still being written.
-- **Streaming assistant, mode-aware.** ⌘↵ runs the primary action over the last few minutes of transcript. The quick-action set follows the active mode + listener state: meeting/participant gets Assist / Say next / Follow-ups; fieldwork observer (Interview + Listener) gets Assist / Follow-ups / Key tensions / What's unsaid / Emerging themes. You can also drop an image into the composer (on-device OCR → text). OpenAI-compatible streaming chat.
+- **Streaming assistant, mode-aware.** ⌘↵ runs the primary action over the last few minutes of transcript — **Quick recap** (the last 5 minutes, one or two bullets) out of the box. The quick-action set follows the active mode + listener state: meeting/participant gets Quick recap / Assist / Say next / Follow-ups; fieldwork observer (Interview + Listener) gets Quick recap / Assist / Follow-ups / Key tensions / What's unsaid / Emerging themes. You can also drop an image into the composer (on-device OCR → text). OpenAI-compatible streaming chat.
 - **Invisible window.** A normal titled `NSWindow` with `sharingType = .none` (toggle in Settings) — excluded from QuickTime, Zoom local recording, and `screencapture`. The old always-on-top translucent panel was dropped on 2026-09-01. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
 - **Sole meeting recorder.** RTI is the only meeting-capture tool on this machine (Meeting Sentinel was deleted 2026-08-28). ⌘⇧R starts and finishes every recording; RTI never auto-records.
 - **Real-time analysis tabs.** Optional overlay tabs generate live meeting **Notes**, track coverage of an imported **Discussion Guide**, and collect tagged **Findings** — all held in memory and refreshed on a timer. Toggle each in the **Setup** tab; jump to them with ⌘⌥3 / ⌘⌥4 / ⌘⌥5.
 - **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers. **Off by default** (VPIO delivers silent buffers on some Macs, verified 2026-06-09 — silent mic kills transcription); toggle in Settings → General if your setup needs it. The mic is fully released when a session stops, so it won't block other apps.
-- **Smart Screenshot.** ⌘⇧H captures the display under the mouse, runs Vision OCR on-device, attaches the text to your next prompt. The image is discarded.
+- **Smart Screenshot.** ⌘⇧H reads the whole screen; ⌘⇧J reads the frontmost window (never RTI's own, never an app on the Screen Privacy list). Both run Vision OCR on-device, attach the text to your next prompt, and add a local vision-model description when that lane is on. The image is discarded.
 - **Translation.** Optional live translation alongside the transcript (one-way or two-way), in the Live Transcript window.
 - **Modes.** Built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text. Stored as a small JSON file.
 
@@ -96,7 +96,7 @@ Source of truth is `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift` (
 | ⌘ \\ | Toggle the assistant overlay |
 | ⌘ ⇧ R | Start a session / finish it / start a new one (phase-aware) |
 | ⌘ ⇧ P | Pause / resume the recording (keeps the connection warm) |
-| ⌘ ↵ | Primary action — remappable; defaults to "Assist" |
+| ⌘ ↵ | Primary action — remappable; defaults to "Quick recap" |
 | ⌘ ⌥ S | Say next (one-line draft reply) |
 | ⌘ ⌥ F | Follow-up questions |
 | ⌘ ⌥ R | Recap so far |
@@ -105,12 +105,13 @@ Source of truth is `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift` (
 | ⌘ ⌥ U | What's unsaid / probe (listener / fieldwork) |
 | ⌘ ⌥ E | Emerging themes (listener / fieldwork) |
 | ⌘ ⌥ N | Toggle Note mode (type inline into the transcript) |
-| ⌘ ⇧ H | Capture the display under the cursor; attach OCR to the next prompt |
+| ⌘ ⇧ H | Read the whole screen; attach OCR to the next prompt |
+| ⌘ ⇧ J | Read the frontmost window; attach OCR to the next prompt |
 | ⌘ ⇧ A | Open the chat attachment menu |
 | ⌘ K | Open the command palette; type to fuzzy-search commands |
 | ⌘ ⌥ 0–5 | Jump to a tab — 0 Setup · 1 Assist · 2 Transcript · 3 Notes · 4 Guide · 5 Findings |
 
-The ✦ menu shows the **mode-aware** action set: in a meeting you get Assist / Say next / Follow-ups; sitting in on fieldwork (Interview + Listener) you get Assist / Follow-ups / **Key tensions** / **What's unsaid** / **Emerging themes** instead of "what should I say". You can drop an image onto the composer — it's OCR'd on-device and attached as text (no image is sent to the model).
+The ✦ menu shows the **mode-aware** action set: in a meeting you get Quick recap / Assist / Say next / Follow-ups; sitting in on fieldwork (Interview + Listener) you get Quick recap / Assist / Follow-ups / **Key tensions** / **What's unsaid** / **Emerging themes** instead of "what should I say". You can drop an image onto the composer — it's OCR'd on-device and attached as text (no image is sent to the model).
 
 ## Capturing both sides of a call
 

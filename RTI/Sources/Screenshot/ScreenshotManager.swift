@@ -68,6 +68,212 @@ final class ScreenshotManager {
         }
     }
 
+    /// Capture the frontmost window that is neither RTI's own nor on the
+    /// privacy deny-list — the one the user was reading before RTI came
+    /// forward — and attach its OCR text (plus a local vision description
+    /// when that lane is on) as pending context for the next turn.
+    func captureFocusedWindowAndAttach() {
+        attachmentTask?.cancel()
+        let requestID = LLMController.shared.beginScreenAttachment(status: "Reading the frontmost window…")
+        attachmentTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let combined = try await self.captureFocusedWindowAndDescribe(attachmentRequestID: requestID)
+                try self.checkAttachmentRequest(requestID)
+                LLMController.shared.attachScreenContext(combined, requestID: requestID)
+            } catch is CancellationError {
+                return
+            } catch ScreenshotError.noFocusedWindow {
+                LLMController.shared.setScreenAttachError("No other window is open to read.", requestID: requestID)
+            } catch ScreenshotError.empty {
+                LLMController.shared.setScreenAttachError("No content found in that window.", requestID: requestID)
+            } catch {
+                guard LLMController.shared.isCurrentScreenAttachment(requestID), !Task.isCancelled else { return }
+                RTILog.log("Window capture failed: \(error)", category: .screenshot)
+                let msg = self.errorDescription(for: error)
+                LLMController.shared.setScreenAttachError(msg, requestID: requestID)
+                if Self.isScreenRecordingDenied(error) {
+                    self.promptForScreenRecordingAccess()
+                }
+            }
+        }
+    }
+
+    /// Capture + OCR (+ local vision description when enabled) one window and
+    /// return the combined context string. Throws `ScreenshotError.empty`
+    /// when neither OCR nor the vision model produced anything. The sibling
+    /// of `captureAndDescribe()`, scoped to a single window rather than the
+    /// whole display.
+    func captureFocusedWindowAndDescribe(
+        trigger: String = "manual.window",
+        attachmentRequestID: UUID? = nil
+    ) async throws -> String {
+        try checkAttachmentRequest(attachmentRequestID)
+        let visionConfig = visionConfiguration()
+        let window = try await captureFocusedWindowWithOCR(
+            includeFrame: visionConfig.enabled,
+            attachmentRequestID: attachmentRequestID
+        )
+        try checkAttachmentRequest(attachmentRequestID)
+        let text = window.text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var visionSummary: String?
+        if visionConfig.enabled, let jpeg = window.frameJPEG {
+            if let attachmentRequestID {
+                LLMController.shared.setScreenCaptureStatus("Asking the local vision model…", requestID: attachmentRequestID)
+            }
+            do {
+                visionSummary = try await LocalVisionService.describe(
+                    imageData: jpeg,
+                    configuration: visionConfig
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                RTILog.log("Local vision describe failed; window capture continues OCR-only: \(error)", category: .vision)
+            }
+        }
+        try checkAttachmentRequest(attachmentRequestID)
+
+        guard !text.isEmpty || visionSummary != nil else {
+            throw ScreenshotError.empty
+        }
+        lastCapturedRegions = window.regions
+        var combined = text.isEmpty
+            ? "No machine-readable text was found in the frontmost window (\(window.label))."
+            : formatWindowContext(window)
+        if let visionSummary {
+            combined += "\n\n## What the window looks like (local vision model)\n\(visionSummary)"
+        }
+        recordCaptureInSessionTrail(
+            primaryText: window.text,
+            visionSummary: visionSummary,
+            frameJPEG: window.frameJPEG,
+            trigger: trigger,
+            visionConfig: visionConfig
+        )
+        RTILog.log(
+            "Window screenshot: \(window.label) context=\(combined.count) chars vision=\(visionSummary != nil).",
+            category: .screenshot
+        )
+        return combined
+    }
+
+    private func formatWindowContext(_ window: CapturedScreenOCR) -> String {
+        let text = truncate(window.text, maxChars: Self.perScreenOCRChars)
+        return "Text visible in the frontmost window (\(window.label)).\n\n## \(window.label)\n\(text)"
+    }
+
+    /// Capture the frontmost eligible window and OCR it. The window server
+    /// list (`CGWindowListCopyWindowInfo`) is ordered front-to-back, so the
+    /// first window that is a normal layer, not RTI's, and not on the privacy
+    /// deny-list is the one the user was looking at.
+    private func captureFocusedWindowWithOCR(
+        includeFrame: Bool,
+        attachmentRequestID: UUID? = nil
+    ) async throws -> CapturedScreenOCR {
+        try checkAttachmentRequest(attachmentRequestID)
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        try checkAttachmentRequest(attachmentRequestID)
+        guard let window = focusedWindow(in: content.windows) else {
+            throw ScreenshotError.noFocusedWindow
+        }
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let config = SCStreamConfiguration()
+        // `config.width/height` are in pixels, `contentRect` is in points, and
+        // the default `scalesToFit == false` only ever scales down — so a bare
+        // `window.frame` would capture a 2× display at half resolution and
+        // cost OCR the small text this feature exists to read.
+        let pixelScale = CGFloat(filter.pointPixelScale)
+        config.width = max(1, Int((filter.contentRect.width * pixelScale).rounded()))
+        config.height = max(1, Int((filter.contentRect.height * pixelScale).rounded()))
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.showsCursor = false
+        config.capturesAudio = false
+
+        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        try checkAttachmentRequest(attachmentRequestID)
+        let ocrRegions = try await OCRService.recognizeTextRegions(in: image)
+        try checkAttachmentRequest(attachmentRequestID)
+        return CapturedScreenOCR(
+            label: windowLabel(window),
+            isPrimary: true,
+            text: ocrRegions.map(\.text).joined(separator: "\n"),
+            regions: screenRegions(ocrRegions, in: window),
+            frameJPEG: includeFrame ? ScreenFrameEncoder.jpegData(from: image) : nil
+        )
+    }
+
+    /// Map Vision boxes (normalized, bottom-left origin, within the window
+    /// image) into AppKit global screen coordinates so the highlight tool can
+    /// act on the window that was just read.
+    private func screenRegions(
+        _ regions: [OCRService.RecognizedTextRegion],
+        in window: SCWindow
+    ) -> [ScreenTextRegion] {
+        let frame = appKitFrame(forWindow: window)
+        let label = windowLabel(window)
+        return regions.map { region in
+            ScreenTextRegion(
+                text: region.text,
+                rect: CGRect(
+                    x: frame.minX + region.boundingBox.minX * frame.width,
+                    y: frame.minY + region.boundingBox.minY * frame.height,
+                    width: region.boundingBox.width * frame.width,
+                    height: region.boundingBox.height * frame.height
+                ),
+                screenLabel: label
+            )
+        }
+    }
+
+    /// `SCWindow.frame` is in Quartz screen coordinates (top-left origin);
+    /// AppKit measures up from the primary display's bottom-left, so flip y.
+    private func appKitFrame(forWindow window: SCWindow) -> CGRect {
+        let primaryHeight = (NSScreen.screens.first { $0.frame.origin == .zero } ?? NSScreen.screens.first)?.frame.height ?? 0
+        return CGRect(
+            x: window.frame.minX,
+            y: primaryHeight - window.frame.maxY,
+            width: window.frame.width,
+            height: window.frame.height
+        )
+    }
+
+    /// The topmost on-screen window that is not RTI's and not on the privacy
+    /// deny-list. `windows` supplies the ScreenCaptureKit handles the capture
+    /// filter needs; its order is undefined, so the front-to-back order comes
+    /// from the window server instead.
+    private func focusedWindow(in windows: [SCWindow]) -> SCWindow? {
+        guard let list = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let ownBundle = Bundle.main.bundleIdentifier
+        for info in list {
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+                  let number = info[kCGWindowNumber as String] as? Int,
+                  let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
+                  bounds.width >= 120, bounds.height >= 80,
+                  let pid = info[kCGWindowOwnerPID as String] as? Int,
+                  pid != Int(ownPID) else { continue }
+            let bundleId = NSRunningApplication(processIdentifier: pid_t(pid))?.bundleIdentifier
+            if bundleId == ownBundle || ScreenPrivacy.isExcluded(bundleIdentifier: bundleId) { continue }
+            if let match = windows.first(where: { $0.windowID == CGWindowID(truncatingIfNeeded: number) }) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func windowLabel(_ window: SCWindow) -> String {
+        let app = window.owningApplication?.applicationName ?? "Window"
+        let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let title, !title.isEmpty, title != app else { return app }
+        return "\(app) — \(title)"
+    }
+
     /// OCR an image the user dropped into the composer and attach the text as
     /// pending context for the next turn — the drag-and-drop sibling of
     /// `captureAndAttach()`. The chat provider itself is text-only; on-device
@@ -124,9 +330,10 @@ final class ScreenshotManager {
 
     /// Capture + OCR (+ local vision description when enabled) and return the
     /// combined context string. Throws `ScreenshotError.empty` if neither OCR
-    /// nor the vision model produced anything. Used by the ⌘⇧H attach path and
-    /// the LLM `capture_screen` tool. During a live session the primary frame
-    /// is also staged into the session archive so the capture has a home.
+    /// nor the vision model produced anything. Used by the ⌘⇧H "Screenshot
+    /// Screen" path and the LLM `capture_screen` tool. During a live session
+    /// the primary frame is also staged into the session archive so the
+    /// capture has a home.
     func captureAndDescribe(trigger: String = "manual", attachmentRequestID: UUID? = nil) async throws -> String {
         try checkAttachmentRequest(attachmentRequestID)
         let visionConfig = visionConfiguration()
@@ -419,5 +626,6 @@ final class ScreenshotManager {
 
 enum ScreenshotError: Error {
     case noDisplay
+    case noFocusedWindow
     case empty
 }

@@ -5,6 +5,7 @@ final class AssistantTurnBuilderTests: XCTestCase {
     private func build(
         action: String = "Ask",
         transcript: String = "",
+        transcriptWindowMinutes: Int = 15,
         scope: String? = nil,
         hasWorkstream: Bool = false,
         listenerMode: Bool = false,
@@ -15,6 +16,7 @@ final class AssistantTurnBuilderTests: XCTestCase {
             action: action,
             transcript: transcript,
             fullTranscript: false,
+            transcriptWindowMinutes: transcriptWindowMinutes,
             workstreamScopePath: scope,
             hasWorkstreamName: hasWorkstream,
             priorSuggestions: "Ask about timing",
@@ -45,6 +47,17 @@ final class AssistantTurnBuilderTests: XCTestCase {
         XCTAssertTrue(latest.contains("Project scope is set to `projects/acme`"))
         XCTAssertTrue(latest.contains("You already suggested"))
         XCTAssertTrue(latest.contains("Vault search ran for this question"))
+    }
+
+    func testQuickRecapLabelsItsShorterWindow() {
+        // Quick recap reads 5 minutes; the prompt label must match the window
+        // the turn actually carries, not the 15-minute default.
+        let quick = build(action: "Quick recap", transcript: "Client: We need pricing.", transcriptWindowMinutes: 5)
+        let labelled = quick.apiMessages.last?.content ?? ""
+        XCTAssertTrue(labelled.contains("Recent conversation (last 5 minutes, diarized):"))
+        XCTAssertFalse(labelled.contains("last 15 minutes"))
+        let standard = build(transcript: "x", transcriptWindowMinutes: 15).apiMessages.last?.content ?? ""
+        XCTAssertTrue(standard.contains("last 15 minutes"))
     }
 
     func testGuideCoverageOnlyAddedForGuideAwareActions() {

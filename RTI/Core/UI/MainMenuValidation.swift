@@ -87,7 +87,7 @@ public enum MainMenuItem: Hashable, Sendable {
     // Edit
     case find
     // Session
-    case record, pause, addNote, muteMicrophone, readScreen, chooseProject
+    case record, pause, addNote, muteMicrophone, readScreen, readWindow, chooseProject
     // View
     case tab(String)
     case sessionList
@@ -108,7 +108,7 @@ public enum MainMenuValidation {
             return context.phase != .finishing
         case .pause:
             return context.phase.isLive
-        case .addNote, .muteMicrophone, .readScreen, .chooseProject:
+        case .addNote, .muteMicrophone, .readScreen, .readWindow, .chooseProject:
             return true
         case let .tab(rawValue):
             guard context.keyWindow == .overlay, OverlayTabShortcut.number(forTab: rawValue) != nil else { return false }
@@ -143,6 +143,7 @@ public enum MainMenuValidation {
             return context.isNoteMode ? "End Note" : "Add Note"
         case .muteMicrophone: return "Mute Microphone"
         case .readScreen: return "Read Screen"
+        case .readWindow: return "Read Frontmost Window"
         case .chooseProject: return "Choose Project…"
         case let .tab(rawValue): return rawValue
         case .sessionList:

@@ -419,7 +419,7 @@ struct AssistantInputView: View {
             isNoteMode: inputState.isNoteMode,
             isRecording: session.isRunning,
             layer: layer,
-            primaryActionLabel: AssistantAction.byID(llm.primaryActionID)?.label ?? "Assist",
+            primaryActionLabel: AssistantAction.byID(llm.primaryActionID)?.label ?? "Quick recap",
             attachmentStatus: attachmentStatus
         )
     }
@@ -846,7 +846,7 @@ struct AssistantInputView: View {
                     onRun: runPaletteCommand,
                     onClose: closePalette,
                     leadingCommands: paletteLeadingCommands,
-                    hiddenRegistryIDs: ["note.toggle", "capture.screen"],
+                    hiddenRegistryIDs: ["note.toggle", "capture.screen", "capture.window"],
                     maxVisibleRows: HouseComposerMetrics.paletteRows(availableHeight: availableHeight, composerHeight: composerRowHeight)
                 )
                 .frame(maxWidth: HouseChatMetrics.paletteWidth)
@@ -906,8 +906,10 @@ struct AssistantInputView: View {
                               detail: "PDF, Markdown, or text, for the next question"),
                 AddContextRow(kind: .vaultFile, symbol: "at", title: "Vault File",
                               detail: "Type @ and the vault list filters as you type"),
-                AddContextRow(kind: .readScreen, symbol: "camera.viewfinder", title: "Read Screen Once",
-                              detail: "Text read on this Mac; no image leaves it", keys: ["⌘", "⇧", "H"]),
+                AddContextRow(kind: .readScreen, symbol: "camera.viewfinder", title: "Screenshot Screen",
+                              detail: "The whole screen; text and layout read on this Mac", keys: ["⌘", "⇧", "H"]),
+                AddContextRow(kind: .readWindow, symbol: "macwindow", title: "Screenshot Window",
+                              detail: "The frontmost window; text and layout read on this Mac", keys: ["⌘", "⇧", "J"]),
                 AddContextRow(kind: .searchScope, symbol: "scope", title: "Search Scope", detail: scope),
                 AddContextRow(
                     kind: .noteMode,
@@ -959,6 +961,9 @@ struct AssistantInputView: View {
         case .readScreen:
             isAddContextOpen = false
             ScreenshotManager.shared.captureAndAttach()
+        case .readWindow:
+            isAddContextOpen = false
+            ScreenshotManager.shared.captureFocusedWindowAndAttach()
         case .searchScope:
             scopeItems = Self.loadScopeItems()
             addContextPage = .scope
@@ -983,8 +988,8 @@ struct AssistantInputView: View {
     // MARK: ⌘K palette
 
     /// The composer's own rows, ahead of the registry: the mode's quick
-    /// actions (the primary one carries ⌘↩), then note mode, attach, one
-    /// screen read, and the sticky recap depth (the old ✦ menu's items).
+    /// actions (the primary one carries ⌘↩), then note mode, attach, the two
+    /// screen reads, and the sticky recap depth (the old ✦ menu's items).
     private var paletteLeadingCommands: [RTICommand] {
         let llm = llm
         var rows: [RTICommand] = llm.availableQuickActions().map { action in
@@ -1012,10 +1017,17 @@ struct AssistantInputView: View {
         ))
         rows.append(RTICommand(
             id: "composer.screen",
-            title: "Read Screen Once",
+            title: "Screenshot Screen",
             subtitle: "⌘⇧H",
-            keywords: ["screen", "ocr", "capture", "screenshot"],
+            keywords: ["screen", "ocr", "capture", "screenshot", "display"],
             perform: { ScreenshotManager.shared.captureAndAttach() }
+        ))
+        rows.append(RTICommand(
+            id: "composer.window",
+            title: "Screenshot Window",
+            subtitle: "⌘⇧J",
+            keywords: ["window", "ocr", "capture", "screenshot", "frontmost", "focused"],
+            perform: { ScreenshotManager.shared.captureFocusedWindowAndAttach() }
         ))
         rows += RecapDepth.allCases.map { depth in
             RTICommand(

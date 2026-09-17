@@ -12,7 +12,7 @@ final class AssistantActionTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, ids.count, "ids must be unique")
         XCTAssertEqual(
             Set(ids),
-            ["assist", "answerLatest", "sayNext", "followups", "keyTensions", "probe", "themes", "recap", "summary"]
+            ["assist", "answerLatest", "sayNext", "followups", "keyTensions", "probe", "themes", "recap", "quickRecap", "summary"]
         )
     }
 
@@ -39,6 +39,15 @@ final class AssistantActionTests: XCTestCase {
             XCTAssertEqual(AssistantAction.byID(id)?.hotkey?.display, hint, "hotkey for \(id)")
         }
         XCTAssertNil(AssistantAction.byID("assist")?.hotkey, "assist has no standalone hotkey")
+        XCTAssertNil(AssistantAction.byID("quickRecap")?.hotkey, "quick recap rides the ⌘⏎ primary bind")
+    }
+
+    func test_quickRecap_isTheShippedPrimaryAction() {
+        // The default ⌘⏎ binding is Quick recap (5 minutes, brief), not Assist.
+        let quick = AssistantAction.byID("quickRecap")
+        XCTAssertEqual(quick?.label, "Quick recap")
+        XCTAssertEqual(quick?.paletteTitle, "Quick Recap (last 5 min)")
+        XCTAssertTrue(quick?.primaryEligible ?? false)
     }
 
     func test_visibilityGates() {
@@ -52,6 +61,25 @@ final class AssistantActionTests: XCTestCase {
         XCTAssertEqual(AssistantAction.byID("sayNext")?.listenerOnly, false)
         XCTAssertNil(AssistantAction.byID("assist")?.listenerOnly)
         XCTAssertNil(AssistantAction.byID("recap")?.modes)
+    }
+
+    // MARK: - Primary-action migration
+
+    func test_migration_movesOnlyTheOldShippedDefaults() {
+        let quick = PrimaryActionMigration.quickRecapID
+        XCTAssertEqual(PrimaryActionMigration.resolve(stored: nil, alreadyMigrated: false), quick)
+        XCTAssertEqual(PrimaryActionMigration.resolve(stored: "assist", alreadyMigrated: false), quick)
+        XCTAssertEqual(PrimaryActionMigration.resolve(stored: "answerLatest", alreadyMigrated: false), quick)
+        // An explicit choice of anything else is kept.
+        XCTAssertEqual(PrimaryActionMigration.resolve(stored: "recap", alreadyMigrated: false), "recap")
+        XCTAssertEqual(PrimaryActionMigration.resolve(stored: "summary", alreadyMigrated: false), "summary")
+    }
+
+    func test_migration_runsOnceAndNeverRevertsALaterChoice() {
+        let quick = PrimaryActionMigration.quickRecapID
+        XCTAssertEqual(PrimaryActionMigration.resolve(stored: "assist", alreadyMigrated: true), "assist")
+        XCTAssertEqual(PrimaryActionMigration.resolve(stored: "answerLatest", alreadyMigrated: true), "answerLatest")
+        XCTAssertEqual(PrimaryActionMigration.resolve(stored: nil, alreadyMigrated: true), quick)
     }
 
     func test_primaryEligible_allInOrder() {

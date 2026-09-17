@@ -233,6 +233,7 @@ struct AddContextRow: Identifiable, Equatable {
         case attachFile
         case vaultFile
         case readScreen
+        case readWindow
         case searchScope
         case noteMode
         /// On the scope page: the whole vault, or one project or client.

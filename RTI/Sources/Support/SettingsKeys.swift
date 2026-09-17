@@ -169,6 +169,9 @@ enum LLMSettingsDefaults {
     static let activeProviderIdKey = "rti.llm.activeProviderId"
     static let smartModeKey = "rti.llm.smartMode"
     static let primaryActionKey = "rti.llm.primaryAction"
+    /// One-time flag: the shipped ⌘⏎ action became Quick recap on 2026-09-17,
+    /// so an old Assist / Answer latest default is moved once.
+    static let primaryQuickRecapMigrationKey = "rti.llm.primaryQuickRecapMigrated"
     static let listenerModeKey = "rti.llm.listenerMode"
     static let recapDepthKey = "rti.llm.recapDepth"
 }

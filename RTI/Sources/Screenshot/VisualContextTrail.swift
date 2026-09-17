@@ -105,8 +105,9 @@ final class VisualContextTrail {
         )
     }
 
-    /// A ⌘⇧H / `capture_screen` capture made while a session is live: give it
-    /// a home in the trail so its frame and vision summary reach the archive.
+    /// A screen or window screenshot (`capture_screen`, ⌘⇧H, ⌘⇧J) made while a
+    /// session is live: give it a home in the trail so its frame and vision
+    /// summary reach the archive.
     /// `lastCapturedText` is deliberately untouched — a manual capture must
     /// not suppress the next ambient sample.
     func recordExternalCapture(

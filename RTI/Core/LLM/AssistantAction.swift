@@ -141,6 +141,12 @@ public extension AssistantAction {
             listenerOnly: true, modes: [.interview, .meeting, .other]
         ),
         AssistantAction(
+            id: "quickRecap", label: "Quick recap",
+            paletteTitle: "Quick Recap (last 5 min)",
+            symbol: "clock.arrow.circlepath",
+            keywords: ["recap", "summary", "recent", "quick", "catch up", "five minutes"]
+        ),
+        AssistantAction(
             id: "recap", label: "Recap",
             paletteTitle: "Recap so far",
             symbol: "arrow.clockwise",
@@ -164,5 +170,25 @@ public extension AssistantAction {
     /// Actions eligible to be bound to ⌘⏎, in catalogue order.
     static var primaryEligibleActions: [AssistantAction] {
         all.filter(\.primaryEligible)
+    }
+}
+
+/// The one-time move of the shipped ⌘⏎ primary action to Quick recap
+/// (2026-09-17). Pure so the rule is testable without the app or
+/// `UserDefaults`: `LLMController.init` supplies the stored value and the
+/// migration flag, and persists the result.
+public enum PrimaryActionMigration {
+    public static let quickRecapID = "quickRecap"
+
+    /// The action to bind. Before the migration runs, the old shipped defaults
+    /// (Assist, Answer latest, or nothing stored) move to Quick recap; any
+    /// other explicit choice is kept. Once the migration has run, the stored
+    /// value always wins — including a later deliberate Assist bind.
+    public static func resolve(stored: String?, alreadyMigrated: Bool) -> String {
+        guard !alreadyMigrated else { return stored ?? quickRecapID }
+        guard let stored, stored != "assist", stored != "answerLatest" else {
+            return quickRecapID
+        }
+        return stored
     }
 }

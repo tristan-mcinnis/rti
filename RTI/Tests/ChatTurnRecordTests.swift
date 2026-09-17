@@ -87,7 +87,7 @@ final class ChatTurnRecordTests: XCTestCase {
         XCTAssertEqual(ChatTurnRecordBuilder.cannedAction(for: "Recap")?.symbol, "arrow.clockwise")
         XCTAssertEqual(ChatTurnRecordBuilder.cannedAction(for: "Summary")?.symbol, "doc.text")
         XCTAssertEqual(ChatTurnRecordBuilder.cannedAction(for: "Answer latest")?.label, "Answer latest")
-        for action in ["Assist", "Answer latest", "Say next", "Follow-ups", "Key tensions", "Probe", "Themes", "Recap", "Summary"] {
+        for action in ["Assist", "Answer latest", "Say next", "Follow-ups", "Key tensions", "Probe", "Themes", "Recap", "Quick recap", "Summary"] {
             XCTAssertNotNil(ChatTurnRecordBuilder.cannedAction(for: action), action)
         }
     }
