@@ -54,6 +54,7 @@ struct CommandPaletteView: View {
                 ChooserSearchField(
                     text: $query,
                     focusToken: focusToken,
+                    placeholder: "Search actions",
                     onMove: { delta in move(delta, count: rows.count) },
                     onSubmit: { run(at: selection, in: rows) },
                     onClose: onClose

@@ -281,6 +281,8 @@ struct AddContextPane: View {
     let onMove: (Int) -> Void
     let onSubmit: () -> Void
     let onClose: () -> Void
+    /// `⌘K` while the field has the keys; the surface decides what it means.
+    var onCommandK: (() -> Void)? = nil
     let onActivate: (AddContextRow) -> Void
 
     var body: some View {
@@ -299,7 +301,8 @@ struct AddContextPane: View {
                     placeholder: searchPlaceholder,
                     onMove: onMove,
                     onSubmit: onSubmit,
-                    onClose: onClose
+                    onClose: onClose,
+                    onCommandK: onCommandK
                 )
             }
             .padding(.horizontal, House.Spacing.lg)
@@ -365,6 +368,9 @@ struct ChooserSearchField: NSViewRepresentable {
     var onMove: (Int) -> Void
     var onSubmit: () -> Void
     var onClose: () -> Void
+    /// `⌘K` while the field has the keys. Defaults to `onClose`, which is
+    /// right for the palette; Add Context closes itself and opens the palette.
+    var onCommandK: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -385,13 +391,13 @@ struct ChooserSearchField: NSViewRepresentable {
         field.setAccessibilityLabel(placeholder)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        field.onCommandK = onClose
+        field.onCommandK = onCommandK ?? onClose
         return field
     }
 
     func updateNSView(_ field: ChooserSearchTextField, context: Context) {
         context.coordinator.parent = self
-        field.onCommandK = onClose
+        field.onCommandK = onCommandK ?? onClose
         // Never write over marked text: that would break pinyin input.
         let isComposing = (field.currentEditor() as? NSTextView)?.hasMarkedText() ?? false
         if field.stringValue != text, !isComposing {
@@ -423,7 +429,7 @@ struct ChooserSearchField: NSViewRepresentable {
         }
 
         /// The field editor asks before it acts on a command selector. The
-        /// palette owns the arrows and Return; everything else is the text
+        /// chooser owns the arrows and Return; everything else is the text
         /// system's.
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             guard !textView.hasMarkedText() else { return false }
@@ -446,12 +452,12 @@ struct ChooserSearchField: NSViewRepresentable {
         }
     }
 
-    /// `⌘K` closes the palette. While the field is being edited the first
-    /// responder is the field editor, not this field, so `keyDown` never sees
-    /// it; a command chord travels as a key equivalent through the view
-    /// hierarchy instead, which reaches this field either way. Return and the
-    /// arrows are command selectors and go through the delegate; Esc is
-    /// `cancelOperation:` and takes the same route.
+    /// `⌘K` closes the chooser (the palette, or Add Context). While the field
+    /// is being edited the first responder is the field editor, not this
+    /// field, so `keyDown` never sees it; a command chord travels as a key
+    /// equivalent through the view hierarchy instead, which reaches this field
+    /// either way. Return and the arrows are command selectors and go through
+    /// the delegate; Esc is `cancelOperation:` and takes the same route.
     final class ChooserSearchTextField: NSTextField {
         var onCommandK: (() -> Void)?
 
