@@ -91,7 +91,7 @@ struct AttachmentChipModel: Identifiable, Equatable {
         case .vaultFile: "Vault file"
         case .pdf: "PDF"
         case .text: "Text file"
-        case .screen: "Screen text"
+        case .screen: "Screenshot"
         }
     }
 

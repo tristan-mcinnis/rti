@@ -55,7 +55,14 @@ public enum VisualFrameStore {
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
-        let name = frameFilename(offsetSeconds: offsetSeconds, trigger: trigger)
+        // Two captures in the same second with the same trigger must not
+        // overwrite each other, so probe for a free name instead of trusting
+        // the random suffix.
+        var name = ""
+        for _ in 0..<8 {
+            name = frameFilename(offsetSeconds: offsetSeconds, trigger: trigger)
+            if !manager.fileExists(atPath: stagingDirectory.appendingPathComponent(name).path) { break }
+        }
         let url = stagingDirectory.appendingPathComponent(name)
         try data.write(to: url, options: [.atomic])
         try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
