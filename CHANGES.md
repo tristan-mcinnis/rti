@@ -1,5 +1,21 @@
 # RTI Change Log
 
+## 2026-09-17: Add Context gets its own search
+
+The attachment menu now takes the keyboard when it opens and filters as you
+type, the way the `⌘K` palette and Quick Launch's Attach pane already do.
+
+- The floating search field moved out of the palette into one house component
+  (`ChooserSearchField`), so the palette and Add Context share the same field,
+  the same focus handling, and the same key routing.
+- Typing narrows the rows by fuzzy match on the title and the row's detail:
+  `ss` keeps "Screenshot Screen", `win` keeps "Screenshot Window", `note`
+  keeps "Note Mode". ↑↓ and ↩ act on the filtered list, and the highlight
+  always indexes what is drawn.
+- The Search Scope page keeps its own search; going back clears it and puts
+  the keys back in the field.
+- `esc` closes the pane, or goes back from the scope page, as before.
+
 ## 2026-09-17: Screenshots are visible, kept, and read by the model alone
 
 - The composer shows an attached screenshot as a thumbnail chip: the capture

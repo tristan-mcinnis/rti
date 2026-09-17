@@ -18,7 +18,7 @@ Personal build: **real-time first, vault-backed** — the live transcript and ch
 - **Modes.** Built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text. Stored as a small JSON file.
 
 - **Saved sessions.** Rounded document selectors and a readable content column use the shared House design. Play, pause, and seek retained microphone and system audio together. Copy the current document, open the macOS share picker, or move an RTI archive to Trash after confirmation. Deleting an archive leaves canonical meeting notes intact; legacy meeting files cannot be deleted here.
-- **House chat controls.** Open attachments with ⌘⇧A and fuzzy-search commands with ⌘K. Pin becomes Unpin when appropriate. Attachments show Reading or an error before sending; a failed read preserves the draft. Images are read with local OCR, and removed attachments cannot reappear when a late read finishes.
+- **House chat controls.** Open attachments with ⌘⇧A and fuzzy-search commands with ⌘K. The attachment menu carries its own search too: it takes the keyboard on open and filters the rows as you type. Pin becomes Unpin when appropriate. Attachments show Reading or an error before sending; a failed read preserves the draft. Images are read on-device and sent to the model when it takes image input, and removed attachments cannot reappear when a late read finishes.
 
 Configuration lives in Application Support and the credential store. Saved Markdown, per-turn logs, retained audio (`audio-mic.wav` / `audio-system.wav`), and optional local screen frames live in the vault. Audio supports playback and **Upgrade Transcript**. See **Where everything goes** below for the exact paths.
 

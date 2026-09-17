@@ -343,6 +343,12 @@ struct AssistantInputView: View {
     @State private var paletteQuery = ""
     @State private var isAddContextOpen: Bool
     @State private var addContextPage: AddContextPage
+    /// The Add Context pane's own search. Typing there narrows the rows and
+    /// never touches the draft.
+    @State private var addContextQuery = ""
+    /// Bumped to put the keys in the pane's search field when it opens or
+    /// changes page.
+    @State private var addContextFocusToken = 0
     @State private var scopeItems: [ScopeItem] = []
     /// `esc` closed the `@` or `/` chooser for this exact draft; typing
     /// brings it back.
@@ -538,6 +544,7 @@ struct AssistantInputView: View {
             refreshMentionSuggestions()
         }
         .onChange(of: inputState.focusRequest) { _, _ in focusField() }
+        .onChange(of: addContextQuery) { _, _ in chooserIndex = 0 }
         .onChange(of: inputState.paletteRequest) { _, _ in openPalette() }
         .onChange(of: input) { _, newValue in
             chooserIndex = 0
@@ -771,9 +778,12 @@ struct AssistantInputView: View {
         case .addContext:
             if addContextPage == .scope {
                 addContextPage = .root
+                addContextQuery = ""
                 chooserIndex = 0
+                addContextFocusToken &+= 1
             } else {
                 isAddContextOpen = false
+                focusField()
             }
         case .mention, .slash:
             dismissedChooserDraft = input
@@ -785,14 +795,18 @@ struct AssistantInputView: View {
     private func toggleAddContext() {
         if isAddContextOpen {
             isAddContextOpen = false
+            focusField()
         } else {
             isPaletteOpen = false
             focusedChipID = nil
             addContextPage = .root
+            addContextQuery = ""
             chooserIndex = 0
             isAddContextOpen = true
+            // The pane's search field takes the keyboard; the composer keeps
+            // its draft untouched behind it.
+            addContextFocusToken &+= 1
         }
-        focusField()
     }
 
     private func togglePalette() {
@@ -815,7 +829,7 @@ struct AssistantInputView: View {
         switch layer {
         case .mention: count = visibleMentionCandidates.count
         case .slash: count = visibleSlashCommands.count
-        case .addContext: count = addContextRows.count
+        case .addContext: count = visibleAddContextRows.count
         case .palette, .none: count = 0
         }
         guard count > 0 else { return }
@@ -832,7 +846,7 @@ struct AssistantInputView: View {
                 performSlashCommand(command.id)
             }
         case .addContext:
-            if let row = addContextRows[safe: chooserIndex] { activate(row) }
+            if let row = visibleAddContextRows[safe: chooserIndex] { activate(row) }
         case .palette, .none:
             break
         }
@@ -862,11 +876,17 @@ struct AssistantInputView: View {
         case .addContext:
             HouseFloatingChooser {
                 AddContextPane(
-                    rows: addContextRows,
+                    rows: visibleAddContextRows,
                     selectedIndex: chooserIndex,
+                    query: $addContextQuery,
+                    focusToken: addContextFocusToken,
                     title: addContextPage == .scope ? "Search Scope" : "Add Context",
                     isSubpage: addContextPage == .scope,
                     footnote: addContextPage == .root ? contextFootnote : nil,
+                    searchPlaceholder: addContextPage == .scope ? "Search scopes" : "Search attachments",
+                    onMove: { moveChooser($0) },
+                    onSubmit: { acceptChooser() },
+                    onClose: { closeLayer() },
                     onActivate: activate
                 )
             }
@@ -938,6 +958,33 @@ struct AssistantInputView: View {
         }
     }
 
+    /// The rows after the pane's own search filter, best match first. Typing
+    /// there narrows this list; the composer draft is never touched. The
+    /// highlight always indexes this list, so the keys and the drawn rows
+    /// agree.
+    private var visibleAddContextRows: [AddContextRow] {
+        Self.rankAddContext(addContextRows, query: addContextQuery)
+    }
+
+    /// Ranked the way every house chooser ranks: title first, then the row's
+    /// own detail as keywords, with the same fuzzy scorer the `⌘K` palette
+    /// uses. A row that does not match is dropped.
+    private static func rankAddContext(_ rows: [AddContextRow], query: String) -> [AddContextRow] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return rows }
+        return rows.enumerated()
+            .compactMap { index, row -> (AddContextRow, Int, Int)? in
+                guard let score = CommandRegistry.matchScore(
+                    query: needle,
+                    title: row.title,
+                    keywords: [row.detail]
+                ) else { return nil }
+                return (row, score, index)
+            }
+            .sorted { $0.1 == $1.1 ? $0.2 < $1.2 : $0.1 > $1.1 }
+            .map(\.0)
+    }
+
     /// "Next answer uses: Live transcript, Northwind app, Glossary".
     private var contextFootnote: String? {
         let labels = llm.contextPreviewLabels().filter { $0 != "Screen OCR" }
@@ -970,7 +1017,9 @@ struct AssistantInputView: View {
         case .searchScope:
             scopeItems = Self.loadScopeItems()
             addContextPage = .scope
+            addContextQuery = ""
             chooserIndex = 0
+            addContextFocusToken &+= 1
             return
         case .noteMode:
             isAddContextOpen = false

@@ -258,16 +258,29 @@ struct AddContextRow: Identifiable, Equatable {
 }
 
 /// Add Context: attach a file, a vault file, one read of the screen, the
-/// vault search scope, and note mode. Opened by the plus circle. The scope
-/// row opens a second page of projects and clients; `esc` goes back.
+/// vault search scope, and note mode. Opened by the plus circle. The pane
+/// carries its own search, as every house chooser does: it takes the keyboard
+/// when it opens, so typing narrows the rows instead of reaching the composer
+/// behind it. The scope row opens a second page of projects and clients;
+/// `esc` goes back.
 struct AddContextPane: View {
     let rows: [AddContextRow]
     let selectedIndex: Int
+    /// The pane's own search, kept by the surface so it survives a redraw and
+    /// can be cleared when the page changes.
+    @Binding var query: String
+    /// Bumped when the pane opens or changes page, to put the keys in the field.
+    var focusToken: Int
     /// "Search Scope" on the scope page.
     var title = "Add Context"
     var isSubpage = false
     /// What the next answer can use, in one quiet line at the foot.
     var footnote: String? = nil
+    /// "Search attachments" or "Search scopes".
+    var searchPlaceholder = "Search"
+    let onMove: (Int) -> Void
+    let onSubmit: () -> Void
+    let onClose: () -> Void
     let onActivate: (AddContextRow) -> Void
 
     var body: some View {
@@ -275,22 +288,47 @@ struct AddContextPane: View {
             ChooserHeader(title: title, hints: [
                 ("Move", ["↑", "↓"]), ("Add", ["↩"]), (isSubpage ? "Back" : "Close", ["esc"]),
             ])
-            ChooserList(items: rows, selectedIndex: selectedIndex) { index, row in
-                ChooserRow(
-                    symbol: row.symbol,
-                    title: row.title,
-                    detail: row.detail,
-                    isSelected: index == selectedIndex
-                ) {
-                    onActivate(row)
-                } trailing: {
-                    if row.isCurrent {
-                        Image(systemName: "checkmark")
-                            .font(House.TypeToken.meta)
-                            .foregroundStyle(House.ColorToken.textPrimary)
-                            .accessibilityLabel("Current")
-                    } else if !row.keys.isEmpty {
-                        KeyCapGroup(keys: row.keys)
+            HStack(spacing: House.Spacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .accessibilityHidden(true)
+                ChooserSearchField(
+                    text: $query,
+                    focusToken: focusToken,
+                    placeholder: searchPlaceholder,
+                    onMove: onMove,
+                    onSubmit: onSubmit,
+                    onClose: onClose
+                )
+            }
+            .padding(.horizontal, House.Spacing.lg)
+            .frame(height: House.Control.row)
+            if rows.isEmpty {
+                Text("No matches")
+                    .font(House.TypeToken.bodySmall)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: House.Control.row)
+                    .padding(.horizontal, House.Spacing.lg)
+            } else {
+                ChooserList(items: rows, selectedIndex: selectedIndex) { index, row in
+                    ChooserRow(
+                        symbol: row.symbol,
+                        title: row.title,
+                        detail: row.detail,
+                        isSelected: index == selectedIndex
+                    ) {
+                        onActivate(row)
+                    } trailing: {
+                        if row.isCurrent {
+                            Image(systemName: "checkmark")
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.textPrimary)
+                                .accessibilityLabel("Current")
+                        } else if !row.keys.isEmpty {
+                            KeyCapGroup(keys: row.keys)
+                        }
                     }
                 }
             }
@@ -306,5 +344,134 @@ struct AddContextPane: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
+    }
+}
+
+// MARK: - Search field
+
+/// A chooser's search field (the `⌘K` palette, Add Context). A SwiftUI
+/// `TextField` cannot serve here: its field editor consumes the arrow keys
+/// (`moveUp:` / `moveDown:`) before SwiftUI's `.onKeyPress` or
+/// `.onMoveCommand` can see them, so `↑↓` never moved the list. This is the
+/// same AppKit-with-a-router shape as the composer's `ComposerTextView`: the
+/// two arrows and Return are routed, and every other key, including IME
+/// composition, goes to the text system.
+struct ChooserSearchField: NSViewRepresentable {
+    @Binding var text: String
+    /// Bumped once, after the palette appears, to put the keys in the field.
+    var focusToken: Int
+    /// The placeholder and the accessibility label.
+    var placeholder: String = "Search"
+    var onMove: (Int) -> Void
+    var onSubmit: () -> Void
+    var onClose: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> ChooserSearchTextField {
+        let field = ChooserSearchTextField()
+        field.delegate = context.coordinator
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.isEditable = true
+        field.isSelectable = true
+        field.lineBreakMode = .byTruncatingTail
+        field.font = .systemFont(ofSize: House.TypeToken.Size.bodySmall)
+        field.textColor = House.NSColorToken.textPrimary
+        field.placeholderString = placeholder
+        field.setAccessibilityLabel(placeholder)
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.onCommandK = onClose
+        return field
+    }
+
+    func updateNSView(_ field: ChooserSearchTextField, context: Context) {
+        context.coordinator.parent = self
+        field.onCommandK = onClose
+        // Never write over marked text: that would break pinyin input.
+        let isComposing = (field.currentEditor() as? NSTextView)?.hasMarkedText() ?? false
+        if field.stringValue != text, !isComposing {
+            field.stringValue = text
+        }
+        if context.coordinator.focusToken != focusToken {
+            context.coordinator.focusToken = focusToken
+            if focusToken > 0 {
+                // One hop, so the field is in the window before it is focused.
+                DispatchQueue.main.async { [weak field] in
+                    guard let field, let window = field.window else { return }
+                    window.makeFirstResponder(field)
+                }
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: ChooserSearchField
+        var focusToken = 0
+
+        init(_ parent: ChooserSearchField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            parent.text = field.stringValue
+        }
+
+        /// The field editor asks before it acts on a command selector. The
+        /// palette owns the arrows and Return; everything else is the text
+        /// system's.
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard !textView.hasMarkedText() else { return false }
+            switch commandSelector {
+            case #selector(NSResponder.moveDown(_:)):
+                parent.onMove(1)
+                return true
+            case #selector(NSResponder.moveUp(_:)):
+                parent.onMove(-1)
+                return true
+            case #selector(NSResponder.insertNewline(_:)):
+                parent.onSubmit()
+                return true
+            case #selector(NSResponder.cancelOperation(_:)):
+                parent.onClose()
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    /// `⌘K` closes the palette. While the field is being edited the first
+    /// responder is the field editor, not this field, so `keyDown` never sees
+    /// it; a command chord travels as a key equivalent through the view
+    /// hierarchy instead, which reaches this field either way. Return and the
+    /// arrows are command selectors and go through the delegate; Esc is
+    /// `cancelOperation:` and takes the same route.
+    final class ChooserSearchTextField: NSTextField {
+        var onCommandK: (() -> Void)?
+
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            if event.type == .keyDown,
+               event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "k" {
+                onCommandK?()
+                return true
+            }
+            return super.performKeyEquivalent(with: event)
+        }
+
+        override func keyDown(with event: NSEvent) {
+            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "k" {
+                onCommandK?()
+                return
+            }
+            super.keyDown(with: event)
+        }
     }
 }
