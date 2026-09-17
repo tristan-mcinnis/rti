@@ -506,7 +506,7 @@ struct AssistantInputView: View {
         }
         .fileImporter(
             isPresented: $fileImporterPresented,
-            allowedContentTypes: [.pdf, .plainText, .utf8PlainText, .text,
+            allowedContentTypes: [.pdf, .plainText, .utf8PlainText, .text, .image,
                                   UTType(filenameExtension: "md") ?? .plainText,
                                   UTType(filenameExtension: "markdown") ?? .plainText],
             allowsMultipleSelection: true,
@@ -903,13 +903,13 @@ struct AssistantInputView: View {
             let scope = MeetingContextStore.shared.workstreamName ?? "Whole vault"
             return [
                 AddContextRow(kind: .attachFile, symbol: "paperclip", title: "Attach File…",
-                              detail: "PDF, Markdown, or text, for the next question"),
+                              detail: "PDF, Markdown, text, or an image, for the next question"),
                 AddContextRow(kind: .vaultFile, symbol: "at", title: "Vault File",
                               detail: "Type @ and the vault list filters as you type"),
                 AddContextRow(kind: .readScreen, symbol: "camera.viewfinder", title: "Screenshot Screen",
-                              detail: "The whole screen; text and layout read on this Mac", keys: ["⌘", "⇧", "H"]),
+                              detail: "Whole screen; the image goes to the model, text is read here", keys: ["⌘", "⇧", "H"]),
                 AddContextRow(kind: .readWindow, symbol: "macwindow", title: "Screenshot Window",
-                              detail: "The frontmost window; text and layout read on this Mac", keys: ["⌘", "⇧", "J"]),
+                              detail: "Frontmost window; the image goes to the model, text is read here", keys: ["⌘", "⇧", "J"]),
                 AddContextRow(kind: .searchScope, symbol: "scope", title: "Search Scope", detail: scope),
                 AddContextRow(
                     kind: .noteMode,
@@ -1136,7 +1136,10 @@ struct AssistantInputView: View {
 
     private func handleFileImport(_ result: Result<[URL], Error>) {
         guard case let .success(urls) = result else { return }
-        urls.forEach(addDocument)
+        // `dropFile` routes an image to the screenshot lane and everything else
+        // to the document lane, so picking a saved screenshot here behaves the
+        // same as dropping it on the composer.
+        urls.forEach(dropFile)
     }
 
     /// Reads the file off the main thread; the chip says "Reading…" until

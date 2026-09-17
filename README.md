@@ -13,7 +13,7 @@ Personal build: **real-time first, vault-backed** — the live transcript and ch
 - **Sole meeting recorder.** RTI is the only meeting-capture tool on this machine (Meeting Sentinel was deleted 2026-08-28). ⌘⇧R starts and finishes every recording; RTI never auto-records.
 - **Real-time analysis tabs.** Optional overlay tabs generate live meeting **Notes**, track coverage of an imported **Discussion Guide**, and collect tagged **Findings** — all held in memory and refreshed on a timer. Toggle each in the **Setup** tab; jump to them with ⌘⌥3 / ⌘⌥4 / ⌘⌥5.
 - **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers. **Off by default** (VPIO delivers silent buffers on some Macs, verified 2026-06-09 — silent mic kills transcription); toggle in Settings → General if your setup needs it. The mic is fully released when a session stops, so it won't block other apps.
-- **Smart Screenshot.** ⌘⇧H reads the whole screen; ⌘⇧J reads the frontmost window (never RTI's own, never an app on the Screen Privacy list). Both run Vision OCR on-device, attach the text to your next prompt, and add a local vision-model description when that lane is on. The image is discarded.
+- **Smart Screenshot.** ⌘⇧H reads the whole screen; ⌘⇧J reads the frontmost window (never RTI's own, never an app on the Screen Privacy list). Both run Vision OCR on-device, add a local vision-model description when that lane is on, and attach the screenshot itself to your next prompt when the active model takes image input (`deepseek-flash` does). Without image input on the active provider, only the OCR text is sent.
 - **Translation.** Optional live translation alongside the transcript (one-way or two-way), in the Live Transcript window.
 - **Modes.** Built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text. Stored as a small JSON file.
 
@@ -111,7 +111,7 @@ Source of truth is `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift` (
 | ⌘ K | Open the command palette; type to fuzzy-search commands |
 | ⌘ ⌥ 0–5 | Jump to a tab — 0 Setup · 1 Assist · 2 Transcript · 3 Notes · 4 Guide · 5 Findings |
 
-The ✦ menu shows the **mode-aware** action set: in a meeting you get Quick recap / Assist / Say next / Follow-ups; sitting in on fieldwork (Interview + Listener) you get Quick recap / Assist / Follow-ups / **Key tensions** / **What's unsaid** / **Emerging themes** instead of "what should I say". You can drop an image onto the composer — it's OCR'd on-device and attached as text (no image is sent to the model).
+The ✦ menu shows the **mode-aware** action set: in a meeting you get Quick recap / Assist / Say next / Follow-ups; sitting in on fieldwork (Interview + Listener) you get Quick recap / Assist / Follow-ups / **Key tensions** / **What's unsaid** / **Emerging themes** instead of "what should I say". You can drop an image onto the composer — it's OCR'd on-device, described locally, and sent to the model as an image when the active model takes image input.
 
 ## Capturing both sides of a call
 

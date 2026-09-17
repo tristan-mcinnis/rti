@@ -9,6 +9,7 @@ final class AssistantTurnBuilderTests: XCTestCase {
         scope: String? = nil,
         hasWorkstream: Bool = false,
         listenerMode: Bool = false,
+        screenImage: LLMImage? = nil,
         referencedDocumentsText: String? = nil
     ) -> AssistantTurnBuilder.Output {
         AssistantTurnBuilder.build(.init(
@@ -33,6 +34,7 @@ final class AssistantTurnBuilderTests: XCTestCase {
             referenceText: "Reference",
             referenceModeName: "Mode",
             screenContext: nil,
+            screenImage: screenImage,
             referencedDocumentsText: referencedDocumentsText,
             existingEntries: []
         ))
@@ -58,6 +60,16 @@ final class AssistantTurnBuilderTests: XCTestCase {
         XCTAssertFalse(labelled.contains("last 15 minutes"))
         let standard = build(transcript: "x", transcriptWindowMinutes: 15).apiMessages.last?.content ?? ""
         XCTAssertTrue(standard.contains("last 15 minutes"))
+    }
+
+    func testScreenImageRidesTheLatestUserMessage() {
+        let image = LLMImage(jpegData: Data([0x01]))
+        let output = build(transcript: "Client: hello", screenImage: image)
+        let latest = output.apiMessages.last
+        XCTAssertEqual(latest?.role, "user")
+        XCTAssertEqual(latest?.images?.count, 1)
+        // The system messages never carry the image.
+        XCTAssertTrue(output.apiMessages.filter { $0.role == "system" }.allSatisfy { ($0.images?.isEmpty ?? true) })
     }
 
     func testGuideCoverageOnlyAddedForGuideAwareActions() {

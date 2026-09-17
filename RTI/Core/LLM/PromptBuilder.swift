@@ -173,14 +173,21 @@ public enum PromptBuilder {
     /// context prepended (fullContent) while prior turns use their raw text.
     public static func buildConversationMessages(
         entries: [ChatEntry],
-        fullContent: String
+        fullContent: String,
+        images: [LLMImage] = []
     ) -> [LLMMessage] {
         var msgs: [LLMMessage] = []
         for (idx, entry) in entries.enumerated() {
             let isLatestUser = idx == entries.count - 1 && entry.role == "user"
             let content = isLatestUser ? fullContent : entry.text
             if content.isEmpty, !isLatestUser { continue }
-            msgs.append(LLMMessage(role: entry.role, content: content))
+            // Providers take images in user messages only, so they ride the
+            // latest turn rather than a system-context message.
+            msgs.append(LLMMessage(
+                role: entry.role,
+                content: content,
+                images: isLatestUser ? images : []
+            ))
         }
         return msgs
     }

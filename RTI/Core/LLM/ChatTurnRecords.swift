@@ -16,7 +16,8 @@ public struct ChatAttachmentRef: Hashable, Sendable {
         case pdf
         /// A plain text or Markdown file attached from disk.
         case text
-        /// One on-device OCR read of the screen. No image is kept.
+        /// One screen or window read: OCR text, and the image itself when the
+        /// model takes image input. Nothing is retained in the record.
         case screen
 
         /// The chip's kind glyph (chat-surfaces.md section 4).

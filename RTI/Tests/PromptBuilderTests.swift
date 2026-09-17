@@ -1,3 +1,4 @@
+import Foundation
 import RTICore
 import XCTest
 
@@ -102,5 +103,48 @@ final class PromptBuilderTests: XCTestCase {
         let msgs = PromptBuilder.buildConversationMessages(entries: entries, fullContent: "FULL")
         // The empty assistant entry is dropped; the latest user gets fullContent.
         XCTAssertEqual(msgs.map(\.content), ["FULL"])
+    }
+
+    func test_conversation_attachesImagesToLatestUserTurnOnly() {
+        let image = LLMImage(jpegData: Data([0x01, 0x02]))
+        let entries = [entry("user", "first"), entry("assistant", "reply"), entry("user", "raw latest")]
+        let msgs = PromptBuilder.buildConversationMessages(
+            entries: entries,
+            fullContent: "AUGMENTED",
+            images: [image]
+        )
+        XCTAssertEqual(msgs[0].images?.count ?? 0, 0)
+        XCTAssertEqual(msgs[1].images?.count ?? 0, 0)
+        XCTAssertEqual(msgs[2].images?.count, 1)
+    }
+
+    // MARK: - Wire shape
+
+    func test_wireMessage_plainTextEncodesContentAsString() throws {
+        let json = try encodedJSON(LLMMessage(role: "user", content: "hello"))
+        XCTAssertEqual(json["content"] as? String, "hello")
+    }
+
+    func test_wireMessage_withImageEncodesContentAsBlocks() throws {
+        // Providers take images in USER messages as OpenAI content blocks: a
+        // text block, then one `image_url` with an inline data URL. A plain
+        // message must stay a bare string so the tool paths and other
+        // providers keep working.
+        let image = LLMImage(jpegData: Data([0xAA, 0xBB]))
+        let json = try encodedJSON(LLMMessage(role: "user", content: "look", images: [image]))
+        let blocks = try XCTUnwrap(json["content"] as? [[String: Any]])
+        XCTAssertEqual(blocks.count, 2)
+        XCTAssertEqual(blocks[0]["type"] as? String, "text")
+        XCTAssertEqual(blocks[0]["text"] as? String, "look")
+        XCTAssertEqual(blocks[1]["type"] as? String, "image_url")
+        let url = try XCTUnwrap(blocks[1]["image_url"] as? [String: Any])
+        XCTAssertTrue((url["url"] as? String)?.hasPrefix("data:image/jpeg;base64,") ?? false)
+        // The image must not leak as a separate top-level key.
+        XCTAssertNil(json["images"])
+    }
+
+    private func encodedJSON(_ message: LLMMessage) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(message)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 }

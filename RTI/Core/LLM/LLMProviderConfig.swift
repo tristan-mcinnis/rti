@@ -13,6 +13,10 @@ public struct LLMProviderConfig: Sendable {
     /// extension on the chat-completions request. Disabled providers
     /// silently skip the field so smart mode degrades to a normal completion.
     public let supportsThinking: Bool
+    /// True when the provider accepts OpenAI-style image content blocks on a
+    /// user message (inline `data:` URL). When false, screenshots stay
+    /// text-only (OCR + local vision description).
+    public let supportsVision: Bool
     /// Closure resolved at call time so a key change in Settings is picked up
     /// without re-instantiating the client.
     public let apiKey: @Sendable () -> String
@@ -23,6 +27,7 @@ public struct LLMProviderConfig: Sendable {
         baseURL: URL,
         model: String,
         supportsThinking: Bool,
+        supportsVision: Bool = true,
         apiKey: @escaping @Sendable () -> String
     ) {
         self.id = id
@@ -30,6 +35,7 @@ public struct LLMProviderConfig: Sendable {
         self.baseURL = baseURL
         self.model = model
         self.supportsThinking = supportsThinking
+        self.supportsVision = supportsVision
         self.apiKey = apiKey
     }
 }

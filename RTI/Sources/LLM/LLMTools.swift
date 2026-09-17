@@ -56,7 +56,7 @@ enum LLMToolRegistry {
             "additionalProperties": false
         ],
         execute: { _ in
-            try await ScreenshotManager.shared.captureAndDescribe(trigger: "tool")
+            try await ScreenshotManager.shared.captureAndDescribe(trigger: "tool").text
         },
         runningStatus: "📷 Looking at your screen…"
     )

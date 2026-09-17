@@ -18,6 +18,10 @@ final class LLMController {
     private(set) var lastError: String?
     private(set) var lastErrorIsAuth: Bool = false
     private(set) var pendingScreenContext: String?
+    /// The screenshot behind `pendingScreenContext`, when the capture produced
+    /// one. Sent to the model as an image only when the active provider
+    /// accepts images; otherwise the OCR text carries the turn.
+    private(set) var pendingScreenImage: Data?
     private(set) var screenCaptureStatus: String?
     private var screenAttachmentRequestID: UUID?
     /// The question a provider error belongs to: the thread draws the error
@@ -432,6 +436,7 @@ final class LLMController {
         let requestID = UUID()
         screenAttachmentRequestID = requestID
         pendingScreenContext = nil
+        pendingScreenImage = nil
         screenCaptureStatus = status
         lastError = nil
         lastErrorIsAuth = false
@@ -443,10 +448,11 @@ final class LLMController {
         screenAttachmentRequestID == requestID
     }
 
-    func attachScreenContext(_ text: String, requestID: UUID? = nil) {
+    func attachScreenContext(_ text: String, image: Data? = nil, requestID: UUID? = nil) {
         if let requestID, !isCurrentScreenAttachment(requestID) { return }
         screenAttachmentRequestID = nil
         pendingScreenContext = text
+        pendingScreenImage = image
         screenCaptureStatus = nil
         lastError = nil
         lastErrorIsAuth = false
@@ -456,6 +462,7 @@ final class LLMController {
     func clearPendingScreenContext() {
         screenAttachmentRequestID = nil
         pendingScreenContext = nil
+        pendingScreenImage = nil
         screenCaptureStatus = nil
     }
 
@@ -463,6 +470,7 @@ final class LLMController {
         if let requestID, !isCurrentScreenAttachment(requestID) { return }
         screenAttachmentRequestID = nil
         pendingScreenContext = nil
+        pendingScreenImage = nil
         screenCaptureStatus = message
         lastError = message
         lastErrorIsAuth = false
@@ -620,6 +628,7 @@ final class LLMController {
 
         let transcript = recentTranscriptText(fullWindow: fullTranscript, maxSeconds: transcriptSeconds)
         let manualScreenContext = pendingScreenContext
+        let manualScreenImage = Self.imageForTurn(pendingScreenImage)
         clearPendingScreenContext()
         let ambientScreenContext = SessionCoordinator.shared.isRunning
             ? VisualContextTrail.shared.recentPromptContext()
@@ -662,6 +671,7 @@ final class LLMController {
             referenceText: activeMode?.referenceText,
             referenceModeName: activeMode?.name,
             screenContext: screenUsed ? screenContext : nil,
+            screenImage: manualScreenImage,
             referencedDocumentsText: referencedDocumentsText(referencedDocuments),
             existingEntries: entries
         ))
@@ -1083,6 +1093,13 @@ final class LLMController {
             files: files.map { ChatTurnRecordBuilder.AttachedFile(name: $0.name) },
             screenAttached: false
         )
+    }
+
+    /// The screenshot for this turn, or nil when the active provider cannot
+    /// take image input (then the OCR text is the whole attachment).
+    private static func imageForTurn(_ data: Data?) -> LLMImage? {
+        guard LLMProviders.active.supportsVision, let data, !data.isEmpty else { return nil }
+        return LLMImage(jpegData: data)
     }
 
     /// Minutes of transcript the next turn reads: the same window

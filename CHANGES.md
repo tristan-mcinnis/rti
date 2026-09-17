@@ -1,5 +1,23 @@
 # RTI Change Log
 
+## 2026-09-17: Screenshots go to the model as images
+
+The screen and window captures now send the screenshot itself, not just its
+OCR text, whenever the active model takes image input.
+
+- `deepseek-flash` accepts inline images, so a capture attaches as an OpenAI
+  `image_url` content block on the user turn (inline base64 JPEG). The OCR
+  text and the local vision description still ride along.
+- One provider capability flag gates it: a provider with no image input gets
+  the text-only turn it always got.
+- Images are accepted in user messages only, so the image rides the latest
+  user turn and the system context stays text.
+- A textless screenshot (a chart, a map) now attaches instead of being
+  rejected as empty.
+- Add Context copy no longer claims the image stays on the Mac: it goes to
+  the model. RTI's own windows and the Screen Privacy list are still excluded
+  at capture, so their pixels are never in the image.
+
 ## 2026-09-17: Screenshots as context, and Quick recap as the default
 
 Attach what you are looking at, and make the mid-meeting turn a catch-up.
@@ -7,8 +25,8 @@ Attach what you are looking at, and make the mid-meeting turn a catch-up.
 - **Screenshot Window** (⌘⇧J) reads the frontmost window that is not RTI's own
   and not on the Screen Privacy list, then attaches its OCR text (plus a local
   vision description when the `local_vision` lane is on) to the next turn. The
-  window server's front-to-back order picks the window; the pixels never leave
-  the Mac. Available in Add Context, the ⌘K palette, and the Session menu.
+  window server's front-to-back order picks the window. The image is sent to
+  the model too, per the entry above.
 - **Screenshot Screen** is the existing whole-screen read, renamed from "Read
   Screen Once" so the two live together in Add Context (⌘⇧H, unchanged).
 - **Quick recap** is the shipped ⌘⏎ primary action: the last 5 minutes of

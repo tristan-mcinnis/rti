@@ -11,6 +11,14 @@ struct ActiveDisplayFrame {
     let frameJPEG: Data?
 }
 
+/// One manual capture's result: the OCR/vision text plus the compressed
+/// screenshot itself, so the chat turn can send the image when the active
+/// model takes image input.
+struct ScreenCaptureResult {
+    let text: String
+    let imageJPEG: Data?
+}
+
 @MainActor
 final class ScreenshotManager {
     static let shared = ScreenshotManager()
@@ -49,9 +57,9 @@ final class ScreenshotManager {
         attachmentTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let combined = try await self.captureAndDescribe(trigger: "manual", attachmentRequestID: requestID)
+                let result = try await self.captureAndDescribe(trigger: "manual", attachmentRequestID: requestID)
                 try self.checkAttachmentRequest(requestID)
-                LLMController.shared.attachScreenContext(combined, requestID: requestID)
+                LLMController.shared.attachScreenContext(result.text, image: result.imageJPEG, requestID: requestID)
             } catch is CancellationError {
                 return
             } catch ScreenshotError.empty {
@@ -78,9 +86,9 @@ final class ScreenshotManager {
         attachmentTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let combined = try await self.captureFocusedWindowAndDescribe(attachmentRequestID: requestID)
+                let result = try await self.captureFocusedWindowAndDescribe(attachmentRequestID: requestID)
                 try self.checkAttachmentRequest(requestID)
-                LLMController.shared.attachScreenContext(combined, requestID: requestID)
+                LLMController.shared.attachScreenContext(result.text, image: result.imageJPEG, requestID: requestID)
             } catch is CancellationError {
                 return
             } catch ScreenshotError.noFocusedWindow {
@@ -100,18 +108,18 @@ final class ScreenshotManager {
     }
 
     /// Capture + OCR (+ local vision description when enabled) one window and
-    /// return the combined context string. Throws `ScreenshotError.empty`
-    /// when neither OCR nor the vision model produced anything. The sibling
+    /// return the text and the screenshot itself. Throws `ScreenshotError.empty`
+    /// only when OCR, the vision model, and the image are all empty. The sibling
     /// of `captureAndDescribe()`, scoped to a single window rather than the
     /// whole display.
     func captureFocusedWindowAndDescribe(
         trigger: String = "manual.window",
         attachmentRequestID: UUID? = nil
-    ) async throws -> String {
+    ) async throws -> ScreenCaptureResult {
         try checkAttachmentRequest(attachmentRequestID)
         let visionConfig = visionConfiguration()
         let window = try await captureFocusedWindowWithOCR(
-            includeFrame: visionConfig.enabled,
+            includeFrame: true,
             attachmentRequestID: attachmentRequestID
         )
         try checkAttachmentRequest(attachmentRequestID)
@@ -135,7 +143,7 @@ final class ScreenshotManager {
         }
         try checkAttachmentRequest(attachmentRequestID)
 
-        guard !text.isEmpty || visionSummary != nil else {
+        guard !text.isEmpty || visionSummary != nil || window.frameJPEG != nil else {
             throw ScreenshotError.empty
         }
         lastCapturedRegions = window.regions
@@ -153,10 +161,10 @@ final class ScreenshotManager {
             visionConfig: visionConfig
         )
         RTILog.log(
-            "Window screenshot: \(window.label) context=\(combined.count) chars vision=\(visionSummary != nil).",
+            "Window screenshot: \(window.label) context=\(combined.count) chars vision=\(visionSummary != nil) image=\(window.frameJPEG != nil).",
             category: .screenshot
         )
-        return combined
+        return ScreenCaptureResult(text: combined, imageJPEG: window.frameJPEG)
     }
 
     private func formatWindowContext(_ window: CapturedScreenOCR) -> String {
@@ -295,9 +303,11 @@ final class ScreenshotManager {
                 try self.checkAttachmentRequest(requestID)
                 let trimmed = self.truncate(ocr)
                 let visionConfig = self.visionConfiguration()
+                // Encode once: the local vision lane and the chat's image
+                // attachment both need the same JPEG.
+                let jpeg = ScreenFrameEncoder.jpegData(from: cgImage)
                 var visionSummary: String?
-                if visionConfig.enabled,
-                   let jpeg = ScreenFrameEncoder.jpegData(from: cgImage) {
+                if visionConfig.enabled, let jpeg {
                     LLMController.shared.setScreenCaptureStatus("Asking the local vision model…", requestID: requestID)
                     visionSummary = try? await LocalVisionService.describe(
                         imageData: jpeg,
@@ -317,7 +327,7 @@ final class ScreenshotManager {
                     context += "\n\nWhat the image looks like (local vision model): \(visionSummary)"
                 }
                 RTILog.log("Dropped image: OCR=\(trimmed.count) chars vision=\(visionSummary != nil).", category: .screenshot)
-                LLMController.shared.attachScreenContext(context, requestID: requestID)
+                LLMController.shared.attachScreenContext(context, image: jpeg, requestID: requestID)
             } catch is CancellationError {
                 return
             } catch {
@@ -329,17 +339,20 @@ final class ScreenshotManager {
     }
 
     /// Capture + OCR (+ local vision description when enabled) and return the
-    /// combined context string. Throws `ScreenshotError.empty` if neither OCR
-    /// nor the vision model produced anything. Used by the ⌘⇧H "Screenshot
-    /// Screen" path and the LLM `capture_screen` tool. During a live session
-    /// the primary frame is also staged into the session archive so the
-    /// capture has a home.
-    func captureAndDescribe(trigger: String = "manual", attachmentRequestID: UUID? = nil) async throws -> String {
+    /// text and the screenshot itself. Throws `ScreenshotError.empty` only
+    /// when OCR, the vision model, and the image are all empty. Used by the
+    /// ⌘⇧H "Screenshot Screen" path and the LLM `capture_screen` tool. During a
+    /// live session the primary frame is also staged into the session archive
+    /// so the capture has a home.
+    func captureAndDescribe(trigger: String = "manual", attachmentRequestID: UUID? = nil) async throws -> ScreenCaptureResult {
         try checkAttachmentRequest(attachmentRequestID)
         let visionConfig = visionConfiguration()
+        // Always encode the primary frame: the chat attaches the actual
+        // screenshot when the model takes images, independently of whether the
+        // local vision lane is on.
         let screens = try await captureDisplaysWithOCR(
             activeOnly: false,
-            includeFrame: visionConfig.enabled,
+            includeFrame: true,
             attachmentRequestID: attachmentRequestID
         )
         try checkAttachmentRequest(attachmentRequestID)
@@ -364,7 +377,7 @@ final class ScreenshotManager {
         }
         try checkAttachmentRequest(attachmentRequestID)
 
-        guard !nonEmpty.isEmpty || visionSummary != nil else {
+        guard !nonEmpty.isEmpty || visionSummary != nil || primaryJPEG != nil else {
             throw ScreenshotError.empty
         }
         lastCapturedRegions = nonEmpty.flatMap(\.regions)
@@ -382,10 +395,10 @@ final class ScreenshotManager {
             visionConfig: visionConfig
         )
         RTILog.log(
-            "Screenshot: screens=\(nonEmpty.count) context=\(combined.count) chars vision=\(visionSummary != nil).",
+            "Screenshot: screens=\(nonEmpty.count) context=\(combined.count) chars vision=\(visionSummary != nil) image=\(primaryJPEG != nil).",
             category: .screenshot
         )
-        return combined
+        return ScreenCaptureResult(text: combined, imageJPEG: primaryJPEG)
     }
 
     private func checkAttachmentRequest(_ requestID: UUID?) throws {
