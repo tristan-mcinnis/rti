@@ -39,7 +39,6 @@ final class LLMClient: @unchecked Sendable {
     }
 
     private var provider: LLMProviderConfig { providerResolver() }
-    private var apiKey: String { provider.apiKey() }
 
     // MARK: - Stream result
 
@@ -67,21 +66,28 @@ final class LLMClient: @unchecked Sendable {
     func streamChat(
         messages: [LLMMessage],
         smart: Bool = false,
+        route: ChatRouteConfiguration? = nil,
         timeoutOverride: Double? = nil,
         onReasoning: (@Sendable (String) -> Void)? = nil,
         onFinish: (@Sendable (StreamResult) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
-        let temperature: Double? = smart ? nil : 0.6
+        // A frozen route wins over the live registry and over `smart`: the
+        // turn runs on the provider, model, and key it started with.
+        let frozen = route ?? self.route(smart: smart)
+        let provider = frozen.provider
+        let apiKey = provider.apiKey()
+        let isSmart = frozen.smart
+        let temperature: Double? = isSmart ? nil : 0.6
         let thinking: LLMWireRequest.Thinking? = provider.supportsThinking
-            ? LLMWireRequest.Thinking(type: smart ? "enabled" : "disabled")
+            ? LLMWireRequest.Thinking(type: isSmart ? "enabled" : "disabled")
             : nil
-        let timeoutSeconds: Double = timeoutOverride ?? (smart ? 120 : 60)
+        let timeoutSeconds: Double = timeoutOverride ?? (isSmart ? 120 : 60)
 
         guard !apiKey.isEmpty else {
             return AsyncThrowingStream { $0.finish(throwing: LLMError.missingAPIKey) }
         }
 
-        let logDetail = "model=\(provider.model) messages=\(messages.count) smart=\(smart)"
+        let logDetail = "model=\(provider.model) messages=\(messages.count) smart=\(isSmart)"
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -97,6 +103,8 @@ final class LLMClient: @unchecked Sendable {
                     // consumer — no main-thread hop (the caller decides).
                     let result = try await performChatStream(
                         httpBody: body,
+                        provider: provider,
+                        apiKey: apiKey,
                         logDetail: logDetail,
                         timeoutSeconds: timeoutSeconds,
                         onContent: { continuation.yield($0) },
@@ -123,11 +131,16 @@ final class LLMClient: @unchecked Sendable {
         messages: [LLMMessage],
         toolsJSON: Data?,
         smart: Bool,
+        route: ChatRouteConfiguration? = nil,
         onContent: @Sendable @escaping (String) -> Void,
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) async throws -> StreamResult {
-        let temperature: Double? = smart ? nil : 0.6
-        let timeoutSeconds: Double = smart ? 120 : 60
+        let frozen = route ?? self.route(smart: smart)
+        let provider = frozen.provider
+        let apiKey = provider.apiKey()
+        let isSmart = frozen.smart
+        let temperature: Double? = isSmart ? nil : 0.6
+        let timeoutSeconds: Double = isSmart ? 120 : 60
 
         var bodyDict: [String: Any] = [
             "model": provider.model,
@@ -137,7 +150,7 @@ final class LLMClient: @unchecked Sendable {
         ]
         if let temperature { bodyDict["temperature"] = temperature }
         if provider.supportsThinking {
-            bodyDict["thinking"] = ["type": smart ? "enabled" : "disabled"]
+            bodyDict["thinking"] = ["type": isSmart ? "enabled" : "disabled"]
         }
         if let toolsJSON,
            let toolsArr = try? JSONSerialization.jsonObject(with: toolsJSON) as? [[String: Any]],
@@ -151,10 +164,32 @@ final class LLMClient: @unchecked Sendable {
         // Tools path hops each delta to main — the chat UI paints from it.
         return try await performChatStream(
             httpBody: body,
-            logDetail: "tools=\(toolCount) messages=\(messages.count) smart=\(smart)",
+            provider: provider,
+            apiKey: apiKey,
+            logDetail: "tools=\(toolCount) messages=\(messages.count) smart=\(isSmart)",
             timeoutSeconds: timeoutSeconds,
             onContent: { delta in DispatchQueue.main.async { onContent(delta) } },
             onReasoning: onReasoning
+        )
+    }
+
+    /// A route for a caller that has none: today's live registry entry, with
+    /// `smart` carried as an explicit reasoning choice. Keeps the analysis and
+    /// title generators on one code path without making them resolve a
+    /// per-chat selection they do not have.
+    private func route(smart: Bool) -> ChatRouteConfiguration {
+        let provider = self.provider
+        let reasoning: ChatReasoningMode = smart ? .thinking : .fast
+        return ChatRouteConfiguration(
+            provider: provider,
+            reasoning: reasoning,
+            imageRoute: .none,
+            imageCount: 0,
+            selection: ChatModelSelection(
+                providerId: provider.id,
+                model: nil,
+                reasoning: reasoning
+            )
         )
     }
 
@@ -167,6 +202,8 @@ final class LLMClient: @unchecked Sendable {
     /// caller-supplied.
     private func performChatStream(
         httpBody: Data,
+        provider: LLMProviderConfig,
+        apiKey: String,
         logDetail: String,
         timeoutSeconds: Double,
         onContent: @Sendable @escaping (String) -> Void,
@@ -284,11 +321,13 @@ final class LLMClient: @unchecked Sendable {
     func collectStreamedResponse(
         messages: [LLMMessage],
         smart: Bool = false,
+        route: ChatRouteConfiguration? = nil,
         timeoutOverride: Double? = nil
     ) async throws -> String {
         try await collectDetailedResponse(
             messages: messages,
             smart: smart,
+            route: route,
             timeoutOverride: timeoutOverride
         ).text
     }
@@ -298,6 +337,7 @@ final class LLMClient: @unchecked Sendable {
     func collectDetailedResponse(
         messages: [LLMMessage],
         smart: Bool = false,
+        route: ChatRouteConfiguration? = nil,
         timeoutOverride: Double? = nil
     ) async throws -> CollectedResponse {
         let box = FinishBox()
@@ -305,6 +345,7 @@ final class LLMClient: @unchecked Sendable {
         for try await delta in streamChat(
             messages: messages,
             smart: smart,
+            route: route,
             timeoutOverride: timeoutOverride,
             onFinish: { box.store($0) }
         ) {

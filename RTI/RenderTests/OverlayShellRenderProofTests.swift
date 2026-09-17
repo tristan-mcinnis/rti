@@ -71,9 +71,9 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
                 name: "shell-header-calendar\(suffix)",
                 size: CGSize(width: width, height: 2 * (House.Control.composer + House.hairline)),
                 view: VStack(spacing: 0) {
-                    OverlayShellHeader(status: OverlayShellStatus(phase: .idle))
+                    OverlayShellHeader(status: OverlayShellStatus(phase: .idle), modes: .inMemory())
                     HouseDivider()
-                    OverlayShellHeader(status: OverlayShellStatus(phase: .recording))
+                    OverlayShellHeader(status: OverlayShellStatus(phase: .recording), modes: .inMemory())
                     HouseDivider()
                 }
                 .background(House.ColorToken.surface)
@@ -255,7 +255,7 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
             try renderBothAppearances(
                 name: "\(name)\(suffix)",
                 size: CGSize(width: width, height: height),
-                view: OverlayPanelView(statusOverride: status)
+                view: OverlayPanelView(statusOverride: status, modes: ModeStore.inMemory())
                     .onAppear {
                         if let tab {
                             NotificationCenter.default.post(name: .rtiSelectTab, object: tab.rawValue)
@@ -288,7 +288,7 @@ private struct HeaderStatesSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(Self.states.enumerated()), id: \.offset) { _, status in
-                OverlayShellHeader(status: status)
+                OverlayShellHeader(status: status, modes: .inMemory())
                 HouseDivider()
             }
             Spacer(minLength: 0)

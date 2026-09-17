@@ -8,6 +8,7 @@ RTI/Sources/Secrets.swift
 DerivedData/
 .deriveddata/
 .deriveddata-tests/
+.deriveddata-acceptance/
 build/
 *.xcuserdatad/
 xcuserdata/

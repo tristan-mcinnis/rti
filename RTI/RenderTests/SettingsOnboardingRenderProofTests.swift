@@ -28,7 +28,7 @@ final class SettingsOnboardingRenderProofTests: RenderProofTestCase {
             try renderBothAppearances(
                 name: "settings-pane-\(pane.rawValue)",
                 size: settingsSize,
-                view: SettingsView(onClose: {}, initialSection: pane, logsFixture: FixtureLogs.fixture)
+                view: SettingsView(onClose: {}, initialSection: pane, logsFixture: FixtureLogs.fixture, modeStore: ModeStore.inMemory())
             )
         }
     }
@@ -38,7 +38,7 @@ final class SettingsOnboardingRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "settings-pane-general-full",
             size: CGSize(width: House.Layout.settingsWidth, height: House.Layout.settingsHeight * 4),
-            view: SettingsView(onClose: {}, initialSection: .general)
+            view: SettingsView(onClose: {}, initialSection: .general, modeStore: ModeStore.inMemory())
         )
     }
 
@@ -47,12 +47,12 @@ final class SettingsOnboardingRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "settings-search",
             size: settingsSize,
-            view: SettingsView(onClose: {}, navigation: SettingsNavigation(pane: .general, query: "micro"))
+            view: SettingsView(onClose: {}, navigation: SettingsNavigation(pane: .general, query: "micro"), modeStore: ModeStore.inMemory())
         )
         try renderBothAppearances(
             name: "settings-search-none",
             size: settingsSize,
-            view: SettingsView(onClose: {}, navigation: SettingsNavigation(pane: .about, query: "zebra"))
+            view: SettingsView(onClose: {}, navigation: SettingsNavigation(pane: .about, query: "zebra"), modeStore: ModeStore.inMemory())
         )
     }
 

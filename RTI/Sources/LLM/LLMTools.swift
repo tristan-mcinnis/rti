@@ -20,8 +20,9 @@ enum LLMToolRegistry {
     /// top-level `tools` field. Returned as `Data` rather than
     /// `[[String: Any]]` so it can cross actor boundaries (Any is not
     /// Sendable). Returns nil when no tools are registered.
-    static func wireFormatData() -> Data? {
-        let arr: [[String: Any]] = all.map { tool in
+    static func wireFormatData(policy: ChatToolPolicy? = nil) -> Data? {
+        let offered = policy.map { policy in all.filter { policy.allowsTool(named: $0.name) } } ?? all
+        let arr: [[String: Any]] = offered.map { tool in
             [
                 "type": "function",
                 "function": [
@@ -33,6 +34,11 @@ enum LLMToolRegistry {
         }
         guard !arr.isEmpty else { return nil }
         return try? JSONSerialization.data(withJSONObject: arr, options: [])
+    }
+
+    /// The tools a policy offers, for a log line or a test.
+    static func offeredNames(policy: ChatToolPolicy) -> [String] {
+        all.map(\.name).filter { policy.allowsTool(named: $0) }
     }
 
     // MARK: - Tools
@@ -265,10 +271,15 @@ enum LLMToolRegistry {
 }
 
 extension ToolExecutor {
-    static var production: ToolExecutor {
+    static func production(allowsExternalRetrieval: Bool = true, allowsScreenTools: Bool = true) -> ToolExecutor {
         // The model otherwise fires several refining vault searches in one turn
         // (observed: 5), each a full query. Allow one, then make it answer from
         // what it already got.
-        ToolExecutor(tools: LLMToolRegistry.all, maxCallsPerTurn: ["search_vault": 1])
+        ToolExecutor(
+            tools: LLMToolRegistry.all,
+            maxCallsPerTurn: ["search_vault": 1],
+            allowsExternalRetrieval: allowsExternalRetrieval,
+            allowsScreenTools: allowsScreenTools
+        )
     }
 }

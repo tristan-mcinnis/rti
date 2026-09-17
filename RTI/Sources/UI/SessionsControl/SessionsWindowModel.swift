@@ -31,6 +31,9 @@ final class SessionsWindowModel {
         var now: @Sendable () -> Date
         var trashSession: (@Sendable (URL) async throws -> Void)? = nil
         var shareText: (@MainActor (String) -> Void)? = nil
+        /// The saved-chat library (Chats mode). Nil: the pane says the
+        /// library is unavailable instead of showing an empty one.
+        var chatLibrary: ChatLibraryLocation? = nil
 
         /// The running app: the vault search CLI and the title call. Both
         /// switch off outside RTI's own bundle (a test runner), so no test
@@ -45,6 +48,7 @@ final class SessionsWindowModel {
             guard Bundle.main.bundleIdentifier == "com.tristan.rti.personal" else { return dependencies }
             let archiveActions = SessionArchiveActions()
             dependencies.trashSession = { directory in try await archiveActions.moveToTrash(directory) }
+            dependencies.chatLibrary = ChatLibraryLocation.applicationDefault()
             dependencies.shareText = { text in
                 guard let view = NSApp.keyWindow?.contentView else { return }
                 NSSharingServicePicker(items: [text]).show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
@@ -225,6 +229,12 @@ final class SessionsWindowModel {
 
     let dependencies: Dependencies
     let playback = SessionPlaybackModel()
+    /// The saved chats (Chats mode). Its own object, so the meeting list's
+    /// state and the chat library's state never touch each other.
+    let chatLibrary: ChatLibraryModel
+    /// Which library the window shows. Sessions keeps every meeting path
+    /// exactly as it was.
+    var mode: LibraryMode = .sessions
     var isWindowVisible = true
     var isDeleteConfirmationPresented = false
     private(set) var pendingDeletionRowID: String?
@@ -320,6 +330,7 @@ final class SessionsWindowModel {
 
     init(dependencies: Dependencies = .live) {
         self.dependencies = dependencies
+        self.chatLibrary = ChatLibraryModel(location: dependencies.chatLibrary, now: dependencies.now)
         let stored = UserDefaults.standard.object(forKey: Self.railVisibleKey) as? Bool
         self.isRailVisible = stored ?? true
     }
@@ -933,6 +944,19 @@ final class SessionsWindowModel {
     /// Run a window key. Returns false when nothing wanted it, so the event
     /// goes on to the focused view.
     func handle(_ command: SessionsWindowCommand) -> Bool {
+        // Chats mode answers only the two keys that belong to the window
+        // itself; every meeting command is left alone.
+        guard mode == .sessions else {
+            switch command {
+            case .toggleList:
+                toggleRail()
+                return true
+            case .escape:
+                return chatLibrary.popLayer()
+            default:
+                return false
+            }
+        }
         let editing = isEditingSummary || isEditingTranscript
         switch command {
         case .toggleList:

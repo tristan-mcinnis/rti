@@ -1,4 +1,5 @@
 import AppKit
+import HouseChatCore
 import RTICore
 import SwiftUI
 import XCTest
@@ -33,7 +34,6 @@ final class ComposerRenderProofTests: RenderProofTestCase {
         OverlayInputState.shared.mode = .chat
         try await super.tearDown()
     }
-
     private func recording() {
         SessionCoordinator.shared.seedForRenderProof(
             entries: RenderFixtures.speakerTurns, interim: nil, phase: .recording, startedAt: Date().addingTimeInterval(-761)
@@ -82,15 +82,24 @@ final class ComposerRenderProofTests: RenderProofTestCase {
                    size: CGSize(width: Self.narrow.width, height: minimumContentHeight))
         try render("composer-long-attach", seed: ComposerRenderSeed(draft: draft, layer: .addContext), size: Self.narrow)
         let oneLine = HouseComposerMetrics.rowHeight(fieldHeight: HouseComposerMetrics.lineHeight(fontSize: 13), fontSize: 13)
-        let long = HouseComposerMetrics.rowHeight(fieldHeight: 8 * HouseComposerMetrics.lineHeight(fontSize: 13), fontSize: 13)
-        XCTAssertGreaterThan(long, oneLine)
-        let rowLimit = HouseComposerMetrics.paletteRows(availableHeight: minimumContentHeight, composerHeight: long)
+        let houseMax = HouseComposerMetrics.rowHeight(fieldHeight: 8 * HouseComposerMetrics.lineHeight(fontSize: 13), fontSize: 13)
+        XCTAssertGreaterThan(houseMax, oneLine)
+        // The source and route bar rides above the row, so it comes out of the
+        // same budget. In a short window the field gives the bar's lines back
+        // (`ComposerFieldBudget`), which is what keeps the palette on screen.
+        let bar = ComposerSourceRouteBar.height
+        let capped = ComposerFieldBudget.maxHeight(availableHeight: minimumContentHeight, fontSize: 13)
+        XCTAssertLessThan(capped, 8 * HouseComposerMetrics.lineHeight(fontSize: 13),
+                          "at the minimum height the field gives the bar its lines back")
+        XCTAssertGreaterThanOrEqual(capped, HouseComposerMetrics.lineHeight(fontSize: 13))
+        let long = HouseComposerMetrics.rowHeight(fieldHeight: capped, fontSize: 13)
+        let rowLimit = HouseComposerMetrics.paletteRows(availableHeight: minimumContentHeight, composerHeight: long + bar)
         let palette = CommandPaletteView(query: .constant(""), onRun: { _ in },
                                          leadingCommands: RenderFixtures.commands, maxVisibleRows: rowLimit)
             .frame(width: HouseChatMetrics.paletteWidth)
         let host = NSHostingView(rootView: palette)
-        XCTAssertLessThanOrEqual(host.fittingSize.height + long, minimumContentHeight,
-                                "Search, commands, footer and the full composer must fit at minimum window height")
+        XCTAssertLessThanOrEqual(host.fittingSize.height + long + bar, minimumContentHeight,
+                                "Search, commands, footer, the source bar and the full composer must fit at minimum window height")
     }
 
     func testFailedAttachmentKeepsDraftAndShowsBlockedAction() throws {
@@ -220,7 +229,184 @@ final class ComposerRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(name: "composer-error", size: CGSize(width: 700, height: 160), view: view)
     }
 
+    // MARK: - Source and route bar
+
+    /// The two choices the next Send is made of: which evidence, and where it
+    /// goes. Drawn at the default width, at the minimum width, and widened.
+    func testSourceAndRouteBar() throws {
+        try render("composer-source-route", thread: false)
+        try render("composer-source-route-600", size: Self.narrow, thread: false)
+        try render(
+            "composer-source-route-broader",
+            seed: ComposerRenderSeed(draft: "What do other projects say about this?", isBroaderSearch: true),
+            thread: false
+        )
+    }
+
+    /// A pending screenshot names its destination before Send, and a text-only
+    /// route says the image stays on this Mac instead.
+    func testImageRouteLabels() throws {
+        let cloud = ComposerRoutePreview(
+            label: "DeepSeek · deepseek-chat · Fast",
+            imageRouteLabel: "Images go to DeepSeek (cloud)"
+        )
+        try render("composer-image-route", seed: ComposerRenderSeed(draft: "Read this chart", pendingImage: true, route: cloud))
+        let local = ComposerRoutePreview(
+            label: "Local Models · local-chat · Fast",
+            imageRouteLabel: "Images stay on this Mac; text only"
+        )
+        try render(
+            "composer-image-route-local",
+            seed: ComposerRenderSeed(draft: "Read this chart", pendingImage: true, route: local),
+            thread: false
+        )
+    }
+
+    /// A route that cannot run names the fix instead of describing itself.
+    func testBlockedRouteNamesTheFix() throws {
+        let blocked = ComposerRoutePreview.resolve(
+            selection: ChatModelSelection(providerId: "openai"),
+            provider: LLMProviderConfig(
+                id: "openai",
+                displayName: "OpenAI",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                model: "gpt-5",
+                supportsThinking: true,
+                apiKey: { "" }
+            ),
+            imageCount: 0,
+            chosenLabel: "OpenAI · gpt-5 · Fast"
+        )
+        try render("composer-route-blocked", seed: ComposerRenderSeed(draft: "Draft a reply", route: blocked), thread: false)
+    }
+
+    /// No vault configured: chat works, and the composer says nothing is saved.
+    func testNoVaultSaysNothingIsSaved() throws {
+        try render(
+            "composer-not-saved",
+            seed: ComposerRenderSeed(draft: "Remember this for the debrief", savesToVault: false),
+            thread: false
+        )
+    }
+
+    /// A cut read is named with its own file and the extractor's line.
+    func testCutSourceIsNamed() throws {
+        let document = ComposerDocument(name: "Board pack.pdf", phase: .ready(Self.attachment(
+            name: "Board pack.pdf",
+            path: "/tmp/Board pack.pdf",
+            kind: .pdf,
+            byteCount: 4_200_000,
+            pageCount: 212,
+            wasCut: true,
+            limitSummary: "200,000 characters kept"
+        )))
+        try render(
+            "composer-source-cut",
+            seed: ComposerRenderSeed(draft: "Summarize the board pack", documents: [document]),
+            thread: false
+        )
+    }
+
+    /// The controller's own notices about retrieval and about a saved source it
+    /// can no longer rehydrate, in the composer's words rather than a claim of
+    /// its own.
+    func testRetrievalAndRetainedNotices() throws {
+        try render(
+            "composer-retrieval-degraded",
+            seed: ComposerRenderSeed(
+                draft: "What else did Northwind say about onboarding?",
+                isBroaderSearch: true,
+                retrievalNotice: "Vault search fell back to the keyword scan: the index timed out"
+            ),
+            thread: false
+        )
+        try render(
+            "composer-retained-missing",
+            seed: ComposerRenderSeed(
+                draft: "Follow up on that",
+                retainedNotice: "Some saved sources are no longer readable from this chat's store (launch-plan.pdf). They are not refetched; the answer uses what was kept."
+            ),
+            thread: false
+        )
+    }
+
+    /// An unknown slash command stays local: the field offers the explicit
+    /// Send as Text action and no key that would send it by accident.
+    func testUnknownSlashCommandStaysLocal() throws {
+        try render("composer-unknown-command", seed: ComposerRenderSeed(draft: "/deploy now"), thread: false)
+    }
+
+    /// One searchable chooser for `@` and `+`: the vault files the mention
+    /// index matched, RTI's recent meetings, its projects and clients, and the
+    /// composer's own actions, in one ranked list.
+    func testUnifiedMentionChooserSearchesProjectsAndMeetings() throws {
+        let rows = [
+            AddContextRow(kind: .vaultFile, symbol: "doc.text", title: "onboarding-brief.md",
+                          detail: "projects/northwind"),
+            AddContextRow(kind: .vaultFile, symbol: "waveform", title: "Onboarding walkthrough",
+                          detail: "2026-09-02 · session"),
+            AddContextRow(kind: .vaultFile, symbol: "calendar", title: "Onboarding scope review",
+                          detail: "2026-09-04 · meeting"),
+            AddContextRow(kind: .scope(id: "northwind"), symbol: "folder", title: "Northwind app",
+                          detail: "Project", isCurrent: true),
+            AddContextRow(kind: .attachFile, symbol: "paperclip", title: "Attach File…",
+                          detail: "PDF, Markdown, text, or an image, for the next question"),
+        ]
+        let seed = ComposerRenderSeed(draft: "Summarize @onb", mentionRows: rows, chooserIndex: 2)
+        try render("composer-mention-unified", seed: seed)
+        try render("composer-mention-unified-600", seed: seed, size: Self.narrow)
+    }
+
+    /// A dated log handed over from the Chats library: the chip names the
+    /// source that already grounds the next turn, and the Add Context preview
+    /// names it too, so a grounded request never reads as a request with no
+    /// source.
+    func testDatedSourceChip() throws {
+        try render(
+            "composer-dated-source",
+            seed: ComposerRenderSeed(
+                draft: "What did I record about the pricing threshold?",
+                pendingDatedSourceName: "Dated log 2026-09-12"
+            ),
+            thread: false
+        )
+        try render(
+            "composer-dated-source-600",
+            seed: ComposerRenderSeed(
+                draft: "What did I record about the pricing threshold?",
+                pendingDatedSourceName: "Dated log 2026-09-12"
+            ),
+            size: Self.narrow,
+            thread: false
+        )
+        try render(
+            "composer-dated-source-attach",
+            seed: ComposerRenderSeed(layer: .addContext, pendingDatedSourceName: "Dated log 2026-09-12"),
+            size: Self.narrow,
+            thread: false
+        )
+    }
+
     // MARK: - Checks
+
+    /// The field's own line budget: the house's eight whenever there is room,
+    /// fewer lines in a short window, and never fewer than one.
+    func testFieldLineBudgetGivesBackTheBarsLinesOnlyWhenShort() {
+        XCTAssertEqual(
+            ComposerFieldBudget.maxLines(availableHeight: 900, fontSize: 13),
+            HouseComposerMetrics.maxLines
+        )
+        XCTAssertEqual(
+            ComposerFieldBudget.maxLines(availableHeight: 0, fontSize: 13),
+            HouseComposerMetrics.maxLines,
+            "an unmeasured height asks for no change"
+        )
+        let minimum = CGFloat(OverlayAppearanceDefaults.heightRange.lowerBound)
+            - House.Control.input - House.Control.railRow - House.Spacing.xs
+        let tight = ComposerFieldBudget.maxLines(availableHeight: minimum, fontSize: 13)
+        XCTAssertGreaterThanOrEqual(tight, 1)
+        XCTAssertLessThan(tight, HouseComposerMetrics.maxLines)
+    }
 
     /// The palette puts the mode's quick actions first and never shows the
     /// registry's note and screen rows twice.
@@ -254,30 +440,40 @@ final class ComposerRenderProofTests: RenderProofTestCase {
 
     /// Documents keep the 512 KB and 24,000-character limits, and the chip
     /// now says when the text was cut.
-    func testDocumentLoaderReportsCutAndSize() throws {
+    /// Documents are read by the shared extractor: its caps, its cut, and its
+    /// own reason on a refusal. The chip only says what the reader reported.
+    func testDocumentLoaderReportsCutAndSize() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("composer-proof-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let long = dir.appendingPathComponent("Survey export.txt")
-        try String(repeating: "a", count: ExternalDocumentLoader.maxCharacters + 100).write(to: long, atomically: true, encoding: .utf8)
-        let cut = try ExternalDocumentLoader.load(url: long)
-        XCTAssertTrue(cut.wasCut)
+        let overCap = ExternalDocumentLoader.maxCharacters + 100
+        try String(repeating: "a", count: overCap).write(to: long, atomically: true, encoding: .utf8)
+        let cut = try await ExternalDocumentLoader.load(url: long)
+        XCTAssertTrue(cut.wasCut, "the shared reader reports the cut")
         XCTAssertEqual(cut.text.count, ExternalDocumentLoader.maxCharacters)
         XCTAssertEqual(cut.kind, .text)
-        XCTAssertEqual(cut.byteCount, ExternalDocumentLoader.maxCharacters + 100)
+        XCTAssertEqual(cut.byteCount, overCap)
         XCTAssertEqual(cut.ref.wasCut, true)
-        XCTAssertEqual(ComposerAttachmentDetail.detail(for: cut.ref), "24 KB · cut")
+        XCTAssertEqual(
+            ComposerAttachmentDetail.detail(for: cut.ref),
+            "\(ComposerAttachmentDetail.byteText(ExternalDocumentLoader.maxCharacters)) · cut"
+        )
 
         let short = dir.appendingPathComponent("notes.md")
         try "Short note".write(to: short, atomically: true, encoding: .utf8)
-        XCTAssertFalse(try ExternalDocumentLoader.load(url: short).wasCut)
+        let read = try await ExternalDocumentLoader.load(url: short)
+        XCTAssertFalse(read.wasCut)
 
         let big = dir.appendingPathComponent("big.txt")
-        try Data(count: ExternalDocumentLoader.maxBytes + 1).write(to: big)
-        XCTAssertThrowsError(try ExternalDocumentLoader.load(url: big)) { error in
+        try Data(count: ExternalDocumentLoader.maxTextBytes + 1).write(to: big)
+        do {
+            _ = try await ExternalDocumentLoader.load(url: big)
+            XCTFail("a file over the reader's cap is refused, not read")
+        } catch {
             XCTAssertEqual(error as? ExternalDocumentLoader.LoadError, .tooLarge)
-            XCTAssertEqual((error as? ExternalDocumentLoader.LoadError)?.chipReason, "Over 512 KB; not read")
+            XCTAssertEqual((error as? ExternalDocumentLoader.LoadError)?.chipReason, "Too large to attach")
         }
     }
 
@@ -286,16 +482,46 @@ final class ComposerRenderProofTests: RenderProofTestCase {
     private static var stripDocuments: [ComposerDocument] {
         [
             ComposerDocument(name: "Interview notes.md", phase: .reading),
-            ComposerDocument(name: "Launch plan.pdf", phase: .ready(ExternalDocumentAttachment(
-                name: "Launch plan.pdf", text: "Invented.", path: "/tmp/Launch plan.pdf",
+            ComposerDocument(name: "Launch plan.pdf", phase: .ready(attachment(
+                name: "Launch plan.pdf", path: "/tmp/Launch plan.pdf",
                 kind: .pdf, byteCount: 84_000, pageCount: 12
             ))),
-            ComposerDocument(name: "Board pack.pdf", phase: .failed("Over 512 KB; not read")),
-            ComposerDocument(name: "Survey export.txt", phase: .ready(ExternalDocumentAttachment(
-                name: "Survey export.txt", text: "Invented.", path: "/tmp/Survey export.txt",
+            ComposerDocument(name: "Board pack.pdf", phase: .failed("Too large to attach")),
+            ComposerDocument(name: "Survey export.txt", phase: .ready(attachment(
+                name: "Survey export.txt", path: "/tmp/Survey export.txt",
                 kind: .text, byteCount: 480_000, wasCut: true
             ))),
         ]
+    }
+
+    /// A ready attachment carrying the extractor's own record, the way the
+    /// loader builds one from a real read.
+    private static func attachment(
+        name: String,
+        path: String,
+        kind: ChatAttachmentRef.Kind,
+        byteCount: Int? = nil,
+        pageCount: Int? = nil,
+        wasCut: Bool = false,
+        limitSummary: String? = nil
+    ) -> ExternalDocumentAttachment {
+        let isPDF = kind == .pdf
+        return ExternalDocumentAttachment(
+            name: name,
+            text: "Invented.",
+            path: path,
+            kind: kind,
+            byteCount: byteCount,
+            pageCount: pageCount,
+            wasCut: wasCut,
+            document: ExtractedDocument.flat(
+                kind: isPDF ? .pdf : .text,
+                kindLabel: isPDF ? "PDF" : "Text",
+                name: name,
+                text: "Invented."
+            ),
+            limitSummary: limitSummary
+        )
     }
 }
 

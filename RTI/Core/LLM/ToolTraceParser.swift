@@ -214,13 +214,24 @@ public enum ChatTurnRecordBuilder {
         public let byteCount: Int?
         public let pageCount: Int?
         public let wasCut: Bool
+        /// The chip kind, when the caller knows it (an image file is not a
+        /// text file). Nil falls back to the name's suffix.
+        public let kind: ChatAttachmentRef.Kind?
 
-        public init(name: String, path: String? = nil, byteCount: Int? = nil, pageCount: Int? = nil, wasCut: Bool = false) {
+        public init(
+            name: String,
+            path: String? = nil,
+            byteCount: Int? = nil,
+            pageCount: Int? = nil,
+            wasCut: Bool = false,
+            kind: ChatAttachmentRef.Kind? = nil
+        ) {
             self.name = name
             self.path = path
             self.byteCount = byteCount
             self.pageCount = pageCount
             self.wasCut = wasCut
+            self.kind = kind
         }
     }
 
@@ -240,7 +251,8 @@ public enum ChatTurnRecordBuilder {
             refs.append(ChatAttachmentRef(kind: .vaultFile, name: name, path: path))
         }
         for file in files {
-            let kind: ChatAttachmentRef.Kind = file.name.lowercased().hasSuffix(".pdf") ? .pdf : .text
+            let kind: ChatAttachmentRef.Kind = file.kind
+                ?? (file.name.lowercased().hasSuffix(".pdf") ? .pdf : .text)
             refs.append(ChatAttachmentRef(
                 kind: kind, name: file.name, path: file.path,
                 byteCount: file.byteCount, pageCount: file.pageCount, wasCut: file.wasCut
@@ -262,6 +274,8 @@ public enum ChatTurnRecordBuilder {
         case .pdf:
             if let pages = ref.pageCount { parts.append("\(pages) pp") }
             if let bytes = ref.byteCount { parts.append(byteText(bytes)) }
+        case .image:
+            if let bytes = ref.byteCount { parts.append(byteText(bytes)) }
         case .text:
             if let bytes = ref.byteCount { parts.append(byteText(bytes)) }
         case .vaultFile:
@@ -280,6 +294,7 @@ public enum ChatTurnRecordBuilder {
         case .vaultFile: parts.append("vault file")
         case .pdf: parts.append("PDF")
         case .text: parts.append("text file")
+        case .image: parts.append("image")
         case .screen: parts.append("one read of the screen")
         }
         if let pages = ref.pageCount { parts.append("\(pages) page\(pages == 1 ? "" : "s")") }

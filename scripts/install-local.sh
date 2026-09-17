@@ -38,6 +38,12 @@ if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
 fi
 echo "== building from $COMMIT"
 
+# A clean RTI checkout is not enough: this build also consumes the sibling
+# HouseChatCore package. Its owner commit and exact source hash are stamped
+# into the signed bundle below.
+CHAT_CORE_PROVENANCE="../quick-launch/scripts/chat-core-provenance.py"
+python3 "$CHAT_CORE_PROVENANCE" --require-clean
+
 echo "== xcodegen + build (Release)"
 (cd RTI && xcodegen generate >/dev/null && \
   xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Release \
@@ -53,6 +59,8 @@ echo "== stamp build number with install time"
 /usr/libexec/PlistBuddy -c "Add :RTIBuiltFromCommit string $COMMIT" "$APP/Contents/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :RTIBuiltFromCommit $COMMIT" "$APP/Contents/Info.plist"
 
+python3 "$CHAT_CORE_PROVENANCE" --require-clean --plist "$APP/Contents/Info.plist"
+
 echo "== re-sign with stable identity"
 codesign --force --deep -s "$IDENTITY" --options runtime \
   --entitlements RTI/Sources/RTI.entitlements "$APP"
@@ -60,12 +68,41 @@ codesign --verify --strict --verbose=2 "$APP"
 codesign -dvv "$APP" 2>&1 | grep -E "Authority=Apple Development|TeamIdentifier"
 
 echo "== install"
+# Recheck immediately before quitting, not only before the potentially long
+# build. Never stop an active/paused recording or an unverified live process.
+if pgrep -x RTI >/dev/null; then
+  python3 - <<'PY'
+import json, os, socket, sys
+path = os.path.expanduser(os.environ.get("RTI_CONTROL_SOCK") or "~/.config/rti/control.sock")
+try:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        client.settimeout(3)
+        client.connect(path)
+        client.sendall(b"status\n")
+        data = b""
+        while b"\n" not in data and len(data) < 8192:
+            chunk = client.recv(8192 - len(data))
+            if not chunk:
+                break
+            data += chunk
+    status = json.loads(data)
+    if status.get("ok") is not True or status.get("app") != "rti" or not all(
+        status.get(key) is False for key in ("recording", "paused", "busy")
+    ):
+        raise ValueError("RTI is not confirmed idle")
+except (OSError, ValueError, TypeError, AttributeError) as error:
+    sys.exit(f"Refusing installation: {error}. Leave RTI running and retry when idle.")
+PY
+fi
 # Quit by bundle id (the app's AppleScript name has drifted before) and WAIT
 # for the process to exit — replacing the bundle under a live process leaves
 # the old binary running and `open` then no-ops against the running instance.
 osascript -e 'tell application id "com.tristan.rti.personal" to quit' 2>/dev/null || true
 for _ in $(seq 1 20); do pgrep -x RTI >/dev/null || break; sleep 0.5; done
-pgrep -x RTI >/dev/null && { echo "RTI did not quit; terminating"; pkill -x RTI; sleep 1; }
+if pgrep -x RTI >/dev/null; then
+  echo "RTI did not quit; refusing to replace or force-terminate it." >&2
+  exit 1
+fi
 # Clean replace, not ditto-overlay: overlaying leaves files from older bundle
 # layouts inside the installed app.
 rm -rf /Applications/RTI.app

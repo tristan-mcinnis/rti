@@ -26,9 +26,10 @@ enum AssistantTurnBuilder {
         let referenceText: String?
         let referenceModeName: String?
         let screenContext: String?
-        /// The screenshot itself, when the attached screen read produced one and
-        /// the active provider accepts images. Rides the latest user message.
-        let screenImage: LLMImage?
+        /// Every image this turn carries, from each source's own normalized
+        /// bytes (tray files, retained sources, and the screen capture). Rides
+        /// the latest user message.
+        let images: [LLMImage]
         let referencedDocumentsText: String?
         let existingEntries: [ChatEntry]
     }
@@ -103,7 +104,7 @@ enum AssistantTurnBuilder {
         apiMessages.append(contentsOf: PromptBuilder.buildConversationMessages(
             entries: entries,
             fullContent: fullContent,
-            images: input.screenImage.map { [$0] } ?? []
+            images: input.images
         ))
 
         return Output(

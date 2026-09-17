@@ -13,6 +13,11 @@ public struct ComposerAction: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         /// Send the typed question (or run the typed slash command).
         case ask
+        /// The draft starts with `/` but names no command: send the words
+        /// literally instead of running anything. Nothing leaves the app as
+        /// a command, which is what "unknown commands stay local" means, and
+        /// only this explicit action sends them — `↩` does nothing.
+        case sendAsText
         /// Run the bound primary action (`⌘↩`, "Assist" by default).
         case runPrimary
         /// Stop the answer that is streaming.
@@ -162,16 +167,47 @@ public struct ComposerState: Equatable, Sendable {
         if isDraftEmpty && !hasAttachments {
             return ComposerAction(kind: .runPrimary, label: primaryActionLabel, keys: ["⌘", "↩"])
         }
+        if isUnknownSlashCommand {
+            // Words, not a command. Nothing leaves the app until the user
+            // chooses the explicit action, so the label carries no key: `↩`
+            // does not send them.
+            return ComposerAction(kind: .sendAsText, label: "Send as Text", keys: [])
+        }
         if trimmedDraft.hasPrefix("/") {
             return ComposerAction(kind: .ask, label: "Run", keys: ["↩"])
         }
         return ComposerAction(kind: .ask, label: "Ask", keys: ["↩"])
     }
 
+    /// The draft is a slash line that names no command ("/deploy now"). It
+    /// stays local: nothing runs as a command, `↩` does nothing, and only the
+    /// explicit Send as Text action sends the words.
+    ///
+    /// The command set is `ComposerSlashCommand.all`, the same catalogue the
+    /// shared `ChatCommandParser` is built from (`LLMController`), so the verb
+    /// the field draws and the command the composer runs cannot disagree.
+    public var isUnknownSlashCommand: Bool {
+        let text = trimmedDraft
+        guard text.hasPrefix("/"), let word = Self.leadingCommandWord(in: text) else { return false }
+        return ComposerSlashCommand.command(named: word) == nil
+    }
+
+    /// The word right after a leading `/`, without its slash. Nil when the
+    /// draft does not start with `/` or has no word after it.
+    public static func leadingCommandWord(in draft: String) -> String? {
+        guard draft.hasPrefix("/") else { return nil }
+        let word = draft.dropFirst().prefix { !$0.isWhitespace }
+        guard !word.isEmpty else { return nil }
+        return String(word)
+    }
+
     /// `↩` would send something: typed text, or chips on their own in chat.
+    /// An unknown slash line is never sent by `↩`; it stays in the field
+    /// until the explicit Send as Text action.
     public var canSubmit: Bool {
         if isNoteMode { return !isDraftEmpty }
         guard attachmentStatus == .ready else { return false }
+        if isUnknownSlashCommand { return false }
         return !isDraftEmpty || hasAttachments
     }
 
@@ -256,6 +292,206 @@ public struct ComposerSlashCommand: Identifiable, Equatable, Sendable {
     }
 }
 
+// MARK: - Mentions
+
+/// The one grammar `@` in the field and the `+` Add Context pane share: what
+/// is being typed after the `@`, and what a chosen path is written as.
+/// Quoted mentions keep working — `@"a file with spaces.md"` is a path, not a
+/// search, which is why a typed quote closes the chooser instead of opening
+/// one.
+public enum ComposerMention {
+    /// The words after the `@` being typed, or nil when no mention is open.
+    /// A `@"` (a quoted mention typed by hand) closes the chooser: what
+    /// follows is the path itself.
+    public static func query(in draft: String) -> String? {
+        guard let at = draft.lastIndex(of: "@") else { return nil }
+        let after = draft[draft.index(after: at)...]
+        guard !after.contains("@"),
+              !after.contains("\n"),
+              after.first != "\"" else { return nil }
+        return String(after).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// True while a mention is being typed, whatever the vault has answered.
+    public static func isOpen(in draft: String) -> Bool { query(in: draft) != nil }
+
+    /// How a path is written into a question, quoted so a space or a quote in
+    /// the path cannot break the mention.
+    public static func token(for path: String) -> String { "@\"\(path)\"" }
+
+    /// The question with the chosen paths in front of it, in the one form the
+    /// assistant resolves.
+    public static func line(paths: [String], text: String) -> String {
+        guard !paths.isEmpty else { return text }
+        let mentions = paths.map(token(for:)).joined(separator: " ")
+        return text.isEmpty ? mentions : "\(mentions) \(text)"
+    }
+}
+
+// MARK: - Sources, before Send
+
+/// A source whose text was cut to fit a cap, as the strip names it.
+public struct ComposerPartialSource: Equatable, Sendable {
+    public let name: String
+    /// The extractor's own truncation line, when it gave one.
+    public let limit: String?
+
+    public init(name: String, limit: String? = nil) {
+        self.name = name
+        self.limit = limit
+    }
+
+    /// "Launch plan.pdf was cut to fit: 200,000 characters kept".
+    public var line: String {
+        guard let limit, !limit.isEmpty else { return "\(name) was cut to fit" }
+        return "\(name) was cut to fit: \(limit)"
+    }
+}
+
+/// The three facts the composer shows about its sources before Send: whether
+/// they are ready to send, whether a read was cut short, and whether this chat
+/// is being saved. The image destination rides the same line, because it is a
+/// fact about the same turn.
+public struct ComposerSourcesStatus: Equatable, Sendable {
+    public var readiness: ComposerAttachmentStatus
+    public var partial: [ComposerPartialSource]
+    /// A saved source this chat's store can no longer rehydrate, in the
+    /// controller's own words.
+    public var retainedNotice: String?
+    /// "Images go to DeepSeek (cloud)"; empty when the draft carries no image.
+    public var imageRouteLabel: String
+    /// The last vault answer's retrieval state ("found nothing", "fell back to
+    /// the keyword scan", "unavailable"), in the controller's own words.
+    public var retrievalNotice: String?
+    /// False when the app has no vault configured: chat works, nothing is written.
+    public var savesToVault: Bool
+
+    public init(
+        readiness: ComposerAttachmentStatus = .ready,
+        partial: [ComposerPartialSource] = [],
+        retainedNotice: String? = nil,
+        imageRouteLabel: String = "",
+        retrievalNotice: String? = nil,
+        savesToVault: Bool = true
+    ) {
+        self.readiness = readiness
+        self.partial = partial
+        self.retainedNotice = retainedNotice
+        self.imageRouteLabel = imageRouteLabel
+        self.retrievalNotice = retrievalNotice
+        self.savesToVault = savesToVault
+    }
+
+    /// One quiet line above the strip, or nil when there is nothing to say.
+    public var notice: String? {
+        var lines: [String] = []
+        if let readinessNotice = readiness.notice { lines.append(readinessNotice) }
+        lines.append(contentsOf: partial.map(\.line))
+        if let retainedNotice, !retainedNotice.isEmpty { lines.append(retainedNotice) }
+        if !imageRouteLabel.isEmpty { lines.append(imageRouteLabel) }
+        if let retrievalNotice, !retrievalNotice.isEmpty { lines.append(retrievalNotice) }
+        if !savesToVault { lines.append("Not saved: no vault configured") }
+        return lines.isEmpty ? nil : lines.joined(separator: " · ")
+    }
+
+    /// The short state beside the route.
+    public var saveLabel: String { savesToVault ? "Saved" : "Not saved" }
+
+    public var saveHelp: String {
+        savesToVault
+            ? "This chat is written to your vault"
+            : "No vault is configured: chat works, nothing is written"
+    }
+}
+
+// MARK: - The route, before Send
+
+/// The route the composer names before Send: the per-chat provider, model and
+/// reasoning, and where a pending image would go. Resolved through the same
+/// `ChatRouteResolver` the turn freezes with, so the label can never describe
+/// a route other than the one about to run.
+public struct ComposerRoutePreview: Equatable, Sendable {
+    /// The chosen route in words: provider · model · reasoning.
+    public let label: String
+    /// A short reason for the bar when the turn cannot run as chosen.
+    public let blockerLabel: String?
+    /// The blocker's own sentence, with the fix, for the composer's error line.
+    public let blockerMessage: String?
+    /// True when the fix is a missing API key, so the error line offers the way
+    /// to Settings.
+    public let blockerNeedsSettings: Bool
+    /// "Images go to DeepSeek (cloud)", or where the image stays instead.
+    /// Empty when the draft carries no image.
+    public let imageRouteLabel: String
+    /// True when the turn would run on a labelled vision fallback instead of
+    /// the model the user picked.
+    public let usesVisionFallback: Bool
+
+    public init(
+        label: String,
+        blockerLabel: String? = nil,
+        blockerMessage: String? = nil,
+        blockerNeedsSettings: Bool = false,
+        imageRouteLabel: String = "",
+        usesVisionFallback: Bool = false
+    ) {
+        self.label = label
+        self.blockerLabel = blockerLabel
+        self.blockerMessage = blockerMessage
+        self.blockerNeedsSettings = blockerNeedsSettings
+        self.imageRouteLabel = imageRouteLabel
+        self.usesVisionFallback = usesVisionFallback
+    }
+
+    public var isBlocked: Bool { blockerMessage != nil }
+
+    /// What the bar prints: the chosen route, or the short reason it cannot
+    /// run. Never a route that will not run.
+    public var barLabel: String { isBlocked ? (blockerLabel ?? label) : label }
+
+    /// `chosenLabel` is the controller's own `chatRouteLabel`, so the chosen
+    /// line is the one the app already shows. A vision fallback, when one ever
+    /// exists, prints the effective route instead.
+    public static func resolve(
+        selection: ChatModelSelection,
+        provider: LLMProviderConfig,
+        imageCount: Int = 0,
+        chosenLabel: String
+    ) -> ComposerRoutePreview {
+        // The default options are the controller's: a provider's own model is
+        // image-capable exactly when the provider says so, and there is no
+        // fallback model to switch to behind the user's back.
+        switch ChatRouteResolver.resolve(
+            selection: selection,
+            provider: provider,
+            imageCount: imageCount
+        ) {
+        case let .success(route):
+            return ComposerRoutePreview(
+                label: route.isVisionFallback ? route.routeLabel : chosenLabel,
+                imageRouteLabel: route.imageRouteLabel,
+                usesVisionFallback: route.isVisionFallback
+            )
+        case let .failure(blocker):
+            let short: String
+            var needsSettings = false
+            switch blocker {
+            case let .missingCredential(providerName):
+                short = "No API key for \(providerName)"
+                needsSettings = true
+            case let .imagesUnsupported(providerName, model):
+                short = "\(providerName) · \(model) cannot read images"
+            }
+            return ComposerRoutePreview(
+                label: chosenLabel,
+                blockerLabel: short,
+                blockerMessage: blocker.message,
+                blockerNeedsSettings: needsSettings
+            )
+        }
+    }
+}
+
 // MARK: - Attachment words
 
 /// The words on an attachment chip: size and units the way the spec writes
@@ -270,7 +506,7 @@ public enum ComposerAttachmentDetail {
             parts.append("once")
         case .vaultFile:
             break
-        case .pdf, .text:
+        case .pdf, .image, .text:
             if ref.kind == .pdf, let pages = ref.pageCount { parts.append("\(pages) pp") }
             if let bytes = ref.byteCount { parts.append(byteText(bytes)) }
         }
@@ -286,7 +522,7 @@ public enum ComposerAttachmentDetail {
             parts.append("read once")
         case .vaultFile:
             if let path = ref.path { parts.append(path) }
-        case .pdf, .text:
+        case .pdf, .image, .text:
             if ref.kind == .pdf, let pages = ref.pageCount { parts.append(pages == 1 ? "1 page" : "\(pages) pages") }
             if let bytes = ref.byteCount { parts.append(byteText(bytes)) }
         }

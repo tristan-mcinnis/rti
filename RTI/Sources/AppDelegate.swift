@@ -165,6 +165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         let observers: [(NSNotification.Name, Selector)] = [
             (.rtiToggleOverlay, #selector(toggleOverlay)),
             (.rtiClearChat, #selector(clearChat)),
+            (.rtiResumeChat, #selector(resumeChat(_:))),
+            (ChatLibraryDatedSeed.notificationName, #selector(seedDatedChat(_:))),
         ]
         for (name, sel) in observers {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: nil)
@@ -173,6 +175,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     @objc private func toggleOverlay() { windows.toggleOverlay() }
     @objc private func clearChat() { Self.clearChatNow() }
+
+    /// Load a stored chat thread into the live assistant chat and bring the
+    /// overlay forward. The library browser posts the thread id; nothing about
+    /// the recording changes.
+    @objc private func resumeChat(_ note: Notification) {
+        guard let id = note.object as? String, !id.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            await LLMController.shared.resumeChat(id: id)
+            self?.windows.showOverlay()
+        }
+    }
+
+    /// A dated legacy log (or one entry) handed over from the Chats library.
+    /// Starts a new chat with the recorded text attached as its exact source
+    /// and the seed's prompt left editable. Nothing is sent.
+    @objc private func seedDatedChat(_ note: Notification) {
+        guard let seed = note.object as? ChatLibraryDatedSeed else { return }
+        LLMController.shared.applyDatedChatSeed(seed)
+        windows.showOverlay()
+    }
 
     /// Clear the current session's chat immediately — no confirmation modal.
     /// The chat is ephemeral (no persisted history) and the live transcript is

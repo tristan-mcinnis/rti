@@ -108,7 +108,7 @@ final class AssistThreadRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "thread-overlay-700",
             size: CGSize(width: 700, height: 440),
-            view: OverlayPanelView()
+            view: OverlayPanelView(modes: ModeStore.inMemory())
         )
     }
 

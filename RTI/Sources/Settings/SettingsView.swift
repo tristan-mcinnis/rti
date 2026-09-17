@@ -113,6 +113,10 @@ struct SettingsView: View {
     /// Render proofs only: invented log lines for the Logs pane, so a proof
     /// never reads the real log files.
     var logsFixture: LogsView.Fixture?
+    /// The mode store the Modes pane edits. Defaults to the shared store for
+    /// production; a render proof passes an in-memory one so it never reads or
+    /// writes the user's live modes.
+    var modeStore: ModeStore
     @State private var navigation: SettingsNavigation
     @State private var hoveredTab: SettingsTab?
     @FocusState private var searchFocused: Bool
@@ -121,10 +125,12 @@ struct SettingsView: View {
         onClose: (() -> Void)? = nil,
         initialSection: SettingsTab = .providers,
         navigation: SettingsNavigation? = nil,
-        logsFixture: LogsView.Fixture? = nil
+        logsFixture: LogsView.Fixture? = nil,
+        modeStore: ModeStore = .shared
     ) {
         self.onClose = onClose
         self.logsFixture = logsFixture
+        self.modeStore = modeStore
         _navigation = State(initialValue: navigation ?? SettingsNavigation(pane: initialSection))
     }
 
@@ -183,7 +189,7 @@ struct SettingsView: View {
             Group {
                 switch navigation.pane {
                 case .providers: ProvidersTab()
-                case .modes: ModesTab()
+                case .modes: ModesTab(modeStore: modeStore)
                 case .prompts: PromptsTab()
                 case .glossary: GlossaryTab()
                 case .voices: VoicesTab()

@@ -16,6 +16,9 @@ public struct ChatAttachmentRef: Hashable, Sendable {
         case pdf
         /// A plain text or Markdown file attached from disk.
         case text
+        /// An image file attached from disk (kept distinct from a screen
+        /// capture, so its own bytes are never confused with a screenshot).
+        case image
         /// One screen or window read: OCR text, and the image itself when the
         /// model takes image input. Nothing is retained in the record.
         case screen
@@ -26,6 +29,7 @@ public struct ChatAttachmentRef: Hashable, Sendable {
             case .vaultFile: "doc.text"
             case .pdf: "doc.richtext"
             case .text: "text.alignleft"
+            case .image: "photo"
             case .screen: "camera.viewfinder"
             }
         }

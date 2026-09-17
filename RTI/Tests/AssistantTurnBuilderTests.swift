@@ -9,7 +9,7 @@ final class AssistantTurnBuilderTests: XCTestCase {
         scope: String? = nil,
         hasWorkstream: Bool = false,
         listenerMode: Bool = false,
-        screenImage: LLMImage? = nil,
+        images: [LLMImage] = [],
         referencedDocumentsText: String? = nil
     ) -> AssistantTurnBuilder.Output {
         AssistantTurnBuilder.build(.init(
@@ -34,7 +34,7 @@ final class AssistantTurnBuilderTests: XCTestCase {
             referenceText: "Reference",
             referenceModeName: "Mode",
             screenContext: nil,
-            screenImage: screenImage,
+            images: images,
             referencedDocumentsText: referencedDocumentsText,
             existingEntries: []
         ))
@@ -64,7 +64,7 @@ final class AssistantTurnBuilderTests: XCTestCase {
 
     func testScreenImageRidesTheLatestUserMessage() {
         let image = LLMImage(jpegData: Data([0x01]))
-        let output = build(transcript: "Client: hello", screenImage: image)
+        let output = build(transcript: "Client: hello", images: [image])
         let latest = output.apiMessages.last
         XCTAssertEqual(latest?.role, "user")
         XCTAssertEqual(latest?.images?.count, 1)

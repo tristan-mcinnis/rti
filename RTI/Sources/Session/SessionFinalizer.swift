@@ -16,6 +16,12 @@ struct SessionFinalizer {
         let workstreamItem: VaultItem?
         let modeName: String?
         let summaryContext: String?
+        /// The recording's stored chats, with their exact ids, gathered before
+        /// the archive runs. Empty only when the recording had none.
+        var chatThreads: [ChatProjectionMarkdown.Thread] = []
+        /// Chats in this recording that could not be read. Reported in the
+        /// projection, never silently dropped.
+        var unreadableChatCount: Int = 0
     }
 
     struct ArchiveResult {
@@ -45,7 +51,9 @@ struct SessionFinalizer {
             // the Sessions window can title this session without waiting on
             // the end-of-session summary (SessionTitleResolver rule 4). Read
             // from the store here, the same way speakerNames is.
-            calendarTitle: Self.calendarTitleForArchive()
+            calendarTitle: Self.calendarTitleForArchive(),
+            chatThreads: snapshot.chatThreads,
+            unreadableChatCount: snapshot.unreadableChatCount
         )
 
         return ArchiveResult(

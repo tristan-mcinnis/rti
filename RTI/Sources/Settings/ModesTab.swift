@@ -4,7 +4,10 @@ import RTICore
 // MARK: - Modes
 
 struct ModesTab: View {
-    private let store = ModeStore.shared
+    /// The mode store the pane edits. Defaults to the shared store so
+    /// production is unchanged; a render proof passes an in-memory one.
+    var modeStore: ModeStore = .shared
+    private var store: ModeStore { modeStore }
     @State private var selection: String?
     @State private var name = ""
     @State private var prompt = ""

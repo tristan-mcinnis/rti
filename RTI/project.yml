@@ -55,6 +55,12 @@ packages:
   MarkdownUI:
     url: https://github.com/gonzalezreal/swift-markdown-ui
     from: "2.4.0"
+  # Shared House chat logic (context policy, command parsing, durable
+  # conversation/attachment archives, versioned turn metadata). A local path so
+  # RTI and Quick Launch build the same source revision. Path is anchored at
+  # this file's directory (RTI/).
+  HouseChatCore:
+    path: ../../quick-launch/Packages/HouseChatCore
 
 targets:
   # Pure-Swift logic core (no AppKit/SwiftUI, no @MainActor). Extracted so the
@@ -66,6 +72,8 @@ targets:
     platform: macOS
     sources:
       - path: Core
+    dependencies:
+      - package: HouseChatCore
     settings:
       base:
         SWIFT_VERSION: "6.0"
@@ -91,6 +99,9 @@ targets:
       - package: Yams
       - package: MarkdownUI
         product: MarkdownUI
+      - package: HouseChatCore
+      - package: HouseChatCore
+        product: HouseChatDocuments
 
   # Standalone test bundle — no host app, no NSApplication. Types that have
   # moved into RTICore are reached via `import RTICore`; the remaining entries
@@ -116,16 +127,25 @@ targets:
       - path: Sources/Analysis/FindingEntry.swift
       - path: Sources/Session/VaultMeetings.swift
       - path: Sources/Session/VaultFiles.swift
+      - path: Sources/Session/VaultLogStore.swift
       - path: Sources/Session/SessionArchiveMetadata.swift
       - path: Sources/Audio/WAVWriter.swift
       - path: Sources/Audio/AudioInputDevice.swift
       - path: Sources/Support/AppLog.swift
+      - path: Sources/Support/AppSupportPaths.swift
+      - path: Sources/LLM/ChatThreadStore.swift
+      - path: Sources/Support/NotificationNames.swift
+      - path: Sources/UI/SessionsControl/ChatLibraryRules.swift
+      - path: Sources/UI/SessionsControl/ChatLibraryLegacy.swift
       - path: Sources/Support/SettingsKeys.swift
       - path: Sources/Support/ExternalTools.swift
       - path: Sources/LLM/RetrievalHeuristics.swift
     dependencies:
       - target: RTICore
       - package: Yams
+      - package: HouseChatCore
+      - package: HouseChatCore
+        product: HouseChatDocuments
     settings:
       base:
         SWIFT_VERSION: "6.0"
@@ -156,6 +176,9 @@ targets:
       - package: Yams
       - package: MarkdownUI
         product: MarkdownUI
+      - package: HouseChatCore
+      - package: HouseChatCore
+        product: HouseChatDocuments
     settings:
       base:
         SWIFT_VERSION: "6.0"

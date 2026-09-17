@@ -14,6 +14,9 @@ struct OverlayPanelView: View {
     /// Render proofs only: draw this header state instead of the session's
     /// (the proofs cannot finish a real session to reach "Notes ready").
     var statusOverride: OverlayShellStatus? = nil
+    /// The mode store the header reads. Production uses the shared store; a
+    /// render proof passes an in-memory one so it never touches live prefs.
+    var modes: ModeStore = .shared
 
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
     @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
@@ -44,7 +47,7 @@ struct OverlayPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            OverlayShellHeader(status: status)
+            OverlayShellHeader(status: status, modes: modes)
             tabsRow
             Group {
                 switch tab {
@@ -69,7 +72,7 @@ struct OverlayPanelView: View {
             // transparent title bar.
             .clipped()
         }
-        .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer() }
+        .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(modes: modes) }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(House.ColorToken.surface)
         // The header shares the title-bar row with the traffic lights.
@@ -224,6 +227,9 @@ extension SessionCoordinator.Phase {
 /// title-bar row, no divider. Its empty space drags the window.
 struct OverlayShellHeader: View {
     let status: OverlayShellStatus
+    /// The mode store the title reads. Defaults to the shared one so
+    /// production is unchanged; a proof passes an in-memory store.
+    var modes: ModeStore = .shared
 
     private let chrome = OverlayWindowChrome.shared
     @State private var width: CGFloat = 0
@@ -249,7 +255,7 @@ struct OverlayShellHeader: View {
 
     var body: some View {
         HStack(spacing: House.Spacing.sm) {
-            OverlayHeaderTitle(status: status)
+            OverlayHeaderTitle(status: status, modes: modes)
             Spacer(minLength: House.Spacing.xs)
             if chrome.isKeptOnTop {
                 QuickAIGlyphButton(
@@ -299,9 +305,10 @@ struct OverlayShellHeader: View {
 /// in-window choosers.
 struct OverlayHeaderTitle: View {
     let status: OverlayShellStatus
+    /// The mode store, injected so a proof never reads the live one.
+    var modes: ModeStore = .shared
 
     private let context = MeetingContextStore.shared
-    private let modes = ModeStore.shared
     private let llm = LLMController.shared
     private let shell = OverlayShellModel.shared
 
@@ -408,6 +415,9 @@ extension OverlayStatusTone {
 /// inherits the overlay's `sharingType = .none`. A click outside or `esc`
 /// closes it.
 struct OverlayHeaderChooserLayer: View {
+    /// The mode store, injected so a proof never reads the live one.
+    var modes: ModeStore = .shared
+
     private let shell = OverlayShellModel.shared
     private let chrome = OverlayWindowChrome.shared
 
@@ -418,7 +428,7 @@ struct OverlayHeaderChooserLayer: View {
                     .contentShape(Rectangle())
                     .onTapGesture { shell.chooser = nil }
                     .accessibilityHidden(true)
-                OverlayHeaderChooser(kind: chooser)
+                OverlayHeaderChooser(kind: chooser, modes: modes)
                     .frame(width: House.Layout.chatRail + House.Spacing.xxxxl)
                     .panelGlass(radius: House.Radius.lg)
                     .panelShadows()
@@ -433,29 +443,31 @@ struct OverlayHeaderChooserLayer: View {
 /// The rows of one header chooser.
 struct OverlayHeaderChooser: View {
     let kind: OverlayShellModel.Chooser
+    /// The mode store, injected so a proof never reads the live one.
+    var modes: ModeStore = .shared
 
     private let shell = OverlayShellModel.shared
     private let llm = LLMController.shared
-    private let modes = ModeStore.shared
     @State private var hovered: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            SlateSectionLabel(text: kind == .model ? "Model" : "Mode")
+            SlateSectionLabel(text: kind == .model ? "Model · \(llm.chatRouteLabel)" : "Mode")
                 .padding(.horizontal, House.Spacing.xs)
                 .padding(.top, House.Spacing.xxs)
             switch kind {
             case .model:
                 ForEach(LLMProviders.all) { provider in
                     row(id: provider.id, title: provider.displayName, detail: provider.model,
-                        isChecked: LLMProviders.activeId == provider.id) {
-                        LLMProviders.activeId = provider.id
+                        isChecked: llm.chatSelection.providerId == provider.id) {
+                        llm.selectChatProvider(provider.id)
                     }
                 }
                 HouseDivider()
                     .padding(.vertical, House.Spacing.xxs)
-                row(id: "smart", title: "Smart mode", detail: "Slower, deeper", isChecked: llm.smartMode) {
-                    llm.smartMode.toggle()
+                row(id: "thinking", title: "Thinking", detail: "Slower, deeper",
+                    isChecked: llm.chatSelection.reasoning == .thinking) {
+                    llm.setChatReasoning(llm.chatSelection.reasoning == .thinking ? .fast : .thinking)
                 }
             case .mode:
                 ForEach(modes.modes) { mode in

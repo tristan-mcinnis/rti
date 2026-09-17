@@ -23,6 +23,11 @@ enum RenderProofHarness {
     /// vault. Safe to call before every test.
     static func prepare() throws {
         SlateRenderMode.flattenGlass = true
+        // Before any view is built: point the shared assistant controller at an
+        // in-memory mode store, so a render proof can never initialize or
+        // write the live modes.json / active-mode default through the header
+        // or a route preview.
+        LLMController.shared.useInMemoryModeStore()
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         try FixtureVault.install()
     }

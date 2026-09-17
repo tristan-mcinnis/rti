@@ -4,6 +4,9 @@ import Foundation
 extension Notification.Name {
     static let rtiToggleOverlay = Notification.Name("rti.toggleOverlay")
     static let rtiClearChat = Notification.Name("rti.clearChat")
+    /// Object is the saved chat ID. Missing or damaged threads are reported,
+    /// never silently replaced with a new conversation.
+    static let rtiResumeChat = Notification.Name("rtiResumeChat")
     static let rtiOverlayDidBecomeKey = Notification.Name("rti.overlayDidBecomeKey")
     static let rtiOverlaySizeChanged = Notification.Name("rti.overlaySizeChanged")
     /// Posted when the light/dark setting flips so the live panel re-applies its

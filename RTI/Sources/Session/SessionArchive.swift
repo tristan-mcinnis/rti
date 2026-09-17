@@ -98,7 +98,9 @@ enum SessionArchive {
         mode: String? = nil,
         workstreamName: String? = nil,
         speakerNames: [String: String] = [:],
-        calendarTitle: String? = nil
+        calendarTitle: String? = nil,
+        chatThreads: [ChatProjectionMarkdown.Thread] = [],
+        unreadableChatCount: Int = 0
     ) -> URL? {
         let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
             .compactMap { $0 }
@@ -128,9 +130,29 @@ enum SessionArchive {
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         }
 
-        if !chat.isEmpty {
-            let body = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
+        // Structured threads are the authority when the recording has any:
+        // every one of them is projected with its exact thread and turn ids, so
+        // a recording that held several chats keeps all of them. The flat dated
+        // list is used only when there are no structured threads at all, and it
+        // never invents boundaries between them.
+        if !chatThreads.isEmpty {
+            let body = ChatProjectionMarkdown.render(
+                threads: chatThreads,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                unreadableChats: unreadableChatCount,
+                header: header(startedAt: startedAt, endedAt: endedAt)
+            )
             let md = (fm("Chat") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
+        } else if !chat.isEmpty {
+            let body = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
+            var lines = [body]
+            if unreadableChatCount > 0 {
+                lines.append("")
+                lines.append("_\(unreadableChatCount) stored chat\(unreadableChatCount == 1 ? "" : "s") in this recording could not be read and \(unreadableChatCount == 1 ? "is" : "are") not shown here. Nothing was removed._")
+            }
+            let md = (fm("Chat") + lines).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
         }
 
@@ -462,7 +484,9 @@ enum SessionArchive {
         startedAt: Date,
         chat: [ChatEntry],
         analysis: Analysis,
-        archiveDir: URL?
+        archiveDir: URL?,
+        chatThreads: [ChatProjectionMarkdown.Thread] = [],
+        unreadableChatCount: Int = 0
     ) -> URL? {
         guard let transcriptsRaw = meetingTranscriptsRawDirectory() else { return nil }
         try? FileManager.default.createDirectory(at: transcriptsRaw, withIntermediateDirectories: true)
@@ -472,7 +496,9 @@ enum SessionArchive {
             startedAt: startedAt,
             chat: chat,
             analysis: analysis,
-            archiveDir: archiveDir
+            archiveDir: archiveDir,
+            chatThreads: chatThreads,
+            unreadableChatCount: unreadableChatCount
         )
         guard !sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let url = transcriptsRaw.appendingPathComponent("\(stem)-rti.md")
@@ -538,7 +564,9 @@ enum SessionArchive {
         startedAt: Date,
         chat: [ChatEntry],
         analysis: Analysis,
-        archiveDir: URL?
+        archiveDir: URL?,
+        chatThreads: [ChatProjectionMarkdown.Thread] = [],
+        unreadableChatCount: Int = 0
     ) -> String {
         var lines = [
             "---",
@@ -588,7 +616,14 @@ enum SessionArchive {
             lines.append(renderVisualContext(analysis.visualContext))
             lines.append("")
         }
-        if !chat.isEmpty {
+        // The same rule as chat.md: structured threads win, and the dated list
+        // is only for a recording that has none.
+        if !chatThreads.isEmpty || unreadableChatCount > 0 {
+            lines += ChatProjectionMarkdown.renderSection(
+                threads: chatThreads,
+                unreadableChats: unreadableChatCount
+            )
+        } else if !chat.isEmpty {
             lines.append("## Assistant chat")
             lines.append("")
             lines += chatBlock(chat)

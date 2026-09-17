@@ -28,7 +28,7 @@ struct SessionsBrowserView: View {
     var body: some View {
         HStack(spacing: 0) {
             if model.isRailVisible {
-                SessionsRail(model: model)
+                rail
                     .frame(width: House.Layout.chatRail)
                     .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
                 Rectangle()
@@ -36,7 +36,7 @@ struct SessionsBrowserView: View {
                     .frame(width: House.hairline)
                     .accessibilityHidden(true)
             }
-            conversation
+            readingColumn
         }
         .frame(
             minWidth: House.Layout.chatMinWidth,
@@ -53,6 +53,7 @@ struct SessionsBrowserView: View {
         .toggleStyle(SlateToggleStyle())
         .preferredColorScheme(preferredColorScheme)
         .task { await model.loadIfNeeded() }
+        .task(id: model.mode) { await model.loadActiveLibrary() }
         .task(id: model.playbackDirectory) { await model.playback.run(directory: model.playbackDirectory) }
         .task(id: model.deletionRequest) { await model.deleteConfirmedSession() }
         .alert("Move this session to Trash?", isPresented: $model.isDeleteConfirmationPresented) {
@@ -91,6 +92,27 @@ struct SessionsBrowserView: View {
         case .system: nil
         case .light: .light
         case .dark: .dark
+        }
+    }
+
+    // MARK: - Library on screen
+
+    /// The rail for the library on screen: the saved sessions, or the chats.
+    @ViewBuilder
+    private var rail: some View {
+        switch model.mode {
+        case .sessions: SessionsRail(model: model)
+        case .chats: ChatLibraryRail(library: model.chatLibrary)
+        }
+    }
+
+    /// The reading column: the open session, or the chat library. Chats mode
+    /// leaves every meeting path below untouched.
+    @ViewBuilder
+    private var readingColumn: some View {
+        switch model.mode {
+        case .sessions: conversation
+        case .chats: ChatLibraryReader(library: model.chatLibrary)
         }
     }
 
@@ -193,20 +215,21 @@ private struct SessionsHeader: View {
                 model.toggleRail()
             }
             HouseTitleBlock(
-                title: model.openRow?.title.text ?? "Sessions",
+                title: model.windowTitle,
                 // One segment, so a narrow window cuts the line once.
-                line: model.headerLine.isEmpty ? [] : [.text(model.headerLine)]
+                line: model.windowSubtitle.isEmpty ? [] : [.text(model.windowSubtitle)]
             )
             .layoutPriority(1)
             Spacer(minLength: House.Spacing.sm)
-            if let row = model.openRow, row.vaultTranscriptPath != nil {
+            SessionsModeSwitch(model: model)
+            if model.mode == .sessions, let row = model.openRow, row.vaultTranscriptPath != nil {
                 // The labelled chip; a narrow window keeps its glyph only.
                 ViewThatFits(in: .horizontal) {
                     askChip(label: true)
                     askChip(label: false)
                 }
             }
-            if let row = model.openRow {
+            if model.mode == .sessions, let row = model.openRow {
                 Button("Copy current document", systemImage: "doc.on.doc") { model.perform(.copy) }
                     .labelStyle(.iconOnly)
                     .buttonStyle(SessionCircleButtonStyle())

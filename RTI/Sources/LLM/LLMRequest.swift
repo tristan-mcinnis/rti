@@ -8,11 +8,25 @@ import RTICore
 /// Controllers that talk to the LLM (Summary, Title, QA, Chat) compose
 /// this instead of duplicating the ~40-line async boilerplate.
 final class LLMRequest: @unchecked Sendable {
+    /// The tool-aware streaming call, injectable so a test can drive the real
+    /// controller and tool loop against a stub instead of a live provider.
+    /// The shape is the client's own `streamChatWithTools`.
+    typealias ToolStream = @Sendable (
+        _ messages: [LLMMessage],
+        _ toolsJSON: Data?,
+        _ smart: Bool,
+        _ route: ChatRouteConfiguration?,
+        _ onContent: @Sendable @escaping (String) -> Void,
+        _ onReasoning: (@Sendable (String) -> Void)?
+    ) async throws -> LLMClient.StreamResult
+
     private let client: LLMClient
+    private let toolStream: ToolStream?
     nonisolated(unsafe) private var currentTask: Task<Void, Never>?
 
-    init(client: LLMClient = .shared) {
+    init(client: LLMClient = .shared, toolStream: ToolStream? = nil) {
         self.client = client
+        self.toolStream = toolStream
     }
 
     var isActive: Bool { currentTask != nil }
@@ -74,10 +88,11 @@ final class LLMRequest: @unchecked Sendable {
     func collectDetailedAsync(
         messages: [LLMMessage],
         smart: Bool,
+        route: ChatRouteConfiguration? = nil,
         timeoutOverride: Double? = nil
     ) async -> LLMClient.CollectedResponse? {
         return await withSingleFlight { client in
-            try await client.collectDetailedResponse(messages: messages, smart: smart, timeoutOverride: timeoutOverride)
+            try await client.collectDetailedResponse(messages: messages, smart: smart, route: route, timeoutOverride: timeoutOverride)
         }
     }
 
@@ -88,25 +103,45 @@ final class LLMRequest: @unchecked Sendable {
         messages: [LLMMessage],
         toolsJSON: Data?,
         smart: Bool,
+        route: ChatRouteConfiguration? = nil,
         onContent: @Sendable @escaping (String) -> Void,
         onReasoning: (@Sendable (String) -> Void)? = nil
     ) async throws -> LLMClient.StreamResult {
         currentTask?.cancel()
-        // streamWithTools must not use withSingleFlight for the inner task —
-        // the caller (ToolLoop) manages the outer task slot. We only gate
-        // and capture the client here.
-        let task = Task { [client] () throws -> LLMClient.StreamResult in
-            try await client.streamChatWithTools(
-                messages: messages,
-                toolsJSON: toolsJSON,
-                smart: smart,
-                onContent: onContent,
-                onReasoning: onReasoning
-            )
+        let client = self.client
+        let toolStream = self.toolStream
+        // The task slot holds the ACTUAL streaming task, so `cancel()` cancels
+        // the work in flight. The previous shape awaited the stream through a
+        // second wrapper task, so cancelling the wrapper left the provider
+        // stream running and its deltas still arriving — a cancel that did not
+        // cancel. A `ToolStream` override (tests) rides the same path. The
+        // result is carried out in a box so the stored task can return Void.
+        let box = StreamResultBox()
+        let task = Task { [box] in
+            do {
+                let result: LLMClient.StreamResult
+                if let toolStream {
+                    result = try await toolStream(messages, toolsJSON, smart, route, onContent, onReasoning)
+                } else {
+                    result = try await client.streamChatWithTools(
+                        messages: messages,
+                        toolsJSON: toolsJSON,
+                        smart: smart,
+                        route: route,
+                        onContent: onContent,
+                        onReasoning: onReasoning
+                    )
+                }
+                box.store(.success(result))
+            } catch {
+                box.store(.failure(error))
+            }
         }
-        currentTask = Task { _ = try? await task.value }
+        currentTask = task
         defer { currentTask = nil }
-        return try await task.value
+        await task.value
+        guard let stored = box.value else { throw CancellationError() }
+        return try stored.get()
     }
 
     // MARK: - Callback-based streaming
@@ -116,6 +151,7 @@ final class LLMRequest: @unchecked Sendable {
     func stream(
         messages: [LLMMessage],
         smart: Bool,
+        route: ChatRouteConfiguration? = nil,
         onDelta: @Sendable @escaping (String) -> Void,
         onError: @Sendable @escaping (String, Bool) -> Void,
         onComplete: @Sendable @escaping () -> Void,
@@ -129,7 +165,7 @@ final class LLMRequest: @unchecked Sendable {
             }
             guard let client = self?.client else { return }
             do {
-                for try await delta in client.streamChat(messages: messages, smart: smart, onReasoning: onReasoning) {
+                for try await delta in client.streamChat(messages: messages, smart: smart, route: route, onReasoning: onReasoning) {
                     if Task.isCancelled { return }
                     onDelta(delta)
                 }
@@ -141,5 +177,24 @@ final class LLMRequest: @unchecked Sendable {
                 onError(llmError?.userMessage ?? "\(error)", llmError?.isAuth ?? false)
             }
         }
+    }
+}
+
+/// Carries a stream's outcome out of an unstructured task that returns Void,
+/// so the task slot can hold the work itself and cancellation reaches it.
+private final class StreamResultBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Result<LLMClient.StreamResult, Error>?
+
+    func store(_ result: Result<LLMClient.StreamResult, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        stored = result
+    }
+
+    var value: Result<LLMClient.StreamResult, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
     }
 }

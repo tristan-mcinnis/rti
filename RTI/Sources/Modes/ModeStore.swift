@@ -7,17 +7,27 @@ final class ModeStore {
     static let shared = ModeStore()
 
     private(set) var modes: [Mode] = []
+    /// Where the active-mode choice is remembered. Nil in a memory-only store:
+    /// the choice lives in memory and is never written to the user's defaults.
+    private let defaults: UserDefaults?
+    /// False in a memory-only store: no file is read, written, or resolved.
+    private let persistsToDisk: Bool
+
     var activeModeId: String? {
         didSet {
+            guard let defaults else { return }
             if let id = activeModeId {
-                UserDefaults.standard.set(id, forKey: ModeSettingsDefaults.activeIdKey)
+                defaults.set(id, forKey: ModeSettingsDefaults.activeIdKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: ModeSettingsDefaults.activeIdKey)
+                defaults.removeObject(forKey: ModeSettingsDefaults.activeIdKey)
             }
         }
     }
 
+    /// Production: the live modes file and the standard defaults.
     private init() {
+        persistsToDisk = true
+        defaults = .standard
         let loaded = Self.fileURL.flatMap { ModeStorage.load(from: $0) } ?? ModeStorage.builtinSeeds()
         // Refresh built-in prompts in place each launch so prompt edits ship
         // without a migration; user-added modes are untouched.
@@ -27,13 +37,41 @@ final class ModeStore {
         self.activeModeId = stored ?? "builtin.meeting"
     }
 
+    /// A memory-only store for tests and render proofs.
+    ///
+    /// It holds the shipped built-ins (or the caller's modes) in memory, with
+    /// an isolated active mode, and touches NOTHING on disk and NO user
+    /// default: no `modes.json` read or write, no `activeIdKey` write. Every
+    /// mutator stays in memory, so a test or proof can never change the user's
+    /// live preferences.
+    static func inMemory(
+        modes: [Mode]? = nil,
+        activeModeId: String? = "builtin.meeting"
+    ) -> ModeStore {
+        ModeStore(inMemory: modes, activeModeId: activeModeId)
+    }
+
+    private init(inMemory modes: [Mode]?, activeModeId: String?) {
+        persistsToDisk = false
+        defaults = nil
+        self.modes = ModeStorage.upgradingBuiltins(in: modes ?? ModeStorage.builtinSeeds())
+        // A fresh in-memory active mode is a plain assignment, not a shared
+        // default.
+        self.activeModeId = activeModeId
+    }
+
     var activeMode: Mode? {
         guard let id = activeModeId else { return nil }
         return modes.first { $0.id == id }
     }
 
+    /// True for a memory-only store: nothing it does reads or writes a file or
+    /// a user default. Exposed so a test can pin the isolation.
+    var isMemoryOnly: Bool { !persistsToDisk }
+
     func reload() {
-        if let url = Self.fileURL, let loaded = ModeStorage.load(from: url) { modes = loaded }
+        guard persistsToDisk, let url = Self.fileURL, let loaded = ModeStorage.load(from: url) else { return }
+        modes = loaded
     }
 
     func update(id: String, name: String, systemPrompt: String, referenceText: String?) {
@@ -78,7 +116,7 @@ final class ModeStore {
     }
 
     private func persist() {
-        guard let url = Self.fileURL else { return }
+        guard persistsToDisk, let url = Self.fileURL else { return }
         do {
             try ModeStorage.save(modes, to: url)
         } catch {

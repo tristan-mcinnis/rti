@@ -12,13 +12,19 @@ import Foundation
 /// or anywhere outside the knowledge base. Read-only; RTI never writes the vault.
 enum VaultFiles {
     enum MentionResolution {
-        case resolved(path: String, content: String)
+        /// A resolved mention, with the ONE bounded read that produced both the
+        /// text and the bytes. `bytes` is that same snapshot (never re-read),
+        /// and `wasCut` says the file exceeded the snapshot cap.
+        case resolved(path: String, content: String, bytes: Data, wasCut: Bool)
         case ambiguous(query: String, candidates: [String])
         case missing(query: String)
     }
 
     private static let maxReadChars = 16000
     private static let maxMentionGrepBytes = 256 * 1024
+    /// The ONE bounded snapshot an `@` mention reads: both the text and the
+    /// bytes come from it, so the hash and the text can never disagree.
+    private static let maxMentionSnapshotBytes = 256 * 1024
     private static let mentionIndexTTL: TimeInterval = 180
     private static let mentionIndexMaxFiles = 25000
     private static let maxGrepFiles = 50
@@ -104,6 +110,13 @@ enum VaultFiles {
         return text
     }
 
+    /// The raw bytes of a resolved vault document, read once at hand-over
+    /// time. The chat turns these into the durable record's original bytes; it
+    /// never reads the path again later.
+    static func rawBytes(relativePath: String) -> Data? {
+        readBounded(relativePath: relativePath)?.bytes
+    }
+
     /// Resolve an inline `@file` mention to one readable vault document.
     /// Prefers an exact path inside the current project/client scope, then a
     /// fuzzy filename/path match within that scope, finally broadening vault-wide.
@@ -112,22 +125,22 @@ enum VaultFiles {
         guard !query.isEmpty else { return .missing(query: mention) }
 
         if let exact = exactMentionPath(query, scopeRelativePath: scopeRelativePath),
-           let content = rawRead(relativePath: exact)
+           let snapshot = readBounded(relativePath: exact)
         {
-            return .resolved(path: exact, content: content)
+            return .resolved(path: exact, content: snapshot.text, bytes: snapshot.bytes, wasCut: snapshot.wasCut)
         }
 
         let scopedMatches = matchingPaths(for: query, scopeRelativePath: scopeRelativePath)
-        if let unique = uniqueMatch(scopedMatches), let content = rawRead(relativePath: unique) {
-            return .resolved(path: unique, content: content)
+        if let unique = uniqueMatch(scopedMatches), let snapshot = readBounded(relativePath: unique) {
+            return .resolved(path: unique, content: snapshot.text, bytes: snapshot.bytes, wasCut: snapshot.wasCut)
         }
         if scopedMatches.count > 1 {
             return .ambiguous(query: query, candidates: Array(scopedMatches.prefix(5)))
         }
 
         let globalMatches = matchingPaths(for: query, scopeRelativePath: nil)
-        if let unique = uniqueMatch(globalMatches), let content = rawRead(relativePath: unique) {
-            return .resolved(path: unique, content: content)
+        if let unique = uniqueMatch(globalMatches), let snapshot = readBounded(relativePath: unique) {
+            return .resolved(path: unique, content: snapshot.text, bytes: snapshot.bytes, wasCut: snapshot.wasCut)
         }
         if globalMatches.count > 1 {
             return .ambiguous(query: query, candidates: Array(globalMatches.prefix(5)))
@@ -251,13 +264,24 @@ enum VaultFiles {
         return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : url.lastPathComponent
     }
 
-    private static func rawRead(relativePath: String) -> String? {
+    /// ONE bounded read that produces both the text a model reads and the
+    /// bytes the record keeps. Never `String(contentsOf:)` on an unbounded
+    /// file, and never a second read for the hash. The snapshot cap and the
+    /// character cap are applied to the same bytes; `wasCut` is true when
+    /// either cut.
+    static func readBounded(relativePath: String) -> (text: String, bytes: Data, wasCut: Bool)? {
+        let cap = maxMentionSnapshotBytes
         guard let url = resolve(relativePath),
-              let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+              let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        let data = (try? handle.read(upToCount: cap)) ?? Data()
+        guard var text = String(data: data, encoding: .utf8) else { return nil }
+        var wasCut = data.count >= cap
         if text.count > maxReadChars {
-            return String(text.prefix(maxReadChars)) + "\n\n…[truncated]"
+            text = String(text.prefix(maxReadChars)) + "\n\n…[truncated]"
+            wasCut = true
         }
-        return text
+        return (text, data, wasCut)
     }
 
     private static func exactMentionPath(_ query: String, scopeRelativePath: String?) -> String? {

@@ -489,7 +489,34 @@ final class SessionCoordinator {
         delayedCompleteTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             if Task.isCancelled { return }
+            // Gather this recording's structured chats BEFORE archiving, so the
+            // projection carries every thread and turn id. A recording that
+            // held several chats keeps all of them.
+            await self?.prepareChatThreadProjection(sessionId: sessionId)
             self?.completeStop(sessionId: sessionId, endedAt: endedAt)
+        }
+    }
+
+    /// The recording's stored chats and turns, gathered once so the
+    /// synchronous archive can project them. Nothing here ends or changes the
+    /// recording; it only reads ids.
+    private var chatThreadProjection: [ChatProjectionMarkdown.Thread] = []
+    private var unreadableChatCount = 0
+
+    private func prepareChatThreadProjection(sessionId: String) async {
+        chatThreadProjection = []
+        unreadableChatCount = 0
+        do {
+            guard let store = try ChatThreadStore.shared() else { return }
+            let projection = await store.sessionChatProjection(linkedToSession: sessionId)
+            chatThreadProjection = projection.threads
+            unreadableChatCount = projection.unreadable
+        } catch {
+            // The store could not be opened. The archive still writes the
+            // session; it just cannot name the structured chats, and says so by
+            // counting it rather than pretending there were none.
+            unreadableChatCount = 1
+            RTILog.log("chat projection unavailable: \(error)", category: .llm)
         }
     }
 
@@ -726,7 +753,9 @@ final class SessionCoordinator {
             systemAudioStartOffsetMs: systemAudioStartOffsetMs,
             workstreamItem: MeetingContextStore.shared.workstreamItem,
             modeName: ModeStore.shared.activeMode?.name,
-            summaryContext: summaryContext.isEmpty ? nil : summaryContext
+            summaryContext: summaryContext.isEmpty ? nil : summaryContext,
+            chatThreads: chatThreadProjection,
+            unreadableChatCount: unreadableChatCount
         )
     }
 

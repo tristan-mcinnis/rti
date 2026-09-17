@@ -1,4 +1,5 @@
 import Foundation
+import HouseChatCore
 import RTICore
 
 /// Extracted from `LLMController`. Orchestrates a single chat turn that
@@ -20,34 +21,53 @@ struct ToolLoop {
         case reasoningEnded
         case toolStatus(String)
         case toolStarted(name: String, status: String)
-        case toolFinished(name: String, elapsedMS: Int, result: String)
+        case toolFinished(id: String, round: Int, name: String, arguments: String, elapsedMS: Int, result: String, status: ToolRoundStatus)
         case toolStatusDone
         case done(String)   // final assistant text
         case error(String, isAuth: Bool)
     }
 
     private let request: LLMRequest
-    private let makeToolExecutor: @MainActor () -> ToolExecutor
+    private let makeToolExecutor: @MainActor (Bool, Bool) -> ToolExecutor
 
-    init(request: LLMRequest = LLMRequest(), makeToolExecutor: @escaping @MainActor () -> ToolExecutor = { .production }) {
+    init(
+        request: LLMRequest = LLMRequest(),
+        makeToolExecutor: @escaping @MainActor (Bool, Bool) -> ToolExecutor = { allowsExternalRetrieval, allowsScreenTools in
+            ToolExecutor.production(
+                allowsExternalRetrieval: allowsExternalRetrieval,
+                allowsScreenTools: allowsScreenTools
+            )
+        }
+    ) {
         self.request = request
         self.makeToolExecutor = makeToolExecutor
     }
 
     /// Run the tool loop to completion. Emits events via `onEvent` on each
     /// content delta, tool execution, or error.
+    ///
+    /// `allowsExternalRetrieval` comes from the turn's `ContextDecision`: the
+    /// loop passes it to the executor so a withheld tool is refused, not just
+    /// left out of the request.
     func run(
         conversation: [LLMMessage],
         toolsJSON: Data?,
         smart: Bool,
+        route: ChatRouteConfiguration? = nil,
+        allowsExternalRetrieval: Bool = true,
+        allowsScreenTools: Bool = true,
         onEvent: @escaping @Sendable (Event) -> Void
     ) async {
         var messages = conversation
         let maxIterations = 4
         var latestAssistantText = ""
-        var toolExecutor = makeToolExecutor()
+        var toolExecutor = makeToolExecutor(allowsExternalRetrieval, allowsScreenTools)
 
-        for _ in 0..<maxIterations {
+        for iteration in 0..<maxIterations {
+            // A `/new` or Stop cancels the whole send task. Without this check
+            // the NEXT round would start a fresh provider call and fresh tools
+            // after the current stream was cancelled.
+            if Task.isCancelled { return }
             let turnBuffer = TurnBuffer()
 
             let result: LLMClient.StreamResult
@@ -56,6 +76,7 @@ struct ToolLoop {
                     messages: messages,
                     toolsJSON: toolsJSON,
                     smart: smart,
+                    route: route,
                     onContent: { delta in
                         turnBuffer.append(delta)
                         Task { @MainActor in onEvent(.contentDelta(delta)) }
@@ -93,13 +114,26 @@ struct ToolLoop {
 
             // Execute each tool, append results.
             for call in result.toolCalls {
+                // Cancellation between rounds must not run the next tool.
+                if Task.isCancelled { return }
                 let result = await toolExecutor.execute(call)
-                if let status = result.status {
+                if result.executed, let status = result.status {
                     onEvent(.toolStatus(status))
                     onEvent(.toolStarted(name: result.toolName, status: status))
                 }
+                // Every call is reported with how it actually ended, including
+                // a refusal or a failure, so the turn's receipt never claims a
+                // success that did not run.
+                onEvent(.toolFinished(
+                    id: call.id,
+                    round: iteration,
+                    name: result.toolName,
+                    arguments: call.function.arguments,
+                    elapsedMS: result.elapsedMS,
+                    result: result.resultText,
+                    status: result.outcome
+                ))
                 if result.executed {
-                    onEvent(.toolFinished(name: result.toolName, elapsedMS: result.elapsedMS, result: result.resultText))
                     onEvent(.toolStatusDone)
                 }
                 messages.append(LLMMessage(role: "tool", content: result.resultText, tool_call_id: call.id, name: result.toolName))
