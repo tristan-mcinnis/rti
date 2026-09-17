@@ -278,6 +278,8 @@ struct AddContextPane: View {
     var footnote: String? = nil
     /// "Search attachments" or "Search scopes".
     var searchPlaceholder = "Search"
+    /// Rows the pane shows before it scrolls, from the room above the composer.
+    var maxRows = 6
     let onMove: (Int) -> Void
     let onSubmit: () -> Void
     let onClose: () -> Void
@@ -315,7 +317,7 @@ struct AddContextPane: View {
                     .frame(height: House.Control.row)
                     .padding(.horizontal, House.Spacing.lg)
             } else {
-                ChooserList(items: rows, selectedIndex: selectedIndex) { index, row in
+                ChooserList(items: rows, selectedIndex: selectedIndex, maxRows: maxRows) { index, row in
                     ChooserRow(
                         symbol: row.symbol,
                         title: row.title,

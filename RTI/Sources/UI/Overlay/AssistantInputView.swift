@@ -884,6 +884,10 @@ struct AssistantInputView: View {
                     isSubpage: addContextPage == .scope,
                     footnote: addContextPage == .root ? contextFootnote : nil,
                     searchPlaceholder: addContextPage == .scope ? "Search scopes" : "Search attachments",
+                    maxRows: HouseComposerMetrics.addContextRows(
+                        availableHeight: availableHeight,
+                        composerHeight: composerRowHeight
+                    ),
                     onMove: { moveChooser($0) },
                     onSubmit: { acceptChooser() },
                     onClose: { closeLayer() },

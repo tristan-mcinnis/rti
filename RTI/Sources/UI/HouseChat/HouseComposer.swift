@@ -26,6 +26,17 @@ enum HouseComposerMetrics {
         return max(1, min(5, rows))
     }
 
+    /// Add Context rows that fit above the composer: the pane's own header,
+    /// its search row, and its footnote take a row each, on top of what the
+    /// palette reserves. Rows beyond the budget stay in the pane's scroll list.
+    static func addContextRows(availableHeight: CGFloat, composerHeight: CGFloat) -> Int {
+        let chrome = House.Control.input + House.Spacing.lg + 2 * House.Control.row
+        let rowSpacing = House.Spacing.xxs / 2
+        let rows = Int(floor((availableHeight - composerHeight - chrome + rowSpacing)
+            / (House.Control.row + rowSpacing)))
+        return max(1, min(6, rows))
+    }
+
     /// One line of the field's text at `size`.
     static func lineHeight(fontSize size: CGFloat) -> CGFloat {
         let font = NSFont.systemFont(ofSize: size)
