@@ -32,7 +32,7 @@ public struct ChatAttachmentRef: Hashable, Sendable {
     }
 
     public let kind: Kind
-    /// The file name, or "Screen" for a screen read.
+    /// The file name, or "Screenshot" for a screen or window read.
     public let name: String
     /// A vault-relative path for `vaultFile`, an absolute path for a
     /// document. Nil for a screen read.

@@ -16,7 +16,7 @@ final class ChatTurnRecordTests: XCTestCase {
             screenAttached: true
         )
         XCTAssertEqual(refs.map(\.kind), [.vaultFile, .pdf, .text, .screen])
-        XCTAssertEqual(refs.map(\.name), ["onboarding-brief.md", "Launch plan.PDF", "Survey export.txt", "Screen"])
+        XCTAssertEqual(refs.map(\.name), ["onboarding-brief.md", "Launch plan.PDF", "Survey export.txt", "Screenshot"])
         XCTAssertEqual(refs.first?.path, "projects/northwind/onboarding-brief.md")
         XCTAssertNil(refs.last?.path, "a screen read keeps no path")
     }

@@ -22,6 +22,10 @@ final class LLMController {
     /// one. Sent to the model as an image only when the active provider
     /// accepts images; otherwise the OCR text carries the turn.
     private(set) var pendingScreenImage: Data?
+    /// A ready-to-draw preview of `pendingScreenImage`, so the composer's
+    /// screenshot chip can show the actual capture without decoding the JPEG on
+    /// every render.
+    private(set) var pendingScreenPreview: NSImage?
     private(set) var screenCaptureStatus: String?
     private var screenAttachmentRequestID: UUID?
     /// The question a provider error belongs to: the thread draws the error
@@ -437,6 +441,7 @@ final class LLMController {
         screenAttachmentRequestID = requestID
         pendingScreenContext = nil
         pendingScreenImage = nil
+        pendingScreenPreview = nil
         screenCaptureStatus = status
         lastError = nil
         lastErrorIsAuth = false
@@ -453,6 +458,7 @@ final class LLMController {
         screenAttachmentRequestID = nil
         pendingScreenContext = text
         pendingScreenImage = image
+        pendingScreenPreview = image.flatMap(NSImage.init(data:))
         screenCaptureStatus = nil
         lastError = nil
         lastErrorIsAuth = false
@@ -463,6 +469,7 @@ final class LLMController {
         screenAttachmentRequestID = nil
         pendingScreenContext = nil
         pendingScreenImage = nil
+        pendingScreenPreview = nil
         screenCaptureStatus = nil
     }
 
@@ -471,6 +478,7 @@ final class LLMController {
         screenAttachmentRequestID = nil
         pendingScreenContext = nil
         pendingScreenImage = nil
+        pendingScreenPreview = nil
         screenCaptureStatus = message
         lastError = message
         lastErrorIsAuth = false
@@ -682,7 +690,7 @@ final class LLMController {
         let ambientScreenRead = !(ambientScreenContext?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         var sentAttachments = attachments
         if manualScreenRead, !sentAttachments.contains(where: { $0.kind == .screen }) {
-            sentAttachments.append(ChatAttachmentRef(kind: .screen, name: "Screen"))
+            sentAttachments.append(ChatAttachmentRef(kind: .screen, name: "Screenshot"))
         }
         var answerTools = ChatTurnRecordBuilder.contextLines(
             transcriptMinutes: turn.contextUsed ? transcriptWindowMinutes(fullWindow: fullTranscript, maxSeconds: transcriptSeconds) : nil,

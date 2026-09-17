@@ -44,13 +44,9 @@ final class ScreenshotManager {
 
     private init() {}
 
-    private func visionConfiguration() -> LocalVisionConfiguration {
-        LocalVisionConfiguration.from(VaultPaths.configDictionary())
-    }
-
-    /// Capture connected displays, OCR them (plus a local vision-model
-    /// description when the `local_vision` lane is enabled), and attach the
-    /// result to `LLMController` as pending screen context for the next turn.
+    /// Capture connected displays, OCR them, and attach the result (text plus
+    /// the screenshot itself) to `LLMController` as pending context for the
+    /// next turn.
     func captureAndAttach() {
         attachmentTask?.cancel()
         let requestID = LLMController.shared.beginScreenAttachment(status: "Reading all screens…")
@@ -107,17 +103,19 @@ final class ScreenshotManager {
         }
     }
 
-    /// Capture + OCR (+ local vision description when enabled) one window and
-    /// return the text and the screenshot itself. Throws `ScreenshotError.empty`
-    /// only when OCR, the vision model, and the image are all empty. The sibling
-    /// of `captureAndDescribe()`, scoped to a single window rather than the
-    /// whole display.
+    /// Capture + OCR one window and return the text and the screenshot itself.
+    /// Throws `ScreenshotError.empty` only when OCR and the image are both
+    /// empty. The sibling of `captureAndDescribe()`, scoped to a single window
+    /// rather than the whole display.
+    ///
+    /// The local vision model is deliberately NOT called here: the active
+    /// model sees the screenshot itself, so a second local description only
+    /// adds latency.
     func captureFocusedWindowAndDescribe(
         trigger: String = "manual.window",
         attachmentRequestID: UUID? = nil
     ) async throws -> ScreenCaptureResult {
         try checkAttachmentRequest(attachmentRequestID)
-        let visionConfig = visionConfiguration()
         let window = try await captureFocusedWindowWithOCR(
             includeFrame: true,
             attachmentRequestID: attachmentRequestID
@@ -125,43 +123,20 @@ final class ScreenshotManager {
         try checkAttachmentRequest(attachmentRequestID)
         let text = window.text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        var visionSummary: String?
-        if visionConfig.enabled, let jpeg = window.frameJPEG {
-            if let attachmentRequestID {
-                LLMController.shared.setScreenCaptureStatus("Asking the local vision model…", requestID: attachmentRequestID)
-            }
-            do {
-                visionSummary = try await LocalVisionService.describe(
-                    imageData: jpeg,
-                    configuration: visionConfig
-                )
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                RTILog.log("Local vision describe failed; window capture continues OCR-only: \(error)", category: .vision)
-            }
-        }
-        try checkAttachmentRequest(attachmentRequestID)
-
-        guard !text.isEmpty || visionSummary != nil || window.frameJPEG != nil else {
+        guard !text.isEmpty || window.frameJPEG != nil else {
             throw ScreenshotError.empty
         }
         lastCapturedRegions = window.regions
-        var combined = text.isEmpty
+        let combined = text.isEmpty
             ? "No machine-readable text was found in the frontmost window (\(window.label))."
             : formatWindowContext(window)
-        if let visionSummary {
-            combined += "\n\n## What the window looks like (local vision model)\n\(visionSummary)"
-        }
         recordCaptureInSessionTrail(
             primaryText: window.text,
-            visionSummary: visionSummary,
             frameJPEG: window.frameJPEG,
-            trigger: trigger,
-            visionConfig: visionConfig
+            trigger: trigger
         )
         RTILog.log(
-            "Window screenshot: \(window.label) context=\(combined.count) chars vision=\(visionSummary != nil) image=\(window.frameJPEG != nil).",
+            "Window screenshot: \(window.label) context=\(combined.count) chars image=\(window.frameJPEG != nil).",
             category: .screenshot
         )
         return ScreenCaptureResult(text: combined, imageJPEG: window.frameJPEG)
@@ -282,12 +257,11 @@ final class ScreenshotManager {
         return "\(app) — \(title)"
     }
 
-    /// OCR an image the user dropped into the composer and attach the text as
-    /// pending context for the next turn — the drag-and-drop sibling of
-    /// `captureAndAttach()`. The chat provider itself is text-only; on-device
-    /// Vision OCR extracts the text, and when the local-vision lane is enabled
-    /// the image is also described by the local model (127.0.0.1) so charts
-    /// and imagery survive the trip.
+    /// OCR an image the user dropped or picked and attach the text and the
+    /// image to the next turn — the drag-and-drop sibling of
+    /// `captureAndAttach()`. On-device Vision OCR extracts the text; the image
+    /// itself goes to the model when the provider takes image input, so the
+    /// local vision model is not called here.
     func attachDroppedImage(_ image: NSImage) {
         attachmentTask?.cancel()
         let requestID = LLMController.shared.beginScreenAttachment(status: "Reading image…")
@@ -302,31 +276,17 @@ final class ScreenshotManager {
                 let ocr = try await OCRService.recognizeText(in: cgImage)
                 try self.checkAttachmentRequest(requestID)
                 let trimmed = self.truncate(ocr)
-                let visionConfig = self.visionConfiguration()
-                // Encode once: the local vision lane and the chat's image
-                // attachment both need the same JPEG.
                 let jpeg = ScreenFrameEncoder.jpegData(from: cgImage)
-                var visionSummary: String?
-                if visionConfig.enabled, let jpeg {
-                    LLMController.shared.setScreenCaptureStatus("Asking the local vision model…", requestID: requestID)
-                    visionSummary = try? await LocalVisionService.describe(
-                        imageData: jpeg,
-                        prompt: "Describe this image in 2-4 short sentences: what it shows, any charts, diagrams, or visual detail. Do not transcribe the text itself.",
-                        configuration: visionConfig
-                    )
-                }
                 try self.checkAttachmentRequest(requestID)
-                guard !trimmed.isEmpty || visionSummary != nil else {
+                guard !trimmed.isEmpty || jpeg != nil else {
                     LLMController.shared.setScreenAttachError("No readable text found in that image.", requestID: requestID)
                     return
                 }
-                var context = trimmed.isEmpty
+                let context = trimmed.isEmpty
                     ? "A dropped image with no machine-readable text."
                     : "Text from a dropped image:\n\(trimmed)"
-                if let visionSummary {
-                    context += "\n\nWhat the image looks like (local vision model): \(visionSummary)"
-                }
-                RTILog.log("Dropped image: OCR=\(trimmed.count) chars vision=\(visionSummary != nil).", category: .screenshot)
+                RTILog.log("Dropped image: OCR=\(trimmed.count) chars image=\(jpeg != nil).", category: .screenshot)
+                self.recordCaptureInSessionTrail(primaryText: trimmed, frameJPEG: jpeg, trigger: "manual.image")
                 LLMController.shared.attachScreenContext(context, image: jpeg, requestID: requestID)
             } catch is CancellationError {
                 return
@@ -338,18 +298,20 @@ final class ScreenshotManager {
         }
     }
 
-    /// Capture + OCR (+ local vision description when enabled) and return the
-    /// text and the screenshot itself. Throws `ScreenshotError.empty` only
-    /// when OCR, the vision model, and the image are all empty. Used by the
-    /// ⌘⇧H "Screenshot Screen" path and the LLM `capture_screen` tool. During a
-    /// live session the primary frame is also staged into the session archive
-    /// so the capture has a home.
+    /// Capture + OCR and return the text and the screenshot itself. Throws
+    /// `ScreenshotError.empty` only when OCR and the image are both empty. Used
+    /// by the ⌘⇧H "Screenshot Screen" path and the LLM `capture_screen` tool.
+    /// During a live session the frame is also written into the session
+    /// archive so the screenshot can be found again later.
+    ///
+    /// The local vision model is deliberately NOT called here: the active
+    /// model sees the screenshot itself, so a second local description only
+    /// adds latency.
     func captureAndDescribe(trigger: String = "manual", attachmentRequestID: UUID? = nil) async throws -> ScreenCaptureResult {
         try checkAttachmentRequest(attachmentRequestID)
-        let visionConfig = visionConfiguration()
-        // Always encode the primary frame: the chat attaches the actual
-        // screenshot when the model takes images, independently of whether the
-        // local vision lane is on.
+        // Always encode the primary frame: the chat sends the actual
+        // screenshot when the model takes images, and the session keeps a copy
+        // independently of whether the local vision lane is on.
         let screens = try await captureDisplaysWithOCR(
             activeOnly: false,
             includeFrame: true,
@@ -359,43 +321,20 @@ final class ScreenshotManager {
         let nonEmpty = screens.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         let primaryJPEG = screens.first?.frameJPEG
 
-        var visionSummary: String?
-        if visionConfig.enabled, let jpeg = primaryJPEG {
-            if let attachmentRequestID {
-                LLMController.shared.setScreenCaptureStatus("Asking the local vision model…", requestID: attachmentRequestID)
-            }
-            do {
-                visionSummary = try await LocalVisionService.describe(
-                    imageData: jpeg,
-                    configuration: visionConfig
-                )
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                RTILog.log("Local vision describe failed; capture continues OCR-only: \(error)", category: .vision)
-            }
-        }
-        try checkAttachmentRequest(attachmentRequestID)
-
-        guard !nonEmpty.isEmpty || visionSummary != nil || primaryJPEG != nil else {
+        guard !nonEmpty.isEmpty || primaryJPEG != nil else {
             throw ScreenshotError.empty
         }
         lastCapturedRegions = nonEmpty.flatMap(\.regions)
-        var combined = nonEmpty.isEmpty
+        let combined = nonEmpty.isEmpty
             ? "No machine-readable text was found on the screens."
             : formatScreenContext(nonEmpty)
-        if let visionSummary {
-            combined += "\n\n## What the screen looks like (local vision model)\n\(visionSummary)"
-        }
         recordCaptureInSessionTrail(
             primaryText: screens.first?.text ?? "",
-            visionSummary: visionSummary,
             frameJPEG: primaryJPEG,
-            trigger: trigger,
-            visionConfig: visionConfig
+            trigger: trigger
         )
         RTILog.log(
-            "Screenshot: screens=\(nonEmpty.count) context=\(combined.count) chars vision=\(visionSummary != nil) image=\(primaryJPEG != nil).",
+            "Screenshot: screens=\(nonEmpty.count) context=\(combined.count) chars image=\(primaryJPEG != nil).",
             category: .screenshot
         )
         return ScreenCaptureResult(text: combined, imageJPEG: primaryJPEG)
@@ -432,21 +371,22 @@ final class ScreenshotManager {
         return "Highlighted `\(match.text)` on \(match.screenLabel)."
     }
 
-    /// Give a manual/tool capture a home in the live session: stage the
-    /// compressed frame for the archive and append a trail event carrying the
-    /// vision summary. Outside a session, captures stay ephemeral as before.
+    /// Give a manual capture a home in the live session: write the compressed
+    /// frame into the session's staging directory so it is promoted into
+    /// `<session>/frames/` when the recording ends and can be found again in
+    /// the Sessions window. This is independent of the local vision lane — a
+    /// screenshot the user asked for is kept. Outside a session, captures stay
+    /// ephemeral as before.
     private func recordCaptureInSessionTrail(
         primaryText: String,
-        visionSummary: String?,
         frameJPEG: Data?,
-        trigger: String,
-        visionConfig: LocalVisionConfiguration
+        trigger: String
     ) {
         guard SessionCoordinator.shared.isRunning,
               let startedAt = SessionCoordinator.shared.startedAt else { return }
         let offset = Int(Date().timeIntervalSince(startedAt))
         var frameFilename: String?
-        if visionConfig.enabled, visionConfig.saveFrames, let jpeg = frameJPEG {
+        if let jpeg = frameJPEG {
             let staging = VisualFrameStore.stagingDirectory(
                 configHome: VaultPaths.homeDirectory(),
                 startedAt: startedAt
@@ -458,11 +398,11 @@ final class ScreenshotManager {
                 stagingDirectory: staging
             )
         }
-        guard frameFilename != nil || visionSummary != nil else { return }
+        guard frameFilename != nil || !primaryText.isEmpty else { return }
         VisualContextTrail.shared.recordExternalCapture(
             offsetSeconds: offset,
             text: VisualContextText.compact(primaryText),
-            visionSummary: visionSummary,
+            visionSummary: nil,
             frameFilename: frameFilename
         )
     }

@@ -1,9 +1,11 @@
 import ImageIO
 import SwiftUI
 
-/// Grid of the screen frames the local-vision lane archived with a session
-/// (`<session>/frames/frame-<offset>-<kind>-<hash>.jpg`). Click a frame for
-/// full size. Frames never leave the archive folder; this is a viewer only.
+/// Grid of the screen frames archived with a session
+/// (`<session>/frames/frame-<offset>-<kind>-<hash>.jpg`): the ambient local
+/// vision trail when that lane is on, plus every screenshot the user asked
+/// for. Click a frame for full size. Frames never leave the archive folder;
+/// this is a viewer only.
 struct SessionFramesGallery: View {
     let directory: URL
 

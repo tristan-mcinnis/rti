@@ -10,9 +10,10 @@ import SwiftUI
 // finds every copy.
 //
 // Adapted for RTI: the kinds are `ChatAttachmentRef.Kind` (vault file, PDF,
-// text, screen); no image thumbnails (RTI keeps no image, only on-device OCR
-// text); no Quick Look (its panel is its own window and would show in a
-// screen share); hover goes through `hoverHighlight`, never a bare `.onHover`.
+// text, screen); a screen chip draws the captured screenshot as a small
+// thumbnail when one is attached, so the attachment is visible at a glance;
+// no Quick Look (its panel is its own window and would show in a screen
+// share); hover goes through `hoverHighlight`, never a bare `.onHover`.
 
 // MARK: - Chip model
 
@@ -35,6 +36,21 @@ struct AttachmentChipModel: Identifiable, Equatable {
     var spokenDetail: String
     /// The tooltip when ready: a vault file's path, a document's path.
     var tooltip: String?
+    /// A screenshot attached to this chip, drawn in place of the kind glyph.
+    var thumbnail: NSImage? = nil
+
+    /// `NSImage` is not `Equatable`; comparing by identity keeps the chip's
+    /// change detection meaningful without copying pixels.
+    static func == (lhs: AttachmentChipModel, rhs: AttachmentChipModel) -> Bool {
+        lhs.id == rhs.id
+            && lhs.kind == rhs.kind
+            && lhs.name == rhs.name
+            && lhs.phase == rhs.phase
+            && lhs.detail == rhs.detail
+            && lhs.spokenDetail == rhs.spokenDetail
+            && lhs.tooltip == rhs.tooltip
+            && lhs.thumbnail === rhs.thumbnail
+    }
 
     var systemImage: String {
         if case .failed = phase { return "exclamationmark.triangle" }
@@ -141,7 +157,7 @@ struct AttachmentChip: View {
 
     private var content: some View {
         HStack(spacing: House.Spacing.xxs) {
-            glyph
+            leading
             nameText
             detailText
             if model.phase == .reading {
@@ -188,6 +204,29 @@ struct AttachmentChip: View {
         .help("Remove \(model.name)")
         .accessibilityHidden(true)
     }
+
+    /// The screenshot when the chip carries one, else the kind glyph. The
+    /// thumbnail is what makes an attached screenshot visible instead of a
+    /// bare "Screenshot" label.
+    @ViewBuilder
+    private var leading: some View {
+        if let thumbnail = model.thumbnail {
+            Image(nsImage: thumbnail)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: Self.thumbnailSize.width, height: Self.thumbnailSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: House.Radius.sm - 1, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: House.Radius.sm - 1, style: .continuous)
+                        .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
+                }
+                .accessibilityHidden(true)
+        } else {
+            glyph
+        }
+    }
+
+    private static let thumbnailSize = CGSize(width: 34, height: 22)
 
     private var glyph: some View {
         Image(systemName: model.systemImage)

@@ -1,5 +1,21 @@
 # RTI Change Log
 
+## 2026-09-17: Screenshots are visible, kept, and read by the model alone
+
+- The composer shows an attached screenshot as a thumbnail chip: the capture
+  is drawn in place of the kind glyph next to "Screenshot", so you can see
+  what is attached before sending. The chip is renamed from "Screen".
+- Manual captures no longer call the local vision model. The screenshot goes
+  to the model directly (deepseek-flash reads it), which is faster and is the
+  point of the image. Vision OCR still runs on-device and rides along as text.
+- Every screenshot is written into the recording's frame folder
+  (`<session>/frames/`) independently of the local vision lane, so the
+  Sessions window shows it again later. A textless image (a chart, a map) now
+  attaches instead of being rejected as empty.
+- A dropped or picked image takes the same path as a capture, including the
+  session copy.
+- The About panel no longer implies screenshots stay on this Mac.
+
 ## 2026-09-17: Screenshots go to the model as images
 
 The screen and window captures now send the screenshot itself, not just its

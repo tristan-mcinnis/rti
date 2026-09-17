@@ -247,7 +247,7 @@ public enum ChatTurnRecordBuilder {
             ))
         }
         if screenAttached {
-            refs.append(ChatAttachmentRef(kind: .screen, name: "Screen"))
+            refs.append(ChatAttachmentRef(kind: .screen, name: "Screenshot"))
         }
         return refs
     }

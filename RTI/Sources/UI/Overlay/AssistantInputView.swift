@@ -628,10 +628,13 @@ struct AssistantInputView: View {
         return chips
     }
 
-    /// One read of the screen: ready ("Screen · once"), reading, or failed.
+    /// One screen or window read: the chip carries the captured screenshot as
+    /// a thumbnail, so the attachment is visible before it is sent.
     private var screenChip: AttachmentChipModel? {
         if llm.pendingScreenContext != nil, llm.screenCaptureStatus?.isEmpty != false {
-            return AttachmentChipModel(ref: ChatAttachmentRef(kind: .screen, name: "Screen"), id: Self.screenChipID)
+            var chip = AttachmentChipModel(ref: ChatAttachmentRef(kind: .screen, name: "Screenshot"), id: Self.screenChipID)
+            chip.thumbnail = llm.pendingScreenPreview
+            return chip
         }
         guard let status = llm.screenCaptureStatus, !status.isEmpty else { return nil }
         // The capture posts its steps ("Reading all screens…") and, on a
@@ -640,7 +643,7 @@ struct AssistantInputView: View {
         return AttachmentChipModel(
             id: Self.screenChipID,
             kind: .screen,
-            name: "Screen",
+            name: "Screenshot",
             phase: isStep ? .reading : .failed(status),
             detail: isStep ? status : ""
         )
@@ -907,9 +910,9 @@ struct AssistantInputView: View {
                 AddContextRow(kind: .vaultFile, symbol: "at", title: "Vault File",
                               detail: "Type @ and the vault list filters as you type"),
                 AddContextRow(kind: .readScreen, symbol: "camera.viewfinder", title: "Screenshot Screen",
-                              detail: "Whole screen; the image goes to the model, text is read here", keys: ["⌘", "⇧", "H"]),
+                              detail: "Whole screen; sent to the model and kept with the session", keys: ["⌘", "⇧", "H"]),
                 AddContextRow(kind: .readWindow, symbol: "macwindow", title: "Screenshot Window",
-                              detail: "Frontmost window; the image goes to the model, text is read here", keys: ["⌘", "⇧", "J"]),
+                              detail: "Frontmost window; sent to the model and kept with the session", keys: ["⌘", "⇧", "J"]),
                 AddContextRow(kind: .searchScope, symbol: "scope", title: "Search Scope", detail: scope),
                 AddContextRow(
                     kind: .noteMode,
