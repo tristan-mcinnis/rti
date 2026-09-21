@@ -596,9 +596,6 @@ struct AssistantInputView: View {
     @State private var inputFieldWidth: CGFloat = 360
     @State private var focusToken = 0
     @StateObject private var mentionSuggestions = MentionSuggestionStore()
-    /// The `+` pane's own vault search, so its rows and the `@` chooser's do
-    /// not fight over one cache while both are open.
-    @StateObject private var paneMentionSuggestions = MentionSuggestionStore()
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     private let llm = LLMController.shared
     private let session = SessionCoordinator.shared
@@ -929,15 +926,9 @@ struct AssistantInputView: View {
             refreshMentionSuggestions()
         }
         .onChange(of: inputState.focusRequest) { _, _ in focusField() }
-        .onChange(of: addContextQuery) { _, query in
-            chooserIndex = 0
-            // An empty pane search asks for nothing, not for every file in the
-            // vault: the mention store treats nil as "no query".
-            paneMentionSuggestions.update(
-                query: query.isEmpty ? nil : query,
-                scopeRelativePath: MeetingContextStore.shared.fileAccessScopePath
-            )
-        }
+        // The pane filters the rows it already has and never reads the vault:
+        // the vault is searched only by the `@` in the field.
+        .onChange(of: addContextQuery) { _, _ in chooserIndex = 0 }
         // A chooser opens on the space it can reach: RTI's projects, clients
         // and recent meetings are read once, not on every keystroke.
         .onChange(of: layer) { _, newLayer in
@@ -1336,9 +1327,9 @@ struct AssistantInputView: View {
             .fixedSize(horizontal: false, vertical: true)
         case .mention:
             HouseFloatingChooser {
-                // The same rows the `+` pane searches, filtered by the words
-                // typed after the `@`. The chooser opens on the `@` itself, so
-                // with no answer yet it says it is looking.
+                // The `+` pane's rows plus the vault's own matches, filtered by
+                // the words typed after the `@`. The chooser opens on the `@`
+                // itself, so with no answer yet it says it is looking.
                 ContextChooserPane(
                     rows: visibleMentionRows,
                     selectedIndex: chooserIndex,
@@ -1453,6 +1444,10 @@ struct AssistantInputView: View {
     /// empty query: the `@` chooser opens on them, while the `+` pane keeps its
     /// short action list and reaches them by typing or through its scope page.
     ///
+    /// `vaultCandidates` is the vault's own matches, and only the `@` chooser
+    /// passes any: the `+` pane filters locally, so typing there never reads
+    /// the vault.
+    ///
     /// The vault's own matches come first, as they always have in the `@`
     /// chooser, then RTI's rows, then the actions. Typing re-ranks all of it
     /// together, so this order is only what the chooser opens on.
@@ -1468,13 +1463,17 @@ struct AssistantInputView: View {
     }
 
     /// The Add Context pane's rows: the root page, or the scope page. Typing in
-    /// the pane narrows the same list `@` searches; the composer draft is
-    /// never touched. The highlight always indexes this list, so the keys and
-    /// the drawn rows agree.
+    /// the pane narrows the rows it already holds, locally, and never reads the
+    /// vault; the composer draft is never touched. The highlight always indexes
+    /// this list, so the keys and the drawn rows agree.
     private var visibleAddContextRows: [ComposerContextRow] {
         switch addContextPage {
         case .root:
-            return contextRows(query: addContextQuery, vaultCandidates: paneMentionSuggestions.candidates, includeAtRest: false)
+            // No vault candidates: typing here narrows the rows on screen
+            // (meetings, projects, clients, the actions) and nothing else. A
+            // vault-wide search belongs to `@`, which the pane's "Vault File"
+            // row hands off to.
+            return contextRows(query: addContextQuery, vaultCandidates: [], includeAtRest: false)
         case .scope:
             return Self.rankContext(scopePageRows, query: addContextQuery)
         }

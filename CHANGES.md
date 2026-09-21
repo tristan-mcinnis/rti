@@ -1,5 +1,17 @@
 # RTI Change Log
 
+## 2026-09-21: Add Context filters; only `@` searches the vault
+
+The `+` pane and the `@` chooser share one row builder, and the pane was
+passing the vault's own matches into it: typing there narrowed the rows on
+screen *and* ran the mention index over the whole vault on every keystroke.
+
+- The `+` pane filters only the rows it already holds: the recent meetings, the
+  projects and clients, and its own actions. No vault read as you type.
+- The vault-wide search stays where it belongs, on `@` typed in the field. The
+  pane's "Vault File" row still hands off to it.
+- The pane's short action list, its scope page and its footnote are unchanged.
+
 ## 2026-09-17: Add Context gets its own search
 
 The attachment menu now takes the keyboard when it opens and filters as you
