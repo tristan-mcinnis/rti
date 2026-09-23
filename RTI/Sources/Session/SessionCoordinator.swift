@@ -106,6 +106,15 @@ final class SessionCoordinator {
     private var lastStopAt: Date?
     /// Cooldown after a stop during which a new start is ignored.
     private static let restartCooldown: TimeInterval = 3.0
+
+    /// How long a stopped session's failure notice stays on screen.
+    ///
+    /// Long enough to read, short enough that it cannot still be there the next
+    /// morning. Internal and mutable so a test need not wait five minutes.
+    static var stopErrorRetirementNs: UInt64 = 300_000_000_000
+
+    private var stopErrorRetireTask: Task<Void, Never>?
+
     /// WAV path for the active recording, deleted when the session ends.
     private var activeWavPath: String?
 
@@ -114,11 +123,20 @@ final class SessionCoordinator {
     /// pushes transcript rows and a phase straight into the published state so
     /// the design can be compared against the mockups without a live meeting.
     /// Never compiled into a Release build and never called by the app.
-    func seedForRenderProof(entries: [LiveEntry], interim: String?, phase: Phase, startedAt: Date?) {
+    func seedForRenderProof(
+        entries: [LiveEntry],
+        interim: String?,
+        phase: Phase,
+        startedAt: Date?,
+        lastError: String? = nil,
+        lastErrorIsAuth: Bool = false
+    ) {
         self.liveEntries = entries
         self.interimLine = interim
         self.phase = phase
         self.startedAt = startedAt
+        self.lastError = lastError
+        self.lastErrorIsAuth = lastErrorIsAuth
     }
 #endif
 
@@ -326,6 +344,10 @@ final class SessionCoordinator {
         isStarting = true
         lastError = nil
         lastErrorIsAuth = false
+        // A retire task left over from the last session must not clear this
+        // one's failure.
+        stopErrorRetireTask?.cancel()
+        stopErrorRetireTask = nil
         delayedCompleteTask?.cancel()
         LLMController.shared.resetMemory()
 
@@ -485,6 +507,7 @@ final class SessionCoordinator {
         let endedAt = Date()
         self.endedAt = endedAt // freeze widget timer immediately
         NotificationCenter.default.post(name: .rtiSessionDidStop, object: nil)
+        scheduleStopErrorRetirement()
         delayedCompleteTask?.cancel()
         delayedCompleteTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -840,6 +863,28 @@ final class SessionCoordinator {
             // New speech just landed → let Auto mode react proactively (it
             // debounces and rate-limits internally, so this is cheap to call).
             AutoAssistController.shared.noteActivity()
+        }
+    }
+
+    /// Retire the failure notice this session left behind.
+    ///
+    /// An error that *stops* a session is the only place the reason is stated —
+    /// `AudioPipeline`'s `onError` calls `stopSession` in the same breath — so
+    /// it is kept long enough to read. It must not still be there the next
+    /// morning: a mic outage at 21:52 was still painted above the composer at
+    /// 08:12, reading "206s ago" as though it were happening then (2026-09-23).
+    /// An auth or billing failure stays, because its message carries the fix.
+    ///
+    /// Internal rather than private so the test can drive it: `stopSession`
+    /// needs a running session, which a unit test cannot stand up. The wiring
+    /// from `stopSession` to here is one call and is not covered by a test.
+    func scheduleStopErrorRetirement() {
+        stopErrorRetireTask?.cancel()
+        guard lastError != nil, !lastErrorIsAuth else { return }
+        stopErrorRetireTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.stopErrorRetirementNs)
+            guard !Task.isCancelled else { return }
+            self?.lastError = nil
         }
     }
 

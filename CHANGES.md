@@ -1,5 +1,25 @@
 # RTI Change Log
 
+## 2026-09-23: A session's failure notice goes with its session
+
+`SessionCoordinator.lastError` was cleared in exactly one place: the start of the
+next session. So a microphone outage that ended an evening recording was still
+painted above the composer the next morning, reading "206s ago" as though the
+mic were dead right then and sending the reader to Privacy settings for nothing.
+The seconds count inside that message is frozen at the moment it is built, so a
+stale notice cannot even be recognised as stale.
+
+- A session's failure notice is now retired after the session stops: long
+  enough to read the reason it states, short enough that it cannot still be
+  there the next morning.
+- An auth or billing failure is kept, because its message is the fix and the
+  error line's "Open Settings" affordance depends on it.
+- A retirement left over from the previous session cannot clear a new session's
+  failure; it is cancelled when a session starts.
+
+Found while chasing a screenshot of that warning: no session had run that
+morning at all, so the alarm was stale state rather than a dead microphone.
+
 ## 2026-09-23: The composer loses its source and route bar
 
 The row above the field drew two chips (Attached sources / Broader search), the
@@ -16,10 +36,10 @@ turn will use.
 - The model stays in the header. The save state stays in the notice line above
   the field, which already says "Not saved: no vault configured".
 
-The field now takes the house's eight lines at the overlay's minimum height (it
-used to give five back for the bar). The reduction in `ComposerFieldBudget` is
-still a live path: a pending dated-source chip row above the field costs it
-lines. An earlier version of this note claimed the reduction could no longer
+The field now takes the house's eight lines at the overlay's minimum height,
+where it used to give lines back for the bar. The reduction in
+`ComposerFieldBudget` is still a live path: a pending dated-source chip row above
+the field costs it lines. An earlier version of this note claimed the reduction could no longer
 trigger at any window the app allows; that was wrong, and the independent
 verification pass caught it.
 
