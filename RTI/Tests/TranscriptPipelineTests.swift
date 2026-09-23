@@ -113,4 +113,74 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertTrue(p.liveEntries.isEmpty)
         XCTAssertNil(p.interimLine)
     }
+
+    // MARK: - Cost against transcript length
+
+    private static let alphabet = Array("abcdefghijklmnopqrstuvwxyz")
+
+    /// A 13-letter slice of the alphabet, striding by 7 (coprime with 26), so
+    /// neighbouring entries share about 2 letters of 13. The dedupe's 0.8
+    /// character-set Jaccard is never approached, which matters: if the fixture
+    /// collapsed into near-duplicates the transcript would shrink and hide the
+    /// very cost this measures.
+    private func distinctText(_ index: Int) -> String {
+        String((0..<13).map { Self.alphabet[(index + $0 * 7) % 26] })
+    }
+
+    /// Interleaves mic and system finals one second apart, then times single
+    /// `liveEntries` rebuilds and returns the fastest, so machine load does not
+    /// decide the result. Every timed read follows an append, because the
+    /// pipeline caches the merged list and only rebuilds when entries changed;
+    /// and nothing is read while the transcript is being built, because a read
+    /// per append would itself be the quadratic cost.
+    private func rebuildMilliseconds(entries: Int) -> Double {
+        let p = TranscriptPipeline()
+        var ms = 0
+        for index in 0..<entries {
+            p.process(
+                words: [word(distinctText(index), speaker: 0, start: ms, end: ms + 900)],
+                channel: index.isMultiple(of: 2) ? "mic" : "system"
+            )
+            ms += 1000
+        }
+        XCTAssertEqual(
+            p.liveEntries.count,
+            entries,
+            "every fixture entry is a distinct line, so none may dedupe away"
+        )
+
+        var fastest = Double.greatestFiniteMagnitude
+        for _ in 0..<3 {
+            ms += 1000
+            p.process(
+                words: [word(distinctText(entries), speaker: 0, start: ms, end: ms + 900)],
+                channel: "mic"
+            )
+            let started = DispatchTime.now().uptimeNanoseconds
+            _ = p.liveEntries
+            fastest = min(fastest, Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+        }
+        return fastest
+    }
+
+    /// Regression guard for 2026-09-22. In a 1h45m session the cross-channel
+    /// dedupe pinned a core on the main thread and the app went sluggish: it
+    /// normalised both sides of every pair from scratch (rebuilding a
+    /// three-way `CharacterSet` union each time) and re-scanned the whole
+    /// transcript once per mic entry. Quadrupling the transcript must cost
+    /// roughly 4x, not 16x.
+    func test_mergeCost_tracksTranscriptLength_notItsSquare() {
+        let small = rebuildMilliseconds(entries: 4_000)
+        let large = rebuildMilliseconds(entries: 16_000)
+        XCTAssertLessThan(
+            large,
+            1_000,
+            "a rebuild at 16k entries is tens of milliseconds; a second means the pass is quadratic again"
+        )
+        XCTAssertLessThan(
+            large,
+            small * 12,
+            "4x the transcript must not cost ~16x: the quadratic term is back"
+        )
+    }
 }

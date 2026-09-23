@@ -18,14 +18,31 @@ public final class TranscriptPipeline {
     /// behind the long-session slowdown. Now the merge happens once per finals
     /// batch (cache invalidated only when entries actually change), and reads in
     /// between are free.
+    ///
+    /// That cache still left the merge itself rebuilding from scratch, and the
+    /// 2026-09-22 1h45m profile put the merge at 86% of the busy main thread.
+    /// Normalising each entry's text is the only allocation-heavy step in it,
+    /// and it is done once per entry by the aggregator that owns the entry
+    /// (`TranscriptAggregator.normalizedEntries`), then reused by every later
+    /// merge instead of being recomputed on each of up to eight publishes a
+    /// second.
     private var cachedLiveEntries: [LiveEntry]?
 
     public init() {}
 
     public var liveEntries: [LiveEntry] {
         if let cached = cachedLiveEntries { return cached }
-        let merged = (noteEntries + micAggregator.entries + systemAggregator.entries)
-            .sorted(by: { $0.startMs < $1.startMs })
+        let micEntries = micAggregator.normalizedEntries
+        let systemEntries = systemAggregator.normalizedEntries
+        var merged: [NormalizedEntry] = []
+        merged.reserveCapacity(noteEntries.count + micEntries.count + systemEntries.count)
+        // Notes are never dedup candidates, so they carry no normalised text.
+        for note in noteEntries {
+            merged.append(NormalizedEntry(entry: note, dedupText: "", sequenceText: ""))
+        }
+        merged.append(contentsOf: micEntries)
+        merged.append(contentsOf: systemEntries)
+        merged.sort(by: { $0.entry.startMs < $1.entry.startMs })
         let deduped = Self.dedupedAcrossChannels(merged)
         cachedLiveEntries = deduped
         return deduped
@@ -49,16 +66,37 @@ public final class TranscriptPipeline {
     private static let dedupMinChars = 6
     private static let dedupJaccard = 0.8
 
-    private static func dedupedAcrossChannels(_ entries: [LiveEntry]) -> [LiveEntry] {
-        guard entries.count > 1 else { return entries }
+    private static func dedupedAcrossChannels(_ entries: [NormalizedEntry]) -> [LiveEntry] {
+        guard entries.count > 1 else { return entries.map(\.entry) }
+
+        // Direct-system entries, in `entries` order (already sorted by
+        // `startMs`), so each mic entry's ±5s echo window is a bisected slice
+        // of this list instead of a re-scan of the whole transcript. That scan
+        // was the pass's quadratic term (2026-09-22).
+        var systemPositions: [Int] = []
+        for (index, entry) in entries.enumerated() where isSystemEntry(entry.entry) {
+            systemPositions.append(index)
+        }
+
         let echoMicIndices = Set(entries.indices.filter { index in
-            micEntryIsCoveredBySystemContext(entries[index], in: entries)
+            micEntryIsCoveredBySystemContext(
+                entries[index],
+                systemPositions: systemPositions,
+                entries: entries
+            )
         })
         var out: [LiveEntry] = []
+        var outDedupText: [String] = []
         out.reserveCapacity(entries.count)
-        for (index, entry) in entries.enumerated() {
+        outDedupText.reserveCapacity(entries.count)
+        for (index, merged) in entries.enumerated() {
+            let entry = merged.entry
             if echoMicIndices.contains(index) { continue }
-            guard isDedupCandidate(entry) else { out.append(entry); continue }
+            guard isDedupCandidate(entry) else {
+                out.append(entry)
+                outDedupText.append(merged.dedupText)
+                continue
+            }
             var matchedIndex: Int? = nil
             var i = out.count - 1
             while i >= 0 {
@@ -66,7 +104,7 @@ public final class TranscriptPipeline {
                 if entry.startMs - prev.startMs > dedupWindowMs { break }   // outside window (sorted asc)
                 if isDedupCandidate(prev),
                    prev.speakerId != entry.speakerId,
-                   nearDuplicate(prev.text, entry.text) {
+                   nearDuplicate(outDedupText[i], merged.dedupText) {
                     matchedIndex = i
                     break
                 }
@@ -85,10 +123,14 @@ public final class TranscriptPipeline {
                         language: kept.language,
                         sourceLanguage: kept.sourceLanguage
                     )
+                    // That slot's text just changed, so its cached normal form
+                    // must follow it: later entries compare against this one.
+                    outDedupText[m] = merged.dedupText
                 }
                 // else: keep what we have, drop the duplicate.
             } else {
                 out.append(entry)
+                outDedupText.append(merged.dedupText)
             }
         }
         return out
@@ -99,24 +141,55 @@ public final class TranscriptPipeline {
     /// leaves alternating, repeated "speakers" in the transcript. Compare
     /// each mic fragment with the nearby direct-system context for one remote
     /// speaker before the existing pairwise fallback.
+    /// `systemPositions` holds every direct-system entry's index in `entries`,
+    /// in ascending `startMs`, so this compares against the ±5s window only:
+    /// scanning every entry once per mic entry was the pass's other quadratic
+    /// term.
     private static func micEntryIsCoveredBySystemContext(
-        _ entry: LiveEntry,
-        in entries: [LiveEntry]
+        _ merged: NormalizedEntry,
+        systemPositions: [Int],
+        entries: [NormalizedEntry]
     ) -> Bool {
+        let entry = merged.entry
         guard isMicEntry(entry), isDedupCandidate(entry) else { return false }
-        let needle = normalizeForSequenceMatch(entry.text)
-        guard needle.count >= dedupMinChars else { return false }
+        guard merged.sequenceText.count >= dedupMinChars else { return false }
 
+        let upperMs = entry.startMs + dedupWindowMs
         var systemContextBySpeaker: [String: [String]] = [:]
-        for candidate in entries where isSystemEntry(candidate) && isDedupCandidate(candidate) {
-            guard abs(candidate.startMs - entry.startMs) <= dedupWindowMs else { continue }
-            systemContextBySpeaker[candidate.speakerId, default: []].append(candidate.text)
+        var slot = firstSystemSlot(systemPositions, entries: entries, atOrAfter: entry.startMs - dedupWindowMs)
+        while slot < systemPositions.count {
+            let candidate = entries[systemPositions[slot]].entry
+            if candidate.startMs > upperMs { break }
+            if isDedupCandidate(candidate) {
+                systemContextBySpeaker[candidate.speakerId, default: []].append(candidate.text)
+            }
+            slot += 1
         }
 
         return systemContextBySpeaker.values.contains { fragments in
-            let context = normalizeForSequenceMatch(fragments.joined(separator: " "))
-            return context.contains(needle)
+            let context = TranscriptTextNormalization.sequence(fragments.joined(separator: " "))
+            return context.contains(merged.sequenceText)
         }
+    }
+
+    /// Bisects `systemPositions` (ascending `startMs`) for the first slot whose
+    /// entry starts at or after `ms`.
+    private static func firstSystemSlot(
+        _ systemPositions: [Int],
+        entries: [NormalizedEntry],
+        atOrAfter ms: Int
+    ) -> Int {
+        var low = 0
+        var high = systemPositions.count
+        while low < high {
+            let mid = low + (high - low) / 2
+            if entries[systemPositions[mid]].entry.startMs < ms {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return low
     }
 
     private static func isDedupCandidate(_ e: LiveEntry) -> Bool {
@@ -131,9 +204,9 @@ public final class TranscriptPipeline {
         entry.speakerId.hasPrefix("remote_")
     }
 
-    private static func nearDuplicate(_ a: String, _ b: String) -> Bool {
-        let na = normalizeForDedup(a)
-        let nb = normalizeForDedup(b)
+    /// Both sides arrive already normalised: the caller normalises each entry
+    /// once per pass rather than once per pair.
+    private static func nearDuplicate(_ na: String, _ nb: String) -> Bool {
         guard na.count >= dedupMinChars, nb.count >= dedupMinChars else { return false }
         let (shortStr, longStr) = na.count <= nb.count ? (na, nb) : (nb, na)
         if longStr.contains(shortStr) { return true }          // one is a truncation of the other
@@ -141,23 +214,6 @@ public final class TranscriptPipeline {
         let inter = setA.intersection(setB).count
         let union = setA.union(setB).count
         return union > 0 && Double(inter) / Double(union) >= dedupJaccard
-    }
-
-    private static func normalizeForSequenceMatch(_ text: String) -> String {
-        let lowered = text.lowercased()
-        let scalars = lowered.unicodeScalars.map { scalar -> Character in
-            CharacterSet.alphanumerics.contains(scalar) ? Character(String(scalar)) : " "
-        }
-        return String(scalars)
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-    }
-
-    private static func normalizeForDedup(_ s: String) -> String {
-        let drop = CharacterSet.whitespacesAndNewlines
-            .union(.punctuationCharacters)
-            .union(.symbols)
-        return String(String.UnicodeScalarView(s.unicodeScalars.filter { !drop.contains($0) })).lowercased()
     }
 
     public var interimLine: String? {

@@ -9,6 +9,15 @@ import Foundation
 public final class TranscriptAggregator {
 
     public private(set) var entries: [LiveEntry] = []
+
+    /// `entries` paired with the normalised text the live merge compares them
+    /// by, positionally in step by construction: this type is the only place
+    /// either collection is appended to, trimmed or cleared. Normalising
+    /// belongs here rather than in the merge because the merge republishes up
+    /// to eight times a second over a transcript that grows all session, and
+    /// recomputing it per pass was 86% of the busy main thread in a 1h45m
+    /// session (2026-09-22).
+    private(set) var normalizedEntries: [NormalizedEntry] = []
     public private(set) var interimText: String? = nil
     private var lastEndMs: Int = 0
     private var zeroSeen: Set<String> = []
@@ -64,6 +73,11 @@ public final class TranscriptAggregator {
             }
             for entry in newEntries {
                 entries.append(entry)
+                normalizedEntries.append(NormalizedEntry(
+                    entry: entry,
+                    dedupText: TranscriptTextNormalization.dedup(entry.text),
+                    sequenceText: TranscriptTextNormalization.sequence(entry.text)
+                ))
             }
             // Soft safety bound only — was 500, which silently evicted all
             // but the last ~11 minutes of a 2-hour session (2026-06-11) and
@@ -71,7 +85,9 @@ public final class TranscriptAggregator {
             // point; text entries are tiny, so the bound exists purely as a
             // runaway guard.
             if entries.count > 50_000 {
-                entries.removeFirst(entries.count - 50_000)
+                let dropped = entries.count - 50_000
+                entries.removeFirst(dropped)
+                normalizedEntries.removeFirst(dropped)
             }
             let nonZeroMax = finals.compactMap({ $0.endMs > 0 ? $0.endMs : nil }).max()
             if let m = nonZeroMax { lastEndMs = m }
@@ -93,6 +109,7 @@ public final class TranscriptAggregator {
 
     public func reset() {
         entries = []
+        normalizedEntries = []
         interimText = nil
         lastEndMs = 0
         zeroSeen = []
@@ -110,5 +127,42 @@ public final class TranscriptAggregator {
         lastEndMs = 0
         zeroSeen = []
         interimText = nil
+    }
+}
+
+/// One transcript entry plus the two normalised forms the live merge compares
+/// it by. Built where the entry is appended, so the text is normalised once per
+/// entry instead of once per merge pass.
+struct NormalizedEntry {
+    let entry: LiveEntry
+    let dedupText: String
+    let sequenceText: String
+}
+
+/// The text forms the live merge compares on. `dedup` drops whitespace,
+/// punctuation and symbols for the near-duplicate test; `sequence` keeps only
+/// alphanumerics as single-spaced words for the echo-containment test.
+enum TranscriptTextNormalization {
+    /// Whitespace, punctuation and symbols, dropped before comparison. Built
+    /// once: `CharacterSet.union` computes full Unicode plane bitmaps, so
+    /// rebuilding this three-way union on every comparison was, on its own,
+    /// more than half of a long session's main-thread cost (measured
+    /// 2026-09-22, 1h45m session: 55% of the busy thread).
+    private static let dropSet: CharacterSet = CharacterSet.whitespacesAndNewlines
+        .union(.punctuationCharacters)
+        .union(.symbols)
+
+    static func dedup(_ s: String) -> String {
+        String(String.UnicodeScalarView(s.unicodeScalars.filter { !dropSet.contains($0) })).lowercased()
+    }
+
+    static func sequence(_ text: String) -> String {
+        let lowered = text.lowercased()
+        let scalars = lowered.unicodeScalars.map { scalar -> Character in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(String(scalar)) : " "
+        }
+        return String(scalars)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 }

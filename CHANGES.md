@@ -1,5 +1,34 @@
 # RTI Change Log
 
+## 2026-09-23: The live transcript stops re-deduping the whole session
+
+A 1h45m session pinned 86% of the busy main thread in one chain:
+`SessionCoordinator.publishState` → `flushPublishState` →
+`TranscriptPipeline.liveEntries` → `dedupedAcrossChannels`. The cross-channel
+echo dedupe was quadratic in session length, and it re-ran on every final batch
+at up to the 8 Hz publish debounce, so the app degraded as the transcript grew.
+
+- Every comparison rebuilt a three-way `CharacterSet` union
+  (`whitespacesAndNewlines ∪ punctuation ∪ symbols`) to normalise its two
+  strings. `CharacterSet.union` computes full Unicode plane bitmaps, and that
+  alone was 55% of the busy thread. The union is now built once.
+- Each mic entry scanned the whole entry list for its ±5s echo window. The
+  window is now found by bisecting a per-channel list of direct-system entry
+  positions.
+- Each entry's text is normalised once, by the aggregator that owns the entry
+  (`TranscriptAggregator.normalizedEntries`), not once per merge pass. That
+  also removed the per-pair normalisation entirely.
+
+One rebuild over 16,000 synthetic entries: 12.7 s before, 0.26 s after, and 4x
+the entries now costs 4.02x instead of ~16x. Behaviour is unchanged: 6,000
+randomised two-channel scenarios run differentially against the previous
+implementation, plus 16 adversarial cases at the ±5s window boundaries,
+produced no differences.
+
+`TranscriptPipelineTests.test_mergeCost_tracksTranscriptLength_notItsSquare`
+guards the cost and is red on the old code. It runs under Debug only: Release
+test compilation fails for an unrelated `RTICore` module-resolution reason.
+
 ## 2026-09-21: Add Context filters; only `@` searches the vault
 
 The `+` pane and the `@` chooser share one row builder, and the pane was
