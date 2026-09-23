@@ -17,8 +17,11 @@ turn will use.
   the field, which already says "Not saved: no vault configured".
 
 The field now takes the house's eight lines at the overlay's minimum height (it
-used to give five back for the bar), so `ComposerFieldBudget`'s reduction is a
-guard for windows shorter than the app allows, not a live path.
+used to give five back for the bar). The reduction in `ComposerFieldBudget` is
+still a live path: a pending dated-source chip row above the field costs it
+lines. An earlier version of this note claimed the reduction could no longer
+trigger at any window the app allows; that was wrong, and the independent
+verification pass caught it.
 
 `testSourceModeLivesInAddContext` asserts the two modes render differently. Its
 first version wrote two identical PNGs because the row sat sixth of seven, below

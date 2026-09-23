@@ -440,25 +440,27 @@ final class ComposerRenderProofTests: RenderProofTestCase {
         XCTAssertGreaterThanOrEqual(tight, 1)
         XCTAssertLessThan(tight, HouseComposerMetrics.maxLines)
 
-        // The app passes the panel height less one `Spacing.xs`, and a dated
-        // source chip row is the only chrome that can still sit above the
-        // field. Both leave the field its eight lines at the app's own floor,
-        // so the give-back above guards a window shorter than the app allows
-        // rather than a live path (measured 2026-09-23).
-        let appMinimum = CGFloat(OverlayAppearanceDefaults.heightRange.lowerBound) - House.Spacing.xs
+        // At the overlay's floor (`minimum`: the window minimum less the
+        // panel's header and tab row, the quantity the composer is handed) the
+        // bar's removal leaves the field the house's eight lines when nothing
+        // else is pending...
         XCTAssertEqual(
-            ComposerFieldBudget.maxLines(availableHeight: appMinimum, fontSize: 13),
+            ComposerFieldBudget.maxLines(availableHeight: minimum, fontSize: 13),
             HouseComposerMetrics.maxLines
         )
-        XCTAssertEqual(
-            ComposerFieldBudget.maxLines(
-                availableHeight: appMinimum,
-                fontSize: 13,
-                extraChrome: AssistantInputView.datedSourceChipRowHeight
-            ),
-            HouseComposerMetrics.maxLines,
-            "a dated source chip costs the field no line at the app's own minimum"
+        // ...but a dated-source chip row above the field still costs it lines.
+        // The give-back is therefore a live path, not a guard for windows the
+        // app cannot produce. Corrected 2026-09-23: the first version of these
+        // two assertions measured `heightRange.lowerBound - Spacing.xs` (392),
+        // which omits the panel's header and tab row, so it passed while
+        // stating the opposite of the truth.
+        let withChip = ComposerFieldBudget.maxLines(
+            availableHeight: minimum,
+            fontSize: 13,
+            extraChrome: AssistantInputView.datedSourceChipRowHeight
         )
+        XCTAssertGreaterThanOrEqual(withChip, 1)
+        XCTAssertLessThan(withChip, HouseComposerMetrics.maxLines)
     }
 
     /// The palette puts the mode's quick actions first and never shows the
