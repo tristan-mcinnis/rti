@@ -9,7 +9,6 @@ final class ComposerSourcesStatusTests: XCTestCase {
     func testNothingToSayWhenEverythingIsReady() {
         let status = ComposerSourcesStatus()
         XCTAssertNil(status.notice)
-        XCTAssertEqual(status.saveLabel, "Saved")
     }
 
     func testAReadStillRunningIsNamedAndTheDraftIsKept() {
@@ -61,8 +60,6 @@ final class ComposerSourcesStatusTests: XCTestCase {
     func testNoVaultIsSaidOutLoud() {
         let status = ComposerSourcesStatus(savesToVault: false)
         XCTAssertEqual(status.notice, "Not saved: no vault configured")
-        XCTAssertEqual(status.saveLabel, "Not saved")
-        XCTAssertTrue(status.saveHelp.contains("nothing is written"))
     }
 
     func testTheLineReadsInOrderReadinessThenCutsThenDestination() {

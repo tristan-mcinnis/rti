@@ -257,121 +257,14 @@ private struct ContextChooserPane: View {
     }
 }
 
-// MARK: - Source and route bar
-
-/// The two choices the next Send is made of, drawn above the field
-/// (design-system components.json, composer: "source-only versus broader
-/// retrieval and the effective image destination remain visible before
-/// Send"). Both controls are live: the source choice writes
-/// `LLMController.broaderSearchEnabled`, and the route reads the same values
-/// the turn freezes with and opens the per-chat model chooser the header uses.
-///
-/// Internal, not file-private, so the render proofs can measure the row they
-/// must leave room for.
-struct ComposerSourceRouteBar: View {
-    /// `Control.chip` plus the inset above it: what the floating layers must
-    /// leave room for, on top of the composer row's own height.
-    static let height = House.Control.chip + House.Spacing.xs
-
-    let isBroaderSearch: Bool
-    let onSelectSourceMode: (Bool) -> Void
-    let savedLabel: String
-    let savedHelp: String
-    let route: ComposerRoutePreview
-    let onChangeRoute: () -> Void
-
-    var body: some View {
-        HStack(spacing: House.Spacing.xs) {
-            sourceModeChip("Attached sources", symbol: "paperclip", isBroader: false)
-            sourceModeChip("Broader search", symbol: "globe", isBroader: true)
-            routeButton
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(savedLabel)
-                .font(House.TypeToken.meta)
-                .foregroundStyle(House.ColorToken.textTertiary)
-                .lineLimit(1)
-                .fixedSize()
-                .help(savedHelp)
-                .accessibilityLabel("Save state")
-                .accessibilityValue(savedHelp)
-        }
-        .padding(.horizontal, House.Spacing.xs + House.Spacing.xxs)
-        .frame(height: Self.height)
-    }
-
-    /// One half of the source choice. `emphasised` marks the selected one the
-    /// way the project picker marks the current project, and the mark is never
-    /// colour alone: the selected chip also carries a checkmark, at a fixed
-    /// width so the row does not shift when the choice changes.
-    private func sourceModeChip(_ title: String, symbol: String, isBroader: Bool) -> some View {
-        let isSelected = isBroader == isBroaderSearch
-        return Button {
-            onSelectSourceMode(isBroader)
-        } label: {
-            SlateChip(stroked: true, emphasised: isSelected) {
-                Image(systemName: symbol)
-                    .font(House.TypeToken.meta)
-                Text(title)
-                    .lineLimit(1)
-                Image(systemName: "checkmark")
-                    .font(House.TypeToken.meta)
-                    .opacity(isSelected ? 1 : 0)
-                    .accessibilityHidden(true)
-            }
-            .fixedSize()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityValue(isSelected ? "Selected" : "")
-        .accessibilityHint(sourceModeHint(isBroader: isBroader))
-        .help(sourceModeHint(isBroader: isBroader))
-    }
-
-    private func sourceModeHint(isBroader: Bool) -> String {
-        isBroader
-            ? "Broader search: the vault, the web and earlier turns"
-            : "Attached sources only: no vault search, no web"
-    }
-
-    /// The chosen route in words, or the short reason it cannot run. The full
-    /// reason, with its fix, is the composer's own error line.
-    private var routeButton: some View {
-        Button(action: onChangeRoute) {
-            HStack(spacing: House.Spacing.xxs) {
-                if route.isBlocked {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(House.TypeToken.meta)
-                }
-                Text(route.barLabel)
-                    .font(House.TypeToken.meta)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .foregroundStyle(route.isBlocked ? House.ColorToken.danger : House.ColorToken.textTertiary)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Route for this question")
-        .accessibilityValue(route.isBlocked ? (route.blockerMessage ?? route.barLabel) : route.label)
-        .accessibilityHint("Change the model and reasoning for this chat")
-        .help(routeHelp)
-    }
-
-    private var routeHelp: String {
-        if let blocker = route.blockerMessage { return blocker }
-        let fallback = route.usesVisionFallback ? " on a labelled vision fallback" : ""
-        return "\(route.label)\(fallback). Change the model and reasoning for this chat"
-    }
-}
-
 /// How tall the composer may grow in a short window.
 ///
-/// The house lets the field grow to eight lines. The source and route bar adds
-/// a row above it, and the floating palette is drawn over the thread above the
-/// composer, so at the window's minimum height eight lines plus the bar would
-/// push the palette's own search row off the top of the panel. In a short
-/// window the field therefore gives back as many lines as the bar costs, and
-/// never fewer than one. In a normal window nothing changes.
+/// The house lets the field grow to eight lines, and the floating palette is
+/// drawn over the thread above the composer, so at the window's minimum height
+/// eight lines would push the palette's own search row off the top of the
+/// panel. In a short window the field therefore gives back as many lines as the
+/// chrome above it costs, and never fewer than one. In a normal window nothing
+/// changes.
 ///
 /// Internal, not file-private, so the render proofs measure the same budget the
 /// composer uses.
@@ -389,7 +282,7 @@ enum ComposerFieldBudget {
         let floor = House.Control.input + House.Control.row + House.Control.chip
             + 2 * HouseComposerMetrics.textInset(fontSize: fontSize)
             + 3 * House.Spacing.xs
-        let room = availableHeight - ComposerSourceRouteBar.height - extraChrome - floor
+        let room = availableHeight - extraChrome - floor
         guard room > 0, line > 0 else { return 1 }
         return max(1, min(house, Int(room / line)))
     }
@@ -799,20 +692,6 @@ struct AssistantInputView: View {
 
     // MARK: Body
 
-    /// The source and route bar: what the next Send will use. Above the row,
-    /// so it is read before the Send it describes.
-    private var sourceRouteBar: some View {
-        let sources = sourcesStatus
-        return ComposerSourceRouteBar(
-            isBroaderSearch: isBroaderSearch,
-            onSelectSourceMode: { llm.broaderSearchEnabled = $0 },
-            savedLabel: sources.saveLabel,
-            savedHelp: sources.saveHelp,
-            route: routePreview,
-            onChangeRoute: { OverlayShellModel.shared.toggle(.model) }
-        )
-    }
-
     /// The house composer row, its chips and its layers, wired to the app's
     /// state. Broken out of `body` so the type checker has one expression at a
     /// time to solve.
@@ -863,7 +742,6 @@ struct AssistantInputView: View {
     /// The row, its layers, and what can be dropped or picked into it.
     private var composerSurface: some View {
         VStack(spacing: 0) {
-            sourceRouteBar
             datedSourceRow
             composerRow
         }
@@ -978,11 +856,11 @@ struct AssistantInputView: View {
     /// chip key, no strip selection and no clear-all ever reaches it.
     static let datedSourceChipID = "dated-source"
 
-    /// The composer's own height: the bar, the dated chip row when one is
-    /// pending, and the row itself. What the floating layers must leave room
-    /// for, and what the field's own line budget is measured against.
+    /// The composer's own height: the dated chip row when one is pending, and
+    /// the row itself. What the floating layers must leave room for, and what
+    /// the field's own line budget is measured against.
     private var composerChromeHeight: CGFloat {
-        composerRowHeight + ComposerSourceRouteBar.height + datedSourceChipHeight
+        composerRowHeight + datedSourceChipHeight
     }
 
     private var composerRowHeight: CGFloat {
@@ -1369,6 +1247,18 @@ struct AssistantInputView: View {
                           detail: "Whole screen; sent to the model and kept with the session", keys: ["⌘", "⇧", "H"]),
             AddContextRow(kind: .readWindow, symbol: "macwindow", title: "Screenshot Window",
                           detail: "Frontmost window; sent to the model and kept with the session", keys: ["⌘", "⇧", "J"]),
+            // Above Search Scope: the pane shows five action rows at the
+            // overlay's default height, so how far the search reaches has to
+            // sit above the fold to be readable before Send (2026-09-23).
+            AddContextRow(
+                kind: .searchMode,
+                symbol: "globe",
+                title: "Broader Search",
+                detail: isBroaderSearch
+                    ? "On: the vault and the web may answer"
+                    : "Off: only what you attach answers",
+                isCurrent: isBroaderSearch
+            ),
             AddContextRow(kind: .searchScope, symbol: "scope", title: "Search Scope", detail: scope),
             AddContextRow(
                 kind: .noteMode,
@@ -1576,6 +1466,9 @@ struct AssistantInputView: View {
             addContextFocusToken &+= 1
             isAddContextOpen = true
             return
+        case .searchMode:
+            isAddContextOpen = false
+            llm.broaderSearchEnabled.toggle()
         case .noteMode:
             isAddContextOpen = false
             toggleNoteMode()

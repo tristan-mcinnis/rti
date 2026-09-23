@@ -1,5 +1,32 @@
 # RTI Change Log
 
+## 2026-09-23: The composer loses its source and route bar
+
+The row above the field drew two chips (Attached sources / Broader search), the
+model route, and a Saved label. It read as noise: the route repeated the model
+the header already names, and the choice itself belongs with the rest of what a
+turn will use.
+
+- The bar is gone, along with the 36 pt it reserved in the field's line budget
+  and in the floating layers' inset.
+- How far the search reaches is now the **Broader Search** row in the `+` Add
+  Context pane, placed above Search Scope so it stays inside the pane's
+  five-row fold at the overlay's default height. It still reads and writes
+  `LLMController.broaderSearchEnabled` and is reachable from `@` as well.
+- The model stays in the header. The save state stays in the notice line above
+  the field, which already says "Not saved: no vault configured".
+
+The field now takes the house's eight lines at the overlay's minimum height (it
+used to give five back for the bar), so `ComposerFieldBudget`'s reduction is a
+guard for windows shorter than the app allows, not a live path.
+
+`testSourceModeLivesInAddContext` asserts the two modes render differently. Its
+first version wrote two identical PNGs because the row sat sixth of seven, below
+the pane's fold, and proved nothing; that assertion is what keeps the row inside
+the fold. The shared composer rule changed with it (DEC-20260923-01): the source
+mode stays reachable before Send from the context choices, while the image
+destination stays visible above the field.
+
 ## 2026-09-23: The live transcript stops re-deduping the whole session
 
 A 1h45m session pinned 86% of the busy main thread in one chain:

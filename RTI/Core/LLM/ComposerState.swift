@@ -393,15 +393,6 @@ public struct ComposerSourcesStatus: Equatable, Sendable {
         if !savesToVault { lines.append("Not saved: no vault configured") }
         return lines.isEmpty ? nil : lines.joined(separator: " · ")
     }
-
-    /// The short state beside the route.
-    public var saveLabel: String { savesToVault ? "Saved" : "Not saved" }
-
-    public var saveHelp: String {
-        savesToVault
-            ? "This chat is written to your vault"
-            : "No vault is configured: chat works, nothing is written"
-    }
 }
 
 // MARK: - The route, before Send

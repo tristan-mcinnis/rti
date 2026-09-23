@@ -84,22 +84,24 @@ final class ComposerRenderProofTests: RenderProofTestCase {
         let oneLine = HouseComposerMetrics.rowHeight(fieldHeight: HouseComposerMetrics.lineHeight(fontSize: 13), fontSize: 13)
         let houseMax = HouseComposerMetrics.rowHeight(fieldHeight: 8 * HouseComposerMetrics.lineHeight(fontSize: 13), fontSize: 13)
         XCTAssertGreaterThan(houseMax, oneLine)
-        // The source and route bar rides above the row, so it comes out of the
-        // same budget. In a short window the field gives the bar's lines back
-        // (`ComposerFieldBudget`), which is what keeps the palette on screen.
-        let bar = ComposerSourceRouteBar.height
+        // The chrome above the field shares this budget with the palette drawn
+        // over it. Since the source and route bar was deleted (2026-09-23) the
+        // field reaches the house's eight lines even at this height, so what is
+        // guarded here is the house cap and that the palette still fits beneath
+        // it; the line give-back is guarded at a genuinely short height in
+        // `testFieldLineBudgetGivesBackLinesOnlyWhenShort`.
         let capped = ComposerFieldBudget.maxHeight(availableHeight: minimumContentHeight, fontSize: 13)
-        XCTAssertLessThan(capped, 8 * HouseComposerMetrics.lineHeight(fontSize: 13),
-                          "at the minimum height the field gives the bar its lines back")
+        XCTAssertLessThanOrEqual(capped, 8 * HouseComposerMetrics.lineHeight(fontSize: 13),
+                                 "the field never exceeds the house's eight lines")
         XCTAssertGreaterThanOrEqual(capped, HouseComposerMetrics.lineHeight(fontSize: 13))
         let long = HouseComposerMetrics.rowHeight(fieldHeight: capped, fontSize: 13)
-        let rowLimit = HouseComposerMetrics.paletteRows(availableHeight: minimumContentHeight, composerHeight: long + bar)
+        let rowLimit = HouseComposerMetrics.paletteRows(availableHeight: minimumContentHeight, composerHeight: long)
         let palette = CommandPaletteView(query: .constant(""), onRun: { _ in },
                                          leadingCommands: RenderFixtures.commands, maxVisibleRows: rowLimit)
             .frame(width: HouseChatMetrics.paletteWidth)
         let host = NSHostingView(rootView: palette)
-        XCTAssertLessThanOrEqual(host.fittingSize.height + long + bar, minimumContentHeight,
-                                "Search, commands, footer, the source bar and the full composer must fit at minimum window height")
+        XCTAssertLessThanOrEqual(host.fittingSize.height + long, minimumContentHeight,
+                                "Search, commands, footer and the full composer must fit at minimum window height")
     }
 
     func testFailedAttachmentKeepsDraftAndShowsBlockedAction() throws {
@@ -233,14 +235,35 @@ final class ComposerRenderProofTests: RenderProofTestCase {
 
     /// The two choices the next Send is made of: which evidence, and where it
     /// goes. Drawn at the default width, at the minimum width, and widened.
-    func testSourceAndRouteBar() throws {
-        try render("composer-source-route", thread: false)
-        try render("composer-source-route-600", size: Self.narrow, thread: false)
+    /// The attached/broader choice now lives in the Add Context pane: the
+    /// composer's source and route bar was deleted on 2026-09-23 because it
+    /// repeated the model the header already names and the chips read as noise.
+    ///
+    /// The two modes must render differently. They did not the first time: the
+    /// row sat sixth of seven, below the pane's five-row fold at this size, so
+    /// the proof wrote two identical PNGs and proved nothing. This assertion is
+    /// what keeps the row inside the fold at the height the overlay opens at.
+    func testSourceModeLivesInAddContext() throws {
+        try render("composer-add-context-search-off", seed: ComposerRenderSeed(layer: .addContext), thread: false)
         try render(
-            "composer-source-route-broader",
-            seed: ComposerRenderSeed(draft: "What do other projects say about this?", isBroaderSearch: true),
+            "composer-add-context-search-on",
+            seed: ComposerRenderSeed(layer: .addContext, isBroaderSearch: true),
             thread: false
         )
+        let off = try RenderProofHarness.render(
+            ComposerProofHost(seed: ComposerRenderSeed(layer: .addContext), showsThread: false),
+            size: Self.wide,
+            appearance: .darkAqua
+        )
+        let on = try RenderProofHarness.render(
+            ComposerProofHost(
+                seed: ComposerRenderSeed(layer: .addContext, isBroaderSearch: true),
+                showsThread: false
+            ),
+            size: Self.wide,
+            appearance: .darkAqua
+        )
+        XCTAssertNotEqual(off, on, "the off and on rows must both be visible at the overlay's own size")
     }
 
     /// A pending screenshot names its destination before Send, and a text-only
@@ -391,7 +414,7 @@ final class ComposerRenderProofTests: RenderProofTestCase {
 
     /// The field's own line budget: the house's eight whenever there is room,
     /// fewer lines in a short window, and never fewer than one.
-    func testFieldLineBudgetGivesBackTheBarsLinesOnlyWhenShort() {
+    func testFieldLineBudgetGivesBackLinesOnlyWhenShort() {
         XCTAssertEqual(
             ComposerFieldBudget.maxLines(availableHeight: 900, fontSize: 13),
             HouseComposerMetrics.maxLines
@@ -401,11 +424,41 @@ final class ComposerRenderProofTests: RenderProofTestCase {
             HouseComposerMetrics.maxLines,
             "an unmeasured height asks for no change"
         )
+        // The source and route bar's 36 pt left this budget on 2026-09-23, so
+        // the overlay's own minimum height no longer forces a reduction: the
+        // field uses all eight lines there. A window 60 pt shorter than that
+        // still has to give lines back, or the palette's own search row goes
+        // off the top of the panel.
         let minimum = CGFloat(OverlayAppearanceDefaults.heightRange.lowerBound)
             - House.Control.input - House.Control.railRow - House.Spacing.xs
-        let tight = ComposerFieldBudget.maxLines(availableHeight: minimum, fontSize: 13)
+        XCTAssertEqual(
+            ComposerFieldBudget.maxLines(availableHeight: minimum, fontSize: 13),
+            HouseComposerMetrics.maxLines,
+            "at the overlay's minimum height the field now takes the house's eight"
+        )
+        let tight = ComposerFieldBudget.maxLines(availableHeight: minimum - 60, fontSize: 13)
         XCTAssertGreaterThanOrEqual(tight, 1)
         XCTAssertLessThan(tight, HouseComposerMetrics.maxLines)
+
+        // The app passes the panel height less one `Spacing.xs`, and a dated
+        // source chip row is the only chrome that can still sit above the
+        // field. Both leave the field its eight lines at the app's own floor,
+        // so the give-back above guards a window shorter than the app allows
+        // rather than a live path (measured 2026-09-23).
+        let appMinimum = CGFloat(OverlayAppearanceDefaults.heightRange.lowerBound) - House.Spacing.xs
+        XCTAssertEqual(
+            ComposerFieldBudget.maxLines(availableHeight: appMinimum, fontSize: 13),
+            HouseComposerMetrics.maxLines
+        )
+        XCTAssertEqual(
+            ComposerFieldBudget.maxLines(
+                availableHeight: appMinimum,
+                fontSize: 13,
+                extraChrome: AssistantInputView.datedSourceChipRowHeight
+            ),
+            HouseComposerMetrics.maxLines,
+            "a dated source chip costs the field no line at the app's own minimum"
+        )
     }
 
     /// The palette puts the mode's quick actions first and never shows the

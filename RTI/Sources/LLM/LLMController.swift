@@ -229,9 +229,10 @@ final class LLMController {
     /// affects the current chat only, and `/new` returns it to the default.
     var chatSelection: ChatModelSelection
 
-    /// The visible Broader search control. Off keeps a turn that carries
-    /// attached sources source-first: no vault search, and the discovery
-    /// tools are not even offered. On restores ordinary discovery.
+    /// The Broader Search row in the Add Context pane (the composer's own
+    /// source and route bar was deleted 2026-09-23). Off keeps a turn that
+    /// carries attached sources source-first: no vault search, and the
+    /// discovery tools are not even offered. On restores ordinary discovery.
     var broaderSearchEnabled: Bool = false
 
     /// Which assistant action ⌘⏎ fires, by `AssistantAction.id`. Remappable per

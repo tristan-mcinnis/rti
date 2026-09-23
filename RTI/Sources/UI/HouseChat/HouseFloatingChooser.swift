@@ -235,6 +235,10 @@ struct AddContextRow: Identifiable, Equatable {
         case readScreen
         case readWindow
         case searchScope
+        /// How far the next question reaches: only what is attached, or the
+        /// vault and the web as well. This replaced the composer's source bar,
+        /// which drew the same choice as a pair of chips above the field.
+        case searchMode
         case noteMode
         /// On the scope page: the whole vault, or one project or client.
         case scope(id: String?)
@@ -258,7 +262,8 @@ struct AddContextRow: Identifiable, Equatable {
 }
 
 /// Add Context: attach a file, a vault file, one read of the screen, the
-/// vault search scope, and note mode. Opened by the plus circle. The pane
+/// vault search scope, how far the search reaches, and note mode. Opened by
+/// the plus circle. The pane
 /// carries its own search, as every house chooser does: it takes the keyboard
 /// when it opens, so typing narrows the rows instead of reaching the composer
 /// behind it. The scope row opens a second page of projects and clients;
