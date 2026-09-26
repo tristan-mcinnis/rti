@@ -187,7 +187,7 @@ meeting processing, and Neon indexing.
 - [ ] If your Hermes vault has a pre-meeting brief, it auto-loads in the panel (picker if several).
 
 ## I. Real meeting (the final gate)
-- [ ] Join a real call. Both sides transcribe (Live Transcript shows "self" + "them").
+- [ ] Join a real call. Both sides transcribe (the Transcript tab shows your runs on the right as "You" and the call's voices on the left as "Speaker N").
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
 - [ ] The Notes, Guide and Findings tabs populate (when enabled in Setup).
 - [ ] Overlay is absent from the screen share (QuickTime/Zoom — §4/§5 above).
