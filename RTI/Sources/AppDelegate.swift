@@ -81,7 +81,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // durable marker beside retained audio. Resume those jobs on launch;
         // nothing is routed or indexed until an upgrade succeeds.
         Task { @MainActor in
-            for session in SessionArchive.pendingAutomaticUpgrades() {
+            // The scan lists every session folder and legacy meeting sidecar;
+            // keep that file walk off the main thread at launch.
+            let pending = await Task.detached(priority: .utility) {
+                SessionArchive.pendingAutomaticUpgrades()
+            }.value
+            for session in pending {
                 do {
                     _ = try await TranscriptUpgradeService.upgrade(
                         session: session,
