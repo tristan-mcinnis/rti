@@ -62,3 +62,40 @@ enum ExternalTools {
         try? proc.run()
     }
 }
+
+/// Reads a child's stdout and stderr at the same time, each on its own
+/// thread, so neither pipe can fill and block the child. Reading one pipe to
+/// the end before the other deadlocks as soon as the unread pipe passes its
+/// 64 KB buffer: the child waits for a reader, and the reader waits for the
+/// child to close the other pipe. Start it right after `Process.run()`.
+final class ProcessOutputCollector: @unchecked Sendable {
+    private let group = DispatchGroup()
+    private let lock = NSLock()
+    private var stdoutData = Data()
+    private var stderrData = Data()
+
+    init(stdout: Pipe, stderr: Pipe) {
+        read(stdout) { data in self.stdoutData = data }
+        read(stderr) { data in self.stderrData = data }
+    }
+
+    /// Blocks until both pipes reach end of file, which happens when the
+    /// child (and anything it spawned with the same pipes) exits.
+    func wait() -> (stdout: Data, stderr: Data) {
+        group.wait()
+        lock.lock()
+        defer { lock.unlock() }
+        return (stdoutData, stderrData)
+    }
+
+    private func read(_ pipe: Pipe, into store: @escaping @Sendable (Data) -> Void) {
+        group.enter()
+        DispatchQueue.global(qos: .utility).async { [lock, group] in
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            lock.lock()
+            store(data)
+            lock.unlock()
+            group.leave()
+        }
+    }
+}

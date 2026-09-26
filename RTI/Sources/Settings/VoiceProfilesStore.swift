@@ -88,8 +88,7 @@ final class VoiceProfilesStore {
             } catch {
                 return .unavailable
             }
-            let stdout = out.fileHandleForReading.readDataToEndOfFile()
-            let stderr = err.fileHandleForReading.readDataToEndOfFile()
+            let (stdout, stderr) = ProcessOutputCollector(stdout: out, stderr: err).wait()
             proc.waitUntilExit()
             guard proc.terminationStatus == 0 else {
                 let message = String(data: stderr, encoding: .utf8)?

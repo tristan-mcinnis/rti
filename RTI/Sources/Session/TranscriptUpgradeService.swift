@@ -283,7 +283,7 @@ private enum ScriptRunner {
         environment: [String: String],
         timeout: TimeInterval = 3_600
     ) async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let state = ScriptRunState()
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
@@ -294,35 +294,41 @@ private enum ScriptRunner {
             let stderr = Pipe()
             process.standardOutput = stdout
             process.standardError = stderr
-            process.terminationHandler = { proc in
+            do {
+                try process.run()
+            } catch {
+                guard state.markFinished() else { return }
+                continuation.resume(throwing: TranscriptUpgradeError.providerFailed(error.localizedDescription))
+                return
+            }
+
+            // Drain both pipes while the child runs. Reading them only after
+            // exit let a chatty provider fill a pipe and block forever, until
+            // the timeout killed it.
+            let output = ProcessOutputCollector(stdout: stdout, stderr: stderr)
+            let timeoutTask = DispatchWorkItem {
+                guard state.markFinished() else { return }
+                if process.isRunning { process.terminate() }
+                continuation.resume(throwing: TranscriptUpgradeError.providerFailed("Transcript provider timed out after \(Int(timeout)) seconds."))
+            }
+            state.setTimeout(timeoutTask)
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: timeoutTask)
+
+            DispatchQueue.global(qos: .utility).async {
+                let (outData, data) = output.wait()
+                process.waitUntilExit()
                 state.cancelTimeout()
                 guard state.markFinished() else { return }
-                let outData = stdout.fileHandleForReading.readDataToEndOfFile()
-                let data = stderr.fileHandleForReading.readDataToEndOfFile()
                 let out = String(data: outData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let err = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 // Keep both streams: Python warnings land on stderr and would
                 // otherwise mask the actual error printed on stdout.
                 let detail = [err, out].filter { !$0.isEmpty }.joined(separator: "\n")
-                if proc.terminationStatus == 0 {
+                if process.terminationStatus == 0 {
                     continuation.resume()
                 } else {
-                    continuation.resume(throwing: TranscriptUpgradeError.providerFailed(detail.isEmpty ? "Transcript provider exited with \(proc.terminationStatus)." : detail))
+                    continuation.resume(throwing: TranscriptUpgradeError.providerFailed(detail.isEmpty ? "Transcript provider exited with \(process.terminationStatus)." : detail))
                 }
-            }
-
-            do {
-                try process.run()
-                let timeoutTask = DispatchWorkItem {
-                    guard state.markFinished() else { return }
-                    if process.isRunning { process.terminate() }
-                    continuation.resume(throwing: TranscriptUpgradeError.providerFailed("Transcript provider timed out after \(Int(timeout)) seconds."))
-                }
-                state.setTimeout(timeoutTask)
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: timeoutTask)
-            } catch {
-                guard state.markFinished() else { return }
-                continuation.resume(throwing: TranscriptUpgradeError.providerFailed(error.localizedDescription))
             }
         }
     }
