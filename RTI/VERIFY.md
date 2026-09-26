@@ -189,6 +189,6 @@ meeting processing, and Neon indexing.
 ## I. Real meeting (the final gate)
 - [ ] Join a real call. Both sides transcribe (Live Transcript shows "self" + "them").
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
-- [ ] Notes / Dossiers / Discussion-guide panels populate.
+- [ ] The Notes, Guide and Findings tabs populate (when enabled in Setup).
 - [ ] Overlay is absent from the screen share (QuickTime/Zoom — §4/§5 above).
-- [ ] Stop → Markdown archive written under `…/RTI/sessions/`; WAV gone; mic released (orange dot clears, other apps can use the mic).
+- [ ] Stop → the session folder appears in the vault under `…/databases/projects/personal/rti/sessions/<stamp>/` with `transcript.md`, `audio-mic.wav` and `audio-system.wav` (the audio is kept for the transcript upgrade); mic released (orange dot clears, other apps can use the mic).

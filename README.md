@@ -6,9 +6,9 @@ Personal build: **real-time first, vault-backed** — the live transcript stays 
 
 Transcription is not on-device: by default both live legs stream to hosted Soniox, and the automatic transcript upgrade sends the retained audio to Soniox's file API. OCR runs on this Mac; assistant turns go to the selected LLM provider.
 
-RTI's assistant is for meetings and sessions: it reads the live transcript, saved sessions and the vault. General chat, and the Chief of Staff, live in Quick Launch's AI Chat.
+RTI's assistant is for meetings and sessions: it reads the live transcript, saved sessions and the vault. Standalone RTI chats (no recording running) stay, for questions about past meetings and the vault. General chat and the Chief of Staff live in Quick Launch's AI Chat. The two apps share HouseChatCore code, not histories, settings or keys.
 
-Names: this repo is `rti` (GitHub `tristan-mcinnis/rti-personal`). It builds `RTI.app`, bundle id `com.tristan.rti.personal`; the bundle's display name is still "RTI Personal". Two launchd jobs installed outside this repo touch it: `com.tristan.rti-crash-watchdog` (relaunches RTI after a crash) and `com.tristan.rti-meeting-drain` (a vault tool).
+Names: this repo is `rti` (GitHub `tristan-mcinnis/rti-personal`). It builds `RTI.app`, bundle id `com.tristan.rti.personal`; its display name is "RTI" (renamed from "RTI Personal" on 2026-09-26; the bundle id did not change, so permissions carry over). Two launchd jobs installed outside this repo touch it: `com.tristan.rti-crash-watchdog` (relaunches RTI after a crash) and `com.tristan.rti-meeting-drain` (a vault tool).
 
 ## What it does
 
