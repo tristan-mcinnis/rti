@@ -67,9 +67,9 @@ final class TranscriptUpgradeTests: XCTestCase {
         let text = CanonicalMeetingTranscript.render(entries: entries)
 
         XCTAssertEqual(text, """
-        [00:01] Speaker 1: Opening note.
+        [00:01] You: Opening note.
 
-        [01:01] Speaker 2: Let's begin.
+        [01:01] Remote speaker 1: Let's begin.
         """)
     }
 

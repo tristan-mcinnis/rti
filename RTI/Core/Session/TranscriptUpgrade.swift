@@ -456,17 +456,11 @@ public enum CanonicalMeetingTranscript {
             .joined(separator: "\n\n")
     }
 
-    private static func speakerLabeler(for entries: [LiveEntry]) -> (String) -> String {
-        var numbers: [String: Int] = [:]
-        var next = 1
-        for entry in entries where numbers[entry.speakerId] == nil {
-            numbers[entry.speakerId] = next
-            next += 1
-        }
-        return { id in
-            if let n = numbers[id] { return "Speaker \(n)" }
-            return "Speaker ?"
-        }
+    /// The same leg-aware labels as the archived `transcript.md` (`You`,
+    /// `Room speaker N`, `Remote speaker N`), so `speaker-names.json` keys and
+    /// the vault's speaker-profiles leg rule match this export too.
+    private static func speakerLabeler(for _: [LiveEntry]) -> (String) -> String {
+        { id in SpeakerLabelMapping.displayLabel(forRawKey: id) ?? id }
     }
 
     private static func canonicalLine(fromMarkdownLine raw: String) -> String? {

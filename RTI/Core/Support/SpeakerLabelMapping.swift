@@ -48,6 +48,18 @@ public enum SpeakerLabelMapping {
         return nil
     }
 
+    /// The raw speaker id behind a display label (the inverse of
+    /// `displayLabel(forRawKey:)`), or nil for a name or any other text. The
+    /// Sessions browser uses it to give an archived speaker the dot colour
+    /// the live transcript gave them.
+    public static func rawKey(forDisplayLabel label: String) -> String? {
+        if label == "You" { return "self" }
+        for (prefix, raw) in [("Room speaker ", "room_"), ("Remote speaker ", "remote_"), ("Speaker ", "them_")] {
+            if let n = numericSuffix(of: label, afterPrefix: prefix), n >= 1 { return "\(raw)\(n)" }
+        }
+        return nil
+    }
+
     /// Re-key a speaker-name map onto display labels for serialization.
     /// Raw ids become their display labels; keys that are already display
     /// labels pass through. `self` is dropped: "You" as a substitution key

@@ -115,7 +115,7 @@ enum SessionArchive {
         // Only archive a transcript when there's real spoken content (a
         // non-note entry) — a header-only transcript.md just pollutes search.
         if transcript.contains(where: { $0.speakerId != "note" }) || hasRetainedAudio {
-            let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, speakerNames: speakerNames)
+            let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
             let md = (fm("Transcript") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md"))
         }
@@ -731,7 +731,7 @@ enum SessionArchive {
 
     // MARK: - Rendering
 
-    private static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry], speakerNames: [String: String] = [:]) -> String {
+    static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry]) -> String {
         var lines = ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), ""]
 
         // Originals only — live-translation tokens are a viewing convenience, not
@@ -740,19 +740,17 @@ enum SessionArchive {
             .filter { $0.translationStatus != "translation" }
             .sorted { $0.startMs < $1.startMs }
 
-        // Neutral, appearance-ordered speaker labels — matching the live view —
-        // with any session-scoped rename from SpeakerNameStore applied on top.
-        // The capture channel (mic vs system) doesn't identify who's talking.
-        var speakerNumber: [String: Int] = [:]
-        var nextNumber = 1
+        // Leg-aware labels from the speaker id, never renumbered by who spoke
+        // first: `You`, `Room speaker N` (mic), `Remote speaker N` (system).
+        // They are the keys of speaker-names.json and the labels the vault's
+        // speaker-profiles.py reads the audio leg from, so names stay out of
+        // this file: the Sessions browser and /meeting apply them from
+        // speaker-names.json. (Printing appearance-ordered "Speaker N" with
+        // names substituted left the names file matching no label, sent
+        // remote voices to the mic WAV, and gave enrollment no turns.)
         func label(for id: String) -> String {
             if id == "note" { return "📝 Note" }
-            if let named = speakerNames[id], !named.isEmpty { return named }
-            if let n = speakerNumber[id] { return "Speaker \(n)" }
-            let n = nextNumber
-            speakerNumber[id] = n
-            nextNumber += 1
-            return "Speaker \(n)"
+            return SpeakerLabelMapping.displayLabel(forRawKey: id) ?? id
         }
 
         // Coalesce a speaker's consecutive fragments into one flowing paragraph,

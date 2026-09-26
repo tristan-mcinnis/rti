@@ -24,6 +24,16 @@ final class SpeakerLabelMappingTests: XCTestCase {
         XCTAssertNil(SpeakerLabelMapping.displayLabel(forRawKey: ""))
     }
 
+    func testRawKeyInvertsDisplayLabel() {
+        for raw in ["self", "room_1", "remote_2", "them_3"] {
+            let label = SpeakerLabelMapping.displayLabel(forRawKey: raw)!
+            XCTAssertEqual(SpeakerLabelMapping.rawKey(forDisplayLabel: label), raw)
+        }
+        XCTAssertNil(SpeakerLabelMapping.rawKey(forDisplayLabel: "Priya Shah"))
+        XCTAssertNil(SpeakerLabelMapping.rawKey(forDisplayLabel: "Speaker 0"))
+        XCTAssertNil(SpeakerLabelMapping.rawKey(forDisplayLabel: "📝 Note"))
+    }
+
     func testDisplayLabelMatchesRawLabelRoundTrip() {
         // Every label rawLabel can mint must map to a display label.
         XCTAssertEqual(

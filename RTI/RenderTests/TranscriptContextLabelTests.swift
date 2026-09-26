@@ -30,3 +30,34 @@ final class TranscriptContextLabelTests: XCTestCase {
         XCTAssertEqual(text, "Priya Shah: Yes.\nRoom speaker 1: Agreed.")
     }
 }
+
+/// The archived transcript prints the leg-aware labels that key
+/// speaker-names.json and that the vault's speaker-profiles.py reads the audio
+/// leg from, whoever speaks first, and keeps names out of the file.
+final class ArchivedTranscriptLabelTests: XCTestCase {
+    private func entry(_ speaker: String, _ text: String, _ start: Int) -> LiveEntry {
+        LiveEntry(speakerId: speaker, text: text, startMs: start, confidence: 1,
+                  translationStatus: "none", language: nil, sourceLanguage: nil)
+    }
+
+    func testArchiveLabelsComeFromTheSpeakerIdAndLeg() {
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        let text = SessionArchive.renderTranscript(startedAt: start, endedAt: start.addingTimeInterval(120), entries: [
+            entry("remote_2", "Morning.", 1_000),
+            entry("self", "Hi both.", 2_000),
+            entry("remote_1", "Hello.", 3_000),
+            entry("remote_1", "Shall we start?", 3_500),
+            entry("room_1", "I'm in the room.", 4_000),
+            entry("note", "Ask about pricing.", 5_000),
+        ])
+        XCTAssertTrue(text.contains("**Remote speaker 2:** Morning."))
+        XCTAssertTrue(text.contains("**You:** Hi both."))
+        XCTAssertTrue(text.contains("**Remote speaker 1:** Hello. Shall we start?"))
+        XCTAssertTrue(text.contains("**Room speaker 1:** I'm in the room."))
+        XCTAssertTrue(text.contains("**📝 Note:** Ask about pricing."))
+        XCTAssertEqual(
+            SpeakerLabelMapping.archivedSpeakerLabels(in: text),
+            ["Room speaker 1", "Remote speaker 1", "Remote speaker 2"]
+        )
+    }
+}

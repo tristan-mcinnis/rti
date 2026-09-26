@@ -1071,7 +1071,7 @@ private struct SessionTranscriptReader: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.top, index == 0 ? 0 : (opensRun ? House.Spacing.lg : House.Spacing.xs))
+                    .padding(.top, index == 0 ? 0 : (opensRun ? House.Spacing.lg : House.Spacing.sm))
                     .id(index)
                 }
             }
@@ -1108,14 +1108,17 @@ private struct SessionTranscriptReader: View {
         .frame(minHeight: House.Control.keyCap)
     }
 
-    /// Speaker colours are data (DESIGN.md: RTI's one categorical palette).
+    /// Speaker colours are data (DESIGN.md: RTI's one categorical palette),
+    /// the same colour the live transcript gave the speaker: the label, or
+    /// the label a confirmed name stands for, maps back to its speaker id.
     /// A note has no speaker, so its dot is plain ink.
     private func speakerColor(_ turn: SessionTranscriptTurn) -> Color {
-        let palette = RTIDesign.Color.speakerPalette
         guard !turn.isNote else { return House.ColorToken.textTertiary }
-        let digits = turn.speaker.reversed().prefix { $0.isNumber }.reversed()
-        guard let number = Int(String(digits)), !palette.isEmpty else { return House.ColorToken.textTertiary }
-        return palette[(max(number, 1) - 1) % palette.count]
+        let label = model.speakerNames.first { $0.value == turn.speaker }?.key ?? turn.speaker
+        guard let raw = SpeakerLabelMapping.rawKey(forDisplayLabel: label) else {
+            return House.ColorToken.textTertiary
+        }
+        return SpeakerLabels.chipColor(for: raw)
     }
 }
 

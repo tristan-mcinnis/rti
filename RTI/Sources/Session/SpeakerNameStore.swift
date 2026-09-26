@@ -6,7 +6,8 @@ import Observation
 /// every new session (names don't carry across meetings). `SpeakerLabels
 /// .displayName` consults this first so a rename in the live transcript
 /// takes effect everywhere immediately; `SessionArchive` reads `names` at
-/// stop time to write both `speaker-names.json` and a named `transcript.md`.
+/// stop time to write `speaker-names.json` (the archived `transcript.md`
+/// keeps its speaker labels; readers apply the names from that file).
 @Observable @MainActor
 final class SpeakerNameStore {
     static let shared = SpeakerNameStore()

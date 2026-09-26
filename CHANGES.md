@@ -27,9 +27,21 @@
   clicking a speaker offers its invitees (yourself left out); Type a name
   still works.
 
-Left as is: the archived `transcript.md` keeps its line format and its
-own speaker numbering, which the upgrade, the Sessions editor and the
-vault's speaker-profiles script parse.
+- **Long runs read as paragraphs.** A long run by one speaker breaks at a
+  sentence end every few lines. A break never moves once made, and
+  interim words join only the open paragraph, so an interim frame no
+  longer re-lays out a whole monologue.
+- **Archived labels follow the speaker id too.** `transcript.md` and the
+  vault's `-transcript.txt` print `You`, `Room speaker N` and `Remote
+  speaker N`, the keys of `speaker-names.json`, and keep names out of the
+  file (the Sessions browser and /meeting apply them from
+  `speaker-names.json`). Before, both printed "Speaker N" by first
+  appearance, and `transcript.md` had names pasted in. So the names file
+  matched no label, speaker-profiles.py cut remote voices from the mic
+  WAV, and enroll-from-session found no turns for a named speaker. The
+  line format is unchanged; older archives still render. The Sessions
+  browser gives each archived speaker the dot colour the live view gave
+  them.
 
 ## 2026-09-26: Second sweep (name, upgrade provider, process pipes, docs)
 
