@@ -427,6 +427,13 @@ final class SessionCoordinator {
         // in-session search is warm, not a ~10-15s cold-start.
         VaultSearchCLI.warmUp()
 
+        // The chat projection is gathered only when a session stops, so it
+        // still holds the previous recording's threads. The 5-minute
+        // checkpoint and a quit-time archive write this session's chat.md
+        // from it; clear it so they fall back to this session's own chat.
+        chatThreadProjection = []
+        unreadableChatCount = 0
+
         // Reset the live transcript for the fresh session.
         liveEntries = []
         interimLine = nil
