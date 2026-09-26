@@ -1,11 +1,6 @@
 import Foundation
 
 public enum LiveTranscriptPresentation {
-    public enum SpeakerLabelStyle: Equatable {
-        case neutral
-        case displayNames([String: String])
-    }
-
     public struct Row: Identifiable, Equatable {
         public let id: UUID
         public let speakerId: String
@@ -16,33 +11,70 @@ public enum LiveTranscriptPresentation {
         public var translationLanguage: String?
 
         public var isNote: Bool { speakerId == "note" }
+        /// The mic leg's main voice: the person running RTI.
+        public var isSelf: Bool { speakerId == "self" }
         public var hasOriginal: Bool { !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         public var hasTranslation: Bool { !translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    /// Interim (not yet final) text from one speaker.
+    public struct InterimSegment: Equatable {
+        public let speakerId: String
+        public let text: String
+
+        public init(speakerId: String, text: String) {
+            self.speakerId = speakerId
+            self.text = text
+        }
+    }
+
+    /// The label a live speaker id reads as, derived from the id alone so it
+    /// never changes while the meeting runs: `self` is "You", the system
+    /// leg's voices are "Speaker N", extra voices on the mic are "Room
+    /// speaker N". A name the user gave (`names`, keyed by raw id) wins.
+    ///
+    /// Numbering by first appearance (the old rule) let labels swap when the
+    /// cross-channel echo pass later dropped an early entry, and made the mic
+    /// wearer "Speaker 2" whenever someone else spoke first.
+    public static func label(for speakerId: String, names: [String: String] = [:]) -> String {
+        if speakerId == "note" { return "Note" }
+        if let name = names[speakerId]?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        if speakerId == "self" { return "You" }
+        if let n = numericSuffix(of: speakerId, afterPrefix: "remote_") { return "Speaker \(n)" }
+        if let n = numericSuffix(of: speakerId, afterPrefix: "them_") { return "Speaker \(n)" }
+        if let n = numericSuffix(of: speakerId, afterPrefix: "room_") { return "Room speaker \(n)" }
+        return speakerId
+    }
+
+    /// Invitees of the confirmed calendar meeting offered as names for a live
+    /// speaker: the user themself left out, each name once, and a name already
+    /// given to a different speaker left out so one person is never two voices.
+    public static func nameChoices(
+        attendees: [CalendarMeeting.Attendee],
+        names: [String: String],
+        for speakerId: String
+    ) -> [String] {
+        let takenElsewhere = Set(names
+            .filter { $0.key != speakerId }
+            .map { $0.value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        var seen: Set<String> = []
+        return attendees.compactMap { attendee in
+            let name = attendee.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = name.lowercased()
+            guard !attendee.isCurrentUser, !name.isEmpty,
+                  !takenElsewhere.contains(key), seen.insert(key).inserted else { return nil }
+            return name
+        }
     }
 
     public static func rows(
         from entries: [LiveEntry],
         showTranslations: Bool,
-        speakerLabelStyle: SpeakerLabelStyle = .neutral
+        names: [String: String] = [:]
     ) -> [Row] {
         var result: [Row] = []
-        var speakerNumber: [String: Int] = [:]
-        var nextNumber = 1
-
-        func label(for speakerId: String) -> String {
-            if speakerId == "note" { return "Note" }
-            switch speakerLabelStyle {
-            case .neutral:
-                if let n = speakerNumber[speakerId] { return "Speaker \(n)" }
-                let n = nextNumber
-                speakerNumber[speakerId] = n
-                nextNumber += 1
-                return "Speaker \(n)"
-            case let .displayNames(names):
-                if let name = names[speakerId] { return name }
-                return speakerId
-            }
-        }
 
         for entry in entries {
             let isTranslation = entry.translationStatus == "translation"
@@ -61,7 +93,7 @@ public enum LiveTranscriptPresentation {
                 result.append(Row(
                     id: entry.id,
                     speakerId: entry.speakerId,
-                    speakerLabel: label(for: entry.speakerId),
+                    speakerLabel: label(for: entry.speakerId, names: names),
                     startMs: entry.startMs,
                     original: isTranslation ? "" : entry.text,
                     translation: isTranslation ? entry.text : "",
@@ -95,30 +127,60 @@ public enum LiveTranscriptPresentation {
         return parts.joined(separator: "\n")
     }
 
-    /// Strip transport-facing speaker IDs from the rapidly changing interim
-    /// line before it reaches user-facing transcript surfaces. Final rows have
-    /// stable neutral/display labels; the partial line should read like speech,
-    /// not expose implementation details such as `remote_2`.
-    public static func displayInterim(_ raw: String) -> String {
-        raw.components(separatedBy: "  ")
-            .map { part in
-                let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard let colon = trimmed.firstIndex(of: ":") else { return trimmed }
-                let speaker = String(trimmed[..<colon])
-                guard isRawSpeakerID(speaker) else { return trimmed }
-                return String(trimmed[trimmed.index(after: colon)...])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Split the pipeline's interim line (`"remote_1: text  self: text"`,
+    /// one part per leg and speaker) into speaker-attributed segments, so the
+    /// view can show interim words in the run they belong to instead of as an
+    /// unattributed line. Ordinary colons in speech are kept; text before any
+    /// speaker id is attributed to an empty id.
+    public static func interimSegments(_ raw: String) -> [InterimSegment] {
+        let range = NSRange(raw.startIndex..., in: raw)
+        let markers = interimMarker.matches(in: raw, range: range)
+        var segments: [InterimSegment] = []
+        func add(_ speakerId: String, _ text: Substring) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            if let last = segments.last, last.speakerId == speakerId {
+                segments[segments.count - 1] = InterimSegment(speakerId: speakerId, text: last.text + " " + trimmed)
+            } else {
+                segments.append(InterimSegment(speakerId: speakerId, text: trimmed))
             }
-            .filter { !$0.isEmpty }
-            .joined(separator: "  ")
+        }
+        var cursor = raw.startIndex
+        var currentSpeaker = ""
+        for marker in markers {
+            guard let whole = Range(marker.range, in: raw),
+                  let id = Range(marker.range(at: 1), in: raw) else { continue }
+            add(currentSpeaker, raw[cursor..<whole.lowerBound])
+            currentSpeaker = String(raw[id])
+            cursor = whole.upperBound
+        }
+        add(currentSpeaker, raw[cursor...])
+        return segments
     }
 
-    private static func isRawSpeakerID(_ value: String) -> Bool {
-        if value == "self" || value == "note" { return true }
-        return ["room_", "remote_", "them_"].contains { prefix in
-            guard value.hasPrefix(prefix) else { return false }
-            return Int(value.dropFirst(prefix.count)) != nil
+    /// Where interim segments go: those from the speaker of the last final
+    /// run continue that run in place (`inline`); the rest open runs of their
+    /// own below it (`trailing`). So interim words settle where they appear.
+    public static func placeInterim(
+        _ segments: [InterimSegment],
+        afterSpeaker lastSpeakerId: String?
+    ) -> (inline: String, trailing: [InterimSegment]) {
+        guard let lastSpeakerId, lastSpeakerId != "note", !lastSpeakerId.isEmpty else {
+            return ("", segments)
         }
+        let inline = segments.filter { $0.speakerId == lastSpeakerId }.map(\.text).joined(separator: " ")
+        return (inline, segments.filter { $0.speakerId != lastSpeakerId })
+    }
+
+    /// A raw speaker id followed by ": ", at the start or after the two-space
+    /// separator the aggregator puts between parts.
+    private static let interimMarker = try! NSRegularExpression(
+        pattern: #"(?:^|(?<=  ))(self|(?:room|remote|them)_[0-9]+): "#
+    )
+
+    private static func numericSuffix(of key: String, afterPrefix prefix: String) -> Int? {
+        guard key.hasPrefix(prefix) else { return nil }
+        return Int(key.dropFirst(prefix.count))
     }
 
     private static func append(_ text: String, to target: inout String) {

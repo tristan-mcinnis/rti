@@ -8,8 +8,12 @@ public enum SpeakerLabelMapping {
     /// - mic channel: speaker 1 (first identified voice, typically the user
     ///   wearing the mic) → `"self"`; additional speakers → `"room_N"`. A
     ///   missing diarization label (speaker 0) also falls back to `"self"`.
-    /// - system channel: `"remote_N"` for every diarized speaker. Its speaker 0
-    ///   is unrelated to mic speaker 0, so it must not share any mic label.
+    /// - system channel: `"remote_N"`, numbered like Soniox numbers them, so
+    ///   its first voice (speaker 1) is `remote_1`; a missing label (speaker 0)
+    ///   folds into `remote_1` as it does into `self` on the mic. System ids
+    ///   never share a mic label. (Mapping `speaker + 1` made the first remote
+    ///   voice `remote_2` and split one voice in two whenever a token came
+    ///   without a label.)
     ///
     /// Why the mic branch isn't hard-coded to "self": Soniox diarization fires
     /// on the mic stream too, so in-person meetings or speakerphone calls
@@ -18,7 +22,7 @@ public enum SpeakerLabelMapping {
     public static func rawLabel(speaker: Int, channel: String) -> String {
         switch channel {
         case "system":
-            return "remote_\(speaker + 1)"
+            return "remote_\(max(speaker, 1))"
         default:
             if speaker <= 1 { return "self" }
             return "room_\(speaker - 1)"

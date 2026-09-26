@@ -36,14 +36,39 @@ final class SpeakerTurnTests: XCTestCase {
 
     func test_alternatingSpeakers_threeTurns() {
         let words = [
-            word("hi", speaker: 0, start: 0, end: 50),
-            word("yo", speaker: 1, start: 50, end: 100),
-            word("ok", speaker: 0, start: 100, end: 150)
+            word("hi", speaker: 1, start: 0, end: 50),
+            word("yo", speaker: 2, start: 50, end: 100),
+            word("ok", speaker: 1, start: 100, end: 150)
         ]
         let turns = SpeakerTurn.collapse(words)
         XCTAssertEqual(turns.count, 3)
-        XCTAssertEqual(turns.map(\.speaker), [0, 1, 0])
+        XCTAssertEqual(turns.map(\.speaker), [1, 2, 1])
         XCTAssertEqual(turns.map(\.text), ["hi", "yo", "ok"])
+    }
+
+    /// A token Soniox left unlabelled (speaker 0) stays in the turn around it
+    /// instead of splitting one voice into two speakers mid-sentence.
+    func test_unlabelledTokenStaysInItsTurn() {
+        let words = [
+            word("We ", speaker: 2, start: 0, end: 50),
+            word("can ", speaker: 0, start: 50, end: 100),
+            word("ship.", speaker: 2, start: 100, end: 150),
+        ]
+        let turns = SpeakerTurn.collapse(words)
+        XCTAssertEqual(turns.map(\.speaker), [2])
+        XCTAssertEqual(turns.map(\.text), ["We can ship."])
+    }
+
+    /// A turn that opens unlabelled takes the first label it meets.
+    func test_unlabelledOpeningTakesTheNextLabel() {
+        let words = [
+            word("So ", speaker: 0, start: 0, end: 50),
+            word("yes", speaker: 3, start: 50, end: 100),
+            word(" no", speaker: 1, start: 100, end: 150),
+        ]
+        let turns = SpeakerTurn.collapse(words)
+        XCTAssertEqual(turns.map(\.speaker), [3, 1])
+        XCTAssertEqual(turns.map(\.text), ["So yes", " no"])
     }
 
     func test_confidenceAveragedUnweighted() {

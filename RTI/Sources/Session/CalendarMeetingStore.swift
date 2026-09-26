@@ -68,7 +68,7 @@ private extension CalendarMeeting {
             guard !name.isEmpty else { return nil }
             let email = participant.url.absoluteString
                 .replacingOccurrences(of: "mailto:", with: "")
-            return Attendee(name: name, email: email.isEmpty ? nil : email)
+            return Attendee(name: name, email: email.isEmpty ? nil : email, isCurrentUser: participant.isCurrentUser)
         }
         self.init(
             id: event.eventIdentifier ?? "\(event.calendar.calendarIdentifier)-\(event.startDate.timeIntervalSinceReferenceDate)-\(event.title ?? "")",

@@ -27,7 +27,7 @@ final class SpeakerLabelMappingTests: XCTestCase {
     func testDisplayLabelMatchesRawLabelRoundTrip() {
         // Every label rawLabel can mint must map to a display label.
         XCTAssertEqual(
-            SpeakerLabelMapping.displayLabel(forRawKey: SpeakerLabelMapping.rawLabel(speaker: 1, channel: "system")),
+            SpeakerLabelMapping.displayLabel(forRawKey: SpeakerLabelMapping.rawLabel(speaker: 2, channel: "system")),
             "Remote speaker 2"
         )
         XCTAssertEqual(
@@ -38,6 +38,17 @@ final class SpeakerLabelMappingTests: XCTestCase {
             SpeakerLabelMapping.displayLabel(forRawKey: SpeakerLabelMapping.rawLabel(speaker: 4)),
             "Speaker 4"
         )
+    }
+
+    /// Soniox numbers diarized voices from 1. The system leg's first voice is
+    /// `remote_1` (it was `remote_2`), and an unlabelled token (0) joins it,
+    /// as mic 0 and 1 are both `self`.
+    func testSystemLegNumbersVoicesFromOne() {
+        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 1, channel: "system"), "remote_1")
+        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 0, channel: "system"), "remote_1")
+        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 3, channel: "system"), "remote_3")
+        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 1, channel: "mic"), "self")
+        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 2, channel: "mic"), "room_1")
     }
 
     // MARK: displayKeyedNames

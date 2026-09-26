@@ -4,7 +4,7 @@ import RTICore
 /// Renders the live session transcript into the plain-text form the LLM reads
 /// as part of an analysis prompt. Ephemeral build: the only source is
 /// `SessionCoordinator.shared.liveEntries` (in memory). Raw speaker IDs
-/// (`them_1`, `self`) are relabeled to human ones (`Speaker 1`, `Me`) BEFORE
+/// (`remote_1`, `self`) are relabeled to human ones (`Speaker 1`, `Me`) BEFORE
 /// the model sees them — prompt rules alone proved insufficient (the model
 /// echoed `them_2` into generated notes). User-typed notes are tagged
 /// `[user note]:` so the model can distinguish them from spoken turns.
@@ -25,8 +25,8 @@ enum TranscriptContext {
 
     /// Build the transcript context for the live session. Lines joined by
     /// `\n`: `[user note]: text` for note rows, `Speaker N: text` otherwise.
-    /// Speaker numbering is derived from the FULL session (not the window) so
-    /// "Speaker 2" means the same person in every periodic notes block.
+    /// Labels come from the speaker id, so "Speaker 2" means the same person
+    /// in every periodic notes block and in the Transcript tab.
     static func text(forSessionId _: String, sinceMs: Int? = nil) -> String {
         let all = entries(sinceMs: nil)
         let window: [LiveEntry] = if let sinceMs {
@@ -42,8 +42,7 @@ enum TranscriptContext {
     /// guide matcher so the LLM can echo timestamps into its quote payloads.
     /// User notes are left without timestamps (they were typed, not spoken).
     ///
-    /// Speaker numbering is derived from the FULL session so labels stay stable
-    /// across windows, but only entries at or after `sinceMs` are emitted.
+    /// Only entries at or after `sinceMs` are emitted.
     static func textWithTimestamps(forSessionId _: String, sinceMs: Int? = nil) -> String {
         let all = entries(sinceMs: nil)
         let window = entries(sinceMs: sinceMs)
@@ -58,25 +57,22 @@ enum TranscriptContext {
         }.joined(separator: "\n")
     }
 
-    /// Appearance-ordered human labels for raw speaker IDs — `Me` for the
-    /// mic channel, `Speaker N` for everyone else (matching SessionArchive's
-    /// rendering). IMPORTANT: numbering must be stable across analysis
-    /// windows, so it is derived from the FULL entry list passed in, in
-    /// first-appearance order.
-    private static func speakerLabeler(for entries: [LiveEntry]) -> (String) -> String {
-        var numbers: [String: Int] = [:]
-        var next = 1
-        for e in entries where e.speakerId != "note" && e.speakerId != "self" {
-            if numbers[e.speakerId] == nil {
-                numbers[e.speakerId] = next
-                next += 1
-            }
-        }
-        return { id in
-            if id == "self" { return "Me" }
-            if let n = numbers[id] { return "Speaker \(n)" }
-            return "Speaker ?"
-        }
+    /// Human labels for raw speaker IDs, the same ones the Transcript tab
+    /// shows (`LiveTranscriptPresentation.label`, live names included), except
+    /// that the unnamed mic wearer is `Me`. Derived from the id alone, so a
+    /// label means the same person in every analysis window and in the UI.
+    /// (Numbering by first appearance made the model's "Speaker 2" a
+    /// different person from the Transcript tab's, and ignored renames.)
+    private static func speakerLabeler(for _: [LiveEntry]) -> (String) -> String {
+        let names = SpeakerNameStore.shared.names
+        return { speakerLabel(for: $0, names: names) }
+    }
+
+    /// One speaker id as the assistant reads it; shared with Assist's recent
+    /// transcript so every prompt names speakers the same way.
+    static func speakerLabel(for id: String, names: [String: String]) -> String {
+        if id == "self", names["self"] == nil { return "Me" }
+        return LiveTranscriptPresentation.label(for: id, names: names)
     }
 
     /// The end-ms of the transcript window. Used by periodic analysis

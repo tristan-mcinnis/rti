@@ -1,5 +1,36 @@
 # RTI Change Log
 
+## 2026-09-27: Calm live transcript and stable speaker names
+
+- **No boxes.** The Transcript tab reads like a transcript, not a list of
+  chips: one quiet label line (dot, name, time) per run of one speaker,
+  your own speech on the right in a soft bubble, everyone else as plain
+  text on the left. The Sessions window's archived transcript uses the
+  same label line, once per run.
+- **Interim words settle in place.** Words not yet final follow the final
+  words of the speaker's run in a lighter ink, and change colour, not
+  position, when final. They no longer sit on an unattributed line.
+- **Follows until you scroll up.** Scrolling up stops the auto-scroll and
+  shows Jump to latest (macOS 15 and later; macOS 14 keeps following).
+- **Stable speaker labels.** Labels come from the speaker id: You,
+  Speaker N, Room speaker N. Numbering by first appearance made you
+  "Speaker 2" whenever someone else spoke first, and could renumber
+  everyone when the echo pass dropped an early line.
+- **The first remote voice is Speaker 1.** Soniox numbers voices from 1;
+  the system leg added one more, so the first remote voice was
+  `remote_2`. A token with no diarization label no longer splits one
+  voice into two speakers mid-sentence.
+- **One name everywhere.** Assist, Notes, Guide and Findings read the
+  same labels and live names as the Transcript tab (they numbered
+  speakers on their own). Copy transcript carries the names too.
+- **Name a speaker from the invite.** With a confirmed calendar meeting,
+  clicking a speaker offers its invitees (yourself left out); Type a name
+  still works.
+
+Left as is: the archived `transcript.md` keeps its line format and its
+own speaker numbering, which the upgrade, the Sessions editor and the
+vault's speaker-profiles script parse.
+
 ## 2026-09-26: Second sweep (name, upgrade provider, process pipes, docs)
 
 - **The app is named RTI.** The Dock, menus and Finder said "RTI

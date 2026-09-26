@@ -1035,9 +1035,10 @@ private struct SessionDocumentSection<Content: View>: View {
 
 // MARK: - Transcript reader
 
-/// Transcript rows as on the live surface: a speaker chip (its speaker
-/// colour is data, and the only colour here), the time, then the text in
-/// `bodySmall` at line height 1.5.
+/// Transcript rows as on the live surface: no box per speaker. A run of turns
+/// by one speaker carries one quiet label line (the speaker's dot, the name,
+/// the time); the turns under it are plain `bodySmall` text at line height
+/// 1.5, capped at the reading width.
 private struct SessionTranscriptReader: View {
     let turns: [SessionTranscriptTurn]
     let model: SessionsWindowModel
@@ -1054,30 +1055,57 @@ private struct SessionTranscriptReader: View {
                 .font(House.TypeToken.bodySmall)
                 .foregroundStyle(House.ColorToken.textTertiary)
         } else {
-            LazyVStack(alignment: .leading, spacing: House.Spacing.md) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(turns.enumerated()), id: \.element.id) { index, turn in
                     let marks = model.findHighlights(inBlock: index)
+                    let opensRun = startsRun(at: index)
                     VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-                        HStack(spacing: House.Spacing.xs) {
-                            SpeakerChip(name: turn.isNote ? "Note" : turn.speaker, color: speakerColor(turn))
-                            Text(turn.timestamp)
-                                .font(House.TypeToken.meta)
-                                .foregroundStyle(House.ColorToken.textTertiary)
-                                .monospacedDigit()
+                        if opensRun {
+                            label(turn)
                         }
                         Text(highlighted(turn.text, marks.all, marks.current))
                             .font(House.TypeToken.bodySmall)
                             .foregroundStyle(turn.isNote ? House.ColorToken.textSecondary : House.ColorToken.textPrimary)
-                            .italic(turn.isNote)
                             .lineSpacing(Self.lineSpacing)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.top, index == 0 ? 0 : (opensRun ? House.Spacing.lg : House.Spacing.xs))
                     .id(index)
                 }
             }
         }
+    }
+
+    /// A label line opens each run: a change of speaker, and every note.
+    private func startsRun(at index: Int) -> Bool {
+        guard index > 0 else { return true }
+        let turn = turns[index]
+        let previous = turns[index - 1]
+        return turn.isNote || previous.isNote || turn.speaker != previous.speaker
+    }
+
+    private func label(_ turn: SessionTranscriptTurn) -> some View {
+        HStack(spacing: House.Spacing.xs) {
+            if turn.isNote {
+                Image(systemName: "note.text")
+                    .font(House.TypeToken.caption)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .accessibilityHidden(true)
+            } else {
+                SlateStatusDot(color: speakerColor(turn))
+            }
+            Text(turn.isNote ? "Note" : turn.speaker)
+                .font(House.TypeToken.meta.weight(.medium))
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .lineLimit(1)
+            Text(turn.timestamp)
+                .font(House.TypeToken.caption)
+                .foregroundStyle(House.ColorToken.textTertiary)
+                .monospacedDigit()
+        }
+        .frame(minHeight: House.Control.keyCap)
     }
 
     /// Speaker colours are data (DESIGN.md: RTI's one categorical palette).
@@ -1088,27 +1116,6 @@ private struct SessionTranscriptReader: View {
         let digits = turn.speaker.reversed().prefix { $0.isNumber }.reversed()
         guard let number = Int(String(digits)), !palette.isEmpty else { return House.ColorToken.textTertiary }
         return palette[(max(number, 1) - 1) % palette.count]
-    }
-}
-
-private struct SpeakerChip: View {
-    let name: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: House.Spacing.xxs) {
-            SlateStatusDot(color: color)
-            Text(name)
-                .font(House.TypeToken.meta.weight(.medium))
-                .foregroundStyle(House.ColorToken.textSecondary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, House.Spacing.xs)
-        .frame(minHeight: HouseChatMetrics.collapseControlHeight)
-        .background(
-            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
-                .fill(House.ColorToken.chipFill)
-        )
     }
 }
 

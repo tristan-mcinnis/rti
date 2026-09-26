@@ -76,6 +76,8 @@ enum FixtureVault {
                     ("Speaker 1", "12:03", "So the main thing we need to lock this week is the onboarding scope. If we keep the guided tour, the launch slips by a sprint."),
                     ("Speaker 2", "12:21", "I'd rather ship without the tour and measure drop-off on the first screen. We can add it back in point-one if the numbers say so."),
                     ("Speaker 1", "12:38", "Fine by me. Can you own the decision note so design isn't surprised on Thursday?"),
+                    ("Speaker 1", "12:44", "I'll put the drop-off numbers on the agenda for next week."),
+                    ("📝 Note", "12:50", "Decision note owner: Speaker 2"),
                 ]),
                 "notes.md": notes([
                     ("0:00 – 12:00", "Launch timing", "- The guided tour costs a sprint."),

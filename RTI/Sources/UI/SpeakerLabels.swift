@@ -1,16 +1,16 @@
 import RTICore
 import SwiftUI
 
-/// Single source of truth for mapping Soniox speaker IDs (`self`, `room_1`,
-/// `remote_1`, legacy `them_1`, …) to human-readable labels and stable
-/// per-speaker chip colors used across the live analysis surfaces.
+/// Maps Soniox speaker IDs (`self`, `room_1`, `remote_1`, legacy `them_1`, …)
+/// to the live labels (`LiveTranscriptPresentation.label`) and stable
+/// per-speaker colours used across the live analysis surfaces.
 enum SpeakerLabels {
+    /// The label the live Transcript tab shows for a speaker id, the user's
+    /// live names included, so other tabs name speakers the same way.
+    @MainActor
     static func displayName(for raw: String) -> String {
-        if raw == "note" { return "Note" }
-        // Raw-id naming lives in RTICore (SpeakerLabelMapping) so the archive
-        // layer keys speaker-names.json by the same strings the UI shows.
-        if let mapped = SpeakerLabelMapping.displayLabel(forRawKey: raw) { return mapped }
-        return raw.capitalized
+        let label = LiveTranscriptPresentation.label(for: raw, names: SpeakerNameStore.shared.names)
+        return label == raw ? raw.capitalized : label
     }
 
     static func chipColor(for raw: String) -> Color {

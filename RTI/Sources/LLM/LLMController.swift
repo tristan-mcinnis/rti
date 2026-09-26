@@ -2840,25 +2840,12 @@ final class LLMController {
         let threshold = fullWindow ? 0 : max(0, maxMs - windowMs)
         let windowed = all.filter { $0.startMs >= threshold }
 
-        // Stable appearance-ordered speaker numbers (from the full session,
-        // not the window) so the assistant can tell participants apart and
-        // attribute consistently across turns.
-        var speakerNumber: [String: Int] = [:]
-        var nextNumber = 1
-        for e in all where e.speakerId != "self" && e.speakerId != "note" {
-            if speakerNumber[e.speakerId] == nil {
-                speakerNumber[e.speakerId] = nextNumber
-                nextNumber += 1
-            }
-        }
+        // Labels come from the speaker id, as in the Transcript tab, so "Speaker
+        // 2" in a question and in the answer is the person the tab shows.
+        let names = SpeakerNameStore.shared.names
         let formatLine: (LiveEntry) -> String = { entry in
-            switch entry.speakerId {
-            case "self": return "Me: \(entry.text)"
-            case "note": return "[my note]: \(entry.text)"
-            default:
-                let n = speakerNumber[entry.speakerId].map { "Speaker \($0)" } ?? "Speaker ?"
-                return "\(n): \(entry.text)"
-            }
+            if entry.speakerId == "note" { return "[my note]: \(entry.text)" }
+            return "\(TranscriptContext.speakerLabel(for: entry.speakerId, names: names)): \(entry.text)"
         }
         let inline = windowed.map(formatLine).joined(separator: "\n")
 

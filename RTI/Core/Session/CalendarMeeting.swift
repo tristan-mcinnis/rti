@@ -7,10 +7,14 @@ public struct CalendarMeeting: Identifiable, Hashable, Sendable {
     public struct Attendee: Hashable, Sendable {
         public let name: String
         public let email: String?
+        /// The calendar's own user (EventKit `isCurrentUser`): RTI's user, who
+        /// is never offered as a name for another voice.
+        public let isCurrentUser: Bool
 
-        public init(name: String, email: String? = nil) {
+        public init(name: String, email: String? = nil, isCurrentUser: Bool = false) {
             self.name = name
             self.email = email
+            self.isCurrentUser = isCurrentUser
         }
     }
 

@@ -17,27 +17,37 @@ public struct SpeakerTurn {
 extension SpeakerTurn {
     /// Walk the word stream and start a new turn whenever the speaker id
     /// changes. Confidence is the unweighted mean over the words in the turn.
+    ///
+    /// Speaker 0 means Soniox gave the token no diarization label. Such a
+    /// token belongs to the turn it sits in and never starts a new speaker;
+    /// a turn that opens unlabelled takes the first label it meets.
     public static func collapse(_ words: [SonioxWord]) -> [SpeakerTurn] {
         guard !words.isEmpty else { return [] }
         var groups: [[SonioxWord]] = []
+        var groupSpeakers: [Int] = []
         for word in words {
             let last = groups.last?.last
+            let speaker = groupSpeakers.last ?? 0
             // Start a new group on speaker change OR when crossing
             // original ↔ translation boundaries (they need separate
             // visual entries).
-            let sameRun = last?.speaker == word.speaker
+            let sameSpeaker = word.speaker == 0 || speaker == 0 || speaker == word.speaker
+            let sameRun = last != nil
+                && sameSpeaker
                 && last?.translationStatus == word.translationStatus
                 && last?.language == word.language
             if sameRun {
                 groups[groups.count - 1].append(word)
+                if speaker == 0 { groupSpeakers[groupSpeakers.count - 1] = word.speaker }
             } else {
                 groups.append([word])
+                groupSpeakers.append(word.speaker)
             }
         }
-        return groups.map { group in
+        return zip(groups, groupSpeakers).map { group, speaker in
             let confidenceAvg = group.map(\.confidence).reduce(0, +) / Double(group.count)
             return SpeakerTurn(
-                speaker: group[0].speaker,
+                speaker: speaker,
                 text: group.map(\.text).joined(),
                 startMs: group.first?.startMs ?? 0,
                 endMs: group.last?.endMs ?? 0,

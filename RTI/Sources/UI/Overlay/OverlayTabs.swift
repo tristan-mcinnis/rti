@@ -13,13 +13,9 @@ struct TranscriptTabView: View {
     @AppStorage(TranslationDefaults.languageAKey) private var languageA = "en"
     @AppStorage(TranslationDefaults.languageBKey) private var languageB = "zh"
     @State private var paragraphs: [LiveTranscriptPresentation.Row] = []
-    /// Live speaker rename (WP8): clicking a speaker chip opens an inline
-    /// TextField; committing writes SpeakerNameStore, and every row for that
-    /// speaker re-renders since the store is @Observable.
-    @State private var speakerNames = SpeakerNameStore.shared
-    @State private var renamingSpeakerId: String?
-    @State private var renameDraft = ""
-    @FocusState private var renameFieldFocused: Bool
+    /// Live speaker names (click a name to set one). Rows are rebuilt when a
+    /// name changes, so the label and the copied text both use it.
+    private let speakerNames = SpeakerNameStore.shared
 
     private static let languageOptions: [(code: String, label: String)] = [
         ("en", "English"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French"),
@@ -51,37 +47,11 @@ struct TranscriptTabView: View {
             if session.liveEntries.isEmpty {
                 overlayEmptyHints([
                     overlayRecordHint(),
-                    "Each speaker gets a line as they talk",
+                    "What you say shows on the right, everyone else on the left",
                     "Click a speaker to give them a name",
                 ])
             } else {
-                let paras = paragraphs
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
-                            ForEach(paras) { para in
-                                paragraphRow(para).id(para.id)
-                            }
-                            if let interim = session.interimLine {
-                                interimRow(interim)
-                                    .id("interim")
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .scrollContentBackground(.hidden)
-                    .onChange(of: paragraphs.last?.id) { _, _ in
-                        if let last = paras.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
-                    }
-                    .onChange(of: session.interimLine) { _, interim in
-                        if interim != nil { proxy.scrollTo("interim", anchor: .bottom) }
-                    }
-                    // Returning to this tab re-instantiates the view at the
-                    // top — jump straight back to the latest line.
-                    .onAppear {
-                        if let last = paras.last { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
-                }
+                LiveTranscriptList(rows: paragraphs, showTranslations: translationEnabled)
             }
         }
         // SessionCoordinator observes UserDefaults and is the sole writer of
@@ -91,6 +61,7 @@ struct TranscriptTabView: View {
         .onChange(of: session.liveEntries.count) { _, _ in paragraphs = makeParagraphs() }
         .onChange(of: session.liveEntries.last?.id) { _, _ in paragraphs = makeParagraphs() }
         .onChange(of: translationEnabled) { _, _ in paragraphs = makeParagraphs() }
+        .onChange(of: speakerNames.names) { _, _ in paragraphs = makeParagraphs() }
     }
 
     // MARK: - Translation control
@@ -156,15 +127,14 @@ struct TranscriptTabView: View {
     // MARK: - Speaker turns (one stream, coalesced by speaker)
 
     /// Build the transcript as speaker turns, merging each speaker's consecutive
-    /// fragments into one flowing line. Each turn keeps BOTH its original and its
-    /// translation text; the row then shows the translation when translating and
-    /// one exists, otherwise the original — so turning translation on mid-session
-    /// doesn't erase the (untranslated) history before it.
+    /// fragments into one run. Each turn keeps BOTH its original and its
+    /// translation text; the run shows the translation under the original when
+    /// translating, so turning translation on mid-session never erases the
+    /// (untranslated) history before it.
     ///
-    /// Speakers are labelled neutrally — "Speaker 1", "Speaker 2", … in order of
-    /// first appearance. We deliberately do NOT call the mic source "You": with
-    /// people in the room, their voices come through the mic too, so the capture
-    /// channel doesn't identify who's talking.
+    /// Labels are stable per speaker id (`LiveTranscriptPresentation.label`):
+    /// "You" for the mic wearer, "Speaker N" for the call's voices, and any
+    /// name the user gave.
     ///
     /// Cached in `@State` and rebuilt only when `liveEntries` changes, so long
     /// transcripts don't re-coalesce on every SwiftUI render.
@@ -172,121 +142,8 @@ struct TranscriptTabView: View {
         LiveTranscriptPresentation.rows(
             from: session.liveEntries,
             showTranslations: translationEnabled,
-            speakerLabelStyle: .neutral
+            names: speakerNames.names
         )
-    }
-
-    /// Show the original always; when translating, show the translation as a
-    /// second line beneath it. So toggling translation mid-session is purely
-    /// additive — it never wipes the preceding transcript.
-    private func paragraphRow(_ para: LiveTranscriptPresentation.Row) -> some View {
-        let isNote = para.speakerId == "note"
-        let speakerColor = SpeakerLabels.chipColor(for: para.speakerId)
-        let original = para.original.trimmingCharacters(in: .whitespacesAndNewlines)
-        let translation = para.translation.trimmingCharacters(in: .whitespacesAndNewlines)
-        return VStack(alignment: .leading, spacing: RTIDesign.Spacing.xxs + 2) {
-            HStack(spacing: RTIDesign.Spacing.xs) {
-                // The speaker label is an OUTLINED chip carrying the one
-                // sanctioned data colour: a 6 px dot in the speaker's hue.
-                HStack(spacing: RTIDesign.Spacing.xxs + 2) {
-                    if isNote {
-                        Image(systemName: "note.text")
-                            .font(.system(size: House.TypeToken.Size.micro, weight: .regular))
-                            .foregroundStyle(speakerColor)
-                            .fixedSize()
-                    } else {
-                        SlateStatusDot(color: speakerColor)
-                            .fixedSize()
-                    }
-                    speakerChip(para, isNote: isNote, speakerColor: speakerColor)
-                }
-                .padding(.leading, RTIDesign.Spacing.xxs + 2)
-                .padding(.trailing, RTIDesign.Spacing.xs)
-                .frame(height: RTIDesign.Control.keyCap)
-                .overlay(
-                    RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
-                        .strokeBorder(RTIDesign.Color.keyCapStroke, lineWidth: House.hairline)
-                )
-                Text(TimeFormat.elapsedMs(para.startMs))
-                    .font(RTIDesign.Font.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(Color.overlayInkTertiary)
-            }
-            if !original.isEmpty {
-                Text(original)
-                    .font(RTIDesign.Font.bodySmall)
-                    .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
-                    .foregroundStyle(Color.overlayInk)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .answerWidth()
-            }
-            if translationEnabled, !translation.isEmpty {
-                Text(translation)
-                    .font(RTIDesign.Font.bodySmall)
-                    .italic()
-                    .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
-                    .foregroundStyle(Color.overlayInkSecondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .answerWidth()
-            }
-        }
-        .padding(.vertical, 1)
-    }
-
-    /// The speaker label, renameable in place: click to edit, Return commits
-    /// (writes SpeakerNameStore so the live view AND the archived transcript
-    /// use the name), Escape cancels. Notes keep a plain label.
-    @ViewBuilder
-    private func speakerChip(_ para: LiveTranscriptPresentation.Row, isNote: Bool, speakerColor: Color) -> some View {
-        if isNote {
-            Text(para.speakerLabel)
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(Color.overlayInkSecondary)
-        } else if renamingSpeakerId == para.speakerId {
-            TextField("Name", text: $renameDraft)
-                .textFieldStyle(.plain)
-                .font(RTIDesign.Font.caption)
-                .frame(width: 110)
-                .focused($renameFieldFocused)
-                .onSubmit {
-                    speakerNames.rename(para.speakerId, to: renameDraft)
-                    renamingSpeakerId = nil
-                }
-                .onExitCommand { renamingSpeakerId = nil }
-                .onAppear { renameFieldFocused = true }
-        } else {
-            Button {
-                renameDraft = speakerNames.name(for: para.speakerId) ?? ""
-                renamingSpeakerId = para.speakerId
-            } label: {
-                Text(speakerNames.name(for: para.speakerId) ?? para.speakerLabel)
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(Color.overlayInkSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: 140)
-            }
-            .buttonStyle(.plain)
-            .help("Click to name this speaker")
-        }
-    }
-
-    private func interimRow(_ raw: String) -> some View {
-        let displayText = LiveTranscriptPresentation.displayInterim(raw)
-        return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            SlateStatusDot(color: RTIDesign.Color.success, size: 5)
-            Text(displayText)
-                .font(RTIDesign.Font.meta)
-                .italic()
-                .lineSpacing(2)
-                .foregroundStyle(Color.overlayInkTertiary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Live transcription: \(displayText)")
     }
 
     private func languageLabel(_ code: String) -> String {
