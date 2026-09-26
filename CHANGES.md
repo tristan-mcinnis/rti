@@ -42,6 +42,10 @@
   line format is unchanged; older archives still render. The Sessions
   browser gives each archived speaker the dot colour the live view gave
   them.
+- **A name you give "You" is kept.** `speaker-names.json` never carries
+  `self`, so `transcript.md` prints a live name for the mic wearer in
+  place of `You` (it is on the mic leg, so the leg rule holds). Without
+  this, naming the mic wearer live was lost at Finish.
 
 ## 2026-09-26: Second sweep (name, upgrade provider, process pipes, docs)
 

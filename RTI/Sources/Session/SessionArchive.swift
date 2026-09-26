@@ -115,7 +115,7 @@ enum SessionArchive {
         // Only archive a transcript when there's real spoken content (a
         // non-note entry) — a header-only transcript.md just pollutes search.
         if transcript.contains(where: { $0.speakerId != "note" }) || hasRetainedAudio {
-            let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
+            let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, selfName: speakerNames["self"])
             let md = (fm("Transcript") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md"))
         }
@@ -731,7 +731,7 @@ enum SessionArchive {
 
     // MARK: - Rendering
 
-    static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry]) -> String {
+    static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry], selfName: String? = nil) -> String {
         var lines = ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), ""]
 
         // Originals only — live-translation tokens are a viewing convenience, not
@@ -748,8 +748,14 @@ enum SessionArchive {
         // speaker-names.json. (Printing appearance-ordered "Speaker N" with
         // names substituted left the names file matching no label, sent
         // remote voices to the mic WAV, and gave enrollment no turns.)
+        // One exception: a name given to `self` is printed here. It is on the
+        // mic leg, so the leg rule still holds, and speaker-names.json never
+        // carries `self` (a "You" key would rewrite ordinary prose), so this
+        // file is the only place a renamed mic wearer is kept.
+        let selfName = selfName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         func label(for id: String) -> String {
             if id == "note" { return "📝 Note" }
+            if id == "self", !selfName.isEmpty { return selfName }
             return SpeakerLabelMapping.displayLabel(forRawKey: id) ?? id
         }
 

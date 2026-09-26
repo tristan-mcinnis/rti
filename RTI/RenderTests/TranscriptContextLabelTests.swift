@@ -60,4 +60,17 @@ final class ArchivedTranscriptLabelTests: XCTestCase {
             ["Room speaker 1", "Remote speaker 1", "Remote speaker 2"]
         )
     }
+
+    /// speaker-names.json drops `self`, so a name the user gave the mic
+    /// wearer live is kept in the transcript itself; other names stay out.
+    func testArchiveKeepsANameGivenToTheMicWearer() {
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        let text = SessionArchive.renderTranscript(startedAt: start, endedAt: start.addingTimeInterval(60), entries: [
+            entry("self", "Welcome, everyone.", 1_000),
+            entry("remote_1", "Thanks.", 2_000),
+        ], selfName: " Priya ")
+        XCTAssertTrue(text.contains("**Priya:** Welcome, everyone."))
+        XCTAssertTrue(text.contains("**Remote speaker 1:** Thanks."))
+        XCTAssertFalse(text.contains("**You:**"))
+    }
 }
