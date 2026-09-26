@@ -22,6 +22,16 @@ final class AudioPipeline {
     /// System-audio-leg health — used to surface a non-fatal "other party
     /// audio lost" notice without stopping the (mic-driven) session.
     var onSystemAudioHealth: ((TranscriptionHealth) -> Void)?
+    /// Fires when a leg ("mic" / "system") opens a stream after its first one,
+    /// with how many milliseconds into the capture it opened. Each socket is a
+    /// new Soniox stream whose word timestamps restart at 0: an automatic
+    /// reconnect, the system leg rejoining after a park, or a mid-session
+    /// client swap. The transcript re-bases that leg on this instant.
+    var onStreamRestarted: ((_ channel: String, _ atMs: Int) -> Void)?
+    /// Streams opened per leg this session; the first one defines the leg's
+    /// timeline, every later one is a restart.
+    private var micStreamsOpened = 0
+    private var systemStreamsOpened = 0
 
     /// Mute the user's mic leg (system-audio capture is unaffected). True
     /// mute — buffers are dropped inside the capture manager before they
@@ -151,6 +161,8 @@ final class AudioPipeline {
             throw AudioPipelineError.missingSTTKey
         }
 
+        micStreamsOpened = 0
+        systemStreamsOpened = 0
         let wavURL = WAVWriter.defaultURL(for: sessionId)
         try wav.open(at: wavURL)
         try recorder.open(in: recordingDirectory)
@@ -166,7 +178,7 @@ final class AudioPipeline {
         client.onError = { [weak self] failure, didOpen in
             self?.onError?(failure.userMessage(didOpen: didOpen), failure.isAuth)
         }
-        client.onStatus = { [weak self] health in self?.onTranscriptionHealth?(health) }
+        client.onStatus = { [weak self] health in self?.micStatusChanged(health) }
         client.connect()
         soniox = client
 
@@ -234,7 +246,7 @@ final class AudioPipeline {
                     onError?("System audio: \(message)", false)
                 }
             }
-            sysClient.onStatus = { [weak self] health in self?.onSystemAudioHealth?(health) }
+            sysClient.onStatus = { [weak self] health in self?.systemStatusChanged(health) }
             // Deliberately NOT connected yet — see `connectSystemSTTIfNeeded`:
             // the socket opens on the first real buffer from the backend.
             systemSoniox = sysClient
@@ -304,6 +316,28 @@ final class AudioPipeline {
                 RTILog.log("system audio start failed — \(error)", category: .audio)
             }
         }
+    }
+
+    /// A client reports `.live` once per socket it opens, so a second `.live`
+    /// on a leg is a new stream (see `onStreamRestarted`).
+    private func micStatusChanged(_ health: TranscriptionHealth) {
+        if health == .live {
+            micStreamsOpened += 1
+            if micStreamsOpened > 1 { onStreamRestarted?("mic", captureElapsedMs()) }
+        }
+        onTranscriptionHealth?(health)
+    }
+
+    private func systemStatusChanged(_ health: TranscriptionHealth) {
+        if health == .live {
+            systemStreamsOpened += 1
+            if systemStreamsOpened > 1 { onStreamRestarted?("system", captureElapsedMs()) }
+        }
+        onSystemAudioHealth?(health)
+    }
+
+    private func captureElapsedMs() -> Int {
+        Int(max(0, Date().timeIntervalSince(captureStartWall ?? Date()) * 1000))
     }
 
     /// Open the system-leg STT socket the first time the backend proves it
@@ -610,7 +644,7 @@ final class AudioPipeline {
         mic.onError = { [weak self] failure, didOpen in
             self?.onError?(failure.userMessage(didOpen: didOpen), failure.isAuth)
         }
-        mic.onStatus = { [weak self] health in self?.onTranscriptionHealth?(health) }
+        mic.onStatus = { [weak self] health in self?.micStatusChanged(health) }
         mic.connect()
         soniox = mic
 
@@ -628,7 +662,7 @@ final class AudioPipeline {
                     onError?("System audio: \(failure.userMessage(didOpen: didOpen))", false)
                 }
             }
-            sys.onStatus = { [weak self] health in self?.onSystemAudioHealth?(health) }
+            sys.onStatus = { [weak self] health in self?.systemStatusChanged(health) }
             // Same lazy rule as at start: only open the socket if the backend
             // has proven it delivers audio (connectSystemSTTIfNeeded covers
             // the not-yet case when the first buffer eventually arrives).

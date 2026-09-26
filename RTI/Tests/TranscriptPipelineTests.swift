@@ -105,6 +105,42 @@ final class TranscriptPipelineTests: XCTestCase {
         )
     }
 
+    // MARK: - A leg that reconnects starts a new stream
+
+    /// Every Soniox socket is a new stream whose word timestamps restart at 0.
+    /// A mic leg that reconnects after a drop (or a Soniox 408 in a long pause),
+    /// and a system leg that parks while nothing plays and rejoins when the
+    /// other party speaks, both open one. The aggregator's watermark used to
+    /// drop every final of the new stream until its clock passed the old one,
+    /// so a reconnect 30 minutes in lost the next 30 minutes of live speech.
+    func test_restartStream_keepsTheNewStreamsFinalsOnTheSessionTimeline() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("before the drop", speaker: 0, start: 1_799_000, end: 1_800_000)], channel: "mic")
+
+        // The reconnected socket opened 1_805_000 ms into the session.
+        p.restartStream(channel: "mic", atMs: 1_805_000)
+        p.process(words: [word("after the drop", speaker: 0, start: 500, end: 1_500)], channel: "mic")
+
+        XCTAssertEqual(p.liveEntries.map(\.text), ["before the drop", "after the drop"])
+        XCTAssertEqual(p.liveEntries.map(\.startMs), [1_799_000, 1_805_500])
+    }
+
+    func test_restartStream_onTheSystemLeg_leavesTheMicLegAlone() {
+        let p = TranscriptPipeline()
+        p.setSystemStartOffset(ms: 8_000)
+        p.process(words: [word("them early", speaker: 0, start: 1_000, end: 60_000)], channel: "system")
+        p.process(words: [word("me", speaker: 0, start: 70_000, end: 71_000)], channel: "mic")
+
+        p.restartStream(channel: "system", atMs: 300_000)
+        p.process(words: [word("them after rejoining", speaker: 0, start: 200, end: 900)], channel: "system")
+        p.process(words: [word("me again", speaker: 0, start: 400_000, end: 401_000)], channel: "mic")
+
+        XCTAssertEqual(
+            p.liveEntries.map(\.text),
+            ["them early", "me", "them after rejoining", "me again"]
+        )
+    }
+
     func test_reset_clearsEverything() {
         let p = TranscriptPipeline()
         p.process(words: [word("x", speaker: 0, start: 0, end: 100)], channel: "mic")

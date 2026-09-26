@@ -33,6 +33,21 @@ final class TranscriptAggregatorTests: XCTestCase {
         XCTAssertEqual(agg.entries.map(\.startMs), [1000, 1400])
     }
 
+    /// A new stream's clock starts again at 0. Without the restart its finals
+    /// sit under the old watermark and are dropped.
+    func test_restartStream_acceptsFinalsFromTheNewStreamsClock() {
+        let agg = TranscriptAggregator(channel: "mic")
+        agg.process([word("old", speaker: 0, start: 50_000, end: 60_000)])
+        agg.process([word("interim", speaker: 0, start: 60_000, end: 60_500, isFinal: false)])
+
+        agg.restartStream(atMs: 65_000)
+        XCTAssertNil(agg.interimText, "the dead stream's partial line never completes")
+
+        agg.process([word("new", speaker: 0, start: 100, end: 900)])
+        XCTAssertEqual(agg.entries.map(\.text), ["old", "new"])
+        XCTAssertEqual(agg.entries.map(\.startMs), [50_000, 65_100])
+    }
+
     func test_reset_clearsOffset() {
         let agg = TranscriptAggregator(channel: "system")
         agg.startMsOffset = 1000

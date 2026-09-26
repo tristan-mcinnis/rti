@@ -282,4 +282,15 @@ public final class TranscriptPipeline {
         systemAggregator.prepareForReconnect()
         cachedLiveEntries = nil
     }
+
+    /// One leg opened a new stream `atMs` into the session; see
+    /// `TranscriptAggregator.restartStream(atMs:)`.
+    public func restartStream(channel: String, atMs: Int) {
+        switch channel {
+        case "mic": micAggregator.restartStream(atMs: atMs)
+        case "system": systemAggregator.restartStream(atMs: atMs)
+        default: return
+        }
+        cachedLiveEntries = nil
+    }
 }

@@ -213,6 +213,11 @@ final class SessionCoordinator {
             self?.systemAudioStartOffsetMs = offsetMs
             self?.transcriptPipeline.setSystemStartOffset(ms: offsetMs)
         }
+        audioPipeline.onStreamRestarted = { [weak self] channel, atMs in
+            guard let self, isRunning else { return }
+            transcriptPipeline.restartStream(channel: channel, atMs: atMs)
+            publishState()
+        }
         audioPipeline.onError = { [weak self] message, isAuth in
             self?.lastError = message
             self?.lastErrorIsAuth = isAuth

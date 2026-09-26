@@ -128,6 +128,19 @@ public final class TranscriptAggregator {
         zeroSeen = []
         interimText = nil
     }
+
+    /// A new stream opened on this channel `atMs` into the session: an
+    /// automatic reconnect after a drop, or the system leg rejoining after it
+    /// was parked while nothing played. Its word timestamps restart at 0, so
+    /// place them at the moment the stream opened and reset the raw watermark.
+    /// Without this, every final of the new stream was dropped until its clock
+    /// passed the old stream's last `endMs`.
+    public func restartStream(atMs: Int) {
+        startMsOffset = atMs
+        lastEndMs = 0
+        zeroSeen = []
+        interimText = nil
+    }
 }
 
 /// One transcript entry plus the two normalised forms the live merge compares
