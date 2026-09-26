@@ -82,9 +82,13 @@ final class AutoAssistController {
     /// Called when new final transcript content lands. Debounces, then fires a
     /// pass once talk has settled — subject to the per-pass floor. Cheap to call
     /// on every committed line; no-ops when Auto is off or no session runs.
+    /// `currentSessionId` outlives the recording (it is replaced only by the
+    /// next start), so "a session runs" is `isRunning`: finals flushed in the
+    /// stop window, or a debounce armed just before Stop, otherwise ran one
+    /// more paid pass after the scheduler had already stopped.
     func noteActivity() {
         guard UserDefaults.standard.bool(forKey: AnalysisSettingsDefaults.autoAssistEnabledKey),
-              SessionCoordinator.shared.currentSessionId != nil else { return }
+              SessionCoordinator.shared.isRunning else { return }
         debounceTimer?.invalidate()
         debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.quietWindow, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.fireIfDue() }
@@ -94,7 +98,8 @@ final class AutoAssistController {
     /// Run a pass now if the floor since the last one has elapsed; otherwise
     /// re-arm so this content is still covered once the floor passes.
     private func fireIfDue() {
-        guard let sid = SessionCoordinator.shared.currentSessionId else { return }
+        guard SessionCoordinator.shared.isRunning,
+              let sid = SessionCoordinator.shared.currentSessionId else { return }
         if let last = lastPassAt, Date().timeIntervalSince(last) < Self.minInterval {
             debounceTimer?.invalidate()
             debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.minInterval, repeats: false) { [weak self] _ in
