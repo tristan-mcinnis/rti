@@ -68,7 +68,6 @@ final class AudioPipeline {
     /// stream's `startMs == 0`). Used to measure how much later the system
     /// leg starts so its timestamps can be aligned to the mic timeline.
     private var captureStartWall: Date?
-    private let wav = WAVWriter()
     private let recorder = MeetingRecorder()
     /// The active speech-to-text client (Soniox / AssemblyAI / future), built by
     /// STTProviders from the user's Settings choice. `soniox` is a historical
@@ -151,16 +150,15 @@ final class AudioPipeline {
         AudioCaptureManager().requestPermission(completion)
     }
 
-    /// Create the WAV file and the mic Soniox client. Does **not** start
-    /// capture yet — call `start()` after this returns.
-    /// - Returns: the URL of the WAV file being prepared.
+    /// Open the durable recording legs and the mic Soniox client. Does
+    /// **not** start capture yet — call `start()` after this returns.
     var translationConfig: TranslationConfig?
 
     /// Proper nouns from past meetings, sent to Soniox as `context.terms`
     /// to bias recognition of names/brands/orgs. Set before `prepare`.
     var contextTerms: [String] = []
 
-    func prepare(sessionId: String, recordingDirectory: URL) throws -> URL {
+    func prepare(recordingDirectory: URL) throws {
         // Fast-fail before opening a WAV on disk: a missing/empty Soniox
         // key would otherwise let the user "record" silently for 5 retries
         // before any error surfaces, leaving an orphan WAV behind.
@@ -170,8 +168,6 @@ final class AudioPipeline {
 
         micStreamsOpened = 0
         systemStreamsOpened = 0
-        let wavURL = WAVWriter.defaultURL(for: sessionId)
-        try wav.open(at: wavURL)
         try recorder.open(in: recordingDirectory)
         recorder.onWriteFailure = { [weak self] message in
             Task { @MainActor [weak self] in self?.onError?(message, false) }
@@ -203,13 +199,10 @@ final class AudioPipeline {
                 soniox?.sendAudio(Data(count: byteCount))
                 return
             }
-            wav.append(buffer)
             recorder.appendMic(buffer)
             let data = Data(bytes: int16[0], count: byteCount)
             soniox?.sendAudio(data)
         }
-
-        return wavURL
     }
 
     /// Start mic capture immediately; system audio starts asynchronously
@@ -631,7 +624,6 @@ final class AudioPipeline {
         soniox = nil
         systemSoniox?.disconnect()
         systemSoniox = nil
-        wav.close()
         recorder.close()
     }
 
@@ -696,7 +688,6 @@ final class AudioPipeline {
         soniox = nil
         systemSoniox?.disconnect()
         systemSoniox = nil
-        wav.close()
         recorder.close()
     }
 }

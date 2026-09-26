@@ -7,8 +7,7 @@ import RTICore
 /// Owns the live recording lifecycle. Ephemeral build: a session is purely a
 /// run of live audio → transcript held in memory for the duration. Nothing is
 /// persisted — no corpus, no database, no history. When the session ends the
-/// transcript stays in memory until the next session resets it, and the WAV
-/// recording is deleted.
+/// transcript stays in memory until the next session resets it.
 @Observable @MainActor
 final class SessionCoordinator {
     static let shared = SessionCoordinator()
@@ -114,9 +113,6 @@ final class SessionCoordinator {
     static var stopErrorRetirementNs: UInt64 = 300_000_000_000
 
     private var stopErrorRetireTask: Task<Void, Never>?
-
-    /// WAV path for the active recording, deleted when the session ends.
-    private var activeWavPath: String?
 
 #if DEBUG
     /// Debug-only seam for the offscreen render proof (`RTIRenderTests`). It
@@ -390,7 +386,6 @@ final class SessionCoordinator {
         isStarting = false
         let now = Date()
         let sessionId = UUID().uuidString
-        activeWavPath = WAVWriter.defaultURL(for: sessionId).path
         currentSessionId = sessionId
         startedAt = now
         endedAt = nil
@@ -459,7 +454,7 @@ final class SessionCoordinator {
             guard let recordingDirectory = SessionArchive.sessionDirectory(startedAt: now) else {
                 throw AudioPipelineError.recordingArchiveUnavailable
             }
-            _ = try audioPipeline.prepare(sessionId: sessionId, recordingDirectory: recordingDirectory)
+            try audioPipeline.prepare(recordingDirectory: recordingDirectory)
             SessionArchive.seedTranscriptForAutomaticUpgrade(in: recordingDirectory, startedAt: now)
             SessionArchive.markAutomaticUpgradePending(in: recordingDirectory)
         } catch {
@@ -683,13 +678,6 @@ final class SessionCoordinator {
             phase = .done
             resetWorkspaceForDone()
         }
-
-        // Discard the live pipeline's temporary WAV. The compact mic/system
-        // recordings have already moved into the session archive.
-        if let path = activeWavPath {
-            try? FileManager.default.removeItem(atPath: path)
-        }
-        activeWavPath = nil
         // The live transcript stays in memory so chat turns can continue
         // referencing it after audio stops; it's reset on the next session.
         publishState()
@@ -727,9 +715,6 @@ final class SessionCoordinator {
         // to the resumable automatic upgrade on the next launch.
         archiveCurrentSession(endedAt: endedAt ?? Date(), route: false)
 
-        if let path = activeWavPath {
-            try? FileManager.default.removeItem(atPath: path)
-        }
         phase = .idle
         transcriptionHealth = .idle
         systemAudioNotice = nil

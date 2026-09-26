@@ -2,23 +2,17 @@ import AVFoundation
 import Foundation
 import RTICore
 
-final class WAVWriter {
-    private var file: AVAudioFile?
-    private(set) var url: URL?
-
-    static func defaultURL(for sessionId: String) -> URL {
-        // Ephemeral mic-only buffer used by the live pipeline. The durable
-        // recorder below separately keeps compact mic and system audio legs.
-        try? FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
-        return recordingsDir.appendingPathComponent("\(sessionId).wav")
-    }
-
+/// Temp-directory cleanup for the live pipeline's former mic-only WAV. That
+/// copy duplicated `MeetingRecorder`'s mic leg (about 115 MB an hour) and was
+/// never read, so it is no longer written; the sweep still removes files an
+/// earlier build left behind.
+enum WAVWriter {
     private static var recordingsDir: URL {
         URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("RTI/sessions", isDirectory: true)
     }
 
-    /// Delete orphan WAV files left by a prior crash.
+    /// Delete orphan WAV files left in temp by an earlier build or a crash.
     static func sweepStaleRecordings() {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: recordingsDir, includingPropertiesForKeys: nil
@@ -26,33 +20,6 @@ final class WAVWriter {
         for file in files where file.pathExtension == "wav" {
             try? FileManager.default.removeItem(at: file)
         }
-    }
-
-    func open(at url: URL) throws {
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: AudioFormat.sampleRateHz,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false
-        ]
-        file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatInt16, interleaved: true)
-        self.url = url
-    }
-
-    func append(_ buffer: AVAudioPCMBuffer) {
-        guard let file = file else { return }
-        do {
-            try file.write(from: buffer)
-        } catch {
-            RTILog.log("WAVWriter.append failed: \(error)", category: .audio)
-        }
-    }
-
-    func close() {
-        file = nil
     }
 }
 

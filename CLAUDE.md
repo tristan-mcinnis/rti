@@ -110,8 +110,8 @@ recording. Retain saved chat content until explicit deletion; no automatic
 pruning. Daily logs and meeting chat exports are compatibility projections
 linked to the owning structured threads, not independent histories.
 
-The live pipeline's temp WAV is deleted on stop; durable per-leg recordings
-(`MeetingRecorder`) remain in the session archive. Do not duplicate those audio
+The durable per-leg recordings (`MeetingRecorder`) are the only audio copy
+and remain in the session archive (the old temp mic WAV is gone). Do not duplicate those audio
 or frame owners in the chat asset store. Config on disk: API keys in
 `CredentialStore`, modes in `~/Library/Application Support/RTI/modes.json`.
 
