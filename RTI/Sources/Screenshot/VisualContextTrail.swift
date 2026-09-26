@@ -161,6 +161,11 @@ final class VisualContextTrail {
             let wantsFrame = visionConfig.enabled
                 && (visionConfig.saveFrames || visionConfig.ambientDescribe)
             let frame = try await ScreenshotManager.shared.captureActiveDisplayFrame(includeFrame: wantsFrame)
+            // A capture takes about a second of OCR. If the recording paused
+            // or stopped meanwhile, that already set the state; writing
+            // `.active` over it showed "Screen context on" on a paused or
+            // finished session.
+            guard !Task.isCancelled else { return }
             let text = VisualContextText.compact(frame.text)
             if VisualContextText.isMeaningfullyDifferent(text, from: lastCapturedText) {
                 let offset = Int(Date().timeIntervalSince(sessionStartedAt))
@@ -192,6 +197,7 @@ final class VisualContextTrail {
             lastError = nil
             state = .active
         } catch {
+            guard !Task.isCancelled else { return }
             let nsError = error as NSError
             if nsError.domain.contains("ScreenCaptureKit") || nsError.domain.contains("TCC") {
                 state = .permissionRequired
