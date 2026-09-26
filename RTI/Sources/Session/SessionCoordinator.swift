@@ -598,6 +598,9 @@ final class SessionCoordinator {
                 postProcessingStatus = TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty
                     ? "Writing notes…"
                     : "Improving transcript…"
+                // This session's speaker renames, read now: a new recording
+                // may start while the upgrade runs, and it resets the store.
+                let speakerNames = SpeakerNameStore.shared.names
                 Task { @MainActor [weak self] in
                     var url: URL?
                     if !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty {
@@ -636,7 +639,7 @@ final class SessionCoordinator {
                             transcriptText: transcriptText,
                             to: archiveDir,
                             startedAt: startedAt,
-                            speakerNames: SpeakerNameStore.shared.names,
+                            speakerNames: speakerNames,
                             referenceContext: summaryContext
                         )
                         if url != nil { self?.postProcessingStatus = nil }
