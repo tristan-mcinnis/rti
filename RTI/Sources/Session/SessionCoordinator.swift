@@ -433,17 +433,15 @@ final class SessionCoordinator {
         transcriptPipeline.reset()
         SpeakerNameStore.shared.reset()
 
-        // Bind the analysis controllers to the fresh session and start the
-        // periodic scheduler. Each task self-gates on its Settings toggle.
+        // Bind the analysis controllers to the fresh session. The periodic
+        // scheduler and the Neon keep-warm start only once audio is running
+        // (below): `stopSession` is what stops them, and it never runs for a
+        // start that failed, so starting them here left both ticking until
+        // the next session.
         NotesGenerationController.shared.reset(for: sessionId)
         DiscussionGuideController.shared.reset(for: sessionId)
         FindingsController.shared.reset(for: sessionId)
         AutoAssistController.shared.reset(for: sessionId)
-        AnalysisScheduler.shared.start(
-            intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
-            defaultInterval: AnalysisSettingsDefaults.defaultInterval
-        )
-        startKeepWarm()
 
         // Keep Bluetooth headphones in full-volume A2DP: if the default mic is a
         // BT headset, route capture to the built-in mic for the session. Must run
@@ -475,6 +473,13 @@ final class SessionCoordinator {
             BluetoothMicGuard.shared.release()
             return
         }
+
+        // Each task self-gates on its Settings toggle.
+        AnalysisScheduler.shared.start(
+            intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
+            defaultInterval: AnalysisSettingsDefaults.defaultInterval
+        )
+        startKeepWarm()
 
         publishState()
         micMuted = false
