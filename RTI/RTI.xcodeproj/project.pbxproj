@@ -395,6 +395,7 @@
 		D4C206973514CCEAA90E3C58 /* TranslationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED9728ECF45900D6C1D26CD7 /* TranslationStore.swift */; };
 		D6DFA8FCF443EBD111270D9C /* JSONExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D420B4688E416E5509DE1C22 /* JSONExtractor.swift */; };
 		D6F75ECF19A60D3017FC88A7 /* GuideTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D446EF4AB49730460B1183 /* GuideTextExtractor.swift */; };
+		D7FDC9E186701ED7480DA475 /* WorkflowDocTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1B854F49AD6FCF279AE1BA /* WorkflowDocTests.swift */; };
 		D87EDB95497F5E554D1F91A4 /* StatusItemSymbolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81352EC7434685E7CC2B0BBE /* StatusItemSymbolTests.swift */; };
 		D8D336C92CD1ED895DF26DCC /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7CBB9A3050C5F8EB482FA6 /* AppLog.swift */; };
 		D9E7BACFA95F19BAB8579EB1 /* SonioxProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72E51F98106EC3135891EFA /* SonioxProtocolTests.swift */; };
@@ -765,6 +766,7 @@
 		DCE9839BBDA43C2E5038E526 /* LLMRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMRequest.swift; sourceTree = "<group>"; };
 		DD252AC03EC9589E65773554 /* RTIRenderTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RTIRenderTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DD7024F06F1CC625D8EA40BC /* ModeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStorage.swift; sourceTree = "<group>"; };
+		DE1B854F49AD6FCF279AE1BA /* WorkflowDocTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowDocTests.swift; sourceTree = "<group>"; };
 		DE4A11B0F3C9BB21EC5BFE82 /* AssistantTurnBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantTurnBuilderTests.swift; sourceTree = "<group>"; };
 		DEC28BC83C424B25E884D37F /* LLMErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMErrorTests.swift; sourceTree = "<group>"; };
 		DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxClient.swift; sourceTree = "<group>"; };
@@ -1135,6 +1137,7 @@
 				5F44CF42C17468829798FD28 /* VaultWorkstreamMatchTests.swift */,
 				3D2AA8703B1A3BE7A1FFFDBB /* VisualContextEventTests.swift */,
 				FCDDE2FAB6DB631446D7170F /* VisualFrameStoreTests.swift */,
+				DE1B854F49AD6FCF279AE1BA /* WorkflowDocTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -1889,6 +1892,7 @@
 				DAE9EA92F143676095240FB4 /* VisualContextEventTests.swift in Sources */,
 				823DBEE5FFC2586C70674158 /* VisualFrameStoreTests.swift in Sources */,
 				BD0742E929C37F7A78A2387B /* WAVWriter.swift in Sources */,
+				D7FDC9E186701ED7480DA475 /* WorkflowDocTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

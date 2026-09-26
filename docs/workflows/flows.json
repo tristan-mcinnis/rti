@@ -1,215 +1,587 @@
 {
-  "$comment": "RTI workflow documentation. Edit this file to add/remove flows or nodes; the page reloads it via fetch(). IDs in flow steps must match a package id below.",
+  "$comment": "RTI workflow documentation. Edit this file to add/remove flows or nodes; the page reloads it via fetch(). IDs in flow steps must match a package id below. A step's ref is 'path · symbol' (no line numbers, which rot); RTITests/WorkflowDocTests checks every path and symbol.",
   "subsystems": [
-    { "id": "app",        "label": "App / Hotkeys",       "color": "#7c3aed" },
-    { "id": "audio",      "label": "Audio",               "color": "#0ea5e9" },
-    { "id": "soniox",     "label": "Soniox",              "color": "#06b6d4" },
-    { "id": "screenshot", "label": "Screenshot / Vision", "color": "#14b8a6" },
-    { "id": "session",    "label": "Session",             "color": "#f59e0b" },
-    { "id": "llm",        "label": "LLM",                 "color": "#ef4444" },
-    { "id": "corpus",     "label": "Corpus",              "color": "#10b981" },
-    { "id": "panels",     "label": "Panels / Analysis",   "color": "#a855f7" },
-    { "id": "ui",         "label": "UI / Overlay",        "color": "#ec4899" },
-    { "id": "settings",   "label": "Modes / Settings",    "color": "#64748b" }
+    {
+      "id": "app",
+      "label": "App / Hotkeys",
+      "color": "#7c3aed"
+    },
+    {
+      "id": "audio",
+      "label": "Audio",
+      "color": "#0ea5e9"
+    },
+    {
+      "id": "soniox",
+      "label": "Soniox",
+      "color": "#06b6d4"
+    },
+    {
+      "id": "screenshot",
+      "label": "Screenshot / Vision",
+      "color": "#14b8a6"
+    },
+    {
+      "id": "session",
+      "label": "Session",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "archive",
+      "label": "Archive / Upgrade",
+      "color": "#10b981"
+    },
+    {
+      "id": "llm",
+      "label": "LLM",
+      "color": "#ef4444"
+    },
+    {
+      "id": "ui",
+      "label": "UI / Overlay",
+      "color": "#ec4899"
+    },
+    {
+      "id": "settings",
+      "label": "Modes / Settings",
+      "color": "#64748b"
+    }
   ],
   "packages": [
-    { "id": "AppDelegate",                "subsystem": "app",        "file": "RTI/Sources/AppDelegate.swift",                                "description": "App lifecycle, launch sequence, registers commands and singletons." },
-    { "id": "HotkeyCoordinator",          "subsystem": "app",        "file": "RTI/Sources/UI/HotkeyCoordinator.swift",                       "description": "Carbon hotkey registration. Maps keyCode+mods to RTICommand." },
-    { "id": "RTICommand",                 "subsystem": "app",        "file": "RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift",    "description": "Command definition (action, hotkey, modifiers). Built by CommandBuilder." },
-    { "id": "WindowCoordinator",          "subsystem": "app",        "file": "RTI/Sources/UI/WindowCoordinator.swift",                       "description": "Owns overlay + user panel windows; reconciles UserPanelStore changes." },
-    { "id": "MenuCoordinator",            "subsystem": "app",        "file": "RTI/Sources/UI/MenuCoordinator.swift",                         "description": "Menubar status item + dynamic menu items." },
-
-    { "id": "AudioPipeline",              "subsystem": "audio",      "file": "RTI/Sources/Audio/AudioPipeline.swift",                        "description": "Per-session capture orchestrator. Wires AVAudioEngine tap to SonioxClient." },
-    { "id": "AudioCaptureManager",        "subsystem": "audio",      "file": "RTI/Sources/Audio/AudioCaptureManager.swift",                  "description": "AVAudioEngine input tap, 16 kHz mono PCM." },
-    { "id": "WAVWriter",                  "subsystem": "audio",      "file": "RTI/Sources/Audio/WAVWriter.swift",                            "description": "Writes raw PCM to disk for archival / file-mode reuse." },
-
-    { "id": "SonioxClient",               "subsystem": "soniox",     "file": "RTI/Sources/Soniox/SonioxClient.swift",                        "description": "WebSocket streaming transcription. Emits interim + final SonioxWord callbacks." },
-    { "id": "SonioxFileTranscribeClient", "subsystem": "soniox",     "file": "RTI/Sources/Soniox/SonioxFileTranscribeClient.swift",          "description": "Soniox REST file API for imported audio/video. Upload → create job → poll." },
-
-    { "id": "ScreenshotManager",          "subsystem": "screenshot", "file": "RTI/Sources/Screenshot/ScreenshotManager.swift",               "description": "SCScreenshotManager capture, then OCR. Image discarded after." },
-    { "id": "OCRService",                 "subsystem": "screenshot", "file": "RTI/Sources/Vision/OCRService.swift",                          "description": "Vision text recognition." },
-
-    { "id": "SessionCoordinator",         "subsystem": "session",    "file": "RTI/Sources/Session/SessionCoordinator.swift",                 "description": "Recording lifecycle. Owns AudioPipeline, dispatches Soniox words, coordinates session finalisation." },
-    { "id": "TranscriptPipeline",         "subsystem": "session",    "file": "RTI/Sources/Session/TranscriptPipeline.swift",                 "description": "Per-channel turn aggregation; commits finals to JSONL + LiveSessionStore." },
-    { "id": "SessionTitleController",     "subsystem": "session",    "file": "RTI/Sources/Session/SessionTitleController.swift",             "description": "Generates session title from transcript via one LLMRequest." },
-    { "id": "SummaryController",          "subsystem": "session",    "file": "RTI/Sources/Summary/SummaryController.swift",                  "description": "Generates structured meeting summary (LLMRequest, smart model)." },
-    { "id": "ThemesController",           "subsystem": "panels",     "file": "RTI/Sources/Analysis/ThemesController.swift",                  "description": "Generates session themes (low-fi during, hi-fi at finalise)." },
-    { "id": "SessionImporter",            "subsystem": "session",    "file": "RTI/Sources/Session/SessionImporter.swift",                    "description": "Drag-to-import queue. Transcodes via AVAssetReader, sends to Soniox file mode, writes corpus." },
-    { "id": "SessionQAController",        "subsystem": "session",    "file": "RTI/Sources/Session/SessionQAController.swift",                "description": "Per-session Q&A. Subclasses CorpusChatController; full transcript injected as system context." },
-    { "id": "AskCorpusController",        "subsystem": "session",    "file": "RTI/Sources/Session/AskCorpusController.swift",                "description": "Cross-corpus Q&A. Calls HybridRetriever then streams via base controller." },
-    { "id": "CorpusChatController",       "subsystem": "session",    "file": "RTI/Sources/Session/CorpusChat.swift",                         "description": "Base class shared by Ask/Project/Session Q&A — streaming, citations, prior-turn memory." },
-    { "id": "AskCorpusHistoryStore",      "subsystem": "session",    "file": "RTI/Sources/Session/AskCorpusHistoryStore.swift",              "description": "Persists Ask Corpus conversations as JSON files." },
-    { "id": "TranscriptContext",          "subsystem": "session",    "file": "RTI/Sources/Session/TranscriptContext.swift",                  "description": "Reads transcript text for a session id (from JSONL or corpus)." },
-
-    { "id": "LLMController",              "subsystem": "llm",        "file": "RTI/Sources/LLM/LLMController.swift",                          "description": "Overlay assistant chat state, streaming orchestration, tool invocation." },
-    { "id": "LLMRequest",                 "subsystem": "llm",        "file": "RTI/Sources/LLM/LLMRequest.swift",                             "description": "One-shot async request. Used by title/summary/themes/panels controllers." },
-    { "id": "LLMClient",                  "subsystem": "llm",        "file": "RTI/Sources/LLM/LLMClient.swift",                              "description": "Low-level OpenAI-compatible SSE client." },
-    { "id": "PromptBuilder",              "subsystem": "llm",        "file": "RTI/Sources/LLM/PromptBuilder.swift",                          "description": "Assembles system + conversation messages from PromptContext + active mode." },
-    { "id": "ToolLoop",                   "subsystem": "llm",        "file": "RTI/Sources/LLM/ToolLoop.swift",                               "description": "Streaming + tool-use loop. Emits content / reasoning / tool-call events." },
-    { "id": "LLMProviders",               "subsystem": "llm",        "file": "RTI/Sources/LLM/LLMProvider.swift",                            "description": "Provider registry + active selection (DeepSeek default). Reads keys from CredentialStore." },
-
-    { "id": "CorpusManager",              "subsystem": "corpus",     "file": "RTI/Sources/Corpus/CorpusManager.swift",                       "description": "Session-finalise render pipeline: writes markdown then triggers FTS + dense reindex." },
-    { "id": "CorpusWriter",               "subsystem": "corpus",     "file": "RTI/Sources/Corpus/CorpusWriter.swift",                        "description": "Atomic markdown writes to ~/meetings/*.md (canonical record)." },
-    { "id": "CorpusFTSReindexer",         "subsystem": "corpus",     "file": "RTI/Sources/Corpus/CorpusFTSReindexer.swift",                  "description": "Rebuilds SQLite FTS5 index from markdown corpus." },
-    { "id": "CorpusIndexer",              "subsystem": "corpus",     "file": "RTI/Sources/Corpus/CorpusIndexer.swift",                       "description": "Builds dense embedding index (corpus_embeddings table) via Embedder." },
-    { "id": "Embedder",                   "subsystem": "corpus",     "file": "RTI/Sources/Corpus/Embedder.swift",                            "description": "NLEmbedding 512-dim sentence vectors. v2 path: bge-small via MLX." },
-    { "id": "HybridRetriever",            "subsystem": "corpus",     "file": "RTI/Sources/Corpus/HybridRetriever.swift",                     "description": "Reciprocal-rank fusion of FTS top-20 + dense top-20 sessions." },
-    { "id": "SessionSearch",              "subsystem": "corpus",     "file": "RTI/Sources/Session/SessionSearch.swift",                      "description": "BM25 query against session_search FTS5 table; prefix tokens AND-ed." },
-    { "id": "LiveSessionStore",           "subsystem": "corpus",     "file": "RTI/Sources/Corpus/LiveSessionStore.swift",                    "description": "Per-session JSONL live writer for in-progress recordings." },
-    { "id": "CorpusBackedStore",          "subsystem": "corpus",     "file": "RTI/Sources/Corpus/CorpusBackedStore.swift",                   "description": "In-memory cache of corpus markdown (sessions, summaries)." },
-
-    { "id": "PanelSpawner",               "subsystem": "panels",     "file": "RTI/Sources/Panels/PanelSpawner.swift",                        "description": "Translates natural-language description → PanelKind + config via sub-LLM call." },
-    { "id": "PanelKind",                  "subsystem": "panels",     "file": "RTI/Sources/Panels/PanelKind.swift",                           "description": "Enum: counter | periodic_cards. Holds typed config for each kind." },
-    { "id": "UserPanelStore",             "subsystem": "panels",     "file": "RTI/Sources/Panels/UserPanelStore.swift",                      "description": "Observable store of spawned UserPanel records." },
-    { "id": "UserPanelWindowController",  "subsystem": "panels",     "file": "RTI/Sources/Panels/UserPanelWindowController.swift",           "description": "Renders a UserPanel as a floating window (counter view or periodic cards view)." },
-
-    { "id": "OverlayWindowController",    "subsystem": "ui",         "file": "RTI/Sources/OverlayWindowController.swift",                    "description": "Borderless NSPanel with sharingType=.none. Hosts OverlayPanelView." },
-    { "id": "OverlayPanelView",           "subsystem": "ui",         "file": "RTI/Sources/OverlayPanelView.swift",                           "description": "Main overlay SwiftUI view. Bound to LLMController.entries for live deltas." },
-    { "id": "AskCorpusView",              "subsystem": "ui",         "file": "RTI/Sources/UI/SessionsControl/AskCorpusView.swift",           "description": "Cross-corpus Q&A SwiftUI view. Calls AskCorpusController on submit." },
-
-    { "id": "ModeStore",                  "subsystem": "settings",   "file": "RTI/Sources/Modes/ModeStore.swift",                            "description": "Holds active mode + reference files. Reads/writes UserDefaults." },
-    { "id": "CredentialStore",              "subsystem": "settings",   "file": "RTI/Sources/Settings/CredentialStore.swift",                     "description": "API key storage at ~/Library/Application Support/RTI/credentials.json (mode 0600)." }
+    {
+      "id": "AppDelegate",
+      "subsystem": "app",
+      "file": "RTI/Sources/AppDelegate.swift",
+      "description": "App lifecycle and launch sequence; resumes pending transcript upgrades."
+    },
+    {
+      "id": "HotkeyCoordinator",
+      "subsystem": "app",
+      "file": "RTI/Sources/UI/HotkeyCoordinator.swift",
+      "description": "Carbon hotkey registration. Maps keyCode+mods to RTICommand."
+    },
+    {
+      "id": "RTICommand",
+      "subsystem": "app",
+      "file": "RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift",
+      "description": "Command definitions (action, hotkey). Shared by menu, palette and hotkeys."
+    },
+    {
+      "id": "WindowCoordinator",
+      "subsystem": "app",
+      "file": "RTI/Sources/UI/WindowCoordinator.swift",
+      "description": "Owns the overlay, Sessions and Settings windows."
+    },
+    {
+      "id": "AudioPipeline",
+      "subsystem": "audio",
+      "file": "RTI/Sources/Audio/AudioPipeline.swift",
+      "description": "Mic and system-audio legs: capture, recording, one STT client per leg."
+    },
+    {
+      "id": "AudioCaptureManager",
+      "subsystem": "audio",
+      "file": "RTI/Sources/Audio/AudioCaptureManager.swift",
+      "description": "AVAudioEngine input tap; 16 kHz mono PCM."
+    },
+    {
+      "id": "MeetingRecorder",
+      "subsystem": "audio",
+      "file": "RTI/Sources/Audio/WAVWriter.swift",
+      "description": "Durable per-leg WAV recordings in the session folder."
+    },
+    {
+      "id": "SonioxClient",
+      "subsystem": "soniox",
+      "file": "RTI/Sources/Soniox/SonioxClient.swift",
+      "description": "Hosted Soniox realtime WebSocket (wss://stt-rt.soniox.com). Reconnects with backoff."
+    },
+    {
+      "id": "ScreenshotManager",
+      "subsystem": "screenshot",
+      "file": "RTI/Sources/Screenshot/ScreenshotManager.swift",
+      "description": "ScreenCaptureKit capture that honours the Screen Privacy deny-list."
+    },
+    {
+      "id": "OCRService",
+      "subsystem": "screenshot",
+      "file": "RTI/Core/Screenshot/OCRService.swift",
+      "description": "On-device Apple Vision text recognition."
+    },
+    {
+      "id": "SessionCoordinator",
+      "subsystem": "session",
+      "file": "RTI/Sources/Session/SessionCoordinator.swift",
+      "description": "Start, pause, stop and finish; owns the in-memory live transcript."
+    },
+    {
+      "id": "TranscriptPipeline",
+      "subsystem": "session",
+      "file": "RTI/Core/Session/TranscriptPipeline.swift",
+      "description": "Aggregates Soniox words into live transcript entries, per channel."
+    },
+    {
+      "id": "SessionFinalizer",
+      "subsystem": "archive",
+      "file": "RTI/Sources/Session/SessionFinalizer.swift",
+      "description": "Snapshots a session and hands it to SessionArchive."
+    },
+    {
+      "id": "SessionArchive",
+      "subsystem": "archive",
+      "file": "RTI/Sources/Session/SessionArchive.swift",
+      "description": "Writes the vault session folder (Markdown + audio), the summary, and runs the vault router."
+    },
+    {
+      "id": "TranscriptUpgradeService",
+      "subsystem": "archive",
+      "file": "RTI/Sources/Session/TranscriptUpgradeService.swift",
+      "description": "Runs the Soniox file pass over the retained audio (transcribe-soniox.py)."
+    },
+    {
+      "id": "TranscriptUpgradePipeline",
+      "subsystem": "archive",
+      "file": "RTI/Core/Session/TranscriptUpgrade.swift",
+      "description": "Merges the upgraded legs, backs up and replaces transcript.md, then the summary."
+    },
+    {
+      "id": "SessionsWindowModel",
+      "subsystem": "ui",
+      "file": "RTI/Sources/UI/SessionsControl/SessionsWindowModel.swift",
+      "description": "Sessions browser state and actions (upgrade, rename, delete)."
+    },
+    {
+      "id": "OverlayWindowController",
+      "subsystem": "ui",
+      "file": "RTI/Sources/OverlayWindowController.swift",
+      "description": "The titled overlay NSWindow (sharingType = .none)."
+    },
+    {
+      "id": "OverlayPanelView",
+      "subsystem": "ui",
+      "file": "RTI/Sources/OverlayPanelView.swift",
+      "description": "Overlay tabs, record control and the Assist chat surface."
+    },
+    {
+      "id": "LLMController",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/LLMController.swift",
+      "description": "Chat state, turns, attachments and streaming output."
+    },
+    {
+      "id": "AssistantTurnBuilder",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/AssistantTurnBuilder.swift",
+      "description": "Builds one turn's messages and tool policy from the context."
+    },
+    {
+      "id": "PromptBuilder",
+      "subsystem": "llm",
+      "file": "RTI/Core/LLM/PromptBuilder.swift",
+      "description": "System and conversation message assembly."
+    },
+    {
+      "id": "ToolLoop",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/ToolLoop.swift",
+      "description": "Streams a turn and runs tool calls between rounds."
+    },
+    {
+      "id": "ToolExecutor",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/ToolExecutor.swift",
+      "description": "Runs one tool call under the turn's tool policy."
+    },
+    {
+      "id": "VaultRetrieval",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/VaultRetrieval.swift",
+      "description": "search_vault: vault hybrid search, scoped when asked."
+    },
+    {
+      "id": "VaultSearchCLI",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/VaultSearchCLI.swift",
+      "description": "Runs the vault-search CLI with bun; drains both pipes."
+    },
+    {
+      "id": "LLMRequest",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/LLMRequest.swift",
+      "description": "One request with retries; streams with or without tools."
+    },
+    {
+      "id": "LLMClient",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/LLMClient.swift",
+      "description": "OpenAI-compatible SSE client for the active provider."
+    },
+    {
+      "id": "LLMProviders",
+      "subsystem": "llm",
+      "file": "RTI/Sources/LLM/LLMProvider.swift",
+      "description": "Provider registry and active selection."
+    },
+    {
+      "id": "ModeStore",
+      "subsystem": "settings",
+      "file": "RTI/Sources/Modes/ModeStore.swift",
+      "description": "Modes (prompt presets) and the active mode."
+    },
+    {
+      "id": "ModesTab",
+      "subsystem": "settings",
+      "file": "RTI/Sources/Settings/ModesTab.swift",
+      "description": "Settings pane that picks the active mode."
+    },
+    {
+      "id": "ProvidersTab",
+      "subsystem": "settings",
+      "file": "RTI/Sources/Settings/KeysTab.swift",
+      "description": "Settings pane for the assistant provider and API keys."
+    },
+    {
+      "id": "CredentialStore",
+      "subsystem": "settings",
+      "file": "RTI/Sources/Settings/CredentialStore.swift",
+      "description": "Owner-only credentials.json for API keys."
+    }
   ],
   "flows": [
     {
       "id": "start-session",
       "title": "Start a recording session",
-      "summary": "Hotkey or menubar click → audio capture begins → Soniox WS streams words → transcript pipeline aggregates turns and commits to LiveSessionStore.",
+      "summary": "Hotkey or menu → SessionCoordinator opens the recording legs → both legs stream PCM to hosted Soniox → words become live transcript entries held in memory.",
       "steps": [
-        { "from": "HotkeyCoordinator",   "to": "RTICommand",           "label": "hotkey dispatch",       "passes": "Carbon RegisterEventHotKey fires; coordinator looks up command by keyCode + modifiers and invokes its action closure.",                                          "ref": "RTI/Sources/UI/HotkeyCoordinator.swift:12-22" },
-        { "from": "RTICommand",          "to": "SessionCoordinator",   "label": "toggleSession()",       "passes": "Command action calls into the SessionCoordinator singleton's toggleSession entry point.",                                                                          "ref": "RTI/Sources/AppDelegate.swift:62-69" },
-        { "from": "SessionCoordinator",  "to": "AudioPipeline",        "label": "prepare(recordingDir)","passes": "After mic permission resolves, AudioPipeline opens the durable recording legs in the new session folder and the mic STT client.",                                                                "ref": "RTI/Sources/Session/SessionCoordinator.swift:274-365" },
-        { "from": "AudioPipeline",       "to": "AudioCaptureManager",  "label": "start tap",             "passes": "AVAudioEngine input tap delivers 16 kHz mono PCM buffers.",                                                                                                       "ref": "RTI/Sources/Audio/AudioPipeline.swift:69-122" },
-        { "from": "AudioPipeline",       "to": "SonioxClient",         "label": "connect + send PCM",    "passes": "Opens wss://api.soniox.com/transcribe-websocket with API key from CredentialStore; pipes PCM frames as binary websocket messages.",                                "ref": "RTI/Sources/Audio/AudioPipeline.swift:43-122" },
-        { "from": "SonioxClient",        "to": "SessionCoordinator",   "label": "onWords callback",      "passes": "Parses SonioxResponse JSON; emits SonioxWord arrays (interim is_final=false, commit is_final=true) back to the coordinator.",                                       "ref": "RTI/Sources/Soniox/SonioxClient.swift:233-235" },
-        { "from": "SessionCoordinator",  "to": "TranscriptPipeline",   "label": "process(words)",        "passes": "Routes by speaker channel (0 → self, 1+ → them_N); pipeline aggregates words into turn objects.",                                                                  "ref": "RTI/Sources/Session/SessionCoordinator.swift:523-526" },
-        { "from": "TranscriptPipeline",  "to": "LiveSessionStore",     "label": "writeJSONL(turn)",      "passes": "Final turns get appended to the per-session JSONL live file. Interim updates stay in memory until they finalise.",                                                  "ref": "RTI/Sources/Session/TranscriptPipeline.swift:27-32" }
+        {
+          "from": "HotkeyCoordinator",
+          "to": "RTICommand",
+          "label": "hotkey dispatch",
+          "passes": "Carbon RegisterEventHotKey fires; the coordinator finds the command by keyCode + modifiers and runs its action.",
+          "ref": "RTI/Sources/UI/HotkeyCoordinator.swift · HotkeyCoordinator"
+        },
+        {
+          "from": "RTICommand",
+          "to": "SessionCoordinator",
+          "label": "toggleSession()",
+          "passes": "The Start/Finish command calls the SessionCoordinator singleton.",
+          "ref": "RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift · toggleSession()"
+        },
+        {
+          "from": "SessionCoordinator",
+          "to": "AudioPipeline",
+          "label": "prepare(recordingDirectory:)",
+          "passes": "After mic permission resolves, launchSession opens the durable recording legs in the new session folder and the mic STT client.",
+          "ref": "RTI/Sources/Session/SessionCoordinator.swift · launchSession()"
+        },
+        {
+          "from": "AudioPipeline",
+          "to": "MeetingRecorder",
+          "label": "open(in:)",
+          "passes": "The per-leg WAV files open in the session folder; they are the only audio copy.",
+          "ref": "RTI/Sources/Audio/AudioPipeline.swift · func prepare(recordingDirectory"
+        },
+        {
+          "from": "AudioPipeline",
+          "to": "AudioCaptureManager",
+          "label": "start tap",
+          "passes": "AVAudioEngine input tap delivers 16 kHz mono PCM buffers.",
+          "ref": "RTI/Sources/Audio/AudioPipeline.swift · func start()"
+        },
+        {
+          "from": "AudioPipeline",
+          "to": "SonioxClient",
+          "label": "connect + sendAudio",
+          "passes": "Opens the hosted Soniox WebSocket and sends PCM as binary frames. The system leg joins about 8 s later on its own socket.",
+          "ref": "RTI/Sources/Soniox/SonioxClient.swift · func sendAudio"
+        },
+        {
+          "from": "SonioxClient",
+          "to": "SessionCoordinator",
+          "label": "onWords",
+          "passes": "Parsed tokens (interim is_final=false, final is_final=true) reach the coordinator through AudioPipeline.",
+          "ref": "RTI/Sources/Session/SessionCoordinator.swift · func handleWords"
+        },
+        {
+          "from": "SessionCoordinator",
+          "to": "TranscriptPipeline",
+          "label": "process(words:channel:)",
+          "passes": "Words aggregate into live entries per channel (mic → self, system → remote speakers). Nothing is written to disk until the checkpoint or stop.",
+          "ref": "RTI/Core/Session/TranscriptPipeline.swift · func process(words"
+        }
       ]
     },
     {
       "id": "stop-session",
-      "title": "Stop and finalise a session",
-      "summary": "Hotkey toggles stop → audio finalises → 1.5s drain → title + summary + themes generated in parallel → markdown rendered → FTS and dense indexes rebuilt.",
+      "title": "Finish a session",
+      "summary": "Finish → audio legs close → the session folder is written to the vault → Soniox re-transcribes the retained audio → the summary is written → the vault router and meeting processor run.",
       "steps": [
-        { "from": "SessionCoordinator",      "to": "AudioPipeline",         "label": "finalize()",                "passes": "Stops the AVAudioEngine tap and signals end-of-stream to Soniox.",                                                                                          "ref": "RTI/Sources/Session/SessionCoordinator.swift:399-426" },
-        { "from": "AudioPipeline",           "to": "SonioxClient",          "label": "EOS marker",                "passes": "Sends Soniox's end-of-stream payload so the server emits any pending finals.",                                                                              "ref": "RTI/Sources/Audio/AudioPipeline.swift:126-131" },
-        { "from": "SessionCoordinator",      "to": "SessionTitleController","label": "generateTitle()",           "passes": "After 1.5s drain, kicks off async title generation — fed transcript text, returns a short title via one LLMRequest.",                                       "ref": "RTI/Sources/Session/SessionCoordinator.swift:483" },
-        { "from": "SessionTitleController",  "to": "LLMRequest",            "label": "collectAsync()",            "passes": "One non-streaming LLM call with a title-generation prompt; result is the canonical session title.",                                                          "ref": "RTI/Sources/Session/SessionTitleController.swift:48-85" },
-        { "from": "SessionCoordinator",      "to": "SummaryController",     "label": "generateSummary()",         "passes": "Async summary generation runs in parallel; uses the smart model tier.",                                                                                     "ref": "RTI/Sources/Session/SessionCoordinator.swift:484" },
-        { "from": "SessionCoordinator",      "to": "ThemesController",      "label": "generateHiFi()",            "passes": "Final hi-fi themes pass replaces the streaming low-fi themes generated during recording.",                                                                  "ref": "RTI/Sources/Session/SessionCoordinator.swift:485" },
-        { "from": "SessionCoordinator",      "to": "CorpusManager",         "label": "renderSession(id)",         "passes": "Once title/summary/themes resolve, the corpus manager rolls everything into a single markdown file.",                                                       "ref": "RTI/Sources/Session/SessionCoordinator.swift:487-493" },
-        { "from": "CorpusManager",           "to": "CorpusWriter",          "label": "write(markdown)",           "passes": "Atomic write to ~/meetings/<title>.md — canonical record of the session.",                                                                                  "ref": "RTI/Sources/Corpus/CorpusManager.swift:117" },
-        { "from": "CorpusManager",           "to": "CorpusFTSReindexer",    "label": "reindex()",                 "passes": "Rebuilds the BM25 session_search FTS5 table so the new session is searchable.",                                                                             "ref": "RTI/Sources/Corpus/CorpusManager.swift:119" },
-        { "from": "CorpusManager",           "to": "CorpusIndexer",         "label": "reindex()",                 "passes": "Embeds new chunks via Embedder and writes them to corpus_embeddings (one row per chunk, L2-normalised Float32 BLOB).",                                       "ref": "RTI/Sources/Corpus/CorpusManager.swift:120" },
-        { "from": "CorpusIndexer",           "to": "Embedder",              "label": "vector(for: chunk)",        "passes": "NLEmbedding sentence vectors per chunk; cosine becomes a plain dot product against the table at query time.",                                              "ref": "RTI/Sources/Corpus/Embedder.swift" }
+        {
+          "from": "SessionCoordinator",
+          "to": "AudioPipeline",
+          "label": "finish()",
+          "passes": "After the stop flush, completeStop closes the legs and releases the mic.",
+          "ref": "RTI/Sources/Session/SessionCoordinator.swift · func completeStop"
+        },
+        {
+          "from": "SessionCoordinator",
+          "to": "SessionFinalizer",
+          "label": "archive()",
+          "passes": "A snapshot of transcript, chat, analysis and audio URLs is archived.",
+          "ref": "RTI/Sources/Session/SessionFinalizer.swift · func archive()"
+        },
+        {
+          "from": "SessionFinalizer",
+          "to": "SessionArchive",
+          "label": "write(...)",
+          "passes": "transcript.md, chat.md, notes and the WAV legs land in <vault>/…/rti/sessions/<stamp>/.",
+          "ref": "RTI/Sources/Session/SessionArchive.swift · static func write("
+        },
+        {
+          "from": "SessionCoordinator",
+          "to": "TranscriptUpgradeService",
+          "label": "upgrade(sessionDirectory:)",
+          "passes": "The automatic Soniox file pass runs over the retained legs; a pending marker survives a quit.",
+          "ref": "RTI/Sources/Session/TranscriptUpgradeService.swift · static func upgrade("
+        },
+        {
+          "from": "TranscriptUpgradeService",
+          "to": "TranscriptUpgradePipeline",
+          "label": "upgrade(sessionDir:)",
+          "passes": "The legs merge with the system-audio offset; transcript.md is backed up and replaced.",
+          "ref": "RTI/Core/Session/TranscriptUpgrade.swift · public static func upgrade("
+        },
+        {
+          "from": "TranscriptUpgradePipeline",
+          "to": "SessionArchive",
+          "label": "writeAutoSummary",
+          "passes": "summary.md and title.txt are generated from the upgraded text.",
+          "ref": "RTI/Sources/Session/SessionArchive.swift · static func writeAutoSummary"
+        },
+        {
+          "from": "SessionArchive",
+          "to": "SessionArchive",
+          "label": "runVaultRouter / runMeetingProcessor",
+          "passes": "Vault-side routing and the /meeting processor are handed the finished folder.",
+          "ref": "RTI/Sources/Session/SessionArchive.swift · static func runVaultRouter"
+        }
+      ]
+    },
+    {
+      "id": "upgrade-transcript",
+      "title": "Upgrade a saved transcript",
+      "summary": "Sessions browser → Upgrade Transcript → confirm → Soniox file pass over the retained audio → transcript and summary replaced (backups kept). At launch, AppDelegate resumes any upgrade a quit interrupted.",
+      "steps": [
+        {
+          "from": "SessionsWindowModel",
+          "to": "TranscriptUpgradeService",
+          "label": "upgrade(session:provider:)",
+          "passes": "The confirmed row's session folder is upgraded with Soniox; progress shows in the row notice.",
+          "ref": "RTI/Sources/UI/SessionsControl/SessionsWindowModel.swift · func startTranscriptUpgrade"
+        },
+        {
+          "from": "TranscriptUpgradeService",
+          "to": "TranscriptUpgradePipeline",
+          "label": "upgrade(sessionDir:)",
+          "passes": "The provider script runs per leg; both pipes are drained so it cannot block.",
+          "ref": "RTI/Sources/Session/TranscriptUpgradeService.swift · ProcessOutputCollector"
+        },
+        {
+          "from": "TranscriptUpgradePipeline",
+          "to": "SessionArchive",
+          "label": "writeAutoSummary",
+          "passes": "The summary is regenerated from the upgraded transcript.",
+          "ref": "RTI/Sources/Session/SessionArchive.swift · static func writeAutoSummary"
+        },
+        {
+          "from": "AppDelegate",
+          "to": "TranscriptUpgradeService",
+          "label": "resume pending upgrades",
+          "passes": "At launch, sessions with an automatic-upgrade marker are found off the main thread and upgraded in order.",
+          "ref": "RTI/Sources/AppDelegate.swift · SessionArchive.pendingAutomaticUpgrades()"
+        }
       ]
     },
     {
       "id": "smart-screenshot",
-      "title": "Smart Screenshot (⌘H)",
-      "summary": "Hotkey captures the active display, runs OCR, attaches the text as pending screen context, and the overlay surfaces it for the next LLM turn.",
+      "title": "Smart Screenshot (⌘⇧H)",
+      "summary": "Hotkey captures the screens, runs OCR on this Mac, and attaches the text and image to the composer for the next turn.",
       "steps": [
-        { "from": "HotkeyCoordinator",  "to": "RTICommand",          "label": "⌘H pressed",         "passes": "Carbon hotkey lookup invokes the screenshot command's action closure.",                                                                                       "ref": "RTI/Sources/UI/HotkeyCoordinator.swift:12-22" },
-        { "from": "RTICommand",         "to": "ScreenshotManager",   "label": "captureAndAttach()",      "passes": "Command delegates to the screenshot manager which orchestrates capture + analysis.",                                                                            "ref": "RTI/Sources/UI/WindowCoordinator.swift:46" },
-        { "from": "ScreenshotManager",  "to": "OCRService",          "label": "recognizeText(image)",    "passes": "Vision framework extracts text. The raw image is never persisted — only its derived text is kept.",                                                            "ref": "RTI/Sources/Screenshot/ScreenshotManager.swift:44" },
-        { "from": "ScreenshotManager",  "to": "LLMController",       "label": "attachScreenContext()",   "passes": "OCR text is stored as the LLM controller's pendingScreenContext, ready to ride along on the next user turn.",                                  "ref": "RTI/Sources/Screenshot/ScreenshotManager.swift:21" },
-        { "from": "LLMController",      "to": "OverlayPanelView",    "label": "observable update",       "passes": "OverlayPanelView observes pendingScreenContext and renders a chip showing the captured context is attached.",                                                    "ref": "RTI/Sources/OverlayPanelView.swift:1-47" }
+        {
+          "from": "HotkeyCoordinator",
+          "to": "RTICommand",
+          "label": "⌘⇧H pressed",
+          "passes": "The Smart Screenshot command fires.",
+          "ref": "RTI/Sources/UI/HotkeyCoordinator.swift · HotkeyCoordinator"
+        },
+        {
+          "from": "RTICommand",
+          "to": "ScreenshotManager",
+          "label": "captureAndAttach()",
+          "passes": "The command starts a capture that excludes RTI and deny-listed windows.",
+          "ref": "RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift · captureAndAttach()"
+        },
+        {
+          "from": "ScreenshotManager",
+          "to": "OCRService",
+          "label": "recognizeText(in:)",
+          "passes": "Apple Vision reads the captured image on this Mac.",
+          "ref": "RTI/Core/Screenshot/OCRService.swift · static func recognizeText"
+        },
+        {
+          "from": "ScreenshotManager",
+          "to": "LLMController",
+          "label": "attachScreenContext",
+          "passes": "OCR text and the JPEG become pending context in the composer.",
+          "ref": "RTI/Sources/Screenshot/ScreenshotManager.swift · attachScreenContext"
+        }
       ]
     },
     {
       "id": "overlay-assistant",
-      "title": "Overlay assistant (⌘\\)",
-      "summary": "Hotkey toggles the borderless overlay → user types a question → PromptBuilder assembles context (mode + screen + transcript) → ToolLoop streams SSE deltas into the view.",
+      "title": "Ask the assistant (⌘\\)",
+      "summary": "The overlay opens → the user asks → AssistantTurnBuilder assembles mode, sources and recent transcript → ToolLoop streams SSE from the active provider, running tools such as search_vault between rounds.",
       "steps": [
-        { "from": "HotkeyCoordinator",        "to": "RTICommand",              "label": "⌘\\ pressed",          "passes": "Hotkey dispatch fires the toggle-overlay command.",                                                                                                          "ref": "RTI/Sources/UI/HotkeyCoordinator.swift:12-22" },
-        { "from": "RTICommand",               "to": "WindowCoordinator",       "label": "toggleOverlay()",           "passes": "Coordinator shows or hides the OverlayWindowController panel.",                                                                                              "ref": "RTI/Sources/UI/WindowCoordinator.swift:149" },
-        { "from": "WindowCoordinator",        "to": "OverlayWindowController", "label": "toggle()",                  "passes": "NSPanel made key + visible (sharingType=.none keeps it out of screencapture and most screen-share targets).",                                                "ref": "RTI/Sources/OverlayWindowController.swift" },
-        { "from": "OverlayPanelView",         "to": "LLMController",           "label": "sendAskAnything(text)",     "passes": "User submits the prompt; view calls into the controller singleton.",                                                                                         "ref": "RTI/Sources/LLM/LLMController.swift:63-67" },
-        { "from": "LLMController",            "to": "PromptBuilder",           "label": "build messages",            "passes": "Builds system messages from PromptContext (mode, glossary, project, screen ctx, transcript) and conversation messages from prior turns.",                    "ref": "RTI/Sources/LLM/LLMController.swift:218-219" },
-        { "from": "LLMController",            "to": "ToolLoop",                "label": "run(messages, tools)",      "passes": "Streams SSE from the active provider; emits contentDelta / reasoningDelta / toolCall events.",                                                              "ref": "RTI/Sources/LLM/LLMController.swift:233-270" },
-        { "from": "ToolLoop",                 "to": "LLMClient",               "label": "stream(request)",           "passes": "Low-level OpenAI-compatible SSE: parses data: chunks, handles [DONE] sentinel, extracts choices[].delta.content (and DeepSeek's reasoning_content).",        "ref": "RTI/Sources/LLM/LLMClient.swift" },
-        { "from": "ToolLoop",                 "to": "LLMController",           "label": "contentDelta event",        "passes": "Each delta append updates the streaming entry; observable change re-renders OverlayPanelView immediately.",                                                  "ref": "RTI/Sources/LLM/LLMController.swift:241-244" },
-        { "from": "LLMController",            "to": "OverlayPanelView",        "label": "entries / streaming",       "passes": "View binds to llm.entries and llm.streaming so user sees tokens land character-by-character.",                                                               "ref": "RTI/Sources/OverlayPanelView.swift" }
-      ]
-    },
-    {
-      "id": "ask-corpus",
-      "title": "Ask Your Corpus",
-      "summary": "Cross-session Q&A over hybrid retrieval (BM25 + dense embeddings, RRF-merged). Cited sessions become clickable chips; conversation auto-persists.",
-      "steps": [
-        { "from": "AskCorpusView",         "to": "AskCorpusController",   "label": "ask(question)",          "passes": "User submits query; view forwards to controller singleton via the base class entry point.",                                                                  "ref": "RTI/Sources/Session/AskCorpusController.swift:39-75" },
-        { "from": "AskCorpusController",   "to": "HybridRetriever",       "label": "retrieve(query)",        "passes": "Hybrid retrieval: top-20 from FTS + top-20 from dense, then RRF fusion at 1/(60+rank).",                                                                     "ref": "RTI/Sources/Session/AskCorpusController.swift:46" },
-        { "from": "HybridRetriever",       "to": "SessionSearch",         "label": "search(prefixTokens)",   "passes": "BM25-ranked FTS5 query against session_search; tokens AND-ed; returns top sessions with best snippet.",                                                       "ref": "RTI/Sources/Corpus/HybridRetriever.swift:35" },
-        { "from": "HybridRetriever",       "to": "Embedder",              "label": "vector(query)",          "passes": "Embeds the query into 512-dim sentence vector for dense scoring.",                                                                                            "ref": "RTI/Sources/Corpus/HybridRetriever.swift:49" },
-        { "from": "HybridRetriever",       "to": "CorpusBackedStore",     "label": "dot vs corpus_embeddings","passes": "Brute-force cosine (plain dot product, vectors are normalised) over corpus_embeddings rows. ~5ms at <50k chunks.",                                            "ref": "RTI/Sources/Corpus/HybridRetriever.swift:49" },
-        { "from": "AskCorpusController",   "to": "CorpusChatController",  "label": "stream(candidates)",     "passes": "Top 6 + 4 most-recent (deduped, capped at 8) sessions packaged as title + date + summary (≤1500 chars) + best snippet for the model.",                          "ref": "RTI/Sources/Session/CorpusChat.swift" },
-        { "from": "CorpusChatController",  "to": "PromptBuilder",         "label": "buildSystemMessages()",  "passes": "Citation-aware system prompt + last 6 turns of memory + candidate context block.",                                                                            "ref": "RTI/Sources/LLM/PromptBuilder.swift" },
-        { "from": "CorpusChatController",  "to": "ToolLoop",              "label": "run() streaming",        "passes": "One streaming SSE call. Controller parses [Session Title] citations from the response so only actually-cited sessions surface as chips.",                       "ref": "RTI/Sources/Session/CorpusChat.swift" },
-        { "from": "AskCorpusController",   "to": "AskCorpusHistoryStore", "label": "save(conversation)",     "passes": "Conversation auto-persists to ~/Library/Application Support/RTI/ask-corpus/<id>.json after each completed turn.",                                                "ref": "RTI/Sources/Session/AskCorpusController.swift:91-111" }
-      ]
-    },
-    {
-      "id": "session-qa",
-      "title": "Per-session Q&A",
-      "summary": "Scoped Q&A over a single session's transcript + summary. Subclasses CorpusChatController so streaming + citations + memory are shared with Ask Corpus.",
-      "steps": [
-        { "from": "AskCorpusView",          "to": "SessionQAController",   "label": "ask(q, sessionId)",       "passes": "Per-session Q&A surface stores the active session id and delegates to the base controller's ask().",                                                          "ref": "RTI/Sources/Session/SessionQAController.swift:23-26" },
-        { "from": "SessionQAController",    "to": "TranscriptContext",     "label": "text(forSessionId)",      "passes": "Reads the full transcript text for the scoped session (from JSONL or rendered corpus).",                                                                       "ref": "RTI/Sources/Session/SessionQAController.swift:39" },
-        { "from": "SessionQAController",    "to": "CorpusBackedStore",     "label": "summary(forSessionId)",   "passes": "Reads cached meeting summary so the model has both the headline and the raw words.",                                                                          "ref": "RTI/Sources/Session/SessionQAController.swift:40" },
-        { "from": "SessionQAController",    "to": "CorpusChatController",  "label": "single candidate",        "passes": "Returns one candidate (the session itself); base prompt builder injects the full transcript directly rather than a truncated summary.",                       "ref": "RTI/Sources/Session/SessionQAController.swift:44-50" },
-        { "from": "CorpusChatController",   "to": "ToolLoop",              "label": "run() streaming",         "passes": "Same streaming + citation pipeline as Ask Corpus. [Session Title] citations still work for quote extraction.",                                                  "ref": "RTI/Sources/Session/CorpusChat.swift" }
-      ]
-    },
-    {
-      "id": "import-media",
-      "title": "Drag-to-import audio / video",
-      "summary": "Drop file into Sessions list → SessionImporter queues + transcodes via AVAssetReader → Soniox file API runs async transcription → corpus + indexes updated.",
-      "steps": [
-        { "from": "AskCorpusView",                "to": "SessionImporter",          "label": "import(urls)",          "passes": "Drop target on the sessions list / project view forwards file URLs to the importer.",                                                                  "ref": "RTI/Sources/Session/SessionImporter.swift:69-121" },
-        { "from": "SessionImporter",              "to": "WAVWriter",                "label": "transcode → 16k WAV",       "passes": "AVAssetReader decodes the source audio/video and writes 16 kHz mono PCM as a temp WAV the Soniox file API will accept.",                              "ref": "RTI/Sources/Session/SessionImporter.swift" },
-        { "from": "SessionImporter",              "to": "SonioxFileTranscribeClient","label": "transcribe(url)",      "passes": "Multipart POST uploads the WAV; second POST creates a transcription job; client polls status until done.",                                                "ref": "RTI/Sources/Soniox/SonioxFileTranscribeClient.swift:64-114" },
-        { "from": "SonioxFileTranscribeClient",   "to": "SessionImporter",          "label": "final words",            "passes": "Returns the completed SonioxWord array (speaker-labelled, with timing).",                                                                              "ref": "RTI/Sources/Soniox/SonioxFileTranscribeClient.swift:114" },
-        { "from": "SessionImporter",              "to": "CorpusManager",            "label": "renderSession(id)",      "passes": "Same finalise pipeline as a live session: render markdown, write to ~/meetings, kick FTS + dense reindex.",                                            "ref": "RTI/Sources/Session/SessionImporter.swift" },
-        { "from": "CorpusManager",                "to": "CorpusFTSReindexer",       "label": "reindex()",              "passes": "Imported session becomes searchable in BM25 FTS.",                                                                                                     "ref": "RTI/Sources/Corpus/CorpusManager.swift:119" },
-        { "from": "CorpusManager",                "to": "CorpusIndexer",            "label": "reindex()",              "passes": "Imported session's chunks added to corpus_embeddings via Embedder.",                                                                                  "ref": "RTI/Sources/Corpus/CorpusManager.swift:120" }
-      ]
-    },
-    {
-      "id": "spawn-panel",
-      "title": "Live transcript-driven panel spawn",
-      "summary": "Model decides the user wants a custom widget → tool call routes to PanelSpawner → sub-LLM resolves the description into a typed PanelKind → WindowCoordinator opens the floating panel.",
-      "steps": [
-        { "from": "ToolLoop",                  "to": "LLMController",         "label": "spawn_panel tool call",  "passes": "Tool result handler in the LLM controller dispatches to PanelSpawner with the user's description string.",                                                  "ref": "RTI/Sources/LLM/ToolLoop.swift" },
-        { "from": "LLMController",             "to": "PanelSpawner",          "label": "spawn(description)",     "passes": "Spawner is the single entry point for natural-language panel creation across the app.",                                                                    "ref": "RTI/Sources/Panels/PanelSpawner.swift:13-43" },
-        { "from": "PanelSpawner",              "to": "LLMRequest",            "label": "translate → JSON",         "passes": "Sub-LLM call asks for a JSON object discriminating on `kind` (counter | periodic_cards) with typed config.",                                              "ref": "RTI/Sources/Panels/PanelSpawner.swift:24-90" },
-        { "from": "PanelSpawner",              "to": "PanelKind",             "label": "decode(JSON)",           "passes": "Parses kind + config into the PanelKind enum case (counter or periodicCards).",                                                                            "ref": "RTI/Sources/Panels/PanelSpawner.swift:107-124" },
-        { "from": "PanelSpawner",              "to": "UserPanelStore",        "label": "add(UserPanel)",         "passes": "Inserts a UserPanel record into the observable store; this is the source of truth for which panels exist.",                                                "ref": "RTI/Sources/Panels/PanelSpawner.swift:25-34" },
-        { "from": "UserPanelStore",            "to": "WindowCoordinator",     "label": "observable change",      "passes": "Coordinator's reconciler observes the store and creates/destroys windows to match.",                                                                       "ref": "RTI/Sources/UI/WindowCoordinator.swift:84-95" },
-        { "from": "WindowCoordinator",         "to": "UserPanelWindowController","label": "spawn window",        "passes": "Per-panel NSPanel hosts the appropriate SwiftUI view based on PanelKind (counter view or periodic cards view).",                                          "ref": "RTI/Sources/Panels/UserPanelWindowController.swift" }
+        {
+          "from": "RTICommand",
+          "to": "WindowCoordinator",
+          "label": "toggleOverlay()",
+          "passes": "The overlay command shows or hides the window.",
+          "ref": "RTI/Sources/UI/WindowCoordinator.swift · func toggleOverlay"
+        },
+        {
+          "from": "WindowCoordinator",
+          "to": "OverlayWindowController",
+          "label": "toggle()",
+          "passes": "The titled overlay window orders front.",
+          "ref": "RTI/Sources/OverlayWindowController.swift · func toggle()"
+        },
+        {
+          "from": "OverlayPanelView",
+          "to": "LLMController",
+          "label": "sendAskAnything",
+          "passes": "The composer text and attachments start a turn.",
+          "ref": "RTI/Sources/LLM/LLMController.swift · func sendAskAnything"
+        },
+        {
+          "from": "LLMController",
+          "to": "AssistantTurnBuilder",
+          "label": "build",
+          "passes": "The turn's messages, route and tool policy are built.",
+          "ref": "RTI/Sources/LLM/AssistantTurnBuilder.swift · static func build"
+        },
+        {
+          "from": "AssistantTurnBuilder",
+          "to": "PromptBuilder",
+          "label": "buildSystemMessages",
+          "passes": "System and conversation messages are assembled.",
+          "ref": "RTI/Core/LLM/PromptBuilder.swift · buildSystemMessages"
+        },
+        {
+          "from": "LLMController",
+          "to": "ToolLoop",
+          "label": "run",
+          "passes": "The loop streams the answer and runs tool calls between rounds.",
+          "ref": "RTI/Sources/LLM/LLMController.swift · ToolLoop("
+        },
+        {
+          "from": "ToolLoop",
+          "to": "LLMRequest",
+          "label": "streamWithTools",
+          "passes": "Each round is one streaming request.",
+          "ref": "RTI/Sources/LLM/ToolLoop.swift · streamWithTools"
+        },
+        {
+          "from": "LLMRequest",
+          "to": "LLMClient",
+          "label": "stream",
+          "passes": "SSE deltas and reasoning stream back to the controller.",
+          "ref": "RTI/Sources/LLM/LLMRequest.swift · LLMClient"
+        },
+        {
+          "from": "ToolLoop",
+          "to": "ToolExecutor",
+          "label": "execute",
+          "passes": "A tool call runs under the turn's policy.",
+          "ref": "RTI/Sources/LLM/ToolExecutor.swift · func execute"
+        },
+        {
+          "from": "ToolExecutor",
+          "to": "VaultRetrieval",
+          "label": "search_vault",
+          "passes": "Vault search runs through the CLI.",
+          "ref": "RTI/Sources/LLM/LLMTools.swift · VaultRetrieval.search"
+        },
+        {
+          "from": "VaultRetrieval",
+          "to": "VaultSearchCLI",
+          "label": "searchOutcome",
+          "passes": "bun runs the vault-search CLI against the Neon index.",
+          "ref": "RTI/Sources/LLM/VaultRetrieval.swift · VaultSearchCLI.searchOutcome"
+        }
       ]
     },
     {
       "id": "switch-mode",
       "title": "Switch active mode",
-      "summary": "User selects a Mode in Settings → ModeStore updates → next LLM turn assembles a new system prompt with the mode's reference text baked in.",
+      "summary": "The user picks a Mode in Settings → ModeStore updates → the next turn builds its system prompt from that mode.",
       "steps": [
-        { "from": "OverlayPanelView",   "to": "ModeStore",       "label": "activeModeId = newId",    "passes": "UI writes the selection; ModeStore persists to UserDefaults and notifies observers.",                                                                          "ref": "RTI/Sources/Modes/ModeStore.swift:10-44" },
-        { "from": "ModeStore",          "to": "LLMController",   "label": "observable change",       "passes": "Controllers read ModeStore.activeMode lazily on the next turn — no eager rebuild.",                                                                              "ref": "RTI/Sources/LLM/LLMController.swift:186" },
-        { "from": "LLMController",      "to": "PromptBuilder",   "label": "build with activeMode",   "passes": "PromptBuilder reads activeMode.systemPrompt + activeMode.referenceText and folds them into the system message stack ahead of context attachments.",                "ref": "RTI/Sources/LLM/PromptBuilder.swift:62-80" },
-        { "from": "PromptBuilder",      "to": "ToolLoop",        "label": "next turn payload",       "passes": "Next streaming request carries the new mode's prompt + reference material; subsequent turns inherit until the mode changes again.",                              "ref": "RTI/Sources/LLM/PromptBuilder.swift" }
+        {
+          "from": "ModesTab",
+          "to": "ModeStore",
+          "label": "activeModeId = id",
+          "passes": "The Modes pane sets the active mode.",
+          "ref": "RTI/Sources/Settings/ModesTab.swift · store.activeModeId = id"
+        },
+        {
+          "from": "ModeStore",
+          "to": "LLMController",
+          "label": "activeMode on the next turn",
+          "passes": "The controller reads the active mode when it builds a turn.",
+          "ref": "RTI/Sources/LLM/LLMController.swift · modeStore"
+        },
+        {
+          "from": "LLMController",
+          "to": "AssistantTurnBuilder",
+          "label": "build with the mode",
+          "passes": "The mode's prompt and reference text enter the system messages.",
+          "ref": "RTI/Sources/LLM/AssistantTurnBuilder.swift · PromptBuilder.buildSystemMessages"
+        }
       ]
     },
     {
       "id": "change-provider",
       "title": "Change LLM provider / API key",
-      "summary": "Settings writes the API key to CredentialStore and updates the active provider id. The next LLMRequest reads the fresh key + base URL on demand.",
+      "summary": "The Providers pane writes keys to CredentialStore and the active provider id; the next request reads both on demand.",
       "steps": [
-        { "from": "OverlayPanelView",  "to": "CredentialStore",   "label": "set(apiKey)",           "passes": "Settings UI writes the key to ~/Library/Application Support/RTI/credentials.json (mode 0600). Never stored in UserDefaults.",                                  "ref": "RTI/Sources/Settings/CredentialStore.swift:29-39" },
-        { "from": "OverlayPanelView",  "to": "LLMProviders",    "label": "activeId = newId",      "passes": "Provider selection persists; LLMProviders.active resolves to the matching LLMProviderConfig (DeepSeek / OpenAI / etc.).",                                       "ref": "RTI/Sources/LLM/LLMProvider.swift:33-62" },
-        { "from": "LLMController",     "to": "LLMRequest",      "label": "next turn",             "passes": "Subsequent send() builds an LLMRequest with no cached provider info — it asks LLMProviders.active fresh each time.",                                              "ref": "RTI/Sources/LLM/LLMController.swift" },
-        { "from": "LLMRequest",        "to": "LLMProviders",    "label": "config lookup",         "passes": "Resolves baseURL + model + apiKey closure; the closure reads from CredentialStore so rotated keys take effect immediately.",                                          "ref": "RTI/Sources/LLM/LLMProvider.swift:19-46" },
-        { "from": "LLMProviders",      "to": "CredentialStore",   "label": "apiKey closure",        "passes": "Keychain read returns the freshly-written key; LLMClient uses it for the Authorization header on the next SSE call.",                                              "ref": "RTI/Sources/Settings/CredentialStore.swift" },
-        { "from": "LLMRequest",        "to": "LLMClient",       "label": "stream(request)",       "passes": "Streaming OpenAI-compatible SSE call against the new provider's base URL.",                                                                                          "ref": "RTI/Sources/LLM/LLMClient.swift" }
+        {
+          "from": "ProvidersTab",
+          "to": "CredentialStore",
+          "label": "setValue(_:for:)",
+          "passes": "Keys are saved to the owner-only credentials file.",
+          "ref": "RTI/Sources/Settings/KeysTab.swift · CredentialStore.setValue"
+        },
+        {
+          "from": "ProvidersTab",
+          "to": "LLMProviders",
+          "label": "activeId = id",
+          "passes": "The selected assistant provider becomes active.",
+          "ref": "RTI/Sources/Settings/KeysTab.swift · LLMProviders.activeId = selectedLLMProviderId"
+        },
+        {
+          "from": "LLMClient",
+          "to": "LLMProviders",
+          "label": "active",
+          "passes": "Each request resolves the active provider's base URL and model.",
+          "ref": "RTI/Sources/LLM/LLMClient.swift · LLMProviders.active"
+        },
+        {
+          "from": "LLMProviders",
+          "to": "CredentialStore",
+          "label": "apiKey closure",
+          "passes": "The provider's key is read at request time.",
+          "ref": "RTI/Sources/LLM/LLMProvider.swift · CredentialStore.deepseek"
+        }
       ]
     }
   ]
