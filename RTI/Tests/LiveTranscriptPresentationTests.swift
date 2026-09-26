@@ -183,4 +183,43 @@ final class LiveTranscriptPresentationTests: XCTestCase {
             ["Ana Ruiz"]
         )
     }
+
+    // MARK: - Paragraphs
+
+    func test_shortRunIsOneOpenParagraph() {
+        XCTAssertEqual(LiveTranscriptPresentation.paragraphs("Sure. That works."), ["Sure. That works."])
+        XCTAssertEqual(LiveTranscriptPresentation.paragraphs(""), [""])
+    }
+
+    func test_longRunBreaksAtSentenceEndsAndStaysStableAsItGrows() {
+        let sentence = "We can ship without the tour and measure drop-off. "
+        let text = String(repeating: sentence, count: 12)
+        let split = LiveTranscriptPresentation.paragraphs(text, softLimit: 120)
+        XCTAssertGreaterThan(split.count, 2)
+        XCTAssertTrue(split.dropLast().allSatisfy { $0.hasSuffix(".") && $0.count >= 120 })
+        // The run ends on a sentence: the open paragraph is empty, so the
+        // next words start a new paragraph instead of joining a closed one.
+        XCTAssertEqual(split.last, "")
+        XCTAssertEqual(split.joined(separator: " ").trimmingCharacters(in: .whitespaces),
+                       text.trimmingCharacters(in: .whitespaces))
+
+        // Appending words never moves an earlier break.
+        let grown = LiveTranscriptPresentation.paragraphs(text + "And one more thought", softLimit: 120)
+        XCTAssertEqual(Array(grown.dropLast()), Array(split.dropLast()))
+        XCTAssertEqual(grown.last, "And one more thought")
+    }
+
+    func test_unpunctuatedRunBreaksAtASpacePastTheHardLimit() {
+        let text = String(repeating: "word ", count: 100)
+        let split = LiveTranscriptPresentation.paragraphs(text, softLimit: 50, hardLimit: 100)
+        XCTAssertGreaterThan(split.count, 3)
+        XCTAssertTrue(split.dropLast().allSatisfy { $0.count >= 99 && $0.count <= 100 })
+    }
+
+    func test_cjkSentenceEndsCloseWithoutASpace() {
+        let text = String(repeating: "我们先上线再看数据。", count: 10)
+        let split = LiveTranscriptPresentation.paragraphs(text, softLimit: 30)
+        XCTAssertGreaterThan(split.count, 2)
+        XCTAssertTrue(split.dropLast().allSatisfy { $0.hasSuffix("。") })
+    }
 }

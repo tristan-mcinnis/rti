@@ -94,6 +94,31 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         try renderOverlay("transcript-live-scrolled-up", width: Self.narrowWidth)
     }
 
+    /// A long run by one speaker reads as paragraphs under one label; the
+    /// interim words continue the open paragraph only.
+    func testLiveLongRun() throws {
+        let sentences = [
+            "Let me walk through the numbers from the pilot before we decide anything.",
+            "In the first week about four in ten new users left on the first screen, and most of them never touched the guided tour at all.",
+            "The ones who finished the tour stayed longer, but they were also the people who came in from the sales demo, so they were already keen.",
+            "That makes me think the tour is not what keeps people; it is who they are when they arrive.",
+            "So my proposal is to ship without it, watch the first-screen drop-off for two weeks, and only bring the tour back if the number gets worse.",
+            "I also want design to try a lighter hint on the empty state, because that is where people stall today.",
+            "If that hint works, we may never need the full tour again.",
+        ]
+        let entries = [RenderFixtures.liveEntry("self", "Before you go on, can you share the pilot numbers?", 700_000)]
+            + sentences.enumerated().map { index, text in
+                RenderFixtures.liveEntry("remote_1", text, 705_000 + index * 6_000)
+            }
+        SessionCoordinator.shared.seedForRenderProof(
+            entries: entries,
+            interim: "remote_1: and then we can talk about the Thursday review",
+            phase: .recording,
+            startedAt: Date().addingTimeInterval(-780)
+        )
+        try renderOverlay("transcript-live-long-run", width: Self.narrowWidth)
+    }
+
     // MARK: - Archived (Sessions window)
 
     private func archiveModel() async throws -> SessionsWindowModel {

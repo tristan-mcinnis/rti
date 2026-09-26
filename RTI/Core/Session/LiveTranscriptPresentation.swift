@@ -172,6 +172,57 @@ public enum LiveTranscriptPresentation {
         return (inline, segments.filter { $0.speakerId != lastSpeakerId })
     }
 
+    /// Split one speaker's run into reading paragraphs. A paragraph closes at
+    /// the first sentence end once it holds `softLimit` characters, or at the
+    /// first space past `hardLimit` when the speech has no punctuation. The
+    /// last element is the open paragraph, empty when the text ends on a
+    /// closed one, so words still to come start a new paragraph there.
+    ///
+    /// Each break depends only on the text before it, so appending words never
+    /// moves an earlier break: settled paragraphs keep their layout while the
+    /// open one grows. That keeps a long monologue readable, and it keeps an
+    /// interim frame from re-laying out the whole run.
+    public static func paragraphs(_ text: String, softLimit: Int = 450, hardLimit: Int = 1_200) -> [String] {
+        let chars = Array(text)
+        var result: [String] = []
+        var start = 0
+        var i = 0
+        func close(through end: Int) {
+            let paragraph = String(chars[start...end]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !paragraph.isEmpty { result.append(paragraph) }
+            var next = end + 1
+            while next < chars.count, chars[next].isWhitespace { next += 1 }
+            start = next
+        }
+        while i < chars.count {
+            let length = i - start + 1
+            let c = chars[i]
+            if length >= softLimit, sentenceEnds.contains(c) {
+                let atEnd = i + 1 >= chars.count
+                if atEnd || chars[i + 1].isWhitespace || closesWithoutSpace.contains(c) {
+                    close(through: i)
+                    i = start
+                    continue
+                }
+            }
+            if length >= hardLimit, c.isWhitespace {
+                close(through: i)
+                i = start
+                continue
+            }
+            i += 1
+        }
+        let open = start < chars.count
+            ? String(chars[start...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            : ""
+        result.append(open)
+        return result
+    }
+
+    private static let sentenceEnds: Set<Character> = [".", "?", "!", "。", "？", "！"]
+    /// CJK sentence marks are not followed by a space.
+    private static let closesWithoutSpace: Set<Character> = ["。", "？", "！"]
+
     /// A raw speaker id followed by ": ", at the start or after the two-space
     /// separator the aggregator puts between parts.
     private static let interimMarker = try! NSRegularExpression(

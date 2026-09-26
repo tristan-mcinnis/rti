@@ -275,12 +275,23 @@ private struct TranscriptRunView: View {
     }
 
     private var texts: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            spoken
-                .font(House.TypeToken.bodySmall)
-                .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+        let paragraphs = LiveTranscriptPresentation.paragraphs(original)
+        let settled = paragraphs.dropLast()
+        let open = paragraphs.last ?? ""
+        let settling = interim.trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            // A long run reads as paragraphs. Only the open paragraph takes
+            // the interim words, so an interim frame re-lays out that one
+            // paragraph, not the whole run. Paragraphs sit `sm` apart: clearly
+            // more than a line gap, clearly less than the gap between runs.
+            VStack(alignment: .leading, spacing: House.Spacing.sm) {
+                ForEach(Array(settled.enumerated()), id: \.offset) { _, paragraph in
+                    spokenStyle(Text(paragraph).foregroundStyle(finalInk))
+                }
+                if !open.isEmpty || !settling.isEmpty {
+                    spokenStyle(spoken(open, settling: settling))
+                }
+            }
             if !translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(translation.trimmingCharacters(in: .whitespacesAndNewlines))
                     .font(House.TypeToken.bodySmall)
@@ -295,12 +306,21 @@ private struct TranscriptRunView: View {
         .accessibilityLabel(accessibilityText)
     }
 
+    private var finalInk: Color {
+        isNote ? House.ColorToken.textSecondary : House.ColorToken.textPrimary
+    }
+
+    private func spokenStyle(_ text: Text) -> some View {
+        text
+            .font(House.TypeToken.bodySmall)
+            .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     /// Final words in full ink, interim words after them in tertiary ink:
     /// one `Text`, so a final result recolours words in place.
-    private var spoken: Text {
-        let final = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        let settling = interim.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalInk = isNote ? House.ColorToken.textSecondary : House.ColorToken.textPrimary
+    private func spoken(_ final: String, settling: String) -> Text {
         var text = Text(final).foregroundStyle(finalInk)
         if !settling.isEmpty {
             text = text + Text((final.isEmpty ? "" : " ") + settling).foregroundStyle(House.ColorToken.textTertiary)
