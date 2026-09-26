@@ -4,6 +4,12 @@ A macOS assistant (a regular Dock app with a menu-bar recording indicator, since
 
 Personal build: **real-time first, vault-backed** — the live transcript stays in memory during recording; submitted chats and sources are saved before inference. On stop RTI saves the session's Markdown and retained audio to the vault. Browse saved sessions in RTI, replay their audio, or ask the assistant using vault search. RTI keeps no separate database or search index. macOS 14+. Bring your own [Soniox](https://console.soniox.com) and LLM provider keys ([DeepSeek](https://platform.deepseek.com) by default; the LLM layer is provider-agnostic — see [`Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift)).
 
+Transcription is not on-device: by default both live legs stream to hosted Soniox, and the automatic transcript upgrade sends the retained audio to Soniox's file API. OCR runs on this Mac; assistant turns go to the selected LLM provider.
+
+RTI's assistant is for meetings and sessions: it reads the live transcript, saved sessions and the vault. General chat, and the Chief of Staff, live in Quick Launch's AI Chat.
+
+Names: this repo is `rti` (GitHub `tristan-mcinnis/rti-personal`). It builds `RTI.app`, bundle id `com.tristan.rti.personal`; the bundle's display name is still "RTI Personal". Two launchd jobs installed outside this repo touch it: `com.tristan.rti-crash-watchdog` (relaunches RTI after a crash) and `com.tristan.rti-meeting-drain` (a vault tool).
+
 ## What it does
 
 - **Live transcription.** `AVAudioEngine` → 16 kHz PCM → realtime STT provider, both sides of the call, held in memory with rolling context for the assistant. RTI models realtime STT separately from post-hoc transcript-upgrade providers.
