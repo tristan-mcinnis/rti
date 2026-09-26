@@ -1,5 +1,46 @@
 # RTI Change Log
 
+## 2026-09-26: Session lifecycle and live-transcript sweep
+
+A read of the recording path end to end, with a fix for each defect that
+the code shows.
+
+- **A reconnected leg keeps its speech.** Every Soniox socket is a new
+  stream whose timestamps restart at 0. After a mic reconnect, or each time
+  the system leg rejoined after being parked, the transcript watermark
+  dropped every final until the new stream's clock passed the old one. A
+  reconnect 30 minutes in lost about 30 minutes of live transcript. The
+  new stream is now placed at the moment it opened.
+- **Soniox acts only on the current socket.** Teardown events from a
+  replaced or parked socket no longer reset the live socket or orphan it
+  behind a second one. A server TCP close without a close frame
+  (`.peerClosed`) now reconnects instead of leaving the leg reading live.
+- **No stale system-audio start.** Stop and start again inside the
+  eight-second system-audio delay no longer attaches the old session's tap
+  and client to the new one.
+- **A failed start leaves nothing running.** The analysis scheduler and
+  the four-minute Neon keep-warm start only after audio is running.
+- **Checkpoints and quit-time archives use this session's chats.** The
+  chat projection from the previous recording is cleared at start.
+- **The fallback summary keeps its speaker names** when a new recording
+  starts while the upgrade runs.
+- **Screen context and Auto mode follow the recording.** An in-flight
+  screen capture no longer marks a paused or stopped session "on", and
+  Auto mode does not run a pass after Stop.
+- **One copy of the mic audio.** The live pipeline also wrote a mic-only
+  WAV to the temp directory (32 KB/s, about 115 MB an hour, on the audio
+  thread) that nothing read and that was deleted at stop. The durable
+  `audio-mic.wav` leg already holds the same audio. The temp copy is gone;
+  the launch sweep still removes old ones.
+- README and CLAUDE.md: live and upgrade transcription use hosted Soniox;
+  RTI's chat is meeting-grounded, general chat lives in Quick Launch; the
+  Soniox endpoint in CLAUDE.md was wrong.
+
+Tests: `TranscriptPipelineTests`, `TranscriptAggregatorTests` and
+`SonioxClientSocketEventTests` pin the transcript and socket fixes. The
+start, stop and capture fixes need a microphone or screen capture and are
+verified by reading the code path.
+
 ## 2026-09-23: A session's failure notice goes with its session
 
 `SessionCoordinator.lastError` was cleared in exactly one place: the start of the
