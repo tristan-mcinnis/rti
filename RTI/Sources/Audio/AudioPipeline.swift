@@ -57,6 +57,13 @@ final class AudioPipeline {
     /// was already torn down while it was awaiting startup, so it can release
     /// the backend instead of leaking a running tap.
     private var isCapturing = false
+    /// Bumped by every `start()`. The system leg starts on a Task that sleeps
+    /// eight seconds first; a session stopped and a new one started inside
+    /// that window left `isCapturing` true again, so the OLD Task went on to
+    /// attach a second tap and STT client, and the new Task then overwrote
+    /// them without stopping them. The Task now checks it is still the
+    /// capture it was started for.
+    private var captureGeneration = 0
     /// Wall-clock instant the mic leg started sending audio (≈ the mic Soniox
     /// stream's `startMs == 0`). Used to measure how much later the system
     /// leg starts so its timestamps can be aligned to the mic timeline.
@@ -211,6 +218,8 @@ final class AudioPipeline {
         captureStartWall = Date()
         try audio.start()
         isCapturing = true
+        captureGeneration += 1
+        let generation = captureGeneration
         didFallBackToSCK = false
         systemSTTConnected = false
         lastSystemBufferAt = nil
@@ -226,7 +235,7 @@ final class AudioPipeline {
         Task { @MainActor [weak self] in
             guard let self, isCapturing else { return }
             try? await Task.sleep(nanoseconds: systemAudioStartupDelayNs)
-            guard isCapturing else { return }
+            guard isCapturing, captureGeneration == generation else { return }
             let sysClient = STTProviders.makeActiveClient(
                 translationConfig: translationConfig,
                 contextTerms: contextTerms
@@ -294,7 +303,7 @@ final class AudioPipeline {
                     try await tap.start()
                     // The session may have been stopped while we awaited
                     // startup; if so, release the tap instead of leaking it.
-                    guard isCapturing else { tap.stop(); return }
+                    guard isCapturing, captureGeneration == generation else { tap.stop(); return }
                     systemAudio = tap
                     markSystemAudioStarted()
                     return
@@ -303,13 +312,13 @@ final class AudioPipeline {
                 }
             }
 
-            guard isCapturing else { return }
+            guard isCapturing, captureGeneration == generation else { return }
             let sck = SystemAudioCapture()
             sck.onPCMBuffer = onPCM
             sck.onError = onErr
             do {
                 try await sck.start()
-                guard isCapturing else { sck.stop(); return }
+                guard isCapturing, captureGeneration == generation else { sck.stop(); return }
                 systemAudio = sck
                 markSystemAudioStarted()
             } catch {
