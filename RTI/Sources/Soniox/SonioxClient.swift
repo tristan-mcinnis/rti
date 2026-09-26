@@ -417,13 +417,13 @@ enum STTProviders {
 }
 
 /// Provider selection for the "Upgrade Transcript" path: a slower async
-/// pass over the archived session's retained `.m4a` legs that can replace the rough
+/// pass over the archived session's retained audio legs that can replace the rough
 /// live transcript and then regenerate the summary from the upgraded text.
 ///
-/// This setting does not affect the live transcript today. It exists now so the
-/// provider model and user-facing settings reflect the real architectural split:
-/// live capture vs post-hoc upgrade are different jobs with different provider
-/// tradeoffs.
+/// This setting does not affect the live transcript. Live capture and the
+/// post-hoc upgrade are different jobs, so they stay separate registries even
+/// though Soniox is the only upgrade provider (Aliyun was removed 2026-09-26:
+/// its script no longer exists).
 enum AsyncTranscriptProviders {
     static let soniox = AsyncTranscriptProviderOption(
         id: "soniox_file",
@@ -434,22 +434,12 @@ enum AsyncTranscriptProviders {
         summary: "Reuse Soniox for offline file transcription when you want consistency with the live lane."
     )
 
-    static let aliyun = AsyncTranscriptProviderOption(
-        id: "aliyun_file",
-        displayName: "Aliyun",
-        credentialFields: [
-            .init(account: "aliyun_access_key_id", label: "Aliyun Access Key ID", placeholder: "LTAI..."),
-            .init(account: "aliyun_access_key_secret", label: "Aliyun Access Key Secret", placeholder: "secret..."),
-            .init(account: "aliyun_nls_app_key", label: "Aliyun NLS App Key", placeholder: "appkey...")
-        ],
-        summary: "Preferred for Chinese-heavy async transcript upgrades."
-    )
+    static let all: [AsyncTranscriptProviderOption] = [soniox]
 
-    static let all: [AsyncTranscriptProviderOption] = [soniox, aliyun]
-
+    /// A stored id for a removed provider (the old `aliyun_file`) falls back
+    /// to Soniox through `active`.
     static var activeId: String {
-        get { UserDefaults.standard.string(forKey: STTSettingsDefaults.asyncProviderIdKey) ?? soniox.id }
-        set { UserDefaults.standard.set(newValue, forKey: STTSettingsDefaults.asyncProviderIdKey) }
+        UserDefaults.standard.string(forKey: STTSettingsDefaults.asyncProviderIdKey) ?? soniox.id
     }
 
     static var active: AsyncTranscriptProviderOption {

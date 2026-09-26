@@ -19,10 +19,7 @@ Properties:
 - Must feed the live assistant and live analysis tabs
 - May trade some absolute accuracy for responsiveness
 
-Current RTI provider choices:
-
-- `Soniox` — default live provider
-- `AssemblyAI` — alternative live provider
+Current RTI provider: `Soniox` (hosted; live audio leaves the Mac).
 
 Code:
 
@@ -48,10 +45,9 @@ Properties:
 - Provider can be language-specialized
 - Output should be considered authoritative enough to regenerate the summary
 
-Current RTI provider choices:
-
-- `Aliyun` — preferred default for Chinese-heavy async upgrades
-- `Soniox` — alternative for English or mixed English/Chinese upgrades
+Current RTI provider: `Soniox` file transcription, run with English and
+Chinese language hints. The Aliyun option was removed on 2026-09-26 (see
+below).
 
 Code:
 
@@ -59,58 +55,40 @@ Code:
 - Settings surface: `RTI/Sources/Settings/KeysTab.swift`
 - Upgrade executor: `RTI/Sources/Session/TranscriptUpgradeService.swift`
 - Merge/render logic: `RTI/Core/Session/TranscriptUpgrade.swift`
-- Durable audio source: session-local `audio-mic.m4a` and `audio-system.m4a`
+- Durable audio source: session-local `audio-mic.wav` and `audio-system.wav` (older sessions: `.m4a`)
 
-## Why the providers differ
+## Why the lanes stay separate
 
-The transcription skill used on this machine already makes this distinction:
-
-- `Realtime`: Soniox
-- `Chinese-only file transcription`: Aliyun
-- `English or mixed-language file transcription`: Soniox
-
-RTI mirrors that architecture in its provider model so the
-`Upgrade Transcript` feature does not inherit the wrong provider from the live
-lane.
+Live capture and the post-hoc upgrade are different jobs: one needs low
+latency, the other accuracy. They keep separate registries
+(`STTProviders`, `AsyncTranscriptProviders`) even though Soniox serves both
+today, so a future batch provider does not inherit the live lane's choice.
 
 ## Current product state
 
-RTI now stores separate provider choices for:
+The upgrade runs `file-transcriber`'s Soniox script (the same one the
+`transcribe` skill uses):
 
-- Assistant LLM
-- Real-time speech-to-text
-- Transcript upgrade (async)
+- Soniox: `~/Documents/code/file-transcriber/skills/file-transcriber/scripts/transcribe-soniox.py`
+  (override with `soniox_file_script` in `~/.config/rti/config.json`)
 
-Aliyun is not represented as a single opaque API key in RTI. The current
-Aliyun file-transcription script requires:
+Aliyun was removed on 2026-09-26. RTI's adapter called an Aliyun NLS script
+at `~/Documents/code/archive/aliyun-stt/scripts/aliyun_filetrans.py`, which
+went away with the archive tier and is not on GitHub. The Aliyun script that
+still exists (`file-transcriber`'s `transcribe-aliyun.py`) is a different
+API: it needs a DashScope key and serves the audio from a public HTTP port on
+the VPS, which is not acceptable for private meeting audio without a
+decision. Soniox already transcribes Chinese.
 
-- `ALIBABA_CLOUD_ACCESS_KEY_ID`
-- `ALIBABA_CLOUD_ACCESS_KEY_SECRET`
-- `NLS_APP_KEY`
-
-So RTI's async-upgrade settings now store those credentials separately.
-
-The Sessions browser now exposes `Upgrade Transcript` for archived sessions
-that contain retained audio. The action asks which async transcript provider to
-use for that run: Soniox is the default general-purpose choice, and Aliyun is
-the Chinese-heavy choice. The current provider adapters are intentionally narrow
-script bridges to the same local file-transcription tools used elsewhere on
-this Mac:
-
-- Soniox: `/Users/user/Documents/Code/file-transcriber/skills/file-transcriber/scripts/transcribe-soniox.py`
-- Aliyun: `/Users/user/Documents/code/archive/aliyun-stt/scripts/aliyun_filetrans.py`
-
-This keeps the RTI feature scoped to archived-session upgrading and avoids
-reintroducing the old import/corpus/search architecture. Native REST clients can
-replace the script bridges later behind the same `AsyncTranscriptProvider`
-protocol.
+Native REST clients can replace the script bridge later behind the same
+`AsyncTranscriptProvider` protocol.
 
 ## Upgrade Transcript Behavior
 
 When RTI runs `Upgrade Transcript`, it:
 
-1. Presents the async provider choices for that run
-2. Chooses `audio-mic.m4a` and/or `audio-system.m4a` from the session folder
+1. Asks for confirmation (the dialog names the provider)
+2. Chooses `audio-mic.wav` and/or `audio-system.wav` (or the older `.m4a`) from the session folder
 3. Applies `session.json`'s system-audio offset when merging the two audio legs
 4. Runs the provider-specific file transcription adapter
 5. Reinserts RTI user notes from the original `transcript.md` by timestamp

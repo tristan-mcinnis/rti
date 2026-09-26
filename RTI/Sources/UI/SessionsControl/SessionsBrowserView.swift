@@ -81,7 +81,7 @@ struct SessionsBrowserView: View {
             }
             Button("Cancel", role: .cancel) { model.cancelUpgradeChoice() }
         } message: {
-            Text("Soniox is the default. Choose Aliyun when the session is mostly Chinese.")
+            Text("Soniox transcribes the saved audio again, in English and Chinese, then the summary is rewritten. The current transcript is backed up first.")
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sessions")

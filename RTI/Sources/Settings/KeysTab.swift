@@ -4,17 +4,12 @@ import SwiftUI
 
 struct ProvidersTab: View {
     @State private var selectedLLMProviderId = LLMProviders.activeId
-    @State private var selectedAsyncTranscriptProviderId = AsyncTranscriptProviders.activeId
     @State private var keyValues: [String: String] = [:]
     @State private var saved = false
     @State private var saveError: String?
 
     private var activeLLMOption: LLMProviderOption {
         LLMProviders.option(id: selectedLLMProviderId)
-    }
-
-    private var activeAsyncTranscriptOption: AsyncTranscriptProviderOption {
-        AsyncTranscriptProviders.all.first { $0.id == selectedAsyncTranscriptProviderId } ?? AsyncTranscriptProviders.aliyun
     }
 
     private var activeLLMHasKey: Bool {
@@ -27,14 +22,6 @@ struct ProvidersTab: View {
         !(keyValues["soniox"] ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
-    }
-
-    private var activeAsyncTranscriptHasKey: Bool {
-        activeAsyncTranscriptOption.credentialFields.allSatisfy {
-            !(keyValues[$0.account] ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty
-        }
     }
 
     var body: some View {
@@ -53,11 +40,10 @@ struct ProvidersTab: View {
                             value: "Soniox",
                             detail: "Fixed for live transcription, with live translation support."
                         )
-                        providerPicker(
-                            title: "Manual re-upgrade choice",
-                            selection: $selectedAsyncTranscriptProviderId,
-                            options: AsyncTranscriptProviders.all.map { ($0.id, $0.displayName) },
-                            detail: "Automatic upgrades use Soniox. This selects the first option when manually re-processing an archived session."
+                        staticProviderRow(
+                            title: "Transcript upgrade",
+                            value: "Soniox",
+                            detail: "The improved pass after Finish, and Upgrade Transcript on a saved session."
                         )
                     }
                 }
@@ -78,27 +64,9 @@ struct ProvidersTab: View {
                     }
                 }
 
-                SettingsCard("Speech-to-Text Provider Keys", detail: "Soniox powers RTI's live transcription lane.") {
+                SettingsCard("Speech-to-Text Provider Keys", detail: "Soniox powers live transcription and the transcript upgrade after Finish.") {
                     VStack(alignment: .leading, spacing: 12) {
                         field("Soniox API key", "soniox-...", binding(for: "soniox"))
-                    }
-                }
-
-                SettingsCard("Transcript Upgrade Provider Keys", detail: "Soniox automatically replaces the rough live transcript after Finish and regenerates the summary. Aliyun remains available for a manual re-upgrade.") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(AsyncTranscriptProviders.all) { provider in
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(provider.displayName)
-                                    .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                                ForEach(provider.credentialFields) { credential in
-                                    field(
-                                        credential.label,
-                                        credential.placeholder,
-                                        binding(for: credential.account)
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -112,13 +80,6 @@ struct ProvidersTab: View {
                 if !activeRealtimeSTTHasKey {
                     SettingsStatusLabel(
                         text: "Live transcription needs a Soniox key.",
-                        systemImage: "exclamationmark.triangle.fill",
-                        color: RTIDesign.Color.warning
-                    )
-                }
-                if !activeAsyncTranscriptHasKey {
-                    SettingsStatusLabel(
-                        text: "The selected transcript-upgrade provider (\(activeAsyncTranscriptOption.displayName)) is missing one or more required credentials.",
                         systemImage: "exclamationmark.triangle.fill",
                         color: RTIDesign.Color.warning
                     )
@@ -226,15 +187,9 @@ struct ProvidersTab: View {
 
     private func load() {
         selectedLLMProviderId = LLMProviders.activeId
-        selectedAsyncTranscriptProviderId = AsyncTranscriptProviders.activeId
         var next: [String: String] = [:]
         for provider in LLMProviders.all {
             next[provider.keychainAccount] = CredentialStore.value(for: provider.keychainAccount) ?? ""
-        }
-        for provider in AsyncTranscriptProviders.all {
-            for credential in provider.credentialFields {
-                next[credential.account] = CredentialStore.value(for: credential.account) ?? ""
-            }
         }
         next["soniox"] = CredentialStore.soniox ?? ""
         keyValues = next
@@ -250,13 +205,9 @@ struct ProvidersTab: View {
             )
         }
         CredentialStore.setSoniox((keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
-        CredentialStore.setAliyunAccessKeyID((keyValues["aliyun_access_key_id"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
-        CredentialStore.setAliyunAccessKeySecret((keyValues["aliyun_access_key_secret"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
-        CredentialStore.setAliyunNLSAppKey((keyValues["aliyun_nls_app_key"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
 
         LLMProviders.activeId = selectedLLMProviderId
         STTProviders.activeId = STTProviders.soniox.id
-        AsyncTranscriptProviders.activeId = selectedAsyncTranscriptProviderId
 
         let llmKey = (keyValues[activeLLMOption.keychainAccount] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard CredentialStore.value(for: activeLLMOption.keychainAccount) == llmKey else {
@@ -265,13 +216,7 @@ struct ProvidersTab: View {
         }
 
         let soniox = (keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let aliyunAccessKeyID = (keyValues["aliyun_access_key_id"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let aliyunAccessKeySecret = (keyValues["aliyun_access_key_secret"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let aliyunNLSAppKey = (keyValues["aliyun_nls_app_key"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard CredentialStore.soniox == (soniox.isEmpty ? nil : soniox),
-              CredentialStore.aliyunAccessKeyID == (aliyunAccessKeyID.isEmpty ? nil : aliyunAccessKeyID),
-              CredentialStore.aliyunAccessKeySecret == (aliyunAccessKeySecret.isEmpty ? nil : aliyunAccessKeySecret),
-              CredentialStore.aliyunNLSAppKey == (aliyunNLSAppKey.isEmpty ? nil : aliyunNLSAppKey) else {
+        guard CredentialStore.soniox == (soniox.isEmpty ? nil : soniox) else {
             saveError = "Could not save speech-to-text credentials to disk. Check that ~/Library/Application Support/RTI is writable."
             return
         }

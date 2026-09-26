@@ -141,9 +141,8 @@ automatic Soniox pass over the retained mic/system recordings before summary,
 meeting processing, and Neon indexing.
 
 1. Build and launch RTI.
-2. Ensure Settings → Providers has credentials for the provider you intend to
-   test. Soniox is suitable for the public English fixture; Aliyun is intended
-   for Chinese-heavy sessions.
+2. Ensure Settings → Providers has a Soniox key. Soniox is the one upgrade
+   provider (the Aliyun option was removed on 2026-09-26).
 3. Create or select an archived session folder that contains:
    - `transcript.md`
    - `audio-mic.wav` and/or `audio-system.wav`

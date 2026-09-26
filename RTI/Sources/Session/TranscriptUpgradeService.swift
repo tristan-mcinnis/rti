@@ -134,40 +134,12 @@ enum TranscriptUpgradeService {
     }
 
     private static func makeProvider(_ option: AsyncTranscriptProviderOption) throws -> AsyncTranscriptProvider {
-        switch option.id {
-        case AsyncTranscriptProviders.soniox.id:
-            return try makeSonioxProvider()
-        case AsyncTranscriptProviders.aliyun.id:
-            let missing = aliyunMissingCredentials()
-            guard missing.isEmpty else {
-                throw TranscriptUpgradeError.missingCredentials("Aliyun (\(missing.joined(separator: ", ")))")
-            }
-            return AliyunScriptTranscriptProvider(
-                accessKeyId: CredentialStore.aliyunAccessKeyID ?? "",
-                accessKeySecret: CredentialStore.aliyunAccessKeySecret ?? "",
-                appKey: CredentialStore.aliyunNLSAppKey ?? ""
-            )
-        default:
-            return try makeSonioxProvider()
-        }
-    }
-
-    private static func makeSonioxProvider() throws -> AsyncTranscriptProvider {
+        // Soniox is the one upgrade provider. The Aliyun option was removed
+        // on 2026-09-26: its NLS script no longer exists on this Mac.
         guard !(CredentialStore.soniox ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TranscriptUpgradeError.missingCredentials(AsyncTranscriptProviders.soniox.displayName)
         }
         return SonioxScriptTranscriptProvider(apiKey: CredentialStore.soniox ?? "")
-    }
-
-    private static func aliyunMissingCredentials() -> [String] {
-        [
-            ("Access Key ID", CredentialStore.aliyunAccessKeyID),
-            ("Access Key Secret", CredentialStore.aliyunAccessKeySecret),
-            ("NLS App Key", CredentialStore.aliyunNLSAppKey),
-        ].compactMap { label, value in
-            let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? label : nil
-        }
     }
 
     static func audioInputs(in dir: URL) -> [TranscriptUpgradeAudioInput] {
@@ -228,38 +200,6 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
             environment: ["SONIOX_API_KEY": apiKey]
         )
         return (try? String(contentsOf: output, encoding: .utf8)) ?? ""
-    }
-}
-
-private struct AliyunScriptTranscriptProvider: AsyncTranscriptProvider {
-    let id = "aliyun_file"
-    let displayName = "Aliyun"
-    let accessKeyId: String
-    let accessKeySecret: String
-    let appKey: String
-    /// `aliyun_file_script` in `~/.config/rti/config.json`, else the default
-    /// checkout location under the user's home.
-    private let script = TranscriptUpgradeScripts.path(
-        configKey: "aliyun_file_script",
-        default: "Documents/code/archive/aliyun-stt/scripts/aliyun_filetrans.py"
-    )
-
-    func transcribe(audioURL: URL, outputBaseURL: URL) async throws -> String {
-        guard FileManager.default.fileExists(atPath: script) else {
-            throw TranscriptUpgradeError.missingScript(script)
-        }
-        let rawOutput = outputBaseURL.appendingPathExtension("aliyun.json")
-        let textOutput = outputBaseURL.appendingPathExtension("aliyun.txt")
-        try await ScriptRunner.run(
-            executable: ExternalTools.systemPython.path,
-            arguments: [script, "--audio", audioURL.path, "--raw-output", rawOutput.path, "--text-output", textOutput.path],
-            environment: [
-                "ALIBABA_CLOUD_ACCESS_KEY_ID": accessKeyId,
-                "ALIBABA_CLOUD_ACCESS_KEY_SECRET": accessKeySecret,
-                "NLS_APP_KEY": appKey
-            ]
-        )
-        return (try? String(contentsOf: textOutput, encoding: .utf8)) ?? ""
     }
 }
 

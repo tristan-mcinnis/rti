@@ -138,33 +138,18 @@ extension CredentialStore {
     private static let openRouterAccount = "openrouter"
     private static let sonioxAccount = "soniox"
     private static let assemblyaiAccount = "assemblyai"
-    private static let aliyunAccessKeyIDAccount = "aliyun_access_key_id"
-    private static let aliyunAccessKeySecretAccount = "aliyun_access_key_secret"
-    private static let aliyunNLSAppKeyAccount = "aliyun_nls_app_key"
 
     static var deepseek: String? { Self.get(deepseekAccount) }
     static var openai: String? { Self.get(openAIAccount) }
     static var openrouter: String? { Self.get(openRouterAccount) }
     static var soniox: String? { Self.get(sonioxAccount) }
     static var assemblyai: String? { Self.get(assemblyaiAccount) }
-    static var aliyunAccessKeyID: String? {
-        firstCredential([aliyunAccessKeyIDAccount, "aliyun_access_key", "alibaba_cloud_access_key_id"], env: ["ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIYUN_ACCESS_KEY_ID"])
-    }
-    static var aliyunAccessKeySecret: String? {
-        firstCredential([aliyunAccessKeySecretAccount, "aliyun_access_secret", "alibaba_cloud_access_key_secret"], env: ["ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALIYUN_ACCESS_KEY_SECRET"])
-    }
-    static var aliyunNLSAppKey: String? {
-        firstCredential([aliyunNLSAppKeyAccount, "aliyun_app_key", "nls_app_key"], env: ["NLS_APP_KEY", "ALIYUN_NLS_APPKEY", "ALIYUN_NLS_APP_KEY"])
-    }
 
     static func setDeepSeek(_ value: String) { set(value, for: deepseekAccount) }
     static func setOpenAI(_ value: String) { set(value, for: openAIAccount) }
     static func setOpenRouter(_ value: String) { set(value, for: openRouterAccount) }
     static func setSoniox(_ value: String) { set(value, for: sonioxAccount) }
     static func setAssemblyAI(_ value: String) { set(value, for: assemblyaiAccount) }
-    static func setAliyunAccessKeyID(_ value: String) { set(value, for: aliyunAccessKeyIDAccount) }
-    static func setAliyunAccessKeySecret(_ value: String) { set(value, for: aliyunAccessKeySecretAccount) }
-    static func setAliyunNLSAppKey(_ value: String) { set(value, for: aliyunNLSAppKeyAccount) }
 
     static func value(for account: String) -> String? {
         get(account)
@@ -172,20 +157,6 @@ extension CredentialStore {
 
     static func setValue(_ value: String, for account: String) {
         set(value, for: account)
-    }
-
-    private static func firstCredential(_ accounts: [String], env names: [String]) -> String? {
-        for account in accounts {
-            if let value = get(account)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
-                return value
-            }
-        }
-        for name in names {
-            if let value = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
-                return value
-            }
-        }
-        return nil
     }
 
     /// One-time migration of any plaintext keys still living in Secrets.swift.
@@ -204,15 +175,6 @@ extension CredentialStore {
         }
         if soniox == nil, !Secrets._legacySonioxKey.isEmpty, !Secrets._legacySonioxKey.hasPrefix("<") {
             setSoniox(Secrets._legacySonioxKey)
-        }
-        if get(aliyunAccessKeyIDAccount) == nil, let value = aliyunAccessKeyID {
-            setAliyunAccessKeyID(value)
-        }
-        if get(aliyunAccessKeySecretAccount) == nil, let value = aliyunAccessKeySecret {
-            setAliyunAccessKeySecret(value)
-        }
-        if get(aliyunNLSAppKeyAccount) == nil, let value = aliyunNLSAppKey {
-            setAliyunNLSAppKey(value)
         }
         defaults.set(true, forKey: flag)
     }

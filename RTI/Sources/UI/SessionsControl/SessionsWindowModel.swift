@@ -1292,7 +1292,6 @@ final class SessionsWindowModel {
     }
 
     func upgradeProviderTitle(_ provider: AsyncTranscriptProviderOption) -> String {
-        if provider.id == AsyncTranscriptProviders.aliyun.id { return "Aliyun (Chinese-heavy)" }
         if provider.id == AsyncTranscriptProviders.soniox.id {
             return provider.id == AsyncTranscriptProviders.active.id ? "Soniox (default)" : "Soniox"
         }

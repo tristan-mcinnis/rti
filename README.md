@@ -133,20 +133,9 @@ Soniox transcribes whatever audio device you select for the mic; system audio (t
 RTI now treats these as separate lanes:
 
 - `Real-time transcription` is the low-latency overlay transcript used during a meeting.
-- `Transcript upgrade (async)` is the post-hoc lane that re-transcribes the session-local retained audio legs and then regenerates the summary from the upgraded text. Soniox is the default choice; choose Aliyun from the Upgrade Transcript prompt for Chinese-heavy sessions.
+- `Transcript upgrade (async)` is the post-hoc lane that re-transcribes the session-local retained audio legs and then regenerates the summary from the upgraded text. Soniox's file API does it, with English and Chinese language hints, through `file-transcriber`'s `transcribe-soniox.py`. Both lanes use the one Soniox key.
 
-Recommended defaults follow the local `transcribe` skill:
-
-- `Realtime`: Soniox
-- `Chinese-heavy async file upgrade`: Aliyun
-- `English or mixed-language async file upgrade`: Soniox
-
-For Aliyun async upgrades, RTI tracks the full credential set the file
-transcription script actually needs:
-
-- `Aliyun Access Key ID`
-- `Aliyun Access Key Secret`
-- `Aliyun NLS App Key`
+The Aliyun upgrade option was removed on 2026-09-26. Its NLS script lived in the retired `code/archive/` tier and no longer exists, so choosing it always failed.
 
 See [docs/transcript-upgrade-providers.md](docs/transcript-upgrade-providers.md).
 

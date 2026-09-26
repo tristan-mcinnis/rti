@@ -86,7 +86,7 @@ struct SettingsView: View {
         /// Settings inside the pane, so the rail search reaches them.
         var keywords: [String] {
             switch self {
-            case .providers: ["API", "keys", "DeepSeek", "OpenAI", "OpenRouter", "Soniox", "Aliyun", "model", "transcription", "credentials"]
+            case .providers: ["API", "keys", "DeepSeek", "OpenAI", "OpenRouter", "Soniox", "model", "transcription", "credentials"]
             case .modes: ["persona", "system prompt", "reference", "meeting", "interview"]
             case .prompts: ["Assist", "recap", "summary", "instructions"]
             case .glossary: ["terms", "names", "acronyms", "spelling"]
