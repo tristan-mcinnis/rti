@@ -1,5 +1,26 @@
 # RTI Change Log
 
+## 2026-09-26: Second sweep (name, upgrade provider, process pipes, docs)
+
+- **The app is named RTI.** The Dock, menus and Finder said "RTI
+  Personal". The bundle identifier is unchanged, so macOS permissions stay.
+- **Aliyun upgrade removed.** Its script was deleted with the archive tier,
+  so choosing it always failed. Soniox (English and Chinese hints) is the
+  one upgrade provider; Settings and the upgrade dialog say so.
+- **No pipe deadlocks.** Speaker profiles and the transcript upgrade now
+  read a child's stdout and stderr at the same time. Before, more than
+  64 KB on the unread pipe blocked the child forever (the upgrade until its
+  one-hour timeout).
+- **Launch scan off the main thread.** Finding interrupted upgrades walks
+  every session folder; it no longer runs on the main actor.
+- **Dead AssemblyAI client removed** (it was never selectable).
+- Docs: the workflow map is redrawn from the current code and tested;
+  VERIFY's stop check keeps the audio; README states the chat boundary.
+
+Left as is, measured: the five-minute checkpoint writes a two-hour
+transcript in about 6 ms on the main thread. Moving it off main would let
+a late checkpoint overwrite the final archive.
+
 ## 2026-09-26: Session lifecycle and live-transcript sweep
 
 A read of the recording path end to end, with a fix for each defect that
