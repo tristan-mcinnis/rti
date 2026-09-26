@@ -130,6 +130,24 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     }
 
     func didReceive(event: WebSocketEvent, client: WebSocketClient) {
+        // Lifecycle events from a socket this client has already let go of
+        // (parked, or replaced by a reconnect) describe that old socket, not
+        // the current one. Acting on them reset `configSent` on the live
+        // socket, so its audio was dropped, and queued a reconnect that
+        // orphaned it while it kept delivering words.
+        switch event {
+        case .connected, .disconnected, .error, .cancelled, .peerClosed:
+            lock.lock()
+            let isCurrent = socket.map { $0 === client } ?? false
+            lock.unlock()
+            guard isCurrent else {
+                RTILog.log("ignoring \(event) from a replaced socket", category: .soniox)
+                return
+            }
+        default:
+            break
+        }
+
         switch event {
         case .connected:
             lock.lock()
@@ -158,6 +176,12 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
 
         case .cancelled:
             handleDrop(SonioxFailure.fromTransport(reason: "cancelled"))
+
+        case .peerClosed:
+            // The server closed the TCP connection without a WebSocket close
+            // frame. Starscream leaves that to the delegate; ignoring it left
+            // the leg reading "live" with nothing arriving.
+            handleDrop(SonioxFailure.fromTransport(reason: "peer closed"))
 
         default:
             break
@@ -237,6 +261,17 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         emitStatus(.reconnecting)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
+
+#if DEBUG
+    /// Debug-only seam for `SonioxClientSocketEventTests`: make `ws` the
+    /// current socket without opening a network connection, so socket events
+    /// can be fed to `didReceive` directly. Never called by the app.
+    func adoptSocketForTesting(_ ws: WebSocket) {
+        lock.lock()
+        socket = ws
+        lock.unlock()
+    }
+#endif
 
     private func openSocket() {
         var request = URLRequest(url: url)
