@@ -137,19 +137,16 @@ extension CredentialStore {
     private static let openAIAccount = "openai"
     private static let openRouterAccount = "openrouter"
     private static let sonioxAccount = "soniox"
-    private static let assemblyaiAccount = "assemblyai"
 
     static var deepseek: String? { Self.get(deepseekAccount) }
     static var openai: String? { Self.get(openAIAccount) }
     static var openrouter: String? { Self.get(openRouterAccount) }
     static var soniox: String? { Self.get(sonioxAccount) }
-    static var assemblyai: String? { Self.get(assemblyaiAccount) }
 
     static func setDeepSeek(_ value: String) { set(value, for: deepseekAccount) }
     static func setOpenAI(_ value: String) { set(value, for: openAIAccount) }
     static func setOpenRouter(_ value: String) { set(value, for: openRouterAccount) }
     static func setSoniox(_ value: String) { set(value, for: sonioxAccount) }
-    static func setAssemblyAI(_ value: String) { set(value, for: assemblyaiAccount) }
 
     static func value(for account: String) -> String? {
         get(account)

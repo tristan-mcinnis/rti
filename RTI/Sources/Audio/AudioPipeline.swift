@@ -69,7 +69,7 @@ final class AudioPipeline {
     /// leg starts so its timestamps can be aligned to the mic timeline.
     private var captureStartWall: Date?
     private let recorder = MeetingRecorder()
-    /// The active speech-to-text client (Soniox / AssemblyAI / future), built by
+    /// The active speech-to-text client (Soniox today), built by
     /// STTProviders from the user's Settings choice. `soniox` is a historical
     /// name; it is whichever provider is active.
     private var soniox: STTClient?
