@@ -1,205 +1,234 @@
-# RTI — Real-Time Intelligence
+<p align="center">
+  <img src="docs/icon.png" width="128" height="128" alt="RTI icon">
+</p>
 
-A macOS assistant (a regular Dock app with a menu-bar recording indicator, since 2026-09-01) that listens to your meetings, transcribes in real time, and streams answers in a normal titled window that doesn't show up in other apps' screen captures.
+<h1 align="center">RTI</h1>
 
-Personal build: **real-time first, vault-backed** — the live transcript stays in memory during recording; submitted chats and sources are saved before inference. On stop RTI saves the session's Markdown and retained audio to the vault. Browse saved sessions in RTI, replay their audio, or ask the assistant using vault search. RTI keeps no separate database or search index. macOS 14+. Bring your own [Soniox](https://console.soniox.com) and LLM provider keys ([DeepSeek](https://platform.deepseek.com) by default; the LLM layer is provider-agnostic — see [`Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift)).
+<p align="center"><strong>A Mac meeting recorder with live transcription and a real-time copilot.</strong></p>
 
-Transcription is not on-device: by default both live legs stream to hosted Soniox, and the automatic transcript upgrade sends the retained audio to Soniox's file API. OCR runs on this Mac; assistant turns go to the selected LLM provider.
+<p align="center">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%2014%2B%20%C2%B7%20Apple%20Silicon-1f2937">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-3b5bdb">
+  <img alt="Free and open source" src="https://img.shields.io/badge/free-and%20open%20source-3b5bdb">
+</p>
 
-RTI's assistant is for meetings and sessions: it reads the live transcript, saved sessions and the vault. Standalone RTI chats (no recording running) stay, for questions about past meetings and the vault. General chat and the Chief of Staff live in Quick Launch's AI Chat. The two apps share HouseChatCore code, not histories, settings or keys.
+RTI listens to both sides of a call, shows a live transcript, and lets you ask
+an AI about the meeting while it is still going. When you stop, it saves the
+transcript, a summary and the audio as plain files on your Mac. It is for
+people who sit in meetings, interviews and fieldwork sessions and want notes
+they own. RTI stands for Real-Time Intelligence.
 
-Names: this repo is `rti` (GitHub `tristan-mcinnis/rti-personal`). It builds `RTI.app`, bundle id `com.tristan.rti.personal`; its display name is "RTI" (renamed from "RTI Personal" on 2026-09-26; the bundle id did not change, so permissions carry over). Two launchd jobs installed outside this repo touch it: `com.tristan.rti-crash-watchdog` (relaunches RTI after a crash) and `com.tristan.rti-meeting-drain` (a vault tool).
+> **Free and open source.** RTI is free to use, change and share under the MIT License.
+> No account, no subscription, no telemetry. RTI is not an offline app: live audio goes to Soniox, and your prompts and transcript go to the AI provider you pick. See [Privacy](#privacy).
 
-## What it does
+## Features
 
-- **Live transcription.** `AVAudioEngine` → 16 kHz PCM → realtime STT provider, both sides of the call, held in memory with rolling context for the assistant. RTI models realtime STT separately from post-hoc transcript-upgrade providers.
-- **Clear recording lifecycle.** The record control names every phase — **Recording → Paused → Saving → Summarizing → Notes ready** — so you always know what RTI is doing. **Pause/resume** (⌘⇧P) suspends transcription while holding the Soniox socket warm, so resume is instant (no re-handshake). On finish you watch the end-of-session summary generate (Granola-style "Summarizing…"), then **start a new recording with one click** — the previous session is saved, not cleared, and the new one can begin even while the last summary is still being written.
-- **Streaming assistant, mode-aware.** ⌘↵ runs the primary action over the last few minutes of transcript — **Quick recap** (the last 5 minutes, one or two bullets) out of the box. The quick-action set follows the active mode + listener state: meeting/participant gets Quick recap / Assist / Say next / Follow-ups; fieldwork observer (Interview + Listener) gets Quick recap / Assist / Follow-ups / Key tensions / What's unsaid / Emerging themes. You can also drop an image into the composer. OCR runs on-device; the image goes to the destination shown before Send, which may be a cloud model. OpenAI-compatible streaming chat.
-- **Invisible window.** A normal titled `NSWindow` with `sharingType = .none` (toggle in Settings) — excluded from QuickTime, Zoom local recording, and `screencapture`. The old always-on-top translucent panel was dropped on 2026-09-01. Other recorders may still see it; see `RTI/POC1-findings.md` for the verified surface.
-- **Sole meeting recorder.** RTI is the only meeting-capture tool on this machine (Meeting Sentinel was deleted 2026-08-28). ⌘⇧R starts and finishes every recording; RTI never auto-records.
-- **Real-time analysis tabs.** Optional overlay tabs generate live meeting **Notes**, track coverage of an imported **Discussion Guide**, and collect tagged **Findings** — all held in memory and refreshed on a timer. Toggle each in the **Setup** tab; jump to them with ⌘⌥3 / ⌘⌥4 / ⌘⌥5.
-- **Echo cancellation.** Apple Voice-Processing I/O on the mic cancels the other party's voice bleeding from your speakers. **Off by default** (VPIO delivers silent buffers on some Macs, verified 2026-06-09 — silent mic kills transcription); toggle in Settings → General if your setup needs it. The mic is fully released when a session stops, so it won't block other apps.
-- **Smart Screenshot.** ⌘⇧H reads the whole screen; ⌘⇧J reads the frontmost window (never RTI's own, never an app on the Screen Privacy list). The capture shows as a thumbnail chip in the composer, is sent to your model as an image, and is kept in the session's `frames/` folder so you can look at it again in the Sessions window. Vision OCR still runs on-device and rides along as text; the local vision model is not used for these captures.
-- **Translation.** Optional live translation alongside the transcript (one-way or two-way), in the Live Transcript window.
-- **Modes.** Built-in system-prompt templates (Meeting / Interview / Coding / Custom) with optional per-mode reference text. Stored as a small JSON file.
+- **Live transcription of both sides.** Your microphone and the system audio (the other party) are transcribed as two legs, in real time, by [Soniox](https://soniox.com). RTI hints English and Chinese to the recognizer, and adds the languages you pick for translation. Soniox decides what it hears.
+- **A copilot over the live transcript.** `Command+Return` runs the main action over the last few minutes. Quick recap is the default. Other actions are Assist, Say next, Follow-ups, and, for interviews, Key tensions, What's unsaid and Emerging themes. The set follows your mode.
+- **A window that stays out of screen shares.** RTI is a normal Mac window with its sharing type set to none. It is hidden from screen sharing and from `screencapture` by default. Some recorders may still see it, so test yours. A toggle in Settings turns this off.
+- **Clear recording states.** The record control shows Recording, Paused, Saving, Summarizing and Notes ready. Pause keeps the connection warm, so resume is instant. You can start a new recording while the last summary is still being written.
+- **Live notes, discussion guide and findings.** Optional tabs write meeting notes, track coverage of a discussion guide you import, and collect tagged findings as the call runs.
+- **Screenshots.** One key reads the whole screen and another reads the front window. Text is read on your Mac with Apple Vision. The image is sent to your model when it takes image input. Windows you put on the privacy list are left out.
+- **Translation.** Optional live translation next to the transcript, one way or two ways.
+- **Modes.** Meeting, Interview, Coding and Custom prompt presets, with optional reference text for each.
+- **Sessions window.** Browse saved sessions, replay the mic and system audio together, copy or share a document, and move a session to Trash.
+- **Saved chats.** Search, pin, rename, export and delete past chats. Nothing is pruned automatically. This needs a notes folder (see [Optional integrations](#optional-integrations)).
 
-- **Saved sessions.** Rounded document selectors and a readable content column use the shared House design. Play, pause, and seek retained microphone and system audio together. Copy the current document, open the macOS share picker, or move an RTI archive to Trash after confirmation. Deleting an archive leaves canonical meeting notes intact; legacy meeting files cannot be deleted here.
-- **House chat controls.** Open attachments with ⌘⇧A and fuzzy-search commands with ⌘K. The attachment menu carries its own search too: it takes the keyboard on open and filters the rows as you type. Pin becomes Unpin when appropriate. Attachments show Reading or an error before sending; a failed read preserves the draft. Images are read on-device and sent to the model when it takes image input, and removed attachments cannot reappear when a late read finishes.
+## Requirements
 
-- **Source-first chat.** The Add Context pane's Broader Search row controls the material and retrieval allowed for the turn. A fresh-source question does not silently add earlier attachments; explicit comparisons can use them. Follow-ups reuse retained sources without rereading the original file. The selected image-capable model is preferred, with any fallback labelled before Send. Each answer keeps its own effective route and request record.
-- **Keep-all chat library.** Sessions → Chats supports search, pin, rename, resume, export, storage inspection and confirmed deletion. Submitted originals, normalized images and extracted passages stay until explicit deletion; unsent drafts are not archived. Legacy dated logs remain read-only and can seed a new draft without sending it. `/new` and `/clear` reset chat context, not saved history or recording. Unknown slash commands need an explicit Send as Text action.
+- macOS 14 (Sonoma) or later on Apple Silicon. The audio-only system tap needs macOS 14.2. On 14.0 and 14.1, RTI falls back to ScreenCaptureKit and needs Screen Recording permission for system audio.
+- A [Soniox](https://console.soniox.com) API key. Live transcription does not work without it.
+- A key for one assistant provider: [DeepSeek](https://platform.deepseek.com), [OpenAI](https://platform.openai.com/api-keys) or [OpenRouter](https://openrouter.ai/keys). DeepSeek is the default.
+- To build from source: Xcode 16 or later (Swift 6), [XcodeGen](https://github.com/yonaskolb/XcodeGen), and a clone of [Quick Launch](https://github.com/tristan-mcinnis/quick-launch) next to this repo. RTI builds the shared `HouseChatCore` package from it. See [Build from source](#build-from-source).
 
-Configuration lives in Application Support and the credential store. Structured chat threads live under the vault's RTI `chats/threads/` directory; their source and request blobs live in `~/Library/Application Support/RTI/chat-assets/`. Daily and session Markdown are projections, not separate conversation owners. Deleting a thread removes only its identified projection blocks and unshared asset copies, never original files or recording audio. An unreadable owner blocks asset cleanup.
+## Install
 
-Quick Launch and RTI share extraction and chat schema code, not histories, settings or credentials. Chat retention has no automatic age or count pruning, and adds no cloud sync or automatic source ingestion. Local storage does not imply local inference. Retained recording audio supports playback and **Upgrade Transcript**. See **Where everything goes** below for session paths.
+### Download
 
-## Where everything goes (data flow)
+Get the latest `RTI-<version>-macos-arm64.dmg` from
+[GitHub Releases](https://github.com/tristan-mcinnis/rti/releases/latest).
+Open it and drag RTI to Applications. Each release lists a SHA256 you can check
+with `shasum -a 256 -c SHA256SUMS`.
 
-One config file anchors every path: **`~/.config/rti/config.json`** (`VaultPaths.swift` reads it; `recordings_dir` anchors the vault tree). Change the vault location by editing that one file.
+#### First open (macOS will warn you)
 
-**1. The session archive** — everything a session produced, in one folder:
+RTI is not notarized. It is a free project, and it has no paid Apple Developer ID. So macOS blocks the first open. Only open it if you downloaded it from the Releases page of this repository.
 
-```
-<vault>/kb/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
-  transcript.md         # live transcript, Markdown, YAML frontmatter, inline 📝 notes
-  chat.md               # assistant chat log (only if you chatted)
-  notes.md              # generated live notes (only if enabled + produced)
-  discussion-guide.md   # guide coverage (only if a guide was loaded)
-  live-intelligence.md  # tagged findings ledger (only if any)
-  screen-context.md     # screen trail: OCR + vision summaries + frame refs (only if any)
-  frames/               # compressed JPEG frames per capture (local_vision lane; gitignored)
-  summary.md            # end-of-session summary (+ title.txt for the browser)
-  session.json          # metadata: mode, workstream, duration, audio file names
-  speaker-names.json    # your live speaker renames (only if you renamed)
-  audio-mic.wav         # THE AUDIO. Mic leg, kept for transcript upgrade
-  audio-system.wav      # system-audio leg (the other side of the call)
-```
+1. Open the DMG and drag RTI to Applications.
+2. Open RTI once. macOS says it cannot verify the app. Click Done.
+3. Open System Settings, then Privacy & Security. Scroll down and click Open Anyway next to RTI. Confirm.
 
-Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `source: rti`, `workstream:` when a project was picked in Setup, `projects: [rti]`, `tags: [rti]`) so the vault's Neon ingester titles and links it.
-
-**2. The canonical meeting lane** — on finish (and again after the automatic transcript upgrade), RTI exports plain text into the vault's raw-transcript lane:
-
-```
-<vault>/kb/databases/meetings/transcripts-raw/
-  rti-session-<yyyyMMdd-HHmmss>-transcript.txt    # canonical raw transcript (plain text, no frontmatter)
-  rti-session-<yyyyMMdd-HHmmss>-rti.md            # sidecar: summary + notes + findings + chat (frontmatter: source: rti-live)
-```
-
-**3. Vault ingestion** — all vault-side, never in the app:
-
-- On session stop RTI fire-and-forgets `<vault>/.claude/tools/triage/route-rti-session.py` (workstream declared → field-notes companion in that project; otherwise the session stays in `rti/sessions/`, searchable and promotable later).
-- The `com.tristan.rti-meeting-drain` LaunchAgent (every 30 min) picks up unprocessed `-transcript.txt` files and runs `/meeting` headless: it writes the canonical meeting note at `kb/databases/meetings/YYYYMMDD-<type>-<topic>.md`, folds the `-rti.md` sidecar in as priority signal, and writes a speaker-resolved `-transcript.named.txt` sibling. The raw transcript is never edited.
-- The Neon/Hermes ingest watcher indexes the archive's frontmattered Markdown for search.
-
-Legacy files you may still see: `meetings/recordings/rti-<UUID>-mic.m4a` (old RTI builds kept audio there; current builds keep WAV legs in the session folder) and `*.meeting.json` sidecars (Meeting Sentinel era — the Sessions browser still lists them as recorded meetings).
-
-## Build & run
-
-### Requirements
-
-- Xcode 16+ (Swift 6 toolchain) and [`xcodegen`](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
-- A sibling clone of [quick-launch](https://github.com/tristan-mcinnis/quick-launch). RTI builds the shared `HouseChatCore` package from `../quick-launch/Packages/HouseChatCore`, so the two repos must sit side by side:
-
-  ```text
-  <parent>/rti/
-  <parent>/quick-launch/
-  ```
-
-  ```bash
-  git clone https://github.com/tristan-mcinnis/rti-personal.git rti
-  git clone https://github.com/tristan-mcinnis/quick-launch.git quick-launch
-  ```
-
-  If the sibling is missing, `xcodegen generate` stops with a message that names this layout (`scripts/check-layout.sh`). GitHub CI checks out both repos the same way.
-
-### Build
+If you prefer Terminal, run this once, then open the app:
 
 ```bash
-cd RTI
-cp Sources/Secrets.swift.example Sources/Secrets.swift   # first checkout only — gitignored, keyless stub
-xcodegen generate
-xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Debug build
-open ~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app
+xattr -dr com.apple.quarantine "/Applications/RTI.app"
 ```
 
-Run the unit tests (the live-vault tests skip unless `RTI_LIVE_VAULT=1`; `xcodebuild` passes it to the tests as `TEST_RUNNER_RTI_LIVE_VAULT=1`):
+Each release is signed ad hoc. So macOS may ask again for permissions such as Microphone, System Audio Recording or Screen Recording after an update. Grant them again when asked.
 
-```bash
-scripts/scrub.sh   # publish scrub, must print SCRUB_CLEAN
-xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test -only-testing:RTITests
-# On the maintainer's Mac, with the vault index reachable, also run the live tests:
-TEST_RUNNER_RTI_LIVE_VAULT=1 xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test -only-testing:RTITests/VaultSearchCLITests
-```
+### First run
 
-`Secrets.swift` is gitignored and holds no keys — API keys are entered in Settings and stored in the Keychain-style store at runtime. The source tree just won't compile without the file present.
+1. Open RTI. It is a Dock app with a menu-bar recording indicator.
+2. Paste your Soniox key and your assistant provider key in Settings, under Providers. The onboarding screen asks for them on the first launch.
+3. Press `Command+Shift+R` to start a session. Press it again to finish.
+4. Press `Command+Return` to ask the assistant for a recap. Press `Command+\` to show or hide the window.
 
-A locally built `.app` is ad-hoc-signed — Gatekeeper requires a right-click → **Open** the first time, and `SMAppService.mainApp` (Launch at Login) won't work on ad-hoc builds. For a signed/notarized DMG on your own machines, see [RELEASE.md](RELEASE.md).
+### Permissions
 
-## First run
+macOS asks for each of these the first time a feature needs it.
 
-1. Launch RTI — it opens as a Dock app with a menu-bar recording indicator.
-2. Grant **Microphone**, **System Audio Recording** (the audio-only CoreAudio-tap
-   permission; this is the primary system-audio path), and **Screen Recording**
-   (SCK fallback + Smart Screenshot) permissions.
-3. Paste your **Soniox** and **LLM provider** keys.
-4. Start a session: ⌘⇧R. Toggle the overlay: ⌘\\. Ask the assistant: ⌘↵.
+| Permission | Used for |
+|---|---|
+| Microphone | Your side of the call. |
+| System Audio Recording | The other side of the call, through a CoreAudio tap. |
+| Screen Recording | Screenshots, and system audio on macOS 14.0 and 14.1. |
+| Calendars | Read-only. Attaches the meeting title to a session. |
+| Notifications | A notice when a session summary is ready. |
+| Launch at Login | An option in Settings. macOS may refuse it for an ad hoc signed build. |
 
-## Hotkeys
+## Usage
 
-Source of truth is `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift` (fed to the palette, menu, and hotkeys), not this table.
+Pick a mode in Settings, under Modes, then start a session with `Command+Shift+R`.
+Ask the assistant with `Command+Return`, or open the menu to pick another
+action. Type a note into the transcript with `Command+Option+N`. Drop an image
+on the composer, or press `Command+Shift+H` to read the whole screen.
 
 | Key | Action |
 |-----|--------|
-| ⌘ \\ | Toggle the assistant overlay |
-| ⌘ ⇧ R | Start a session / finish it / start a new one (phase-aware) |
-| ⌘ ⇧ P | Pause / resume the recording (keeps the connection warm) |
-| ⌘ ↵ | Primary action — remappable; defaults to "Quick recap" |
+| ⌘ \\ | Show or hide the window |
+| ⌘ ⇧ R | Start a session, finish it, or start a new one |
+| ⌘ ⇧ P | Pause or resume the recording |
+| ⌘ ↵ | Primary action. Remappable. Defaults to Quick recap |
 | ⌘ ⌥ S | Say next (one-line draft reply) |
 | ⌘ ⌥ F | Follow-up questions |
 | ⌘ ⌥ R | Recap so far |
-| ⌘ ⌥ M | Session summary (mode-shaped: research debrief in Interview mode, minutes otherwise) |
-| ⌘ ⌥ T | Key tensions (listener / fieldwork) |
-| ⌘ ⌥ U | What's unsaid / probe (listener / fieldwork) |
-| ⌘ ⌥ E | Emerging themes (listener / fieldwork) |
-| ⌘ ⌥ N | Toggle Note mode (type inline into the transcript) |
-| ⌘ ⇧ H | Read the whole screen; attach OCR to the next prompt |
-| ⌘ ⇧ J | Read the frontmost window; attach OCR to the next prompt |
-| ⌘ ⇧ A | Open the chat attachment menu |
-| ⌘ K | Open the command palette; type to fuzzy-search commands |
-| ⌘ ⌥ 0–5 | Jump to a tab — 0 Setup · 1 Assist · 2 Transcript · 3 Notes · 4 Guide · 5 Findings |
+| ⌘ ⌥ M | Session summary |
+| ⌘ ⌥ T | Key tensions (interview and listener mode) |
+| ⌘ ⌥ U | What's unsaid (interview and listener mode) |
+| ⌘ ⌥ E | Emerging themes (interview and listener mode) |
+| ⌘ ⌥ N | Type a note inline into the transcript |
+| ⌘ ⇧ H | Read the whole screen and attach the text to the next prompt |
+| ⌘ ⇧ J | Read the front window and attach the text to the next prompt |
+| ⌘ ⇧ A | Open the attachment menu |
+| ⌘ K | Command palette |
+| ⌘ ⌥ 0 to 5 | Jump to a tab: Setup, Assist, Transcript, Notes, Guide, Findings |
 
-The ✦ menu shows the **mode-aware** action set: in a meeting you get Quick recap / Assist / Say next / Follow-ups; sitting in on fieldwork (Interview + Listener) you get Quick recap / Assist / Follow-ups / **Key tensions** / **What's unsaid** / **Emerging themes** instead of "what should I say". You can drop an image onto the composer. OCR runs on-device; the image is sent to the destination shown before Send and retained locally after submission.
+The source of truth for keys is `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift`.
 
-## Capturing both sides of a call
+**Both sides of a call.** System audio is captured automatically. If you prefer an aggregate device, install [BlackHole](https://existential.audio/blackhole/), build an aggregate of your mic and BlackHole in Audio MIDI Setup, and pick it under Settings, General, Audio Input.
 
-Soniox transcribes whatever audio device you select for the mic; system audio (the other party) is captured automatically via a CoreAudio process tap (ScreenCaptureKit fallback). If you prefer an aggregate-device setup, install [BlackHole](https://existential.audio/blackhole/), build an aggregate of your mic + BlackHole in **Audio MIDI Setup**, and pick it under **Settings → General → Audio Input**.
+**Switching the assistant.** Settings, Providers lists DeepSeek, OpenAI and OpenRouter. The assistant client speaks the OpenAI-compatible chat format. To add another endpoint, add an entry in `RTI/Sources/LLM/LLMProvider.swift`.
 
-## Real-time vs transcript-upgrade providers
+**Recording and consent.** RTI records other people. Tell the people on the call, and follow the recording laws where you and they are.
 
-RTI now treats these as separate lanes:
+## Privacy
 
-- `Real-time transcription` is the low-latency overlay transcript used during a meeting.
-- `Transcript upgrade (async)` is the post-hoc lane that re-transcribes the session-local retained audio legs and then regenerates the summary from the upgraded text. Soniox's file API does it, with English and Chinese language hints, through `file-transcriber`'s `transcribe-soniox.py`. Both lanes use the one Soniox key.
+**What RTI reads**
 
-The Aliyun upgrade option was removed on 2026-09-26. Its NLS script lived in the retired `code/archive/` tier and no longer exists, so choosing it always failed.
+- Your microphone and the system audio, only while a session is recording.
+- The screen, only when you press a screenshot key, or during a recording if you turn on screen capture.
+- Calendar event titles, read-only, to name a session.
+- Files and images you attach to a chat.
+- A notes folder, if you set one up, when the assistant searches or reads it.
 
-See [docs/transcript-upgrade-providers.md](docs/transcript-upgrade-providers.md).
+**What RTI sends, and where**
 
-## Switching LLM providers
+| To | What | When |
+|---|---|---|
+| Soniox | Live audio from your microphone and from the system audio. | During every recording. |
+| Your assistant provider (DeepSeek, OpenAI or OpenRouter) | Your prompts, about the last six minutes of transcript for each assistant turn, the full transcript for the end-of-session summary and title, text chunks for live notes and guide coverage, attachments, and screenshots you add. Text read from a screenshot goes along with it. | When you use the assistant, and at the end of a session. |
+| GitHub | A request for the latest release number. It carries no content. | At each normal launch, and when you choose Check for Updates. |
 
-The LLM client is provider-agnostic. Provider configs live in [`RTI/Sources/LLM/LLMProvider.swift`](RTI/Sources/LLM/LLMProvider.swift) (`LLMProviders` registry). To point at any other OpenAI-compatible endpoint:
+Two optional integrations send more. See [Optional integrations](#optional-integrations). RTI has no server of its own, no account and no analytics.
 
-1. Add a new `LLMProviderConfig` entry in `LLMProviders`.
-2. Change `LLMProviders.activeId` to the new provider id.
+**What RTI stores**
 
-## Project layout
+- **Sessions.** One folder per session, with owner-only permissions, in `~/Library/Application Support/RTI/sessions/<date time>/`. It holds `transcript.md`, `summary.md`, `session.json`, and, when they exist, `chat.md`, `notes.md`, `discussion-guide.md`, `live-intelligence.md`, `screen-context.md` and a `frames/` folder of screenshots. It also holds `audio-mic.wav` and `audio-system.wav`, the raw audio of both legs. RTI keeps this audio until you delete the session. If you set a notes folder, sessions go there instead.
+- **API keys.** In `~/Library/Application Support/RTI/credentials.json`, a plain JSON file readable only by you. RTI does not use the Keychain.
+- **Chats.** Saved only when a notes folder is set. Without one, chats run but are not stored.
+- **Other.** Your modes and a crash log in `~/Library/Application Support/RTI/`, and the `claude` run logs in `~/Library/Logs/RTI/` if you use that integration.
 
+Delete a session in the Sessions window. It moves the folder to Trash.
+
+## Optional integrations
+
+These features work only when their tool is on your Mac. Without it, RTI skips the feature and carries on. Nothing else depends on them.
+
+| Integration | What it needs | Without it |
+|---|---|---|
+| Notes folder ("vault") | A folder you choose, set as `recordings_dir` in `~/.config/rti/config.json`. RTI treats `<folder>/../..` as the notes root and saves sessions in `<notes root>/projects/personal/rti/sessions`. It also copies each transcript to `<notes root>/meetings/transcripts-raw`. | Sessions save in Application Support. Chats are not saved. The assistant's vault tools are unavailable. |
+| Vault tools for the assistant | `bun` and a search tool inside your notes repo. | The assistant cannot search past notes. |
+| Session router | A script named `route-rti-session.py` in your notes repo, under `.claude/tools/triage/`. | RTI skips it. |
+| `/meeting` processor (`claude -p`) | A notes folder, the Claude Code command line tool (`claude`), and a `/meeting` skill that you wrote. | Nothing runs. See the warning below. |
+| Transcript upgrade (file-transcriber) | A helper script named `transcribe-soniox.py` from a tool called file-transcriber. Set its path with `soniox_file_script` in the config file. It sends the retained audio to Soniox's file API, using your Soniox key. | RTI logs the failure, keeps the live transcript and the audio, and writes the summary from the live transcript. |
+| Local vision | A local model server on `127.0.0.1:8078` that accepts `POST /v1/vision`, enabled by a `local_vision` block in the config file. Images go to that server and stay on your Mac. | RTI uses on-device text reading only. |
+
+**Read this before you turn on the `/meeting` processor.** When a notes folder is set and `claude` is found, RTI runs `claude -p` in the background after each session. It passes the transcript path and a prompt, and it passes `--dangerously-skip-permissions` by default, so that run can change files without asking. Set `"auto_process_yolo": false` in the config file to use `--permission-mode acceptEdits` instead. The transcript is sent to Anthropic through your own Claude account. Without a notes folder, this never runs.
+
+The author's own setup is in [docs/personal-setup.md](docs/personal-setup.md).
+
+## Build from source
+
+```bash
+mkdir house && cd house
+git clone https://github.com/tristan-mcinnis/rti.git rti
+git clone https://github.com/tristan-mcinnis/quick-launch.git quick-launch
+cd rti/RTI
+cp Sources/Secrets.swift.example Sources/Secrets.swift   # first checkout only, gitignored, holds no keys
+xcodegen generate
+xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Debug build
 ```
-RTI/
-  project.yml                      # xcodegen source of truth
-  Sources/
-    RTIApp.swift                   # SwiftUI entry
-    AppDelegate.swift              # status item + hotkey + window state machine
-    OverlayWindowController.swift  # the invisible panel
-    GlobalHotkey.swift             # Carbon RegisterEventHotKey wrapper
-    Audio/                         # AVAudioEngine tap, WAV writer, system-audio tap/SCK
-    Soniox/                        # WebSocket realtime transcription
-    LLM/                           # LLMProvider config + LLMClient + LLMController + tools
-    Screenshot/                    # ScreenCaptureKit + Vision OCR
-    Session/                       # SessionCoordinator + in-memory transcript pipeline + session archive + VaultPaths
-    Modes/                         # ModeStore (JSON-backed prompt presets)
-    Analysis/                      # Real-time Notes / Dossiers / Discussion Guide panels (in-memory)
-    Widgets/                       # Recording-pill widget
-    Settings/                      # Tabbed Settings, CredentialStore, LaunchAtLogin, Logs
-    Support/                       # AppLog, CrashLog, NotificationNames, formatters
-    UI/                            # WindowCoordinator, MenuCoordinator, HotkeyCoordinator, design system, SwiftUI views
-  Tests/                           # XCTest unit tests
-  POC*-findings.md                 # historical per-POC validation logs (some describe removed features)
+
+The two folders must sit side by side. If `quick-launch` is missing, `xcodegen generate` stops and names the layout (`scripts/check-layout.sh`).
+
+Run the checks and the tests from the repo root:
+
+```bash
+scripts/scrub.sh   # no personal paths, ids or keys in tracked files; must print SCRUB_CLEAN
+xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test
 ```
 
-## Documents
+That runs `RTITests` and `RTIRenderTests`. The tests that need a live notes folder skip unless `TEST_RUNNER_RTI_LIVE_VAULT=1` is set.
 
-- [RELEASE.md](RELEASE.md) — signed/notarized DMG recipe (for your own machines).
-- [`RTI/VERIFY.md`](RTI/VERIFY.md) — manual verification steps for a build.
-- [`docs/adr/`](docs/adr/) — architecture decision records (some predate the personal refocus).
-- [`RTI/POC*-findings.md`](RTI/) — per-POC validation logs.
+Package a DMG with `scripts/make-dmg.sh`. It builds with ad hoc signing, checks the image without launching the app, and writes the DMG, `SHA256SUMS` and `RELEASE_NOTES.md` to `dist/release`. It needs a clean working tree. It publishes nothing. A Developer ID holder can use `scripts/release.sh` and [RELEASE.md](RELEASE.md) for a notarized build.
+
+A locally built app is ad hoc signed, so macOS asks for Microphone, System Audio Recording and Screen Recording again after each rebuild.
+
+More reading: [docs/adr/](docs/adr/) holds architecture decision records, some from before the current design. [RTI/VERIFY.md](RTI/VERIFY.md) lists manual checks for a build.
+
+## Part of House
+
+RTI is one of a small family of free, local-first Mac tools that share one design system.
+
+| App | What it does |
+|---|---|
+| [Quick Launch](https://github.com/tristan-mcinnis/quick-launch) | Keyboard-first launcher and instant AI overlay. |
+| [Local Dictation](https://github.com/tristan-mcinnis/local-dictation) | Hold a key, talk, and on-device text lands at your cursor. |
+| [Local TTS](https://github.com/tristan-mcinnis/local-tts) | Fast on-device voice cloning and text-to-speech. |
+| [Local Models](https://github.com/tristan-mcinnis/local-models) | One local daemon that serves a fleet of small models to every app. |
+| [Usage](https://github.com/tristan-mcinnis/usage-menubar) | One menu-bar gauge for every AI subscription and API key. |
+| **[RTI](https://github.com/tristan-mcinnis/rti)** | Meeting recorder with live transcription and a real-time copilot. |
+
+## Credits
+
+RTI shares its chat core, `HouseChatCore`, with
+[Quick Launch](https://github.com/tristan-mcinnis/quick-launch). That package
+is MIT licensed and comes from Quick Launch, which began as a fork of
+[apfel-quick](https://github.com/Arthur-Ficial/apfel-quick) by Arthur Ficial.
+Thank you, Arthur.
+
+RTI is built on these open-source Swift packages:
+
+- [Starscream](https://github.com/daltoniam/Starscream) by Dalton Cherry (Apache-2.0), for the WebSocket link to Soniox.
+- [Yams](https://github.com/jpsim/Yams) by JP Simard (MIT), for YAML front matter.
+- [swift-markdown-ui](https://github.com/gonzalezreal/swift-markdown-ui) and [NetworkImage](https://github.com/gonzalezreal/NetworkImage) by Guille Gonzalez (MIT), for Markdown in answers and notes.
+- [swift-cmark](https://github.com/swiftlang/swift-cmark), the cmark-gfm parser by John MacFarlane, GitHub and others (BSD-2-Clause, with MIT parts).
+
+Transcription is by [Soniox](https://soniox.com). RTI ships no model weights, fonts or third-party icons.
+
+Full license texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md),
+which also ships inside the app.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Tristan McInnis.
