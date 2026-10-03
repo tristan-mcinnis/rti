@@ -75,7 +75,24 @@ Legacy files you may still see: `meetings/recordings/rti-<UUID>-mic.m4a` (old RT
 
 ## Build & run
 
-Requires Xcode 16+ (Swift 6 toolchain) and [`xcodegen`](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+### Requirements
+
+- Xcode 16+ (Swift 6 toolchain) and [`xcodegen`](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+- A sibling clone of [quick-launch](https://github.com/tristan-mcinnis/quick-launch). RTI builds the shared `HouseChatCore` package from `../quick-launch/Packages/HouseChatCore`, so the two repos must sit side by side:
+
+  ```text
+  <parent>/rti/
+  <parent>/quick-launch/
+  ```
+
+  ```bash
+  git clone https://github.com/tristan-mcinnis/rti-personal.git rti
+  git clone https://github.com/tristan-mcinnis/quick-launch.git quick-launch
+  ```
+
+  If the sibling is missing, `xcodegen generate` stops with a message that names this layout (`scripts/check-layout.sh`). GitHub CI checks out both repos the same way.
+
+### Build
 
 ```bash
 cd RTI
@@ -83,6 +100,14 @@ cp Sources/Secrets.swift.example Sources/Secrets.swift   # first checkout only â
 xcodegen generate
 xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Debug build
 open ~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app
+```
+
+Run the unit tests (the live-vault tests skip unless `RTI_LIVE_VAULT=1`; `xcodebuild` passes it to the tests as `TEST_RUNNER_RTI_LIVE_VAULT=1`):
+
+```bash
+xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test -only-testing:RTITests
+# On Tristan's Mac, with the vault index reachable, also run the live tests:
+TEST_RUNNER_RTI_LIVE_VAULT=1 xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test -only-testing:RTITests/VaultSearchCLITests
 ```
 
 `Secrets.swift` is gitignored and holds no keys â€” API keys are entered in Settings and stored in the Keychain-style store at runtime. The source tree just won't compile without the file present.

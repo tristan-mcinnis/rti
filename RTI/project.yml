@@ -4,6 +4,10 @@ options:
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
+  # HouseChatCore lives in the sibling quick-launch clone (see `packages:`).
+  # Fail here with the clone layout, not later with a vague package error.
+  # Runs from RTI/ (where xcodegen is run), so the script is one level up.
+  preGenCommand: ../scripts/check-layout.sh
 
 configs:
   Debug: debug

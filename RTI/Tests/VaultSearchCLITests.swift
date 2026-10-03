@@ -4,6 +4,16 @@ import XCTest
 /// answer shape becomes an outcome, and — last — the live Swift→bun→Neon path.
 final class VaultSearchCLITests: XCTestCase {
 
+    /// The tests marked live need Tristan's vault, its search CLI and its
+    /// index. Other Macs and CI have none of those, so they skip unless
+    /// `RTI_LIVE_VAULT=1` is set (it is set on Tristan's Mac, never in CI).
+    private func requireLiveVault() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RTI_LIVE_VAULT"] == "1",
+            "needs the live vault; set RTI_LIVE_VAULT=1 to run"
+        )
+    }
+
     // MARK: - Resolution
 
     /// The resolver must name the CLI's current owner. It used to build
@@ -11,6 +21,11 @@ final class VaultSearchCLITests: XCTestCase {
     /// search silently fell through to the local keyword scan.
     func testResolverNamesTheCurrentCLIOwner() {
         XCTAssertEqual(VaultSearchCLI.cliRelativePath, "code/vault-search/src/cli.ts")
+    }
+
+    /// Live: the CLI must exist in the real vault checkout.
+    func testResolverFindsTheCLIInTheLiveVault() throws {
+        try requireLiveVault()
         XCTAssertNotNil(
             VaultPaths.vaultToolURL(VaultSearchCLI.cliRelativePath),
             "the vault-search CLI must resolve from the vault git root"
@@ -80,6 +95,7 @@ final class VaultSearchCLITests: XCTestCase {
     // MARK: - Live path
 
     func testHybridSearchReturnsKnowledgeBaseHits() async throws {
+        try requireLiveVault()
         let outcome = await VaultSearchCLI.searchOutcome(query: "AcmeBrand report format", limit: 5)
         switch outcome {
         case .unavailable(let reason):
@@ -110,6 +126,7 @@ final class VaultSearchCLITests: XCTestCase {
     }
 
     func testAProjectScopedSearchPassesTheSlugServerSide() async throws {
+        try requireLiveVault()
         // `--project` is the CLI's server-side filter; the live call proves the
         // new argv is accepted and still returns rows.
         let outcome = await VaultSearchCLI.searchOutcome(query: "status", limit: 5, project: "acme-tennis")

@@ -35,22 +35,55 @@ jobs:
     # (~$0.08/min), which was the single largest line in the account's
     # Actions spend. Free on own hardware.
     runs-on: [self-hosted, macOS]
+    # RTI builds HouseChatCore from ../quick-launch/Packages/HouseChatCore, so
+    # the two repos are checked out side by side under the workspace:
+    #   $GITHUB_WORKSPACE/rti/           this repo
+    #   $GITHUB_WORKSPACE/quick-launch/  tristan-mcinnis/quick-launch
+    # Every step after the checkouts runs inside rti/.
+    defaults:
+      run:
+        working-directory: rti
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Select Xcode (Swift 6 toolchain)
-        uses: maxim-lobanov/setup-xcode@v1
+      - name: Check out rti
+        uses: actions/checkout@v4
         with:
-          xcode-version: latest-stable
+          path: rti
+
+      - name: Check out quick-launch (owns HouseChatCore)
+        uses: actions/checkout@v4
+        with:
+          repository: tristan-mcinnis/quick-launch
+          path: quick-launch
+          # quick-launch is private today, so the default GITHUB_TOKEN of this
+          # repo cannot read it: add a read-only PAT (or deploy key token) as
+          # the repo secret QUICK_LAUNCH_TOKEN. Once quick-launch is public the
+          # secret is not needed and this falls back to github.token.
+          token: ${{ secrets.QUICK_LAUNCH_TOKEN || github.token }}
+
+      - name: Check the clone layout
+        run: scripts/check-layout.sh
+
+      - name: Check Xcode (needs 16+ for the Swift 6 toolchain)
+        # project.yml sets SWIFT_VERSION 6.0 and HouseChatCore is
+        # swift-tools-version 6.0, so Xcode 16 is the floor. The runner is a
+        # self-hosted Mac with one Xcode.app, so this checks the floor instead
+        # of switching Xcode versions.
+        run: |
+          xcodebuild -version
+          MAJOR=$(xcodebuild -version | awk '/^Xcode/ {split($2, v, "."); print v[1]}')
+          if [ -z "$MAJOR" ] || [ "$MAJOR" -lt 16 ]; then
+            echo "::error::RTI needs Xcode 16 or newer (Swift 6 toolchain); found '${MAJOR:-none}'"
+            exit 1
+          fi
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
 
       - name: Cache SPM dependencies
         uses: actions/cache@v4
         with:
-          path: .spm
-          key: spm-${{ runner.os }}-${{ hashFiles('RTI/RTI.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          path: rti/.spm
+          key: spm-${{ runner.os }}-${{ hashFiles('rti/RTI/RTI.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
             spm-${{ runner.os }}-
 
@@ -61,7 +94,7 @@ jobs:
         run: cp RTI/Sources/Secrets.swift.example RTI/Sources/Secrets.swift
 
       - name: Generate Xcode project
-        working-directory: RTI
+        working-directory: rti/RTI
         run: xcodegen generate
 
       - name: Build (Debug)

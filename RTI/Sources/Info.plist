@@ -32,7 +32,7 @@
 	<key>LSUIElement</key>
 	<false/>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>RTI captures system audio to transcribe the other side of your conversations. No screen content is recorded.</string>
+	<string>RTI captures system audio to transcribe the other side of your conversations.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>RTI reads your calendar to attach meeting titles to sessions.</string>
 	<key>NSHighResolutionCapable</key>
@@ -42,6 +42,6 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>RTI captures system audio to transcribe both sides of your conversations. No screen content is recorded.</string>
+	<string>RTI takes screenshots of your screen when you ask it to, and during a recording when screen capture is on. It reads the text in them and keeps the screenshots with the session or chat. Windows from apps on your private list are left out. It also uses this permission to capture system audio if the audio tap is not available.</string>
 </dict>
 </plist>
