@@ -40,7 +40,7 @@ One config file anchors every path: **`~/.config/rti/config.json`** (`VaultPaths
 **1. The session archive** — everything a session produced, in one folder:
 
 ```
-~/vault/kb/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
+<vault>/kb/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
   transcript.md         # live transcript, Markdown, YAML frontmatter, inline 📝 notes
   chat.md               # assistant chat log (only if you chatted)
   notes.md              # generated live notes (only if enabled + produced)
@@ -60,14 +60,14 @@ Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `
 **2. The canonical meeting lane** — on finish (and again after the automatic transcript upgrade), RTI exports plain text into the vault's raw-transcript lane:
 
 ```
-~/vault/kb/databases/meetings/transcripts-raw/
+<vault>/kb/databases/meetings/transcripts-raw/
   rti-session-<yyyyMMdd-HHmmss>-transcript.txt    # canonical raw transcript (plain text, no frontmatter)
   rti-session-<yyyyMMdd-HHmmss>-rti.md            # sidecar: summary + notes + findings + chat (frontmatter: source: rti-live)
 ```
 
 **3. Vault ingestion** — all vault-side, never in the app:
 
-- On session stop RTI fire-and-forgets `~/vault/.claude/tools/triage/route-rti-session.py` (workstream declared → field-notes companion in that project; otherwise the session stays in `rti/sessions/`, searchable and promotable later).
+- On session stop RTI fire-and-forgets `<vault>/.claude/tools/triage/route-rti-session.py` (workstream declared → field-notes companion in that project; otherwise the session stays in `rti/sessions/`, searchable and promotable later).
 - The `com.tristan.rti-meeting-drain` LaunchAgent (every 30 min) picks up unprocessed `-transcript.txt` files and runs `/meeting` headless: it writes the canonical meeting note at `kb/databases/meetings/YYYYMMDD-<type>-<topic>.md`, folds the `-rti.md` sidecar in as priority signal, and writes a speaker-resolved `-transcript.named.txt` sibling. The raw transcript is never edited.
 - The Neon/Hermes ingest watcher indexes the archive's frontmattered Markdown for search.
 
@@ -105,8 +105,9 @@ open ~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app
 Run the unit tests (the live-vault tests skip unless `RTI_LIVE_VAULT=1`; `xcodebuild` passes it to the tests as `TEST_RUNNER_RTI_LIVE_VAULT=1`):
 
 ```bash
+scripts/scrub.sh   # publish scrub, must print SCRUB_CLEAN
 xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test -only-testing:RTITests
-# On Tristan's Mac, with the vault index reachable, also run the live tests:
+# On the maintainer's Mac, with the vault index reachable, also run the live tests:
 TEST_RUNNER_RTI_LIVE_VAULT=1 xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test -only-testing:RTITests/VaultSearchCLITests
 ```
 
