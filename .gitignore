@@ -46,3 +46,6 @@ Scripts/license-private.key
 __pycache__/
 *.pyc
 build-test/
+
+# Private scrub tokens (client names), never committed
+.scrub-private

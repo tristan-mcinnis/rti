@@ -30,7 +30,7 @@ concurrency:
 jobs:
   build-test:
     name: Build & Test (Debug)
-    # Self-hosted runner on Tristan's Mac: the XCTest suite needs macOS +
+    # Self-hosted runner on the maintainer's Mac: the XCTest suite needs macOS +
     # Xcode, and GitHub's hosted macOS runners bill at 10x the Linux rate
     # (~$0.08/min), which was the single largest line in the account's
     # Actions spend. Free on own hardware.
@@ -62,6 +62,9 @@ jobs:
 
       - name: Check the clone layout
         run: scripts/check-layout.sh
+
+      - name: Scrub gate (no personal paths, ids or keys in tracked files)
+        run: scripts/scrub.sh
 
       - name: Check Xcode (needs 16+ for the Swift 6 toolchain)
         # project.yml sets SWIFT_VERSION 6.0 and HouseChatCore is
@@ -119,7 +122,7 @@ jobs:
 
   lint:
     name: SwiftFormat (new files)
-    # Self-hosted runner on Tristan's Mac: the XCTest suite needs macOS +
+    # Self-hosted runner on the maintainer's Mac: the XCTest suite needs macOS +
     # Xcode, and GitHub's hosted macOS runners bill at 10x the Linux rate
     # (~$0.08/min), which was the single largest line in the account's
     # Actions spend. Free on own hardware.

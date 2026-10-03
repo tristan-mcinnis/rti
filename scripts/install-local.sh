@@ -12,9 +12,16 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Personal Apple Development identity (team TEAMID0000). Update if the cert
-# is ever renewed: `security find-identity -v -p codesigning`.
-IDENTITY="${RTI_SIGN_IDENTITY:-Apple Development: dev@example.com (TEAMID0001)}"
+# Signing identity: RTI_SIGN_IDENTITY (env), else RTI_SIGN_IDENTITY in the
+# gitignored .release.env, else the first Apple Development identity in the
+# login keychain. List identities with `security find-identity -v -p codesigning`.
+if [ -z "${RTI_SIGN_IDENTITY:-}" ] && [ -f .release.env ]; then
+  RTI_SIGN_IDENTITY="$(sed -n 's/^RTI_SIGN_IDENTITY=//p' .release.env | head -1 | sed -e 's/^"//' -e 's/"$//')"
+fi
+if [ -z "${RTI_SIGN_IDENTITY:-}" ]; then
+  RTI_SIGN_IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1)"
+fi
+IDENTITY="${RTI_SIGN_IDENTITY:?no signing identity: set RTI_SIGN_IDENTITY or add it to .release.env}"
 DERIVED=".deriveddata"
 APP="$DERIVED/Build/Products/Release/RTI.app"
 
