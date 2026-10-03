@@ -1,8 +1,10 @@
 # Release process — technical recipe
 
-This is a **personal build**: releases are signed DMGs for my own machines, not
-public distribution. The one-time signing/notarization setup is in the
-"One-time setup" section below.
+Public releases are ad hoc signed DMGs from `./scripts/make-dmg.sh`. That path
+needs no Developer ID, checks the image, and writes `SHA256SUMS` and
+`RELEASE_NOTES.md`. This file documents the other path, a signed and notarized
+DMG for someone who holds a Developer ID. The one-time signing and notarization
+setup is in the "One-time setup" section below.
 
 For a one-command path, use:
 
@@ -19,7 +21,7 @@ run by hand if you want to inspect any individual step.
 - `DEVELOPMENT_TEAM` (your 10-char team ID) exported, e.g.: `export DEVELOPMENT_TEAM=ABCDE12345`
 - `APPLE_ID`, `APPLE_TEAM_ID`, and an app-specific password stored in the Keychain under the profile `rti-notary` (see notarytool step below)
 - `create-dmg` (`brew install create-dmg`) or stick with `hdiutil`
-- `gh` CLI authenticated to the `tristan-mcinnis/rti-personal` repo
+- `gh` CLI authenticated to the `tristan-mcinnis/rti` repo
 
 ## One-time setup
 
@@ -107,7 +109,7 @@ export RTI_VERSION=0.1.0
 RTI uses a lightweight GitHub-Releases check rather than Sparkle/appcasts:
 
 - On a normal launch (keys present) and via **menubar → Check for Updates…**,
-  `UpdateChecker` queries `repos/tristan-mcinnis/rti-personal/releases/latest`,
+  `UpdateChecker` queries `repos/tristan-mcinnis/rti/releases/latest`,
   compares `tag_name` to the running `CFBundleShortVersionString`
   (`SemanticVersion` handles `v`-prefixes and `-betaN` pre-releases), and if a
   newer release exists, offers a **Download** button that opens the release page.
@@ -131,7 +133,7 @@ RTI uses a lightweight GitHub-Releases check rather than Sparkle/appcasts:
 
 ## Released versions
 
-Ad-hoc-signed DMGs are built via `./scripts/release-unsigned.sh <version>`. They are **not** notarized — right-click → **Open** on first launch. Signed/notarized DMGs follow the recipe above.
+Ad-hoc-signed DMGs are built via `./scripts/make-dmg.sh` (the version comes from `RTI/Sources/Info.plist`). They are **not** notarized, so macOS needs the first-open steps in the README. Signed/notarized DMGs follow the recipe above.
 
 ### Tags (from `git tag`, 2026-09-02)
 
