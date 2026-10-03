@@ -13,10 +13,10 @@ struct UpdateInfo {
 /// is enough: testers learn a new build exists and grab the DMG.
 enum UpdateChecker {
     private static let latestReleaseAPI = URL(
-        string: "https://api.github.com/repos/tristan-mcinnis/rti-personal/releases/latest"
+        string: "https://api.github.com/repos/tristan-mcinnis/rti/releases/latest"
     )!
     private static let releasesPage = URL(
-        string: "https://github.com/tristan-mcinnis/rti-personal/releases/latest"
+        string: "https://github.com/tristan-mcinnis/rti/releases/latest"
     )!
 
     static var currentVersion: SemanticVersion? {
