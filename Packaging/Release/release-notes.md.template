@@ -1,0 +1,42 @@
+# @APP_NAME@ @VERSION@
+
+@APP_NAME@ is a free, open-source (MIT) Mac app that records your meetings, transcribes them live, and gives you a real-time copilot. It sends no telemetry. Live transcription and the assistant use providers you choose and pay for yourself.
+
+## What is new
+
+@HIGHLIGHTS@
+
+## Requirements
+
+- macOS 14 (Sonoma) or later.
+- Apple Silicon (arm64). There is no Intel build.
+- A [Soniox](https://console.soniox.com) API key for live transcription. Soniox is a hosted service, so recorded audio leaves your Mac for it.
+- A key for one assistant provider: DeepSeek, OpenAI or OpenRouter.
+
+## Install
+
+Download `@DMG_NAME@`, open it, and drag @APP_NAME@ to Applications.
+
+@FIRST_OPEN@
+
+## Permissions
+
+macOS asks for these the first time a feature needs them: Microphone, System Audio Recording, Screen Recording, Calendars and Notifications. Launch at Login is an option in Settings, and macOS may refuse it for an ad hoc build.
+
+## Check the download
+
+SHA256 of `@DMG_NAME@`:
+
+```
+@SHA256@
+```
+
+To check it, run this in the folder with the download:
+
+```bash
+shasum -a 256 -c SHA256SUMS
+```
+
+## Build from source
+
+See the README: https://github.com/@REPO@#build-from-source

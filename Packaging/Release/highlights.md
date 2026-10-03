@@ -1,0 +1,6 @@
+- First public release. RTI is now free and open source under the MIT License.
+- Live transcription of both sides of a call, from your microphone and the system audio, through Soniox.
+- A streaming assistant that reads the live transcript, with a quick recap, say-next, follow-up and fieldwork actions.
+- A normal Mac window that stays out of screen shares and screenshots by default.
+- Sessions save as plain Markdown folders with the retained audio, and you can replay them in the Sessions window.
+- Optional integrations (a notes vault, a headless `/meeting` processor, a file transcriber for the transcript upgrade) stay off until you set them up.
