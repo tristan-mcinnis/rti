@@ -443,6 +443,10 @@ enum SessionArchive {
     }
 
     static func runMeetingProcessor(transcriptURL: URL) {
+        guard MeetingProcessorConfig.isEnabled(config: appConfig()) else {
+            RTILog.log("meeting processor: auto_process is off; skipped \(transcriptURL.lastPathComponent)", category: .archive)
+            return
+        }
         guard let claude = ExternalTools.claude() else {
             RTILog.log("meeting processor: claude CLI not found; skipped \(transcriptURL.lastPathComponent)", category: .archive)
             return
@@ -450,7 +454,7 @@ enum SessionArchive {
         let workdir = vaultRoot(startingAt: transcriptURL.deletingLastPathComponent())
             ?? transcriptURL.deletingLastPathComponent()
         let prompt = meetingProcessorPrompt(transcriptURL: transcriptURL)
-        let args = meetingProcessorPermissionArguments()
+        let args = MeetingProcessorConfig.permissionArguments(config: appConfig())
 
         let logURL = meetingProcessorLogURL(stem: transcriptURL.deletingPathExtension().lastPathComponent)
         try? FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -647,13 +651,6 @@ enum SessionArchive {
         let template = appConfig()["auto_process_prompt"] as? String
             ?? defaultMeetingProcessorPrompt
         return template.replacingOccurrences(of: "{transcript}", with: transcriptURL.path)
-    }
-
-    private static func meetingProcessorPermissionArguments() -> [String] {
-        let yolo = (appConfig()["auto_process_yolo"] as? Bool) ?? true
-        return yolo
-            ? ["--dangerously-skip-permissions"]
-            : ["--permission-mode", "acceptEdits"]
     }
 
     private static func appConfig() -> [String: Any] {

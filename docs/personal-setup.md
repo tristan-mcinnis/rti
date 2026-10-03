@@ -19,6 +19,7 @@ general terms. This file records the specific wiring, with `~` paths.
 {
   "recordings_dir": "~/vault/kb/databases/meetings/recordings",
   "transcripts_dir": "~/vault/kb/databases/meetings/transcripts-raw",
+  "auto_process": true,
   "auto_process_yolo": true,
   "local_vision": {
     "enabled": true,
@@ -32,7 +33,7 @@ general terms. This file records the specific wiring, with `~` paths.
 }
 ```
 
-The file also carries `auto_process_prompt`, a custom prompt for the unattended `/meeting` run. Optional keys: `soniox_file_script` moves the transcript-upgrade script. The local vision lane talks to the local-models daemon.
+The file also carries `auto_process_prompt`, a custom prompt for the unattended `/meeting` run. `auto_process` (default false) turns that run on; `auto_process_yolo` (default false) adds `--dangerously-skip-permissions`, and without it the run uses `--permission-mode acceptEdits`. Optional keys: `soniox_file_script` moves the transcript-upgrade script. The local vision lane talks to the local-models daemon.
 
 ## Where everything goes
 
@@ -68,7 +69,7 @@ Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `
 
 - On session stop RTI starts `~/vault/.claude/tools/triage/route-rti-session.py` and does not wait for it. With a workstream declared, it files a field-notes companion in that project. Otherwise the session stays in `rti/sessions/`.
 - The `com.tristan.rti-meeting-drain` LaunchAgent runs every 30 minutes. It finds unprocessed `-transcript.txt` files and runs `/meeting` headless. That writes the canonical meeting note at `~/vault/kb/databases/meetings/YYYYMMDD-<type>-<topic>.md`, folds the `-rti.md` sidecar in as priority signal, and writes a speaker-resolved `-transcript.named.txt` sibling. The raw transcript is never edited.
-- RTI also fires the same `/meeting` run itself through `claude -p`, with `auto_process_yolo` on.
+- RTI also fires the same `/meeting` run itself through `claude -p`. This Mac sets `auto_process` and `auto_process_yolo` to true. Both default to false for everyone else.
 - The Neon/Hermes ingest watcher indexes the archive's Markdown for search. The assistant reaches it through the `search_vault` tool, which uses `bun` and the vault's search CLI.
 
 Legacy files you may still see: `meetings/recordings/rti-<UUID>-mic.m4a` (old builds kept audio there) and `*.meeting.json` sidecars from Meeting Sentinel. The Sessions browser still lists them as recorded meetings.

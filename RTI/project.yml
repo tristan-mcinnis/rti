@@ -139,6 +139,7 @@ targets:
       - path: Sources/Session/VaultFiles.swift
       - path: Sources/Session/VaultLogStore.swift
       - path: Sources/Session/SessionArchiveMetadata.swift
+      - path: Sources/Session/MeetingProcessorConfig.swift
       - path: Sources/Audio/WAVWriter.swift
       - path: Sources/Audio/AudioInputDevice.swift
       - path: Sources/Support/AppLog.swift
