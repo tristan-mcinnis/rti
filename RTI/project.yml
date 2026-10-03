@@ -97,6 +97,12 @@ targets:
           - Info.plist
           - RTI.entitlements
           - Secrets.swift.example
+      # The license and third-party notices ship inside the app, in
+      # Contents/Resources, next to the code they cover.
+      - path: ../LICENSE
+        buildPhase: resources
+      - path: ../THIRD_PARTY_NOTICES.md
+        buildPhase: resources
     dependencies:
       - target: RTICore
       - package: Starscream
