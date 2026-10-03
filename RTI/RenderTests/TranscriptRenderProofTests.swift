@@ -70,7 +70,7 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
     func testLiveWideNamed() throws {
         MeetingContextStore.shared.selectCalendarMeeting(CalendarMeeting(
             id: "proof", title: "Onboarding scope", startDate: Date(), endDate: Date().addingTimeInterval(1800),
-            attendees: [.init(name: "Tristan", isCurrentUser: true), .init(name: "Priya Shah"), .init(name: "Sam Lee")]
+            attendees: [.init(name: "Sam", isCurrentUser: true), .init(name: "Priya Shah"), .init(name: "Sam Lee")]
         ))
         SpeakerNameStore.shared.rename("remote_1", to: "Priya Shah")
         seedLive()

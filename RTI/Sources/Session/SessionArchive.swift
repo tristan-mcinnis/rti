@@ -677,7 +677,7 @@ enum SessionArchive {
     private static let defaultMeetingProcessorPrompt = """
     /meeting {transcript}
 
-    IMPORTANT — this run is UNATTENDED (fired automatically after an RTI session), so be conservative: (1) Always write the meeting note. (2) Set 'projects:' ONLY to an existing project you are confident about. (3) Do NOT create any new vault project folder, do NOT create a Todoist project, and do NOT push Todoist tasks. (4) If the project is new, ambiguous, or you are unsure, set 'projects: [unsorted]' and add a '## Needs routing' section with your best guess and reasoning for Tristan to confirm. Never guess a project into existence.
+    IMPORTANT — this run is UNATTENDED (fired automatically after an RTI session), so be conservative: (1) Always write the meeting note. (2) Set 'projects:' ONLY to an existing project you are confident about. (3) Do NOT create any new vault project folder, do NOT create a Todoist project, and do NOT push Todoist tasks. (4) If the project is new, ambiguous, or you are unsure, set 'projects: [unsorted]' and add a '## Needs routing' section with your best guess and reasoning for the user to confirm. Never guess a project into existence.
     """
 
     static func sessionDirectory(startedAt: Date) -> URL? {

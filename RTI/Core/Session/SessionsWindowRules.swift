@@ -14,7 +14,7 @@ public struct SessionRailItem: Identifiable, Equatable, Sendable {
     public let durationSeconds: Int?
     public let project: String?
     public let mode: String?
-    /// Names given to the session's speakers ("Emma Yu"), for filtering.
+    /// Names given to the session's speakers ("Anna Lu"), for filtering.
     public let speakerNames: [String]
     /// Canonical stamp `yyyyMMdd-HHmmss`, the key vault notes and search
     /// results use for this session.
@@ -50,7 +50,7 @@ public enum SessionRailGroup: String, CaseIterable, Sendable {
 }
 
 /// One row's snippet: where a content search found it, with the query
-/// terms marked. "Transcript: …project zeta scope…".
+/// terms marked. "Transcript: …flat zero scope…".
 public struct SessionSnippet: Equatable, Sendable {
     public struct Run: Equatable, Sendable {
         public let text: String

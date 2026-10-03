@@ -4,9 +4,9 @@ import XCTest
 /// answer shape becomes an outcome, and — last — the live Swift→bun→Neon path.
 final class VaultSearchCLITests: XCTestCase {
 
-    /// The tests marked live need Tristan's vault, its search CLI and its
+    /// The tests marked live need the maintainer's vault, its search CLI and its
     /// index. Other Macs and CI have none of those, so they skip unless
-    /// `RTI_LIVE_VAULT=1` is set (it is set on Tristan's Mac, never in CI).
+    /// `RTI_LIVE_VAULT=1` is set (it is set on the maintainer's Mac, never in CI).
     private func requireLiveVault() throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["RTI_LIVE_VAULT"] == "1",
@@ -96,7 +96,7 @@ final class VaultSearchCLITests: XCTestCase {
 
     func testHybridSearchReturnsKnowledgeBaseHits() async throws {
         try requireLiveVault()
-        let outcome = await VaultSearchCLI.searchOutcome(query: "AcmeBrand report format", limit: 5)
+        let outcome = await VaultSearchCLI.searchOutcome(query: "AcmeWear report format", limit: 5)
         switch outcome {
         case .unavailable(let reason):
             // A resolver miss is the bug this test guards; anything else is

@@ -21,14 +21,14 @@ final class VaultMeetingTitleMapTests: XCTestCase {
     }
 
     func testBuildMapsSourceStampToTitle() throws {
-        try write("20260904-briefing-project-zeta-scope.md", """
+        try write("20260904-briefing-pilot-zero-scope.md", """
         ---
-        title: "Project Zeta, proposal scoping call"
+        title: "Pilot Zero, proposal scoping call"
         date: 2026-09-04
         type: meeting
         source: rti-session-20260904-150016
         ---
-        # Project Zeta
+        # Pilot Zero
 
         Body text that mentions source: rti-session-20990101-000000 later.
         """)
@@ -43,8 +43,8 @@ final class VaultMeetingTitleMapTests: XCTestCase {
 
         let map = VaultMeetingTitleMap.build(meetingsDirectory: directory)
         XCTAssertEqual(map.entries.count, 1)
-        XCTAssertEqual(map.title(forStamp: "20260904-150016"), "Project Zeta, proposal scoping call")
-        XCTAssertEqual(map.stamp(forNoteFileName: "20260904-briefing-project-zeta-scope.md"), "20260904-150016")
+        XCTAssertEqual(map.title(forStamp: "20260904-150016"), "Pilot Zero, proposal scoping call")
+        XCTAssertEqual(map.stamp(forNoteFileName: "20260904-briefing-pilot-zero-scope.md"), "20260904-150016")
         XCTAssertNil(map.title(forStamp: "20990101-000000"), "only the frontmatter counts")
         XCTAssertNil(map.title(forStamp: "20260901-100000"), "only .md notes count")
     }

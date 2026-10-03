@@ -8,7 +8,7 @@ Status of items: none fixed yet except where noted; this is the worklist.
 script, design tokens, zero TODO/FIXME in the tree). What separates it from professional is:
 failure semantics (the durable write path swallows every error), Swift 6 concurrency correctness
 (the strict-executor check is disabled process-wide), app-layer test coverage (0 of 95 app files),
-and single-user assumptions in shipping code (absolute /Users/user paths, unattended
+and single-user assumptions in shipping code (absolute /Users/<user> paths, unattended
 `--dangerously-skip-permissions` launch).
 
 ## Ranked top 10 (highest leverage first)
@@ -22,7 +22,7 @@ and single-user assumptions in shipping code (absolute /Users/user paths, unatte
    `claude --dangerously-skip-permissions` in the vault git root, unattended, on a prompt built
    from meeting audio (attacker-influenceable: anyone in the meeting can say words). Require
    explicit opt-in; cap at `--permission-mode acceptEdits`.
-3. **Remove the two absolute `/Users/user` script paths**
+3. **Remove the two absolute `/Users/<user>` script paths**
    (TranscriptUpgradeService.swift:198, 220 — they even disagree on `Code` vs `code` casing, and
    one points into `archive/`). Resolve via config with the existing candidate-search pattern.
 4. **Retire the `SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE` escape hatch**

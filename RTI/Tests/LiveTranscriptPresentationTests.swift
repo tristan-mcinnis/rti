@@ -126,7 +126,7 @@ final class LiveTranscriptPresentationTests: XCTestCase {
         XCTAssertEqual(LiveTranscriptPresentation.label(for: "note"), "Note")
         XCTAssertEqual(LiveTranscriptPresentation.label(for: "remote_1", names: ["remote_1": " Priya "]), "Priya")
         XCTAssertEqual(LiveTranscriptPresentation.label(for: "remote_1", names: ["remote_1": "  "]), "Speaker 1")
-        XCTAssertEqual(LiveTranscriptPresentation.label(for: "self", names: ["self": "Tristan"]), "Tristan")
+        XCTAssertEqual(LiveTranscriptPresentation.label(for: "self", names: ["self": "Sam"]), "Sam")
     }
 
     // MARK: - Interim
@@ -167,7 +167,7 @@ final class LiveTranscriptPresentationTests: XCTestCase {
 
     func test_nameChoicesOfferInviteesOnce() {
         let attendees: [CalendarMeeting.Attendee] = [
-            .init(name: "Tristan McInnis", email: "t@example.com", isCurrentUser: true),
+            .init(name: "Sam Rivera", email: "sam@example.com", isCurrentUser: true),
             .init(name: "Priya Shah"),
             .init(name: "priya shah"),
             .init(name: "Sam Lee"),

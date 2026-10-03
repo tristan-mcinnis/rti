@@ -27,7 +27,7 @@ It is ready for controlled use by the owner on real UK calls where occasional ro
 | Overlay open/focus | Input focused within 100 ms | Within 250 ms | Implemented; needs UI automation coverage |
 | Composer typing | No visible dropped frames while typing | No sustained lag | Improved: `@` suggestions moved off render path |
 | `@` file picker first result | P95 under 100 ms after warm index | P95 under 250 ms | Improved with background prewarm + cache; needs repeated measurement |
-| `@` fuzzy recall | Multi-token and abbreviation search, e.g. `@brand dg` | Filename/path fuzzy search | Implemented for path tokens + acronyms |
+| `@` fuzzy recall | Multi-token and abbreviation search, e.g. `@wear dg` | Filename/path fuzzy search | Implemented for path tokens + acronyms |
 | Slash commands | Arrow navigation consistent with layout; command executes predictably | Same | Implemented left/right for horizontal `/` bar |
 | RAG answer start | Visible progress within 150 ms | Within 300 ms | Implemented progress rows; needs automated UI check |
 | RAG source transparency | Every vault-grounded answer exposes source files and search timing on demand | Source popover available | Implemented source popover |
@@ -50,7 +50,7 @@ These are the checks required before calling a build production-ready.
 
 2. **Fast local interactions**
    - Type `/`, navigate with left/right, press Enter.
-   - Type `@brand dg`; suggestions appear without typing lag.
+   - Type `@wear dg`; suggestions appear without typing lag.
    - Select a suggestion; it inserts an exact quoted vault path.
    - Type `/new`; chat clears.
 
@@ -96,7 +96,7 @@ xcodebuild -project RTI/RTI.xcodeproj -scheme RTI \
    - Current seed set lives in `docs/rag-benchmarks.md`.
 
 3. **Add UI automation**
-   - Launch app, focus overlay, type `/`, type `@brand dg`, verify no layout jump and suggestion insertion.
+   - Launch app, focus overlay, type `/`, type `@wear dg`, verify no layout jump and suggestion insertion.
    - Capture screenshots for compact and tall panel sizes.
 
 4. **Add meeting regression script**

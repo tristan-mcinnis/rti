@@ -1,7 +1,7 @@
 import Foundation
 import RTICore
 
-/// Deterministic parser for Example Co house-format discussion guides.
+/// Deterministic parser for house-format discussion guides.
 /// Maps the regular markdown structure straight to the guide model, no LLM
 /// round-trip — instant, offline, and lossless:
 ///

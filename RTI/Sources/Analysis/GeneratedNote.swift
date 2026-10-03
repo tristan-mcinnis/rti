@@ -5,7 +5,7 @@ struct GeneratedNote: Identifiable, Equatable {
     let timestamp: Date
     let rangeStartMs: Int
     let rangeEndMs: Int
-    /// Short title for this time-block (e.g. "Brand vs. Acme mapping").
+    /// Short title for this time-block (e.g. "Wear vs. Acme mapping").
     let title: String
     let content: String
 }

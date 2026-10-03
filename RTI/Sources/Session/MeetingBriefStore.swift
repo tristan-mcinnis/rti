@@ -6,7 +6,7 @@ import Foundation
 struct MeetingBrief: Identifiable, Hashable {
     var id: URL { url }
     let url: URL
-    /// Raw filename stem, e.g. `2026-06-09-acme-brand-prep`.
+    /// Raw filename stem, e.g. `2026-06-09-acme-wear-prep`.
     let title: String
     let modified: Date
 
@@ -17,7 +17,7 @@ struct MeetingBrief: Identifiable, Hashable {
     }
 
     /// Human label: drop the date prefix and the `-prep` suffix, de-hyphenate,
-    /// title-case. `2026-06-09-acme-brand-prep` → `Acme Brand`.
+    /// title-case. `2026-06-09-acme-wear-prep` → `Acme Wear`.
     var displayTitle: String {
         var s = title
         if let r = s.range(of: #"^\d{4}-\d{2}-\d{2}-"#, options: .regularExpression) {
@@ -93,7 +93,7 @@ enum MeetingBriefStore {
     }
 
     /// Significant (4+ char) lowercase word tokens of a name, for overlap
-    /// matching. "Acme Brand" → {"acme", "brand"}; "Acme-Digital" → {"acme",
+    /// matching. "Acme Wear" → {"acme", "wear"}; "Acme-Digital" → {"acme",
     /// "digital"}. Short tokens are dropped so a stray "the"/"q3" can't match.
     private static func nameTokens(_ s: String) -> Set<String> {
         Set(

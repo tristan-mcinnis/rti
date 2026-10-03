@@ -377,7 +377,7 @@ No feature change. See `docs/consistency-audit-20260902.md` for the audit.
 - **`ExternalTools`** owns the `claude`, `bun`, and python candidate lists
   and the fire-and-forget child launcher. `SpeakerEnrollment` and
   `SessionArchive` no longer carry their own.
-- **Transcript-upgrade scripts** are no longer hardcoded to `/Users/user`:
+- **Transcript-upgrade scripts** are no longer hardcoded to `/Users/<user>`:
   `soniox_file_script` / `aliyun_file_script` in `~/.config/rti/config.json`,
   defaulting to the same checkout paths under the current home.
 - README and CLAUDE.md now describe the titled `NSWindow` Dock-app shape

@@ -4,7 +4,7 @@ final class FindingEntryTests: XCTestCase {
     func testMarkedNoteParsesCorePrefixes() {
         let cases: [(String, FindingTag, String)] = [
             ("decision: Hold Air Force One scope until client confirms budget", .decision, "Hold Air Force One scope until client confirms budget"),
-            ("action - Tristan to send revised timeline", .action, "Tristan to send revised timeline"),
+            ("action - Sam to send revised timeline", .action, "Sam to send revised timeline"),
             ("question: Who owns recruiting?", .openQuestion, "Who owns recruiting?"),
             ("risk: timeline slips if stimulus arrives late", .risk, "timeline slips if stimulus arrives late"),
             ("follow-up: confirm whether slide 10 is final", .followUp, "confirm whether slide 10 is final"),

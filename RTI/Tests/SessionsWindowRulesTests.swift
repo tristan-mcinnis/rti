@@ -90,7 +90,7 @@ final class SessionsWindowRulesTests: XCTestCase {
     // MARK: - Snippets
 
     func testSnippetMarksEveryTermAndCutsAtWords() throws {
-        let text = "We talked for a while about the launch. The project zeta scope is the first thing to lock, then the zero sugar line after that for the spring."
+        let text = "We talked for a while about the launch. The flat zero scope is the first thing to lock, then the zero price line after that for the spring."
         let snippet = try XCTUnwrap(SessionsWindowRules.snippet(label: "Transcript:", text: text, query: "zero scope"))
         XCTAssertEqual(snippet.label, "Transcript:")
         XCTAssertTrue(snippet.text.hasPrefix("…"), snippet.text)
@@ -98,17 +98,17 @@ final class SessionsWindowRulesTests: XCTestCase {
         XCTAssertFalse(snippet.text.contains("We talked"), "cut before the context window")
         // Every term inside the window is marked; the window is cut at words.
         XCTAssertEqual(snippet.runs.filter(\.isMatch).map(\.text), ["zero", "scope"])
-        XCTAssertEqual(snippet.text, "…for a while about the launch. The project zeta scope is the first thing to lock, then…")
+        XCTAssertEqual(snippet.text, "…for a while about the launch. The flat zero scope is the first thing to lock, then…")
         XCTAssertTrue(snippet.plainText.hasPrefix("Transcript: …"))
         XCTAssertNil(SessionsWindowRules.snippet(label: "Notes:", text: text, query: "pricing"))
     }
 
     func testKeepingLeadKeepsTheMatchInView() throws {
-        let text = "We talked for a while about the launch. The project zeta scope is the first thing to lock."
+        let text = "We talked for a while about the launch. The flat zero scope is the first thing to lock."
         let snippet = try XCTUnwrap(SessionsWindowRules.snippet(label: "Transcript:", text: text, query: "zero"))
         let narrow = snippet.keepingLead(12)
         XCTAssertEqual(narrow.label, "Transcript:")
-        XCTAssertEqual(narrow.runs.first?.text, "…The thin ")
+        XCTAssertEqual(narrow.runs.first?.text, "…The flat ")
         XCTAssertEqual(narrow.runs.filter(\.isMatch).map(\.text), ["zero"])
         XCTAssertEqual(snippet.keepingLead(200), snippet, "a short lead stays as it is")
     }

@@ -65,7 +65,7 @@ final class SpeakerLabelMappingTests: XCTestCase {
 
     func testDisplayKeyedNamesConvertsRawDropsSelfKeepsDisplay() {
         let converted = SpeakerLabelMapping.displayKeyedNames([
-            "self": "Tristan",
+            "self": "Sam",
             "remote_1": "Alex",
             "them_2": "Bob",
             "Speaker 3": "Carol",
@@ -79,7 +79,7 @@ final class SpeakerLabelMappingTests: XCTestCase {
 
     func testDisplayKeyedNamesEmptyInput() {
         XCTAssertEqual(SpeakerLabelMapping.displayKeyedNames([:]), [:])
-        XCTAssertEqual(SpeakerLabelMapping.displayKeyedNames(["self": "Tristan"]), [:])
+        XCTAssertEqual(SpeakerLabelMapping.displayKeyedNames(["self": "Sam"]), [:])
     }
 
     // MARK: archivedSpeakerLabels(in:)
@@ -126,7 +126,7 @@ final class SpeakerLabelMappingTests: XCTestCase {
             {"label": "Remote speaker 1", "leg": "system", "clips": 1,
              "suggestion": null, "score": 0.2562, "band": "unknown", "runner_up": null},
             {"label": "Speaker 1", "leg": "mic", "clips": 3,
-             "suggestion": "Tristan McInnis", "score": 0.6573, "band": "accept",
+             "suggestion": "Sam Rivera", "score": 0.6573, "band": "accept",
              "runner_up": {"name": "Alex Wilson", "score": 0.31}},
             {"label": "Speaker 2", "leg": "mic", "band": "maybe",
              "suggestion": "Alex Wilson", "score": 0.55, "clips": 2}
@@ -139,7 +139,7 @@ final class SpeakerLabelMappingTests: XCTestCase {
         let accept = try XCTUnwrap(decoded.entry(for: "Speaker 1"))
         XCTAssertTrue(accept.isAccept)
         XCTAssertFalse(accept.isMaybe)
-        XCTAssertEqual(accept.suggestion, "Tristan McInnis")
+        XCTAssertEqual(accept.suggestion, "Sam Rivera")
         XCTAssertEqual(accept.score ?? 0, 0.6573, accuracy: 0.0001)
 
         let unknown = try XCTUnwrap(decoded.entry(for: "Remote speaker 1"))
@@ -157,13 +157,13 @@ final class SpeakerLabelMappingTests: XCTestCase {
         // Shape produced by speaker-profiles.py samples --json (2026-08-29).
         let json = """
         {"samples": [
-          {"id": 4, "name": "Tristan McInnis",
+          {"id": 4, "name": "Sam Rivera",
            "source": "/v/sessions/2026-08-28 070051#Speaker 1@329.0s+8.0s",
            "created": "2026-08-29T11:02:00+00:00",
            "audio": "/v/sessions/2026-08-28 070051/audio-mic.wav",
            "offset": 329.0, "duration": 8.0, "playable": true,
            "session": "2026-08-28 070051", "label": "Speaker 1"},
-          {"id": 1, "name": "Tristan McInnis",
+          {"id": 1, "name": "Sam Rivera",
            "source": "/v/sessions/2026-08-28 071047/audio-mic.wav",
            "created": "2026-08-28T05:21:01+00:00",
            "audio": "/v/sessions/2026-08-28 071047/audio-mic.wav",
@@ -180,7 +180,7 @@ final class SpeakerLabelMappingTests: XCTestCase {
         XCTAssertEqual(catalog.samples.count, 3)
 
         let grouped = catalog.byPerson
-        XCTAssertEqual(grouped.map(\.name), ["Alex Wilson", "Tristan McInnis"])
+        XCTAssertEqual(grouped.map(\.name), ["Alex Wilson", "Sam Rivera"])
         XCTAssertEqual(grouped[1].samples.map(\.id), [1, 4], "samples sort by id within a person")
 
         let legacy = try XCTUnwrap(catalog.samples.first { $0.id == 1 })

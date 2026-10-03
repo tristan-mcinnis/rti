@@ -290,7 +290,7 @@ public enum SessionTitleResolver {
     /// The first substantive spoken line of `transcript.md`, cleaned into a
     /// title. Entry lines are written as:
     ///
-    ///     `0:00` **Speaker 1:** Let's start with the Project Zeta scope.
+    ///     `0:00` **Speaker 1:** Let's start with the Pilot Zero scope.
     ///
     /// Frontmatter, the `# Transcript` heading, the date line, and typed
     /// notes (`📝 Note`) are skipped, as is any line too short or too thin to

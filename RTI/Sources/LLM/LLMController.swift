@@ -1941,7 +1941,7 @@ final class LLMController {
                 ?? "No project/client selected. RAG defaults to the whole vault."
             let projects = VaultWorkstreamStore.projects().prefix(8).map(\.name).joined(separator: ", ")
             let clients = VaultWorkstreamStore.clients().prefix(5).map(\.name).joined(separator: ", ")
-            let examples = "Use `/project acme brand`, `/project clear`, or pick one in Setup."
+            let examples = "Use `/project acme wear`, `/project clear`, or pick one in Setup."
             postLocalTurn(
                 userInput: "/project",
                 action: "Project",
@@ -2464,7 +2464,7 @@ final class LLMController {
     }
 
     /// Retrieval scope is explicit project first; otherwise infer a project from
-    /// the question text ("acmebrand" should hit "Acme Brand") before falling
+    /// the question text ("acmewear" should hit "Acme Wear") before falling
     /// back to whole-vault RAG.
     private static func retrievalScope(for query: String) -> String? {
         if let selected = MeetingContextStore.shared.workstreamScopePath { return selected }

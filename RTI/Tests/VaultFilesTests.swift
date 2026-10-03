@@ -22,7 +22,7 @@ final class VaultFilesTests: XCTestCase {
         // is confined under databases/ (a harmless non-existent path), never the
         // real /etc/passwd or ~/.ssh. The security property is "never outside",
         // not "always nil".
-        for p in ["/etc/passwd", "/Users/user/.ssh/id_rsa"] {
+        for p in ["/etc/passwd", "/Users/someone/.ssh/id_rsa"] {
             if let u = VaultFiles.resolve(p) {
                 XCTAssertTrue(u.path.contains("/databases/"))
                 XCTAssertFalse(u.path == "/etc/passwd")
@@ -62,36 +62,36 @@ final class VaultFilesTests: XCTestCase {
     func testMentionCandidates_matchMultiTokenAbbreviation() {
         let paths = [
             "projects/personal/rti/sessions/2026-06-18 190213/discussion-guide.md",
-            "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md",
-            "projects/acmebrand/analysis/archive/pre-redo-20260620/artifacts/04-language-bank.md",
+            "projects/acmewear/discussion-guide/fieldwork-discussion-guide.md",
+            "projects/acmewear/analysis/archive/pre-redo-20260620/artifacts/04-language-bank.md",
             "projects/other-brand/discussion-guide.md",
         ]
 
-        let matches = VaultFiles.mentionCandidatesForTesting("brand dg", paths: paths)
+        let matches = VaultFiles.mentionCandidatesForTesting("wear dg", paths: paths)
 
-        XCTAssertEqual(matches.first, "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md")
+        XCTAssertEqual(matches.first, "projects/acmewear/discussion-guide/fieldwork-discussion-guide.md")
         XCTAssertFalse(matches.contains("projects/personal/rti/sessions/2026-06-18 190213/discussion-guide.md"))
     }
 
     func testMentionCandidates_scopeRestrictsThenFallsBackWhenEmpty() {
         let paths = [
-            "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md",
-            "projects/acmebrand/00-status.md",
+            "projects/acmewear/discussion-guide/fieldwork-discussion-guide.md",
+            "projects/acmewear/00-status.md",
             "projects/other-brand/discussion-guide.md",
         ]
 
         let scoped = VaultFiles.mentionCandidatesForTesting(
             "dg",
             paths: paths,
-            scopeRelativePath: "projects/acmebrand"
+            scopeRelativePath: "projects/acmewear"
         )
-        XCTAssertEqual(scoped.first, "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md")
+        XCTAssertEqual(scoped.first, "projects/acmewear/discussion-guide/fieldwork-discussion-guide.md")
         XCTAssertFalse(scoped.contains("projects/other-brand/discussion-guide.md"))
 
         let broadened = VaultFiles.mentionCandidatesForTesting(
             "other dg",
             paths: paths,
-            scopeRelativePath: "projects/acmebrand"
+            scopeRelativePath: "projects/acmewear"
         )
         XCTAssertEqual(broadened.first, "projects/other-brand/discussion-guide.md")
     }
@@ -100,13 +100,13 @@ final class VaultFilesTests: XCTestCase {
         var paths = (0..<12_000).map { idx in
             "projects/archive-\(idx)/discussion-guide.md"
         }
-        paths.append("projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md")
+        paths.append("projects/acmewear/discussion-guide/fieldwork-discussion-guide.md")
 
         let start = ContinuousClock.now
-        let matches = VaultFiles.mentionCandidatesForTesting("brand dg", paths: paths)
+        let matches = VaultFiles.mentionCandidatesForTesting("wear dg", paths: paths)
         let elapsed = start.duration(to: .now)
 
-        XCTAssertEqual(matches.first, "projects/acmebrand/discussion-guide/fieldwork-discussion-guide.md")
+        XCTAssertEqual(matches.first, "projects/acmewear/discussion-guide/fieldwork-discussion-guide.md")
         XCTAssertLessThan(elapsed.components.seconds, 1)
     }
 }

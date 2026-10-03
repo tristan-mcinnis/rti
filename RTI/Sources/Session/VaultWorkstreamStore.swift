@@ -160,7 +160,7 @@ enum VaultWorkstreamStore {
         return urls.filter(filter).map(makeItem).sorted { $0.name < $1.name }
     }
 
-    /// "umbrella-foods" → "Umbrella Foods".
+    /// "initech" → "Initech".
     private static func prettify(_ slug: String) -> String {
         slug.replacingOccurrences(of: "-", with: " ")
             .split(separator: " ")

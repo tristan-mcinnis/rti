@@ -31,7 +31,7 @@ final class ToolTraceParserTests: XCTestCase {
        Scope for the first screen.
     3. Pricing (v2) notes (projects/northwind/pricing-v2.md, updated 2026-08-28)
 
-    These are from Tristan's knowledge vault. Cite the document name when you use one; say so if none actually answers the question.
+    These are from the user's knowledge vault. Cite the document name when you use one; say so if none actually answers the question.
     """
 
     func test_searchVault_lineCountsResults() {

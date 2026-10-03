@@ -46,10 +46,10 @@ final class SessionTitleResolverTests: XCTestCase {
     func testVaultNoteWhenSummaryFailed() {
         let resolved = resolve(SessionTitleInputs(
             titleFile: nil,
-            vaultNoteTitle: "Acme Project Zeta, proposal scoping call with Emma Yu",
+            vaultNoteTitle: "Acme Pilot Zero, proposal scoping call with Anna Lu",
             calendarTitle: "Weekly sync"
         ))
-        XCTAssertEqual(resolved, ResolvedSessionTitle(text: "Acme Project Zeta, proposal scoping call with Emma Yu", source: .vaultNote))
+        XCTAssertEqual(resolved, ResolvedSessionTitle(text: "Acme Pilot Zero, proposal scoping call with Anna Lu", source: .vaultNote))
     }
 
     func testCalendarTitleWhenNoNote() {
@@ -188,13 +188,13 @@ final class SessionTitleResolverTests: XCTestCase {
 
     `0:04` **📝 Note:** Remember to ask about the pricing table before the end.
 
-    `0:09` **Speaker 2:** Let's start with the Project Zeta scope and what Emma needs by Friday.
+    `0:09` **Speaker 2:** Let's start with the Pilot Zero scope and what Anna needs by Friday.
     """
 
     func testFirstSubstantiveLineSkipsHeadersFillerAndNotes() {
         XCTAssertEqual(
             SessionTitleResolver.firstSubstantiveLine(fromTranscriptMarkdown: transcript),
-            "Let's start with the Project Zeta scope and what Emma needs by Friday"
+            "Let's start with the Pilot Zero scope and what Anna needs by Friday"
         )
     }
 
@@ -206,7 +206,7 @@ final class SessionTitleResolverTests: XCTestCase {
             transcriptBytes: 21_000
         ))
         XCTAssertEqual(resolved.source, .transcriptLine)
-        XCTAssertEqual(resolved.text, "Let's start with the Project Zeta scope and what Emma needs by Friday")
+        XCTAssertEqual(resolved.text, "Let's start with the Pilot Zero scope and what Anna needs by Friday")
     }
 
     func testTranscriptLineRanksBelowEveryNamedSource() {
@@ -217,15 +217,15 @@ final class SessionTitleResolverTests: XCTestCase {
             transcriptBytes: 21_000
         )
         var withCalendar = base
-        withCalendar.calendarTitle = "Project Zeta scoping"
+        withCalendar.calendarTitle = "Pilot Zero scoping"
         XCTAssertEqual(resolve(withCalendar).source, .calendar)
 
         var withNote = base
-        withNote.vaultNoteTitle = "Acme Project Zeta scoping call"
+        withNote.vaultNoteTitle = "Acme Pilot Zero scoping call"
         XCTAssertEqual(resolve(withNote).source, .vaultNote)
 
         var withSummary = base
-        withSummary.titleFile = "Project Zeta Proposal Scoping Call"
+        withSummary.titleFile = "Pilot Zero Proposal Scoping Call"
         XCTAssertEqual(resolve(withSummary).source, .summary)
     }
 
@@ -263,7 +263,7 @@ final class SessionTitleResolverTests: XCTestCase {
     }
 
     func testATranscriptLineStillInvitesAGeneratedTitle() {
-        let resolved = ResolvedSessionTitle(text: "Let's start with the Project Zeta scope", source: .transcriptLine)
+        let resolved = ResolvedSessionTitle(text: "Let's start with the Pilot Zero scope", source: .transcriptLine)
         XCTAssertTrue(SessionTitleResolver.wantsGeneratedTitle(resolved, hasNotes: true))
         XCTAssertFalse(SessionTitleResolver.wantsGeneratedTitle(resolved, hasNotes: false))
     }
@@ -277,7 +277,7 @@ final class SessionTitleResolverTests: XCTestCase {
 
     // MARK: - Chinese, Japanese and Korean transcript lines
 
-    /// Tristan records mostly in Chinese. Counting words by splitting on
+    /// The user records mostly in Chinese. Counting words by splitting on
     /// spaces sees one "word" in any Chinese line, so before this the rule
     /// rejected every Chinese session and left it on the date fallback.
     func testAChineseLineNamesASession() {

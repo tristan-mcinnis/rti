@@ -98,7 +98,7 @@ enum LLMToolRegistry {
     private static let searchVault = LLMToolDefinition(
         name: "search_vault",
         description: """
-        Search Tristan's knowledge vault — past meetings, project status \
+        Search the user's knowledge vault — past meetings, project status \
         dashboards, research findings, client notes, proposals, reports, and \
         the project's research transcripts (what consumers or experts said in \
         specific groups and interviews). When a project is set for this meeting, \
@@ -119,7 +119,7 @@ enum LLMToolRegistry {
             "properties": [
                 "query": [
                     "type": "string",
-                    "description": "A short phrase describing what to look for, e.g. 'AcmeBrand store format decision' or 'Vandelay collectibles target consumer'.",
+                    "description": "A short phrase describing what to look for, e.g. 'AcmeWear store format decision' or 'Globex collectibles target consumer'.",
                 ] as [String: Any],
             ] as [String: Any],
             "required": ["query"],

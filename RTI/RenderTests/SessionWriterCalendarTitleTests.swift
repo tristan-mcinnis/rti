@@ -28,8 +28,8 @@ final class SessionWriterCalendarTitleTests: XCTestCase {
     }
 
     func testTheWriterPassesThePickedCalendarEventTitle() {
-        MeetingContextStore.shared.selectCalendarMeeting(meeting(title: "  Acme Project Zeta scoping  "))
-        XCTAssertEqual(SessionFinalizer.calendarTitleForArchive(), "Acme Project Zeta scoping")
+        MeetingContextStore.shared.selectCalendarMeeting(meeting(title: "  Acme Pilot Zero scoping  "))
+        XCTAssertEqual(SessionFinalizer.calendarTitleForArchive(), "Acme Pilot Zero scoping")
     }
 
     func testNoCalendarEventMeansNoTitle() {
@@ -45,7 +45,7 @@ final class SessionWriterCalendarTitleTests: XCTestCase {
     /// The far end of the same hand-off: what the writer stamps is what the
     /// resolver reads back, so a session with no summary still has a name.
     func testAStampedCalendarTitleResolvesTheSessionTitle() throws {
-        MeetingContextStore.shared.selectCalendarMeeting(meeting(title: "Acme Project Zeta scoping"))
+        MeetingContextStore.shared.selectCalendarMeeting(meeting(title: "Acme Pilot Zero scoping"))
         let metadata = SessionArchiveMetadata(
             sessionId: "abc123",
             systemAudioStartOffsetMs: nil,
@@ -63,6 +63,6 @@ final class SessionWriterCalendarTitleTests: XCTestCase {
         let resolved = SessionTitleResolver.resolve(
             SessionTitleInputs(calendarTitle: decoded.calendarTitle, durationSeconds: 960)
         )
-        XCTAssertEqual(resolved, ResolvedSessionTitle(text: "Acme Project Zeta scoping", source: .calendar))
+        XCTAssertEqual(resolved, ResolvedSessionTitle(text: "Acme Pilot Zero scoping", source: .calendar))
     }
 }

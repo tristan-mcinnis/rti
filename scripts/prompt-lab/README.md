@@ -22,7 +22,7 @@ It runs the prompt N times and scores **pinyin compliance** — every kept Chine
 term must be written as `中文 (pīnyīn, English)`. Output:
 ```
 [1] OK  han_runs=14 pinyin_violations=0
-[2] ERR han_runs=12 pinyin_violations=3  e.g. 没得选, 撞衫, 胸垫
+[2] ERR han_runs=12 pinyin_violations=3  e.g. 没得选, 撞车, 保温杯
 ...
 clean runs: 6/8 | term compliance: 92/100 (92%)
 ```

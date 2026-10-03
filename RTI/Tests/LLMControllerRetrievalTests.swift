@@ -9,7 +9,7 @@ final class LLMControllerRetrievalTests: XCTestCase {
         XCTAssertFalse(RetrievalHeuristics.shouldSearchVault(
             query: "What is this about?",
             hasSelectedScope: false,
-            workstreamNames: ["Acme Brand"],
+            workstreamNames: ["Acme Wear"],
             recentQuestions: []
         ))
     }
@@ -33,8 +33,8 @@ final class LLMControllerRetrievalTests: XCTestCase {
     }
     func testNamesKnownWorkstreamForcesHard() {
         XCTAssertTrue(RetrievalHeuristics.shouldForceVaultSearch(
-            query: "what did we decide about AcmeBrand Beijing vs Shanghai",
-            workstreamNames: ["Acme Brand", "Vandelay Retail"],
+            query: "what did we decide about AcmeWear Northport vs Southvale",
+            workstreamNames: ["Acme Wear", "Globex Retail"],
             recentQuestions: []
         ))
     }
@@ -50,7 +50,7 @@ final class LLMControllerRetrievalTests: XCTestCase {
     func testUnrelatedFirstAskDoesNotForceHard() {
         XCTAssertFalse(RetrievalHeuristics.shouldForceVaultSearch(
             query: "what's the weather like",
-            workstreamNames: ["Acme Brand", "Vandelay Retail"],
+            workstreamNames: ["Acme Wear", "Globex Retail"],
             recentQuestions: ["something else entirely"]
         ))
     }
@@ -58,7 +58,7 @@ final class LLMControllerRetrievalTests: XCTestCase {
     func testEmptyQueryNeverForcesHard() {
         XCTAssertFalse(RetrievalHeuristics.shouldForceVaultSearch(
             query: "   ",
-            workstreamNames: ["Acme Brand"],
+            workstreamNames: ["Acme Wear"],
             recentQuestions: ["   "]
         ))
     }

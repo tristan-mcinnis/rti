@@ -17,7 +17,7 @@ import Foundation
 enum VaultSearch {
     struct Result: Equatable {
         let title: String
-        /// Path relative to `databases/`, e.g. `projects/acmebrand/00-status.md`.
+        /// Path relative to `databases/`, e.g. `projects/acmewear/00-status.md`.
         let relativePath: String
         let modified: Date
         let excerpt: String
@@ -329,7 +329,7 @@ enum VaultSearch {
             out += "\n\(i + 1). \(r.title) (\(r.relativePath), updated \(stamp.string(from: r.modified)))"
             if !r.excerpt.isEmpty { out += "\n   \(r.excerpt)" }
         }
-        out += "\n\nThese are from Tristan's knowledge vault. Cite the document name when you use one; say so if none actually answers the question."
+        out += "\n\nThese are from the user's knowledge vault. Cite the document name when you use one; say so if none actually answers the question."
         return out
     }
 }

@@ -30,7 +30,7 @@ final class VaultSearchTests: XCTestCase {
     }
 
     func testMixedLatinAndCJK() {
-        XCTAssertEqual(VaultSearch.tokenize("AcmeBrand 门店"), ["acmebrand", "门店"])
+        XCTAssertEqual(VaultSearch.tokenize("AcmeWear 门店"), ["acmewear", "门店"])
     }
 
     // MARK: rank
@@ -45,11 +45,11 @@ final class VaultSearchTests: XCTestCase {
 
     func testTitleMatchOutweighsBodyMention() {
         let titleHit = VaultSearch.rank(
-            terms: ["acmebrand"], title: "AcmeBrand status", relativePath: "projects/n/notes.md",
+            terms: ["acmewear"], title: "AcmeWear status", relativePath: "projects/n/notes.md",
             content: "a body that does not mention the brand").score
         let bodyHit = VaultSearch.rank(
-            terms: ["acmebrand"], title: "Generic note", relativePath: "meetings/m.md",
-            content: "acmebrand came up once").score
+            terms: ["acmewear"], title: "Generic note", relativePath: "meetings/m.md",
+            content: "acmewear came up once").score
         XCTAssertGreaterThan(titleHit, bodyHit)
     }
 
@@ -78,9 +78,9 @@ final class VaultSearchTests: XCTestCase {
         let terms = VaultSearch.tokenize("tell me about the Acme projects I have done this year")
         let acmeStatus = VaultSearch.rank(
             terms: terms,
-            title: "AcmeBrand status",
-            relativePath: "projects/acmebrand/00-status.md",
-            content: "AcmeBrand project status for this year covering fieldwork, mass consumers, and retail concept decisions."
+            title: "AcmeWear status",
+            relativePath: "projects/acmewear/00-status.md",
+            content: "AcmeWear project status for this year covering fieldwork, mass consumers, and retail concept decisions."
         ).score
         let genericMeeting = VaultSearch.rank(
             terms: terms,
@@ -92,15 +92,15 @@ final class VaultSearchTests: XCTestCase {
         XCTAssertGreaterThan(acmeStatus, genericMeeting)
     }
 
-    func testDailyDriverAcmeBrandCityComparisonFindsComparisonEvidence() {
-        let terms = VaultSearch.tokenize("difference between mass consumers in Shanghai and Beijing for AcmeBrand")
+    func testDailyDriverAcmeWearCityComparisonFindsComparisonEvidence() {
+        let terms = VaultSearch.tokenize("difference between mass consumers in Northport and Southvale for AcmeWear")
         let cityEvidence = VaultSearch.rank(
             terms: terms,
-            title: "AcmeBrand City Nuances",
-            relativePath: "projects/acmebrand/analysis/36-evidence-deck.md",
+            title: "AcmeWear City Differences",
+            relativePath: "projects/acmewear/analysis/36-evidence-deck.md",
             content: """
-            Shanghai mass consumers showed higher awareness, more cosmopolitan retail expectations, and more openness to authentic brand expression.
-            Beijing mass consumers were more traditional and practical, wanting localisation, staff guidance, and visible Acme performance proof.
+            Northport mass consumers showed higher awareness of the range and more openness to new formats.
+            Southvale mass consumers were more practical, wanting localisation, staff guidance, and visible Acme product proof.
             """
         ).score
         let offTopicAcme = VaultSearch.rank(

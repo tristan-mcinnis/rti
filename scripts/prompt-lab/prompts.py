@@ -59,10 +59,10 @@ TITLE: <short 3–6 word title>
 
 SUMMARY = """You are writing the meeting record of this ENTIRE meeting, in two parts, in this exact order. Work only from what was actually said; no invention, no padding.
 
-BEFORE WRITING, build a speaker map. Scan the whole transcript for introductions, sign-offs, and how people address each other ("I will start first, and Helen can chime in", "bye Tristan") and decide once who each voice is. Rules:
+BEFORE WRITING, build a speaker map. Scan the whole transcript for introductions, sign-offs, and how people address each other ("I will start first, and Helen can chime in", "bye Sam") and decide once who each voice is. Rules:
 - One voice = one person. Never split a single speaker into two names, and never treat "Me" and a numbered speaker as different people.
 - Use a real name only when the transcript supports it; otherwise use a role ("the Acme side", "the moderator", "the researcher"). Never write raw labels like "Speaker 3" or "them_1".
-- If two similar names could be the same or different people (e.g. Helene vs Honey), keep them distinct and add one line flagging the possible name collision; never silently merge or pick one.
+- If two similar names could be the same or different people (e.g. Helene vs Helena), keep them distinct and add one line flagging the possible name collision; never silently merge or pick one.
 - A claim you cannot place is marked "(unattributed)". Do not guess names. When someone relays a request or concern from their side, the side owns it, not the relayer.
 
 TRANSCRIPTION UNCERTAINTY: the transcript is machine-generated and garbles names, brands, and numbers. When a proper noun or figure looks garbled, write your best reading followed by (transcript: "heard text"). Never silently substitute a better-known brand or a clean number for an unclear one, and never present a normalized garble as fact.

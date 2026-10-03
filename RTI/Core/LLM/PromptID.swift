@@ -257,10 +257,10 @@ public enum PromptDefaults {
             """
             You are writing the meeting record of this ENTIRE meeting, in two parts, in this exact order. Work only from what was actually said; no invention, no padding.
 
-            BEFORE WRITING, build a speaker map. Scan the whole transcript for introductions, sign-offs, and how people address each other ("I will start first, and Helen can chime in", "bye Tristan") and decide once who each voice is. Rules:
+            BEFORE WRITING, build a speaker map. Scan the whole transcript for introductions, sign-offs, and how people address each other ("I will start first, and Helen can chime in", "bye Sam") and decide once who each voice is. Rules:
             - One voice = one person. Never split a single speaker into two names, and never treat "Me" and a numbered speaker as different people.
             - Use a real name only when the transcript supports it; otherwise use a role ("the Acme side", "the moderator", "the researcher"). Never write raw labels like "Speaker 3" or "them_1".
-            - If two similar names could be the same or different people (e.g. Helene vs Honey), keep them distinct and add one line flagging the possible name collision; never silently merge or pick one.
+            - If two similar names could be the same or different people (e.g. Helene vs Helena), keep them distinct and add one line flagging the possible name collision; never silently merge or pick one.
             - A claim you cannot place is marked "(unattributed)". Do not guess names. When someone relays a request or concern from their side, the side owns it, not the relayer.
 
             TRANSCRIPTION UNCERTAINTY: the transcript is machine-generated and garbles names, brands, and numbers. When a proper noun or figure looks garbled, write your best reading followed by (transcript: "heard text"). Never silently substitute a better-known brand or a clean number for an unclear one, and never present a normalized garble as fact.
@@ -510,8 +510,8 @@ public enum PromptDefaults {
             ⚠️ CRITICAL FORMAT RULE — applies to EVERY Chinese term, everywhere in your
             output: write it as 中文 (pīnyīn, English meaning). The pinyin is MANDATORY,
             with tone marks. A bare Chinese term WITHOUT pinyin is a format error.
-            Examples: 没得选 (méi dé xuǎn, no other choice); 撞衫 (zhuàngshān, wearing the
-            same outfit as someone); 胸垫 (xiōngdiàn, chest pads). Never write 没得选 alone.
+            Examples: 没得选 (méi dé xuǎn, no other choice); 撞车 (zhuàngchē, two things
+            clash by accident); 保温杯 (bǎowēnbēi, thermos flask). Never write 没得选 alone.
 
             LANGUAGE: Write the notes in ENGLISH. The conversation may be in Chinese or
             another language; translate as you go. You MAY keep a short essential term in
@@ -530,7 +530,7 @@ public enum PromptDefaults {
             - <bullet>
 
             Rules:
-            - Be specific and concrete, e.g. "- Favourite brand is Brandco, but can't find a store in Shanghai".
+            - Be specific and concrete, e.g. "- Favourite brand is Acme, but can't find a store in Shanghai".
             - MODERATOR: the person asking the questions and steering topics is "the
               moderator" — call them that, never "Speaker N". Log their questions only
               when needed to make an answer intelligible; participants' content is what
@@ -542,8 +542,8 @@ public enum PromptDefaults {
               later bullet. NEVER invent labels like "them_1", "Participant 1", or "self".
             - GARBLED TERMS: if a Chinese term looks mis-transcribed or you are not
               confident what it means, do NOT invent a confident gloss — write it as
-              term (unclear) or use the likely intended term with a ? — e.g. "工字背心?
-              (racerback tank)".
+              term (unclear) or use the likely intended term with a ? — e.g. "保暖杯?
+              (thermos cup)".
             - Skip greetings and filler; capture every substantive point that was made.
             - VERBATIM QUOTES: when a participant says something vivid, surprising, or
               quotable, include the short verbatim phrase inline in its bullet —

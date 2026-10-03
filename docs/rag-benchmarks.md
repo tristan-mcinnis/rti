@@ -11,18 +11,18 @@ database query.
    - Expected retrieval: project status files, project summaries, recent RTI/vault chat logs.
    - Must not require a project to be pre-selected.
 
-2. **AcmeBrand city comparison**
-   - Query: "What is the difference between mass consumers in Shanghai and Beijing for the AcmeBrand project?"
-   - Expected retrieval: AcmeBrand transcripts, evidence deck, language bank, city-nuance notes.
-   - Expected answer: comparison by awareness, localisation, retail expectations, Acme visibility, body/product norms.
+2. **AcmeWear city comparison**
+   - Query: "What is the difference between mass consumers in Northport and Southvale for the AcmeWear project?"
+   - Expected retrieval: AcmeWear transcripts, evidence deck, language bank, city-difference notes.
+   - Expected answer: comparison by awareness, localisation, retail expectations, Acme visibility, product norms.
 
 3. **Latest project point**
    - Query: "Answer the latest client question using the current project."
    - Expected retrieval: recent transcript window first, then project-scoped vault search if needed.
 
 4. **Discussion guide lookup**
-   - Query: "@brand dg"
-   - Expected retrieval: a AcmeBrand discussion-guide style file, not generic RTI session discussion guides.
+   - Query: "@wear dg"
+   - Expected retrieval: an AcmeWear discussion-guide style file, not generic RTI session discussion guides.
 
 5. **Evidence/source audit**
    - Query: "What sources did you use for that?"
@@ -36,7 +36,7 @@ database query.
 
 Current automated checks cover:
 
-- multi-token `@` matching, including abbreviation (`brand dg`);
+- multi-token `@` matching, including abbreviation (`wear dg`);
 - scoped `@` search before global fallback;
 - large `@` candidate set responsiveness;
 - vault search tokenisation and ranking;

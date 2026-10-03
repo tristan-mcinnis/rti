@@ -11,13 +11,13 @@ final class SessionArchiveMetadataTests: XCTestCase {
             micAudioFile: "audio-mic.m4a",
             systemAudioFile: "audio-system.m4a",
             mode: "Meeting",
-            workstream: "Acme Brand",
+            workstream: "Acme Wear",
             durationSeconds: 1800
         )
         let data = try JSONEncoder().encode(metadata)
         let decoded = try JSONDecoder().decode(SessionArchiveMetadata.self, from: data)
         XCTAssertEqual(decoded.mode, "Meeting")
-        XCTAssertEqual(decoded.workstream, "Acme Brand")
+        XCTAssertEqual(decoded.workstream, "Acme Wear")
         XCTAssertEqual(decoded.durationSeconds, 1800)
     }
 
