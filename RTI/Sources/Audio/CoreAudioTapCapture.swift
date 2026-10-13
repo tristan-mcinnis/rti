@@ -57,6 +57,16 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
     private var peakRMSLevel: Float = 0
     private static let audibleRMSThreshold: Float = 0.0005
 
+    // Stall watchdog: a tap that stops delivering buffers at all (as opposed to
+    // delivering silence) is rebuilt on `processingQueue`, with bounded retries.
+    static let stallTimeout: TimeInterval = 6
+    static let stallCheckInterval: TimeInterval = 2
+    static let stallMaxAttempts = 3
+    private var stallTimer: DispatchSourceTimer?
+    private var stallReferenceAt = Date()
+    private var stallAttempts = 0
+    private var stallRetryPending = false
+
     deinit {
         if isRecording || aggregateDeviceID != kAudioObjectUnknown || tapID != kAudioObjectUnknown {
             stop()
@@ -71,6 +81,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
             try createTapAndAggregateDevice()
             try setupAndStartAudioDevice()
             installDefaultOutputDeviceListener()
+            processingQueue.sync { startStallWatchdog() }
             RTILog.log("CoreAudio tap capture started", category: .audio)
         } catch {
             cleanupFailedStart()
@@ -83,6 +94,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         isRecording = false
         removeDefaultOutputDeviceListener()
         processingQueue.sync {
+            stopStallWatchdog()
             teardownTapAndAudioDevice()
             onPCMBuffer = nil
         }
@@ -597,9 +609,74 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         teardownTapAndAudioDevice()
         guard isRecording else { return }
         resetCaptureHealth()
+        stallReferenceAt = Date()
         try createTapAndAggregateDevice()
         try setupAndStartAudioDevice()
         RTILog.log("CoreAudio tap rebuilt", category: .audio)
+    }
+
+    // MARK: - Stall Watchdog
+
+    private func startStallWatchdog() {
+        stopStallWatchdog()
+        stallReferenceAt = Date()
+        stallAttempts = 0
+        let timer = DispatchSource.makeTimerSource(queue: processingQueue)
+        timer.schedule(deadline: .now() + Self.stallCheckInterval, repeating: Self.stallCheckInterval)
+        timer.setEventHandler { [weak self] in self?.checkForStall() }
+        stallTimer = timer
+        timer.resume()
+    }
+
+    private func stopStallWatchdog() {
+        stallTimer?.cancel()
+        stallTimer = nil
+        stallRetryPending = false
+    }
+
+    /// Runs on `processingQueue`.
+    private func checkForStall() {
+        guard isRecording, !stallRetryPending else { return }
+        if let last = lastBufferAt, last > stallReferenceAt { stallAttempts = 0 }
+        let reference = max(lastBufferAt ?? .distantPast, stallReferenceAt)
+        guard Date().timeIntervalSince(reference) >= Self.stallTimeout else { return }
+        if stallAttempts >= Self.stallMaxAttempts {
+            failAfterStall("System audio tap kept stalling after \(Self.stallMaxAttempts) rebuilds")
+            return
+        }
+        attemptStallRebuild()
+    }
+
+    private func attemptStallRebuild() {
+        guard isRecording else { return }
+        stallAttempts += 1
+        let attempt = stallAttempts
+        do {
+            try rebuildTap(reason: "system audio tap stalled (no buffers for \(Int(Self.stallTimeout))s, attempt \(attempt)/\(Self.stallMaxAttempts))")
+        } catch {
+            RTILog.log("System audio tap stall rebuild \(attempt)/\(Self.stallMaxAttempts) failed: \(error.localizedDescription)", category: .audio)
+            teardownTapAndAudioDevice()
+            if attempt < Self.stallMaxAttempts {
+                stallRetryPending = true
+                let backoff = Double(1 << (attempt - 1))
+                processingQueue.asyncAfter(deadline: .now() + backoff) { [weak self] in
+                    guard let self else { return }
+                    self.stallRetryPending = false
+                    self.attemptStallRebuild()
+                }
+                return
+            }
+            failAfterStall("System audio tap stalled and could not be rebuilt: \(error.localizedDescription)")
+            return
+        }
+    }
+
+    private func failAfterStall(_ msg: String) {
+        stopStallWatchdog()
+        teardownTapAndAudioDevice()
+        isRecording = false
+        RTILog.log(msg, category: .audio)
+        onError?(msg)
     }
 
     // MARK: - Teardown
@@ -630,6 +707,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
     private func cleanupFailedStart() {
         isRecording = false
         removeDefaultOutputDeviceListener()
+        processingQueue.sync { stopStallWatchdog() }
         teardownTapAndAudioDevice()
     }
 

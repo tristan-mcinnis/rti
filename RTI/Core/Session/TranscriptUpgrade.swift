@@ -192,6 +192,7 @@ public enum TranscriptUpgradePipeline {
 
         var segments: [TranscriptUpgradeSegment] = []
         var sourceFiles: [String] = []
+        var emptyLegs: [TranscriptUpgradeAudioInput] = []
         for input in inputs {
             sourceFiles.append(input.url.lastPathComponent)
             progress("Transcribing \(input.url.lastPathComponent)")
@@ -204,13 +205,28 @@ public enum TranscriptUpgradePipeline {
             )
             segments.append(contentsOf: parsed)
             if parsed.isEmpty, inputs.count > 1 {
-                // One leg transcribed to nothing while another has speech: the
-                // result is one-sided. Make that visible rather than silent.
-                progress("Warning: \(input.url.lastPathComponent) produced no speech; the transcript may be one-sided")
+                emptyLegs.append(input)
             }
         }
         guard !segments.isEmpty else {
             throw TranscriptUpgradePipelineError.emptyTranscript(providerDisplayName)
+        }
+        // One leg transcribed to nothing while another has speech. If the live
+        // transcript heard that leg, keep its lines (ordered by time) rather
+        // than overwrite them with a one-sided upgrade. If the live transcript
+        // heard nothing there either (a silent leg), the one-sided result is
+        // correct; say so.
+        for leg in emptyLegs {
+            let live = TranscriptUpgradeMerge.liveSegments(
+                from: originalTranscript,
+                remote: leg.defaultSpeaker == "Remote speaker"
+            )
+            if live.isEmpty {
+                progress("Warning: \(leg.url.lastPathComponent) produced no speech; the transcript may be one-sided")
+            } else {
+                progress("Warning: \(leg.url.lastPathComponent) produced no speech; kept \(live.count) live line\(live.count == 1 ? "" : "s") from that side")
+                segments.append(contentsOf: live)
+            }
         }
         guard let startedAt else {
             throw TranscriptUpgradePipelineError.missingSessionDate
@@ -264,6 +280,28 @@ public enum TranscriptUpgradeMerge {
             }
         }
         return found.sorted { $0.startMs < $1.startMs }
+    }
+
+    /// Spoken lines of a live (or earlier upgraded) transcript for one audio
+    /// leg. System-leg lines are labelled `Remote speaker N`; every other
+    /// non-note label is the mic leg (`You`, `Room speaker N`, a renamed self).
+    public static func liveSegments(from markdown: String, remote: Bool) -> [TranscriptUpgradeSegment] {
+        var found: [TranscriptUpgradeSegment] = []
+        for rawLine in markdown.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("`"),
+                  let close = line[line.index(after: line.startIndex)...].firstIndex(of: "`"),
+                  let ms = milliseconds(from: String(line[line.index(after: line.startIndex)..<close])) else { continue }
+            let rest = line[line.index(after: close)...].trimmingCharacters(in: .whitespaces)
+            guard rest.hasPrefix("**"), let end = rest.range(of: ":**") else { continue }
+            let speaker = rest[rest.index(rest.startIndex, offsetBy: 2)..<end.lowerBound]
+                .trimmingCharacters(in: .whitespaces)
+            let text = rest[end.upperBound...].trimmingCharacters(in: .whitespaces)
+            guard !speaker.isEmpty, !text.isEmpty, !speaker.contains("Note") else { continue }
+            guard speaker.hasPrefix("Remote speaker") == remote else { continue }
+            found.append(TranscriptUpgradeSegment(speaker: speaker, startMs: ms, text: text))
+        }
+        return found
     }
 
     private static func sessionNoteBullet(fromLine line: String) -> TranscriptUpgradeNote? {

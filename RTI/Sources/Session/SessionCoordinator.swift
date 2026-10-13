@@ -534,6 +534,10 @@ final class SessionCoordinator {
             // projection carries every thread and turn id. A recording that
             // held several chats keeps all of them.
             await self?.prepareChatThreadProjection(sessionId: sessionId)
+            // Stop cancelled any analysis pass still running; give them a
+            // moment to wind down so none writes after the archive snapshot.
+            await AnalysisScheduler.shared.drainInFlight()
+            if Task.isCancelled { return }
             self?.completeStop(sessionId: sessionId, endedAt: endedAt)
         }
     }

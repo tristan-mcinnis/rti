@@ -10,6 +10,7 @@ struct OverlayPanelView: View {
     private let llm = LLMController.shared
     private let session = SessionCoordinator.shared
     private let shell = OverlayShellModel.shared
+    private let hotkeyNotice = HotkeyNoticeModel.shared
     var onOpenSettings: () -> Void = {}
     /// Render proofs only: draw this header state instead of the session's
     /// (the proofs cannot finish a real session to reach "Notes ready").
@@ -49,6 +50,16 @@ struct OverlayPanelView: View {
         VStack(spacing: 0) {
             OverlayShellHeader(status: status, modes: modes)
             tabsRow
+            if MuteBannerRule.shows(isRunning: session.isRunning, micMuted: session.micMuted) {
+                OverlayNoticeBanner(
+                    text: "Your mic is muted. Your side is not being recorded.",
+                    actionTitle: "Unmute",
+                    action: { session.micMuted = false }
+                )
+            }
+            if let message = hotkeyNotice.message {
+                OverlayNoticeBanner(text: message, onDismiss: { hotkeyNotice.dismiss() })
+            }
             Group {
                 switch tab {
                 case .assist:

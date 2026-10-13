@@ -58,9 +58,25 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
     private var peakRMSLevel: Float = 0
     private static let audibleRMSThreshold: Float = 0.0005
 
+    // Bounded restart after the SCStream dies or stalls.
+    static let maxRestartAttempts = 3
+    static let stallTimeout: TimeInterval = 6
+    static let stallCheckInterval: TimeInterval = 2
+    private let restartLock = NSLock()
+    private var restartInFlight = false
+    private var wantsRunning = false
+    private var stallTimer: DispatchSourceTimer?
+    private var streamStartedAt = Date()
+
     func start() async throws {
         guard !isRunning else { return }
         resetCaptureHealth()
+        try await startStream()
+        wantsRunning = true
+        startStallWatchdog()
+    }
+
+    private func startStream() async throws {
 
         let content: SCShareableContent
         do {
@@ -84,11 +100,14 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: .main)
         try await stream.startCapture()
         self.stream = stream
+        streamStartedAt = Date()
         isRunning = true
         RTILog.log("started — capturing system audio", category: .audio)
     }
 
     func stop() {
+        wantsRunning = false
+        stopStallWatchdog()
         guard isRunning, let stream = stream else { return }
         isRunning = false
         do {
@@ -141,7 +160,83 @@ final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, Syst
         let msg = error.localizedDescription
         RTILog.log("system audio: stream stopped with error: \(msg)", category: .systemAudio)
         RTILog.log("stream error — \(msg)", category: .audio)
-        onError?(msg)
+        restartStream(reason: msg)
+    }
+
+    // MARK: - Recovery
+
+    private func startStallWatchdog() {
+        stopStallWatchdog()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + Self.stallCheckInterval, repeating: Self.stallCheckInterval)
+        timer.setEventHandler { [weak self] in
+            guard let self, self.isRunning else { return }
+            let reference = max(self.captureHealth().lastBufferAt ?? .distantPast, self.streamStartedAt)
+            guard Date().timeIntervalSince(reference) >= Self.stallTimeout else { return }
+            self.restartStream(reason: "no buffers for \(Int(Self.stallTimeout))s")
+        }
+        stallTimer = timer
+        timer.resume()
+    }
+
+    private func stopStallWatchdog() {
+        stallTimer?.cancel()
+        stallTimer = nil
+    }
+
+    /// Tears down the dead stream and starts a fresh one, up to
+    /// `maxRestartAttempts` times with 1s/2s/4s backoff. `onError` fires only
+    /// when every attempt fails. A stop() during recovery cancels it.
+    private func restartStream(reason: String) {
+        restartLock.lock()
+        if restartInFlight { restartLock.unlock(); return }
+        restartInFlight = true
+        restartLock.unlock()
+
+        stopStallWatchdog()
+        isRunning = false
+        let old = stream
+        stream = nil
+        converter = nil
+        sourceFormat = nil
+        if let old {
+            try? old.removeStreamOutput(self, type: .audio)
+            old.stopCapture { _ in }
+        }
+        wantsRunning = true
+
+        Task { [weak self] in
+            guard let self else { return }
+            var lastError = reason
+            for attempt in 1...Self.maxRestartAttempts {
+                try? await Task.sleep(nanoseconds: UInt64(1 << (attempt - 1)) * 1_000_000_000)
+                guard self.wantsRunning else { break }
+                RTILog.log("system audio: restarting SCStream (\(attempt)/\(Self.maxRestartAttempts)) after: \(reason)", category: .systemAudio)
+                do {
+                    try await self.startStream()
+                    guard self.wantsRunning else {
+                        self.stop()
+                        break
+                    }
+                    self.startStallWatchdog()
+                    self.finishRestart()
+                    return
+                } catch {
+                    lastError = error.localizedDescription
+                    RTILog.log("system audio: SCStream restart \(attempt) failed: \(lastError)", category: .systemAudio)
+                }
+            }
+            self.finishRestart()
+            guard self.wantsRunning else { return }
+            self.wantsRunning = false
+            self.onError?("System audio stream lost and could not be restarted: \(lastError)")
+        }
+    }
+
+    private func finishRestart() {
+        restartLock.lock()
+        restartInFlight = false
+        restartLock.unlock()
     }
 
     // MARK: - Audio Processing

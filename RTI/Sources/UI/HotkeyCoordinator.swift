@@ -35,6 +35,7 @@ final class HotkeyCoordinator {
         }
         alwaysOn = hk
         if sessionHotkeysActive { armSessionHotkeys() }
+        HotkeyNoticeModel.shared.update(failedTitles: failedShortcutTitles)
     }
 
     /// Arm or release the session-scoped chords as recording starts/stops.
@@ -53,6 +54,7 @@ final class HotkeyCoordinator {
         let hk = sessionScoped ?? GlobalHotkey()
         sessionScoped = hk
         for cmd in sessionCommands { register(cmd, on: hk) }
+        HotkeyNoticeModel.shared.update(failedTitles: failedShortcutTitles)
     }
 
     private func register(_ cmd: RTICommand, on hk: GlobalHotkey) {

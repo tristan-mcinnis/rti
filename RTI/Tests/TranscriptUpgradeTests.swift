@@ -430,6 +430,64 @@ final class TranscriptUpgradeTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("transcript.upgraded.md").path))
     }
 
+    func testEmptyLegKeepsLiveLinesForThatLeg() async throws {
+        let dir = try makeTemporarySessionDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try """
+        # Transcript
+
+        `0:02` **You:** live mic words
+
+        `0:03` **Remote speaker 1:** live remote words
+
+        `0:09` **📝 Note:** a note
+        """.write(to: dir.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
+        try Data("mic".utf8).write(to: dir.appendingPathComponent("audio-mic.m4a"))
+        try Data("system".utf8).write(to: dir.appendingPathComponent("audio-system.m4a"))
+        try #"{"micAudioFile":"audio-mic.m4a","systemAudioFile":"audio-system.m4a"}"#
+            .write(to: dir.appendingPathComponent("session.json"), atomically: true, encoding: .utf8)
+        let progress = Box<[String]>([])
+        let result = try await TranscriptUpgradePipeline.upgrade(
+            sessionDir: dir, startedAt: Date(timeIntervalSince1970: 1_782_000_000),
+            providerID: "p", providerDisplayName: "P", frontmatter: [],
+            progress: { progress.value.append($0) },
+            transcribe: { url, _ in url.lastPathComponent == "audio-mic.m4a" ? "[00:01] Speaker 1: upgraded mic" : "" },
+            writeSummary: { _ in nil }, runRouter: {}
+        )
+        XCTAssertEqual(result.segmentCount, 2)
+        let transcript = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
+        XCTAssertTrue(transcript.contains("upgraded mic"))
+        XCTAssertTrue(transcript.contains("**Remote speaker 1:** live remote words"))
+        XCTAssertFalse(transcript.contains("live mic words"))
+        XCTAssertTrue(progress.value.contains { $0.contains("kept 1 live line") })
+    }
+
+    func testEmptyLegWithNoLiveLinesInstallsOneSidedUpgrade() async throws {
+        let dir = try makeTemporarySessionDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try """
+        # Transcript
+
+        `0:03` **Remote speaker 1:** live remote words
+        """.write(to: dir.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
+        try Data("mic".utf8).write(to: dir.appendingPathComponent("audio-mic.m4a"))
+        try Data("system".utf8).write(to: dir.appendingPathComponent("audio-system.m4a"))
+        try #"{"micAudioFile":"audio-mic.m4a","systemAudioFile":"audio-system.m4a"}"#
+            .write(to: dir.appendingPathComponent("session.json"), atomically: true, encoding: .utf8)
+        let progress = Box<[String]>([])
+        let result = try await TranscriptUpgradePipeline.upgrade(
+            sessionDir: dir, startedAt: Date(timeIntervalSince1970: 1_782_000_000),
+            providerID: "p", providerDisplayName: "P", frontmatter: [],
+            progress: { progress.value.append($0) },
+            transcribe: { url, _ in url.lastPathComponent == "audio-system.m4a" ? "[00:03] Remote speaker 1: upgraded remote" : "" },
+            writeSummary: { _ in nil }, runRouter: {}
+        )
+        XCTAssertEqual(result.segmentCount, 1)
+        XCTAssertTrue(progress.value.contains { $0.contains("one-sided") })
+        let transcript = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
+        XCTAssertTrue(transcript.contains("upgraded remote"))
+    }
+
     private func makeTemporarySessionDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("rti-upgrade-test-\(UUID().uuidString)", isDirectory: true)

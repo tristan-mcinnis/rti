@@ -60,6 +60,7 @@ final class AnalysisScheduler {
 
     func stop() {
         runGeneration += 1
+        for task in inFlight.values { task.cancel() }
         timer?.invalidate()
         timer = nil
     }
@@ -70,15 +71,29 @@ final class AnalysisScheduler {
     /// its end-ms into the new session's watermark.
     private var runGeneration = 0
 
+    private var inFlight: [UUID: Task<Void, Never>] = [:]
+
+    /// Wait (without blocking the main thread) for cancelled passes to wind
+    /// down, up to `timeout`, so the archive snapshot is not racing a write.
+    func drainInFlight(timeout: TimeInterval = 2) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !inFlight.isEmpty, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
     private func fire() {
         for (id, task) in tasks {
             let enabled = UserDefaults.standard.object(forKey: task.enabledKey) as? Bool ?? false
             guard enabled else { continue }
             let sinceMs = watermarks[id] == 0 ? nil : watermarks[id]
             let tickGeneration = runGeneration
-            Task { @MainActor [weak self] in
+            let key = UUID()
+            inFlight[key] = Task { @MainActor [weak self] in
                 guard let self else { return }
-                if let newEndMs = await task.execute(sinceMs), tickGeneration == self.runGeneration {
+                defer { self.inFlight.removeValue(forKey: key) }
+                if let newEndMs = await task.execute(sinceMs),
+                   !Task.isCancelled, tickGeneration == self.runGeneration {
                     self.watermarks[id] = newEndMs
                 }
             }
