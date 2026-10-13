@@ -11,7 +11,9 @@ final class GlobalHotkey {
         installEventHandler()
     }
 
-    func register(keyCode: UInt32, modifiers: UInt32, onFire: @escaping @MainActor () -> Void) {
+    /// Returns false when the system refused the chord (e.g. already taken).
+    @discardableResult
+    func register(keyCode: UInt32, modifiers: UInt32, onFire: @escaping @MainActor () -> Void) -> Bool {
         let id = nextID
         nextID += 1
 
@@ -20,10 +22,11 @@ final class GlobalHotkey {
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetEventDispatcherTarget(), 0, &ref)
         guard status == noErr, let ref = ref else {
             RTILog.log("RegisterEventHotKey failed for id=\(id), status=\(status)", category: .hotkey)
-            return
+            return false
         }
         refs[id] = ref
         handlers[id] = onFire
+        return true
     }
 
     private func installEventHandler() {

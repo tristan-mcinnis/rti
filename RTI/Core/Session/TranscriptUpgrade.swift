@@ -203,6 +203,11 @@ public enum TranscriptUpgradePipeline {
                 offsetMs: input.offsetMs
             )
             segments.append(contentsOf: parsed)
+            if parsed.isEmpty, inputs.count > 1 {
+                // One leg transcribed to nothing while another has speech: the
+                // result is one-sided. Make that visible rather than silent.
+                progress("Warning: \(input.url.lastPathComponent) produced no speech; the transcript may be one-sided")
+            }
         }
         guard !segments.isEmpty else {
             throw TranscriptUpgradePipelineError.emptyTranscript(providerDisplayName)

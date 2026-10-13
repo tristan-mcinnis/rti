@@ -25,7 +25,11 @@ final class AudioCaptureManager: @unchecked Sendable {
 
     var onPCMBuffer: ((AVAudioPCMBuffer) -> Void)?
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
+    private var configObserver: NSObjectProtocol?
+    /// Fired (on main) after the engine was rebound following a configuration
+    /// change or a restart request; the pipeline resets its watchdogs.
+    var onRestarted: (() -> Void)?
     private var converter: AVAudioConverter?
     private var isRunning = false
 
@@ -57,6 +61,40 @@ final class AudioCaptureManager: @unchecked Sendable {
         return Date().timeIntervalSinceReferenceDate - t
     }
 
+    /// Start of the current run of exact-zero input (pre-mute), or 0 when the
+    /// last buffer carried signal. A tap can keep delivering buffers that are
+    /// all zeros (another app's voice-processing unit owning the built-in mic),
+    /// which the liveness check alone cannot see.
+    private var zeroSince: TimeInterval = 0
+
+    /// Seconds the mic has delivered nothing but exact-zero samples, or nil
+    /// when it is currently carrying signal / has not started.
+    func secondsAllZero() -> TimeInterval? {
+        bufferLock.lock(); defer { bufferLock.unlock() }
+        guard zeroSince > 0 else { return nil }
+        return Date().timeIntervalSinceReferenceDate - zeroSince
+    }
+
+    private func recordZeroState(_ buffer: AVAudioPCMBuffer) {
+        var silent = true
+        if let data = buffer.int16ChannelData {
+            let p = data[0]
+            for i in 0..<Int(buffer.frameLength) where p[i] != 0 { silent = false; break }
+        }
+        bufferLock.lock()
+        if !silent { zeroSince = 0 }
+        else if zeroSince == 0 { zeroSince = Date().timeIntervalSinceReferenceDate }
+        bufferLock.unlock()
+    }
+
+    /// Tear down and rebuild the engine on a fresh AVAudioEngine, rebinding to
+    /// the current input device. Throws if the new engine cannot start.
+    func restart() throws {
+        stop()
+        engine = AVAudioEngine()
+        try start()
+    }
+
     private func markBufferReceived() {
         bufferLock.lock()
         lastBufferAt = Date().timeIntervalSinceReferenceDate
@@ -71,7 +109,7 @@ final class AudioCaptureManager: @unchecked Sendable {
 
     func start() throws {
         guard !isRunning else { return }
-        bufferLock.lock(); lastBufferAt = 0; bufferLock.unlock()
+        bufferLock.lock(); lastBufferAt = 0; zeroSince = 0; bufferLock.unlock()
 
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
         guard status == .authorized else {
@@ -151,13 +189,33 @@ final class AudioCaptureManager: @unchecked Sendable {
         do {
             try engine.start()
             isRunning = true
+            observeConfigurationChanges()
         } catch {
             input.removeTap(onBus: 0)
             throw AudioCaptureError.engineStartFailed(error)
         }
     }
 
+    /// A default-input switch (AirPods, Continuity mic) or another app
+    /// reconfiguring the device stops the engine and silences the tap.
+    private func observeConfigurationChanges() {
+        if let o = configObserver { NotificationCenter.default.removeObserver(o) }
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            guard let self, isRunning else { return }
+            RTILog.log("audio engine configuration changed — rebinding mic", category: .audio)
+            do {
+                try restart()
+                onRestarted?()
+            } catch {
+                RTILog.log("mic rebind after configuration change failed: \(error)", category: .audio)
+            }
+        }
+    }
+
     func stop() {
+        if let o = configObserver { NotificationCenter.default.removeObserver(o); configObserver = nil }
         guard isRunning else { return }
         let input = engine.inputNode
         input.removeTap(onBus: 0)
@@ -217,6 +275,7 @@ final class AudioCaptureManager: @unchecked Sendable {
             return
         }
 
+        recordZeroState(output)
         if muted, let channelData = output.int16ChannelData {
             let byteCount = Int(output.frameLength) * MemoryLayout<Int16>.size
             memset(channelData[0], 0, byteCount)

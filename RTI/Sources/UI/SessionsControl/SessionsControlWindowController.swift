@@ -23,6 +23,7 @@ final class SessionsControlWindowController {
             defer: false
         )
         w.title = "RTI Preferences"
+        w.applyRTISharingPolicy()
         w.titlebarAppearsTransparent = true
         w.setFrameAutosaveName("rti.sessionscontrol")
         w.isReleasedWhenClosed = false

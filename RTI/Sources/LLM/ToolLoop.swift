@@ -144,7 +144,9 @@ struct ToolLoop {
         // A tool-call-only assistant message has no text. Never surface a
         // blank reply after visible tool activity when the iteration cap hits.
         let fallback = "I reached RTI's tool limit before a final answer. Please try a narrower question."
-        onEvent(.done(latestAssistantText.isEmpty ? fallback : latestAssistantText))
+        // Always the limit message: an earlier round's preamble ("Searching...")
+        // is not an answer and would be shown as one.
+        onEvent(.done(fallback))
     }
 }
 

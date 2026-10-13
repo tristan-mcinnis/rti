@@ -58,10 +58,10 @@ final class VoiceProfilesStore {
         Task { [weak self] in
             let result = await Self.run(arguments: arguments)
             guard let self else { return }
+            self.reload()
             if case .failure(let message) = result {
                 self.lastError = message
             }
-            self.reload()
         }
     }
 

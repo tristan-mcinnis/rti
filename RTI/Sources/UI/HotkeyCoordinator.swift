@@ -15,12 +15,16 @@ final class HotkeyCoordinator {
     private var sessionScoped: GlobalHotkey?
     private var sessionCommands: [RTICommand] = []
     private var sessionHotkeysActive = false
+    /// Titles of commands whose chord the system refused, so a menu or
+    /// Settings view can say the shortcut is unavailable.
+    private(set) var failedShortcutTitles: [String] = []
 
     /// Register always-on hotkeys now; remember session-scoped ones for
     /// `setSessionActive(true)`. Commands without `hotkeyKeyCode` are skipped.
     func registerAll(commands: [RTICommand]) {
         let hk = GlobalHotkey()
         sessionCommands = []
+        failedShortcutTitles = []
         for cmd in commands {
             guard cmd.hotkeyKeyCode != nil, cmd.hotkeyModifiers != nil else { continue }
             if cmd.hotkeySessionScoped {
@@ -54,8 +58,12 @@ final class HotkeyCoordinator {
     private func register(_ cmd: RTICommand, on hk: GlobalHotkey) {
         guard let keyCode = cmd.hotkeyKeyCode,
               let modifiers = cmd.hotkeyModifiers else { return }
-        hk.register(keyCode: keyCode, modifiers: modifiers) { [cmd] in
+        let ok = hk.register(keyCode: keyCode, modifiers: modifiers) { [cmd] in
             cmd.perform()
+        }
+        if !ok, !failedShortcutTitles.contains(cmd.title) {
+            failedShortcutTitles.append(cmd.title)
+            RTILog.log("shortcut unavailable for \(cmd.title) (chord already in use)", category: .hotkey)
         }
     }
 }

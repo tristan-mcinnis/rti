@@ -45,10 +45,14 @@ final class AutoAssistController {
     // Prompt default lives in the registry (`PromptID.autoAssistCards`),
     // resolved through `PromptStore` so it's editable in Settings.
 
+    /// Bumped on reset/clear so a pass still awaiting the LLM from an older
+    /// session cannot write into the new one.
+    private var generation = 0
     private init() {}
 
     /// Bind to a session and drop any prior cards.
     func reset(for sessionId: String) {
+        generation += 1
         self.sessionId = sessionId
         lastError = nil
         isGenerating = false
@@ -61,6 +65,7 @@ final class AutoAssistController {
     }
 
     func clear() {
+        generation += 1
         sessionId = nil
         cards = []
         lastError = nil
@@ -122,6 +127,7 @@ final class AutoAssistController {
         // proactive trigger rate-limits against every kind of pass.
         lastPassAt = Date()
 
+        let passGeneration = generation
         let windowStartMs = lastMs
         let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
         let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
@@ -165,6 +171,7 @@ final class AutoAssistController {
         guard let response = await request.collectAsync(
             messages: [LLMMessage(role: "user", content: prompt)], smart: false
         ), !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard passGeneration == generation else { return nil }
 
         let items = JSONExtractor.decodeArrayLenient(response, key: "cards", as: CardItem.self)
         let existing = Set(cards.map { Self.norm($0.text) })

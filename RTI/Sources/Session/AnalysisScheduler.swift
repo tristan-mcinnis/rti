@@ -46,6 +46,7 @@ final class AnalysisScheduler {
     /// without restarting the timer.
     func start(intervalKey: String, defaultInterval: TimeInterval) {
         timer?.invalidate()
+        runGeneration += 1
         for key in watermarks.keys { watermarks[key] = 0 }
 
         let interval = UserDefaults.standard.double(forKey: intervalKey)
@@ -58,20 +59,26 @@ final class AnalysisScheduler {
     }
 
     func stop() {
+        runGeneration += 1
         timer?.invalidate()
         timer = nil
     }
 
     var isRunning: Bool { timer != nil }
 
+    /// Bumped on start/stop so a tick finishing after a restart cannot write
+    /// its end-ms into the new session's watermark.
+    private var runGeneration = 0
+
     private func fire() {
         for (id, task) in tasks {
             let enabled = UserDefaults.standard.object(forKey: task.enabledKey) as? Bool ?? false
             guard enabled else { continue }
             let sinceMs = watermarks[id] == 0 ? nil : watermarks[id]
+            let tickGeneration = runGeneration
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                if let newEndMs = await task.execute(sinceMs) {
+                if let newEndMs = await task.execute(sinceMs), tickGeneration == self.runGeneration {
                     self.watermarks[id] = newEndMs
                 }
             }

@@ -41,6 +41,9 @@ struct TranscriptTabView: View {
                     NSPasteboard.copyString(transcriptText())
                 }
             }
+            if let notice = session.micAudioNotice {
+                Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
+            }
             if let notice = session.systemAudioNotice {
                 Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
             }

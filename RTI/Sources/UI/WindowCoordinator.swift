@@ -29,6 +29,9 @@ final class WindowCoordinator {
 
     func setSharingInvisible(_ invisible: Bool) {
         overlayController?.setSharingInvisible(invisible)
+        for window in NSApp.windows where window.styleMask.contains(.titled) {
+            window.sharingType = invisible ? .none : .readOnly
+        }
     }
 
     /// Toggle the persisted invisibility flag and apply it to every panel.
@@ -95,5 +98,15 @@ final class WindowCoordinator {
         ]
         RTIActivation.activateApp()
         NSApp.orderFrontStandardAboutPanel(options: options)
+    }
+}
+
+extension NSWindow {
+    /// Apply the persisted invisibility setting (default on) to a window at
+    /// creation, so Settings, Preferences, Brief and Onboarding are excluded
+    /// from screen capture like the overlay.
+    func applyRTISharingPolicy() {
+        let invisible = UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
+        sharingType = invisible ? .none : .readOnly
     }
 }

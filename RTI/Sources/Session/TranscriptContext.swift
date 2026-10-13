@@ -13,14 +13,14 @@ import RTICore
 /// session — but kept on the signatures so analysis call sites read clearly.
 @MainActor
 enum TranscriptContext {
-    /// Live entries, optionally windowed to those at or after `sinceMs`.
+    /// Live entries, optionally windowed to those after `sinceMs`.
     /// Translation tokens are excluded — analysis (notes, guide) reads the
     /// original spoken transcript, not the live-translated duplicate, which
     /// would otherwise double the prompt and confuse the model.
     private static func entries(sinceMs: Int?) -> [LiveEntry] {
         let all = SessionCoordinator.shared.liveEntries.filter { $0.translationStatus != "translation" }
         guard let sinceMs else { return all }
-        return all.filter { $0.startMs >= sinceMs }
+        return all.filter { $0.startMs > sinceMs }
     }
 
     /// Build the transcript context for the live session. Lines joined by
@@ -30,7 +30,7 @@ enum TranscriptContext {
     static func text(forSessionId _: String, sinceMs: Int? = nil) -> String {
         let all = entries(sinceMs: nil)
         let window: [LiveEntry] = if let sinceMs {
-            all.filter { $0.startMs >= sinceMs }
+            all.filter { $0.startMs > sinceMs }
         } else {
             all
         }
@@ -42,7 +42,7 @@ enum TranscriptContext {
     /// guide matcher so the LLM can echo timestamps into its quote payloads.
     /// User notes are left without timestamps (they were typed, not spoken).
     ///
-    /// Only entries at or after `sinceMs` are emitted.
+    /// Only entries after `sinceMs` are emitted.
     static func textWithTimestamps(forSessionId _: String, sinceMs: Int? = nil) -> String {
         let all = entries(sinceMs: nil)
         let window = entries(sinceMs: sinceMs)

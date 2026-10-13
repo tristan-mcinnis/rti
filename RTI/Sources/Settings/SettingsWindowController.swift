@@ -40,6 +40,7 @@ final class SettingsWindowController {
             defer: false
         )
         window.title = "RTI Settings"
+        window.applyRTISharingPolicy()
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.contentMinSize = Self.standardSize

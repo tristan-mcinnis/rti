@@ -29,6 +29,15 @@ final class ModeStore {
         persistsToDisk = true
         defaults = .standard
         let loaded = Self.fileURL.flatMap { ModeStorage.load(from: $0) } ?? ModeStorage.builtinSeeds()
+        // A file that exists but did not decode is about to be overwritten by
+        // the seeds below; keep a copy so the user's modes are recoverable.
+        if let url = Self.fileURL,
+           FileManager.default.fileExists(atPath: url.path),
+           ModeStorage.load(from: url) == nil {
+            let backup = url.appendingPathExtension("bak-\(Int(Date().timeIntervalSince1970))")
+            try? FileManager.default.copyItem(at: url, to: backup)
+            RTILog.log("modes.json could not be decoded; copied to \(backup.lastPathComponent)", category: .modes)
+        }
         // Refresh built-in prompts in place each launch so prompt edits ship
         // without a migration; user-added modes are untouched.
         modes = ModeStorage.upgradingBuiltins(in: loaded)

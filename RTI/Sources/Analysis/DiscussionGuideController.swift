@@ -212,11 +212,12 @@ final class DiscussionGuideController {
             RTILog.log("guide: NONE matched known ids — returned ids e.g. [\(sample)]", category: .guide)
         }
 
-        guard !returned.isEmpty else { return nil }
-
-        guide.apply(matches: returned)
-        if self.sessionId == sessionId {
-            self.guide = guide
+        // Fold matches into the guide as it is NOW: it may have been removed
+        // or replaced while the LLM call was in flight. The watermark still
+        // advances on an empty result so the same window is not re-sent.
+        if !returned.isEmpty, self.sessionId == sessionId, var current = self.guide, current.id == guide.id {
+            current.apply(matches: returned)
+            self.guide = current
         }
         return result.endMs
     }

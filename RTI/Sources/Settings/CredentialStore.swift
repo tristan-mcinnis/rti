@@ -54,10 +54,18 @@ enum CredentialStore {
 
     private static func loadLocked() -> [String: String] {
         if let cached { return cached }
-        guard let url = fileURL,
-              FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url),
+        guard let url = fileURL, FileManager.default.fileExists(atPath: url.path) else {
+            cached = [:]
+            return [:]
+        }
+        guard let data = try? Data(contentsOf: url),
               let dict = try? JSONDecoder().decode([String: String].self, from: data) else {
+            // Present but unreadable: keep a copy before the next write
+            // replaces it, so stored keys are not silently lost.
+            let backup = url.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
+            try? FileManager.default.copyItem(at: url, to: backup)
+            try? FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: backup.path)
+            RTILog.log("credentials.json could not be read; copied to \(backup.lastPathComponent)", category: .credentials)
             cached = [:]
             return [:]
         }
@@ -66,8 +74,7 @@ enum CredentialStore {
     }
 
     private static func saveLocked(_ dict: [String: String]) {
-        cached = dict
-        guard let url = fileURL else { return }
+        guard let url = fileURL else { cached = dict; return }
         do {
             let data = try JSONEncoder().encode(dict)
             // Avoid the umask race in `Data.write(.atomic)` by creating
@@ -83,7 +90,11 @@ enum CredentialStore {
                 [.posixPermissions: NSNumber(value: Int16(0o700))],
                 ofItemAtPath: parent.path
             )
+            cached = dict
         } catch {
+            // Do not let the cache claim a key the disk never received;
+            // the next read reloads from disk so the Settings check sees it.
+            cached = nil
             RTILog.log("CredentialStore save failed: \(error)", category: .credentials)
         }
     }

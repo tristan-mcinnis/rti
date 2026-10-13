@@ -194,8 +194,12 @@ enum VaultLogStore {
 
     /// Append one completed turn. Best-effort, off the main thread; silently
     /// no-ops if the vault can't be located.
+    /// One serial queue: concurrent appends could both seek to the same end
+    /// offset and overwrite each other's row.
+    private static let writeQueue = DispatchQueue(label: "rti.vaultlog.write", qos: .utility)
+
     static func append(_ record: TurnRecord) {
-        DispatchQueue.global(qos: .utility).async {
+        writeQueue.async {
             guard let rtiDir = rtiDirectory() else { return }
             let turnsDir = rtiDir.appendingPathComponent("turns", isDirectory: true)
             try? FileManager.default.createDirectory(at: turnsDir, withIntermediateDirectories: true)
@@ -232,13 +236,21 @@ enum VaultLogStore {
 
     private static func appendLine(_ line: String, to file: URL) {
         let data = Data((line + "\n").utf8)
-        if let handle = try? FileHandle(forWritingTo: file) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
-        } else {
-            try? data.write(to: file)
+        if !FileManager.default.fileExists(atPath: file.path) {
+            guard (try? data.write(to: file)) != nil else {
+                RTILog.log("turn log: could not create \(file.lastPathComponent)", category: .vault)
+                return
+            }
+            return
         }
+        // Never overwrite an existing day file if the open fails; drop the row.
+        guard let handle = try? FileHandle(forWritingTo: file) else {
+            RTILog.log("turn log: could not open \(file.lastPathComponent) for append — row dropped", category: .vault)
+            return
+        }
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
     }
 
     /// Human-readable chat log for the overlay as a quick vault-RAG surface.

@@ -23,6 +23,9 @@ final class LLMRequest: @unchecked Sendable {
     private let client: LLMClient
     private let toolStream: ToolStream?
     nonisolated(unsafe) private var currentTask: Task<Void, Never>?
+    /// Bumped per single-flight request so a finished older request cannot
+    /// clear the slot a newer one installed.
+    nonisolated(unsafe) private var flightGeneration = 0
 
     init(client: LLMClient = .shared, toolStream: ToolStream? = nil) {
         self.client = client
@@ -45,8 +48,10 @@ final class LLMRequest: @unchecked Sendable {
         _ work: @Sendable @escaping (LLMClient) async throws -> T
     ) async -> T? {
         currentTask?.cancel()
+        flightGeneration += 1
+        let generation = flightGeneration
         let task = Task { [weak self] () -> T? in
-            defer { self?.currentTask = nil }
+            defer { if let self, self.flightGeneration == generation { self.currentTask = nil } }
             guard let client = self?.client else { return nil }
             do {
                 let r = try await work(client)
@@ -64,8 +69,10 @@ final class LLMRequest: @unchecked Sendable {
                 return nil
             }
         }
-        currentTask = Task { _ = await task.value }
-        return await task.value
+        // Awaiting `task.value` does not forward cancellation, so cancel the
+        // inner network task explicitly from both the wrapper and the caller.
+        currentTask = Task { await withTaskCancellationHandler { _ = await task.value } onCancel: { task.cancel() } }
+        return await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
     }
 
     // MARK: - Async execution (one-shot collect, tool-aware streaming)

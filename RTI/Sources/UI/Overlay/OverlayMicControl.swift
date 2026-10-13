@@ -100,6 +100,9 @@ struct OverlayMicControl: View {
                 ForEach(captureApps) { app in
                     captureAppButton(name: app.name, bundleID: app.bundleID)
                 }
+                if !captureAppBundleID.isEmpty, !captureApps.contains(where: { $0.bundleID == captureAppBundleID }) {
+                    captureAppButton(name: "\(captureAppBundleID) (not producing audio)", bundleID: captureAppBundleID)
+                }
                 if !captureAppBundleID.isEmpty {
                     Text("Falls back to all apps if it isn't running")
                 }

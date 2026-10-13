@@ -31,16 +31,12 @@ final class GlossaryStore {
         for raw in rawText.split(whereSeparator: { $0.isNewline }) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty || line.hasPrefix("#") { continue }
-            let separator: Character? = {
-                if line.contains("—") { return "—" }
-                if line.contains(":") { return ":" }
-                if line.contains("-") { return "-" }
-                return nil
-            }()
-            guard let sep = separator,
-                  let range = line.firstIndex(of: sep) else { continue }
-            let term = line[..<range].trimmingCharacters(in: .whitespaces)
-            let meaning = line[line.index(after: range)...].trimmingCharacters(in: .whitespaces)
+            // Prefer a spaced separator so a hyphen inside the term survives.
+            // Earliest spaced separator wins; bare em dash / colon are the fallback.
+            let spaced = [" — ", " - ", ": "].compactMap { line.range(of: $0) }.min { $0.lowerBound < $1.lowerBound }
+            guard let sepRange = spaced ?? ["—", ":"].compactMap({ line.range(of: $0) }).min(by: { $0.lowerBound < $1.lowerBound }) else { continue }
+            let term = line[..<sepRange.lowerBound].trimmingCharacters(in: .whitespaces)
+            let meaning = line[sepRange.upperBound...].trimmingCharacters(in: .whitespaces)
             if !term.isEmpty && !meaning.isEmpty {
                 out.append((term, meaning))
             }

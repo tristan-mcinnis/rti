@@ -29,6 +29,7 @@ final class OnboardingWindowController {
             defer: false
         )
         w.title = "Welcome to RTI"
+        w.applyRTISharingPolicy()
         w.titleVisibility = .hidden
         w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false

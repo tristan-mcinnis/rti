@@ -457,8 +457,11 @@ final class ScreenshotManager {
             let isPrimary = frame.contains(NSEvent.mouseLocation)
             let filter = SCContentFilter(display: display, excludingWindows: excludedWindows)
             let config = SCStreamConfiguration()
-            config.width = Int(display.width)
-            config.height = Int(display.height)
+            // Points -> pixels, as in the window path: a bare point size
+            // captures a 2x display at half resolution.
+            let pixelScale = CGFloat(filter.pointPixelScale)
+            config.width = max(1, Int((CGFloat(display.width) * pixelScale).rounded()))
+            config.height = max(1, Int((CGFloat(display.height) * pixelScale).rounded()))
             config.pixelFormat = kCVPixelFormatType_32BGRA
             config.showsCursor = false
             config.capturesAudio = false

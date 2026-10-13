@@ -96,6 +96,16 @@ final class AudioPipeline {
     /// Seconds without a mic buffer before we call it dead. Generous so a brief
     /// hiccup or device reroute doesn't false-alarm.
     private let micOutageThreshold: TimeInterval = 8
+    /// Mic delivering buffers of exact zeros (not just quiet) this long is a
+    /// dead leg, not a silent room: rebuild the engine, up to a few times.
+    private let micZeroThreshold: TimeInterval = 10
+    private let micZeroRestartBackoff: TimeInterval = 15
+    private let micZeroMaxRestarts = 3
+    private var micZeroRestarts = 0
+    private var lastMicZeroRestartAt: Date?
+    private var micZeroNoticeShown = false
+    /// Non-fatal mic notice: a message while the mic leg is dead, nil when cleared.
+    var onMicNotice: ((String?) -> Void)?
     /// Watches the system-audio backend itself, not just the Soniox socket.
     /// CoreAudio taps can keep "running" while a browser/helper PID changes
     /// underneath them; the watchdog asks the backend to reattach when buffers
@@ -401,6 +411,12 @@ final class AudioPipeline {
 
     private func startMicWatchdog() {
         micOutageReported = false
+        micZeroRestarts = 0
+        lastMicZeroRestartAt = nil
+        micZeroNoticeShown = false
+        audio.onRestarted = { [weak self] in
+            self?.lastMicZeroRestartAt = Date()
+        }
         micWatchdog?.cancel()
         micWatchdog = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -446,6 +462,32 @@ final class AudioPipeline {
             )
         } else {
             micOutageReported = false
+            checkMicSilence()
+        }
+    }
+
+    /// Exact-zero mic audio (liveness is fine, content is dead): log, rebuild
+    /// the engine with backoff, and surface a non-fatal notice if that fails.
+    private func checkMicSilence() {
+        guard !suspended, !audio.micMuted, let zero = audio.secondsAllZero(), zero >= micZeroThreshold else {
+            if micZeroNoticeShown {
+                micZeroNoticeShown = false
+                onMicNotice?(nil)
+            }
+            return
+        }
+        if let last = lastMicZeroRestartAt, Date().timeIntervalSince(last) < micZeroRestartBackoff { return }
+        if micZeroRestarts < micZeroMaxRestarts {
+            micZeroRestarts += 1
+            lastMicZeroRestartAt = Date()
+            RTILog.log("mic leg all-zero for \(Int(zero))s, restarting (attempt \(micZeroRestarts)/\(micZeroMaxRestarts))", category: .audio)
+            do { try audio.restart() } catch {
+                RTILog.log("mic restart failed: \(error)", category: .audio)
+            }
+        } else if !micZeroNoticeShown {
+            micZeroNoticeShown = true
+            RTILog.log("mic leg still all-zero after \(micZeroMaxRestarts) restarts", category: .audio)
+            onMicNotice?("Your microphone is recording silence. Another app may hold it. Pause and resume, or check the input device.")
         }
     }
 

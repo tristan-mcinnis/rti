@@ -29,10 +29,14 @@ final class FindingsController {
     // Prompt default lives in the registry (`PromptID.findingsLedger`), resolved
     // through `PromptStore` so it's editable in Settings.
 
+    /// Bumped on reset/clear so a pass still awaiting the LLM from an older
+    /// session cannot write into the new one.
+    private var generation = 0
     private init() {}
 
     /// Bind to a session and drop any prior findings.
     func reset(for sessionId: String) {
+        generation += 1
         self.sessionId = sessionId
         lastError = nil
         isGenerating = false
@@ -42,6 +46,7 @@ final class FindingsController {
     }
 
     func clear() {
+        generation += 1
         sessionId = nil
         findings = []
         lastError = nil
@@ -68,6 +73,7 @@ final class FindingsController {
         defer { isGenerating = false }
         lastError = nil
 
+        let passGeneration = generation
         let windowStartMs = lastFindingMs
         let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
 
@@ -91,6 +97,7 @@ final class FindingsController {
                 promptHead + "\n\nTranscript window (with [mm:ss] timestamps):\n" + transcript
             }
         ) else { return nil }
+        guard passGeneration == generation else { return nil }
 
         // Advance the watermark even on an empty batch so we never re-cover.
         lastFindingMs = result.endMs

@@ -40,6 +40,7 @@ final class MeetingBriefWindowController {
         )
         window.model = model
         window.title = "Meeting Brief"
+        window.applyRTISharingPolicy()
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         // An empty unified toolbar makes the title-bar row as tall as the

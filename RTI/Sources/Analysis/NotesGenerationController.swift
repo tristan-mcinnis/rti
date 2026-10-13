@@ -27,10 +27,14 @@ final class NotesGenerationController {
     // through `PromptStore` so it's editable in Settings. The "Transcript slice:"
     // tail is part of the default text.
 
+    /// Bumped on reset/clear so a pass still awaiting the LLM from an older
+    /// session cannot write into the new one.
+    private var generation = 0
     private init() {}
 
     /// Bind to a session and drop any prior notes.
     func reset(for sessionId: String) {
+        generation += 1
         self.sessionId = sessionId
         lastError = nil
         isGenerating = false
@@ -40,6 +44,7 @@ final class NotesGenerationController {
     }
 
     func clear() {
+        generation += 1
         sessionId = nil
         notes = []
         lastError = nil
@@ -58,6 +63,7 @@ final class NotesGenerationController {
         defer { isGenerating = false }
         lastError = nil
 
+        let passGeneration = generation
         let windowStartMs = lastNotedMs
         let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
 
@@ -89,6 +95,7 @@ final class NotesGenerationController {
             return nil
         }
 
+        guard passGeneration == generation else { return nil }
         // Advance the watermark even if this block was empty, so we never
         // re-cover the same stretch.
         lastNotedMs = result.endMs

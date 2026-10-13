@@ -229,14 +229,26 @@ final class LLMClient: @unchecked Sendable {
             throw LLMError.httpError(http.statusCode, errText)
         }
 
+        // `timeoutSeconds` is an IDLE budget (no line received for that long),
+        // so a healthy long answer keeps streaming; a hard ceiling still bounds it.
+        let activity = StreamActivity()
+        let ceiling = max(timeoutSeconds * 5, 600)
+        let started = Date()
         return try await withThrowingTaskGroup(of: StreamResult.self) { group in
             group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
-                throw LLMError.streamError("Stream timed out after \(Int(timeoutSeconds))s")
+                while true {
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                    if activity.secondsSinceLast() > timeoutSeconds {
+                        throw LLMError.streamError("Stream timed out after \(Int(timeoutSeconds))s")
+                    }
+                    if Date().timeIntervalSince(started) > ceiling {
+                        throw LLMError.streamError("Stream exceeded \(Int(ceiling))s")
+                    }
+                }
             }
             group.addTask { [weak self] in
                 guard let self else { return StreamResult(toolCalls: [], finishReason: nil, reasoningCharacters: 0) }
-                return try await self.processStreamBytes(bytes, onContent: onContent, onReasoning: onReasoning)
+                return try await self.processStreamBytes(bytes, activity: activity, onContent: onContent, onReasoning: onReasoning)
             }
             let result = try await group.next()!
             group.cancelAll()
@@ -252,6 +264,7 @@ final class LLMClient: @unchecked Sendable {
     /// `StreamResult` when the stream ends.
     private func processStreamBytes(
         _ bytes: URLSession.AsyncBytes,
+        activity: StreamActivity,
         onContent: @Sendable (String) -> Void,
         onReasoning: (@Sendable (String) -> Void)?
     ) async throws -> StreamResult {
@@ -261,6 +274,7 @@ final class LLMClient: @unchecked Sendable {
         var reasoningCharacters = 0
         lines: for try await rawLine in bytes.lines {
             try Task.checkCancellation()
+            activity.touch()
             for event in parser.consume(line: rawLine) {
                 switch event {
                 case .content(let content):
@@ -387,4 +401,13 @@ final class LLMClient: @unchecked Sendable {
         }
         return String(data: data, encoding: .utf8) ?? "<binary>"
     }
+}
+
+
+/// Last-received-line clock for the SSE idle timeout.
+private final class StreamActivity: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last = Date()
+    func touch() { lock.lock(); last = Date(); lock.unlock() }
+    func secondsSinceLast() -> TimeInterval { lock.lock(); defer { lock.unlock() }; return Date().timeIntervalSince(last) }
 }

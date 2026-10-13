@@ -66,12 +66,16 @@ final class SessionCoordinator {
     /// room capture. Resets to unmuted on every session start so a forgotten
     /// mute can't silently eat the next meeting.
     var micMuted = false {
-        didSet { audioPipeline.micMuted = micMuted }
+        didSet {
+            audioPipeline.micMuted = micMuted
+            RTILog.log("mic mute = \(micMuted)", category: .audio)
+        }
     }
 
     /// Non-fatal notice when the system-audio (other-party) leg drops while
     /// the mic leg keeps recording. nil when system audio is fine/absent.
     private(set) var systemAudioNotice: String?
+    private(set) var micAudioNotice: String?
     private(set) var systemAudioStartOffsetMs: Int?
     /// When non-nil, Soniox will stream translation tokens alongside
     /// the regular transcript. Bound to UserDefaults and the live
@@ -219,6 +223,7 @@ final class SessionCoordinator {
             self?.lastErrorIsAuth = isAuth
             if self?.isRunning == true { self?.stopSession() }
         }
+        audioPipeline.onMicNotice = { [weak self] notice in self?.micAudioNotice = notice }
         audioPipeline.onTranscriptionHealth = { [weak self] health in
             self?.transcriptionHealth = health
         }
@@ -515,6 +520,7 @@ final class SessionCoordinator {
         phase = .finishing
         transcriptionHealth = .idle
         systemAudioNotice = nil
+        micAudioNotice = nil
 
         let endedAt = Date()
         self.endedAt = endedAt // freeze widget timer immediately
@@ -718,6 +724,7 @@ final class SessionCoordinator {
         phase = .idle
         transcriptionHealth = .idle
         systemAudioNotice = nil
+        micAudioNotice = nil
     }
 
     /// Write the archive for the in-memory session state (shared by the
