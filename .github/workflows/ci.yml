@@ -35,10 +35,10 @@ jobs:
     # (~$0.08/min), which was the single largest line in the account's
     # Actions spend. Free on own hardware.
     runs-on: [self-hosted, macOS]
-    # RTI builds HouseChatCore from ../quick-launch/Packages/HouseChatCore, so
-    # the two repos are checked out side by side under the workspace:
-    #   $GITHUB_WORKSPACE/rti/           this repo
-    #   $GITHUB_WORKSPACE/quick-launch/  tristan-mcinnis/quick-launch
+    # RTI builds HouseChatCore from ../house-chat-core, so the two repos are
+    # checked out side by side under the workspace:
+    #   $GITHUB_WORKSPACE/rti/              this repo
+    #   $GITHUB_WORKSPACE/house-chat-core/  tristan-mcinnis/house-chat-core
     # Every step after the checkouts runs inside rti/.
     defaults:
       run:
@@ -49,16 +49,16 @@ jobs:
         with:
           path: rti
 
-      - name: Check out quick-launch (owns HouseChatCore)
+      - name: Check out house-chat-core (owns HouseChatCore)
         uses: actions/checkout@v4
         with:
-          repository: tristan-mcinnis/quick-launch
-          path: quick-launch
-          # quick-launch is private today, so the default GITHUB_TOKEN of this
-          # repo cannot read it: add a read-only PAT (or deploy key token) as
-          # the repo secret QUICK_LAUNCH_TOKEN. Once quick-launch is public the
-          # secret is not needed and this falls back to github.token.
-          token: ${{ secrets.QUICK_LAUNCH_TOKEN || github.token }}
+          repository: tristan-mcinnis/house-chat-core
+          path: house-chat-core
+          # house-chat-core is private by default, so the default GITHUB_TOKEN
+          # of this repo cannot read it: add a read-only PAT (or deploy key
+          # token) as the repo secret HOUSE_CHAT_CORE_TOKEN. Once it is public
+          # the secret is not needed and this falls back to github.token.
+          token: ${{ secrets.HOUSE_CHAT_CORE_TOKEN || github.token }}
 
       - name: Check the clone layout
         run: scripts/check-layout.sh

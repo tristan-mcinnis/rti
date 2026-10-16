@@ -6,7 +6,9 @@ Status: Accepted design; release verification is recorded in the implementation 
 ## Decision
 
 RTI consumes the local Swift package at
-`../../quick-launch/Packages/HouseChatCore` relative to `RTI/project.yml`.
+`../../house-chat-core` relative to `RTI/project.yml`. (Until 2026-10-16 the
+package lived at `quick-launch/Packages/HouseChatCore`; it is now its own
+repo, a sibling of both consumers.)
 It shares context policy, command parsing, versioned records, asset archives,
 document extraction and lexical source selection with Quick Launch. Its
 macOS 14 floor remains unchanged. This dependency shares code, not credentials,

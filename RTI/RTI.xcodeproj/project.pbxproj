@@ -671,7 +671,6 @@
 		67EB37D6EE498B7B7C23132D /* SessionsWindowModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsWindowModel.swift; sourceTree = "<group>"; };
 		6820EA81EE3A97F7E8DB34B1 /* TranscriptContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptContext.swift; sourceTree = "<group>"; };
 		684FF04DDFD3F27F3D79AE92 /* SessionWriterCalendarTitleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionWriterCalendarTitleTests.swift; sourceTree = "<group>"; };
-		6888FCE1A871F1EDEA2AC014 /* HouseChatCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HouseChatCore; path = "../../quick-launch/Packages/HouseChatCore"; sourceTree = SOURCE_ROOT; };
 		68F32340D95FB427AA491A34 /* ChatResetPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatResetPlanTests.swift; sourceTree = "<group>"; };
 		69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotkey.swift; sourceTree = "<group>"; };
 		6A7A54DA3BEBB3D71AF881B8 /* AudioInputDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputDeviceTests.swift; sourceTree = "<group>"; };
@@ -739,6 +738,7 @@
 		9B123EF6D98DDEB693E862AF /* HouseChatPrimitives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseChatPrimitives.swift; sourceTree = "<group>"; };
 		9C48267D7243F07E859FF17B /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		9C4E876D9FF41F74EFFEA95F /* LLMToolDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMToolDefinition.swift; sourceTree = "<group>"; };
+		9D0827A85EC03177D8698F52 /* house-chat-core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "house-chat-core"; path = "../../house-chat-core"; sourceTree = SOURCE_ROOT; };
 		9D248BA15E3A05B457FED368 /* PromptComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptComposer.swift; sourceTree = "<group>"; };
 		9E063BE715BD0639FA423F26 /* SessionFinalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionFinalizer.swift; sourceTree = "<group>"; };
 		9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolLoop.swift; sourceTree = "<group>"; };
@@ -1342,7 +1342,7 @@
 		9011465AF1D8523A20C42470 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				6888FCE1A871F1EDEA2AC014 /* HouseChatCore */,
+				9D0827A85EC03177D8698F52 /* house-chat-core */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -1676,7 +1676,7 @@
 				9F51B94161DD39709791A375 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				8A1C41FE0398140150F33ED7 /* XCRemoteSwiftPackageReference "Starscream" */,
 				1B2D3A33C9B42B84FA7F4339 /* XCRemoteSwiftPackageReference "Yams" */,
-				F6ED7508DF90721DB8CA08C0 /* XCLocalSwiftPackageReference "../../quick-launch/Packages/HouseChatCore" */,
+				45E287C3F9A99F102E3BF895 /* XCLocalSwiftPackageReference "../../house-chat-core" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2F60E31386655AA08CC1C2A9 /* Products */;
@@ -2634,9 +2634,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		F6ED7508DF90721DB8CA08C0 /* XCLocalSwiftPackageReference "../../quick-launch/Packages/HouseChatCore" */ = {
+		45E287C3F9A99F102E3BF895 /* XCLocalSwiftPackageReference "../../house-chat-core" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../../quick-launch/Packages/HouseChatCore";
+			relativePath = "../../house-chat-core";
 		};
 /* End XCLocalSwiftPackageReference section */
 

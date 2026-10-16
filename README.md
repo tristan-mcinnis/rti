@@ -39,7 +39,7 @@ they own. RTI stands for Real-Time Intelligence.
 - macOS 14 (Sonoma) or later on Apple Silicon. The audio-only system tap needs macOS 14.2. On 14.0 and 14.1, RTI falls back to ScreenCaptureKit and needs Screen Recording permission for system audio.
 - A [Soniox](https://console.soniox.com) API key. Live transcription does not work without it.
 - A key for one assistant provider: [DeepSeek](https://platform.deepseek.com), [OpenAI](https://platform.openai.com/api-keys) or [OpenRouter](https://openrouter.ai/keys). DeepSeek is the default.
-- To build from source: Xcode 16 or later (Swift 6), [XcodeGen](https://github.com/yonaskolb/XcodeGen), and a clone of [Quick Launch](https://github.com/tristan-mcinnis/quick-launch) next to this repo. RTI builds the shared `HouseChatCore` package from it. See [Build from source](#build-from-source).
+- To build from source: Xcode 16 or later (Swift 6), [XcodeGen](https://github.com/yonaskolb/XcodeGen), and a clone of [house-chat-core](https://github.com/tristan-mcinnis/house-chat-core) next to this repo. RTI builds the shared `HouseChatCore` package from it. See [Build from source](#build-from-source).
 
 ## Install
 
@@ -172,14 +172,14 @@ The author's own setup is in [docs/personal-setup.md](docs/personal-setup.md).
 ```bash
 mkdir house && cd house
 git clone https://github.com/tristan-mcinnis/rti.git rti
-git clone https://github.com/tristan-mcinnis/quick-launch.git quick-launch
+git clone https://github.com/tristan-mcinnis/house-chat-core.git house-chat-core
 cd rti/RTI
 cp Sources/Secrets.swift.example Sources/Secrets.swift   # first checkout only, gitignored, holds no keys
 xcodegen generate
 xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Debug build
 ```
 
-The two folders must sit side by side. If `quick-launch` is missing, `xcodegen generate` stops and names the layout (`scripts/check-layout.sh`).
+The two folders must sit side by side. If `house-chat-core` is missing, `xcodegen generate` stops and names the layout (`scripts/check-layout.sh`).
 
 Run the checks and the tests from the repo root:
 
@@ -213,7 +213,7 @@ RTI is one of a small family of free, local-first Mac tools that share one desig
 
 RTI shares its chat core, `HouseChatCore`, with
 [Quick Launch](https://github.com/tristan-mcinnis/quick-launch). That package
-is MIT licensed and comes from Quick Launch, which began as a fork of
+is MIT licensed and began inside Quick Launch, which started as a fork of
 [apfel-quick](https://github.com/Arthur-Ficial/apfel-quick) by Arthur Ficial.
 Thank you, Arthur.
 

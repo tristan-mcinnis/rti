@@ -48,7 +48,7 @@ echo "== building from $COMMIT"
 # A clean RTI checkout is not enough: this build also consumes the sibling
 # HouseChatCore package. Its owner commit and exact source hash are stamped
 # into the signed bundle below.
-CHAT_CORE_PROVENANCE="../quick-launch/scripts/chat-core-provenance.py"
+CHAT_CORE_PROVENANCE="../house-chat-core/scripts/chat-core-provenance.py"
 python3 "$CHAT_CORE_PROVENANCE" --require-clean
 
 echo "== xcodegen + build (Release)"

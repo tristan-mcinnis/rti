@@ -25,7 +25,7 @@ DERIVED="$ROOT_DIR/build/dmg"
 APP="$DERIVED/Build/Products/Release/${APP_NAME}.app"
 OUT_DIR="${RELEASE_OUT:-$ROOT_DIR/dist/release}"
 PKG_DIR="$ROOT_DIR/Packaging/Release"
-CHAT_CORE_PROVENANCE="$ROOT_DIR/../quick-launch/scripts/chat-core-provenance.py"
+CHAT_CORE_PROVENANCE="$ROOT_DIR/../house-chat-core/scripts/chat-core-provenance.py"
 
 if [[ "${RTI_SKIP_BUILD:-0}" != "1" ]]; then
   COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
