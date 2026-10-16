@@ -1,0 +1,15 @@
+# Saved-meeting outputs and live-work priority
+
+Requested: add the useful features identified in the Superwhisper comparison, commit and push the changes, and install the verified revision locally.
+
+Scope: reusable transcript-only outputs in the existing Sessions browser, and real admission/preemption scheduling that favors live LLM requests over background summaries/outputs. Keep existing live research features, capture behavior, storage owners and deployment floor. No new database, auto-recording, sending, public sharing or model switch.
+
+1. [x] Confirm current architecture and release preconditions. Proof: main/origin both at 5de141d6; GitHub remote public; HouseChatCore provenance clean; installed RTI reports idle via control socket and matches baseline commit. Stable signing identity and Xcode 26.2 available. Existing app backed up with equal executable SHA-256 before implementation.
+2. [x] Implement saved-meeting output recipes. Proof: built-ins plus saved custom instructions; unique owner-only artifacts; frozen validated destination; no retranscription or archive overwrite. Reader/generator/model/store tests passed, including unsafe-source refusal, cancellation, provider failures and preserving spoken words during label renaming. Four key dark/light UI proofs independently passed visual QA.
+3. [x] Implement live-work priority. Proof: 15 deterministic integration tests plus core admission tests passed. Foreground work does not wait; background collects cancel/requeue, with an explicit retryable failure after six yields. Single-flight cancellation, frozen routes, multi-round leases and throwing/optional failure contracts checked independently.
+4. [x] Verify and review the integrated build. Proof: final run7 passed 777 executed tests (3 skipped, 0 failures): all RTITests plus five feature/runtime render suites. SCRUB_CLEAN; strict design lint had 0 hits on three touched view/model files. Independent scheduler and output-safety reviews found no release blocker. Ten fixture renders produced; four key views independently inspected. No real provider calls or live vault tests.
+5. [ ] Commit/push main and install exact revision. Proof: clean committed tree, remote HEAD equality, install-local.sh with stable signing and clean HouseChatCore provenance, installed bundle stamp/hash matches built revision, safe idle launch and visible native surface verification.
+
+Release boundary: the existing GitHub repository is public. Keep the prior reverse-engineering investigation (raw binaries, decompilation and local reports) untracked/ignored. Commit application code, synthetic tests, release documentation and this implementation plan only. Never stop an active recording or overwrite a user-authored document.
+
+Verification limit: native-window observation was refused by the current UI-tool route. No UI fallback or guard workaround was used. New layouts are independently checked through invented-fixture offscreen renders; local installation will be checked through exact bundle provenance, signing, process identity and the read-only control socket. No claim of live-window inspection or real-provider generation is made.

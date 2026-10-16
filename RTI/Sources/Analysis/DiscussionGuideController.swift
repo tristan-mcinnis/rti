@@ -19,7 +19,7 @@ final class DiscussionGuideController {
     private(set) var isMatching = false
     private(set) var lastError: String?
 
-    private let request = LLMRequest()
+    private let request = LLMRequest(priority: .background)
     private var sessionId: String?
 
     // Parsing prompts: defaults live in the registry (`PromptID.dgParse`,

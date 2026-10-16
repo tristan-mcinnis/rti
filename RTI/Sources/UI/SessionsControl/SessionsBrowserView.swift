@@ -143,6 +143,13 @@ struct SessionsBrowserView: View {
                         .padding(.top, House.Spacing.xs)
                         .frame(maxWidth: .infinity)
                 }
+                if model.isOutputChooserPresented {
+                    SessionOutputsChooser(model: model)
+                        .frame(maxWidth: Self.columnWidth, alignment: .leading)
+                        .padding(.horizontal, House.Spacing.lg)
+                        .padding(.top, House.Spacing.xs)
+                        .frame(maxWidth: .infinity)
+                }
                 SessionReader(model: model)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     // The scroll view would otherwise draw up under the header.
@@ -176,6 +183,12 @@ struct SessionsBrowserView: View {
                     .frame(width: House.Layout.chatRail + House.Spacing.xxxxl)
                     .padding(.top, House.Control.composer)
             }
+        }
+        // One generation per request id. A Cancel or a session switch changes
+        // (or clears) the id, which cancels the task; the run never outlives
+        // the session it started on.
+        .task(id: model.outputRequest) {
+            await model.runOutputGeneration()
         }
     }
 
@@ -230,6 +243,14 @@ private struct SessionsHeader: View {
                 }
             }
             if model.mode == .sessions, let row = model.openRow {
+                Button("Saved-meeting outputs", systemImage: "doc.badge.plus") {
+                    model.toggleOutputChooser()
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(SessionCircleButtonStyle(isSelected: model.isOutputChooserPresented))
+                .disabled(!row.session.isRTIArchive)
+                .help("Generate a saved-meeting output from this transcript")
+                .accessibilityValue(model.isOutputChooserPresented ? "Open" : "Closed")
                 Button("Copy current document", systemImage: "doc.on.doc") { model.perform(.copy) }
                     .labelStyle(.iconOnly)
                     .buttonStyle(SessionCircleButtonStyle())

@@ -177,6 +177,12 @@ final class LLMClient: @unchecked Sendable {
     /// `smart` carried as an explicit reasoning choice. Keeps the analysis and
     /// title generators on one code path without making them resolve a
     /// per-chat selection they do not have.
+    /// Capture one request destination before it can wait or be preempted.
+    /// Retried background work must not switch models/providers mid-job.
+    func snapshotRoute(smart: Bool) -> ChatRouteConfiguration {
+        route(smart: smart)
+    }
+
     private func route(smart: Bool) -> ChatRouteConfiguration {
         let provider = self.provider
         let reasoning: ChatReasoningMode = smart ? .thinking : .fast

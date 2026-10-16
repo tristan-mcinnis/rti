@@ -27,7 +27,7 @@ final class AutoAssistController {
     /// tab's unread badge so a proactive suggestion is noticeable.
     private(set) var unseenCount = 0
 
-    private let request = LLMRequest()
+    private let request = LLMRequest(priority: .background)
     private var sessionId: String?
     /// Watermark: ms of the last transcript covered.
     private var lastMs = 0

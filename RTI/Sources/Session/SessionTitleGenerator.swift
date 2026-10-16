@@ -19,7 +19,7 @@ enum SessionTitleGenerator {
         let headings = SessionTitleResolver.noteHeadings(fromNotesMarkdown: notesMarkdown)
         guard !headings.isEmpty else { return nil }
         let prompt = SessionTitleResolver.titlePrompt(headings: headings)
-        guard let reply = await LLMRequest().collectAsync(
+        guard let reply = await LLMRequest(priority: .background).collectAsync(
             messages: [LLMMessage(role: "user", content: prompt)],
             smart: false,
             timeoutOverride: timeout

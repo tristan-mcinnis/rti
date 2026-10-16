@@ -20,7 +20,7 @@ final class FindingsController {
     private(set) var lastError: String?
     private(set) var sessionStartedAt: Date?
 
-    private let request = LLMRequest()
+    private let request = LLMRequest(priority: .background)
     private var sessionId: String?
     /// Watermark: ms of the last transcript covered. Shared by the tick and the
     /// manual button so neither re-covers old ground.

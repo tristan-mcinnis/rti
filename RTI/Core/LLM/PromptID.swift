@@ -38,6 +38,11 @@ public enum PromptID: String, CaseIterable, Sendable {
     case meetingSummary
     case interviewSummary
 
+    // Saved-meeting outputs (transcript-only recipes in the Sessions browser)
+    case clientFollowUp
+    case decisionLog
+    case researchDebrief
+
     // Background analysis (strict-JSON or fixed-format controllers)
     case findingsLedger
     case autoAssistCards
@@ -53,6 +58,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case listener = "Listener research"
         case recap = "Recap"
         case summaries = "Session summaries"
+        case outputs = "Saved-meeting outputs"
         case background = "Background analysis"
     }
 
@@ -63,6 +69,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .keyTensions, .probe, .themes: .listener
         case .recapBrief, .recapStandard, .recapDetailed, .recapLanguageRule: .recap
         case .meetingSummary, .interviewSummary: .summaries
+        case .clientFollowUp, .decisionLog, .researchDebrief: .outputs
         case .findingsLedger, .autoAssistCards, .dgParse, .dgMatch, .liveNotes: .background
         }
     }
@@ -86,6 +93,9 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapLanguageRule: "Recap — language rule"
         case .meetingSummary: "Meeting summary"
         case .interviewSummary: "Interview debrief"
+        case .clientFollowUp: "Client follow-up draft"
+        case .decisionLog: "Decision log"
+        case .researchDebrief: "Research debrief"
         case .findingsLedger: "Live intelligence ledger"
         case .autoAssistCards: "Auto-assist cards"
         case .dgParse: "Discussion guide — parse"
@@ -113,6 +123,9 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapLanguageRule: "Shared language/format rule appended to every Recap."
         case .meetingSummary: "Full-transcript summary for meeting-family modes."
         case .interviewSummary: "Full-transcript research debrief for Interview mode."
+        case .clientFollowUp: "Sessions browser: a client-ready follow-up message over one saved transcript."
+        case .decisionLog: "Sessions browser: the decisions and their owners from one saved transcript."
+        case .researchDebrief: "Sessions browser: a research debrief over one saved transcript."
         case .findingsLedger: "Background: running live ledger of decisions/actions/questions/risks (strict JSON)."
         case .autoAssistCards: "Background: proactive SAY/ASK/RECALL/FLAG cards (strict JSON)."
         case .dgParse: "Background: parse a discussion guide into an outline (strict JSON)."
@@ -295,7 +308,36 @@ public enum PromptDefaults {
             - Part 1 must be derivable from Part 2: no fact appears only in the brief.
             """
 
-        case .interviewSummary:
+        case .clientFollowUp:
+            """
+            Write a short CLIENT FOLLOW-UP message a researcher can send after this session. Work only from what was actually said; invent nothing.
+
+            Rules:
+            - Open with one line of thanks and a one-sentence recap of what the session covered.
+            - Then a short "What we heard" list: 3–6 bullets, each a concrete point the participant(s) actually made.
+            - Then "Next steps": only the follow-ups the session itself created, each with an owner (the client or us) and a date when one was stated. If none were agreed, write "None agreed yet."
+            - Close with the researcher's name line placeholder: "Best,\n[Your name]".
+            - English throughout; keep a participant's original-language term inline as 中文 (pīnyīn, English meaning). Never use raw labels like "them_1"; use "Speaker N" or a name.
+            - No subject line, no invented commitments, no promises the session did not make.
+            """
+
+        case .decisionLog:
+            """
+            Build a DECISION LOG from this session. Work only from what was actually said; invent nothing.
+
+            Output a markdown table with exactly these columns:
+            | Decision | Owner | Date | Status | Evidence |
+            - Decision: the choice or agreement, in one line.
+            - Owner: the named person or side responsible; "Unassigned" when the session named nobody.
+            - Date: the deadline or decision date when one was stated, else "—".
+            - Status: "Agreed", "Proposed", or "Open".
+            - Evidence: a short verbatim quote or the speaker who said it.
+
+            Then a "## Open questions" list: unresolved questions or ambiguity, one bullet each, with an owner when named.
+            Skip anything that is not a decision, an owner, a date, or a genuinely open question. English throughout; no raw labels like "them_1".
+            """
+
+        case .interviewSummary, .researchDebrief:
             """
             Write a QUALITATIVE RESEARCH DEBRIEF of this entire session so far, in \
             markdown. Work only from what was actually said — no invention, no padding. \

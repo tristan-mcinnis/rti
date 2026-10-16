@@ -255,7 +255,7 @@ enum SessionArchive {
             + referenceBlock
             + "\n\nTranscript:\n" + transcript
         let message = LLMMessage(role: "user", content: prompt)
-        guard let smartAttempt = await LLMRequest().collectDetailedAsync(
+        guard let smartAttempt = await LLMRequest(priority: .background).collectDetailedAsync(
             messages: [message],
             smart: true,
             timeoutOverride: 300
@@ -278,7 +278,7 @@ enum SessionArchive {
                     + "(\(smartAttempt.emptyReasonDescription)) — retrying with thinking off",
                 category: .summary
             )
-            let plainAttempt = await LLMRequest().collectDetailedAsync(
+            let plainAttempt = await LLMRequest(priority: .background).collectDetailedAsync(
                 messages: [message],
                 smart: false,
                 timeoutOverride: 300

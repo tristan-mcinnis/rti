@@ -35,6 +35,18 @@ final class SessionsWindowModel {
         /// library is unavailable instead of showing an empty one.
         var chatLibrary: ChatLibraryLocation? = nil
 
+        /// Generate one saved-meeting output. Live: a real background model
+        /// call over the archived transcript. Nil: the Outputs control says so
+        /// and never reaches the network (render proofs and tests).
+        var generateOutput: (@MainActor (_ recipe: SessionOutputRecipe, _ sessionDirectory: URL, _ folderName: String, _ route: ChatRouteConfiguration) async throws -> SessionOutputArtifact)? = nil
+        var outputRoute: @MainActor () -> ChatRouteConfiguration = {
+            LLMClient.shared.snapshotRoute(smart: false)
+        }
+        /// The recipes the Outputs picker offers: the shipped built-ins
+        /// (instruction resolved so Settings edits apply) plus the user's
+        /// custom templates. Nil: outputs are unavailable.
+        var outputRecipes: (@MainActor () -> [SessionOutputRecipe])? = nil
+
         /// The running app: the vault search CLI and the title call. Both
         /// switch off outside RTI's own bundle (a test runner), so no test
         /// can reach the network or write a title into an archive.
@@ -58,6 +70,20 @@ final class SessionsWindowModel {
             }
             dependencies.generateTitle = { notes in
                 await SessionTitleGenerator.generate(notesMarkdown: notes)
+            }
+            dependencies.generateOutput = { recipe, directory, folder, route in
+                try await SessionOutputGenerator.generate(
+                    recipe: recipe,
+                    sessionDirectory: directory,
+                    folderName: folder,
+                    route: route
+                )
+            }
+            dependencies.outputRecipes = {
+                SessionOutputRecipe.catalog(
+                    builtInResolve: { PromptStore.shared.text($0) },
+                    custom: OutputTemplateStore.shared.all
+                )
             }
             return dependencies
         }
@@ -112,11 +138,16 @@ final class SessionsWindowModel {
     struct SessionFile: Identifiable, Hashable {
         var id: URL { url }
         let url: URL
-        /// "summary", "notes", "transcript", "chat", "frames", "log", …
+        /// "summary", "notes", "transcript", "chat", "frames", "log", or
+        /// "output-<recipe>" for a generated saved-meeting output.
         let name: String
+        /// A generated output's template name, when known. Nil for the fixed
+        /// archive files, which have their own labels below.
+        var displayNameOverride: String? = nil
 
         var displayName: String {
-            switch name {
+            if let displayNameOverride, !displayNameOverride.isEmpty { return displayNameOverride }
+            return switch name {
             case "summary": "Summary"
             case "live-intelligence": "Intelligence"
             case "notes": "Notes"
@@ -317,6 +348,30 @@ final class SessionsWindowModel {
     private(set) var upgradingRowID: String?
     private(set) var regeneratingRowID: String?
     private(set) var notice: (rowID: String, text: String)?
+
+    // Saved-meeting outputs: the chooser's state machine, the custom
+    // templates it offers, and the in-flight request.
+    private(set) var outputFlow = SessionOutputFlow()
+    private(set) var customOutputTemplates: [CustomOutputTemplate] = []
+    var isOutputChooserPresented = false
+    var customOutputDraftName = ""
+    var customOutputDraftInstruction = ""
+    /// The request the chooser's `.task(id:)` runs. Setting it nil (Cancel, a
+    /// session switch) changes the id, which cancels the running task.
+    private(set) var outputRequest: OutputRequest?
+
+    struct OutputRequest: Equatable, Identifiable {
+        let id: UUID
+        let recipe: SessionOutputRecipe
+        let sessionDirectory: URL
+        let folderName: String
+        let route: ChatRouteConfiguration
+
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    }
+
+    /// The status dot's decision, so the view never infers it from colour.
+    enum OutputTone: Equatable { case neutral, success, error }
 
     @ObservationIgnored private var contentSearchTask: Task<Void, Never>?
     @ObservationIgnored private var titleTask: Task<Void, Never>?
@@ -651,6 +706,10 @@ final class SessionsWindowModel {
         if changed {
             isEditingSummary = false
             isEditingTranscript = false
+            // A run belongs to the session it started on: switching cancels
+            // it (the id goes nil) and forgets its state.
+            outputRequest = nil
+            outputFlow.reset()
             refreshFiles(keepSelection: false)
         }
     }
@@ -1038,6 +1097,8 @@ final class SessionsWindowModel {
             cancelRename()
         } else if isFindPresented {
             closeFind()
+        } else if isOutputChooserPresented {
+            closeOutputChooser()
         } else if isRailVisible, !railQuery.isEmpty {
             railQuery = ""
         } else if isRailVisible, focus == .railSearch {
@@ -1085,6 +1146,8 @@ final class SessionsWindowModel {
         fileText = ""
         document = .empty
         speakerNames = [:]
+        outputRequest = nil
+        outputFlow.reset()
         recomputeFindHits()
     }
 
@@ -1107,6 +1170,19 @@ final class SessionsWindowModel {
             if fm.fileExists(atPath: log.path) {
                 loaded.append(SessionFile(url: log, name: "log"))
             }
+        }
+        // Generated saved-meeting outputs: one chip each, newest first, so an
+        // output is read, copied and exported exactly like any archive file.
+        // The path and each file are already containment-checked by the store.
+        for artifact in SessionOutputStore.list(in: session.url) {
+            let stem = artifact.url.deletingPathExtension().lastPathComponent
+            let stamp = SessionOutputMarkdown.displayStamp(artifact.generatedAt)
+            let label = artifact.templateName.isEmpty ? stem : artifact.templateName
+            loaded.append(SessionFile(
+                url: artifact.url,
+                name: "output-\(stem)",
+                displayNameOverride: stamp.isEmpty ? label : "\(label) · \(stamp)"
+            ))
         }
         return loaded
     }
@@ -1434,6 +1510,171 @@ final class SessionsWindowModel {
         operation.showsProgressPanel = false
         operation.run()
     }
+
+    // MARK: - Saved-meeting outputs
+
+    /// The recipes the Outputs chooser offers: the shipped built-ins with the
+    /// user's Settings overrides applied, then the user's custom templates.
+    /// Empty when the live dependency is absent (a render proof that did not
+    /// opt in).
+    var outputRecipes: [SessionOutputRecipe] {
+        dependencies.outputRecipes?() ?? []
+    }
+
+    var selectedOutputRecipe: SessionOutputRecipe? {
+        outputRecipes.first { $0.id == outputFlow.selectedRecipeID }
+    }
+
+    /// Outputs need both a generate call and a recipe source; without them the
+    /// chooser says so plainly instead of failing on a click.
+    var isOutputAvailable: Bool {
+        dependencies.generateOutput != nil && dependencies.outputRecipes != nil
+    }
+
+    /// The provider and model a Generate click would reach, shown BEFORE
+    /// generating so the destination is never a surprise.
+    var outputProviderLabel: String {
+        let provider = (outputRequest?.route ?? dependencies.outputRoute()).provider
+        let destination = provider.baseURL.host ?? "configured destination"
+        return "\(provider.displayName) · \(provider.model) · \(destination)"
+    }
+
+    /// Where the artifact lands, relative to the archive root. Never an
+    /// absolute path: the chooser is user-facing and the repo is public.
+    var outputDestinationLabel: String {
+        guard let row = openRow else { return "" }
+        return "\(row.folderName)/outputs/"
+    }
+
+    /// One status line for the chooser. `isRunning` drives the thinking dots,
+    /// `tone` the status dot; never colour alone, the text always says it.
+    var outputStatus: (text: String, isRunning: Bool, tone: OutputTone)? {
+        switch outputFlow.phase {
+        case .idle, .ready:
+            return nil
+        case .generating:
+            return ("Generating with \(outputProviderLabel)…", true, .neutral)
+        case let .saved(artifact):
+            return ("Saved \(artifact.url.lastPathComponent). Nothing else changed.", false, .success)
+        case let .failed(message):
+            return (message, false, .error)
+        case .cancelled:
+            return ("Cancelled. Any output already completed remains available.", false, .neutral)
+        }
+    }
+
+    func toggleOutputChooser() {
+        isOutputChooserPresented.toggle()
+        if isOutputChooserPresented { refreshCustomOutputTemplates() }
+    }
+
+    func closeOutputChooser() {
+        isOutputChooserPresented = false
+    }
+
+    func refreshCustomOutputTemplates() {
+        customOutputTemplates = OutputTemplateStore.shared.all
+    }
+
+    func selectOutputRecipe(id: String?) {
+        outputFlow.select(recipeID: id)
+    }
+
+    /// The Generate button. Validates, flips the flow to generating, and
+    /// stores the request the chooser's `.task(id:)` will run.
+    func requestGenerateOutput() {
+        guard dependencies.generateOutput != nil,
+              let recipe = selectedOutputRecipe,
+              let row = openRow,
+              row.session.isRTIArchive
+        else { return }
+        let candidate = dependencies.outputRoute()
+        let route: ChatRouteConfiguration
+        switch ChatRouteResolver.resolve(selection: candidate.selection, provider: candidate.provider) {
+        case let .success(frozen): route = frozen
+        case let .failure(blocker):
+            outputFlow.fail(blocker.message)
+            return
+        }
+        guard outputFlow.begin() else { return }
+        outputRequest = OutputRequest(
+            id: UUID(),
+            recipe: recipe,
+            sessionDirectory: row.session.url,
+            folderName: row.folderName,
+            route: route
+        )
+    }
+
+    /// Cancel: drop the request (the id change cancels the view's task) and
+    /// mark the flow cancelled without touching the archive.
+    func cancelOutput() {
+        outputFlow.cancel()
+        outputRequest = nil
+    }
+
+    /// Run the stored request. Called from the chooser's `.task(id:)`, which
+    /// cancels it when the request changes (Cancel) or the view leaves (a
+    /// session switch), so a run never outlives its session. A run that
+    /// returns is recorded as saved only while its request still owns the UI.
+    /// Cancellation cannot undo an output already atomically committed by the store.
+    func runOutputGeneration() async {
+        guard let request = outputRequest, let generate = dependencies.generateOutput else { return }
+        defer {
+            // The run is done: clearing the id stops a re-run when the view
+            // reappears, and lets the next Generate start fresh. The stored
+            // phase (saved/failed/cancelled) is left intact for the status line.
+            if outputRequest?.id == request.id { outputRequest = nil }
+        }
+        do {
+            let artifact = try await generate(request.recipe, request.sessionDirectory, request.folderName, request.route)
+            // A newer request (or a session switch) supersedes this result.
+            guard outputRequest?.id == request.id else { return }
+            outputFlow.succeed(artifact)
+            refreshFiles(keepSelection: true)
+            if let file = files.first(where: { $0.url == artifact.url }) { select(file) }
+        } catch is CancellationError {
+            if outputRequest?.id == request.id { outputFlow.cancel() }
+        } catch let error as SessionOutputError {
+            if outputRequest?.id == request.id {
+                outputFlow.fail(error.errorDescription ?? "The output could not be generated.")
+            }
+        } catch {
+            if outputRequest?.id == request.id { outputFlow.fail(error.localizedDescription) }
+        }
+    }
+
+    // MARK: - Custom output templates
+
+    /// Save the draft as a new custom template (nil when the name or
+    /// instruction is blank). Selects it so Generate uses it right away.
+    @discardableResult
+    func saveCustomOutputTemplate() -> CustomOutputTemplate? {
+        guard let template = OutputTemplateStore.shared.save(
+            name: customOutputDraftName,
+            instruction: customOutputDraftInstruction
+        ) else { return nil }
+        customOutputDraftName = ""
+        customOutputDraftInstruction = ""
+        refreshCustomOutputTemplates()
+        selectOutputRecipe(id: template.id)
+        return template
+    }
+
+    func deleteCustomOutputTemplate(id: String) {
+        OutputTemplateStore.shared.delete(id: id)
+        refreshCustomOutputTemplates()
+        if outputFlow.selectedRecipeID == id { selectOutputRecipe(id: nil) }
+    }
+
+#if DEBUG
+    /// Debug-only seam for the offscreen render proof (`RTIRenderTests`).
+    /// Forces the chooser into a state without a live call or a write; never
+    /// compiled into a Release build and never called by the app.
+    func seedOutputFlowForRenderProof(_ flow: SessionOutputFlow) {
+        outputFlow = flow
+    }
+#endif
 }
 
 // MARK: - Archived findings

@@ -46,10 +46,36 @@ struct ToolLoop {
     /// Run the tool loop to completion. Emits events via `onEvent` on each
     /// content delta, tool execution, or error.
     ///
+    /// Holds one foreground admission permit for the WHOLE turn (all rounds),
+    /// so a background summary/title/output request cannot start between two
+    /// rounds of an interactive send.
+    ///
     /// `allowsExternalRetrieval` comes from the turn's `ContextDecision`: the
     /// loop passes it to the executor so a withheld tool is refused, not just
     /// left out of the request.
     func run(
+        conversation: [LLMMessage],
+        toolsJSON: Data?,
+        smart: Bool,
+        route: ChatRouteConfiguration? = nil,
+        allowsExternalRetrieval: Bool = true,
+        allowsScreenTools: Bool = true,
+        onEvent: @escaping @Sendable (Event) -> Void
+    ) async {
+        let lease = await request.beginForegroundTurn()
+        await runRounds(
+            conversation: conversation,
+            toolsJSON: toolsJSON,
+            smart: smart,
+            route: route,
+            allowsExternalRetrieval: allowsExternalRetrieval,
+            allowsScreenTools: allowsScreenTools,
+            onEvent: onEvent
+        )
+        await request.endForegroundTurn(lease)
+    }
+
+    private func runRounds(
         conversation: [LLMMessage],
         toolsJSON: Data?,
         smart: Bool,

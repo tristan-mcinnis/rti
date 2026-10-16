@@ -49,3 +49,6 @@ build-test/
 
 # Private scrub tokens (client names), never committed
 .scrub-private
+
+# Local third-party reverse-engineering evidence, not application source
+/docs/superwhisper-meetings-20261015/

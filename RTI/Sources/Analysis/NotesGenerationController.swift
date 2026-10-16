@@ -16,7 +16,7 @@ final class NotesGenerationController {
     /// time alongside its meeting-relative time.
     private(set) var sessionStartedAt: Date?
 
-    private let request = LLMRequest()
+    private let request = LLMRequest(priority: .background)
     private var sessionId: String?
     /// Watermark: ms of the last transcript covered by a note. Owned here so the
     /// scheduler tick and the manual "Generate" button both advance the SAME
