@@ -70,6 +70,20 @@ public enum ControlManifest {
         ]
     }
 
+    /// Removes the manifest on a clean stop, so the launcher stops offering
+    /// commands for a socket that is gone. A crash leaves the file behind;
+    /// the launcher's own liveness check covers that case. A missing file is
+    /// not an error.
+    @discardableResult
+    public static func remove(at url: URL) -> Bool {
+        do {
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Serialized for writing. Sorted keys keep the file byte-stable between
     /// launches, so a rewrite that changes nothing changes no bytes; slashes
     /// are left unescaped so the endpoint path is readable by eye.

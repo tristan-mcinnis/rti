@@ -347,6 +347,19 @@ final class ControlSocketTests: XCTestCase {
         )
     }
 
+    func testRemoveDeletesTheManifestAndToleratesAMissingFile() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rti-manifest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("rti.json")
+        try ControlManifest.json(socketPath: "/tmp/x.sock").write(to: url)
+
+        XCTAssertTrue(ControlManifest.remove(at: url))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertFalse(ControlManifest.remove(at: url))
+    }
+
     func testManifestPathHonoursTheEnvironmentOverride() {
         let base = URL(fileURLWithPath: "/Users/someone/Library/Application Support", isDirectory: true)
         let environment = [ControlPaths.manifestEnvironmentKey: "/tmp/house-commands"]

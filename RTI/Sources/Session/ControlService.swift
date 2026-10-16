@@ -40,6 +40,9 @@ final class ControlService {
     func stop() {
         guard started else { return }
         server.stop()
+        if let base = AppSupportPaths.applicationSupportBase() {
+            ControlManifest.remove(at: ControlPaths.manifestURL(applicationSupport: base))
+        }
         started = false
     }
 
