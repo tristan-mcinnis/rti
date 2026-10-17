@@ -2,6 +2,7 @@
 // Sources/Views/OverlayView.swift (AddContextPane)
 import RTICore
 import SwiftUI
+import HouseDesign
 
 // The choosers that float above the composer (design-system
 // docs/chat-surfaces.md section 3 "Floating layers"): the `@` vault-file

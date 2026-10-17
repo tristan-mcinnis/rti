@@ -3,6 +3,7 @@ import AVFoundation
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 private actor SessionTrashProbe {
     private(set) var directories: [URL] = []

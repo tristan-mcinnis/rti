@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 /// Package A ("Assist thread") proofs: the house thread in every state the
 /// plan names, at the overlay's default width (700) and its minimum (600),

@@ -3,6 +3,7 @@
 import AppKit
 import RTICore
 import SwiftUI
+import HouseDesign
 
 // Find in Chat for the Assist thread (design-system docs/chat-surfaces.md
 // section 6): a bar under the header, every hit painted in the text, the

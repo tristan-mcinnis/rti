@@ -35,11 +35,9 @@ jobs:
     # (~$0.08/min), which was the single largest line in the account's
     # Actions spend. Free on own hardware.
     runs-on: [self-hosted, macOS]
-    # RTI builds HouseChatCore from ../house-chat-core, so the two repos are
-    # checked out side by side under the workspace:
-    #   $GITHUB_WORKSPACE/rti/              this repo
-    #   $GITHUB_WORKSPACE/house-chat-core/  tristan-mcinnis/house-chat-core
-    # Every step after the checkouts runs inside rti/.
+    # house-chat-core and design-system are pinned by tag in RTI/project.yml,
+    # so Xcode fetches them with the other packages and nothing else is
+    # checked out. Every step runs inside rti/.
     defaults:
       run:
         working-directory: rti
@@ -48,20 +46,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: rti
-
-      - name: Check out house-chat-core (owns HouseChatCore)
-        uses: actions/checkout@v4
-        with:
-          repository: tristan-mcinnis/house-chat-core
-          path: house-chat-core
-          # house-chat-core is private by default, so the default GITHUB_TOKEN
-          # of this repo cannot read it: add a read-only PAT (or deploy key
-          # token) as the repo secret HOUSE_CHAT_CORE_TOKEN. Once it is public
-          # the secret is not needed and this falls back to github.token.
-          token: ${{ secrets.HOUSE_CHAT_CORE_TOKEN || github.token }}
-
-      - name: Check the clone layout
-        run: scripts/check-layout.sh
 
       - name: Scrub gate (no personal paths, ids or keys in tracked files)
         run: scripts/scrub.sh

@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
+import HouseDesign
 
 // The overlay's composer: the house composer row (`HouseComposer`), its
 // attachment strip, and the layers that float over it (`@` vault files,

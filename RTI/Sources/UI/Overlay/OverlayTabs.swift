@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
+import HouseDesign
 
 // MARK: - Transcript
 

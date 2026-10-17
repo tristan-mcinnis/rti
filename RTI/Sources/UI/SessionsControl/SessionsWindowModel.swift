@@ -2,6 +2,7 @@ import AppKit
 import Observation
 import RTICore
 import UniformTypeIdentifiers
+import HouseDesign
 
 /// State behind the Sessions window: the list rail (titles, search, date
 /// groups, row actions), the open session and its files, find, and the

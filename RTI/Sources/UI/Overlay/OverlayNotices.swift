@@ -1,6 +1,7 @@
 import Observation
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// App-level notice for global shortcuts the system refused to register
 /// (usually a chord another app already owns). Fed by `HotkeyCoordinator`,

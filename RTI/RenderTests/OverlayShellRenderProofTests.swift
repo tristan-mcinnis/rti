@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 /// Package C proofs: the overlay shell. The header in every session phase,
 /// the tabs row, the tab strips and empty hints, the Prepare tab, the

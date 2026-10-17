@@ -1,5 +1,6 @@
 import RTICore
 import SwiftUI
+import HouseDesign
 
 // MARK: - The list
 

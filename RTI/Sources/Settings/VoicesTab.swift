@@ -1,6 +1,7 @@
 import AVFoundation
 import RTICore
 import SwiftUI
+import HouseDesign
 
 // MARK: - Voices (enrolled speaker samples review)
 

@@ -1,5 +1,6 @@
 import ImageIO
 import SwiftUI
+import HouseDesign
 
 /// Grid of the screen frames archived with a session
 /// (`<session>/frames/frame-<offset>-<kind>-<hash>.jpg`): the ambient local

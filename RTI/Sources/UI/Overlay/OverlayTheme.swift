@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import HouseDesign
 
 // The overlay's colour vocabulary. Every entry is a house token
 // (HouseDesign.swift); the only local behaviour is the user's contrast

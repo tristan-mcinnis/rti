@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 /// Package D proofs: the Sessions window in the AI Chat window shape, on the
 /// invented fixture vault only (`FixtureVault`; never the real vault). PNG

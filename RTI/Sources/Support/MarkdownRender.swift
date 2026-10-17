@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import HouseDesign
 
 /// Shared SwiftUI view that renders multi-line LLM markdown (headings,
 /// bullet lists, task checkboxes, inline emphasis/code/links). SwiftUI's

@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 /// Package E proofs: the settings window (each pane, the rail search, the
 /// footer), the welcome window (empty, keys saved, all set), and the

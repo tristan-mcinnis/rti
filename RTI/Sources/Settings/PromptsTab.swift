@@ -1,6 +1,7 @@
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
+import HouseDesign
 
 // MARK: - Prompts
 

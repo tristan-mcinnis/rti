@@ -3,6 +3,7 @@
 import AppKit
 import RTICore
 import SwiftUI
+import HouseDesign
 
 // The Assist thread in the house chat grammar (design-system
 // docs/chat-surfaces.md section 2): questions as pills on the right, answers

@@ -1,5 +1,6 @@
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// The tabs of the consolidated overlay. One window, one global toggle (⌘\),
 /// tabs in a row under the header, instead of a constellation of floating

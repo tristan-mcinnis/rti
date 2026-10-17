@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import HouseDesign
 
 /// Owns the single Meeting Brief window, in the AI Chat window's chrome
 /// (chat-surfaces.md section 7): a transparent title bar whose row the

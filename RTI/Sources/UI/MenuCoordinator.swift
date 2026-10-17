@@ -1,5 +1,6 @@
 import AppKit
 import RTICore
+import HouseDesign
 
 /// Owns the deliberately small status-item menu. The overlay is RTI's work
 /// surface; the menubar is only for opening it, controlling the recording,

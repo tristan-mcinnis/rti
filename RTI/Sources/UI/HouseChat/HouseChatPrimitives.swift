@@ -2,6 +2,7 @@
 // QuickAITitleBlock.swift, and OverlayView.swift (ThinkingIndicator)
 import AppKit
 import SwiftUI
+import HouseDesign
 
 // The shared pieces of the house chat grammar (design-system
 // docs/chat-surfaces.md), copied from Quick Launch with their names kept so a

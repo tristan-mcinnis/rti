@@ -1,4 +1,5 @@
 import AppKit
+import HouseDesign
 
 @MainActor
 enum ScreenHighlightOverlay {

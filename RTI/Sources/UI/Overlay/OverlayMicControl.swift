@@ -1,4 +1,5 @@
 import SwiftUI
+import HouseDesign
 
 /// Zoom-style mic control in the overlay top bar: click the mic to mute /
 /// unmute the mic leg, click the chevron for the input-device picker.

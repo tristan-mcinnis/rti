@@ -9,7 +9,7 @@ pinned in `RTI/RTI.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.re
 
 | Component | Version | Author | License | Where it is used |
 |---|---|---|---|---|
-| [HouseChatCore and HouseChatDocuments](https://github.com/tristan-mcinnis/house-chat-core) | from the house-chat-core checkout | Arthur Ficial and Tristan McInnis | MIT | Shared chat schema, archives, slash commands and document selection. Built from the house-chat-core clone that sits beside this repo. |
+| [HouseChatCore and HouseChatDocuments](https://github.com/tristan-mcinnis/house-chat-core) | pinned by tag (`RTI/project.yml`) | Arthur Ficial and Tristan McInnis | MIT | Shared chat schema, archives, slash commands and document selection. Built from the house-chat-core clone that sits beside this repo. |
 | [Starscream](https://github.com/daltoniam/Starscream) | 4.0.8 | Dalton Cherry and contributors | Apache-2.0 | WebSocket client for live transcription. |
 | [Yams](https://github.com/jpsim/Yams) | 5.4.0 | JP Simard | MIT | YAML front matter in saved sessions. |
 | [swift-markdown-ui](https://github.com/gonzalezreal/swift-markdown-ui) (MarkdownUI) | 2.4.1 | Guille Gonzalez | MIT | Markdown rendering for answers and notes. |

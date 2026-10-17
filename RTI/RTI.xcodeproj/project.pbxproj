@@ -21,7 +21,6 @@
 		092230D9E172C90A017D9E5A /* AudioMonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8E5E704EDD3D13DDA39981 /* AudioMonitorView.swift */; };
 		099DDADBDC09AF5C41B7E884 /* StatusItemSymbol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A33DA4BEC251992C0220C8 /* StatusItemSymbol.swift */; };
 		09EE3A5B652AAC12410FD905 /* TranscriptUpgrade.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BA84476B0498B93A04A5C8 /* TranscriptUpgrade.swift */; };
-		0A3589CE4BD8F50FF57C7AAC /* HouseDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710DD4A7AC66EEECFFD2DBF4 /* HouseDesign.swift */; };
 		0ABBE9B45EFEFFE5FE58CAE6 /* ExternalDocumentAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EC5E0A29165C90D2D210EA5 /* ExternalDocumentAttachment.swift */; };
 		0C930D4CA1010E41BF1CF1E1 /* WAVWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857295A827688BF13CBC8A7E /* WAVWriter.swift */; };
 		0CB4A17591A274132DAA538A /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541406A822542146389D5B7E /* Secrets.swift */; };
@@ -101,6 +100,7 @@
 		3AC4790B3E36EB735D657A7F /* VaultMeetingTitleMapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3A0224AC6257D8C1201BE82 /* VaultMeetingTitleMapTests.swift */; };
 		3AF3B6537EBE56DFB18295E6 /* RTIMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D64733E271DE5F43A278DD /* RTIMarkdown.swift */; };
 		3BA599A86DD7F9F5B3EB5362 /* PasteboardHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18F9E23AC8C6C42DF807253D /* PasteboardHelpers.swift */; };
+		3BAA31FDA93CBA9A68700D50 /* HouseDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 99BDA0C117D44CD2E2C8BBCD /* HouseDesign */; };
 		3BD1566DB592CBE5E8373AA0 /* AudioFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68C4BDDE00A18D5FCFA1E81 /* AudioFormat.swift */; };
 		3C07035F4BBA9131F1042C5E /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE15B20C4952DBA9C07E302 /* CredentialStore.swift */; };
 		3CAF09BEAFF271B01C888D5D /* VisualContextTrail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7557921BD570C3347CF5972 /* VisualContextTrail.swift */; };
@@ -173,12 +173,12 @@
 		64BE753FF13F24C48D132557 /* MenuValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6EF02932C40F01854664C12 /* MenuValidationTests.swift */; };
 		659877D2D26AFA04A6E25EEE /* ModesTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B73FEF0D62A6679A9B1B2D9 /* ModesTab.swift */; };
 		668A10B764231D476E483963 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE15B20C4952DBA9C07E302 /* CredentialStore.swift */; };
+		67C0ECBE47FA9B15129B8950 /* HouseDesign in Frameworks */ = {isa = PBXBuildFile; productRef = EA3180497D2EFEC756980FEC /* HouseDesign */; };
 		68858B4DD61B3FF88B3C6337 /* SonioxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDAE2B8ECB220B4A8CBFE3A /* SonioxClient.swift */; };
 		68C0D8807FD67C3B406053F8 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7104F2A4B593908F81C592F9 /* OCRService.swift */; };
 		68E9E867285C85B81B04A90F /* AssistantActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FBA553197C47862FFFB6155 /* AssistantActionTests.swift */; };
 		69BC6922D7FC506AA336AB94 /* SessionsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EDB1E6A53CD8612DB94B5CC /* SessionsWindowController.swift */; };
 		69E981D47DB742F906A163BC /* OverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B314C441C040CC10C72B28 /* OverlayWindowController.swift */; };
-		6A32C49F02D7A5E6B176CCD7 /* HouseDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710DD4A7AC66EEECFFD2DBF4 /* HouseDesign.swift */; };
 		6A51E342457984EB7396E893 /* HouseFindBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7021D1F98DB4DF05EFD92C4A /* HouseFindBar.swift */; };
 		6B7A33C5027AB14B865961BD /* GeneratedNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 810AE550A895E08E185232F2 /* GeneratedNote.swift */; };
 		6B87A4725AE6BF80E81F5ECF /* RegistryMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8917D2FFA935D09BB39F439 /* RegistryMenu.swift */; };
@@ -191,6 +191,7 @@
 		6D75D10D5F8F759F52EB984A /* LLMErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEC28BC83C424B25E884D37F /* LLMErrorTests.swift */; };
 		6DE7863B9496A49105CB8675 /* TranscriptContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6820EA81EE3A97F7E8DB34B1 /* TranscriptContext.swift */; };
 		6E70D74ACF54669515C128A6 /* LLMControllerRetrievalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3F0AAF8D30F11CB29B0D0CF /* LLMControllerRetrievalTests.swift */; };
+		6F52CAA5C89FFC59902479BA /* HouseDesign in Frameworks */ = {isa = PBXBuildFile; productRef = CB782B09C1FEEFF83902B6DC /* HouseDesign */; };
 		6FDAD69C4A2E201582EBACBD /* OverlayEscapeOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11F05CD54FE69DAA4256280 /* OverlayEscapeOrderTests.swift */; };
 		6FFFEFC8310AF0AFD6ECC332 /* LiveTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5FD7ABE2A3DC733CDA355C4 /* LiveTranscriptView.swift */; };
 		70205523ED58EBF515AA24F4 /* OnboardingWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784D2F42B9624F60F08B2572 /* OnboardingWindowController.swift */; };
@@ -242,7 +243,6 @@
 		886EA5DD49E12F67E62AC3B2 /* ToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A06709838D59A2DCC0115DC /* ToolExecutor.swift */; };
 		88A5F181BB28DD7C48AD1BD8 /* PromptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E782AE3D7185571A1C3D5DA /* PromptStore.swift */; };
 		896922E4FF96F5870FA14895 /* VisualContextTrail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7557921BD570C3347CF5972 /* VisualContextTrail.swift */; };
-		89A179CA5C468E5AD024A5B3 /* HouseDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710DD4A7AC66EEECFFD2DBF4 /* HouseDesign.swift */; };
 		89A9FDEA99D4D51B30C1E452 /* MeetingBriefView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E55E7E809BEFA879CDB0EF /* MeetingBriefView.swift */; };
 		89F3766B1D91559FE355B9A3 /* VoicesTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D9C4A96C106BAF198C416B /* VoicesTab.swift */; };
 		8A2497EE79D9F64D35D21904 /* OverlayNotices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E84F5A0021B9AA74859F2DD /* OverlayNotices.swift */; };
@@ -632,7 +632,6 @@
 		7021D1F98DB4DF05EFD92C4A /* HouseFindBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseFindBar.swift; sourceTree = "<group>"; };
 		70BF29F58CC613A81C10A4E8 /* SessionsBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsBrowserView.swift; sourceTree = "<group>"; };
 		7104F2A4B593908F81C592F9 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
-		710DD4A7AC66EEECFFD2DBF4 /* HouseDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseDesign.swift; sourceTree = "<group>"; };
 		7312C46675D7A04D3CFDDEB1 /* SpeakerNameStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerNameStore.swift; sourceTree = "<group>"; };
 		738970E302C3E0FF78ABC3D1 /* MeetingRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecorderTests.swift; sourceTree = "<group>"; };
 		73922AAADA102ECEF611A7B6 /* RTIDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIDesign.swift; sourceTree = "<group>"; };
@@ -682,7 +681,6 @@
 		9B123EF6D98DDEB693E862AF /* HouseChatPrimitives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseChatPrimitives.swift; sourceTree = "<group>"; };
 		9C48267D7243F07E859FF17B /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		9C4E876D9FF41F74EFFEA95F /* LLMToolDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMToolDefinition.swift; sourceTree = "<group>"; };
-		9D0827A85EC03177D8698F52 /* house-chat-core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "house-chat-core"; path = "../../house-chat-core"; sourceTree = SOURCE_ROOT; };
 		9D248BA15E3A05B457FED368 /* PromptComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptComposer.swift; sourceTree = "<group>"; };
 		9E063BE715BD0639FA423F26 /* SessionFinalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionFinalizer.swift; sourceTree = "<group>"; };
 		9ECD046016C2A753E3F7ED91 /* ToolLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolLoop.swift; sourceTree = "<group>"; };
@@ -825,6 +823,7 @@
 				B9302971C50C52E2ABB06D02 /* MarkdownUI in Frameworks */,
 				F42DB9870FE292E13C21610E /* HouseChatCore in Frameworks */,
 				5AB668F82A897EDCC28B10B5 /* HouseChatDocuments in Frameworks */,
+				67C0ECBE47FA9B15129B8950 /* HouseDesign in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -836,6 +835,7 @@
 				7B41507509C47C6176A46C90 /* Yams in Frameworks */,
 				1B82BC140E1AF1EE59B9A9FD /* HouseChatCore in Frameworks */,
 				2EF14FDD6C014EAEA396A530 /* HouseChatDocuments in Frameworks */,
+				6F52CAA5C89FFC59902479BA /* HouseDesign in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -849,6 +849,7 @@
 				CE25F9274DF4FB593B46578A /* MarkdownUI in Frameworks */,
 				DBE240C7158EDCD1C0F0DDB8 /* HouseChatCore in Frameworks */,
 				9C8B0C0CB2C24D0DF3499E9C /* HouseChatDocuments in Frameworks */,
+				3BAA31FDA93CBA9A68700D50 /* HouseDesign in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1266,14 +1267,6 @@
 			path = Session;
 			sourceTree = "<group>";
 		};
-		9011465AF1D8523A20C42470 /* Packages */ = {
-			isa = PBXGroup;
-			children = (
-				9D0827A85EC03177D8698F52 /* house-chat-core */,
-			);
-			name = Packages;
-			sourceTree = "<group>";
-		};
 		9078B056DC9BCFE0439E87F9 /* Modes */ = {
 			isa = PBXGroup;
 			children = (
@@ -1286,7 +1279,6 @@
 			isa = PBXGroup;
 			children = (
 				ACBB9FE1DCA33C65C3448066 /* Core */,
-				9011465AF1D8523A20C42470 /* Packages */,
 				0EB500F040CD0A13DFEF2614 /* RenderTests */,
 				4D8C97B5941BFCF71B02C5E3 /* rti */,
 				1DC3BF0CDA31806B027312AE /* Sources */,
@@ -1392,7 +1384,6 @@
 			children = (
 				FD66419CB55DD2F36238313A /* DotMatrixText.swift */,
 				C94121B6360402223C2126D9 /* HotkeyCoordinator.swift */,
-				710DD4A7AC66EEECFFD2DBF4 /* HouseDesign.swift */,
 				74FABC58ECB31EE7F0FCD578 /* MenuCoordinator.swift */,
 				73922AAADA102ECEF611A7B6 /* RTIDesign.swift */,
 				621CBC32F674860D456180B6 /* RTIMainMenu.swift */,
@@ -1477,6 +1468,7 @@
 				8461FA9D180B1BEC25636E62 /* MarkdownUI */,
 				00A7317471C85D4D017E7CAB /* HouseChatCore */,
 				446F557F3780637C6E7680BC /* HouseChatDocuments */,
+				EA3180497D2EFEC756980FEC /* HouseDesign */,
 			);
 			productName = RTI;
 			productReference = C1F0544DED98C9C9C8A525F7 /* RTI.app */;
@@ -1499,6 +1491,7 @@
 				193C6721989EBF7E550F424A /* Yams */,
 				7CFCC2661B66178194E56827 /* HouseChatCore */,
 				F96965F78CD64A1566FE6EC5 /* HouseChatDocuments */,
+				CB782B09C1FEEFF83902B6DC /* HouseDesign */,
 			);
 			productName = RTITests;
 			productReference = 529928DBB744C96FC50538C4 /* RTITests.xctest */;
@@ -1524,6 +1517,7 @@
 				016D6FF8D1B11BCEC54EB45D /* MarkdownUI */,
 				5C562F56DED64B6ABA4A005C /* HouseChatCore */,
 				54B8CBE3C75353BFA47FBB68 /* HouseChatDocuments */,
+				99BDA0C117D44CD2E2C8BBCD /* HouseDesign */,
 			);
 			productName = RTIRenderTests;
 			productReference = DD252AC03EC9589E65773554 /* RTIRenderTests.xctest */;
@@ -1582,10 +1576,11 @@
 			mainGroup = 93C3B71700B313358BBEB139;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				BA7DD52C14E41A5A6924A480 /* XCRemoteSwiftPackageReference "design-system" */,
+				FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */,
 				9F51B94161DD39709791A375 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				8A1C41FE0398140150F33ED7 /* XCRemoteSwiftPackageReference "Starscream" */,
 				1B2D3A33C9B42B84FA7F4339 /* XCRemoteSwiftPackageReference "Yams" */,
-				45E287C3F9A99F102E3BF895 /* XCLocalSwiftPackageReference "../../house-chat-core" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2F60E31386655AA08CC1C2A9 /* Products */;
@@ -1692,7 +1687,6 @@
 				FA7129F69A49837D4A5C4149 /* HouseAttachmentChip.swift in Sources */,
 				39030320804071EDE3E28986 /* HouseChatPrimitives.swift in Sources */,
 				2AB106800AD8C84E41D794C9 /* HouseComposer.swift in Sources */,
-				6A32C49F02D7A5E6B176CCD7 /* HouseDesign.swift in Sources */,
 				C1F9A02A20D3808AE384E81A /* HouseFindBar.swift in Sources */,
 				4BC04AC802F87EB101CA4ABB /* HouseFloatingChooser.swift in Sources */,
 				B904F4D08F3A28A22D19FB62 /* HouseThread.swift in Sources */,
@@ -1842,7 +1836,6 @@
 				AB0A01CA22B357B67182E9B5 /* ComposerUnknownCommandTests.swift in Sources */,
 				BFEA9BB04A9F64FA0E27C801 /* ControlSocketTests.swift in Sources */,
 				6C73E534B6D4E4948BFB84C7 /* ExternalTools.swift in Sources */,
-				89A179CA5C468E5AD024A5B3 /* HouseDesign.swift in Sources */,
 				B10297342695329ED1968C8E /* JSONExtractorTests.swift in Sources */,
 				C072C97FD5A8A51CF56D87C9 /* LLMAdmissionTests.swift in Sources */,
 				6E70D74ACF54669515C128A6 /* LLMControllerRetrievalTests.swift in Sources */,
@@ -2028,7 +2021,6 @@
 				297828D688A2BFFCAFF038EA /* HouseAttachmentChip.swift in Sources */,
 				1CDC870014F1ACB5E32E44CE /* HouseChatPrimitives.swift in Sources */,
 				C3DD4FC58544C360B5FDABCC /* HouseComposer.swift in Sources */,
-				0A3589CE4BD8F50FF57C7AAC /* HouseDesign.swift in Sources */,
 				6A51E342457984EB7396E893 /* HouseFindBar.swift in Sources */,
 				B575CCDA22FD5C53FF188498 /* HouseFloatingChooser.swift in Sources */,
 				2670D84413A157DCAFB13E1E /* HouseThread.swift in Sources */,
@@ -2503,13 +2495,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		45E287C3F9A99F102E3BF895 /* XCLocalSwiftPackageReference "../../house-chat-core" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../../house-chat-core";
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		1B2D3A33C9B42B84FA7F4339 /* XCRemoteSwiftPackageReference "Yams" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -2535,11 +2520,28 @@
 				minimumVersion = 2.4.0;
 			};
 		};
+		BA7DD52C14E41A5A6924A480 /* XCRemoteSwiftPackageReference "design-system" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tristan-mcinnis/design-system";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+		FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tristan-mcinnis/house-chat-core";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		00A7317471C85D4D017E7CAB /* HouseChatCore */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */;
 			productName = HouseChatCore;
 		};
 		016D6FF8D1B11BCEC54EB45D /* MarkdownUI */ = {
@@ -2554,6 +2556,7 @@
 		};
 		446F557F3780637C6E7680BC /* HouseChatDocuments */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */;
 			productName = HouseChatDocuments;
 		};
 		4764FF2E6083F6EC2598C84B /* Starscream */ = {
@@ -2563,14 +2566,17 @@
 		};
 		54B8CBE3C75353BFA47FBB68 /* HouseChatDocuments */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */;
 			productName = HouseChatDocuments;
 		};
 		5C562F56DED64B6ABA4A005C /* HouseChatCore */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */;
 			productName = HouseChatCore;
 		};
 		7CFCC2661B66178194E56827 /* HouseChatCore */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */;
 			productName = HouseChatCore;
 		};
 		7E8E1DDE8C0DAA6243ABEA07 /* Yams */ = {
@@ -2583,9 +2589,20 @@
 			package = 9F51B94161DD39709791A375 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
 		};
+		99BDA0C117D44CD2E2C8BBCD /* HouseDesign */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA7DD52C14E41A5A6924A480 /* XCRemoteSwiftPackageReference "design-system" */;
+			productName = HouseDesign;
+		};
 		A04B5670B0E03C69F54A1ED2 /* HouseChatCore */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */;
 			productName = HouseChatCore;
+		};
+		CB782B09C1FEEFF83902B6DC /* HouseDesign */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA7DD52C14E41A5A6924A480 /* XCRemoteSwiftPackageReference "design-system" */;
+			productName = HouseDesign;
 		};
 		D0B6C86BEF9143E9BCEC2BE1 /* Starscream */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -2597,8 +2614,14 @@
 			package = 1B2D3A33C9B42B84FA7F4339 /* XCRemoteSwiftPackageReference "Yams" */;
 			productName = Yams;
 		};
+		EA3180497D2EFEC756980FEC /* HouseDesign */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA7DD52C14E41A5A6924A480 /* XCRemoteSwiftPackageReference "design-system" */;
+			productName = HouseDesign;
+		};
 		F96965F78CD64A1566FE6EC5 /* HouseChatDocuments */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */;
 			productName = HouseChatDocuments;
 		};
 /* End XCSwiftPackageProductDependency section */

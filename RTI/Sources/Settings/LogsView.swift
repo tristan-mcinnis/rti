@@ -1,4 +1,5 @@
 import SwiftUI
+import HouseDesign
 
 /// Settings → Logs: the live in-memory log, past days' log files, and the
 /// crash log. A toolbar strip on top (Live or Past, the count, the

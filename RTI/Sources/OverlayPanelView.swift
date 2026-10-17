@@ -1,6 +1,7 @@
 import Observation
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// The overlay's content: a header in the traffic-light row, the tabs row,
 /// and the selected tab. House window chrome (chat-surfaces.md section 7) in

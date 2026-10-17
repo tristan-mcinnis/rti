@@ -2,6 +2,7 @@
 import AppKit
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// The composer's sizes that follow from tokens.
 enum HouseComposerMetrics {

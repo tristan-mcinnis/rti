@@ -1,5 +1,6 @@
 import SwiftUI
 import RTICore
+import HouseDesign
 
 // MARK: - Modes
 

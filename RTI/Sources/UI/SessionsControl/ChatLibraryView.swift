@@ -1,6 +1,7 @@
 import AppKit
 import HouseChatCore
 import SwiftUI
+import HouseDesign
 
 /// The Sessions / Chats switch, in the window header so it is reachable with
 /// the rail hidden. Chrome is ink; the segmented control takes the house

@@ -2,6 +2,7 @@
 import AppKit
 import RTICore
 import SwiftUI
+import HouseDesign
 
 // Attachment chips (design-system docs/chat-surfaces.md section 4): one chip
 // view for the composer strip and for the read-only chips over a sent

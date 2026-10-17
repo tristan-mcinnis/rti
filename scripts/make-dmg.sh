@@ -25,7 +25,8 @@ DERIVED="$ROOT_DIR/build/dmg"
 APP="$DERIVED/Build/Products/Release/${APP_NAME}.app"
 OUT_DIR="${RELEASE_OUT:-$ROOT_DIR/dist/release}"
 PKG_DIR="$ROOT_DIR/Packaging/Release"
-CHAT_CORE_PROVENANCE="$ROOT_DIR/../house-chat-core/scripts/chat-core-provenance.py"
+PACKAGE_PINS="$ROOT_DIR/scripts/stamp-package-pins.py"
+RESOLVED="$ROOT_DIR/RTI/RTI.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 
 if [[ "${RTI_SKIP_BUILD:-0}" != "1" ]]; then
   COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -39,11 +40,6 @@ if [[ "${RTI_SKIP_BUILD:-0}" != "1" ]]; then
       exit 1
     fi
   fi
-  # A clean RTI checkout is not enough: the build also consumes the sibling
-  # HouseChatCore package. Its commit and source hash are stamped below.
-  python3 "$CHAT_CORE_PROVENANCE" --require-clean
-
-  "$ROOT_DIR/scripts/check-layout.sh"
   # Secrets.swift is gitignored and holds no keys. Seed it from the example.
   [[ -f RTI/Sources/Secrets.swift ]] || cp RTI/Sources/Secrets.swift.example RTI/Sources/Secrets.swift
   echo "==> xcodegen + Release build (arm64, ad hoc)"
@@ -58,7 +54,7 @@ if [[ "${RTI_SKIP_BUILD:-0}" != "1" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(date +%Y%m%d%H%M)" "$PLIST"
   /usr/libexec/PlistBuddy -c "Add :RTIBuiltFromCommit string $COMMIT" "$PLIST" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Set :RTIBuiltFromCommit $COMMIT" "$PLIST"
-  python3 "$CHAT_CORE_PROVENANCE" --require-clean --plist "$PLIST"
+  python3 "$PACKAGE_PINS" --resolved "$RESOLVED" --plist "$PLIST"
 
   echo "==> ad hoc signature, hardened runtime, with the app entitlements"
   codesign --force --deep -s - --options runtime \

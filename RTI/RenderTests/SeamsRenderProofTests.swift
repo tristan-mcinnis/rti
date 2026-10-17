@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 /// Package 0 ("seams") proofs: the copied house chat primitives drawn on one
 /// sheet, and checks that the shared harness keeps every proof on the

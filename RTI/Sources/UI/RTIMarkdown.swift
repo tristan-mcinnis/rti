@@ -1,5 +1,6 @@
 import SwiftUI
 import MarkdownUI
+import HouseDesign
 
 /// Renders LLM-produced markdown with full block support (headings, lists,
 /// code blocks, tables, blockquotes) themed to match RTI's design system.

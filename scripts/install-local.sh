@@ -45,12 +45,6 @@ if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
 fi
 echo "== building from $COMMIT"
 
-# A clean RTI checkout is not enough: this build also consumes the sibling
-# HouseChatCore package. Its owner commit and exact source hash are stamped
-# into the signed bundle below.
-CHAT_CORE_PROVENANCE="../house-chat-core/scripts/chat-core-provenance.py"
-python3 "$CHAT_CORE_PROVENANCE" --require-clean
-
 echo "== xcodegen + build (Release)"
 (cd RTI && xcodegen generate >/dev/null && \
   xcodebuild -project RTI.xcodeproj -scheme RTI -configuration Release \
@@ -66,7 +60,7 @@ echo "== stamp build number with install time"
 /usr/libexec/PlistBuddy -c "Add :RTIBuiltFromCommit string $COMMIT" "$APP/Contents/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :RTIBuiltFromCommit $COMMIT" "$APP/Contents/Info.plist"
 
-python3 "$CHAT_CORE_PROVENANCE" --require-clean --plist "$APP/Contents/Info.plist"
+python3 scripts/stamp-package-pins.py --resolved RTI/RTI.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved --plist "$APP/Contents/Info.plist"
 
 echo "== re-sign with stable identity"
 codesign --force --deep -s "$IDENTITY" --options runtime \

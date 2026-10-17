@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 /// The `⌘K` palette must own the keys from the moment it is up: typing goes
 /// into its search field, and the composer must not pull them back.

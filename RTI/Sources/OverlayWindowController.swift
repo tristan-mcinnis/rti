@@ -3,6 +3,7 @@ import Carbon.HIToolbox
 import Observation
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// The legacy frame key from before the frame was autosaved by name. Read
 /// once, so an existing window keeps its place; never written again.

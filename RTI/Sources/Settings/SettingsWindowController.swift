@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import HouseDesign
 
 /// The one way to open Settings on a pane: its own window with the house
 /// settings shell (`SettingsView`, `Layout.settingsWidth` ×

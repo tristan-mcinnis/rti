@@ -4,6 +4,7 @@
 import AppKit
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// Owns the Sessions window: archived meetings in the house AI Chat window
 /// shape (design-system docs/chat-surfaces.md section 7). Opened from the

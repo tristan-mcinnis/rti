@@ -4,6 +4,7 @@
 import AppKit
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// Which pane the settings window shows and what its rail search holds.
 /// `SettingsWindowController` keeps one, so `show(pane:)` can switch the

@@ -2,6 +2,7 @@
 // (header, AIChatRail, OpenChatMarker), adapted to a read-only reader.
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// What the Meeting Brief window shows: the vault's pre-meeting briefs
 /// (written by Hermes "Meeting Prep"), the open one, and the rail's state.

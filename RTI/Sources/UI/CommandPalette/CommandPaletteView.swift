@@ -1,6 +1,7 @@
 // Copied from quick-launch@b9ee129 Sources/Views/OverlayView.swift (QuickActionPalette)
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// The `⌘K` action palette (design-system docs/chat-surfaces.md section 3):
 /// a search field with its `⌘K` cap, rows of an icon tile, a title, a quiet

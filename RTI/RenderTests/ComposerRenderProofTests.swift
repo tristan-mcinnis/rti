@@ -3,6 +3,7 @@ import HouseChatCore
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 /// Package B ("composer") proofs: the overlay composer in every state the
 /// house grammar names (chat-surfaces.md sections 3 and 4), drawn under a

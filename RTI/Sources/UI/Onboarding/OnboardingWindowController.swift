@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import HouseDesign
 
 /// Owns the single window hosting `OnboardingView`. Shown on first run when
 /// setup is incomplete; a normal (capturable) window, unlike the RTI window.

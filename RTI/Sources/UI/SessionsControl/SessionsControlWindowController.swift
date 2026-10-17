@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import HouseDesign
 
 /// Owns the Preferences window: durable configuration and diagnostics.
 /// Past sessions have their own window (`SessionsWindowController`); the

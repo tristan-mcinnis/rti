@@ -1,4 +1,5 @@
 import Foundation
+import HouseDesign
 
 /// The menu-bar glyph family.
 ///

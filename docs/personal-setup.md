@@ -82,7 +82,7 @@ The upgrade script is `~/Documents/code/file-transcriber/skills/file-transcriber
 
 - The signing identity comes from `RTI_SIGN_IDENTITY` in the environment, or from the gitignored `.release.env`, or from the first Apple Development identity in the login keychain.
 - Why a stable identity: an ad hoc signature changes on every build and resets every permission grant. A certificate keeps the designated requirement the same, so the grants survive.
-- The script refuses a dirty tree, because the build compiles the working tree. It also refuses if the shared `HouseChatCore` sources in the sibling house-chat-core checkout have uncommitted edits. It stamps the commit and the `HouseChatCore` source hash into the bundle.
+- The script refuses a dirty tree, because the build compiles the working tree. It stamps the pinned `HouseChatCore` and `HouseDesign` versions and revisions (from the committed `Package.resolved`) into the bundle.
 - It will not quit RTI while a recording is running or paused. It asks the running app for its status over the control socket first.
 - `scripts/sign-install.sh` is the older route with a self-signed identity. Prefer `install-local.sh`.
 

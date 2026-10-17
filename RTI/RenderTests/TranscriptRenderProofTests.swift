@@ -2,6 +2,7 @@ import AppKit
 import RTICore
 import SwiftUI
 import XCTest
+import HouseDesign
 
 /// The transcript, live and archived: several speakers on both legs, runs of
 /// the same speaker, a note, and interim text still settling. Narrow (the

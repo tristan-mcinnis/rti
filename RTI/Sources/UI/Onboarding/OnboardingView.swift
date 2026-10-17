@@ -1,6 +1,7 @@
 // Welcome block copied from quick-launch@8ee19aa Sources/Views/WelcomeOverlayView.swift
 import RTICore
 import SwiftUI
+import HouseDesign
 
 /// First-run setup, in the shape of Quick Launch's welcome card: the RTI
 /// mark, one line, the five keys that make up the app, then the two setup

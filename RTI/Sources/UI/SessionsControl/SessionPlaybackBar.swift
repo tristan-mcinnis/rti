@@ -1,4 +1,5 @@
 import SwiftUI
+import HouseDesign
 
 struct SessionPlaybackBar: View {
     @Bindable var playback: SessionPlaybackModel
