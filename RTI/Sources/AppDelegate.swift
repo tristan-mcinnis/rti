@@ -49,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     @MainActor private func continueLaunch() {
         _ = ModeStore.shared
         UserDefaults.standard.register(defaults: [
+            NotesSettings.enabledKey: NotesSettings.defaultEnabled,
+            NotesSettings.intervalKey: NotesSettings.defaultInterval,
             AutoAssistSettings.enabledKey: AutoAssistSettings.defaultEnabled,
         ])
 
@@ -62,9 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // Normal stops already delete it; the app keeps no audio.
         WAVWriter.sweepStaleRecordings()
 
-        // Register the Auto-mode tick. It only fires while a session runs and
-        // self-gates on its Settings toggle.
-        SessionCoordinator.shared.registerAutoAssistTask()
+        // Register the periodic tasks (live notes, Auto mode). They only fire
+        // while a session runs and self-gate on their Settings toggles.
+        SessionCoordinator.shared.registerPeriodicTasks()
 
         // Publish the control socket and the command manifest, so Quick Launch
         // can start and stop a recording. A bind failure is logged and ignored

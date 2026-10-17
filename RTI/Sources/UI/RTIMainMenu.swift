@@ -11,7 +11,7 @@ import SwiftUI
 //
 // Keys: RTI keeps ⌘\ as its global show and hide (a Carbon hotkey, see
 // `HotkeyCoordinator`). The house key for a window's list is ⌃⌘S, the macOS
-// sidebar key, in the Sessions window too. ⌘1…⌘4 pick an overlay tab only
+// sidebar key, in the Sessions window too. ⌘1…⌘5 pick an overlay tab only
 // while the overlay is key, so the Sessions window keeps them for its rows.
 
 extension Notification.Name {
@@ -177,11 +177,12 @@ private struct SessionMenuItems: View {
 // MARK: - View menu
 
 private struct ViewMenuItems: View {
-    // The opt-in Auto tab follows Prepare's toggle.
+    // The opt-in tabs follow Prepare's toggles.
+    @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
 
     var body: some View {
-        let tabs = OverlayTab.visibleTabs(auto: autoAssistEnabled)
+        let tabs = OverlayTab.visibleTabs(notes: notesEnabled, auto: autoAssistEnabled)
         let context = currentMenuContext(visibleTabs: tabs)
         ForEach(OverlayTab.allCases) { tab in
             Button(tab.title) {

@@ -34,8 +34,9 @@ public enum PromptID: String, CaseIterable, Sendable {
     case recapDetailed
     case recapLanguageRule
 
-    // Auto mode (strict-JSON background controller)
+    // Live notes (free-text background controller) and Auto mode (strict JSON)
     case autoAssistCards
+    case liveNotes
 
     // MARK: - Grouping (for the Settings UI)
 
@@ -44,7 +45,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case quickActions = "Quick actions"
         case listener = "Listener research"
         case recap = "Recap"
-        case background = "Auto mode"
+        case background = "Live notes and Auto mode"
     }
 
     public var group: Group {
@@ -53,7 +54,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .assistSpeaker, .listenerAssist, .sayNext, .followupsSpeaker, .listenerFollowups: .quickActions
         case .keyTensions, .probe, .themes: .listener
         case .recapBrief, .recapStandard, .recapDetailed, .recapLanguageRule: .recap
-        case .autoAssistCards: .background
+        case .autoAssistCards, .liveNotes: .background
         }
     }
 
@@ -75,6 +76,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapDetailed: "Recap — detailed clause"
         case .recapLanguageRule: "Recap — language rule"
         case .autoAssistCards: "Auto-assist cards"
+        case .liveNotes: "Live notes"
         }
     }
 
@@ -96,6 +98,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapDetailed: "The clause spliced into Recap at Detailed depth."
         case .recapLanguageRule: "Shared language/format rule appended to every Recap."
         case .autoAssistCards: "Background: proactive SAY/ASK/RECALL/FLAG cards (strict JSON)."
+        case .liveNotes: "Background: rolling live meeting notes (TITLE + bullets)."
         }
     }
 
@@ -109,7 +112,11 @@ public enum PromptID: String, CaseIterable, Sendable {
     /// Substrings the default relies on for downstream parsing/format. If an
     /// override removes one, the editor flags it (warn, never block).
     public var requiredTokens: [String] {
-        isJSONContract ? ["JSON"] : []
+        if isJSONContract { return ["JSON"] }
+        switch self {
+        case .liveNotes: return ["TITLE:"]
+        default: return []
+        }
     }
 
     /// The canonical default text — exactly what shipped before this registry
@@ -257,6 +264,62 @@ public enum PromptDefaults {
               ("listen actively"), no restating what was just said.
             - Ground RECALL/FLAG cards in the project context or vault material given;
               do not fabricate. Write in English.
+            """
+
+        case .liveNotes:
+            """
+            You are taking live meeting notes — jotting points down as they are said.
+
+            ⚠️ CRITICAL FORMAT RULE — applies to EVERY Chinese term, everywhere in your
+            output: write it as 中文 (pīnyīn, English meaning). The pinyin is MANDATORY,
+            with tone marks. A bare Chinese term WITHOUT pinyin is a format error.
+            Examples: 没得选 (méi dé xuǎn, no other choice); 撞车 (zhuàngchē, two things
+            clash by accident); 保温杯 (bǎowēnbēi, thermos flask). Never write 没得选 alone.
+
+            LANGUAGE: Write the notes in ENGLISH. The conversation may be in Chinese or
+            another language; translate as you go. You MAY keep a short essential term in
+            its original language when the English alone loses meaning, ALWAYS in the
+            中文 (pīnyīn, English) format above. Do NOT write whole bullets in Chinese.
+            Keep people's names and brand names as spoken.
+
+            For this slice of the conversation, produce:
+            1. A first line `TITLE: <a short 3–6 word title for what this slice covered>`.
+            2. Then a flat list of concise note bullets — facts, opinions, preferences,
+               choices, questions — in the order they came up.
+
+            Format EXACTLY:
+            TITLE: <short title>
+            - <bullet>
+            - <bullet>
+
+            Rules:
+            - Be specific and concrete, e.g. "- Favourite brand is Acme, but can't find a store in Shanghai".
+            - MODERATOR: the person asking the questions and steering topics is "the
+              moderator" — call them that, never "Speaker N". Log their questions only
+              when needed to make an answer intelligible; participants' content is what
+              matters.
+            - NAMES: refer to participants by name when clear, otherwise keep the
+              transcript's "Speaker N" label. Render Chinese forms of address properly:
+              王女士 → "Ms. Wang (王女士)", 李先生 → "Mr. Li (李先生)" — NEVER ad-hoc
+              romanizations like "Wang nvshi". Once a name is known, use it in every
+              later bullet. NEVER invent labels like "them_1", "Participant 1", or "self".
+            - GARBLED TERMS: if a Chinese term looks mis-transcribed or you are not
+              confident what it means, do NOT invent a confident gloss — write it as
+              term (unclear) or use the likely intended term with a ? — e.g. "保暖杯?
+              (thermos cup)".
+            - Skip greetings and filler; capture every substantive point that was made.
+            - VERBATIM QUOTES: when a participant says something vivid, surprising, or
+              quotable, include the short verbatim phrase inline in its bullet —
+              formatted "原话 (pinyin, English)" — these verbatims are gold for the
+              debrief. At most 2–3 per block; only genuinely striking lines.
+            - SIDE CONVERSATIONS: if a stretch is clearly off-topic chatter between
+              observers — talk about software/tools, note-taking apps, screens, file
+              syncing, scheduling other projects, or anything unrelated to the main
+              discussion topic — OMIT it entirely. Do not summarize it, do not write
+              "a side conversation occurred". If you cannot tell what an utterance
+              means, drop it rather than guessing a garbled bullet.
+
+            Transcript slice:
             """
         }
     }

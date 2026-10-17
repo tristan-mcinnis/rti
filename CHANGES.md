@@ -1,5 +1,19 @@
 # RTI Change Log
 
+## 2026-10-17: Live Notes restored
+
+Live Notes came back after the trim. They are the one in-app analysis kept.
+
+- **Notes tab** (⌘5, on by default) with a block every interval, copy, export
+  and a write-now button. Settings > General has the toggle and the interval
+  slider, under the same stored keys as before, so earlier choices carry over.
+- **Archive.** `notes.md` is written again at stop, and the `-rti.md` sidecar
+  has a Generated notes section. The Sessions window lists Notes first.
+- **Prompt.** The Live notes prompt is back under Settings > Prompts.
+- The notes pass runs on the Auto-mode scheduler and reads the transcript
+  directly. Summaries, generated titles, the discussion guide and Findings
+  stay removed.
+
 ## 2026-10-17: RTI captures and assists, it no longer analyses
 
 House's job is to capture what happens, make it recallable, and assist in
@@ -9,8 +23,7 @@ the automatic transcript upgrade, the vault hand-off and the copilot.
 
 - **Removed live analysis.** The Notes, Guide and Intel tabs, their
   controllers, prompts and settings. The discussion guide import and the guide
-  context in Assist are gone. The tabs are now Prepare, Assist, Auto (opt-in)
-  and Transcript, on ⌘1 to ⌘4.
+  context in Assist are gone. (Notes returned later the same day, see above.)
 - **Removed the end-of-session summary** and the generated title. The session
   archive writes `transcript.md`, `chat.md`, `screen-context.md` and the audio.
   Titles come from a rename, the vault note, the calendar event or the first

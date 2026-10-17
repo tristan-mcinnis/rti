@@ -28,6 +28,7 @@ RTI stands for Real-Time Intelligence.
 - **A copilot over the live transcript.** `Command+Return` runs the main action over the last few minutes. Quick recap is the default. Other actions are Assist, Say next, Follow-ups, and, for interviews, Key tensions, What's unsaid and Emerging themes. The set follows your mode.
 - **A window that stays out of screen shares.** RTI is a normal Mac window with its sharing type set to none. It is hidden from screen sharing and from `screencapture` by default. Some recorders may still see it, so test yours. A toggle in Settings turns this off.
 - **Clear recording states.** The record control shows Recording, Paused, Saving, Improving transcript and Session saved. Pause keeps the connection warm, so resume is instant. You can start a new recording while the last transcript is still being improved.
+- **Live notes.** A Notes tab writes a short block of meeting notes every couple of minutes while the call runs. You can turn it off and set the interval in Settings.
 - **Auto mode.** An optional tab surfaces next-move cards (something to say, ask, recall or flag) while the call runs.
 - **Screenshots.** One key reads the whole screen and another reads the front window. Text is read on your Mac with Apple Vision. The image is sent to your model when it takes image input. Windows you put on the privacy list are left out.
 - **Translation.** Optional live translation next to the transcript, one way or two ways.
@@ -110,7 +111,7 @@ on the composer, or press `Command+Shift+H` to read the whole screen.
 | ⌘ ⇧ J | Read the front window and attach the text to the next prompt |
 | ⌘ ⇧ A | Open the attachment menu |
 | ⌘ K | Command palette |
-| ⌘ 1 to 4 | Jump to a tab while the window is key: Prepare, Assist, Auto, Transcript |
+| ⌘ 1 to 5 | Jump to a tab while the window is key: Prepare, Assist, Auto, Transcript, Notes |
 
 The source of truth for keys is `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift`.
 
@@ -135,14 +136,14 @@ The source of truth for keys is `RTI/Sources/UI/CommandPalette/CommandPaletteFac
 | To | What | When |
 |---|---|---|
 | Soniox | Live audio from your microphone and from the system audio. | During every recording. |
-| Your assistant provider (DeepSeek, OpenAI or OpenRouter) | Your prompts, about the last six minutes of transcript for each assistant turn, text chunks for Auto mode, attachments, and screenshots you add. Text read from a screenshot goes along with it. | When you use the assistant. |
+| Your assistant provider (DeepSeek, OpenAI or OpenRouter) | Your prompts, about the last six minutes of transcript for each assistant turn, text chunks for live notes and Auto mode, attachments, and screenshots you add. Text read from a screenshot goes along with it. | When you use the assistant. |
 | GitHub | A request for the latest release number. It carries no content. | At each normal launch, and when you choose Check for Updates. |
 
 Two optional integrations send more. See [Optional integrations](#optional-integrations). RTI has no server of its own, no account and no analytics.
 
 **What RTI stores**
 
-- **Sessions.** One folder per session, with owner-only permissions, in `~/Library/Application Support/RTI/sessions/<date time>/`. It holds `transcript.md`, `session.json`, and, when they exist, `chat.md`, `screen-context.md` and a `frames/` folder of screenshots. It also holds `audio-mic.wav` and `audio-system.wav`, the raw audio of both legs. RTI keeps this audio until you delete the session. If you set a notes folder, sessions go there instead.
+- **Sessions.** One folder per session, with owner-only permissions, in `~/Library/Application Support/RTI/sessions/<date time>/`. It holds `transcript.md`, `session.json`, and, when they exist, `chat.md`, `notes.md`, `screen-context.md` and a `frames/` folder of screenshots. It also holds `audio-mic.wav` and `audio-system.wav`, the raw audio of both legs. RTI keeps this audio until you delete the session. If you set a notes folder, sessions go there instead.
 - **API keys.** In `~/Library/Application Support/RTI/credentials.json`, a plain JSON file readable only by you. RTI does not use the Keychain.
 - **Chats.** Saved only when a notes folder is set. Without one, chats run but are not stored.
 - **Other.** Your modes and a crash log in `~/Library/Application Support/RTI/`, and the `claude` run logs in `~/Library/Logs/RTI/` if you use that integration.
@@ -220,7 +221,7 @@ RTI is built on these open-source Swift packages:
 
 - [Starscream](https://github.com/daltoniam/Starscream) by Dalton Cherry (Apache-2.0), for the WebSocket link to Soniox.
 - [Yams](https://github.com/jpsim/Yams) by JP Simard (MIT), for YAML front matter.
-- [swift-markdown-ui](https://github.com/gonzalezreal/swift-markdown-ui) and [NetworkImage](https://github.com/gonzalezreal/NetworkImage) by Guille Gonzalez (MIT), for Markdown in answers.
+- [swift-markdown-ui](https://github.com/gonzalezreal/swift-markdown-ui) and [NetworkImage](https://github.com/gonzalezreal/NetworkImage) by Guille Gonzalez (MIT), for Markdown in answers and notes.
 - [swift-cmark](https://github.com/swiftlang/swift-cmark), the cmark-gfm parser by John MacFarlane, GitHub and others (BSD-2-Clause, with MIT parts).
 
 Transcription is by [Soniox](https://soniox.com). RTI ships no model weights, fonts or third-party icons.

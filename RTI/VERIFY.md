@@ -187,6 +187,6 @@ meeting processing and Neon indexing.
 ## I. Real meeting (the final gate)
 - [ ] Join a real call. Both sides transcribe (the Transcript tab shows your runs on the right as "You" and the call's voices on the left as "Speaker N").
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
-- [ ] The Auto tab surfaces cards (when enabled in Prepare).
+- [ ] The Notes tab fills in every few minutes (on by default), and the Auto tab surfaces cards (when enabled in Prepare).
 - [ ] Overlay is absent from the screen share (QuickTime/Zoom — §4/§5 above).
 - [ ] Stop → the session folder appears in the vault under `…/databases/projects/personal/rti/sessions/<stamp>/` with `transcript.md`, `audio-mic.wav` and `audio-system.wav` (the audio is kept for the transcript upgrade); mic released (orange dot clears, other apps can use the mic).

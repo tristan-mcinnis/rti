@@ -140,6 +140,7 @@ enum LogCategory: String, Sendable {
     case launchAtLogin = "launch-at-login"
     case llm
     case modes
+    case notes
     case screenshot
     case soniox
     case systemAudio = "system-audio"

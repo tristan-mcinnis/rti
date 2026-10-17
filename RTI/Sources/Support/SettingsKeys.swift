@@ -132,12 +132,24 @@ enum TranslationDefaults {
     static let languageBKey = "rti.translation.languageB"
 }
 
+enum NotesSettings {
+    static let enabledKey = "rti.analysis.notesEnabled"
+    static let intervalKey = "rti.analysis.notesIntervalSeconds"
+    static let defaultEnabled = true
+    static let defaultInterval: Double = 120
+    static let intervalRange: ClosedRange<Double> = 60...600
+
+    /// The shared scheduler tick: the saved notes interval, else the default.
+    static var tickInterval: TimeInterval {
+        let saved = UserDefaults.standard.double(forKey: intervalKey)
+        return saved > 0 ? saved : defaultInterval
+    }
+}
+
 enum AutoAssistSettings {
     /// Auto mode: proactively surface project-grounded suggestion cards live.
     static let enabledKey = "rti.analysis.autoAssistEnabled"
     static let defaultEnabled = false
-    /// Seconds between scheduler ticks while a session runs.
-    static let tickInterval: TimeInterval = 120
 }
 
 enum VisualContextSettingsDefaults {

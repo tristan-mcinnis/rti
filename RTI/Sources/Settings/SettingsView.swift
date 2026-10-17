@@ -65,7 +65,7 @@ struct SettingsView: View {
             case .prompts: "The instructions RTI sends to the model for each action."
             case .glossary: "Names, acronyms, and terms the model keeps as written."
             case .voices: "The voice samples behind speaker name suggestions."
-            case .general: "Capture, audio, Auto mode, appearance, and hotkeys."
+            case .general: "Capture, audio, notes, Auto mode, appearance, and hotkeys."
             case .logs: "Recent activity and the crash log."
             case .about: "Version, updates, and diagnostics."
             }
@@ -92,7 +92,7 @@ struct SettingsView: View {
             case .glossary: ["terms", "names", "acronyms", "spelling"]
             case .voices: ["speakers", "voice profiles", "samples"]
             case .general: ["login", "microphone", "audio", "input", "echo", "Bluetooth", "screen", "privacy", "capture",
-                            "auto", "appearance", "theme", "dark", "light", "text size", "font", "motion",
+                            "notes", "auto", "appearance", "theme", "dark", "light", "text size", "font", "motion",
                             "speaker colours", "hotkeys", "shortcuts", "folder", "data"]
             case .logs: ["crash", "diagnostics", "errors"]
             case .about: ["version", "updates", "diagnostics", "source"]

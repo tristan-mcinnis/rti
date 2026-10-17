@@ -14,6 +14,7 @@ import RTICore
 /// can't be located via RTI's config, `~/.config/rti/config.json`):
 ///   transcript.md         — the live transcript, notes inline
 ///   chat.md               — the assistant chat log (only written if non-empty)
+///   notes.md              — generated meeting notes (only if any)
 ///   screen-context.md     — timestamped active-screen OCR changes (only if any)
 ///   audio-mic.wav         — retained mic audio for automatic transcript upgrade
 ///   audio-system.wav      — retained system audio for automatic transcript upgrade
@@ -70,6 +71,7 @@ enum SessionArchive {
         transcript: [LiveEntry],
         chat: [ChatEntry],
         visualContext: [VisualContextEvent] = [],
+        notes: [GeneratedNote] = [],
         sessionId: String? = nil,
         micRecordingURL: URL? = nil,
         systemRecordingURL: URL? = nil,
@@ -85,7 +87,7 @@ enum SessionArchive {
         let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
             .compactMap { $0 }
             .contains { FileManager.default.fileExists(atPath: $0.path) }
-        guard !transcript.isEmpty || !chat.isEmpty || !visualContext.isEmpty || hasRetainedAudio else { return nil }
+        guard !transcript.isEmpty || !chat.isEmpty || !notes.isEmpty || !visualContext.isEmpty || hasRetainedAudio else { return nil }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
 
         func fm(_ kind: String) -> [String] {
@@ -136,6 +138,11 @@ enum SessionArchive {
             writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
         }
 
+        if !notes.isEmpty {
+            let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(notes)]).joined(separator: "\n")
+            let md = (fm("Notes") + [body]).joined(separator: "\n")
+            writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
+        }
         if !visualContext.isEmpty {
             let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(visualContext)]).joined(separator: "\n")
             let md = (fm("Screen context") + [body]).joined(separator: "\n")
@@ -187,6 +194,7 @@ enum SessionArchive {
         transcript: [LiveEntry],
         chat: [ChatEntry],
         visualContext: [VisualContextEvent],
+        notes: [GeneratedNote],
         archiveDir: URL?
     ) -> CanonicalMeetingExport? {
         let raw = CanonicalMeetingTranscript.render(entries: transcript)
@@ -195,6 +203,7 @@ enum SessionArchive {
             rawTranscript: raw,
             chat: chat,
             visualContext: visualContext,
+            notes: notes,
             archiveDir: archiveDir
         )
     }
@@ -212,6 +221,7 @@ enum SessionArchive {
             rawTranscript: raw,
             chat: [],
             visualContext: [],
+            notes: [],
             archiveDir: archiveDir,
             writeSidecar: false
         )?.transcriptURL
@@ -263,6 +273,7 @@ enum SessionArchive {
         startedAt: Date,
         chat: [ChatEntry],
         visualContext: [VisualContextEvent],
+        notes: [GeneratedNote],
         archiveDir: URL?,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0
@@ -275,6 +286,7 @@ enum SessionArchive {
             startedAt: startedAt,
             chat: chat,
             visualContext: visualContext,
+            notes: notes,
             archiveDir: archiveDir,
             chatThreads: chatThreads,
             unreadableChatCount: unreadableChatCount
@@ -291,6 +303,7 @@ enum SessionArchive {
         rawTranscript: String,
         chat: [ChatEntry],
         visualContext: [VisualContextEvent],
+        notes: [GeneratedNote],
         archiveDir: URL?,
         writeSidecar: Bool = true
     ) -> CanonicalMeetingExport? {
@@ -309,6 +322,7 @@ enum SessionArchive {
                 startedAt: startedAt,
                 chat: chat,
                 visualContext: visualContext,
+                notes: notes,
                 archiveDir: archiveDir
             )
             if sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -343,6 +357,7 @@ enum SessionArchive {
         startedAt: Date,
         chat: [ChatEntry],
         visualContext: [VisualContextEvent],
+        notes: [GeneratedNote],
         archiveDir: URL?,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0
@@ -363,6 +378,12 @@ enum SessionArchive {
         }
         lines.append("")
 
+        if !notes.isEmpty {
+            lines.append("## Generated notes")
+            lines.append("")
+            lines.append(renderNotes(notes))
+            lines.append("")
+        }
         if !visualContext.isEmpty {
             lines.append("## Screen context")
             lines.append("")
@@ -557,6 +578,17 @@ enum SessionArchive {
             lines.append("")
         }
         return lines
+    }
+
+    /// Combined markdown for generated notes: one block per note, newest
+    /// material last, separated by rules. Shared by the local archive and the
+    /// linked-meeting record.
+    private static func renderNotes(_ notes: [GeneratedNote]) -> String {
+        notes.map { n in
+            var head = "### \(offset(n.rangeStartMs)) – \(offset(n.rangeEndMs))"
+            if !n.title.isEmpty { head += " · \(n.title)" }
+            return "\(head)\n\n\(n.content)"
+        }.joined(separator: "\n\n")
     }
 
     /// Materially changed active-screen captures. Each event carries its OCR

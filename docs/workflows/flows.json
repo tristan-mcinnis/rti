@@ -327,14 +327,14 @@
           "from": "SessionCoordinator",
           "to": "SessionFinalizer",
           "label": "archive()",
-          "passes": "A snapshot of transcript, chat, screen context and audio URLs is archived.",
+          "passes": "A snapshot of transcript, chat, notes, screen context and audio URLs is archived.",
           "ref": "RTI/Sources/Session/SessionFinalizer.swift · func archive()"
         },
         {
           "from": "SessionFinalizer",
           "to": "SessionArchive",
           "label": "write(...)",
-          "passes": "transcript.md, chat.md, screen-context.md and the WAV legs land in <vault>/…/rti/sessions/<stamp>/.",
+          "passes": "transcript.md, chat.md, notes.md, screen-context.md and the WAV legs land in <vault>/…/rti/sessions/<stamp>/.",
           "ref": "RTI/Sources/Session/SessionArchive.swift · static func write("
         },
         {

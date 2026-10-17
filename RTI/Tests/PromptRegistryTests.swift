@@ -30,6 +30,13 @@ final class PromptRegistryTests: XCTestCase {
         }
     }
 
+    func test_liveNotesIsFreeTextAndRequiresItsTitleLine() {
+        XCTAssertFalse(PromptID.liveNotes.isJSONContract)
+        XCTAssertEqual(PromptID.liveNotes.requiredTokens, ["TITLE:"])
+        XCTAssertTrue(PromptID.liveNotes.defaultText.contains("TITLE:"))
+        XCTAssertEqual(PromptID.liveNotes.rawValue, "liveNotes")
+    }
+
     // MARK: - Drift hash
 
     func test_fnv1aIsStableAndDistinct() {

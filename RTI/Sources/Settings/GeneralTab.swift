@@ -14,7 +14,7 @@ struct GeneralTab: View {
                 CaptureAccessSection()
                 ScreenPrivacySection()
                 AudioInputSection()
-                AutoModeSection()
+                RealTimeSection()
                 AppearanceSection()
                 HotkeysSection()
                 DataAndSupportSection()
@@ -111,7 +111,7 @@ private struct CaptureAccessSection: View {
 // MARK: - Screen Privacy
 
 /// Deny-list of apps whose windows are removed from every screen capture at
-/// the ScreenCaptureKit filter: their pixels never reach OCR, frames,
+/// the ScreenCaptureKit filter: their pixels never reach OCR, frames, notes,
 /// or the vault meeting note.
 private struct ScreenPrivacySection: View {
     @State private var listText: String = ScreenPrivacy.excludedBundleIds.joined(separator: "\n")
@@ -119,7 +119,7 @@ private struct ScreenPrivacySection: View {
     var body: some View {
         SettingsCard(
             "Screen Privacy",
-            detail: "Windows of these apps are cut out of every screen capture: ambient context, attached screenshots, and the assistant's capture tool. Their content never reaches OCR text or kept frames. One bundle ID per line."
+            detail: "Windows of these apps are cut out of every screen capture: ambient context, attached screenshots, and the assistant's capture tool. Their content never reaches OCR text, kept frames, or notes. One bundle ID per line."
         ) {
             TextEditor(text: $listText)
                 .font(House.TypeToken.code)
@@ -217,14 +217,36 @@ private struct AudioInputSection: View {
     }
 }
 
-// MARK: - Auto mode
+// MARK: - Real-time notes and Auto mode
 
-private struct AutoModeSection: View {
+private struct RealTimeSection: View {
+    @AppStorage(NotesSettings.enabledKey) private var notesEnabled: Bool = NotesSettings.defaultEnabled
+    @AppStorage(NotesSettings.intervalKey) private var notesInterval: Double = NotesSettings.defaultInterval
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled: Bool = AutoAssistSettings.defaultEnabled
 
     var body: some View {
-        SettingsCard("Auto Mode", detail: "Runs by itself while recording.", rows: true) {
-            SettingsToggleRow(title: "Show next-move cards (Auto)", isFirst: true, isOn: $autoAssistEnabled)
+        SettingsCard("Real-Time Notes and Auto", detail: "Runs by itself while recording.", rows: true) {
+            SettingsToggleRow(title: "Write notes", isFirst: true, isOn: $notesEnabled)
+            SettingsRow(title: "Notes interval") {
+                HStack(spacing: House.Spacing.xs) {
+                    Slider(value: $notesInterval, in: NotesSettings.intervalRange, step: 60) {}
+                        .labelsHidden()
+                        .frame(width: House.Layout.settingsRail)
+                    Text("\(Int(notesInterval / 60)) min")
+                        .font(House.TypeToken.meta)
+                        .monospacedDigit()
+                        .foregroundStyle(House.ColorToken.textSecondary)
+                }
+                .disabled(!notesEnabled)
+            }
+            SettingsToggleRow(title: "Show next-move cards (Auto)", isOn: $autoAssistEnabled)
+            CardNote {
+                Button("Reset to Defaults") {
+                    notesEnabled = NotesSettings.defaultEnabled
+                    autoAssistEnabled = AutoAssistSettings.defaultEnabled
+                    notesInterval = NotesSettings.defaultInterval
+                }
+            }
         }
     }
 }

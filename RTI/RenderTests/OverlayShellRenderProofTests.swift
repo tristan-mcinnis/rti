@@ -19,8 +19,9 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
     override func setUp() async throws {
         try await super.setUp()
         SetupTabView.readsCalendar = false
-        let key = AutoAssistSettings.enabledKey
-        savedDefaults[key] = UserDefaults.standard.object(forKey: key)
+        for key in [NotesSettings.enabledKey, AutoAssistSettings.enabledKey] {
+            savedDefaults[key] = UserDefaults.standard.object(forKey: key)
+        }
     }
 
     override func tearDown() async throws {
@@ -99,7 +100,7 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         )
     }
 
-    /// The opt-in Auto tab on, so the row shows all four.
+    /// The opt-in Auto tab on beside default-on Notes, so the row shows all five.
     func testTabsRowWithEveryTab() throws {
         enableEveryTab()
         seedRecording()
@@ -120,9 +121,10 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         try renderPanel("shell-transcript-empty", widths: [Self.standardWidth], tab: .transcript)
     }
 
-    func testEmptyAutoTab() throws {
+    func testEmptyNotesAndAutoTabs() throws {
         enableEveryTab()
         seedRecording(entries: [])
+        try renderPanel("shell-notes-empty", widths: [Self.standardWidth, Self.minimumWidth], tab: .notes)
         try renderPanel("shell-auto-empty", widths: [Self.standardWidth], tab: .auto)
     }
 
@@ -158,11 +160,12 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
 
     // MARK: - Seams
 
-    /// The ⌘1…⌘4 order in RTICore is the tab order the overlay draws.
+    /// The ⌘1…⌘5 order in RTICore is the tab order the overlay draws.
     func testTabShortcutsMatchTheTabs() {
         XCTAssertEqual(OverlayTab.allCases.map(\.rawValue), OverlayTabShortcut.order)
         XCTAssertEqual(OverlayTab.setup.shortcutLabel, "⌘1")
         XCTAssertEqual(OverlayTab.transcript.shortcutLabel, "⌘4")
+        XCTAssertEqual(OverlayTab.notes.shortcutLabel, "⌘5")
     }
 
     /// Each session phase maps to the header's phase of the same name.
@@ -203,7 +206,9 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
     }
 
     private func enableEveryTab() {
-        UserDefaults.standard.set(true, forKey: AutoAssistSettings.enabledKey)
+        for key in [NotesSettings.enabledKey, AutoAssistSettings.enabledKey] {
+            UserDefaults.standard.set(true, forKey: key)
+        }
     }
 
     private func pickProject() {

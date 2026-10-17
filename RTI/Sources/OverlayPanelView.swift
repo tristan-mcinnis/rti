@@ -23,7 +23,9 @@ struct OverlayPanelView: View {
     @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
-    // The Auto tab only shows when it is enabled in Prepare.
+    // Live tabs only show when their tasks are enabled in Prepare.
+    // Notes defaults on; Auto stays opt-in.
+    @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
     @State private var tab: OverlayTab = .assist
 
@@ -31,7 +33,7 @@ struct OverlayPanelView: View {
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
     // row gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
-        OverlayTab.visibleTabs(auto: autoAssistEnabled)
+        OverlayTab.visibleTabs(notes: notesEnabled, auto: autoAssistEnabled)
     }
 
     private var status: OverlayShellStatus {
@@ -63,6 +65,8 @@ struct OverlayPanelView: View {
                     AutoTabView().tabContentPadding()
                 case .transcript:
                     TranscriptTabView().tabContentPadding()
+                case .notes:
+                    NotesTabView().tabContentPadding()
                 case .setup:
                     SetupTabView().tabContentPadding()
                 }
@@ -96,8 +100,9 @@ struct OverlayPanelView: View {
         .padding(.horizontal, House.Spacing.sm)
         .frame(height: House.Control.railRow)
         // If the active tab gets turned off in Prepare, fall back to Assist.
+        .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
         .onChange(of: autoAssistEnabled) { _, _ in normalizeSelection() }
-        // The View menu (⌘1…⌘4) and commands switch tabs by posting a
+        // The View menu (⌘1…⌘5) and commands switch tabs by posting a
         // notification with the target tab's rawValue.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { note in
             guard let raw = note.object as? String,
@@ -131,7 +136,7 @@ struct OverlayPanelView: View {
 
     private func normalizeSelection() {
         // Prepare lives outside visibleTabs but is always reachable, so don't
-        // kick the user out of it when the Auto toggle flips.
+        // kick the user out of it when a live-tab toggle flips.
         if tab != .setup, !visibleTabs.contains(tab) { tab = .assist }
     }
 

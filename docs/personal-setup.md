@@ -45,6 +45,7 @@ The file also carries `auto_process_prompt`, a custom prompt for the unattended 
   chat.md               # assistant chat log (only if you chatted)
   screen-context.md     # screen trail: OCR, vision summaries, frame refs (only if any)
   frames/               # compressed JPEG frames per capture
+  notes.md              # generated live notes (only if enabled and produced)
   title.txt             # session title (only if you renamed it)
   session.json          # metadata: mode, workstream, duration, audio file names
   speaker-names.json    # live speaker renames (only if you renamed)
@@ -59,7 +60,7 @@ Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `
 ```
 ~/vault/kb/databases/meetings/transcripts-raw/
   rti-session-<yyyyMMdd-HHmmss>-transcript.txt    # canonical raw transcript (plain text)
-  rti-session-<yyyyMMdd-HHmmss>-rti.md            # sidecar: screen context and chat (source: rti-live)
+  rti-session-<yyyyMMdd-HHmmss>-rti.md            # sidecar: notes, screen context and chat (source: rti-live)
 ```
 
 **3. Vault ingestion** happens vault-side, never in the app:

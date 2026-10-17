@@ -9,6 +9,7 @@ struct SessionFinalizer {
         let transcript: [LiveEntry]
         let chat: [ChatEntry]
         let visualContext: [VisualContextEvent]
+        let notes: [GeneratedNote]
         let sessionId: String?
         let micRecordingURL: URL?
         let systemRecordingURL: URL?
@@ -32,6 +33,7 @@ struct SessionFinalizer {
             transcript: snapshot.transcript,
             chat: snapshot.chat,
             visualContext: snapshot.visualContext,
+            notes: snapshot.notes,
             sessionId: snapshot.sessionId,
             micRecordingURL: snapshot.micRecordingURL,
             systemRecordingURL: snapshot.systemRecordingURL,

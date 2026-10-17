@@ -81,11 +81,12 @@ final class MenuValidationTests: XCTestCase {
 
     // MARK: View
 
-    func test_tabKeysAreFixedOneToFour() {
-        XCTAssertEqual(OverlayTabShortcut.order.count, 4)
+    func test_tabKeysAreFixedOneToFive() {
+        XCTAssertEqual(OverlayTabShortcut.order.count, 5)
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "setup"), 1)
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "assist"), 2)
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "transcript"), 4)
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: "notes"), 5)
         XCTAssertNil(OverlayTabShortcut.number(forTab: "findings"))
         XCTAssertNil(OverlayTabShortcut.number(forTab: "sessions"))
     }
@@ -95,7 +96,7 @@ final class MenuValidationTests: XCTestCase {
         ctx.visibleTabs = ["assist", "transcript"]
         XCTAssertTrue(MainMenuValidation.isEnabled(.tab("assist"), in: ctx))
         XCTAssertTrue(MainMenuValidation.isEnabled(.tab("setup"), in: ctx), "Prepare is always there")
-        XCTAssertFalse(MainMenuValidation.isEnabled(.tab("guide"), in: ctx), "an opt-in tab that is off")
+        XCTAssertFalse(MainMenuValidation.isEnabled(.tab("notes"), in: ctx), "an opt-in tab that is off")
         XCTAssertFalse(MainMenuValidation.isEnabled(.tab("unknown"), in: ctx))
 
         // In the Sessions window the same ⌘ digits belong to its rows.

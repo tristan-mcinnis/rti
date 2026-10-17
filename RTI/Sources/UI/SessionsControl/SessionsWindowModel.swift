@@ -96,11 +96,12 @@ final class SessionsWindowModel {
     struct SessionFile: Identifiable, Hashable {
         var id: URL { url }
         let url: URL
-        /// "transcript", "chat", "screen-context", "frames", or "log".
+        /// "notes", "transcript", "chat", "screen-context", "frames", or "log".
         let name: String
 
         var displayName: String {
             switch name {
+            case "notes": "Notes"
             case "transcript": "Transcript"
             case "chat": "Chat"
             case "screen-context": "Screen"
@@ -984,7 +985,7 @@ final class SessionsWindowModel {
 
     /// Preferred reading order; screenshots and the processor log follow.
     private static let fileOrder = [
-        "transcript.md", "chat.md", "screen-context.md",
+        "notes.md", "transcript.md", "chat.md", "screen-context.md",
     ]
 
     private func refreshFiles(keepSelection: Bool) {

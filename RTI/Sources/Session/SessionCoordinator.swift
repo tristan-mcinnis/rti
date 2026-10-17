@@ -135,10 +135,18 @@ final class SessionCoordinator {
         commonInit()
     }
 
-    /// Register the Auto-mode tick with the scheduler. Called once at launch
-    /// from AppDelegate. The scheduler only fires it while a session is
-    /// running and the Auto toggle is on.
-    func registerAutoAssistTask() {
+    /// Register the periodic tasks (live notes, Auto mode) with the scheduler.
+    /// Called once at launch from AppDelegate. The scheduler only fires a task
+    /// while a session is running and that task's toggle is on.
+    func registerPeriodicTasks() {
+        AutoAssistScheduler.shared.register(
+            id: "notes",
+            task: .init(enabledKey: NotesSettings.enabledKey) { _ in
+                // Notes own their own watermark (so the manual Generate button
+                // can't duplicate), so ignore the scheduler's sinceMs.
+                await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
+            }
+        )
         AutoAssistScheduler.shared.register(
             id: "autoAssist",
             task: .init(enabledKey: AutoAssistSettings.enabledKey) { _ in
@@ -403,11 +411,12 @@ final class SessionCoordinator {
         transcriptPipeline.reset()
         SpeakerNameStore.shared.reset()
 
-        // Bind Auto mode to the fresh session. The periodic scheduler and the
-        // Neon keep-warm start only once audio is running (below):
-        // `stopSession` is what stops them, and it never runs for a start
-        // that failed, so starting them here left both ticking until the next
-        // session.
+        // Bind live notes and Auto mode to the fresh session. The periodic
+        // scheduler and the Neon keep-warm start only once audio is running
+        // (below): `stopSession` is what stops them, and it never runs for a
+        // start that failed, so starting them here left both ticking until the
+        // next session.
+        NotesGenerationController.shared.reset(for: sessionId)
         AutoAssistController.shared.reset(for: sessionId)
 
         // Keep Bluetooth headphones in full-volume A2DP: if the default mic is a
@@ -441,8 +450,8 @@ final class SessionCoordinator {
             return
         }
 
-        // The Auto task self-gates on its Settings toggle.
-        AutoAssistScheduler.shared.start(interval: AutoAssistSettings.tickInterval)
+        // Each task self-gates on its Settings toggle.
+        AutoAssistScheduler.shared.start(interval: NotesSettings.tickInterval)
         startKeepWarm()
 
         publishState()
@@ -491,8 +500,8 @@ final class SessionCoordinator {
             // projection carries every thread and turn id. A recording that
             // held several chats keeps all of them.
             await self?.prepareChatThreadProjection(sessionId: sessionId)
-            // Stop cancelled any Auto pass still running; give it a moment to
-            // wind down so none writes after the archive snapshot.
+            // Stop cancelled any notes or Auto pass still running; give them a
+            // moment to wind down so none writes after the archive snapshot.
             await AutoAssistScheduler.shared.drainInFlight()
             if Task.isCancelled { return }
             self?.completeStop(sessionId: sessionId, endedAt: endedAt)
@@ -544,6 +553,7 @@ final class SessionCoordinator {
             let transcript = snapshot.transcript
             let chat = snapshot.chat
             let visualContext = snapshot.visualContext
+            let notes = snapshot.notes
 
             if let archiveDir {
                 // Preserve chat and screen context in the sidecar without
@@ -554,6 +564,7 @@ final class SessionCoordinator {
                     startedAt: startedAt,
                     chat: chat,
                     visualContext: visualContext,
+                    notes: notes,
                     archiveDir: archiveDir
                 )
                 phase = .upgrading
@@ -602,6 +613,7 @@ final class SessionCoordinator {
                     transcript: transcript,
                     chat: chat,
                     visualContext: visualContext,
+                    notes: notes,
                     archiveDir: archiveDir
                 )
             }
@@ -676,6 +688,7 @@ final class SessionCoordinator {
                 transcript: snapshot.transcript,
                 chat: snapshot.chat,
                 visualContext: snapshot.visualContext,
+                notes: snapshot.notes,
                 archiveDir: dir
             )
         }
@@ -694,6 +707,7 @@ final class SessionCoordinator {
             transcript: transcriptPipeline.liveEntries,
             chat: LLMController.shared.entries,
             visualContext: VisualContextTrail.shared.events,
+            notes: NotesGenerationController.shared.notes,
             sessionId: sessionId,
             micRecordingURL: includeAudio ? audioPipeline.micRecordingURL : nil,
             systemRecordingURL: includeAudio ? audioPipeline.systemRecordingURL : nil,
@@ -710,6 +724,7 @@ final class SessionCoordinator {
         transcript: [LiveEntry],
         chat: [ChatEntry],
         visualContext: [VisualContextEvent],
+        notes: [GeneratedNote],
         archiveDir: URL?,
         process: Bool = true
     ) {
@@ -718,6 +733,7 @@ final class SessionCoordinator {
             transcript: transcript,
             chat: chat,
             visualContext: visualContext,
+            notes: notes,
             archiveDir: archiveDir
         ) else { return }
         if process { SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL) }
