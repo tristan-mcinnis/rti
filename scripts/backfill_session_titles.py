@@ -50,7 +50,7 @@ def strip_frontmatter(text: str) -> str:
 
 
 def source_text(session_dir: Path) -> str | None:
-    for name in ("summary.md", "transcript.md", "chat.md"):
+    for name in ("transcript.md", "chat.md"):
         path = session_dir / name
         if path.exists():
             text = strip_frontmatter(path.read_text(encoding="utf-8")).strip()

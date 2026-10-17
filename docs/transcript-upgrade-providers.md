@@ -36,14 +36,13 @@ The intent is:
 1. Use the retained audio files from the archived RTI session folder
 2. Run a slower file/batch transcription provider over those recordings
 3. Replace the rough live transcript with the upgraded transcript
-4. Regenerate `summary.md` from the upgraded text
 
 Properties:
 
 - Latency is not critical
 - Accuracy matters more than streaming responsiveness
 - Provider can be language-specialized
-- Output should be considered authoritative enough to regenerate the summary
+- Output is the canonical transcript that the vault reads
 
 Current RTI provider: `Soniox` file transcription, run with English and
 Chinese language hints. The Aliyun option was removed on 2026-09-26 (see
@@ -95,8 +94,7 @@ When RTI runs `Upgrade Transcript`, it:
 6. Saves `transcript.upgraded.md` first
 7. Backs up the old `transcript.md` as `transcript.backup-<stamp>.md`
 8. Replaces `transcript.md` only after the upgraded artifact succeeds
-9. Backs up the old `summary.md` and regenerates it from the upgraded transcript
-10. Surfaces progress, errors, provider used, and final status in the Sessions browser
+9. Surfaces progress, errors, provider used, and final status in the Sessions browser
 
 This keeps the live lane fast and the upgrade lane accurate, without conflating
 their provider choices.
