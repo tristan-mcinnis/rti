@@ -1,6 +1,24 @@
 {
-  "originHash" : "2e97ace5015732ef0a3df3053f6af0b7738fd25b52f8bbad14b6b231cb39721c",
+  "originHash" : "7d01ef8209f45cd4228bb97eeaa6b0a31e364e10c844d23dbeed4dc1f7aedf48",
   "pins" : [
+    {
+      "identity" : "design-system",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tristan-mcinnis/design-system",
+      "state" : {
+        "revision" : "03dc7dfdf369641f19107478fae62dee9f904878",
+        "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "house-chat-core",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tristan-mcinnis/house-chat-core",
+      "state" : {
+        "revision" : "e9ebb6ab22442bce6c407a386712b0a2ecf4f9c6",
+        "version" : "1.0.0"
+      }
+    },
     {
       "identity" : "networkimage",
       "kind" : "remoteSourceControl",
