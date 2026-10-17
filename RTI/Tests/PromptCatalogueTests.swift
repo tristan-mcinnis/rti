@@ -58,20 +58,6 @@ final class PromptCatalogueTests: XCTestCase {
         XCTAssertTrue(PromptCatalogue.sayNext.contains("draft exactly one short reply"))
     }
 
-    // MARK: - Summary shaped by mode
-
-    func test_summary_interviewIsDebrief_othersAreMinutes() {
-        let interview = PromptCatalogue.summary(for: .interview)
-        XCTAssertTrue(interview.contains("QUALITATIVE RESEARCH DEBRIEF"))
-
-        for kind in [ModeKind.meeting, .coding, .other] {
-            let s = PromptCatalogue.summary(for: kind)
-            XCTAssertTrue(s.contains("writing the meeting record of this ENTIRE meeting"),
-                          "expected minutes for \(kind)")
-            XCTAssertNotEqual(s, interview)
-        }
-    }
-
     // MARK: - Listener research actions
 
     func test_listenerResearchPrompts() {

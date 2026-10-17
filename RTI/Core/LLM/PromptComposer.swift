@@ -1,7 +1,7 @@
 import Foundation
 
-/// Pure composition of the parameterized prompts (recap, assist, follow-ups,
-/// summary) from their leaf `PromptID`s, with the leaf text supplied by an
+/// Pure composition of the parameterized prompts (recap, assist, follow-ups)
+/// from their leaf `PromptID`s, with the leaf text supplied by an
 /// injected resolver.
 ///
 /// The resolver is the seam that lets the SAME composition logic serve both the
@@ -45,14 +45,5 @@ public enum PromptComposer {
 
     public static func followups(listener: Bool, resolve: Resolver = defaultResolver) -> String {
         resolve(listener ? .listenerFollowups : .followupsSpeaker)
-    }
-
-    // MARK: - Summary
-
-    public static func summary(for kind: ModeKind, resolve: Resolver = defaultResolver) -> String {
-        switch kind {
-        case .interview: resolve(.interviewSummary)
-        default: resolve(.meetingSummary)
-        }
     }
 }

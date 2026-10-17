@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Maps Soniox speaker IDs (`self`, `room_1`, `remote_1`, legacy `them_1`, …)
 /// to the live labels (`LiveTranscriptPresentation.label`) and stable
-/// per-speaker colours used across the live analysis surfaces.
+/// per-speaker colours used across the live surfaces.
 enum SpeakerLabels {
     /// The label the live Transcript tab shows for a speaker id, the user's
     /// live names included, so other tabs name speakers the same way.

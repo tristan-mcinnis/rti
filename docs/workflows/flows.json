@@ -130,7 +130,7 @@
       "id": "SessionArchive",
       "subsystem": "archive",
       "file": "RTI/Sources/Session/SessionArchive.swift",
-      "description": "Writes the vault session folder (Markdown + audio), the summary, and runs the vault router."
+      "description": "Writes the vault session folder (Markdown + audio), and runs the vault router and the meeting processor."
     },
     {
       "id": "TranscriptUpgradeService",
@@ -142,7 +142,7 @@
       "id": "TranscriptUpgradePipeline",
       "subsystem": "archive",
       "file": "RTI/Core/Session/TranscriptUpgrade.swift",
-      "description": "Merges the upgraded legs, backs up and replaces transcript.md, then the summary."
+      "description": "Merges the upgraded legs, backs up and replaces transcript.md, then runs the vault router."
     },
     {
       "id": "SessionsWindowModel",
@@ -314,7 +314,7 @@
     {
       "id": "stop-session",
       "title": "Finish a session",
-      "summary": "Finish → audio legs close → the session folder is written to the vault → Soniox re-transcribes the retained audio → the summary is written → the vault router and meeting processor run.",
+      "summary": "Finish → audio legs close → the session folder is written to the vault → Soniox re-transcribes the retained audio → the vault router and meeting processor run.",
       "steps": [
         {
           "from": "SessionCoordinator",
@@ -327,14 +327,14 @@
           "from": "SessionCoordinator",
           "to": "SessionFinalizer",
           "label": "archive()",
-          "passes": "A snapshot of transcript, chat, analysis and audio URLs is archived.",
+          "passes": "A snapshot of transcript, chat, screen context and audio URLs is archived.",
           "ref": "RTI/Sources/Session/SessionFinalizer.swift · func archive()"
         },
         {
           "from": "SessionFinalizer",
           "to": "SessionArchive",
           "label": "write(...)",
-          "passes": "transcript.md, chat.md, notes and the WAV legs land in <vault>/…/rti/sessions/<stamp>/.",
+          "passes": "transcript.md, chat.md, screen-context.md and the WAV legs land in <vault>/…/rti/sessions/<stamp>/.",
           "ref": "RTI/Sources/Session/SessionArchive.swift · static func write("
         },
         {
@@ -354,13 +354,6 @@
         {
           "from": "TranscriptUpgradePipeline",
           "to": "SessionArchive",
-          "label": "writeAutoSummary",
-          "passes": "summary.md and title.txt are generated from the upgraded text.",
-          "ref": "RTI/Sources/Session/SessionArchive.swift · static func writeAutoSummary"
-        },
-        {
-          "from": "SessionArchive",
-          "to": "SessionArchive",
           "label": "runVaultRouter / runMeetingProcessor",
           "passes": "Vault-side routing and the /meeting processor are handed the finished folder.",
           "ref": "RTI/Sources/Session/SessionArchive.swift · static func runVaultRouter"
@@ -370,7 +363,7 @@
     {
       "id": "upgrade-transcript",
       "title": "Upgrade a saved transcript",
-      "summary": "Sessions browser → Upgrade Transcript → confirm → Soniox file pass over the retained audio → transcript and summary replaced (backups kept). At launch, AppDelegate resumes any upgrade a quit interrupted.",
+      "summary": "Sessions browser → Upgrade Transcript → confirm → Soniox file pass over the retained audio → transcript replaced (backup kept). At launch, AppDelegate resumes any upgrade a quit interrupted.",
       "steps": [
         {
           "from": "SessionsWindowModel",
@@ -385,13 +378,6 @@
           "label": "upgrade(sessionDir:)",
           "passes": "The provider script runs per leg; both pipes are drained so it cannot block.",
           "ref": "RTI/Sources/Session/TranscriptUpgradeService.swift · ProcessOutputCollector"
-        },
-        {
-          "from": "TranscriptUpgradePipeline",
-          "to": "SessionArchive",
-          "label": "writeAutoSummary",
-          "passes": "The summary is regenerated from the upgraded transcript.",
-          "ref": "RTI/Sources/Session/SessionArchive.swift · static func writeAutoSummary"
         },
         {
           "from": "AppDelegate",

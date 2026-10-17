@@ -235,10 +235,6 @@ struct OverlayRecordButton: View {
             ProgressView()
                 .controlSize(.mini)
                 .frame(width: House.Spacing.md, height: House.Spacing.md)
-        case let .glyph(name):
-            Image(systemName: name)
-                .font(House.TypeToken.label)
-                .foregroundStyle(House.ColorToken.textSecondary)
         }
     }
 
@@ -248,11 +244,7 @@ struct OverlayRecordButton: View {
     }
 
     private func primaryAction() {
-        if status.phase == .done, status.summaryReady, let url = session.summaryURL {
-            WindowCoordinator.shared.showSession(folder: url.deletingLastPathComponent().lastPathComponent)
-        } else {
-            session.toggleSession()
-        }
+        session.toggleSession()
     }
 }
 
@@ -272,8 +264,7 @@ private struct OverlayRecordClock: View {
 }
 
 /// Small companion button beside the record control. Pause/resume while a
-/// session is live; "open summary" once notes are ready. Only shown when it has
-/// something to do, so the header stays uncluttered when idle.
+/// session is live. Only shown when it has something to do, so the header stays uncluttered when idle.
 struct OverlaySessionAuxButton: View {
     /// The header's phase.
     let phase: OverlayLivePhase

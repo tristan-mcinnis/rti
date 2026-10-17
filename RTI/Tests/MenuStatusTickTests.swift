@@ -6,7 +6,7 @@ import RTICore
 /// recording, and the elapsed readout must stay correct.
 final class MenuStatusTickTests: XCTestCase {
 
-    private let allPhases: [SessionPhase] = [.idle, .recording, .paused, .finishing, .summarizing, .done]
+    private let allPhases: [SessionPhase] = [.idle, .recording, .paused, .finishing, .upgrading, .done]
 
     /// Idle means no repeating timer — the regression this test exists for.
     func testOnlyRecordingNeedsARepeatingTimer() {
@@ -20,7 +20,7 @@ final class MenuStatusTickTests: XCTestCase {
     }
 
     func testIdleAndFinishedPhasesNeverTick() {
-        for phase in [SessionPhase.idle, .paused, .finishing, .summarizing, .done] {
+        for phase in [SessionPhase.idle, .paused, .finishing, .upgrading, .done] {
             XCTAssertFalse(MenuStatusTick.needsRepeatingTimer(phase), "\(phase) still schedules a timer")
         }
     }
@@ -32,7 +32,7 @@ final class MenuStatusTickTests: XCTestCase {
         XCTAssertTrue(MenuStatusTick.showsElapsed(.paused))
         XCTAssertTrue(MenuStatusTick.showsElapsed(.finishing))
         XCTAssertFalse(MenuStatusTick.showsElapsed(.idle))
-        XCTAssertFalse(MenuStatusTick.showsElapsed(.summarizing))
+        XCTAssertFalse(MenuStatusTick.showsElapsed(.upgrading))
         XCTAssertFalse(MenuStatusTick.showsElapsed(.done))
     }
 

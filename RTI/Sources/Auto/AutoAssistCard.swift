@@ -1,10 +1,9 @@
 import Foundation
 
 /// One proactive suggestion surfaced by Auto mode while a meeting runs.
-/// Ephemeral, like findings: cards accumulate in memory for the session and are
-/// dropped on `clear()`. Unlike findings (a research record), a card is an
-/// in-the-moment nudge for the user — something to say, ask, recall, or flag,
-/// grounded in the meeting's project context.
+/// Ephemeral: cards accumulate in memory for the session and are dropped on
+/// `clear()`. A card is an in-the-moment nudge for the user — something to say,
+/// ask, recall, or flag, grounded in the meeting's project context.
 struct AutoAssistCard: Identifiable, Equatable {
     let id = UUID()
     /// Wall-clock time the card was surfaced.
@@ -14,7 +13,7 @@ struct AutoAssistCard: Identifiable, Equatable {
     let text: String
     /// Why it's relevant right now (one short line), or empty.
     let why: String
-    /// The project document or guide the suggestion draws on, when grounded in
+    /// The project document the suggestion draws on, when grounded in
     /// one (e.g. "00-status.md", "Group 1 transcript"), else nil.
     let source: String?
 }

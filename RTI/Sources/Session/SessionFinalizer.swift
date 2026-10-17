@@ -8,14 +8,13 @@ struct SessionFinalizer {
         let endedAt: Date
         let transcript: [LiveEntry]
         let chat: [ChatEntry]
-        let analysis: SessionArchive.Analysis
+        let visualContext: [VisualContextEvent]
         let sessionId: String?
         let micRecordingURL: URL?
         let systemRecordingURL: URL?
         let systemAudioStartOffsetMs: Int?
         let workstreamItem: VaultItem?
         let modeName: String?
-        let summaryContext: String?
         /// The recording's stored chats, with their exact ids, gathered before
         /// the archive runs. Empty only when the recording had none.
         var chatThreads: [ChatProjectionMarkdown.Thread] = []
@@ -24,21 +23,15 @@ struct SessionFinalizer {
         var unreadableChatCount: Int = 0
     }
 
-    struct ArchiveResult {
-        let archiveDir: URL?
-        let transcriptText: String
-        let summaryContext: String?
-    }
-
     let snapshot: Snapshot
 
-    func archive() -> ArchiveResult {
-        let archiveDir = SessionArchive.write(
+    func archive() -> URL? {
+        SessionArchive.write(
             startedAt: snapshot.startedAt,
             endedAt: snapshot.endedAt,
             transcript: snapshot.transcript,
             chat: snapshot.chat,
-            analysis: snapshot.analysis,
+            visualContext: snapshot.visualContext,
             sessionId: snapshot.sessionId,
             micRecordingURL: snapshot.micRecordingURL,
             systemRecordingURL: snapshot.systemRecordingURL,
@@ -48,18 +41,11 @@ struct SessionFinalizer {
             workstreamName: snapshot.workstreamItem?.name,
             speakerNames: SpeakerNameStore.shared.names,
             // Stamp the calendar event picked in Prepare into session.json so
-            // the Sessions window can title this session without waiting on
-            // the end-of-session summary (SessionTitleResolver rule 4). Read
-            // from the store here, the same way speakerNames is.
+            // the Sessions window can title this session (SessionTitleResolver
+            // rule 4). Read from the store here, the same way speakerNames is.
             calendarTitle: Self.calendarTitleForArchive(),
             chatThreads: snapshot.chatThreads,
             unreadableChatCount: snapshot.unreadableChatCount
-        )
-
-        return ArchiveResult(
-            archiveDir: archiveDir,
-            transcriptText: Self.transcriptText(snapshot.transcript),
-            summaryContext: snapshot.summaryContext
         )
     }
 
@@ -74,10 +60,5 @@ struct SessionFinalizer {
     static func workstreamSlug(for item: VaultItem?) -> String? {
         guard item?.isProject == true else { return nil }
         return item?.url.lastPathComponent
-    }
-
-    static func transcriptText(_ transcript: [LiveEntry]) -> String {
-        TranscriptContext.format(transcript)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

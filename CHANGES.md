@@ -1,5 +1,31 @@
 # RTI Change Log
 
+## 2026-10-17: RTI captures and assists, it no longer analyses
+
+House's job is to capture what happens, make it recallable, and assist in
+the moment. Analysis moves downstream (the vault `/meeting` skill and Pi).
+RTI keeps recording, the live transcript, screenshots, the session archive,
+the automatic transcript upgrade, the vault hand-off and the copilot.
+
+- **Removed live analysis.** The Notes, Guide and Intel tabs, their
+  controllers, prompts and settings. The discussion guide import and the guide
+  context in Assist are gone. The tabs are now Prepare, Assist, Auto (opt-in)
+  and Transcript, on ⌘1 to ⌘4.
+- **Removed the end-of-session summary** and the generated title. The session
+  archive writes `transcript.md`, `chat.md`, `screen-context.md` and the audio.
+  Titles come from a rename, the vault note, the calendar event or the first
+  spoken line. The "summary ready" notification and the Open Notes control are
+  gone, and so is the Session summary action (⌘⌥M and `/summary`).
+- **Removed the saved-meeting outputs** (follow-up, decision log, debrief,
+  custom templates) from the Sessions window, along with Edit Summary and
+  Regenerate Summary. The canonical `-rti.md` sidecar now carries screen
+  context and chat only.
+- **Kept:** Auto mode (copilot cards), Recap, the listener research actions,
+  the `/meeting` auto-process trigger, the vault router and the transcript
+  upgrade.
+- The record control and the control socket now say "Session saved" and
+  "Upgrading transcript" where they said "Notes ready" and "Summarizing".
+
 ## 2026-09-27: Calm live transcript and stable speaker names
 
 - **No boxes.** The Transcript tab reads like a transcript, not a list of

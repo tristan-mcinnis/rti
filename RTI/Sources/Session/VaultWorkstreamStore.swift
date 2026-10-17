@@ -61,38 +61,6 @@ enum VaultWorkstreamStore {
         return raw.count > contextCap ? String(raw.prefix(contextCap)) + "\n…[truncated]" : raw
     }
 
-    /// The discussion guides under a project's `discussion-guide/` folder,
-    /// recursing sub-folders (some projects bucket guides by audience, e.g.
-    /// running/training). Covers every format GuideTextExtractor can read.
-    /// When the same guide exists in several formats (e.g. a `.md` and its
-    /// `.docx` render), only the most parse-friendly one is listed, so the
-    /// project picker shows one row per guide. Empty for clients or projects
-    /// without that folder. Read-only; RTI never writes here.
-    static func discussionGuides(for item: VaultItem) -> [URL] {
-        guard item.isProject else { return [] }
-        let dir = item.url.appendingPathComponent("discussion-guide", isDirectory: true)
-        guard let enumerator = FileManager.default.enumerator(
-            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        ) else { return [] }
-
-        // Parse-friendliness order (lower = preferred). Excludes .html/.yaml —
-        // in IC projects those are render/logic artifacts, not importable guides.
-        let preference = ["md": 0, "markdown": 1, "txt": 2, "text": 3, "docx": 4, "doc": 5, "rtf": 6, "pdf": 7]
-
-        var bestByBaseName: [String: URL] = [:]
-        for url in enumerator.compactMap({ $0 as? URL }) {
-            let ext = url.pathExtension.lowercased()
-            guard let rank = preference[ext] else { continue }
-            let key = url.deletingPathExtension().lastPathComponent.lowercased()
-            if let existing = bestByBaseName[key],
-               (preference[existing.pathExtension.lowercased()] ?? 99) <= rank {
-                continue
-            }
-            bestByBaseName[key] = url
-        }
-        return bestByBaseName.values.sorted { $0.lastPathComponent < $1.lastPathComponent }
-    }
-
     /// The path of a picked workstream relative to `databases/`, used to focus
     /// vault search on the project a meeting is about (e.g.
     /// `projects/acme-running-retail-concept`). nil for clients — a client is a

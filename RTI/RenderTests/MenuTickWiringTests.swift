@@ -57,11 +57,11 @@ final class MenuTickWiringTests: XCTestCase {
         XCTAssertFalse(timer.isValid, "the timer was dropped without being invalidated")
     }
 
-    /// Pause, the post-stop flush, the summary pass and the finished state all
+    /// Pause, the post-stop flush, the transcript upgrade and the finished state all
     /// show a frozen readout — none of them needs a tick.
     func testEveryNonRecordingPhaseEndsWithNoTimer() {
         let menu = MenuCoordinator()
-        for phase in [SessionCoordinator.Phase.paused, .finishing, .summarizing, .done, .idle] {
+        for phase in [SessionCoordinator.Phase.paused, .finishing, .upgrading, .done, .idle] {
             seed(.recording, startedAt: Date())
             menu.refreshTitle()
             XCTAssertNotNil(menu.elapsedTimer, "recording did not start a timer before \(phase)")
@@ -76,7 +76,7 @@ final class MenuTickWiringTests: XCTestCase {
     /// Starting a session after any other phase always starts a tick.
     func testStartingASessionAlwaysStartsATick() {
         let menu = MenuCoordinator()
-        for phase in [SessionCoordinator.Phase.idle, .paused, .finishing, .summarizing, .done] {
+        for phase in [SessionCoordinator.Phase.idle, .paused, .finishing, .upgrading, .done] {
             seed(phase, startedAt: Date())
             menu.refreshTitle()
 

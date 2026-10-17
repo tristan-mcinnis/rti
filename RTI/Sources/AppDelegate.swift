@@ -1,7 +1,6 @@
 import AppKit
 import RTICore
 import SwiftUI
-import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
@@ -50,11 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     @MainActor private func continueLaunch() {
         _ = ModeStore.shared
         UserDefaults.standard.register(defaults: [
-            AnalysisSettingsDefaults.notesEnabledKey: AnalysisSettingsDefaults.defaultNotesEnabled,
-            AnalysisSettingsDefaults.guideEnabledKey: AnalysisSettingsDefaults.defaultGuideEnabled,
-            AnalysisSettingsDefaults.findingsEnabledKey: AnalysisSettingsDefaults.defaultFindingsEnabled,
-            AnalysisSettingsDefaults.autoAssistEnabledKey: AnalysisSettingsDefaults.defaultAutoAssistEnabled,
-            AnalysisSettingsDefaults.notesIntervalKey: AnalysisSettingsDefaults.defaultInterval,
+            AutoAssistSettings.enabledKey: AutoAssistSettings.defaultEnabled,
         ])
 
         // Clear any phantom system-audio aggregate devices left by a prior
@@ -67,10 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         // Normal stops already delete it; the app keeps no audio.
         WAVWriter.sweepStaleRecordings()
 
-        // Register the periodic real-time analysis tasks (notes,
-        // discussion-guide matching). They only fire while a session runs and
-        // self-gate on their Settings toggles.
-        SessionCoordinator.shared.registerAnalysisTasks()
+        // Register the Auto-mode tick. It only fires while a session runs and
+        // self-gates on its Settings toggle.
+        SessionCoordinator.shared.registerAutoAssistTask()
 
         // Publish the control socket and the command manifest, so Quick Launch
         // can start and stop a recording. A bind failure is logged and ignored
@@ -148,9 +142,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         }
 
         registerNotificationObservers()
-
-        // Route "summary ready" notification taps to the in-app Sessions browser.
-        UNUserNotificationCenter.current().delegate = self
 
         if !LLMProviders.activeHasKey || !STTProviders.activeHasKey {
             // First run (or keys cleared): guide setup instead of cold-dropping
@@ -230,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             alert.informativeText = "RTI is still saving this recording. Quit only if you want to stop before processing is complete."
         } else {
             alert.messageText = "Transcript improvement in progress"
-            alert.informativeText = "RTI has not yet generated or indexed the final notes. Wait for “Notes ready” before quitting."
+            alert.informativeText = "RTI has not yet finished improving the transcript. Wait for “Session saved” before quitting."
         }
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Wait")
@@ -252,38 +243,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             windows.showOverlay()
         }
         return true
-    }
-}
-
-// MARK: - Notification taps
-
-extension AppDelegate: UNUserNotificationCenterDelegate {
-    /// Present the "summary ready" banner even while RTI is frontmost, so its
-    /// tap affordance is available without first backgrounding the app.
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
-        completionHandler([.banner, .list])
-    }
-
-    /// Tapping a "summary ready" notification opens that session in the in-app
-    /// Sessions browser (read it in RTI, not in an external Markdown editor).
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse,
-        withCompletionHandler completionHandler: @escaping () -> Void
-    ) {
-        let folder = response.notification.request.content.userInfo["sessionFolder"] as? String
-        Task { @MainActor in
-            RTIActivation.activateApp()
-            if let folder {
-                WindowCoordinator.shared.showSession(folder: folder)
-            } else {
-                WindowCoordinator.shared.showSessionsControl(tab: .sessions)
-            }
-        }
-        completionHandler()
     }
 }

@@ -190,9 +190,7 @@ final class TranscriptUpgradeTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let transcript = dir.appendingPathComponent("transcript.md")
-        let summary = dir.appendingPathComponent("summary.md")
         try "old transcript".write(to: transcript, atomically: true, encoding: .utf8)
-        try "old summary".write(to: summary, atomically: true, encoding: .utf8)
 
         let result = try TranscriptUpgradeArtifacts.installUpgradedTranscript(
             markdown: "new transcript",
@@ -203,7 +201,6 @@ final class TranscriptUpgradeTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: transcript, encoding: .utf8), "new transcript")
         XCTAssertEqual(try String(contentsOf: result.upgradedURL, encoding: .utf8), "new transcript")
         XCTAssertEqual(try String(contentsOf: try XCTUnwrap(result.transcriptBackupURL), encoding: .utf8), "old transcript")
-        XCTAssertEqual(try String(contentsOf: try XCTUnwrap(result.summaryBackupURL), encoding: .utf8), "old summary")
     }
 
     func testAudioDiscoveryUsesSessionMetadataAndOffsets() throws {
@@ -325,7 +322,6 @@ final class TranscriptUpgradeTests: XCTestCase {
 
         `0:03` **📝 Note:** Preserve this user note.
         """.write(to: dir.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
-        try "old summary".write(to: dir.appendingPathComponent("summary.md"), atomically: true, encoding: .utf8)
         try Data("mic".utf8).write(to: dir.appendingPathComponent("audio-mic.m4a"))
         try Data("system".utf8).write(to: dir.appendingPathComponent("audio-system.m4a"))
         try """
@@ -340,7 +336,6 @@ final class TranscriptUpgradeTests: XCTestCase {
         let transcribed = Box<[String]>([])
         let routerRuns = Box(0)
         let startedAt = Date(timeIntervalSince1970: 1_782_000_000)
-        let summaryURL = dir.appendingPathComponent("summary.md")
 
         let result = try await TranscriptUpgradePipeline.upgrade(
             sessionDir: dir,
@@ -356,22 +351,16 @@ final class TranscriptUpgradeTests: XCTestCase {
                 }
                 return "[00:01] Speaker 1: Mic audio upgraded."
             },
-            writeSummary: { transcriptText in
-                try? "summary from upgraded transcript\n\(transcriptText)".write(to: summaryURL, atomically: true, encoding: .utf8)
-                return summaryURL
-            },
             runRouter: {
                 routerRuns.value += 1
             }
         )
 
         XCTAssertEqual(result.segmentCount, 2)
-        XCTAssertEqual(result.summaryURL, summaryURL)
         XCTAssertEqual(result.sourceFiles, ["audio-mic.m4a", "audio-system.m4a"])
         XCTAssertEqual(transcribed.value, ["audio-mic.m4a", "audio-system.m4a"])
         XCTAssertEqual(routerRuns.value, 1)
         XCTAssertTrue(progress.value.contains("Writing upgraded transcript"))
-        XCTAssertTrue(progress.value.contains("Regenerating summary"))
 
         let transcript = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
         XCTAssertTrue(transcript.contains("Upgraded with Fake Provider"))
@@ -398,8 +387,6 @@ final class TranscriptUpgradeTests: XCTestCase {
             `0:03` **📝 Note:** Preserve this user note.
             """
         )
-        XCTAssertEqual(try String(contentsOf: try XCTUnwrap(result.artifactResult.summaryBackupURL), encoding: .utf8), "old summary")
-        XCTAssertTrue(try String(contentsOf: summaryURL, encoding: .utf8).contains("summary from upgraded transcript"))
     }
 
     func testPipelineLeavesTranscriptUnchangedWhenProviderReturnsEmptyText() async throws {
@@ -418,7 +405,6 @@ final class TranscriptUpgradeTests: XCTestCase {
                 frontmatter: [],
                 progress: { _ in },
                 transcribe: { _, _ in "" },
-                writeSummary: { _ in XCTFail("Summary should not regenerate for empty provider output"); return nil },
                 runRouter: { XCTFail("Router should not run for empty provider output") }
             )
             XCTFail("Expected empty provider output to fail")
@@ -452,7 +438,7 @@ final class TranscriptUpgradeTests: XCTestCase {
             providerID: "p", providerDisplayName: "P", frontmatter: [],
             progress: { progress.value.append($0) },
             transcribe: { url, _ in url.lastPathComponent == "audio-mic.m4a" ? "[00:01] Speaker 1: upgraded mic" : "" },
-            writeSummary: { _ in nil }, runRouter: {}
+            runRouter: {}
         )
         XCTAssertEqual(result.segmentCount, 2)
         let transcript = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
@@ -480,7 +466,7 @@ final class TranscriptUpgradeTests: XCTestCase {
             providerID: "p", providerDisplayName: "P", frontmatter: [],
             progress: { progress.value.append($0) },
             transcribe: { url, _ in url.lastPathComponent == "audio-system.m4a" ? "[00:03] Remote speaker 1: upgraded remote" : "" },
-            writeSummary: { _ in nil }, runRouter: {}
+            runRouter: {}
         )
         XCTAssertEqual(result.segmentCount, 1)
         XCTAssertTrue(progress.value.contains { $0.contains("one-sided") })

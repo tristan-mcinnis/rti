@@ -67,8 +67,7 @@ final class WindowCoordinator {
     }
 
     /// Open the Sessions window on one archived session folder, with the
-    /// list hidden (the "summary ready" notification, the overlay's "Notes
-    /// ready" control).
+    /// list hidden (a mention link in a chat answer).
     func showSession(folder: String) {
         sessionsWindow.show(folder: folder)
     }

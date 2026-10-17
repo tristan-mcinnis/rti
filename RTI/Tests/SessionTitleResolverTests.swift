@@ -1,8 +1,9 @@
 import RTICore
 import XCTest
 
-/// The Sessions window's title order: manual, summary, vault note, calendar,
-/// generated, then a descriptive fallback that never says "Untitled".
+/// The Sessions window's title order: manual, title file, vault note,
+/// calendar, first transcript line, then a descriptive fallback that never
+/// says "Untitled".
 final class SessionTitleResolverTests: XCTestCase {
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -26,24 +27,23 @@ final class SessionTitleResolverTests: XCTestCase {
         let resolved = resolve(SessionTitleInputs(
             titleFile: "  Real study name ",
             hasManualMarker: true,
-            generatedMarker: "Real study name",
             vaultNoteTitle: "Vault note",
             calendarTitle: "Calendar event"
         ))
         XCTAssertEqual(resolved, ResolvedSessionTitle(text: "Real study name", source: .manual))
     }
 
-    func testSummaryTitleBeatsVaultNoteAndCalendar() {
+    func testTitleFileBeatsVaultNoteAndCalendar() {
         let resolved = resolve(SessionTitleInputs(
             titleFile: "Q3 Pipeline Review with Timberland",
             vaultNoteTitle: "Vault note",
             calendarTitle: "Calendar event"
         ))
-        XCTAssertEqual(resolved.source, .summary)
+        XCTAssertEqual(resolved.source, .titleFile)
         XCTAssertEqual(resolved.text, "Q3 Pipeline Review with Timberland")
     }
 
-    func testVaultNoteWhenSummaryFailed() {
+    func testVaultNoteWhenNoTitleFile() {
         let resolved = resolve(SessionTitleInputs(
             titleFile: nil,
             vaultNoteTitle: "Acme Pilot Zero, proposal scoping call with Anna Lu",
@@ -55,29 +55,6 @@ final class SessionTitleResolverTests: XCTestCase {
     func testCalendarTitleWhenNoNote() {
         let resolved = resolve(SessionTitleInputs(calendarTitle: " Weekly sync ", startedAt: now))
         XCTAssertEqual(resolved, ResolvedSessionTitle(text: "Weekly sync", source: .calendar))
-    }
-
-    func testGeneratedTitleRanksBelowVaultNoteAndCalendar() {
-        let generated = SessionTitleInputs(titleFile: "Store Map Pilot Planning", generatedMarker: "Store Map Pilot Planning")
-        XCTAssertEqual(resolve(generated), ResolvedSessionTitle(text: "Store Map Pilot Planning", source: .generated))
-
-        var withNote = generated
-        withNote.vaultNoteTitle = "Contoso store map pilot"
-        XCTAssertEqual(resolve(withNote).source, .vaultNote)
-
-        var withCalendar = generated
-        withCalendar.calendarTitle = "Contoso pilot sync"
-        XCTAssertEqual(resolve(withCalendar).source, .calendar)
-    }
-
-    func testRegeneratedSummaryTitleIsNotMistakenForGenerated() {
-        // The generator wrote one title; a later summary replaced title.txt.
-        let resolved = resolve(SessionTitleInputs(
-            titleFile: "Contoso Store Map Pilot Review",
-            generatedMarker: "Store Map Pilot Planning",
-            vaultNoteTitle: "Vault note"
-        ))
-        XCTAssertEqual(resolved.source, .summary)
     }
 
     func testEmptyFilesCountAsMissing() {
@@ -101,7 +78,6 @@ final class SessionTitleResolverTests: XCTestCase {
     func testShortTestUnderOneKilobyte() {
         let resolved = resolve(SessionTitleInputs(startedAt: now, durationSeconds: 12, transcriptBytes: 400))
         XCTAssertEqual(resolved, ResolvedSessionTitle(text: "Short test · 12 s", source: .shortTest))
-        XCTAssertFalse(SessionTitleResolver.wantsGeneratedTitle(resolved, hasNotes: true))
         XCTAssertEqual(
             SessionTitleResolver.fallbackTitle(startedAt: nil, durationSeconds: nil, transcriptBytes: 0),
             "Short test"
@@ -125,7 +101,7 @@ final class SessionTitleResolverTests: XCTestCase {
         XCTAssertEqual(SessionTitleResolver.durationText(64 * 60), "1 hr 4 min")
     }
 
-    // MARK: - Live header and generation
+    // MARK: - Live header
 
     func testLiveTitleOrder() {
         XCTAssertEqual(SessionTitleResolver.liveTitle(calendarTitle: "Weekly sync", project: "Northwind"), "Weekly sync")
@@ -133,42 +109,14 @@ final class SessionTitleResolverTests: XCTestCase {
         XCTAssertEqual(SessionTitleResolver.liveTitle(calendarTitle: nil, project: nil), "Live session")
     }
 
-    func testWantsGeneratedTitleOnlyForFallbackWithNotes() {
-        let fallback = ResolvedSessionTitle(text: "Meeting", source: .fallback)
-        XCTAssertTrue(SessionTitleResolver.wantsGeneratedTitle(fallback, hasNotes: true))
-        XCTAssertFalse(SessionTitleResolver.wantsGeneratedTitle(fallback, hasNotes: false))
-        XCTAssertFalse(SessionTitleResolver.wantsGeneratedTitle(ResolvedSessionTitle(text: "x", source: .vaultNote), hasNotes: true))
-    }
-
-    func testNoteHeadingsDropTimeRangesAndRepeats() {
-        let notes = """
-        # Notes
-
-        ### 0:00 – 8:00 · Store map pilot
-
-        - Pickup counter moves to the front.
-
-        ### 8:00 – 16:00 · Staff rota
-        ### 16:00 – 24:00 · store map pilot
-        ### Wrap-up
-        """
-        XCTAssertEqual(SessionTitleResolver.noteHeadings(fromNotesMarkdown: notes), ["Store map pilot", "Staff rota", "Wrap-up"])
-    }
-
-    func testTitlePromptListsHeadings() {
-        let prompt = SessionTitleResolver.titlePrompt(headings: ["Store map pilot", "Staff rota"])
-        XCTAssertTrue(prompt.contains("- Store map pilot\n- Staff rota"))
-        XCTAssertTrue(prompt.contains("title only"))
-    }
-
-    func testCleanGeneratedTitle() {
-        XCTAssertEqual(SessionTitleResolver.cleanGeneratedTitle("TITLE: \"Store Map Pilot Planning.\"\n\nextra"), "Store Map Pilot Planning")
-        XCTAssertEqual(SessionTitleResolver.cleanGeneratedTitle("\n  **Contoso   staff rota review**  "), "Contoso staff rota review")
-        XCTAssertNil(SessionTitleResolver.cleanGeneratedTitle("   \n \"\" "))
+    func testCleanTitle() {
+        XCTAssertEqual(SessionTitleResolver.cleanTitle("TITLE: \"Store Map Pilot Planning.\"\n\nextra"), "Store Map Pilot Planning")
+        XCTAssertEqual(SessionTitleResolver.cleanTitle("\n  **Contoso   staff rota review**  "), "Contoso staff rota review")
+        XCTAssertNil(SessionTitleResolver.cleanTitle("   \n \"\" "))
         let long = String(repeating: "word ", count: 40)
-        let cut = SessionTitleResolver.cleanGeneratedTitle(long)
+        let cut = SessionTitleResolver.cleanTitle(long)
         XCTAssertNotNil(cut)
-        XCTAssertLessThanOrEqual(cut?.count ?? 0, SessionTitleResolver.generatedTitleMaxLength)
+        XCTAssertLessThanOrEqual(cut?.count ?? 0, SessionTitleResolver.titleMaxLength)
         XCTAssertFalse(cut?.hasSuffix(" ") ?? true)
     }
 
@@ -198,7 +146,7 @@ final class SessionTitleResolverTests: XCTestCase {
         )
     }
 
-    func testTranscriptLineTitlesASessionWhoseSummaryFailed() {
+    func testTranscriptLineTitlesASessionWithNoOtherName() {
         let resolved = resolve(SessionTitleInputs(
             transcriptHead: transcript,
             startedAt: date(2026, 9, 4, 15, 0),
@@ -224,9 +172,9 @@ final class SessionTitleResolverTests: XCTestCase {
         withNote.vaultNoteTitle = "Acme Pilot Zero scoping call"
         XCTAssertEqual(resolve(withNote).source, .vaultNote)
 
-        var withSummary = base
-        withSummary.titleFile = "Pilot Zero Proposal Scoping Call"
-        XCTAssertEqual(resolve(withSummary).source, .summary)
+        var withTitleFile = base
+        withTitleFile.titleFile = "Pilot Zero Proposal Scoping Call"
+        XCTAssertEqual(resolve(withTitleFile).source, .titleFile)
     }
 
     func testTranscriptLineBeatsTheDateAndTimeFallback() {
@@ -262,17 +210,11 @@ final class SessionTitleResolverTests: XCTestCase {
         XCTAssertEqual(resolved.source, .shortTest)
     }
 
-    func testATranscriptLineStillInvitesAGeneratedTitle() {
-        let resolved = ResolvedSessionTitle(text: "Let's start with the Pilot Zero scope", source: .transcriptLine)
-        XCTAssertTrue(SessionTitleResolver.wantsGeneratedTitle(resolved, hasNotes: true))
-        XCTAssertFalse(SessionTitleResolver.wantsGeneratedTitle(resolved, hasNotes: false))
-    }
-
     func testLongTranscriptLineIsCutToATitleLength() {
         let long = "`0:00` **Speaker 1:** " + String(repeating: "scope ", count: 40)
         let title = SessionTitleResolver.firstSubstantiveLine(fromTranscriptMarkdown: long)
         XCTAssertNotNil(title)
-        XCTAssertLessThanOrEqual(title?.count ?? 0, SessionTitleResolver.generatedTitleMaxLength)
+        XCTAssertLessThanOrEqual(title?.count ?? 0, SessionTitleResolver.titleMaxLength)
     }
 
     // MARK: - Chinese, Japanese and Korean transcript lines
@@ -313,11 +255,11 @@ final class SessionTitleResolverTests: XCTestCase {
 
     func testFullWidthTrailingPunctuationIsTrimmed() {
         XCTAssertEqual(
-            SessionTitleResolver.cleanGeneratedTitle("\u{5B9A}\u{4EF7}\u{8868}\u{8BA8}\u{8BBA}\u{FF0C}"),
+            SessionTitleResolver.cleanTitle("\u{5B9A}\u{4EF7}\u{8868}\u{8BA8}\u{8BBA}\u{FF0C}"),
             "\u{5B9A}\u{4EF7}\u{8868}\u{8BA8}\u{8BBA}"
         )
         XCTAssertEqual(
-            SessionTitleResolver.cleanGeneratedTitle("\u{4EA4}\u{671F}\u{786E}\u{8BA4}\u{3002}"),
+            SessionTitleResolver.cleanTitle("\u{4EA4}\u{671F}\u{786E}\u{8BA4}\u{3002}"),
             "\u{4EA4}\u{671F}\u{786E}\u{8BA4}"
         )
     }

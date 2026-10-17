@@ -3,10 +3,10 @@ import SwiftUI
 
 /// The tabs of the consolidated overlay. One window, one global toggle (⌘\),
 /// tabs in a row under the header, instead of a constellation of floating
-/// panels. ⌘1…⌘7 pick a tab while the overlay is key (View menu).
+/// panels. ⌘1…⌘4 pick a tab while the overlay is key (View menu).
 enum OverlayTab: String, CaseIterable, Identifiable {
     // Prepare is the meeting home; the rest are live surfaces.
-    case setup, assist, auto, transcript, notes, guide, findings
+    case setup, assist, auto, transcript
     var id: String {
         rawValue
     }
@@ -17,9 +17,6 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         case .assist: "Assist"
         case .auto: "Auto"
         case .transcript: "Transcript"
-        case .notes: "Notes"
-        case .guide: "Guide"
-        case .findings: "Intel"
         }
     }
 
@@ -29,14 +26,11 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         case .assist: "sparkles"
         case .auto: "wand.and.stars"
         case .transcript: "bubble.left.and.text.bubble.right"
-        case .notes: "note.text"
-        case .guide: "list.bullet.clipboard"
-        case .findings: "checklist.checked"
         }
     }
 
-    /// The tab's ⌘ digit (⌘1 Prepare … ⌘7 Intel), fixed whether or not an
-    /// opt-in tab is showing. Local to the overlay (View menu), never global.
+    /// The tab's ⌘ digit (⌘1 Prepare … ⌘4 Transcript), fixed whether or not
+    /// the opt-in Auto tab is showing. Local to the overlay (View menu), never global.
     var shortcutNumber: Int {
         OverlayTabShortcut.number(forTab: rawValue) ?? 0
     }
@@ -45,23 +39,19 @@ enum OverlayTab: String, CaseIterable, Identifiable {
     var shortcutLabel: String { "⌘\(shortcutNumber)" }
 
     /// The live tabs showing, in order. Prepare is not listed: it is the
-    /// leading button and always there. Notes defaults on; Auto, Guide, and
-    /// Intel are opt-in from Prepare.
-    static func visibleTabs(notes: Bool, guide: Bool, findings: Bool, auto: Bool) -> [OverlayTab] {
+    /// leading button and always there. Auto is opt-in from Prepare.
+    static func visibleTabs(auto: Bool) -> [OverlayTab] {
         var tabs: [OverlayTab] = [.assist]
         if auto { tabs.append(.auto) }
         tabs.append(.transcript)
-        if notes { tabs.append(.notes) }
-        if guide { tabs.append(.guide) }
-        if findings { tabs.append(.findings) }
         return tabs
     }
 }
 
 struct OverlayTabBar: View {
     @Binding var selection: OverlayTab
-    /// Which tabs to show. Notes/Guide are opt-in (toggled in Prepare), so the
-    /// bar only renders the ones currently enabled.
+    /// Which tabs to show. Auto is opt-in (toggled in Prepare), so the bar
+    /// only renders the ones currently enabled.
     var tabs: [OverlayTab] = OverlayTab.allCases
 
     /// Reading the @Observable controller here makes the bar re-render when a
@@ -158,7 +148,7 @@ struct OverlaySetupButton: View {
         .buttonStyle(.plain)
         .hoverHighlight($hovering)
         .accessibilityLabel("Prepare meeting")
-        .accessibilityHint("Project, calendar, screen context, discussion guide, and live-analysis toggles")
-        .help("Prepare the meeting: project, calendar, screen context, guide, and live aids (\(OverlayTab.setup.shortcutLabel))")
+        .accessibilityHint("Project, calendar, screen context, and the Auto toggle")
+        .help("Prepare the meeting: project, calendar, screen context, and live aids (\(OverlayTab.setup.shortcutLabel))")
     }
 }

@@ -14,9 +14,10 @@
 
 RTI listens to both sides of a call, shows a live transcript, and lets you ask
 an AI about the meeting while it is still going. When you stop, it saves the
-transcript, a summary and the audio as plain files on your Mac. It is for
-people who sit in meetings, interviews and fieldwork sessions and want notes
-they own. RTI stands for Real-Time Intelligence.
+transcript and the audio as plain files on your Mac. It captures and assists:
+it does not summarize or analyse the meeting afterwards. It is for people who
+sit in meetings, interviews and fieldwork sessions and want a record they own.
+RTI stands for Real-Time Intelligence.
 
 > **Free and open source.** RTI is free to use, change and share under the MIT License.
 > No account, no subscription, no telemetry. RTI is not an offline app: live audio goes to Soniox, and your prompts and transcript go to the AI provider you pick. See [Privacy](#privacy).
@@ -26,8 +27,8 @@ they own. RTI stands for Real-Time Intelligence.
 - **Live transcription of both sides.** Your microphone and the system audio (the other party) are transcribed as two legs, in real time, by [Soniox](https://soniox.com). RTI hints English and Chinese to the recognizer, and adds the languages you pick for translation. Soniox decides what it hears.
 - **A copilot over the live transcript.** `Command+Return` runs the main action over the last few minutes. Quick recap is the default. Other actions are Assist, Say next, Follow-ups, and, for interviews, Key tensions, What's unsaid and Emerging themes. The set follows your mode.
 - **A window that stays out of screen shares.** RTI is a normal Mac window with its sharing type set to none. It is hidden from screen sharing and from `screencapture` by default. Some recorders may still see it, so test yours. A toggle in Settings turns this off.
-- **Clear recording states.** The record control shows Recording, Paused, Saving, Summarizing and Notes ready. Pause keeps the connection warm, so resume is instant. You can start a new recording while the last summary is still being written.
-- **Live notes, discussion guide and findings.** Optional tabs write meeting notes, track coverage of a discussion guide you import, and collect tagged findings as the call runs.
+- **Clear recording states.** The record control shows Recording, Paused, Saving, Improving transcript and Session saved. Pause keeps the connection warm, so resume is instant. You can start a new recording while the last transcript is still being improved.
+- **Auto mode.** An optional tab surfaces next-move cards (something to say, ask, recall or flag) while the call runs.
 - **Screenshots.** One key reads the whole screen and another reads the front window. Text is read on your Mac with Apple Vision. The image is sent to your model when it takes image input. Windows you put on the privacy list are left out.
 - **Translation.** Optional live translation next to the transcript, one way or two ways.
 - **Modes.** Meeting, Interview, Coding and Custom prompt presets, with optional reference text for each.
@@ -83,7 +84,6 @@ macOS asks for each of these the first time a feature needs it.
 | System Audio Recording | The other side of the call, through a CoreAudio tap. |
 | Screen Recording | Screenshots, and system audio on macOS 14.0 and 14.1. |
 | Calendars | Read-only. Attaches the meeting title to a session. |
-| Notifications | A notice when a session summary is ready. |
 | Launch at Login | An option in Settings. macOS may refuse it for an ad hoc signed build. |
 
 ## Usage
@@ -102,7 +102,6 @@ on the composer, or press `Command+Shift+H` to read the whole screen.
 | ⌘ ⌥ S | Say next (one-line draft reply) |
 | ⌘ ⌥ F | Follow-up questions |
 | ⌘ ⌥ R | Recap so far |
-| ⌘ ⌥ M | Session summary |
 | ⌘ ⌥ T | Key tensions (interview and listener mode) |
 | ⌘ ⌥ U | What's unsaid (interview and listener mode) |
 | ⌘ ⌥ E | Emerging themes (interview and listener mode) |
@@ -111,7 +110,7 @@ on the composer, or press `Command+Shift+H` to read the whole screen.
 | ⌘ ⇧ J | Read the front window and attach the text to the next prompt |
 | ⌘ ⇧ A | Open the attachment menu |
 | ⌘ K | Command palette |
-| ⌘ ⌥ 0 to 5 | Jump to a tab: Setup, Assist, Transcript, Notes, Guide, Findings |
+| ⌘ 1 to 4 | Jump to a tab while the window is key: Prepare, Assist, Auto, Transcript |
 
 The source of truth for keys is `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift`.
 
@@ -136,14 +135,14 @@ The source of truth for keys is `RTI/Sources/UI/CommandPalette/CommandPaletteFac
 | To | What | When |
 |---|---|---|
 | Soniox | Live audio from your microphone and from the system audio. | During every recording. |
-| Your assistant provider (DeepSeek, OpenAI or OpenRouter) | Your prompts, about the last six minutes of transcript for each assistant turn, the full transcript for the end-of-session summary and title, text chunks for live notes and guide coverage, attachments, and screenshots you add. Text read from a screenshot goes along with it. | When you use the assistant, and at the end of a session. |
+| Your assistant provider (DeepSeek, OpenAI or OpenRouter) | Your prompts, about the last six minutes of transcript for each assistant turn, text chunks for Auto mode, attachments, and screenshots you add. Text read from a screenshot goes along with it. | When you use the assistant. |
 | GitHub | A request for the latest release number. It carries no content. | At each normal launch, and when you choose Check for Updates. |
 
 Two optional integrations send more. See [Optional integrations](#optional-integrations). RTI has no server of its own, no account and no analytics.
 
 **What RTI stores**
 
-- **Sessions.** One folder per session, with owner-only permissions, in `~/Library/Application Support/RTI/sessions/<date time>/`. It holds `transcript.md`, `summary.md`, `session.json`, and, when they exist, `chat.md`, `notes.md`, `discussion-guide.md`, `live-intelligence.md`, `screen-context.md` and a `frames/` folder of screenshots. It also holds `audio-mic.wav` and `audio-system.wav`, the raw audio of both legs. RTI keeps this audio until you delete the session. If you set a notes folder, sessions go there instead.
+- **Sessions.** One folder per session, with owner-only permissions, in `~/Library/Application Support/RTI/sessions/<date time>/`. It holds `transcript.md`, `session.json`, and, when they exist, `chat.md`, `screen-context.md` and a `frames/` folder of screenshots. It also holds `audio-mic.wav` and `audio-system.wav`, the raw audio of both legs. RTI keeps this audio until you delete the session. If you set a notes folder, sessions go there instead.
 - **API keys.** In `~/Library/Application Support/RTI/credentials.json`, a plain JSON file readable only by you. RTI does not use the Keychain.
 - **Chats.** Saved only when a notes folder is set. Without one, chats run but are not stored.
 - **Other.** Your modes and a crash log in `~/Library/Application Support/RTI/`, and the `claude` run logs in `~/Library/Logs/RTI/` if you use that integration.
@@ -160,7 +159,7 @@ These features work only when their tool is on your Mac. Without it, RTI skips t
 | Vault tools for the assistant | `bun` and a search tool inside your notes repo. | The assistant cannot search past notes. |
 | Session router | A script named `route-rti-session.py` in your notes repo, under `.claude/tools/triage/`. | RTI skips it. |
 | `/meeting` processor (`claude -p`) | `"auto_process": true` in the config file, a notes folder, the Claude Code command line tool (`claude`), and a `/meeting` skill that you wrote. | Nothing runs. It is off by default. See the warning below. |
-| Transcript upgrade (file-transcriber) | A helper script named `transcribe-soniox.py` from a tool called file-transcriber. Set its path with `soniox_file_script` in the config file. It sends the retained audio to Soniox's file API, using your Soniox key. | RTI logs the failure, keeps the live transcript and the audio, and writes the summary from the live transcript. |
+| Transcript upgrade (file-transcriber) | A helper script named `transcribe-soniox.py` from a tool called file-transcriber. Set its path with `soniox_file_script` in the config file. It sends the retained audio to Soniox's file API, using your Soniox key. | RTI logs the failure and keeps the live transcript and the audio. |
 | Local vision | A local model server on `127.0.0.1:8078` that accepts `POST /v1/vision`, enabled by a `local_vision` block in the config file. Images go to that server and stay on your Mac. | RTI uses on-device text reading only. |
 
 **Read this before you turn on the `/meeting` processor.** It is off by default. To turn it on, set `"auto_process": true` in the config file. Then, when a notes folder is set and `claude` is found, RTI runs `claude -p` in the background after each session. It passes the transcript path and a prompt, and it uses `--permission-mode acceptEdits`. That mode lets the run edit files without asking. To skip every permission prompt, also set `"auto_process_yolo": true`. That adds `--dangerously-skip-permissions`, so the run can change any file without asking; use it only if you accept that risk. The transcript is sent to Anthropic through your own Claude account. Without `auto_process`, or without a notes folder, this never runs.
@@ -221,7 +220,7 @@ RTI is built on these open-source Swift packages:
 
 - [Starscream](https://github.com/daltoniam/Starscream) by Dalton Cherry (Apache-2.0), for the WebSocket link to Soniox.
 - [Yams](https://github.com/jpsim/Yams) by JP Simard (MIT), for YAML front matter.
-- [swift-markdown-ui](https://github.com/gonzalezreal/swift-markdown-ui) and [NetworkImage](https://github.com/gonzalezreal/NetworkImage) by Guille Gonzalez (MIT), for Markdown in answers and notes.
+- [swift-markdown-ui](https://github.com/gonzalezreal/swift-markdown-ui) and [NetworkImage](https://github.com/gonzalezreal/NetworkImage) by Guille Gonzalez (MIT), for Markdown in answers.
 - [swift-cmark](https://github.com/swiftlang/swift-cmark), the cmark-gfm parser by John MacFarlane, GitHub and others (BSD-2-Clause, with MIT parts).
 
 Transcription is by [Soniox](https://soniox.com). RTI ships no model weights, fonts or third-party icons.

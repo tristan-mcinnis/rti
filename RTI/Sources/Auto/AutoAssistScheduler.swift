@@ -1,16 +1,15 @@
 import Foundation
 
-/// Drives periodic analysis tasks (notes generation,
-/// discussion-guide matching) on a configurable timer. Owns the Timer,
-/// interval config, per-task enabled-checks, and per-task watermarks.
-/// SessionCoordinator starts/stops the scheduler — individual controllers
-/// register their analysis closures once at launch.
+/// Drives the periodic Auto-mode tick on a timer. Owns the Timer, the
+/// per-task enabled-check, and the per-task watermark. SessionCoordinator
+/// starts/stops the scheduler; the task registers its closure once at
+/// launch.
 @MainActor
-final class AnalysisScheduler {
-    static let shared = AnalysisScheduler()
+final class AutoAssistScheduler {
+    static let shared = AutoAssistScheduler()
 
-    /// A single analysis task registered with the scheduler.
-    struct AnalysisTask {
+    /// A single task registered with the scheduler.
+    struct ScheduledTask {
         /// UserDefaults key that gates whether this task fires.
         let enabledKey: String
         /// Called on each timer tick. Receives the last watermark
@@ -20,17 +19,16 @@ final class AnalysisScheduler {
         let execute: @MainActor (_ sinceMs: Int?) async -> Int?
     }
 
-    private var tasks: [String: AnalysisTask] = [:]
+    private var tasks: [String: ScheduledTask] = [:]
     private var watermarks: [String: Int] = [:]
     private var timer: Timer?
-    private var currentInterval: TimeInterval = 120
 
     private init() {}
 
-    /// Register a periodic analysis task. Call once per task lifetime
+    /// Register a periodic task. Call once per task lifetime
     /// (typically at app launch). The scheduler stores the watermark
     /// internally so callers don't need to track it.
-    func register(id: String, task: AnalysisTask) {
+    func register(id: String, task: ScheduledTask) {
         tasks[id] = task
         watermarks[id] = 0
     }
@@ -40,19 +38,15 @@ final class AnalysisScheduler {
         watermarks.removeValue(forKey: id)
     }
 
-    /// Start the analysis timer. Resets all watermarks to zero (fresh
-    /// session) and reads the interval + per-task enabled flags from
-    /// UserDefaults on each tick so Settings changes take effect
-    /// without restarting the timer.
-    func start(intervalKey: String, defaultInterval: TimeInterval) {
+    /// Start the timer. Resets all watermarks to zero (fresh session) and
+    /// reads the per-task enabled flags from UserDefaults on each tick so
+    /// Settings changes take effect without restarting the timer.
+    func start(interval: TimeInterval) {
         timer?.invalidate()
         runGeneration += 1
         for key in watermarks.keys { watermarks[key] = 0 }
 
-        let interval = UserDefaults.standard.double(forKey: intervalKey)
-        currentInterval = interval > 0 ? interval : defaultInterval
-
-        timer = Timer.scheduledTimer(withTimeInterval: currentInterval, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.fire() }
         }
         timer?.tolerance = 5
@@ -74,7 +68,7 @@ final class AnalysisScheduler {
     private var inFlight: [UUID: Task<Void, Never>] = [:]
 
     /// Wait (without blocking the main thread) for cancelled passes to wind
-    /// down, up to `timeout`, so the archive snapshot is not racing a write.
+    /// down, up to `timeout`.
     func drainInFlight(timeout: TimeInterval = 2) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !inFlight.isEmpty, Date() < deadline {

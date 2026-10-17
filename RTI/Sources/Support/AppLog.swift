@@ -132,22 +132,16 @@ enum LogLevel: Int, Comparable, Sendable {
 /// the Logs window and written to disk; they predate the enum, so keep them.
 enum LogCategory: String, Sendable {
     case general = "RTI"
-    case analysis
     case archive
     case audio
     case credentials
-    case discussionGuide
-    case findings
-    case guide
     case hotkey
     case latency
     case launchAtLogin = "launch-at-login"
     case llm
     case modes
-    case notes
     case screenshot
     case soniox
-    case summary
     case systemAudio = "system-audio"
     case vault
     case vision

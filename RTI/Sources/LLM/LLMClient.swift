@@ -16,7 +16,7 @@ final class LLMClient: @unchecked Sendable {
     private let session: URLSession
 
     /// Hard ceiling on output tokens per completion. Set to DeepSeek's maximum
-    /// (8192) rather than the old 4096: a full-meeting Granola summary of a 2h+
+    /// (8192) rather than the old 4096: a long answer over a 2h+
     /// session — especially bilingual, where CJK + pinyin burn tokens fast —
     /// blew past 4096 and got cut off mid-sentence. This is a CEILING, not a
     /// target: the short quick actions self-limit via their prompts and stop
@@ -174,8 +174,8 @@ final class LLMClient: @unchecked Sendable {
     }
 
     /// A route for a caller that has none: today's live registry entry, with
-    /// `smart` carried as an explicit reasoning choice. Keeps the analysis and
-    /// title generators on one code path without making them resolve a
+    /// `smart` carried as an explicit reasoning choice. Keeps background
+    /// callers on one code path without making them resolve a
     /// per-chat selection they do not have.
     /// Capture one request destination before it can wait or be preempted.
     /// Retried background work must not switch models/providers mid-job.
@@ -329,11 +329,6 @@ final class LLMClient: @unchecked Sendable {
         let text: String
         let finishReason: String?
         let reasoningCharacters: Int
-
-        /// The reason, in words, for a log line.
-        var emptyReasonDescription: String {
-            "finish_reason=\(finishReason ?? "none"), \(reasoningCharacters) reasoning chars, 0 content chars"
-        }
     }
 
     /// Drains a `streamChat` AsyncThrowingStream into a single String,

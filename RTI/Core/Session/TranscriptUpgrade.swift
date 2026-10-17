@@ -36,20 +36,17 @@ public struct TranscriptUpgradeAudioInput: Equatable, Sendable {
 
 public struct TranscriptUpgradeExecutionResult: Equatable, Sendable {
     public let transcriptURL: URL
-    public let summaryURL: URL?
     public let segmentCount: Int
     public let sourceFiles: [String]
     public let artifactResult: TranscriptUpgradeArtifacts.WriteResult
 
     public init(
         transcriptURL: URL,
-        summaryURL: URL?,
         segmentCount: Int,
         sourceFiles: [String],
         artifactResult: TranscriptUpgradeArtifacts.WriteResult
     ) {
         self.transcriptURL = transcriptURL
-        self.summaryURL = summaryURL
         self.segmentCount = segmentCount
         self.sourceFiles = sourceFiles
         self.artifactResult = artifactResult
@@ -167,7 +164,6 @@ public enum TranscriptUpgradeAudioDiscovery {
 
 public enum TranscriptUpgradePipeline {
     public typealias Transcribe = @Sendable (_ audioURL: URL, _ outputBaseURL: URL) async throws -> String
-    public typealias WriteSummary = @Sendable (_ transcriptText: String) async -> URL?
     public typealias Progress = @Sendable (_ message: String) -> Void
 
     public static func upgrade(
@@ -178,7 +174,6 @@ public enum TranscriptUpgradePipeline {
         frontmatter: [String],
         progress: Progress,
         transcribe: Transcribe,
-        writeSummary: WriteSummary,
         runRouter: @Sendable () -> Void
     ) async throws -> TranscriptUpgradeExecutionResult {
         let originalTranscriptURL = sessionDir.appendingPathComponent("transcript.md")
@@ -246,13 +241,10 @@ public enum TranscriptUpgradePipeline {
         progress("Writing upgraded transcript")
         let artifactResult = try TranscriptUpgradeArtifacts.installUpgradedTranscript(markdown: md, in: sessionDir)
 
-        progress("Regenerating summary")
-        let summaryURL = await writeSummary(body)
         runRouter()
 
         return TranscriptUpgradeExecutionResult(
             transcriptURL: originalTranscriptURL,
-            summaryURL: summaryURL,
             segmentCount: segments.count,
             sourceFiles: sourceFiles,
             artifactResult: artifactResult
@@ -567,12 +559,10 @@ public enum TranscriptUpgradeArtifacts {
     public struct WriteResult: Equatable, Sendable {
         public let upgradedURL: URL
         public let transcriptBackupURL: URL?
-        public let summaryBackupURL: URL?
 
-        public init(upgradedURL: URL, transcriptBackupURL: URL?, summaryBackupURL: URL?) {
+        public init(upgradedURL: URL, transcriptBackupURL: URL?) {
             self.upgradedURL = upgradedURL
             self.transcriptBackupURL = transcriptBackupURL
-            self.summaryBackupURL = summaryBackupURL
         }
     }
 
@@ -584,17 +574,14 @@ public enum TranscriptUpgradeArtifacts {
         let backupStamp = backupStamp ?? timestamp.string(from: Date())
         let upgradedURL = sessionDir.appendingPathComponent("transcript.upgraded.md")
         let transcriptURL = sessionDir.appendingPathComponent("transcript.md")
-        let summaryURL = sessionDir.appendingPathComponent("summary.md")
 
         try writeOwnerOnly(markdown, to: upgradedURL)
         let transcriptBackup = try backupIfPresent(transcriptURL, stamp: backupStamp)
         try replaceRecoverably(source: upgradedURL, destination: transcriptURL)
-        let summaryBackup = try backupIfPresent(summaryURL, stamp: backupStamp)
 
         return WriteResult(
             upgradedURL: upgradedURL,
-            transcriptBackupURL: transcriptBackup,
-            summaryBackupURL: summaryBackup
+            transcriptBackupURL: transcriptBackup
         )
     }
 

@@ -124,8 +124,6 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
     private func archiveModel() async throws -> SessionsWindowModel {
         let model = SessionsWindowModel(dependencies: .init(
             contentSearch: nil,
-            generateTitle: nil,
-            persistGeneratedTitle: { _, _ in XCTFail("a proof must never write a title") },
             now: { Date() }
         ))
         await model.reload()

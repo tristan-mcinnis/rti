@@ -8,7 +8,7 @@ struct GlossaryTab: View {
     var body: some View {
         SettingsPage(maxWidth: 760) {
             VStack(alignment: .leading, spacing: 14) {
-                SettingsCard("How Glossary Terms Are Used", detail: "Names, acronyms, and domain terms are sent as a system instruction before every chat, summary, and recall call.") {
+                SettingsCard("How Glossary Terms Are Used", detail: "Names, acronyms, and domain terms are sent as a system instruction before every chat and recall call.") {
                     Text("Use this for proper names, client-specific jargon, and in-house spellings that the model should preserve exactly.")
                         .font(RTIDesign.Font.meta)
                         .foregroundStyle(RTIDesign.Color.textSecondary)

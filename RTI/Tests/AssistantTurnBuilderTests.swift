@@ -23,13 +23,11 @@ final class AssistantTurnBuilderTests: XCTestCase {
             priorSuggestions: "Ask about timing",
             hasReferencedDocuments: referencedDocumentsText != nil,
             retrievalContext: "Vault search ran for this question (searched: 0 results).",
-            guideCoverage: "Guide coverage: pricing is unanswered",
             baseSystemPrompt: "Base system",
             listenerSystemSuffix: "Listener suffix",
             listenerMode: listenerMode,
             meetingContext: "Meeting context",
             meetingBrief: "Prep brief",
-            discussionGuide: "Discussion guide",
             glossaryFragment: "Glossary",
             referenceText: "Reference",
             referenceModeName: "Mode",
@@ -70,14 +68,6 @@ final class AssistantTurnBuilderTests: XCTestCase {
         XCTAssertEqual(latest?.images?.count, 1)
         // The system messages never carry the image.
         XCTAssertTrue(output.apiMessages.filter { $0.role == "system" }.allSatisfy { ($0.images?.isEmpty ?? true) })
-    }
-
-    func testGuideCoverageOnlyAddedForGuideAwareActions() {
-        let ask = build(action: "Ask")
-        let assist = build(action: "Assist")
-
-        XCTAssertFalse((ask.apiMessages.last?.content ?? "").contains("Guide coverage"))
-        XCTAssertTrue((assist.apiMessages.last?.content ?? "").contains("Guide coverage"))
     }
 
     func testListenerModeAddsSuffixAndSkipsMeetingBrief() {

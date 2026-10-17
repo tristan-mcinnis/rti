@@ -248,8 +248,6 @@ public struct ComposerSlashCommand: Identifiable, Equatable, Sendable {
         ComposerSlashCommand(id: "followups", label: "Follow-ups", symbol: "bubble.left.and.text.bubble.right",
                              help: "Generate follow-up questions", aliases: ["followup"]),
         ComposerSlashCommand(id: "recap", label: "Recap", symbol: "arrow.clockwise", help: "Recap the recent conversation"),
-        ComposerSlashCommand(id: "summary", label: "Summary", symbol: "doc.text", help: "Summarize the full session",
-                             aliases: ["summarize"]),
         ComposerSlashCommand(id: "note", label: "Note", symbol: "note.text",
                              help: "Turn note mode on or off, or use /note <text>"),
         ComposerSlashCommand(id: "chat", label: "Chat", symbol: "text.bubble", help: "Leave note mode and go back to chat"),

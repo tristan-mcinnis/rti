@@ -32,11 +32,6 @@ final class SessionCoordinator {
         phase == .paused
     }
 
-    /// True while the end-of-session summary is being generated (post-stop).
-    var isSummarizing: Bool {
-        phase == .summarizing
-    }
-
     private(set) var currentSessionId: String?
     private(set) var startedAt: Date?
     private(set) var endedAt: Date?
@@ -45,10 +40,6 @@ final class SessionCoordinator {
     /// time, not wall-clock.
     private(set) var pausedAt: Date?
     private var pausedAccumulated: TimeInterval = 0
-    /// Result of the end-of-session auto-summary, surfaced so the record control
-    /// can offer "Summary ready" (open it) vs. a quiet failure.
-    private(set) var summaryURL: URL?
-    private(set) var summaryFailed = false
     /// Short status shown by the recording HUD while the offline pass runs.
     private(set) var postProcessingStatus: String?
     private(set) var liveEntries: [LiveEntry] = []
@@ -144,35 +135,13 @@ final class SessionCoordinator {
         commonInit()
     }
 
-    /// Register the periodic analysis tasks with the scheduler. Called once
-    /// at launch from AppDelegate. The scheduler only fires the tasks whose
-    /// enable flag is set, and only while a session is running.
-    func registerAnalysisTasks() {
-        AnalysisScheduler.shared.register(
-            id: "notes",
-            task: .init(enabledKey: AnalysisSettingsDefaults.notesEnabledKey) { _ in
-                // Notes own their own watermark (so the manual Generate button
-                // can't duplicate) — ignore the scheduler's sinceMs.
-                await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
-            }
-        )
-        AnalysisScheduler.shared.register(
-            id: "discussionGuide",
-            task: .init(enabledKey: AnalysisSettingsDefaults.guideEnabledKey) { sinceMs in
-                await DiscussionGuideController.shared.match(sessionId: SessionCoordinator.shared.currentSessionId ?? "", sinceMs: sinceMs)
-            }
-        )
-        AnalysisScheduler.shared.register(
-            id: "findings",
-            task: .init(enabledKey: AnalysisSettingsDefaults.findingsEnabledKey) { _ in
-                // Intel owns its own watermark (so the manual Generate button
-                // can't duplicate) — ignore the scheduler's sinceMs.
-                await FindingsController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
-            }
-        )
-        AnalysisScheduler.shared.register(
+    /// Register the Auto-mode tick with the scheduler. Called once at launch
+    /// from AppDelegate. The scheduler only fires it while a session is
+    /// running and the Auto toggle is on.
+    func registerAutoAssistTask() {
+        AutoAssistScheduler.shared.register(
             id: "autoAssist",
-            task: .init(enabledKey: AnalysisSettingsDefaults.autoAssistEnabledKey) { _ in
+            task: .init(enabledKey: AutoAssistSettings.enabledKey) { _ in
                 // Auto mode owns its own watermark — ignore the scheduler's sinceMs.
                 await AutoAssistController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
             }
@@ -251,12 +220,8 @@ final class SessionCoordinator {
     @discardableResult
     func insertNote(_ text: String) -> Bool {
         guard let startedAt else { return false }
-        let startMs = Int(Date().timeIntervalSince(startedAt) * 1000)
         let ok = transcriptPipeline.insertNote(text, startedAt: startedAt)
-        if ok {
-            FindingsController.shared.recordUserMarkedNote(text, startMs: startMs)
-            publishState()
-        }
+        if ok { publishState() }
         return ok
     }
 
@@ -288,7 +253,7 @@ final class SessionCoordinator {
         switch phase {
         case .recording, .paused:
             stopSession()
-        case .idle, .done, .summarizing:
+        case .idle, .done, .upgrading:
             startSession(userInitiated: true)
         case .finishing:
             break
@@ -398,8 +363,6 @@ final class SessionCoordinator {
         pausedAt = nil
         pausedAccumulated = 0
         audioPipeline.suspended = false
-        summaryURL = nil
-        summaryFailed = false
         postProcessingStatus = nil
 
         // Don't let "passive listener" framing bleed across sessions: a fieldwork
@@ -440,14 +403,11 @@ final class SessionCoordinator {
         transcriptPipeline.reset()
         SpeakerNameStore.shared.reset()
 
-        // Bind the analysis controllers to the fresh session. The periodic
-        // scheduler and the Neon keep-warm start only once audio is running
-        // (below): `stopSession` is what stops them, and it never runs for a
-        // start that failed, so starting them here left both ticking until
-        // the next session.
-        NotesGenerationController.shared.reset(for: sessionId)
-        DiscussionGuideController.shared.reset(for: sessionId)
-        FindingsController.shared.reset(for: sessionId)
+        // Bind Auto mode to the fresh session. The periodic scheduler and the
+        // Neon keep-warm start only once audio is running (below):
+        // `stopSession` is what stops them, and it never runs for a start
+        // that failed, so starting them here left both ticking until the next
+        // session.
         AutoAssistController.shared.reset(for: sessionId)
 
         // Keep Bluetooth headphones in full-volume A2DP: if the default mic is a
@@ -481,11 +441,8 @@ final class SessionCoordinator {
             return
         }
 
-        // Each task self-gates on its Settings toggle.
-        AnalysisScheduler.shared.start(
-            intervalKey: AnalysisSettingsDefaults.notesIntervalKey,
-            defaultInterval: AnalysisSettingsDefaults.defaultInterval
-        )
+        // The Auto task self-gates on its Settings toggle.
+        AutoAssistScheduler.shared.start(interval: AutoAssistSettings.tickInterval)
         startKeepWarm()
 
         publishState()
@@ -512,7 +469,7 @@ final class SessionCoordinator {
         // before the final teardown gives Soniox time to flush remaining
         // partial audio and deliver final transcripts.
         audioPipeline.finalize()
-        AnalysisScheduler.shared.stop()
+        AutoAssistScheduler.shared.stop()
         keepWarmTimer?.invalidate()
         keepWarmTimer = nil
         checkpointTask?.cancel()
@@ -534,9 +491,9 @@ final class SessionCoordinator {
             // projection carries every thread and turn id. A recording that
             // held several chats keeps all of them.
             await self?.prepareChatThreadProjection(sessionId: sessionId)
-            // Stop cancelled any analysis pass still running; give them a
-            // moment to wind down so none writes after the archive snapshot.
-            await AnalysisScheduler.shared.drainInFlight()
+            // Stop cancelled any Auto pass still running; give it a moment to
+            // wind down so none writes after the archive snapshot.
+            await AutoAssistScheduler.shared.drainInFlight()
             if Task.isCancelled { return }
             self?.completeStop(sessionId: sessionId, endedAt: endedAt)
         }
@@ -578,50 +535,37 @@ final class SessionCoordinator {
         self.endedAt = endedAt
 
         // Persist a Markdown record of the transcript (notes inline), chat, and
-        // retained m4a legs. The audio is used only by Upgrade Transcript; this
-        // does not revive the old corpus/import/search architecture.
+        // retained audio legs. The audio feeds the automatic transcript
+        // upgrade; this does not revive the old corpus/import/search
+        // architecture.
         if let startedAt {
             let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt, sessionId: sessionId)
-            let archiveResult = SessionFinalizer(snapshot: snapshot).archive()
-            let archiveDir = archiveResult.archiveDir
+            let archiveDir = SessionFinalizer(snapshot: snapshot).archive()
             let transcript = snapshot.transcript
             let chat = snapshot.chat
-            let analysis = snapshot.analysis
-            let summaryContext = archiveResult.summaryContext
-            // Render the transcript NOW and hand it to the summary call. The old
-            // path re-read the live transcript inside the async summary, so
-            // starting a new recording before it finished would summarise the
-            // wrong (empty) session. Capturing it here makes "finish → start
-            // again immediately" safe.
-            let transcriptText = archiveResult.transcriptText
+            let visualContext = snapshot.visualContext
 
             if let archiveDir {
-                // Preserve chat/analysis in the sidecar without writing a
-                // provisional raw transcript. Only upgraded text becomes the
-                // canonical transcript and reaches meeting processing.
+                // Preserve chat and screen context in the sidecar without
+                // writing a provisional raw transcript. Only upgraded text
+                // becomes the canonical transcript and reaches meeting
+                // processing.
                 SessionArchive.writeCanonicalMeetingSidecar(
                     startedAt: startedAt,
                     chat: chat,
-                    analysis: analysis,
+                    visualContext: visualContext,
                     archiveDir: archiveDir
                 )
-                phase = .summarizing
+                phase = .upgrading
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
-                postProcessingStatus = TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty
-                    ? "Writing notes…"
-                    : "Improving transcript…"
-                // This session's speaker renames, read now: a new recording
-                // may start while the upgrade runs, and it resets the store.
-                let speakerNames = SpeakerNameStore.shared.names
+                postProcessingStatus = "Improving transcript…"
                 Task { @MainActor [weak self] in
-                    var url: URL?
                     if !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty {
                         do {
-                            let result = try await TranscriptUpgradeService.upgrade(
+                            _ = try await TranscriptUpgradeService.upgrade(
                                 sessionDirectory: archiveDir,
                                 startedAt: startedAt,
-                                provider: AsyncTranscriptProviders.soniox,
-                                referenceContext: summaryContext
+                                provider: AsyncTranscriptProviders.soniox
                             ) { progress in
                                 Task { @MainActor in
                                     let coordinator = SessionCoordinator.shared
@@ -630,56 +574,34 @@ final class SessionCoordinator {
                                 }
                             }
                             SessionArchive.clearAutomaticUpgradePending(in: archiveDir)
-                            url = result.summaryURL
                         } catch {
                             RTILog.log("automatic Soniox transcript upgrade failed; retained audio is available for retry: \(error.localizedDescription)", category: .archive)
                             self?.postProcessingStatus = "Upgrade failed · audio retained"
-                            url = nil
                         }
                     } else {
                         self?.postProcessingStatus = "Upgrade unavailable · audio retained"
-                        url = nil
-                    }
-                    // Reliability net: whatever kept the upgrade from producing
-                    // a summary (provider failure, empty upgrade result, no
-                    // retained audio), still summarize + title the session from
-                    // the live transcript so real content is never left as
-                    // "Untitled session" with no summary.
-                    if url == nil, !transcriptText.isEmpty,
-                       !FileManager.default.fileExists(atPath: archiveDir.appendingPathComponent("summary.md").path) {
-                        url = await SessionArchive.writeAutoSummary(
-                            transcriptText: transcriptText,
-                            to: archiveDir,
-                            startedAt: startedAt,
-                            speakerNames: speakerNames,
-                            referenceContext: summaryContext
-                        )
-                        if url != nil { self?.postProcessingStatus = nil }
                     }
                     guard let self else { return }
                     // Only resolve to `done` if this is still the session the
                     // user is looking at — a new recording may already be live.
-                    if currentSessionId == sessionId, phase == .summarizing {
-                        summaryURL = url
-                        summaryFailed = (url == nil)
+                    if currentSessionId == sessionId, phase == .upgrading {
                         if postProcessingStatus != "Upgrade failed · audio retained" {
-                            postProcessingStatus = url == nil ? "Session saved" : "Notes ready"
+                            postProcessingStatus = "Session saved"
                         }
                         phase = .done
                         resetWorkspaceForDone()
                     }
                 }
             } else {
-                // Nothing worth summarising (or archive failed) — go straight to
+                // Nothing worth keeping (or archive failed) — go straight to
                 // done and still route whatever was captured.
                 phase = .done
                 resetWorkspaceForDone()
-                if let archiveDir { SessionArchive.runVaultRouter(sessionDir: archiveDir) }
                 exportCanonicalMeeting(
                     startedAt: startedAt,
                     transcript: transcript,
                     chat: chat,
-                    analysis: analysis,
+                    visualContext: visualContext,
                     archiveDir: archiveDir
                 )
             }
@@ -694,10 +616,10 @@ final class SessionCoordinator {
     }
 
     /// When a session reaches `done`, reset the interactive Assist chat back to
-    /// its "ready" state. The meeting's substance is already saved (summary +
-    /// transcript on disk; transcript/notes/intel tabs stay reviewable until
-    /// the next recording) — leaving the live chat hanging around just reads as
-    /// stale. Fixes the "why is the old chat still there after Done?" confusion.
+    /// its "ready" state. The meeting's substance is already saved (transcript
+    /// on disk; the transcript tab stays reviewable until the next recording).
+    /// Leaving the live chat hanging around just reads as stale. Fixes the
+    /// "why is the old chat still there after Done?" confusion.
     private func resetWorkspaceForDone() {
         LLMController.shared.clear()
     }
@@ -746,15 +668,14 @@ final class SessionCoordinator {
             sessionId: currentSessionId,
             includeAudio: route
         )
-        let result = SessionFinalizer(snapshot: snapshot).archive()
-        let dir = result.archiveDir
+        let dir = SessionFinalizer(snapshot: snapshot).archive()
         if route, let dir { SessionArchive.runVaultRouter(sessionDir: dir) }
         if route {
             exportCanonicalMeeting(
                 startedAt: startedAt,
                 transcript: snapshot.transcript,
                 chat: snapshot.chat,
-                analysis: snapshot.analysis,
+                visualContext: snapshot.visualContext,
                 archiveDir: dir
             )
         }
@@ -767,32 +688,18 @@ final class SessionCoordinator {
         sessionId: String?,
         includeAudio: Bool = true
     ) -> SessionFinalizer.Snapshot {
-        let summaryContext = [
-            MeetingContextStore.shared.summaryContext,
-            VisualContextTrail.shared.summaryReferenceContext(),
-        ]
-        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
-        .joined(separator: "\n\n")
-
         return SessionFinalizer.Snapshot(
             startedAt: startedAt,
             endedAt: endedAt,
             transcript: transcriptPipeline.liveEntries,
             chat: LLMController.shared.entries,
-            analysis: SessionArchive.Analysis(
-                notes: NotesGenerationController.shared.notes,
-                guide: DiscussionGuideController.shared.guide,
-                findings: FindingsController.shared.findings,
-                visualContext: VisualContextTrail.shared.events
-            ),
+            visualContext: VisualContextTrail.shared.events,
             sessionId: sessionId,
             micRecordingURL: includeAudio ? audioPipeline.micRecordingURL : nil,
             systemRecordingURL: includeAudio ? audioPipeline.systemRecordingURL : nil,
             systemAudioStartOffsetMs: systemAudioStartOffsetMs,
             workstreamItem: MeetingContextStore.shared.workstreamItem,
             modeName: ModeStore.shared.activeMode?.name,
-            summaryContext: summaryContext.isEmpty ? nil : summaryContext,
             chatThreads: chatThreadProjection,
             unreadableChatCount: unreadableChatCount
         )
@@ -802,7 +709,7 @@ final class SessionCoordinator {
         startedAt: Date,
         transcript: [LiveEntry],
         chat: [ChatEntry],
-        analysis: SessionArchive.Analysis,
+        visualContext: [VisualContextEvent],
         archiveDir: URL?,
         process: Bool = true
     ) {
@@ -810,7 +717,7 @@ final class SessionCoordinator {
             startedAt: startedAt,
             transcript: transcript,
             chat: chat,
-            analysis: analysis,
+            visualContext: visualContext,
             archiveDir: archiveDir
         ) else { return }
         if process { SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL) }

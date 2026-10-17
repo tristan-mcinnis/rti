@@ -14,7 +14,7 @@ struct GeneralTab: View {
                 CaptureAccessSection()
                 ScreenPrivacySection()
                 AudioInputSection()
-                RealTimeAnalysisSection()
+                AutoModeSection()
                 AppearanceSection()
                 HotkeysSection()
                 DataAndSupportSection()
@@ -111,15 +111,15 @@ private struct CaptureAccessSection: View {
 // MARK: - Screen Privacy
 
 /// Deny-list of apps whose windows are removed from every screen capture at
-/// the ScreenCaptureKit filter: their pixels never reach OCR, frames, notes,
-/// summaries, or the vault meeting note.
+/// the ScreenCaptureKit filter: their pixels never reach OCR, frames,
+/// or the vault meeting note.
 private struct ScreenPrivacySection: View {
     @State private var listText: String = ScreenPrivacy.excludedBundleIds.joined(separator: "\n")
 
     var body: some View {
         SettingsCard(
             "Screen Privacy",
-            detail: "Windows of these apps are cut out of every screen capture: ambient context, attached screenshots, and the assistant's capture tool. Their content never reaches OCR text, kept frames, notes, or summaries. One bundle ID per line."
+            detail: "Windows of these apps are cut out of every screen capture: ambient context, attached screenshots, and the assistant's capture tool. Their content never reaches OCR text or kept frames. One bundle ID per line."
         ) {
             TextEditor(text: $listText)
                 .font(House.TypeToken.code)
@@ -217,42 +217,14 @@ private struct AudioInputSection: View {
     }
 }
 
-// MARK: - Real-Time Analysis
+// MARK: - Auto mode
 
-private struct RealTimeAnalysisSection: View {
-    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled: Bool = AnalysisSettingsDefaults.defaultNotesEnabled
-    @AppStorage(AnalysisSettingsDefaults.notesIntervalKey) private var notesInterval: Double = AnalysisSettingsDefaults.defaultInterval
-    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled: Bool = AnalysisSettingsDefaults.defaultGuideEnabled
-    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled: Bool = AnalysisSettingsDefaults.defaultFindingsEnabled
-    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled: Bool = AnalysisSettingsDefaults.defaultAutoAssistEnabled
+private struct AutoModeSection: View {
+    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled: Bool = AutoAssistSettings.defaultEnabled
 
     var body: some View {
-        SettingsCard("Real-Time Analysis", detail: "Runs by itself while recording.", rows: true) {
-            SettingsToggleRow(title: "Write notes", isFirst: true, isOn: $notesEnabled)
-            SettingsRow(title: "Notes interval") {
-                HStack(spacing: House.Spacing.xs) {
-                    Slider(value: $notesInterval, in: AnalysisSettingsDefaults.intervalRange, step: 60) {}
-                        .labelsHidden()
-                        .frame(width: House.Layout.settingsRail)
-                    Text("\(Int(notesInterval / 60)) min")
-                        .font(House.TypeToken.meta)
-                        .monospacedDigit()
-                        .foregroundStyle(House.ColorToken.textSecondary)
-                }
-                .disabled(!notesEnabled)
-            }
-            SettingsToggleRow(title: "Match the discussion guide", isOn: $guideEnabled)
-            SettingsToggleRow(title: "Keep the intelligence ledger", isOn: $findingsEnabled)
-            SettingsToggleRow(title: "Show next-move cards (Auto)", isOn: $autoAssistEnabled)
-            CardNote {
-                Button("Reset to Defaults") {
-                    notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
-                    guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
-                    findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
-                    autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
-                    notesInterval = AnalysisSettingsDefaults.defaultInterval
-                }
-            }
+        SettingsCard("Auto Mode", detail: "Runs by itself while recording.", rows: true) {
+            SettingsToggleRow(title: "Show next-move cards (Auto)", isFirst: true, isOn: $autoAssistEnabled)
         }
     }
 }

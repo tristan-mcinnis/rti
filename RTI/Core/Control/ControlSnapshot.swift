@@ -25,7 +25,7 @@ public struct ControlSnapshot: Equatable, Sendable {
     public var recording: Bool
     /// Capture is suspended. Only true inside a live session.
     public var paused: Bool
-    /// Mid-transition (flushing the stop, or summarizing). A command that
+    /// Mid-transition (flushing the stop, or upgrading). A command that
     /// arrives now is a no-op, so the caller is told the app is busy.
     public var busy: Bool
     /// The human phrase, without the clock: "Idle", "Recording", "Paused".
@@ -49,7 +49,7 @@ public struct ControlSnapshot: Equatable, Sendable {
     public static let idle = ControlSnapshot()
 
     /// True only while capture is actually running, so a `pause` would do
-    /// something. False while idle, paused, finishing, summarizing and done.
+    /// something. False while idle, paused, finishing, upgrading and done.
     /// The launcher dims the Pause row on `!canPause`; the socket still
     /// accepts the verb and makes it a no-op.
     public var canPause: Bool { recording && !paused }
@@ -74,10 +74,10 @@ public struct ControlSnapshot: Equatable, Sendable {
             return ControlSnapshot(recording: true, paused: true, label: "Paused", clock: .frozen(elapsed))
         case .finishing:
             return ControlSnapshot(busy: true, label: "Finishing", clock: .frozen(elapsed))
-        case .summarizing:
-            return ControlSnapshot(busy: true, label: "Summarizing", clock: .frozen(elapsed))
+        case .upgrading:
+            return ControlSnapshot(busy: true, label: "Upgrading transcript", clock: .frozen(elapsed))
         case .done:
-            return ControlSnapshot(label: "Notes ready", clock: .frozen(elapsed))
+            return ControlSnapshot(label: "Saved", clock: .frozen(elapsed))
         }
     }
 

@@ -71,14 +71,6 @@ public enum PromptCatalogue {
         PromptComposer.recap(depth)
     }
 
-    // MARK: - Summary (mode-shaped)
-
-    /// Pick the end-of-session / on-demand summary prompt for the session's
-    /// mode: interviews get a research debrief, everything else gets minutes.
-    public static func summary(for kind: ModeKind) -> String {
-        PromptComposer.summary(for: kind)
-    }
-
     // MARK: - Listener research actions (fieldwork observer)
 
     /// Key tensions — points where participants disagree or are torn.

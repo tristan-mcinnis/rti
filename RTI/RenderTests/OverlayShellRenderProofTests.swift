@@ -19,13 +19,8 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
     override func setUp() async throws {
         try await super.setUp()
         SetupTabView.readsCalendar = false
-        let keys = [
-            AnalysisSettingsDefaults.notesEnabledKey,
-            AnalysisSettingsDefaults.guideEnabledKey,
-            AnalysisSettingsDefaults.findingsEnabledKey,
-            AnalysisSettingsDefaults.autoAssistEnabledKey,
-        ]
-        for key in keys { savedDefaults[key] = UserDefaults.standard.object(forKey: key) }
+        let key = AutoAssistSettings.enabledKey
+        savedDefaults[key] = UserDefaults.standard.object(forKey: key)
     }
 
     override func tearDown() async throws {
@@ -94,17 +89,17 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         try renderPanel("shell-idle-project", widths: [Self.standardWidth])
     }
 
-    func testNotesReady() throws {
+    func testSessionSaved() throws {
         SessionCoordinator.shared.seedForRenderProof(entries: RenderFixtures.speakerTurns, interim: nil, phase: .done, startedAt: nil)
         LLMController.shared.seedForRenderProof(entries: RenderFixtures.assistTurns)
         try renderPanel(
-            "shell-notes-ready",
+            "shell-session-saved",
             widths: [Self.standardWidth, Self.minimumWidth],
-            status: OverlayShellStatus(phase: .done, summaryReady: true, processingStatus: "Notes ready")
+            status: OverlayShellStatus(phase: .done, processingStatus: "Session saved")
         )
     }
 
-    /// Every opt-in tab on, so the row shows all seven.
+    /// The opt-in Auto tab on, so the row shows all four.
     func testTabsRowWithEveryTab() throws {
         enableEveryTab()
         seedRecording()
@@ -125,12 +120,9 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         try renderPanel("shell-transcript-empty", widths: [Self.standardWidth], tab: .transcript)
     }
 
-    func testEmptyNotesGuideAndIntel() throws {
+    func testEmptyAutoTab() throws {
         enableEveryTab()
         seedRecording(entries: [])
-        try renderPanel("shell-notes-empty", widths: [Self.standardWidth, Self.minimumWidth], tab: .notes)
-        try renderPanel("shell-guide-empty", widths: [Self.standardWidth], tab: .guide)
-        try renderPanel("shell-intel-empty", widths: [Self.standardWidth], tab: .findings)
         try renderPanel("shell-auto-empty", widths: [Self.standardWidth], tab: .auto)
     }
 
@@ -166,17 +158,17 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
 
     // MARK: - Seams
 
-    /// The ⌘1…⌘7 order in RTICore is the tab order the overlay draws.
+    /// The ⌘1…⌘4 order in RTICore is the tab order the overlay draws.
     func testTabShortcutsMatchTheTabs() {
         XCTAssertEqual(OverlayTab.allCases.map(\.rawValue), OverlayTabShortcut.order)
         XCTAssertEqual(OverlayTab.setup.shortcutLabel, "⌘1")
-        XCTAssertEqual(OverlayTab.findings.shortcutLabel, "⌘7")
+        XCTAssertEqual(OverlayTab.transcript.shortcutLabel, "⌘4")
     }
 
     /// Each session phase maps to the header's phase of the same name.
     func testPhaseMapping() {
-        let phases: [SessionCoordinator.Phase] = [.idle, .recording, .paused, .finishing, .summarizing, .done]
-        XCTAssertEqual(phases.map(\.livePhase.rawValue), ["idle", "recording", "paused", "finishing", "summarizing", "done"])
+        let phases: [SessionCoordinator.Phase] = [.idle, .recording, .paused, .finishing, .upgrading, .done]
+        XCTAssertEqual(phases.map(\.livePhase.rawValue), ["idle", "recording", "paused", "finishing", "upgrading", "done"])
     }
 
     /// `esc` never hides the overlay: with nothing open it does nothing, and
@@ -211,14 +203,7 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
     }
 
     private func enableEveryTab() {
-        for key in [
-            AnalysisSettingsDefaults.notesEnabledKey,
-            AnalysisSettingsDefaults.guideEnabledKey,
-            AnalysisSettingsDefaults.findingsEnabledKey,
-            AnalysisSettingsDefaults.autoAssistEnabledKey,
-        ] {
-            UserDefaults.standard.set(true, forKey: key)
-        }
+        UserDefaults.standard.set(true, forKey: AutoAssistSettings.enabledKey)
     }
 
     private func pickProject() {
@@ -276,8 +261,8 @@ private struct HeaderStatesSheet: View {
         OverlayShellStatus(phase: .recording),
         OverlayShellStatus(phase: .paused),
         OverlayShellStatus(phase: .finishing),
-        OverlayShellStatus(phase: .summarizing, processingStatus: "Transcribing 2 of 3…"),
-        OverlayShellStatus(phase: .done, summaryReady: true, processingStatus: "Notes ready"),
+        OverlayShellStatus(phase: .upgrading, processingStatus: "Transcribing 2 of 3…"),
+        OverlayShellStatus(phase: .done, processingStatus: "Session saved"),
         OverlayShellStatus(phase: .done, processingStatus: "Upgrade failed · audio retained"),
     ]
 

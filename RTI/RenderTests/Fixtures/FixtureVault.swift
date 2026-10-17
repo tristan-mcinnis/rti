@@ -19,9 +19,9 @@ import Foundation
 ///     <root>/kb/databases/meetings/transcripts-raw/<stem>-transcript.txt
 ///
 /// The sessions cover every title source the Sessions window resolves:
-/// a summary title, a manual title, a vault meeting note that names the
-/// session (`source: rti-session-<stamp>`), notes with no title, a short
-/// test, and a legacy recorded meeting. Days are counted back from the day
+/// a title file, a manual title, a vault meeting note that names the
+/// session (`source: rti-session-<stamp>`), a session named by its first
+/// spoken line, a short test, and a legacy recorded meeting. Days are counted back from the day
 /// the proof runs, so the date groups (Today, This week, Earlier) all fill.
 @MainActor
 enum FixtureVault {
@@ -32,7 +32,7 @@ enum FixtureVault {
         let hour: Int
         let minute: Int
         let durationSeconds: Int
-        /// `title.txt`; nil models a failed summary call.
+        /// `title.txt`; nil models a session with no title file.
         let title: String?
         /// Also writes `title-manual.txt` (the user edited the title).
         var manualTitle = false
@@ -58,30 +58,18 @@ enum FixtureVault {
                     ("Speaker 1", "0:04", "Let's go through the pricing page top to bottom. The plan table is doing too much."),
                     ("Speaker 2", "0:19", "Agreed. Three tiers, one highlighted, and move the FAQ under the table."),
                 ]),
-                "notes.md": notes([
-                    ("0:00 – 8:00", "Plan table", "- Cut to three tiers.\n- Highlight the middle tier."),
-                    ("8:00 – 16:00", "FAQ placement", "- Move the FAQ under the table."),
-                ]),
             ]
         ),
         Session(
             daysAgo: 0, hour: 10, minute: 30, durationSeconds: 34 * 60,
             title: "Onboarding Scope Review with Northwind", workstream: "Northwind app",
             files: [
-                "summary.md": "# Meeting summary\n\n"
-                    + "The team dropped the guided tour from the first release and will measure first-screen drop-off instead.\n\n"
-                    + "## Decisions\n\n- Ship without the guided tour.\n- Speaker 2 writes the decision note for design.\n\n"
-                    + "## Open questions\n\n- Who sets the drop-off threshold that brings the tour back?\n",
                 "transcript.md": transcript([
                     ("Speaker 1", "12:03", "So the main thing we need to lock this week is the onboarding scope. If we keep the guided tour, the launch slips by a sprint."),
                     ("Speaker 2", "12:21", "I'd rather ship without the tour and measure drop-off on the first screen. We can add it back in point-one if the numbers say so."),
                     ("Speaker 1", "12:38", "Fine by me. Can you own the decision note so design isn't surprised on Thursday?"),
                     ("Speaker 1", "12:44", "I'll put the drop-off numbers on the agenda for next week."),
                     ("📝 Note", "12:50", "Decision note owner: Speaker 2"),
-                ]),
-                "notes.md": notes([
-                    ("0:00 – 12:00", "Launch timing", "- The guided tour costs a sprint."),
-                    ("12:00 – 24:00", "Guided tour decision", "- Ship without it; measure first-screen drop-off."),
                 ]),
                 "chat.md": "# Chat\n\n**You** _(Assist, transcript)_\n\nAssist\n\n"
                     + "**Assistant**\n\nThey've just agreed to drop the guided tour and measure first-screen drop-off instead.\n",
@@ -95,10 +83,6 @@ enum FixtureVault {
                     ("Speaker 1", "3:10", "How often do you use the loyalty card when you buy coffee?"),
                     ("Speaker 2", "3:22", "Most mornings. I stopped when the app asked me to sign in again every week."),
                 ]),
-                "notes.md": notes([
-                    ("0:00 – 16:00", "Card habits", "- Uses the card most mornings."),
-                    ("16:00 – 32:00", "Sign-in friction", "- Weekly sign-in made them stop."),
-                ]),
             ]
         ),
         Session(
@@ -107,10 +91,6 @@ enum FixtureVault {
             files: [
                 "transcript.md": transcript([
                     ("Speaker 1", "0:40", "The store map needs one change before the pilot: the pickup counter moves to the front."),
-                ]),
-                "notes.md": notes([
-                    ("0:00 – 8:00", "Store map pilot", "- Pickup counter moves to the front."),
-                    ("8:00 – 16:00", "Staff rota", "- Two people on the counter at opening."),
                 ]),
             ]
         ),
@@ -267,11 +247,6 @@ enum FixtureVault {
     /// `transcript.md` body: "`m:ss` **Speaker:** text" paragraphs.
     private static func transcript(_ turns: [(speaker: String, offset: String, text: String)]) -> String {
         "# Transcript\n\n" + turns.map { "`\($0.offset)` **\($0.speaker):** \($0.text)\n" }.joined(separator: "\n")
-    }
-
-    /// `notes.md` body: one "### start – end · title" block per slice.
-    private static func notes(_ slices: [(range: String, title: String, body: String)]) -> String {
-        "# Notes\n\n" + slices.map { "### \($0.range) · \($0.title)\n\n\($0.body)\n" }.joined(separator: "\n")
     }
 
     private static func time(daysAgo: Int, hour: Int, minute: Int, from now: Date) -> Date {

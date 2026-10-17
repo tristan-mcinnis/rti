@@ -54,7 +54,6 @@ enum TranscriptUpgradeService {
     struct Result: Sendable {
         let provider: String
         let transcriptURL: URL
-        let summaryURL: URL?
         let segmentCount: Int
     }
 
@@ -62,7 +61,6 @@ enum TranscriptUpgradeService {
         sessionDirectory: URL,
         startedAt: Date,
         provider option: AsyncTranscriptProviderOption? = nil,
-        referenceContext: String? = nil,
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
         try await upgrade(
@@ -75,7 +73,6 @@ enum TranscriptUpgradeService {
                 displayName: sessionDirectory.lastPathComponent
             ),
             provider: option,
-            referenceContext: referenceContext,
             progress: progress
         )
     }
@@ -83,7 +80,6 @@ enum TranscriptUpgradeService {
     static func upgrade(
         session: SessionArchive.ArchivedSession,
         provider option: AsyncTranscriptProviderOption? = nil,
-        referenceContext: String? = nil,
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
         let provider = try makeProvider(option ?? AsyncTranscriptProviders.active)
@@ -101,15 +97,6 @@ enum TranscriptUpgradeService {
                 transcribe: { audioURL, outputBaseURL in
                     try await provider.transcribe(audioURL: audioURL, outputBaseURL: outputBaseURL)
                 },
-                writeSummary: { transcriptText in
-                    guard let startedAt = session.date else { return nil }
-                    return await SessionArchive.writeAutoSummary(
-                        transcriptText: transcriptText,
-                        to: session.url,
-                        startedAt: startedAt,
-                        referenceContext: referenceContext
-                    )
-                },
                 runRouter: {
                     SessionArchive.runVaultRouter(sessionDir: session.url)
                 }
@@ -121,14 +108,11 @@ enum TranscriptUpgradeService {
            let canonicalURL = SessionArchive.refreshCanonicalMeetingTranscript(fromArchiveDir: session.url, startedAt: startedAt) {
             SessionArchive.runMeetingProcessor(transcriptURL: canonicalURL)
         }
-        progress(.done(pipelineResult.summaryURL == nil
-            ? "Upgraded with \(provider.displayName); summary regeneration failed"
-            : "Upgraded with \(provider.displayName); summary regenerated"))
+        progress(.done("Upgraded with \(provider.displayName)"))
 
         return Result(
             provider: provider.displayName,
             transcriptURL: pipelineResult.transcriptURL,
-            summaryURL: pipelineResult.summaryURL,
             segmentCount: pipelineResult.segmentCount
         )
     }

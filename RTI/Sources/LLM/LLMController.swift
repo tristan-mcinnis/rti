@@ -602,20 +602,11 @@ final class LLMController {
         case "recap": sendRecap()
         case "sayNext": sendSaySomething()
         case "followups": sendFollowupQuestions()
-        case "summary": sendSummary()
         case "keyTensions": sendKeyTensions()
         case "probe": sendProbe()
         case "themes": sendThemes()
         default: break
         }
-    }
-
-    /// Structured summary of the whole session so far. Shape follows the active
-    /// mode (research debrief for interviews, minutes otherwise) and always runs
-    /// on the reasoning ("smart") model — the wrap-up is worth the extra latency.
-    func sendSummary() {
-        let kind = modeStore.activeMode?.kind ?? .other
-        performSend(userInput: PromptStore.shared.summary(for: kind), action: "Summary", fullTranscript: true, forceSmart: true)
     }
 
     /// Listener research actions — surface tensions / what's unsaid / themes for
@@ -900,14 +891,7 @@ final class LLMController {
         let action = userEntry.action ?? "Ask"
         // A local turn is not a model turn; never replay its command as one.
         guard !Self.localActionNames.contains(action) else { return }
-        // Summary is special: it runs over the FULL transcript on the smart
-        // model. The stored user text is the (possibly now-stale) prompt, so
-        // re-dispatch through the live summary path rather than replaying it as
-        // a normal 15-minute, fast-model turn — otherwise "regenerate" silently
-        // produces a different, weaker artifact than the one it's replacing.
-        if action == "Summary" {
-            sendSummary()
-        } else if action == "Ask" {
+        if action == "Ask" {
             // Re-run the deterministic vault search rather than replay through
             // bare performSend, which skipped retrieval entirely and answered
             // from the transcript/priors alone.
@@ -1765,7 +1749,6 @@ final class LLMController {
         case "say": sendSaySomething()
         case "followups": sendFollowupQuestions()
         case "recap": sendRecap()
-        case "summary": sendSummary()
         case "screen": ScreenshotManager.shared.captureAndAttach()
         case "recent":
             sendAskAnything("What were the most recent meetings or sessions for this project? Use the recent meetings tool if project context is available.")
@@ -1841,7 +1824,7 @@ final class LLMController {
         }
         let provider = LLMProviders.option(id: chatSelection.providerId).config
         var selection = chatSelection
-        // RTI Summary's visible thinking override and the global smart default
+        // The visible thinking override and the global smart default
         // both land here, on the per-chat selection, before it freezes.
         if forceSmart { selection.reasoning = .thinking }
         // No separate vision model ships today, so an image on a text-only
@@ -2077,13 +2060,11 @@ final class LLMController {
             priorSuggestions: priorSuggestions(action: action),
             hasReferencedDocuments: !referencedDocuments.isEmpty,
             retrievalContext: retrievalContext,
-            guideCoverage: Self.guideCoverageContext(),
             baseSystemPrompt: basePrompt,
             listenerSystemSuffix: PromptStore.shared.text(.listenerSystemSuffix),
             listenerMode: listenerMode,
             meetingContext: MeetingContextStore.shared.combined,
             meetingBrief: MeetingContextStore.shared.briefContext,
-            discussionGuide: DiscussionGuideController.shared.guide?.assistantContextSummary(),
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
             referenceText: activeMode?.referenceText,
             referenceModeName: activeMode?.name,
@@ -2431,36 +2412,6 @@ final class LLMController {
             outputs.append(entries[idx + 1].text)
         }
         return outputs.suffix(3).map { "- \($0.replacingOccurrences(of: "\n", with: " "))" }.joined(separator: "\n")
-    }
-
-    /// Compact "what the discussion guide still needs" block for the
-    /// assist-family prompts. Empty string when no guide is loaded or
-    /// everything is covered.
-    private static func guideCoverageContext() -> String {
-        guard let guide = DiscussionGuideController.shared.guide else { return "" }
-        var open: [String] = []
-        var partial: [String] = []
-        for obj in guide.objectives {
-            for section in obj.sections {
-                for q in section.questions {
-                    let line = "[\(section.title)] \(q.text)"
-                    switch q.status {
-                    case .pending: open.append(line)
-                    case .partial: partial.append(line)
-                    case .answered: break
-                    }
-                }
-            }
-        }
-        guard !open.isEmpty || !partial.isEmpty else { return "" }
-        var out = "Discussion guide coverage (factor this into your suggestion — flag what's still missing if time is passing):"
-        if !open.isEmpty {
-            out += "\nNOT yet covered:\n" + open.prefix(12).map { "- \($0)" }.joined(separator: "\n")
-        }
-        if !partial.isEmpty {
-            out += "\nPartially covered:\n" + partial.prefix(6).map { "- \($0)" }.joined(separator: "\n")
-        }
-        return out
     }
 
     /// Retrieval scope is explicit project first; otherwise infer a project from
@@ -2891,9 +2842,6 @@ extension LLMController {
         }
         if MeetingContextStore.shared.briefContext != nil {
             labels.append("Brief")
-        }
-        if DiscussionGuideController.shared.guide != nil {
-            labels.append("Guide")
         }
         if !GlossaryStore.shared.entries.isEmpty {
             labels.append("Glossary")

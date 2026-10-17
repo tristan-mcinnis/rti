@@ -15,8 +15,7 @@ extension Notification.Name {
     static let rtiShowLogs = Notification.Name("rti.showLogs")
     static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
     /// Posted (object = session folder name String) to focus the Sessions
-    /// browser on a specific archived session — e.g. tapping the "summary
-    /// ready" notification or the overlay's "Notes ready" control.
+    /// browser on a specific archived session.
     static let rtiOpenSessionInBrowser = Notification.Name("rti.openSessionInBrowser")
     /// Posted when a session stops, so per-session UI state (e.g. an unsent
     /// draft in the composer) can reset before the next meeting.

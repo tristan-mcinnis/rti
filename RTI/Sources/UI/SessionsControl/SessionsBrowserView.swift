@@ -81,7 +81,7 @@ struct SessionsBrowserView: View {
             }
             Button("Cancel", role: .cancel) { model.cancelUpgradeChoice() }
         } message: {
-            Text("Soniox transcribes the saved audio again, in English and Chinese, then the summary is rewritten. The current transcript is backed up first.")
+            Text("Soniox transcribes the saved audio again, in English and Chinese. The current transcript is backed up first.")
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sessions")
@@ -143,13 +143,6 @@ struct SessionsBrowserView: View {
                         .padding(.top, House.Spacing.xs)
                         .frame(maxWidth: .infinity)
                 }
-                if model.isOutputChooserPresented {
-                    SessionOutputsChooser(model: model)
-                        .frame(maxWidth: Self.columnWidth, alignment: .leading)
-                        .padding(.horizontal, House.Spacing.lg)
-                        .padding(.top, House.Spacing.xs)
-                        .frame(maxWidth: .infinity)
-                }
                 SessionReader(model: model)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     // The scroll view would otherwise draw up under the header.
@@ -183,12 +176,6 @@ struct SessionsBrowserView: View {
                     .frame(width: House.Layout.chatRail + House.Spacing.xxxxl)
                     .padding(.top, House.Control.composer)
             }
-        }
-        // One generation per request id. A Cancel or a session switch changes
-        // (or clears) the id, which cancels the task; the run never outlives
-        // the session it started on.
-        .task(id: model.outputRequest) {
-            await model.runOutputGeneration()
         }
     }
 
@@ -243,14 +230,6 @@ private struct SessionsHeader: View {
                 }
             }
             if model.mode == .sessions, let row = model.openRow {
-                Button("Saved-meeting outputs", systemImage: "doc.badge.plus") {
-                    model.toggleOutputChooser()
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(SessionCircleButtonStyle(isSelected: model.isOutputChooserPresented))
-                .disabled(!row.session.isRTIArchive)
-                .help("Generate a saved-meeting output from this transcript")
-                .accessibilityValue(model.isOutputChooserPresented ? "Open" : "Closed")
                 Button("Copy current document", systemImage: "doc.on.doc") { model.perform(.copy) }
                     .labelStyle(.iconOnly)
                     .buttonStyle(SessionCircleButtonStyle())
@@ -322,7 +301,7 @@ private struct SessionsHeader: View {
 
 // MARK: - File chips and notice
 
-/// The open session's files: Summary, Notes, Transcript, Chat, and so on.
+/// The open session's files: Transcript, Chat, Screen, and so on.
 /// The selected chip carries the house selection; hover is half of it.
 private struct SessionFileChips: View {
     @Bindable var model: SessionsWindowModel
@@ -359,8 +338,8 @@ private struct SessionFileChips: View {
     }
 }
 
-/// One tool-style line for a long job: the transcript upgrade or a summary
-/// regeneration. Thinking dots while it runs.
+/// One tool-style line for a long job: the transcript upgrade. Thinking dots
+/// while it runs.
 private struct SessionNoticeLine: View {
     let text: String
     let isRunning: Bool
@@ -764,7 +743,7 @@ private struct SessionsLiveSection: View {
     private var isLive: Bool {
         switch session.phase {
         case .recording, .paused, .finishing: true
-        case .idle, .summarizing, .done: false
+        case .idle, .upgrading, .done: false
         }
     }
 
@@ -939,9 +918,7 @@ private struct SessionReader: View {
 
     @ViewBuilder
     private var content: some View {
-        if model.isEditingSummary {
-            SummaryEditor(model: model)
-        } else if model.isEditingTranscript {
+        if model.isEditingTranscript {
             TranscriptEditor(model: model)
         } else {
             switch model.document {
@@ -953,20 +930,8 @@ private struct SessionReader: View {
                 SessionTranscriptReader(turns: turns, model: model)
             case let .chat(turns):
                 ArchivedChatThread(turns: turns, model: model)
-            case let .summary(brief, record):
-                VStack(alignment: .leading, spacing: House.Spacing.xl) {
-                    SessionDocumentSection(title: "Share brief") {
-                        MarkdownBlocks(blocks: brief, offset: 0, model: model)
-                    }
-                    HouseDivider()
-                    SessionDocumentSection(title: "Full record") {
-                        MarkdownBlocks(blocks: record, offset: brief.count, model: model)
-                    }
-                }
             case let .markdown(blocks):
                 MarkdownBlocks(blocks: blocks, offset: 0, model: model)
-            case let .intelligence(items):
-                LiveIntelligenceReader(items: items, model: model)
             case let .log(text):
                 let marks = model.findHighlights(inBlock: 0)
                 Text(highlighted(text, marks.all, marks.current))
@@ -1032,25 +997,6 @@ private struct MarkdownBlocks: View {
                     .id(offset + index)
             }
         }
-    }
-}
-
-private struct SessionDocumentSection<Content: View>: View {
-    let title: String
-    let content: Content
-
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.sm) {
-            SlateSectionLabel(text: title)
-            content
-        }
-        .padding(House.Spacing.md)
-        .background(House.ColorToken.surfaceTint, in: RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous))
     }
 }
 
@@ -1236,106 +1182,7 @@ private struct ArchivedChatThread: View {
     }
 }
 
-// MARK: - Live intelligence reader
-
-/// The session's findings, monochrome: the tag as a chip with its glyph,
-/// the headline, why it matters, and the quote on a quiet card.
-private struct LiveIntelligenceReader: View {
-    let items: [ArchivedFinding]
-    let model: SessionsWindowModel
-
-    var body: some View {
-        if items.isEmpty {
-            Text("No intelligence items found.")
-                .font(House.TypeToken.bodySmall)
-                .foregroundStyle(House.ColorToken.textTertiary)
-        } else {
-            LazyVStack(alignment: .leading, spacing: House.Spacing.lg) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let marks = model.findHighlights(inBlock: index)
-                    VStack(alignment: .leading, spacing: House.Spacing.xs) {
-                        HStack(spacing: House.Spacing.xs) {
-                            HouseChip(text: item.tag, icon: icon(for: item.tag))
-                            Text(item.timestamp)
-                                .font(House.TypeToken.meta)
-                                .foregroundStyle(House.ColorToken.textTertiary)
-                                .monospacedDigit()
-                        }
-                        Text(item.headline)
-                            .font(House.TypeToken.heading)
-                            .foregroundStyle(House.ColorToken.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if !item.matters.isEmpty {
-                            Text(item.matters)
-                                .font(House.TypeToken.bodySmall)
-                                .foregroundStyle(House.ColorToken.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if let quote = item.quote {
-                            Text(([item.speaker, quote].compactMap { $0 }).joined(separator: ": "))
-                                .font(House.TypeToken.meta)
-                                .italic()
-                                .foregroundStyle(House.ColorToken.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(House.Spacing.sm)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .raisedCard(radius: House.Radius.row)
-                        }
-                    }
-                    .modifier(FindBlockMark(hasHit: !marks.all.isEmpty, isCurrent: marks.current != nil))
-                    .id(index)
-                }
-            }
-        }
-    }
-
-    private func icon(for tag: String) -> String {
-        switch tag.lowercased() {
-        case "decision": "checkmark.circle"
-        case "action": "checklist"
-        case "open question": "questionmark.circle"
-        case "risk": "exclamationmark.triangle"
-        case "follow-up": "arrowshape.turn.up.right"
-        default: "lightbulb"
-        }
-    }
-}
-
 // MARK: - Editors
-
-private struct SummaryEditor: View {
-    @Bindable var model: SessionsWindowModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.sm) {
-            HStack {
-                Text("Edit summary")
-                    .font(House.TypeToken.heading)
-                    .foregroundStyle(House.ColorToken.textPrimary)
-                Spacer()
-                Button("Cancel") { model.isEditingSummary = false }
-                    .buttonStyle(.plain)
-                    .font(House.TypeToken.label)
-                    .foregroundStyle(House.ColorToken.textSecondary)
-                Button("Save") { model.saveSummary() }
-                    .buttonStyle(InkButtonStyle())
-            }
-            TextEditor(text: $model.summaryDraft)
-                .font(House.TypeToken.bodySmall)
-                .scrollContentBackground(.hidden)
-                .padding(House.Spacing.xs)
-                .frame(minHeight: House.Layout.chatMinHeight - House.Control.composer * 2)
-                .background(
-                    RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
-                        .fill(House.ColorToken.surfaceTint)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
-                        .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
-                )
-        }
-    }
-}
 
 private struct TranscriptEditor: View {
     @Bindable var model: SessionsWindowModel
@@ -1411,7 +1258,7 @@ private struct SpeakerEditorSheet: View {
             Text("Name speakers")
                 .font(House.TypeToken.title)
                 .foregroundStyle(House.ColorToken.textPrimary)
-            Text("Names save for this session only. They replace the anonymous labels in its transcript and summary.")
+            Text("Names save for this session only. They replace the anonymous labels in its transcript.")
                 .font(House.TypeToken.meta)
                 .foregroundStyle(House.ColorToken.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)

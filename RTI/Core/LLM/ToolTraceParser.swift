@@ -380,7 +380,6 @@ public enum ChatTurnRecordBuilder {
             "Themes": "themes",
             "Recap": "recap",
             "Quick recap": "quickRecap",
-            "Summary": "summary",
         ]
         guard let id = ids[action], let entry = AssistantAction.byID(id) else { return nil }
         return (action, entry.symbol)

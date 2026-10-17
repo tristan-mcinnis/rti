@@ -196,8 +196,6 @@ final class ChatLibraryRenderProofTests: RenderProofTestCase {
 
         let model = SessionsWindowModel(dependencies: .init(
             contentSearch: nil,
-            generateTitle: nil,
-            persistGeneratedTitle: { _, _ in XCTFail("a proof must never write a title") },
             now: { Date() },
             chatLibrary: location
         ))

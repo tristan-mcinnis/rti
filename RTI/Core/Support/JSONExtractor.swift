@@ -1,17 +1,9 @@
 import Foundation
 
 /// Decodes JSON emitted by LLMs that may wrap it in ``` fences or `json`
-/// hints despite the prompt asking for raw JSON. Six analyzer/extractor
-/// sites used to each carry their own fence-stripping copy; this is the
-/// one place that knowledge lives now.
+/// hints despite the prompt asking for raw JSON. Fence stripping lives in
+/// this one place.
 public enum JSONExtractor {
-
-    public enum Error: Swift.Error {
-        case emptyInput
-        case invalidUTF8
-        case decode(Swift.Error, raw: String)
-    }
-
     /// Strip optional markdown code fences from a model response.
     /// Tolerates `\`\`\`json\n…\`\`\``, `\`\`\`\n…\`\`\``, and bare `\`\`\``.
     public static func stripFences(_ raw: String) -> String {
@@ -26,28 +18,6 @@ public enum JSONExtractor {
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Decode JSON of type `T` from a possibly-fenced model response.
-    /// Throws `Error.emptyInput` for blank input, `Error.invalidUTF8` if
-    /// the cleaned string can't be encoded as UTF-8, or `Error.decode`
-    /// wrapping the underlying decoder error.
-    public static func decode<T: Decodable>(_ raw: String, as type: T.Type = T.self) throws -> T {
-        let cleaned = stripFences(raw)
-        guard !cleaned.isEmpty else { throw Error.emptyInput }
-        guard let data = cleaned.data(using: .utf8) else { throw Error.invalidUTF8 }
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw Error.decode(error, raw: cleaned)
-        }
-    }
-
-    /// Non-throwing variant — returns nil on any failure. Suits the
-    /// analyzer controllers, which already treat parse failure as a
-    /// "skip this tick" signal rather than a propagated error.
-    public static func tryDecode<T: Decodable>(_ raw: String, as type: T.Type = T.self) -> T? {
-        try? decode(raw, as: type)
-    }
-
     /// Tolerantly decode the array under `key` in a `{ "key": [ {…}, {…} ] }`
     /// response, item by item. Each top-level object inside the array is
     /// extracted by brace-matching and decoded on its own; an item that fails
@@ -56,9 +26,8 @@ public enum JSONExtractor {
     /// mid-stream) simply never closes its braces and is dropped — so we keep
     /// every complete item that arrived. Returns the items that decoded.
     ///
-    /// This exists because a single bad item used to sink an entire analysis
-    /// tick: one match with `"queries"` instead of `"quotes"` discarded 27 good
-    /// matches; a findings response cut off mid-JSON discarded the batch.
+    /// This exists because a single bad item used to sink a whole Auto-mode
+    /// batch, and a response cut off mid-JSON discarded every card in it.
     public static func decodeArrayLenient<Item: Decodable>(
         _ raw: String, key: String, as type: Item.Type = Item.self
     ) -> [Item] {

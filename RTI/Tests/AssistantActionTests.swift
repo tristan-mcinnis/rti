@@ -12,7 +12,7 @@ final class AssistantActionTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, ids.count, "ids must be unique")
         XCTAssertEqual(
             Set(ids),
-            ["assist", "answerLatest", "sayNext", "followups", "keyTensions", "probe", "themes", "recap", "quickRecap", "summary"]
+            ["assist", "answerLatest", "sayNext", "followups", "keyTensions", "probe", "themes", "recap", "quickRecap"]
         )
     }
 
@@ -32,7 +32,7 @@ final class AssistantActionTests: XCTestCase {
     func test_hotkeyDisplays_matchTheKnownBindings() {
         let expected: [String: String] = [
             "sayNext": "⌘⌥S", "followups": "⌘⌥F", "keyTensions": "⌘⌥T",
-            "probe": "⌘⌥U", "themes": "⌘⌥E", "recap": "⌘⌥R", "summary": "⌘⌥M",
+            "probe": "⌘⌥U", "themes": "⌘⌥E", "recap": "⌘⌥R",
             "answerLatest": "⌘⌥Q",
         ]
         for (id, hint) in expected {

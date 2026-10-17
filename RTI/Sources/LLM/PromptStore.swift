@@ -7,7 +7,7 @@ import RTICore
 /// Mirrors `GlossaryStore`: an `@Observable @MainActor` singleton backed by a
 /// single UserDefaults blob. Every prompt the app sends resolves through
 /// `text(_:)` — an override when the user has edited it in Settings, else the
-/// shipped default. Composition (recap/assist/summary) is delegated to the pure
+/// shipped default. Composition (recap/assist) is delegated to the pure
 /// `PromptComposer` with a resolver that reads this store.
 ///
 /// Override drift: when an override is saved we also record the hash of the
@@ -117,23 +117,6 @@ final class PromptStore {
 
     func recap(_ depth: RecapDepth) -> String {
         PromptComposer.recap(depth, resolve: resolver)
-    }
-
-    func summary(for kind: ModeKind) -> String {
-        PromptComposer.summary(for: kind, resolve: resolver)
-    }
-
-    // MARK: - Export (keep the offline prompt-lab in sync)
-
-    /// Writes the shipped DEFAULTS (not overrides) as JSON for `scripts/prompt-lab`
-    /// to read, so the Python copy no longer drifts by hand. Returns the bytes
-    /// written count on success.
-    @discardableResult
-    func exportDefaults(to url: URL) throws -> Int {
-        let map = PromptDefaults.exportMap()
-        let data = try JSONSerialization.data(withJSONObject: map, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: url, options: .atomic)
-        return data.count
     }
 
     // MARK: - Persistence

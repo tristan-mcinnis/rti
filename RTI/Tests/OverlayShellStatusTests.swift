@@ -10,7 +10,7 @@ final class OverlayShellStatusTests: XCTestCase {
             (.recording, "Recording", .recording),
             (.paused, "Paused", .busy),
             (.finishing, "Saving", .busy),
-            (.summarizing, "Improving transcript", .busy),
+            (.upgrading, "Improving transcript", .busy),
             (.done, "Session saved", .ready),
         ]
         for (phase, word, tone) in expected {
@@ -20,17 +20,8 @@ final class OverlayShellStatusTests: XCTestCase {
         }
     }
 
-    func test_doneWithNotes_saysNotesReadyAndOpensThem() {
-        let status = OverlayShellStatus(phase: .done, summaryReady: true, processingStatus: "Notes ready")
-        XCTAssertEqual(status.word, "Notes ready")
-        XCTAssertEqual(status.tone, .ready)
-        XCTAssertEqual(status.recordChip.title, "Open Notes")
-        XCTAssertEqual(status.recordChip.lead, .glyph("doc.text"))
-        XCTAssertEqual(status.recordChip.keys, [])
-    }
-
-    func test_summarizingAndFailedUpgrade_showTheSessionsOwnLine() {
-        let progress = OverlayShellStatus(phase: .summarizing, processingStatus: "Transcribing 2 of 3…")
+    func test_upgradingAndFailedUpgrade_showTheSessionsOwnLine() {
+        let progress = OverlayShellStatus(phase: .upgrading, processingStatus: "Transcribing 2 of 3…")
         XCTAssertEqual(progress.word, "Transcribing 2 of 3…")
 
         let failed = OverlayShellStatus(phase: .done, processingStatus: "Upgrade failed · audio retained")
@@ -54,7 +45,7 @@ final class OverlayShellStatusTests: XCTestCase {
     }
 
     func test_recordChip_isRecordWhenACleanStartIsNext() {
-        for phase in [OverlayLivePhase.idle, .summarizing, .done] {
+        for phase in [OverlayLivePhase.idle, .upgrading, .done] {
             let chip = OverlayShellStatus(phase: phase).recordChip
             XCTAssertEqual(chip.title, "Record", "\(phase)")
             XCTAssertEqual(chip.lead, .recordDot, "\(phase)")
@@ -72,11 +63,9 @@ final class OverlayShellStatusTests: XCTestCase {
 
     func test_noUserFacingTextUsesAnEmDash() {
         for phase in OverlayLivePhase.allCases {
-            for ready in [false, true] {
-                let status = OverlayShellStatus(phase: phase, summaryReady: ready)
-                for text in [status.word, status.recordChip.title, status.recordChip.help, status.recordChip.accessibilityLabel] {
-                    XCTAssertFalse(text.contains("—"), "\(phase): \(text)")
-                }
+            let status = OverlayShellStatus(phase: phase)
+            for text in [status.word, status.recordChip.title, status.recordChip.help, status.recordChip.accessibilityLabel] {
+                XCTAssertFalse(text.contains("—"), "\(phase): \(text)")
             }
         }
     }

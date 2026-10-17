@@ -153,13 +153,6 @@ public extension AssistantAction {
             keywords: ["summary", "review", "depth", "length"],
             hotkey: ActionHotkey(key: "R", modifiers: cmdOpt)
         ),
-        AssistantAction(
-            id: "summary", label: "Session summary",
-            paletteTitle: "Meeting Summary (full transcript)",
-            symbol: "doc.text",
-            keywords: ["granola", "summarize", "minutes", "wrap"],
-            hotkey: ActionHotkey(key: "M", modifiers: cmdOpt)
-        ),
     ]
 
     /// Look up an action by id.

@@ -97,14 +97,6 @@ final class VisualContextTrail {
         VisualContextText.promptContext(events: events)
     }
 
-    func summaryReferenceContext(maxCharacters: Int = 12_000) -> String? {
-        VisualContextText.promptContext(
-            events: events,
-            maxEvents: events.count,
-            maxCharacters: maxCharacters
-        )
-    }
-
     /// A screen or window screenshot (`capture_screen`, ⌘⇧H, ⌘⇧J) made while a
     /// session is live: give it a home in the trail so its frame and vision
     /// summary reach the archive.

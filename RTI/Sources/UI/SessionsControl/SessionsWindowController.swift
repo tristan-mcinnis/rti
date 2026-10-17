@@ -7,8 +7,7 @@ import SwiftUI
 
 /// Owns the Sessions window: archived meetings in the house AI Chat window
 /// shape (design-system docs/chat-surfaces.md section 7). Opened from the
-/// menu bar, the status item, the command palette, the "Notes ready"
-/// control, and the summary notification. The model outlives the window, so
+/// menu bar, the status item, and the command palette. The model outlives the window, so
 /// a transcript upgrade keeps going after `⌘W`.
 @MainActor
 final class SessionsWindowController: NSObject, NSWindowDelegate {

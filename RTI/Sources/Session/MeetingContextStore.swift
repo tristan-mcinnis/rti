@@ -100,8 +100,8 @@ final class MeetingContextStore {
         briefTitle = nil
     }
 
-    /// Compact, authoritative context for Assist and generated summaries. A
-    /// participant is an invitee, not evidence they actually spoke or attended.
+    /// Compact, authoritative context for Assist. A participant is an
+    /// invitee, not evidence they actually spoke or attended.
     var calendarContext: String? {
         guard let meeting = calendarMeeting else { return nil }
         var lines = ["Confirmed calendar meeting: \(meeting.title)"]
@@ -112,22 +112,6 @@ final class MeetingContextStore {
             }
         }
         return lines.joined(separator: "\n")
-    }
-
-    /// Reference material for end-of-session summaries. Project context and
-    /// the user's prep note give the model the right vocabulary and priorities;
-    /// the confirmed calendar event provides names safe to label as invitees.
-    var summaryContext: String? {
-        var parts: [String] = []
-        if let workstream = workstreamContext?.trimmingCharacters(in: .whitespacesAndNewlines), !workstream.isEmpty {
-            parts.append("Selected project/wiki context:\n\(String(workstream.prefix(8_000)))")
-        }
-        if let calendar = calendarContext { parts.append(calendar) }
-        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedNote.isEmpty {
-            parts.append("User prep note for this meeting:\n\(trimmedNote)")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
     }
 
     func selectWorkstream(_ item: VaultItem) {

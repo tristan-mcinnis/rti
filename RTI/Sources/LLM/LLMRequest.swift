@@ -5,7 +5,7 @@ import RTICore
 /// Owns task lifecycle (cancel, start), error normalisation, and the
 /// dispatch boundary between network I/O and UI updates.
 ///
-/// Controllers that talk to the LLM (Summary, Title, QA, Chat) compose
+/// Controllers that talk to the LLM (Auto mode, Chat) compose
 /// this instead of duplicating the ~40-line async boilerplate.
 ///
 /// `priority` decides how the request is admitted against the shared
@@ -91,7 +91,7 @@ final class LLMRequest: @unchecked Sendable {
     // MARK: - Async execution (one-shot collect, tool-aware streaming)
 
     /// Collect the full streaming response. Returns nil on cancellation, error, or
-    /// empty result. Used by title/summary/analysis generators so callers can
+    /// empty result. Used by background callers so they can
     /// await the result before rendering.
     func collectAsync(messages: [LLMMessage], smart: Bool, timeoutOverride: Double? = nil) async -> String? {
         let collected = await collectedResponse(messages: messages, smart: smart, route: nil, timeoutOverride: timeoutOverride)
@@ -113,7 +113,7 @@ final class LLMRequest: @unchecked Sendable {
         await collectedResponse(messages: messages, smart: smart, route: route, timeoutOverride: timeoutOverride)
     }
 
-    /// Existing analysis callers intentionally treat any failure as nil.
+    /// Background callers intentionally treat any failure as nil.
     private func collectedResponse(
         messages: [LLMMessage],
         smart: Bool,
@@ -126,7 +126,7 @@ final class LLMRequest: @unchecked Sendable {
     }
 
     /// User-triggered generators need the actual provider/scheduling error,
-    /// not the optional compatibility result used by periodic analysis ticks.
+    /// not the optional compatibility result used by periodic ticks.
     func collectDetailedThrowingAsync(
         messages: [LLMMessage],
         smart: Bool,

@@ -14,7 +14,7 @@ private actor SessionTrashProbe {
 final class SessionPlaybackActionProofTests: RenderProofTestCase {
     private func model(trash: (@Sendable (URL) async throws -> Void)? = { _ in }) async -> SessionsWindowModel {
         let model = SessionsWindowModel(dependencies: .init(
-            contentSearch: nil, generateTitle: nil, persistGeneratedTitle: { _, _ in },
+            contentSearch: nil,
             now: { Date() }, trashSession: trash, shareText: { _ in }
         ))
         await model.reload()
@@ -25,9 +25,9 @@ final class SessionPlaybackActionProofTests: RenderProofTestCase {
         let model = await model()
         let row = try XCTUnwrap(model.rows.first { $0.title.text.hasPrefix("Onboarding") })
         model.open(row.id)
-        model.selectFile(named: "summary")
+        model.selectFile(named: "transcript")
         model.setRailVisible(true, remember: false)
-        try renderBothAppearances(name: "sessions-polish-summary", size: CGSize(width: House.Layout.chatWidth, height: House.Layout.chatHeight), view: SessionsBrowserView(model: model))
+        try renderBothAppearances(name: "sessions-polish-transcript", size: CGSize(width: House.Layout.chatWidth, height: House.Layout.chatHeight), view: SessionsBrowserView(model: model))
         try renderBothAppearances(name: "sessions-polish-minimum", size: CGSize(width: House.Layout.chatMinWidth, height: House.Layout.chatMinHeight), view: SessionsBrowserView(model: model))
         model.selectFile(named: "chat")
         try renderBothAppearances(name: "sessions-polish-saved-chat", size: CGSize(width: House.Layout.chatWidth, height: House.Layout.chatHeight), view: SessionsBrowserView(model: model))

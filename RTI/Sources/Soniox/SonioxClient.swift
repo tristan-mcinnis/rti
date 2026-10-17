@@ -314,7 +314,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
                 // gate as transport drops. A transient code (408 decode timeout,
                 // 429, 5xx) must RECONNECT, not fire onError — otherwise a brief
                 // gap of no decodable audio (other party silent, or a Bluetooth
-                // mic blip) ends the whole session and auto-summarizes. Only
+                // mic blip) ends the whole session. Only
                 // auth / clientBug (shouldRetry == false) escalate to onError.
                 handleDrop(SonioxFailure.fromSonioxApplicationError(code: code, detail: detail))
                 return
@@ -418,7 +418,7 @@ enum STTProviders {
 
 /// Provider selection for the "Upgrade Transcript" path: a slower async
 /// pass over the archived session's retained audio legs that can replace the rough
-/// live transcript and then regenerate the summary from the upgraded text.
+/// live transcript.
 ///
 /// This setting does not affect the live transcript. Live capture and the
 /// post-hoc upgrade are different jobs, so they stay separate registries even

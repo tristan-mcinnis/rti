@@ -15,7 +15,7 @@ public enum MenuStatusTick {
     public static func showsElapsed(_ phase: SessionPhase) -> Bool {
         switch phase {
         case .recording, .paused, .finishing: true
-        case .idle, .summarizing, .done: false
+        case .idle, .upgrading, .done: false
         }
     }
 

@@ -3,8 +3,7 @@ import Foundation
 /// Scheduling priority for one LLM request.
 ///
 /// The live surface (a chat turn the user is waiting on) is `foreground`; the
-/// deferred work (end-of-session summary, generated title, live analysis tick,
-/// saved-meeting output recipe) is `background`. Only the *scheduler* treats
+/// deferred work (the Auto-mode tick) is `background`. Only the *scheduler* treats
 /// them differently — both still run on the same provider client.
 public enum LLMPriority: Sendable, Equatable {
     /// A request the user is waiting on right now. Never waits.

@@ -643,7 +643,7 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
             turnLogger: { log.append($0) },
             stream: textStream()
         )
-        controller.sendSummary()
+        controller.sendAssist()
 
         let deadline = Date().addingTimeInterval(5)
         while log.count == 0 && Date() < deadline {

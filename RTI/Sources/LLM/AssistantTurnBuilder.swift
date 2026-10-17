@@ -15,13 +15,11 @@ enum AssistantTurnBuilder {
         let priorSuggestions: String
         let hasReferencedDocuments: Bool
         let retrievalContext: String?
-        let guideCoverage: String
         let baseSystemPrompt: String
         let listenerSystemSuffix: String
         let listenerMode: Bool
         let meetingContext: String?
         let meetingBrief: String?
-        let discussionGuide: String?
         let glossaryFragment: String?
         let referenceText: String?
         let referenceModeName: String?
@@ -71,10 +69,6 @@ enum AssistantTurnBuilder {
             fullContent += "\n\n\(retrievalContext)\nUse these retrieved vault results when relevant. Cite the source path briefly when you rely on them. Do not narrate the search process or say you will do another search. If the retrieved results are not relevant enough, say that directly and ask for a project/client selection or a narrower term."
         }
         fullContent += "\n\nFormat for the RTI overlay: answer directly and keep paragraphs short. Never use markdown tables unless the user explicitly asks for a table; when they do ask for a table, use a real markdown table with short cells and 2-4 columns. For ordinary comparisons, prefer compact headings + bullets. When answering about @mentioned files, use readable file names; avoid full paths unless the path itself matters."
-        if ["Assist", "Follow-ups", "Probe"].contains(input.action),
-           !input.guideCoverage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            fullContent += "\n\n\(input.guideCoverage)"
-        }
 
         let base = input.baseSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let effectivePrompt = input.listenerMode
@@ -84,7 +78,6 @@ enum AssistantTurnBuilder {
             baseSystemPrompt: effectivePrompt,
             meetingContext: input.meetingContext,
             meetingBrief: input.listenerMode ? nil : input.meetingBrief,
-            discussionGuide: input.discussionGuide,
             glossaryFragment: input.glossaryFragment,
             referenceText: input.referenceText,
             referenceModeName: input.referenceModeName,

@@ -13,7 +13,7 @@ struct OverlayPanelView: View {
     private let hotkeyNotice = HotkeyNoticeModel.shared
     var onOpenSettings: () -> Void = {}
     /// Render proofs only: draw this header state instead of the session's
-    /// (the proofs cannot finish a real session to reach "Notes ready").
+    /// (the proofs cannot finish a real session to reach the saved state).
     var statusOverride: OverlayShellStatus? = nil
     /// The mode store the header reads. Production uses the shared store; a
     /// render proof passes an in-memory one so it never touches live prefs.
@@ -23,25 +23,20 @@ struct OverlayPanelView: View {
     @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
-    // Live-analysis tabs only show when their tasks are enabled in Prepare.
-    // Notes defaults on; Guide/Intel/Auto stay opt-in.
-    @AppStorage(AnalysisSettingsDefaults.notesEnabledKey) private var notesEnabled = AnalysisSettingsDefaults.defaultNotesEnabled
-    @AppStorage(AnalysisSettingsDefaults.guideEnabledKey) private var guideEnabled = AnalysisSettingsDefaults.defaultGuideEnabled
-    @AppStorage(AnalysisSettingsDefaults.findingsEnabledKey) private var findingsEnabled = AnalysisSettingsDefaults.defaultFindingsEnabled
-    @AppStorage(AnalysisSettingsDefaults.autoAssistEnabledKey) private var autoAssistEnabled = AnalysisSettingsDefaults.defaultAutoAssistEnabled
+    // The Auto tab only shows when it is enabled in Prepare.
+    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
     @State private var tab: OverlayTab = .assist
 
     // Prepare is the pre-call surface, not a live tab — it's pulled out of the
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
     // row gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
-        OverlayTab.visibleTabs(notes: notesEnabled, guide: guideEnabled, findings: findingsEnabled, auto: autoAssistEnabled)
+        OverlayTab.visibleTabs(auto: autoAssistEnabled)
     }
 
     private var status: OverlayShellStatus {
         statusOverride ?? OverlayShellStatus(
             phase: session.phase.livePhase,
-            summaryReady: session.summaryURL != nil,
             processingStatus: session.postProcessingStatus
         )
     }
@@ -68,14 +63,8 @@ struct OverlayPanelView: View {
                     AutoTabView().tabContentPadding()
                 case .transcript:
                     TranscriptTabView().tabContentPadding()
-                case .notes:
-                    NotesTabView().tabContentPadding()
                 case .setup:
                     SetupTabView().tabContentPadding()
-                case .guide:
-                    GuideTabView().tabContentPadding()
-                case .findings:
-                    FindingsTabView().tabContentPadding()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -107,11 +96,8 @@ struct OverlayPanelView: View {
         .padding(.horizontal, House.Spacing.sm)
         .frame(height: House.Control.railRow)
         // If the active tab gets turned off in Prepare, fall back to Assist.
-        .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
-        .onChange(of: guideEnabled) { _, _ in normalizeSelection() }
-        .onChange(of: findingsEnabled) { _, _ in normalizeSelection() }
         .onChange(of: autoAssistEnabled) { _, _ in normalizeSelection() }
-        // The View menu (⌘1…⌘7) and commands switch tabs by posting a
+        // The View menu (⌘1…⌘4) and commands switch tabs by posting a
         // notification with the target tab's rawValue.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { note in
             guard let raw = note.object as? String,
@@ -145,7 +131,7 @@ struct OverlayPanelView: View {
 
     private func normalizeSelection() {
         // Prepare lives outside visibleTabs but is always reachable, so don't
-        // kick the user out of it when a live-analysis toggle flips.
+        // kick the user out of it when the Auto toggle flips.
         if tab != .setup, !visibleTabs.contains(tab) { tab = .assist }
     }
 
@@ -224,7 +210,7 @@ extension SessionCoordinator.Phase {
         case .recording: .recording
         case .paused: .paused
         case .finishing: .finishing
-        case .summarizing: .summarizing
+        case .upgrading: .upgrading
         case .done: .done
         }
     }

@@ -133,8 +133,7 @@ targets:
       - path: Sources/LLM/VaultRetrieval.swift
       - path: Sources/LLM/AssistantTurnBuilder.swift
       - path: Sources/LLM/ToolExecutor.swift
-      - path: Sources/Analysis/AutoAssistCard.swift
-      - path: Sources/Analysis/FindingEntry.swift
+      - path: Sources/Auto/AutoAssistCard.swift
       - path: Sources/Session/VaultMeetings.swift
       - path: Sources/Session/VaultFiles.swift
       - path: Sources/Session/VaultLogStore.swift

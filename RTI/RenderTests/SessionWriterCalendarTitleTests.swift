@@ -43,7 +43,7 @@ final class SessionWriterCalendarTitleTests: XCTestCase {
     }
 
     /// The far end of the same hand-off: what the writer stamps is what the
-    /// resolver reads back, so a session with no summary still has a name.
+    /// resolver reads back, so a session with no other title still has a name.
     func testAStampedCalendarTitleResolvesTheSessionTitle() throws {
         MeetingContextStore.shared.selectCalendarMeeting(meeting(title: "Acme Pilot Zero scoping"))
         let metadata = SessionArchiveMetadata(

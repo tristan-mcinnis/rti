@@ -9,10 +9,8 @@ import UniformTypeIdentifiers
 /// object, so a proof can put the window in any state without a click.
 ///
 /// Read-only over the archive except for what the old browser already
-/// wrote: a manual title, speaker names, summary and transcript edits, a
-/// transcript upgrade, a regenerated summary, and now a generated title for
-/// a session that has notes but no title. It never touches the session
-/// writer or the recording path.
+/// wrote: a manual title, speaker names, transcript edits, and a transcript
+/// upgrade. It never touches the session writer or the recording path.
 @MainActor
 @Observable
 final class SessionsWindowModel {
@@ -24,10 +22,6 @@ final class SessionsWindowModel {
         /// Content search through the vault's index (tier 2). Nil: the rail
         /// says "Content search unavailable" and filters titles only.
         var contentSearch: (@Sendable (String) async -> [VaultSearch.Result]?)?
-        /// The short generated title (rule 5). Nil: never generate.
-        var generateTitle: (@MainActor (_ notesMarkdown: String) async -> String?)?
-        /// Save a generated title next to the session.
-        var persistGeneratedTitle: @MainActor (_ title: String, _ sessionDirectory: URL) -> Void
         var now: @Sendable () -> Date
         var trashSession: (@Sendable (URL) async throws -> Void)? = nil
         var shareText: (@MainActor (String) -> Void)? = nil
@@ -35,26 +29,12 @@ final class SessionsWindowModel {
         /// library is unavailable instead of showing an empty one.
         var chatLibrary: ChatLibraryLocation? = nil
 
-        /// Generate one saved-meeting output. Live: a real background model
-        /// call over the archived transcript. Nil: the Outputs control says so
-        /// and never reaches the network (render proofs and tests).
-        var generateOutput: (@MainActor (_ recipe: SessionOutputRecipe, _ sessionDirectory: URL, _ folderName: String, _ route: ChatRouteConfiguration) async throws -> SessionOutputArtifact)? = nil
-        var outputRoute: @MainActor () -> ChatRouteConfiguration = {
-            LLMClient.shared.snapshotRoute(smart: false)
-        }
-        /// The recipes the Outputs picker offers: the shipped built-ins
-        /// (instruction resolved so Settings edits apply) plus the user's
-        /// custom templates. Nil: outputs are unavailable.
-        var outputRecipes: (@MainActor () -> [SessionOutputRecipe])? = nil
-
-        /// The running app: the vault search CLI and the title call. Both
+        /// The running app: the vault search CLI, trash, and share. These
         /// switch off outside RTI's own bundle (a test runner), so no test
-        /// can reach the network or write a title into an archive.
+        /// can reach the network or write into an archive.
         static var live: Dependencies {
             var dependencies = Dependencies(
                 contentSearch: nil,
-                generateTitle: nil,
-                persistGeneratedTitle: { title, directory in SessionTitleGenerator.persist(title, in: directory) },
                 now: { Date() }
             )
             guard Bundle.main.bundleIdentifier == "com.tristan.rti.personal" else { return dependencies }
@@ -67,23 +47,6 @@ final class SessionsWindowModel {
             }
             dependencies.contentSearch = { query in
                 await VaultSearchCLI.search(query: query, limit: contentResultLimit)
-            }
-            dependencies.generateTitle = { notes in
-                await SessionTitleGenerator.generate(notesMarkdown: notes)
-            }
-            dependencies.generateOutput = { recipe, directory, folder, route in
-                try await SessionOutputGenerator.generate(
-                    recipe: recipe,
-                    sessionDirectory: directory,
-                    folderName: folder,
-                    route: route
-                )
-            }
-            dependencies.outputRecipes = {
-                SessionOutputRecipe.catalog(
-                    builtInResolve: { PromptStore.shared.text($0) },
-                    custom: OutputTemplateStore.shared.all
-                )
             }
             return dependencies
         }
@@ -103,14 +66,9 @@ final class SessionsWindowModel {
         let mode: String?
         let speakerNames: [String]
         let stamp: String?
-        let hasNotes: Bool
         let transcriptStatus: String?
-        /// "Summary unavailable" when the end-of-session summary never
-        /// landed. The row says so rather than leaving a silent gap.
-        var summaryStatus: String?
         /// Read once at load (off the main thread), so row menus stay cheap.
         var hasTranscript = false
-        var hasSummary = false
         var hasRetainedAudio = false
         /// `transcript.md` relative to `databases/`, for Ask in RTI.
         var vaultTranscriptPath: String?
@@ -138,22 +96,13 @@ final class SessionsWindowModel {
     struct SessionFile: Identifiable, Hashable {
         var id: URL { url }
         let url: URL
-        /// "summary", "notes", "transcript", "chat", "frames", "log", or
-        /// "output-<recipe>" for a generated saved-meeting output.
+        /// "transcript", "chat", "screen-context", "frames", or "log".
         let name: String
-        /// A generated output's template name, when known. Nil for the fixed
-        /// archive files, which have their own labels below.
-        var displayNameOverride: String? = nil
 
         var displayName: String {
-            if let displayNameOverride, !displayNameOverride.isEmpty { return displayNameOverride }
-            return switch name {
-            case "summary": "Summary"
-            case "live-intelligence": "Intelligence"
-            case "notes": "Notes"
+            switch name {
             case "transcript": "Transcript"
             case "chat": "Chat"
-            case "discussion-guide": "Guide"
             case "screen-context": "Screen"
             case "frames": "Screenshots"
             case "log": "Log"
@@ -168,10 +117,7 @@ final class SessionsWindowModel {
         case empty
         case transcript([SessionTranscriptTurn])
         case chat([ArchivedChatTurn])
-        /// A summary in the two-part format: the share brief, then the record.
-        case summary(brief: [String], record: [String])
         case markdown([String])
-        case intelligence([ArchivedFinding])
         case log(String)
         case frames(URL)
 
@@ -181,9 +127,7 @@ final class SessionsWindowModel {
             case .empty, .frames: []
             case let .transcript(turns): turns.map(\.text)
             case let .chat(turns): turns.map { $0.role == .user ? $0.pillText : $0.text }
-            case let .summary(brief, record): brief + record
             case let .markdown(blocks): blocks
-            case let .intelligence(items): items.map(\.searchText)
             case let .log(text): [text]
             }
         }
@@ -203,8 +147,8 @@ final class SessionsWindowModel {
     /// VoiceOver actions. Removal is confirmed and moves only RTI's own
     /// archive folder to Trash, never its separately exported meeting notes.
     enum SessionAction: String, CaseIterable, Identifiable {
-        case ask, rename, nameSpeakers, editTranscript, editSummary
-        case upgradeTranscript, regenerateSummary, copy, share, saveMarkdown, savePDF, revealInFinder, trash
+        case ask, rename, nameSpeakers, editTranscript
+        case upgradeTranscript, copy, share, saveMarkdown, savePDF, revealInFinder, trash
 
         var id: String { rawValue }
 
@@ -214,9 +158,7 @@ final class SessionsWindowModel {
             case .rename: "Rename"
             case .nameSpeakers: "Name Speakers"
             case .editTranscript: "Edit Transcript"
-            case .editSummary: "Edit Summary"
             case .upgradeTranscript: "Upgrade Transcript"
-            case .regenerateSummary: "Regenerate Summary"
             case .copy: "Copy as Markdown"
             case .share: "Share…"
             case .trash: "Move to Trash…"
@@ -232,9 +174,7 @@ final class SessionsWindowModel {
             case .rename: "pencil"
             case .nameSpeakers: "person.2"
             case .editTranscript: "text.bubble"
-            case .editSummary: "square.and.pencil"
             case .upgradeTranscript: "waveform.badge.magnifyingglass"
-            case .regenerateSummary: "arrow.clockwise"
             case .copy: "doc.on.doc"
             case .share: "square.and.arrow.up"
             case .trash: "trash"
@@ -337,8 +277,6 @@ final class SessionsWindowModel {
     private(set) var speakerNames: [String: String] = [:]
 
     // Editors and long jobs.
-    var isEditingSummary = false
-    var summaryDraft = ""
     var isEditingTranscript = false
     var transcriptTurns: [SessionTranscriptTurn] = []
     var isSpeakerEditorPresented = false
@@ -346,36 +284,9 @@ final class SessionsWindowModel {
     var isUpgradeChoicePresented = false
     private(set) var pendingUpgradeRowID: String?
     private(set) var upgradingRowID: String?
-    private(set) var regeneratingRowID: String?
     private(set) var notice: (rowID: String, text: String)?
 
-    // Saved-meeting outputs: the chooser's state machine, the custom
-    // templates it offers, and the in-flight request.
-    private(set) var outputFlow = SessionOutputFlow()
-    private(set) var customOutputTemplates: [CustomOutputTemplate] = []
-    var isOutputChooserPresented = false
-    var customOutputDraftName = ""
-    var customOutputDraftInstruction = ""
-    /// The request the chooser's `.task(id:)` runs. Setting it nil (Cancel, a
-    /// session switch) changes the id, which cancels the running task.
-    private(set) var outputRequest: OutputRequest?
-
-    struct OutputRequest: Equatable, Identifiable {
-        let id: UUID
-        let recipe: SessionOutputRecipe
-        let sessionDirectory: URL
-        let folderName: String
-        let route: ChatRouteConfiguration
-
-        static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-    }
-
-    /// The status dot's decision, so the view never infers it from colour.
-    enum OutputTone: Equatable { case neutral, success, error }
-
     @ObservationIgnored private var contentSearchTask: Task<Void, Never>?
-    @ObservationIgnored private var titleTask: Task<Void, Never>?
-    @ObservationIgnored private var titleAttempts: Set<String> = []
     @ObservationIgnored private var pendingFolder: String?
     @ObservationIgnored private var isLoading = false
 
@@ -459,7 +370,6 @@ final class SessionsWindowModel {
         }
         if let project = row.project, !project.isEmpty { parts.append(project) }
         if let status = row.transcriptStatus { parts.append(status) }
-        if let status = row.summaryStatus { parts.append(status) }
         return parts.joined(separator: " · ")
     }
 
@@ -550,7 +460,6 @@ final class SessionsWindowModel {
             if let first = newRows.first { open(first.id) } else { clearReader() }
         }
         clampRailIndex()
-        scheduleTitleGeneration()
     }
 
     /// Read every session's title files, `session.json`, and file list.
@@ -571,7 +480,6 @@ final class SessionsWindowModel {
         var row = makeBareRow(session, titleMap: titleMap)
         let fm = FileManager.default
         row.hasTranscript = fm.fileExists(atPath: session.transcriptURL.path)
-        row.hasSummary = session.isRTIArchive && fm.fileExists(atPath: session.url.appendingPathComponent("summary.md").path)
         row.hasRetainedAudio = session.isRTIArchive && !TranscriptUpgradeService.audioInputs(in: session.url).isEmpty
         if row.hasTranscript, let databases {
             let base = databases.standardizedFileURL.path
@@ -599,7 +507,7 @@ final class SessionsWindowModel {
                 session: session,
                 title: SessionTitleResolver.resolve(inputs),
                 durationSeconds: nil, project: nil, mode: nil, speakerNames: [],
-                stamp: stamp, hasNotes: false,
+                stamp: stamp,
                 transcriptStatus: bytes == nil ? "No transcript" : nil
             )
         }
@@ -624,7 +532,6 @@ final class SessionsWindowModel {
         let inputs = SessionTitleInputs(
             titleFile: read(SessionTitleResolver.titleFileName),
             hasManualMarker: names.contains(SessionTitleResolver.manualMarkerFileName),
-            generatedMarker: read(SessionTitleResolver.generatedMarkerFileName),
             vaultNoteTitle: stamp.flatMap(titleMap.title(forStamp:)),
             calendarTitle: metadata?.calendarTitle,
             transcriptHead: transcriptHead(of: session.transcriptURL),
@@ -640,9 +547,7 @@ final class SessionsWindowModel {
             mode: metadata?.mode,
             speakerNames: speakers,
             stamp: stamp,
-            hasNotes: names.contains("notes.md"),
-            transcriptStatus: SessionsWindowRules.transcriptStatus(fileNames: names),
-            summaryStatus: SessionsWindowRules.summaryStatus(fileNames: names)
+            transcriptStatus: SessionsWindowRules.transcriptStatus(fileNames: names)
         )
     }
 
@@ -667,34 +572,6 @@ final class SessionsWindowModel {
         return formatter.string(from: date)
     }
 
-    // MARK: - Generated titles (rule 5, lazy, one at a time)
-
-    private func scheduleTitleGeneration() {
-        guard dependencies.generateTitle != nil, titleTask == nil else { return }
-        titleTask = Task { [weak self] in
-            await self?.generateMissingTitles()
-            self?.titleTask = nil
-        }
-    }
-
-    private func generateMissingTitles() async {
-        while let row = rows.first(where: {
-            $0.session.isRTIArchive
-                && SessionTitleResolver.wantsGeneratedTitle($0.title, hasNotes: $0.hasNotes)
-                && !titleAttempts.contains($0.id)
-        }), let generate = dependencies.generateTitle {
-            titleAttempts.insert(row.id)
-            let notesURL = row.session.url.appendingPathComponent("notes.md")
-            guard let notes = try? String(contentsOf: notesURL, encoding: .utf8),
-                  let title = await generate(notes) else { continue }
-            dependencies.persistGeneratedTitle(title, row.session.url)
-            if let index = rows.firstIndex(where: { $0.id == row.id }),
-               rows[index].title.source == .fallback || rows[index].title.source == .transcriptLine {
-                rows[index].title = ResolvedSessionTitle(text: title, source: .generated)
-            }
-        }
-    }
-
     // MARK: - Opening
 
     /// Open a session in the reader.
@@ -704,17 +581,12 @@ final class SessionsWindowModel {
         openRowID = rowID
         if let index = railRows.firstIndex(where: { $0.id == rowID }) { railIndex = index }
         if changed {
-            isEditingSummary = false
             isEditingTranscript = false
-            // A run belongs to the session it started on: switching cancels
-            // it (the id goes nil) and forgets its state.
-            outputRequest = nil
-            outputFlow.reset()
             refreshFiles(keepSelection: false)
         }
     }
 
-    /// Deep link (the "Notes ready" control, a notification tap): open that
+    /// Deep link (a command or a mention link): open that
     /// folder with the list hidden. Waits for the list if it is not loaded.
     func open(folder: String) {
         setRailVisible(false, remember: false)
@@ -868,12 +740,8 @@ final class SessionsWindowModel {
                 return row.session.isRTIArchive
             case .editTranscript:
                 return row.session.isRTIArchive && row.hasTranscript
-            case .editSummary:
-                return row.hasSummary
             case .upgradeTranscript:
                 return row.hasRetainedAudio && upgradingRowID == nil
-            case .regenerateSummary:
-                return row.session.isRTIArchive && row.hasTranscript && regeneratingRowID == nil
             case .copy, .saveMarkdown, .savePDF:
                 return !isOpen || !fileText.isEmpty
             case .share:
@@ -885,7 +753,7 @@ final class SessionsWindowModel {
                 } ?? false
                 let active = coordinator.phase != .idle && coordinator.phase != .done && sameStart
                 return row.session.isRTIArchive && dependencies.trashSession != nil && !isDeleting
-                    && !active && upgradingRowID != row.id && regeneratingRowID != row.id
+                    && !active && upgradingRowID != row.id
             case .revealInFinder:
                 return true
             }
@@ -946,17 +814,10 @@ final class SessionsWindowModel {
         case .editTranscript:
             selectFile(named: "transcript")
             transcriptTurns = SessionTranscriptReview.turns(from: rawText(of: "transcript") ?? "")
-            isEditingSummary = false
             isEditingTranscript = true
-        case .editSummary:
-            selectFile(named: "summary")
-            summaryDraft = fileText
-            isEditingTranscript = false
-            isEditingSummary = true
         case .upgradeTranscript:
             pendingUpgradeRowID = id
             isUpgradeChoicePresented = true
-        case .regenerateSummary: regenerateSummary(row)
         case .copy:
             NSPasteboard.copyMarkdownRich(fileText)
             notice = (id, "Copied as Markdown")
@@ -1016,7 +877,7 @@ final class SessionsWindowModel {
                 return false
             }
         }
-        let editing = isEditingSummary || isEditingTranscript
+        let editing = isEditingTranscript
         switch command {
         case .toggleList:
             toggleRail()
@@ -1097,8 +958,6 @@ final class SessionsWindowModel {
             cancelRename()
         } else if isFindPresented {
             closeFind()
-        } else if isOutputChooserPresented {
-            closeOutputChooser()
         } else if isRailVisible, !railQuery.isEmpty {
             railQuery = ""
         } else if isRailVisible, focus == .railSearch {
@@ -1119,15 +978,13 @@ final class SessionsWindowModel {
     func select(_ file: SessionFile) {
         guard selectedFile != file else { return }
         selectedFile = file
-        isEditingSummary = false
         isEditingTranscript = false
         loadText()
     }
 
     /// Preferred reading order; screenshots and the processor log follow.
     private static let fileOrder = [
-        "summary.md", "live-intelligence.md", "notes.md", "transcript.md",
-        "chat.md", "discussion-guide.md", "screen-context.md",
+        "transcript.md", "chat.md", "screen-context.md",
     ]
 
     private func refreshFiles(keepSelection: Bool) {
@@ -1146,8 +1003,6 @@ final class SessionsWindowModel {
         fileText = ""
         document = .empty
         speakerNames = [:]
-        outputRequest = nil
-        outputFlow.reset()
         recomputeFindHits()
     }
 
@@ -1170,19 +1025,6 @@ final class SessionsWindowModel {
             if fm.fileExists(atPath: log.path) {
                 loaded.append(SessionFile(url: log, name: "log"))
             }
-        }
-        // Generated saved-meeting outputs: one chip each, newest first, so an
-        // output is read, copied and exported exactly like any archive file.
-        // The path and each file are already containment-checked by the store.
-        for artifact in SessionOutputStore.list(in: session.url) {
-            let stem = artifact.url.deletingPathExtension().lastPathComponent
-            let stamp = SessionOutputMarkdown.displayStamp(artifact.generatedAt)
-            let label = artifact.templateName.isEmpty ? stem : artifact.templateName
-            loaded.append(SessionFile(
-                url: artifact.url,
-                name: "output-\(stem)",
-                displayNameOverride: stamp.isEmpty ? label : "\(label) · \(stamp)"
-            ))
         }
         return loaded
     }
@@ -1223,35 +1065,11 @@ final class SessionsWindowModel {
         case "chat":
             let turns = ArchivedChat.turns(fromMarkdown: text)
             return turns.isEmpty ? .markdown(SessionsWindowRules.markdownBlocks(text)) : .chat(turns)
-        case "live-intelligence":
-            return .intelligence(ArchivedFinding.parse(text))
         case "log":
             return .log(text)
-        case "summary":
-            if let split = summarySplit(text) {
-                return .summary(
-                    brief: SessionsWindowRules.markdownBlocks(split.brief),
-                    record: SessionsWindowRules.markdownBlocks(split.record)
-                )
-            }
-            return .markdown(SessionsWindowRules.markdownBlocks(text))
         default:
             return .markdown(SessionsWindowRules.markdownBlocks(text))
         }
-    }
-
-    /// The two-part summary (`=== SHARE BRIEF ===` / `=== FULL RECORD ===`).
-    /// Nil when the marker is absent: legacy summaries render unsplit.
-    static func summarySplit(_ text: String) -> (brief: String, record: String)? {
-        guard let recordRange = text.range(of: "=== FULL RECORD ===") else { return nil }
-        var brief = String(text[..<recordRange.lowerBound])
-        if let briefMarker = brief.range(of: "=== SHARE BRIEF ===") {
-            brief = String(brief[briefMarker.upperBound...])
-        }
-        brief = brief.trimmingCharacters(in: .whitespacesAndNewlines)
-        let record = String(text[recordRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !brief.isEmpty else { return nil }
-        return (brief, record)
     }
 
     // MARK: - Speakers
@@ -1327,22 +1145,6 @@ final class SessionsWindowModel {
 
     // MARK: - Editors
 
-    func saveSummary() {
-        guard let file = selectedFile, file.name == "summary" else { return }
-        let original = (try? String(contentsOf: file.url, encoding: .utf8)) ?? ""
-        let frontmatter: String
-        if original.hasPrefix("---"), let end = original.range(of: "\n---\n") {
-            frontmatter = String(original[..<end.upperBound])
-        } else {
-            frontmatter = ""
-        }
-        let content = frontmatter + summaryDraft.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
-        try? content.write(to: file.url, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.url.path)
-        isEditingSummary = false
-        loadText()
-    }
-
     func saveTranscript() {
         guard let file = selectedFile, file.name == "transcript",
               let original = try? String(contentsOf: file.url, encoding: .utf8)
@@ -1396,9 +1198,7 @@ final class SessionsWindowModel {
                 let result = try await TranscriptUpgradeService.upgrade(session: session, provider: provider, progress: report)
                 guard let self else { return }
                 SessionArchive.clearAutomaticUpgradePending(in: session.url)
-                self.notice = (id, result.summaryURL == nil
-                    ? "Transcript upgraded with \(result.provider). The summary did not regenerate."
-                    : "Transcript upgraded with \(result.provider). Summary regenerated.")
+                self.notice = (id, "Transcript upgraded with \(result.provider).")
                 self.upgradingRowID = nil
                 await self.reload()
                 self.open(id)
@@ -1410,37 +1210,10 @@ final class SessionsWindowModel {
         }
     }
 
-    private func regenerateSummary(_ row: Row) {
-        guard row.session.isRTIArchive, var transcript = try? String(contentsOf: row.session.transcriptURL, encoding: .utf8) else { return }
-        if transcript.hasPrefix("---"), let end = transcript.range(of: "\n---\n") {
-            transcript = String(transcript[end.upperBound...])
-        }
-        let id = row.id
-        regeneratingRowID = id
-        notice = (id, "Regenerating the summary…")
-        let names = speakerNames
-        let session = row.session
-        Task { [weak self] in
-            let summaryURL = await SessionArchive.writeAutoSummary(
-                transcriptText: transcript,
-                to: session.url,
-                startedAt: session.date ?? Date(),
-                speakerNames: names
-            )
-            guard let self else { return }
-            self.regeneratingRowID = nil
-            self.notice = (id, summaryURL == nil ? "The summary did not regenerate. Try again later." : "Summary regenerated.")
-            guard summaryURL != nil else { return }
-            await self.reload()
-            self.open(id)
-            self.selectFile(named: "summary")
-        }
-    }
-
     /// The notice line for the open session, and whether a job still runs.
     var openNotice: (text: String, isRunning: Bool)? {
         guard let notice, notice.rowID == openRowID else { return nil }
-        return (notice.text, upgradingRowID == notice.rowID || regeneratingRowID == notice.rowID)
+        return (notice.text, upgradingRowID == notice.rowID)
     }
 
     // MARK: - Ask and export
@@ -1511,223 +1284,6 @@ final class SessionsWindowModel {
         operation.run()
     }
 
-    // MARK: - Saved-meeting outputs
-
-    /// The recipes the Outputs chooser offers: the shipped built-ins with the
-    /// user's Settings overrides applied, then the user's custom templates.
-    /// Empty when the live dependency is absent (a render proof that did not
-    /// opt in).
-    var outputRecipes: [SessionOutputRecipe] {
-        dependencies.outputRecipes?() ?? []
-    }
-
-    var selectedOutputRecipe: SessionOutputRecipe? {
-        outputRecipes.first { $0.id == outputFlow.selectedRecipeID }
-    }
-
-    /// Outputs need both a generate call and a recipe source; without them the
-    /// chooser says so plainly instead of failing on a click.
-    var isOutputAvailable: Bool {
-        dependencies.generateOutput != nil && dependencies.outputRecipes != nil
-    }
-
-    /// The provider and model a Generate click would reach, shown BEFORE
-    /// generating so the destination is never a surprise.
-    var outputProviderLabel: String {
-        let provider = (outputRequest?.route ?? dependencies.outputRoute()).provider
-        let destination = provider.baseURL.host ?? "configured destination"
-        return "\(provider.displayName) · \(provider.model) · \(destination)"
-    }
-
-    /// Where the artifact lands, relative to the archive root. Never an
-    /// absolute path: the chooser is user-facing and the repo is public.
-    var outputDestinationLabel: String {
-        guard let row = openRow else { return "" }
-        return "\(row.folderName)/outputs/"
-    }
-
-    /// One status line for the chooser. `isRunning` drives the thinking dots,
-    /// `tone` the status dot; never colour alone, the text always says it.
-    var outputStatus: (text: String, isRunning: Bool, tone: OutputTone)? {
-        switch outputFlow.phase {
-        case .idle, .ready:
-            return nil
-        case .generating:
-            return ("Generating with \(outputProviderLabel)…", true, .neutral)
-        case let .saved(artifact):
-            return ("Saved \(artifact.url.lastPathComponent). Nothing else changed.", false, .success)
-        case let .failed(message):
-            return (message, false, .error)
-        case .cancelled:
-            return ("Cancelled. Any output already completed remains available.", false, .neutral)
-        }
-    }
-
-    func toggleOutputChooser() {
-        isOutputChooserPresented.toggle()
-        if isOutputChooserPresented { refreshCustomOutputTemplates() }
-    }
-
-    func closeOutputChooser() {
-        isOutputChooserPresented = false
-    }
-
-    func refreshCustomOutputTemplates() {
-        customOutputTemplates = OutputTemplateStore.shared.all
-    }
-
-    func selectOutputRecipe(id: String?) {
-        outputFlow.select(recipeID: id)
-    }
-
-    /// The Generate button. Validates, flips the flow to generating, and
-    /// stores the request the chooser's `.task(id:)` will run.
-    func requestGenerateOutput() {
-        guard dependencies.generateOutput != nil,
-              let recipe = selectedOutputRecipe,
-              let row = openRow,
-              row.session.isRTIArchive
-        else { return }
-        let candidate = dependencies.outputRoute()
-        let route: ChatRouteConfiguration
-        switch ChatRouteResolver.resolve(selection: candidate.selection, provider: candidate.provider) {
-        case let .success(frozen): route = frozen
-        case let .failure(blocker):
-            outputFlow.fail(blocker.message)
-            return
-        }
-        guard outputFlow.begin() else { return }
-        outputRequest = OutputRequest(
-            id: UUID(),
-            recipe: recipe,
-            sessionDirectory: row.session.url,
-            folderName: row.folderName,
-            route: route
-        )
-    }
-
-    /// Cancel: drop the request (the id change cancels the view's task) and
-    /// mark the flow cancelled without touching the archive.
-    func cancelOutput() {
-        outputFlow.cancel()
-        outputRequest = nil
-    }
-
-    /// Run the stored request. Called from the chooser's `.task(id:)`, which
-    /// cancels it when the request changes (Cancel) or the view leaves (a
-    /// session switch), so a run never outlives its session. A run that
-    /// returns is recorded as saved only while its request still owns the UI.
-    /// Cancellation cannot undo an output already atomically committed by the store.
-    func runOutputGeneration() async {
-        guard let request = outputRequest, let generate = dependencies.generateOutput else { return }
-        defer {
-            // The run is done: clearing the id stops a re-run when the view
-            // reappears, and lets the next Generate start fresh. The stored
-            // phase (saved/failed/cancelled) is left intact for the status line.
-            if outputRequest?.id == request.id { outputRequest = nil }
-        }
-        do {
-            let artifact = try await generate(request.recipe, request.sessionDirectory, request.folderName, request.route)
-            // A newer request (or a session switch) supersedes this result.
-            guard outputRequest?.id == request.id else { return }
-            outputFlow.succeed(artifact)
-            refreshFiles(keepSelection: true)
-            if let file = files.first(where: { $0.url == artifact.url }) { select(file) }
-        } catch is CancellationError {
-            if outputRequest?.id == request.id { outputFlow.cancel() }
-        } catch let error as SessionOutputError {
-            if outputRequest?.id == request.id {
-                outputFlow.fail(error.errorDescription ?? "The output could not be generated.")
-            }
-        } catch {
-            if outputRequest?.id == request.id { outputFlow.fail(error.localizedDescription) }
-        }
-    }
-
-    // MARK: - Custom output templates
-
-    /// Save the draft as a new custom template (nil when the name or
-    /// instruction is blank). Selects it so Generate uses it right away.
-    @discardableResult
-    func saveCustomOutputTemplate() -> CustomOutputTemplate? {
-        guard let template = OutputTemplateStore.shared.save(
-            name: customOutputDraftName,
-            instruction: customOutputDraftInstruction
-        ) else { return nil }
-        customOutputDraftName = ""
-        customOutputDraftInstruction = ""
-        refreshCustomOutputTemplates()
-        selectOutputRecipe(id: template.id)
-        return template
-    }
-
-    func deleteCustomOutputTemplate(id: String) {
-        OutputTemplateStore.shared.delete(id: id)
-        refreshCustomOutputTemplates()
-        if outputFlow.selectedRecipeID == id { selectOutputRecipe(id: nil) }
-    }
-
-#if DEBUG
-    /// Debug-only seam for the offscreen render proof (`RTIRenderTests`).
-    /// Forces the chooser into a state without a live call or a write; never
-    /// compiled into a Release build and never called by the app.
-    func seedOutputFlowForRenderProof(_ flow: SessionOutputFlow) {
-        outputFlow = flow
-    }
-#endif
-}
-
-// MARK: - Archived findings
-
-/// One `live-intelligence.md` item, parsed for the reader.
-struct ArchivedFinding: Identifiable, Equatable {
-    let id: Int
-    let tag: String
-    let timestamp: String
-    let headline: String
-    var matters: String = ""
-    var quote: String?
-    var speaker: String?
-
-    var searchText: String {
-        ([headline, matters, quote ?? ""]).filter { !$0.isEmpty }.joined(separator: "\n")
-    }
-
-    static func parse(_ markdown: String) -> [ArchivedFinding] {
-        let headlinePattern = #"^- \*\*\[([^\]]+)\]\*\* `([^`]+)` (.+)$"#
-        guard let regex = try? NSRegularExpression(pattern: headlinePattern) else { return [] }
-        var result: [ArchivedFinding] = []
-        var current: ArchivedFinding?
-
-        for line in markdown.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let range = NSRange(trimmed.startIndex..., in: trimmed)
-            if let match = regex.firstMatch(in: trimmed, range: range),
-               let tagRange = Range(match.range(at: 1), in: trimmed),
-               let timeRange = Range(match.range(at: 2), in: trimmed),
-               let headlineRange = Range(match.range(at: 3), in: trimmed) {
-                if let current { result.append(current) }
-                current = ArchivedFinding(
-                    id: result.count,
-                    tag: String(trimmed[tagRange]),
-                    timestamp: String(trimmed[timeRange]),
-                    headline: String(trimmed[headlineRange])
-                )
-            } else if trimmed.hasPrefix("- _Why:_ "), current != nil {
-                current?.matters = String(trimmed.dropFirst("- _Why:_ ".count))
-            } else if trimmed.hasPrefix("- > "), current != nil {
-                let evidence = String(trimmed.dropFirst("- > ".count))
-                if let split = evidence.range(of: ": ") {
-                    current?.speaker = String(evidence[..<split.lowerBound])
-                    current?.quote = String(evidence[split.upperBound...])
-                } else {
-                    current?.quote = evidence
-                }
-            }
-        }
-        if let current { result.append(current) }
-        return result
-    }
 }
 
 extension Array {

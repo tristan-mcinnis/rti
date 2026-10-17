@@ -47,7 +47,7 @@ struct ToolLoop {
     /// content delta, tool execution, or error.
     ///
     /// Holds one foreground admission permit for the WHOLE turn (all rounds),
-    /// so a background summary/title/output request cannot start between two
+    /// so a background request cannot start between two
     /// rounds of an interactive send.
     ///
     /// `allowsExternalRetrieval` comes from the turn's `ContextDecision`: the

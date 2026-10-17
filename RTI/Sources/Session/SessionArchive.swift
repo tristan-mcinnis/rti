@@ -1,6 +1,5 @@
 import Foundation
 import RTICore
-import UserNotifications
 
 /// Writes a finished session to disk as human-readable Markdown.
 ///
@@ -15,30 +14,11 @@ import UserNotifications
 /// can't be located via RTI's config, `~/.config/rti/config.json`):
 ///   transcript.md         — the live transcript, notes inline
 ///   chat.md               — the assistant chat log (only written if non-empty)
-///   notes.md              — generated meeting notes (only if any)
-///   discussion-guide.md   — discussion-guide coverage (only if a guide loaded)
-///   live-intelligence.md  — decisions/actions/questions/risks (only if any)
 ///   screen-context.md     — timestamped active-screen OCR changes (only if any)
 ///   audio-mic.wav         — retained mic audio for automatic transcript upgrade
 ///   audio-system.wav      — retained system audio for automatic transcript upgrade
 enum SessionArchive {
     typealias ArchiveMetadata = SessionArchiveMetadata
-
-    /// The real-time-analysis artifacts produced during a session. Bundled
-    /// into one value so the call site in `SessionCoordinator` (and the
-    /// linked-meeting hand-off) stay tidy. Everything in here is ephemeral
-    /// in-memory state captured at stop time; this archive is the only place
-    /// it is written to disk.
-    struct Analysis {
-        var notes: [GeneratedNote] = []
-        var guide: DiscussionGuide?
-        var findings: [FindingEntry] = []
-        var visualContext: [VisualContextEvent] = []
-
-        var isEmpty: Bool {
-            notes.isEmpty && guide == nil && findings.isEmpty && visualContext.isEmpty
-        }
-    }
 
     struct CanonicalMeetingExport {
         let transcriptURL: URL
@@ -89,7 +69,7 @@ enum SessionArchive {
         endedAt: Date,
         transcript: [LiveEntry],
         chat: [ChatEntry],
-        analysis: Analysis = Analysis(),
+        visualContext: [VisualContextEvent] = [],
         sessionId: String? = nil,
         micRecordingURL: URL? = nil,
         systemRecordingURL: URL? = nil,
@@ -105,7 +85,7 @@ enum SessionArchive {
         let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
             .compactMap { $0 }
             .contains { FileManager.default.fileExists(atPath: $0.path) }
-        guard !transcript.isEmpty || !chat.isEmpty || !analysis.isEmpty || hasRetainedAudio else { return nil }
+        guard !transcript.isEmpty || !chat.isEmpty || !visualContext.isEmpty || hasRetainedAudio else { return nil }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
 
         func fm(_ kind: String) -> [String] {
@@ -156,23 +136,8 @@ enum SessionArchive {
             writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
         }
 
-        if !analysis.notes.isEmpty {
-            let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(analysis.notes)]).joined(separator: "\n")
-            let md = (fm("Notes") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
-        }
-        if let guide = analysis.guide {
-            let body = (["# Discussion guide", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderGuide(guide)]).joined(separator: "\n")
-            let md = (fm("Discussion guide") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("discussion-guide.md"))
-        }
-        if !analysis.findings.isEmpty {
-            let body = (["# Live intelligence", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderFindings(analysis.findings)]).joined(separator: "\n")
-            let md = (fm("Live intelligence") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("live-intelligence.md"))
-        }
-        if !analysis.visualContext.isEmpty {
-            let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(analysis.visualContext)]).joined(separator: "\n")
+        if !visualContext.isEmpty {
+            let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(visualContext)]).joined(separator: "\n")
             let md = (fm("Screen context") + [body]).joined(separator: "\n")
             writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md"))
         }
@@ -204,196 +169,6 @@ enum SessionArchive {
         return dir
     }
 
-    /// Generate the Granola-style wrap-up over the full session transcript
-    /// and write it as `summary.md` beside the other session files. Quiet
-    /// no-op on trivial sessions or LLM failure — the archive must never
-    /// depend on a model call succeeding.
-    /// - Parameter transcriptText: the rendered transcript, captured by the
-    ///   caller at stop time. Passed in (rather than re-read from the live
-    ///   session) so starting a new recording before the summary finishes can't
-    ///   make it summarise the wrong session.
-    /// - Returns: the `summary.md` URL on success, or `nil` if there was nothing
-    ///   to summarise or the model call failed (a quiet, non-blocking no-op).
-    @MainActor
-    @discardableResult
-    static func writeAutoSummary(
-        transcriptText: String,
-        to dir: URL,
-        startedAt: Date,
-        speakerNames: [String: String] = [:],
-        referenceContext: String? = nil
-    ) async -> URL? {
-        let transcript = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else { return nil }
-        // Full-meeting summaries routinely outlive the default 60s stream
-        // timeout (the silent failure that left archives without summary.md)
-        // — give this call its own generous budget and log failures.
-        // Shape the wrap-up to the session's mode (research debrief for
-        // interviews, minutes otherwise) and run it on the reasoning ("smart")
-        // model — the end-of-session summary is worth the extra latency.
-        let kind = ModeStore.shared.activeMode?.kind ?? .other
-        // Piggyback a short session-title on the summary call (one model call,
-        // no extra latency). The instruction is appended AFTER the user's
-        // editable summary prompt so it never mutates the stored prompt; the
-        // model emits a `TITLE:` first line that we parse out and persist as
-        // `title.txt` for the Sessions browser to surface as the row label.
-        let knownSpeakers = speakerNames
-            .filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key) is \($0.value.trimmingCharacters(in: .whitespacesAndNewlines))" }
-            .joined(separator: "; ")
-        let speakerContext = knownSpeakers.isEmpty
-            ? ""
-            : "\n\nKnown speaker identities (use these names, not the anonymous labels): \(knownSpeakers)."
-        let reference = referenceContext?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let referenceBlock = reference.isEmpty
-            ? ""
-            : "\n\nReference context: use it to normalize project vocabulary and likely name misspellings. Treat calendar invitees as invitees, not proof that they attended or spoke. Do not invent facts beyond the transcript and this context.\n\(reference)"
-        let prompt = PromptCatalogue.summary(for: kind)
-            + "\n\n" + titleInstruction
-            + speakerContext
-            + referenceBlock
-            + "\n\nTranscript:\n" + transcript
-        let message = LLMMessage(role: "user", content: prompt)
-        guard let smartAttempt = await LLMRequest(priority: .background).collectDetailedAsync(
-            messages: [message],
-            smart: true,
-            timeoutOverride: 300
-        ) else {
-            RTILog.log("auto-summary: LLM call failed/timed out for \(dir.lastPathComponent)", category: .summary)
-            return nil
-        }
-        var payload = smartAttempt.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // The smart model reasons BEFORE it writes, and that reasoning spends
-        // the same `max_tokens` budget as the answer. A long deliberation can
-        // therefore end the stream having emitted no answer at all: HTTP 200,
-        // ~70s of `reasoning_content`, empty text, nothing thrown. That silent
-        // case wrote neither summary.md nor title.txt and is what left 33 of
-        // 88 archived sessions untitled (docs/house-style-migration-20260912.md
-        // section 0). Say why in the log, then ask once more with thinking
-        // OFF, where the first token out is summary text, not reasoning.
-        if payload.isEmpty {
-            RTILog.log(
-                "auto-summary: smart model returned no text for \(dir.lastPathComponent) "
-                    + "(\(smartAttempt.emptyReasonDescription)) — retrying with thinking off",
-                category: .summary
-            )
-            let plainAttempt = await LLMRequest(priority: .background).collectDetailedAsync(
-                messages: [message],
-                smart: false,
-                timeoutOverride: 300
-            )
-            payload = (plainAttempt?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if payload.isEmpty {
-                let why = plainAttempt.map { "(\($0.emptyReasonDescription))" } ?? "(call failed or was cancelled)"
-                RTILog.log(
-                    "auto-summary: empty response for \(dir.lastPathComponent) \(why) — no summary.md written; "
-                        + "the title now comes from the calendar event, the vault note, or the transcript instead",
-                    category: .summary
-                )
-                return nil
-            }
-        }
-        // Pull the `TITLE:` first line out of the response (best-effort — if
-        // the model didn't follow the format, we just get no title and the
-        // browser falls back to "Untitled session"). Strip it (and any blank
-        // lines after) from the summary body so it doesn't leak into summary.md.
-        let (sessionTitle, remainder) = extractTitle(payload)
-        let hasManualTitle = FileManager.default.fileExists(atPath: dir.appendingPathComponent("title-manual.txt").path)
-        if let sessionTitle, !sessionTitle.isEmpty, !hasManualTitle {
-            writeOwnerOnly(sessionTitle, to: dir.appendingPathComponent("title.txt"))
-        }
-        // Title by mode: an interview produces a research debrief, not minutes.
-        // Also strip any H1 the model prepended (the debrief prompt makes it
-        // title the section "# QUALITATIVE RESEARCH DEBRIEF" itself) so the
-        // archive doesn't stack two headings.
-        let title = kind == .interview ? "# Research debrief" : "# Meeting summary"
-        let body = stripLeadingH1(remainder)
-        let md = (frontmatter(kind: "Summary", startedAt: startedAt) + [title, "", body, ""]).joined(separator: "\n")
-        let url = dir.appendingPathComponent("summary.md")
-        writeOwnerOnly(md, to: url)
-        RTILog.log("auto-summary: wrote summary.md (\(payload.count) chars)" + (sessionTitle.map { ", title: \($0)" } ?? ""), category: .summary)
-        notifySummaryReady(sessionFolder: dir.lastPathComponent)
-        return url
-    }
-
-    /// Instruction appended to the summary prompt asking for a 4–7 word
-    /// session title. Leads with the highest-value cue — the format/type
-    /// (Briefing, Research, Interview, Review, …) and the subject or brand
-    /// when one is discernible — so the Sessions list reads at a glance
-    /// ("Acme Sportswear Retail Zone Briefing", not "Meeting at 11:13").
-    private static let titleInstruction = """
-    SESSION TITLE — on the VERY FIRST LINE of your response, output exactly:
-    TITLE: <a 4–7 word title for this session>
-
-    The title names what this session actually IS. Lead with the format/type — \
-    Briefing, Research, Interview, Review, Demo, Standup, 1:1, Planning, Debrief, \
-    Strategy — then the subject, and the brand or organisation if one is \
-    discernible from the transcript (e.g. "Acme Sportswear Retail Zone Briefing", \
-    "Q3 Pipeline Review with Timberland", "Athleisure Wear Research Debrief"). \
-    No trailing punctuation, no quotes, no prefix other than "TITLE: ". Then a \
-    blank line, then the summary.
-    """
-
-    /// Pull a leading `TITLE: <text>` line off the model response. Returns the
-    /// cleaned title and the remainder (with the TITLE line and the blank
-    /// lines immediately after it removed). Case-insensitive on the marker;
-    /// tolerates leading whitespace. If the first non-blank line isn't a
-    /// TITLE line, returns `(nil, payload)` unchanged so summary.md is
-    /// unaffected.
-    private static func extractTitle(_ payload: String) -> (String?, String) {
-        var lines = payload.components(separatedBy: "\n")
-        // Skip leading blanks to find the real first line.
-        var lead = 0
-        while lead < lines.count, lines[lead].trimmingCharacters(in: .whitespaces).isEmpty {
-            lead += 1
-        }
-        guard lead < lines.count else { return (nil, payload) }
-        let candidate = lines[lead].trimmingCharacters(in: .whitespaces)
-        guard candidate.lowercased().hasPrefix("title:") else { return (nil, payload) }
-        let title = candidate.dropFirst("title:".count).trimmingCharacters(in: .whitespaces)
-        // Drop the TITLE line + any blank lines right after it.
-        lines.removeSubrange(0...lead)
-        while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
-            lines.removeFirst()
-        }
-        return (title.isEmpty ? nil : title, lines.joined(separator: "\n"))
-    }
-
-    /// Drop a single leading H1 (and the blank lines after it) from a model
-    /// payload — so a self-titled section ("# QUALITATIVE RESEARCH DEBRIEF")
-    /// doesn't double up under the archive's own H1. H2s ("## Overview") are
-    /// left untouched: `hasPrefix("# ")` is false for "## ".
-    private static func stripLeadingH1(_ text: String) -> String {
-        var lines = text.components(separatedBy: "\n")
-        while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
-            lines.removeFirst()
-        }
-        if let first = lines.first, first.hasPrefix("# ") {
-            lines.removeFirst()
-            while let next = lines.first, next.trimmingCharacters(in: .whitespaces).isEmpty {
-                lines.removeFirst()
-            }
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    /// Local notification when the post-stop summary lands, so the user knows
-    /// the wrap-up is readable (Sessions browser / vault) without checking.
-    private static func notifySummaryReady(sessionFolder: String) {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert]) { granted, _ in
-            guard granted else { return }
-            let content = UNMutableNotificationContent()
-            content.title = "Session summary ready"
-            content.body = "Tap to read the summary in RTI's Sessions browser."
-            // Carried back on tap so the delegate can open this exact session.
-            content.userInfo = ["sessionFolder": sessionFolder]
-            let request = UNNotificationRequest(identifier: "rti.summary.\(sessionFolder)", content: content, trigger: nil)
-            center.add(request)
-        }
-    }
-
     /// Fire the vault-side session router (capture + declare here; route
     /// there). Best-effort and fire-and-forget: missing script or python is a
     /// silent no-op, and the app never waits on or parses the result.
@@ -411,7 +186,7 @@ enum SessionArchive {
         startedAt: Date,
         transcript: [LiveEntry],
         chat: [ChatEntry],
-        analysis: Analysis,
+        visualContext: [VisualContextEvent],
         archiveDir: URL?
     ) -> CanonicalMeetingExport? {
         let raw = CanonicalMeetingTranscript.render(entries: transcript)
@@ -419,7 +194,7 @@ enum SessionArchive {
             startedAt: startedAt,
             rawTranscript: raw,
             chat: chat,
-            analysis: analysis,
+            visualContext: visualContext,
             archiveDir: archiveDir
         )
     }
@@ -436,7 +211,7 @@ enum SessionArchive {
             startedAt: startedAt,
             rawTranscript: raw,
             chat: [],
-            analysis: Analysis(),
+            visualContext: [],
             archiveDir: archiveDir,
             writeSidecar: false
         )?.transcriptURL
@@ -480,14 +255,14 @@ enum SessionArchive {
         }
     }
 
-    /// Persist RTI chat and analysis beside the eventual canonical transcript
+    /// Persist RTI chat and screen context beside the eventual canonical transcript
     /// without writing a provisional raw transcript. The upgraded transcript
     /// remains the only text eligible for downstream meeting processing.
     @discardableResult
     static func writeCanonicalMeetingSidecar(
         startedAt: Date,
         chat: [ChatEntry],
-        analysis: Analysis,
+        visualContext: [VisualContextEvent],
         archiveDir: URL?,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0
@@ -499,7 +274,7 @@ enum SessionArchive {
             stem: stem,
             startedAt: startedAt,
             chat: chat,
-            analysis: analysis,
+            visualContext: visualContext,
             archiveDir: archiveDir,
             chatThreads: chatThreads,
             unreadableChatCount: unreadableChatCount
@@ -515,7 +290,7 @@ enum SessionArchive {
         startedAt: Date,
         rawTranscript: String,
         chat: [ChatEntry],
-        analysis: Analysis,
+        visualContext: [VisualContextEvent],
         archiveDir: URL?,
         writeSidecar: Bool = true
     ) -> CanonicalMeetingExport? {
@@ -533,7 +308,7 @@ enum SessionArchive {
                 stem: stem,
                 startedAt: startedAt,
                 chat: chat,
-                analysis: analysis,
+                visualContext: visualContext,
                 archiveDir: archiveDir
             )
             if sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -567,7 +342,7 @@ enum SessionArchive {
         stem: String,
         startedAt: Date,
         chat: [ChatEntry],
-        analysis: Analysis,
+        visualContext: [VisualContextEvent],
         archiveDir: URL?,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0
@@ -588,36 +363,10 @@ enum SessionArchive {
         }
         lines.append("")
 
-        if let archiveDir,
-           let summary = try? String(contentsOf: archiveDir.appendingPathComponent("summary.md"), encoding: .utf8),
-           !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("## RTI session summary")
-            lines.append("")
-            lines.append(bodyAfterFrontmatter(summary).trimmingCharacters(in: .whitespacesAndNewlines))
-            lines.append("")
-        }
-        if !analysis.notes.isEmpty {
-            lines.append("## Generated notes")
-            lines.append("")
-            lines.append(renderNotes(analysis.notes))
-            lines.append("")
-        }
-        if let guide = analysis.guide {
-            lines.append("## Discussion guide")
-            lines.append("")
-            lines.append(renderGuide(guide))
-            lines.append("")
-        }
-        if !analysis.findings.isEmpty {
-            lines.append("## Live intelligence")
-            lines.append("")
-            lines.append(renderFindings(analysis.findings))
-            lines.append("")
-        }
-        if !analysis.visualContext.isEmpty {
+        if !visualContext.isEmpty {
             lines.append("## Screen context")
             lines.append("")
-            lines.append(renderVisualContext(analysis.visualContext))
+            lines.append(renderVisualContext(visualContext))
             lines.append("")
         }
         // The same rule as chat.md: structured threads win, and the dated list
@@ -633,14 +382,6 @@ enum SessionArchive {
             lines += chatBlock(chat)
         }
         return lines.joined(separator: "\n")
-    }
-
-    private static func bodyAfterFrontmatter(_ text: String) -> String {
-        guard text.hasPrefix("---"),
-              let end = text.range(of: "\n---", range: text.index(text.startIndex, offsetBy: 3)..<text.endIndex) else {
-            return text
-        }
-        return String(text[end.upperBound...]).trimmingCharacters(in: .newlines)
     }
 
     private static func vaultRoot(startingAt dir: URL) -> URL? {
@@ -818,31 +559,6 @@ enum SessionArchive {
         return lines
     }
 
-    /// Combined markdown for generated notes — one block per note, newest
-    /// material last, separated by rules. Shared by the local archive and the
-    /// linked-meeting record.
-    private static func renderNotes(_ notes: [GeneratedNote]) -> String {
-        notes.map { n in
-            var head = "### \(offset(n.rangeStartMs)) – \(offset(n.rangeEndMs))"
-            if !n.title.isEmpty { head += " · \(n.title)" }
-            return "\(head)\n\n\(n.content)"
-        }.joined(separator: "\n\n")
-    }
-
-    /// Live intelligence ledger: one bullet per tagged work object, in the
-    /// order logged, with its `[mm:ss]`, why line, and any source quote.
-    private static func renderFindings(_ findings: [FindingEntry]) -> String {
-        findings.map { f in
-            var line = "- **[\(f.tag.label)]** `\(offset(f.rangeMs))` \(f.headline)"
-            if !f.matters.isEmpty { line += "\n  - _Why:_ \(f.matters)" }
-            if let quote = f.quote, !quote.isEmpty {
-                let who = f.speaker.map { "\($0): " } ?? ""
-                line += "\n  - > \(who)\(quote)"
-            }
-            return line
-        }.joined(separator: "\n")
-    }
-
     /// Materially changed active-screen captures. Each event carries its OCR
     /// text, and — when the local-vision lane is enabled — a model description
     /// plus a pointer to the compressed frame kept in the session's `frames/`
@@ -864,35 +580,6 @@ enum SessionArchive {
         }.joined(separator: "\n\n---\n\n")
     }
 
-    /// Discussion-guide coverage: a header line plus each question with its
-    /// status and any matched quotes.
-    private static func renderGuide(_ guide: DiscussionGuide) -> String {
-        let cov = guide.coverage
-        var lines = ["**\(guide.fileName)** — \(cov.answered)/\(cov.total) answered (\(cov.percent)%)", ""]
-        for obj in guide.objectives {
-            lines.append("## \(obj.title)")
-            if let desc = obj.description, !desc.isEmpty { lines.append(desc) }
-            lines.append("")
-            for sec in obj.sections {
-                lines.append("### \(sec.title)")
-                lines.append("")
-                for q in sec.questions {
-                    let mark = q.status == .answered ? "x" : " "
-                    lines.append("- [\(mark)] \(q.text)")
-                    if let r = q.response {
-                        lines.append("  - \(r.summary)")
-                        for quote in r.quotes {
-                            let stamp = quote.formattedTimestamp.isEmpty ? "" : "`\(quote.formattedTimestamp)` "
-                            lines.append("  - > \(stamp)\(quote.text)")
-                        }
-                    }
-                }
-                lines.append("")
-            }
-        }
-        return lines.joined(separator: "\n")
-    }
-
     private static func header(startedAt: Date, endedAt: Date) -> String {
         let started = headerStamp.string(from: startedAt)
         let seconds = Int(max(0, endedAt.timeIntervalSince(startedAt)))
@@ -901,10 +588,9 @@ enum SessionArchive {
 
     /// YAML frontmatter so the vault's Neon ingester titles + links these files.
     /// Must be the very first thing in the file, before the H1. `kind` is the
-    /// file's human label, e.g. "Transcript" / "Chat" / "Notes" /
-    /// "Discussion guide". `type: reference` keeps all four out of the
-    /// meeting_note / transcript / discussion_guide buckets the ingester
-    /// would otherwise infer from the filename.
+    /// file's human label, e.g. "Transcript" / "Chat" / "Screen context".
+    /// `type: reference` keeps them out of the meeting_note / transcript
+    /// buckets the ingester would otherwise infer from the filename.
     private static func frontmatter(
         kind: String,
         startedAt: Date,
@@ -1009,9 +695,8 @@ extension SessionArchive {
         /// Parsed from the `yyyy-MM-dd HHmmss` folder name. Nil if the folder
         /// isn't a recognised stamp (falls back to a flat list under "Earlier").
         let date: Date?
-        /// Short AI-generated title (from `title.txt`, written alongside the
-        /// auto-summary). Nil until the summary lands, or if it failed — the
-        /// browser then shows "Untitled session".
+        /// Short title from `title.txt` (a manual rename). Nil when none is
+        /// set; the browser then shows "Untitled session".
         let title: String?
         /// Pretty label, e.g. "Jun 8 · 16:13".
         let displayName: String
@@ -1085,7 +770,7 @@ extension SessionArchive {
         name.range(of: #"^meeting-\d{8}-\d{4}$"#, options: .regularExpression) != nil
     }
 
-    /// Read the one-line title written by `writeAutoSummary` (best-effort:
+    /// Read the one-line title in `title.txt` (best-effort:
     /// missing or unreadable ⇒ nil, never throws).
     private static func titleFile(at dir: URL) -> String? {
         let title = (try? String(contentsOf: dir.appendingPathComponent("title.txt"), encoding: .utf8))?

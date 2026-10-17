@@ -70,7 +70,7 @@ enum CommandBuilder {
 
     // MARK: - Tab navigation
 
-    /// Jump straight to an overlay tab. ⌘1…⌘7 pick a tab while the overlay is
+    /// Jump straight to an overlay tab. ⌘1…⌘4 pick a tab while the overlay is
     /// key (the View menu); they are local keys, never global hotkeys, and
     /// the status-item menu stays uncluttered. The palette row shows the key.
     @MainActor

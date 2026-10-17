@@ -5,18 +5,15 @@ import Foundation
 public enum SessionTitleSource: String, Sendable, CaseIterable {
     /// `title.txt` with `title-manual.txt` beside it: the user typed it.
     case manual
-    /// `title.txt` from the end-of-session summary call (`TITLE:` line).
-    case summary
+    /// `title.txt` without the manual marker: a title an earlier RTI wrote.
+    case titleFile
     /// The vault meeting note whose frontmatter names this session
     /// (`source: rti-session-<yyyyMMdd-HHmmss>`).
     case vaultNote
     /// The calendar event picked in Prepare (`session.json` `calendarTitle`).
     case calendar
-    /// The short title the Sessions window generated from the note headings
-    /// (`title.txt` whose text matches `title-generated.txt`).
-    case generated
     /// The first substantive line of `transcript.md`. Needs no model call,
-    /// so a session that never got a summary still reads as itself.
+    /// so every session reads as itself.
     case transcriptLine
     /// Built from the date and length. Never "Untitled session".
     case fallback
@@ -37,14 +34,12 @@ public struct ResolvedSessionTitle: Equatable, Sendable {
 }
 
 /// What the resolver reads for one session. Every field is optional: an old
-/// archive, a legacy recorded meeting, or a failed summary leaves gaps.
+/// archive or a legacy recorded meeting leaves gaps.
 public struct SessionTitleInputs: Equatable, Sendable {
     /// Trimmed `title.txt`, or nil when missing or empty.
     public var titleFile: String?
     /// `title-manual.txt` exists.
     public var hasManualMarker: Bool
-    /// Trimmed `title-generated.txt`: the text the generator last wrote.
-    public var generatedMarker: String?
     /// The vault meeting note's `title:` for this session.
     public var vaultNoteTitle: String?
     /// `session.json` `calendarTitle`.
@@ -60,7 +55,6 @@ public struct SessionTitleInputs: Equatable, Sendable {
     public init(
         titleFile: String? = nil,
         hasManualMarker: Bool = false,
-        generatedMarker: String? = nil,
         vaultNoteTitle: String? = nil,
         calendarTitle: String? = nil,
         transcriptHead: String? = nil,
@@ -70,7 +64,6 @@ public struct SessionTitleInputs: Equatable, Sendable {
     ) {
         self.titleFile = titleFile
         self.hasManualMarker = hasManualMarker
-        self.generatedMarker = generatedMarker
         self.vaultNoteTitle = vaultNoteTitle
         self.calendarTitle = calendarTitle
         self.transcriptHead = transcriptHead
@@ -80,14 +73,12 @@ public struct SessionTitleInputs: Equatable, Sendable {
     }
 }
 
-/// Resolves the title the Sessions window shows for an archived session,
-/// without depending on the end-of-session summary call (which fails on
-/// some long meetings and used to leave "Untitled session" rows).
+/// Resolves the title the Sessions window shows for an archived session.
 ///
 /// First hit wins:
-/// 1. a manual title, 2. the summary's title, 3. the vault meeting note's
-/// title, 4. the calendar event title, 5. a generated title, 6. a
-/// descriptive fallback ("Meeting · Sep 4, 15:00 · 16 min", or
+/// 1. a manual title, 2. a title file an earlier RTI wrote, 3. the vault
+/// meeting note's title, 4. the calendar event title, 5. the first
+/// substantive transcript line, 6. a descriptive fallback ("Meeting · Sep 4, 15:00 · 16 min", or
 /// "Short test · 12 s" for a transcript under 1 KB from a session under
 /// two minutes).
 ///
@@ -98,14 +89,11 @@ public enum SessionTitleResolver {
     /// ...unless the session ran longer than this: a long session with a
     /// tiny transcript is a meeting whose transcript failed, not a test.
     public static let shortTestMaxSeconds = 120
-    /// The longest generated title kept, in characters.
-    public static let generatedTitleMaxLength = 80
-    /// The most note headings sent to the title call.
-    public static let headingLimit = 12
+    /// The longest title kept, in characters.
+    public static let titleMaxLength = 80
     /// The title file names inside a session folder.
     public static let titleFileName = "title.txt"
     public static let manualMarkerFileName = "title-manual.txt"
-    public static let generatedMarkerFileName = "title-generated.txt"
 
     public static func resolve(
         _ inputs: SessionTitleInputs,
@@ -116,9 +104,7 @@ public enum SessionTitleResolver {
             if inputs.hasManualMarker {
                 return ResolvedSessionTitle(text: title, source: .manual)
             }
-            if title != clean(inputs.generatedMarker) {
-                return ResolvedSessionTitle(text: title, source: .summary)
-            }
+            return ResolvedSessionTitle(text: title, source: .titleFile)
         }
         if let title = clean(inputs.vaultNoteTitle) {
             return ResolvedSessionTitle(text: title, source: .vaultNote)
@@ -126,13 +112,9 @@ public enum SessionTitleResolver {
         if let title = clean(inputs.calendarTitle) {
             return ResolvedSessionTitle(text: title, source: .calendar)
         }
-        if let title = clean(inputs.titleFile) {
-            // Only reachable when title.txt is the generator's own text.
-            return ResolvedSessionTitle(text: title, source: .generated)
-        }
         // Nothing named this session, so let it name itself: the first line
-        // anyone actually said. No model call, so it works for a session
-        // whose summary failed and for one recorded with no key at all.
+        // anyone actually said. No model call, so it works for one recorded
+        // with no key at all.
         // A short test keeps the "Short test · 12 s" label instead.
         if !isShortTest(transcriptBytes: inputs.transcriptBytes, durationSeconds: inputs.durationSeconds),
            let head = inputs.transcriptHead,
@@ -157,13 +139,6 @@ public enum SessionTitleResolver {
     public static func isShortTest(transcriptBytes: Int?, durationSeconds: Int?) -> Bool {
         guard let bytes = transcriptBytes else { return false }
         return bytes < shortTestByteLimit && (durationSeconds ?? 0) < shortTestMaxSeconds
-    }
-
-    /// Whether the window should try a generated title: nothing better than
-    /// a built label or a raw transcript line, and notes to build it from.
-    /// A generated title reads better than either, so both invite one.
-    public static func wantsGeneratedTitle(_ resolved: ResolvedSessionTitle, hasNotes: Bool) -> Bool {
-        (resolved.source == .fallback || resolved.source == .transcriptLine) && hasNotes
     }
 
     /// "Meeting · Sep 4, 15:00 · 16 min", "Short test · 12 s", or "Meeting".
@@ -211,46 +186,13 @@ public enum SessionTitleResolver {
         return SessionsWindowRules.format(date, sameYear ? "MMM d, HH:mm" : "MMM d, yyyy, HH:mm", calendar: calendar)
     }
 
-    // MARK: - Generated titles
+    // MARK: - Cleaning
 
-    /// The slice headings of `notes.md` ("### 0:00 – 8:00 · Plan table"),
-    /// without their time ranges, in order and without repeats.
-    public static func noteHeadings(fromNotesMarkdown markdown: String) -> [String] {
-        var seen = Set<String>()
-        var headings: [String] = []
-        for line in markdown.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("### ") else { continue }
-            var heading = String(trimmed.dropFirst(4))
-            if let dot = heading.range(of: " · ") {
-                heading = String(heading[dot.upperBound...])
-            }
-            heading = heading.trimmingCharacters(in: .whitespaces)
-            guard !heading.isEmpty, seen.insert(heading.lowercased()).inserted else { continue }
-            headings.append(heading)
-            if headings.count == headingLimit { break }
-        }
-        return headings
-    }
-
-    /// The prompt for the short title call. Small input: headings only.
-    public static func titlePrompt(headings: [String]) -> String {
-        """
-        Write a short title, 3 to 7 words, for a meeting from the section headings of its notes. \
-        Lead with the kind of meeting (Briefing, Review, Interview, Planning, Debrief) when the \
-        headings make it clear, then the subject. Reply with the title only: no quotes, no \
-        trailing punctuation, no prefix.
-
-        Note headings:
-        \(headings.map { "- \($0)" }.joined(separator: "\n"))
-        """
-    }
-
-    /// The model's reply as a title: first line, no "TITLE:" prefix, no
+    /// A line of text as a title: first line, no "TITLE:" prefix, no
     /// quotes or Markdown marks, no trailing punctuation, one space between
-    /// words, at most `generatedTitleMaxLength` characters (cut at a word).
+    /// words, at most `titleMaxLength` characters (cut at a word).
     /// Nil when nothing usable is left.
-    public static func cleanGeneratedTitle(_ raw: String) -> String? {
+    public static func cleanTitle(_ raw: String) -> String? {
         guard var line = raw.components(separatedBy: .newlines)
             .map({ $0.trimmingCharacters(in: .whitespaces) })
             .first(where: { !$0.isEmpty })
@@ -266,8 +208,8 @@ public enum SessionTitleResolver {
         }
         line = line.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             .trimmingCharacters(in: marks.union(.whitespaces))
-        if line.count > generatedTitleMaxLength {
-            var cut = String(line.prefix(generatedTitleMaxLength))
+        if line.count > titleMaxLength {
+            var cut = String(line.prefix(titleMaxLength))
             if let space = cut.lastIndex(of: " ") { cut = String(cut[..<space]) }
             line = cut
         }
@@ -322,7 +264,7 @@ public enum SessionTitleResolver {
                 .joined(separator: " ")
 
             guard isSubstantialSpokenLine(spoken),
-                  let title = cleanGeneratedTitle(spoken)
+                  let title = cleanTitle(spoken)
             else { continue }
             return title
         }

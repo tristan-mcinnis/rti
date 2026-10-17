@@ -3,16 +3,16 @@ import Observation
 import RTICore
 
 /// Auto mode: each scheduler tick reads the latest transcript window and, using
-/// the meeting's project context (status, brief, discussion guide) and the
+/// the meeting's project context (status, brief) and the
 /// project's own vault knowledge, proactively surfaces a few high-value cards —
 /// something to say, a question to ask, a relevant fact to recall, or a flag.
 /// It is the always-on counterpart to the manual Assist panel: instead of
 /// waiting to be asked, it watches the conversation and offers help in the
 /// moment, grounded in what this project already knows.
 ///
-/// Runs on the same `AnalysisScheduler` rail as Notes/Guide/Findings, gated by
-/// its own Settings toggle, owning its own watermark so the manual "Generate"
-/// button and the periodic tick can't double-surface. When a project is picked
+/// Runs on the `AutoAssistScheduler` rail, gated by its own Settings toggle,
+/// owning its own watermark so the manual "Generate" button and the periodic
+/// tick can't double-surface. When a project is picked
 /// for the meeting, each pass first runs a project-scoped vault search keyed on
 /// the live window so a card can cite what a participant actually said or what
 /// a report concluded — the "they just asked about X, here's our answer" case.
@@ -92,7 +92,7 @@ final class AutoAssistController {
     /// stop window, or a debounce armed just before Stop, otherwise ran one
     /// more paid pass after the scheduler had already stopped.
     func noteActivity() {
-        guard UserDefaults.standard.bool(forKey: AnalysisSettingsDefaults.autoAssistEnabledKey),
+        guard UserDefaults.standard.bool(forKey: AutoAssistSettings.enabledKey),
               SessionCoordinator.shared.isRunning else { return }
         debounceTimer?.invalidate()
         debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.quietWindow, repeats: false) { [weak self] _ in
@@ -138,9 +138,8 @@ final class AutoAssistController {
         // rather than permanently skip it.
         let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? windowStartMs
 
-        // Grounding: who/what the meeting is about + the live guide state.
+        // Grounding: who/what the meeting is about.
         let projectContext = MeetingContextStore.shared.combined
-        let guideSummary = DiscussionGuideController.shared.guide?.assistantContextSummary()
 
         // Project-scoped retrieval: pull what the project's vault knows about
         // what's being discussed right now, so a RECALL card can be real. Only
@@ -159,9 +158,6 @@ final class AutoAssistController {
         var prompt = PromptStore.shared.text(.autoAssistCards) + "\n\nAlready-surfaced (do NOT repeat):\n" + priorList
         if let projectContext, !projectContext.isEmpty {
             prompt += "\n\nThis meeting's project context (treat as ground truth):\n---\n\(projectContext)\n---"
-        }
-        if let guideSummary, !guideSummary.isEmpty {
-            prompt += "\n\nDiscussion guide & live coverage:\n---\n\(guideSummary)\n---"
         }
         if let vaultMaterial {
             prompt += "\n\nRelevant project vault material for what's being discussed (use for RECALL/FLAG; cite the source; do not fabricate):\n---\n\(vaultMaterial)\n---"

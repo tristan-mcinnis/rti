@@ -8,7 +8,7 @@ import Foundation
 /// The session phases the header shows. Mirrors `SessionCoordinator.Phase`
 /// so the rules stay testable without the app.
 public enum OverlayLivePhase: String, CaseIterable, Sendable {
-    case idle, recording, paused, finishing, summarizing, done
+    case idle, recording, paused, finishing, upgrading, done
 
     /// Capture is running (recording or paused).
     public var isLive: Bool { self == .recording || self == .paused }
@@ -17,7 +17,7 @@ public enum OverlayLivePhase: String, CaseIterable, Sendable {
 /// The status dot's meaning. The view maps it to a house status token and
 /// always draws the word beside it (never colour alone).
 public enum OverlayStatusTone: Equatable, Sendable {
-    /// `success`: ready, saved, notes ready.
+    /// `success`: ready, saved.
     case ready
     /// `danger`: recording, the only live chroma.
     case recording
@@ -33,8 +33,6 @@ public enum OverlayRecordLead: Equatable, Sendable {
     case liveMark
     /// A short save flush: a small spinner.
     case spinner
-    /// A plain glyph, for "Open Notes".
-    case glyph(String)
 }
 
 /// The record chip, the header's one live action.
@@ -55,15 +53,12 @@ public struct OverlayShellStatus: Equatable, Sendable {
     public static let recordKeys = ["⌘", "⇧", "R"]
 
     public let phase: OverlayLivePhase
-    /// The finished session has its notes (the summary file exists).
-    public let summaryReady: Bool
     /// The post-processing line from the session, if any ("Upgrade failed ·
     /// audio retained").
     public let processingStatus: String?
 
-    public init(phase: OverlayLivePhase, summaryReady: Bool = false, processingStatus: String? = nil) {
+    public init(phase: OverlayLivePhase, processingStatus: String? = nil) {
         self.phase = phase
-        self.summaryReady = summaryReady
         self.processingStatus = processingStatus
     }
 
@@ -76,10 +71,8 @@ public struct OverlayShellStatus: Equatable, Sendable {
         case .recording: return "Recording"
         case .paused: return "Paused"
         case .finishing: return "Saving"
-        case .summarizing: return nonEmpty(processingStatus) ?? "Improving transcript"
-        case .done:
-            if summaryReady { return "Notes ready" }
-            return failedUpgradeStatus ?? "Session saved"
+        case .upgrading: return nonEmpty(processingStatus) ?? "Improving transcript"
+        case .done: return failedUpgradeStatus ?? "Session saved"
         }
     }
 
@@ -87,8 +80,8 @@ public struct OverlayShellStatus: Equatable, Sendable {
         switch phase {
         case .idle: return .ready
         case .recording: return .recording
-        case .paused, .finishing, .summarizing: return .busy
-        case .done: return summaryReady || failedUpgradeStatus == nil ? .ready : .busy
+        case .paused, .finishing, .upgrading: return .busy
+        case .done: return failedUpgradeStatus == nil ? .ready : .busy
         }
     }
 
@@ -116,7 +109,7 @@ public struct OverlayShellStatus: Equatable, Sendable {
                 accessibilityLabel: "Saving the recording",
                 help: "Saving the audio…"
             )
-        case .summarizing:
+        case .upgrading:
             return OverlayRecordChip(
                 lead: .recordDot,
                 title: "Record",
@@ -125,16 +118,6 @@ public struct OverlayShellStatus: Equatable, Sendable {
                 isEnabled: true,
                 accessibilityLabel: "Start recording",
                 help: "Start a new recording (⌘⇧R). The last one is still being improved."
-            )
-        case .done where summaryReady:
-            return OverlayRecordChip(
-                lead: .glyph("doc.text"),
-                title: "Open Notes",
-                keys: [],
-                showsClock: false,
-                isEnabled: true,
-                accessibilityLabel: "Open notes",
-                help: "Open the notes for this session. ⌘⇧R starts a new recording."
             )
         case .idle, .done:
             return OverlayRecordChip(
@@ -163,10 +146,10 @@ public struct OverlayShellStatus: Equatable, Sendable {
     // MARK: Private
 
     /// A post-processing line that reports a problem, not the normal
-    /// "Session saved" or "Notes ready".
+    /// "Session saved".
     private var failedUpgradeStatus: String? {
         guard let status = nonEmpty(processingStatus),
-              status != "Session saved", status != "Notes ready" else { return nil }
+              status != "Session saved" else { return nil }
         return status
     }
 

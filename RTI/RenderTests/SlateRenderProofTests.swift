@@ -91,10 +91,6 @@ final class SlateRenderProofTests: RenderProofTestCase {
 
         XCTAssertTrue(store.appendPrepNote("  Ask about pricing  "))
         XCTAssertEqual(store.note, "Existing context\nAsk about pricing")
-        XCTAssertEqual(
-            store.summaryContext,
-            "User prep note for this meeting:\nExisting context\nAsk about pricing"
-        )
 
         store.resetAfterSession()
     }

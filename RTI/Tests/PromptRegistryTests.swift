@@ -17,18 +17,10 @@ final class PromptRegistryTests: XCTestCase {
         }
     }
 
-    func test_exportMapCoversAllCases() {
-        let map = PromptDefaults.exportMap()
-        XCTAssertEqual(map.count, PromptID.allCases.count)
-        for id in PromptID.allCases {
-            XCTAssertEqual(map[id.rawValue], id.defaultText)
-        }
-    }
-
     // MARK: - Contract metadata (drives the editor's warnings)
 
     func test_jsonContractPromptsRequireJSONToken() {
-        let json: Set<PromptID> = [.findingsLedger, .autoAssistCards, .dgParse, .dgMatch]
+        let json: Set<PromptID> = [.autoAssistCards]
         for id in PromptID.allCases {
             XCTAssertEqual(id.isJSONContract, json.contains(id), "isJSONContract wrong for \(id.rawValue)")
             if id.isJSONContract {
@@ -36,8 +28,6 @@ final class PromptRegistryTests: XCTestCase {
                 XCTAssertTrue(id.defaultText.contains("JSON"), "\(id.rawValue) default lost its JSON instruction")
             }
         }
-        XCTAssertEqual(PromptID.liveNotes.requiredTokens, ["TITLE:"])
-        XCTAssertTrue(PromptID.liveNotes.defaultText.contains("TITLE:"))
     }
 
     // MARK: - Drift hash
@@ -78,19 +68,11 @@ final class PromptRegistryTests: XCTestCase {
         XCTAssertEqual(PromptComposer.followups(listener: true), PromptID.listenerFollowups.defaultText)
     }
 
-    func test_summarySwitchesOnMode() {
-        XCTAssertEqual(PromptComposer.summary(for: .interview), PromptID.interviewSummary.defaultText)
-        for kind in [ModeKind.meeting, .coding, .other] {
-            XCTAssertEqual(PromptComposer.summary(for: kind), PromptID.meetingSummary.defaultText)
-        }
-    }
-
     /// A resolver substitution flows through every composed prompt — the
     /// guarantee `PromptStore` relies on to make overrides take effect.
     func test_resolverOverrideFlowsThroughComposition() {
         let resolve: PromptComposer.Resolver = { _ in "X" }
         XCTAssertEqual(PromptComposer.assist(listener: true, resolve: resolve), "X")
-        XCTAssertEqual(PromptComposer.summary(for: .interview, resolve: resolve), "X")
         XCTAssertEqual(PromptComposer.recap(.brief, resolve: resolve), "Recap the conversation so far X X")
     }
 }

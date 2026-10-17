@@ -151,8 +151,8 @@ final class ControlSocketTests: XCTestCase {
             (.recording, true, false, false, "Recording, 0:30"),
             (.paused, true, true, false, "Paused, 0:30"),
             (.finishing, false, false, true, "Finishing, 0:30"),
-            (.summarizing, false, false, true, "Summarizing, 0:30"),
-            (.done, false, false, false, "Notes ready, 0:30"),
+            (.upgrading, false, false, true, "Upgrading transcript, 0:30"),
+            (.done, false, false, false, "Saved, 0:30"),
         ]
 
         for (phase, recording, paused, busy, detail) in expectations {
@@ -231,7 +231,7 @@ final class ControlSocketTests: XCTestCase {
     /// every session state. A dimmed row and a refused command are different
     /// things.
     func testNoManifestClauseEverRefusesACommand() {
-        let phases: [SessionPhase] = [.idle, .recording, .paused, .finishing, .summarizing, .done]
+        let phases: [SessionPhase] = [.idle, .recording, .paused, .finishing, .upgrading, .done]
         for phase in phases {
             let recorder = VerbRecorder()
             let server = ControlSocketServer(log: { _ in }, dispatch: { recorder.record($0) })
@@ -263,7 +263,7 @@ final class ControlSocketTests: XCTestCase {
             (.recording, true, false),
             (.paused, false, true),
             (.finishing, false, false),
-            (.summarizing, false, false),
+            (.upgrading, false, false),
             (.done, false, false),
         ]
 
@@ -278,7 +278,7 @@ final class ControlSocketTests: XCTestCase {
 
     func testStatusDocumentCarriesTheGatingBooleans() throws {
         let now = Date()
-        for phase in [SessionPhase.idle, .recording, .paused, .finishing, .summarizing, .done] {
+        for phase in [SessionPhase.idle, .recording, .paused, .finishing, .upgrading, .done] {
             let snapshot = ControlSnapshot.forSession(phase: phase, elapsed: 10, now: now)
             let document = try json(snapshot.statusLine(at: now))
             XCTAssertEqual(document["canPause"] as? Bool, snapshot.canPause, "\(phase) canPause")

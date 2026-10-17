@@ -58,8 +58,6 @@ struct PromptsTab: View {
             Spacer()
 
             HStack(spacing: 8) {
-                Button("Export Defaults…", action: exportDefaults)
-                    .help("Write the shipped default prompts to a JSON file (keeps the offline prompt-lab in sync).")
                 Button(role: .destructive) {
                     showResetAllConfirm = true
                 } label: {
@@ -107,18 +105,6 @@ struct PromptsTab: View {
         .listStyle(.sidebar)
     }
 
-    private func exportDefaults() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "rti-prompt-defaults.json"
-        panel.message = "Save the shipped default prompts (for scripts/prompt-lab)."
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try store.exportDefaults(to: url)
-        } catch {
-            NSAlert(error: error).runModal()
-        }
-    }
 }
 
 /// The editor pane for a single prompt: a local buffer with Save / Revert /

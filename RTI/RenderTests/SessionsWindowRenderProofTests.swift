@@ -6,8 +6,7 @@ import XCTest
 /// Package D proofs: the Sessions window in the AI Chat window shape, on the
 /// invented fixture vault only (`FixtureVault`; never the real vault). PNG
 /// prefix `sessions-`. The model's dependencies here never reach the network
-/// and never write: no content search unless a proof hands one in, no title
-/// generation.
+/// and never write: no content search unless a proof hands one in.
 final class SessionsWindowRenderProofTests: RenderProofTestCase {
     private let windowSize = CGSize(width: House.Layout.chatWidth, height: House.Layout.chatHeight)
 
@@ -23,8 +22,6 @@ final class SessionsWindowRenderProofTests: RenderProofTestCase {
     ) async throws -> SessionsWindowModel {
         let model = SessionsWindowModel(dependencies: .init(
             contentSearch: contentSearch,
-            generateTitle: nil,
-            persistGeneratedTitle: { _, _ in XCTFail("a proof must never write a title") },
             now: { Date() }
         ))
         await model.reload()
@@ -47,18 +44,18 @@ final class SessionsWindowRenderProofTests: RenderProofTestCase {
 
     // MARK: - Titles
 
-    /// Every fixture session gets a real title: summary, manual, vault
+    /// Every fixture session gets a real title: title file, manual, vault
     /// note, the first spoken line, short test, legacy sidecar. None says
-    /// "Untitled", and none of them needs the summary call to have worked.
-    func testTitlesResolveWithoutTheSummary() async throws {
+    /// "Untitled".
+    func testTitlesResolveForEverySession() async throws {
         let model = try await makeModel()
         let sources = Dictionary(model.rows.map { ($0.title.text, $0.title.source) }, uniquingKeysWith: { first, _ in first })
         XCTAssertEqual(sources["Pricing page teardown"], .manual)
-        XCTAssertEqual(sources["Onboarding Scope Review with Northwind"], .summary)
+        XCTAssertEqual(sources["Onboarding Scope Review with Northwind"], .titleFile)
         XCTAssertEqual(sources["Fabrikam loyalty card research debrief"], .vaultNote)
-        XCTAssertEqual(sources["Quarterly planning sync"], .summary)
+        XCTAssertEqual(sources["Quarterly planning sync"], .titleFile)
         XCTAssertEqual(sources["Short test · 12 s"], .shortTest)
-        // No summary, no vault note, no calendar event: this session names
+        // No title file, no vault note, no calendar event: this session names
         // itself from its first spoken line instead of the date and length.
         let spoken = try XCTUnwrap(model.rows.first { $0.title.source == .transcriptLine })
         XCTAssertTrue(spoken.title.text.hasPrefix("The store map needs one change"), spoken.title.text)
@@ -203,13 +200,13 @@ final class SessionsWindowRenderProofTests: RenderProofTestCase {
         try render("sessions-find", model)
     }
 
-    /// The session whose summary never landed: it is titled from its first
-    /// spoken line, and the header says "Summary unavailable".
+    /// The session with no title file: it is titled from its first spoken
+    /// line.
     func testFallbackTitles() async throws {
         let model = try await makeModel()
         model.setRailVisible(true, remember: false)
         model.open(try row(model, "The store map needs one change").id)
-        model.selectFile(named: "notes")
+        model.selectFile(named: "transcript")
         try render("sessions-fallback-titles", model)
     }
 

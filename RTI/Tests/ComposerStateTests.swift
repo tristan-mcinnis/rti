@@ -110,10 +110,10 @@ final class ComposerStateTests: XCTestCase {
 
     // MARK: - Slash commands
 
-    func test_slashCatalogue_keepsAllFifteenCommandsAndTheirAliases() {
-        XCTAssertEqual(ComposerSlashCommand.all.count, 15)
+    func test_slashCatalogue_keepsAllFourteenCommandsAndTheirAliases() {
+        XCTAssertEqual(ComposerSlashCommand.all.count, 14)
         let aliases: [String: String] = [
-            "latest": "answer", "saynext": "say", "followup": "followups", "summarize": "summary",
+            "latest": "answer", "saynext": "say", "followup": "followups",
             "grep": "search", "rag": "search", "source": "sources", "client": "project",
             "context": "project", "?": "help", "clear": "new",
         ]
@@ -132,7 +132,7 @@ final class ComposerStateTests: XCTestCase {
     }
 
     func test_slashMatches_filterByIdAliasOrLabel() {
-        XCTAssertEqual(ComposerSlashCommand.matches("/").count, 15)
+        XCTAssertEqual(ComposerSlashCommand.matches("/").count, 14)
         XCTAssertEqual(ComposerSlashCommand.matches("/rec").map(\.id), ["recap", "recent"])
         XCTAssertEqual(ComposerSlashCommand.matches("/grep").map(\.id), ["search"])
         XCTAssertEqual(ComposerSlashCommand.matches("/follow").map(\.id), ["followups"])

@@ -136,7 +136,7 @@ public enum SessionsWindowRules {
     /// 16 min"), a short test its length ("Short test · 12 s").
     public static func detailLine(
         for item: SessionRailItem,
-        titleSource: SessionTitleSource = .summary,
+        titleSource: SessionTitleSource = .titleFile,
         now: Date,
         calendar: Calendar = .current
     ) -> String {
@@ -306,18 +306,6 @@ public enum SessionsWindowRules {
         if fileNames.contains("automatic-upgrade.pending") { return "Upgrade pending" }
         if fileNames.contains("transcript.md") { return nil }
         return "No transcript"
-    }
-
-    /// The header's word for a missing summary: "Summary unavailable" when a
-    /// session has a transcript but the end-of-session summary never landed.
-    /// The summary call can return no text at all (a reasoning model can
-    /// spend its whole token budget thinking and emit nothing), and that
-    /// used to leave a silent gap. Saying it in the row makes the failure
-    /// visible without opening the log.
-    public static func summaryStatus(fileNames: Set<String>) -> String? {
-        guard !fileNames.contains("summary.md") else { return nil }
-        guard fileNames.contains("transcript.md") || fileNames.contains("transcript.upgraded.md") else { return nil }
-        return "Summary unavailable"
     }
 
     // MARK: - Find

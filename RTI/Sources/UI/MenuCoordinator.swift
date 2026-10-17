@@ -89,7 +89,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     /// Own the 1 Hz tick from the phase, not from app launch. A recording
     /// session gets exactly one timer: a second call while one is already
     /// scheduled keeps it rather than stacking another. Every other phase —
-    /// idle, paused, finishing, summarizing, done — has a still readout, so the
+    /// idle, paused, finishing, upgrading, done — has a still readout, so the
     /// timer is invalidated and the reference cleared in the same step, which
     /// is what makes a double invalidate or a leak impossible.
     private func syncElapsedTimer(for phase: SessionCoordinator.Phase) {

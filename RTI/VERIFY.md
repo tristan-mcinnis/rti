@@ -137,8 +137,8 @@ This is the definitive both-sides-recorded test. Open the **Audio I/O Monitor**
 
 ## F. Automatic transcript improvement
 This verifies the normal RTI finish path: live transcription first, then an
-automatic Soniox pass over the retained mic/system recordings before summary,
-meeting processing, and Neon indexing.
+automatic Soniox pass over the retained mic/system recordings before
+meeting processing and Neon indexing.
 
 1. Build and launch RTI.
 2. Ensure Settings → Providers has a Soniox key. Soniox is the one upgrade
@@ -163,15 +163,13 @@ meeting processing, and Neon indexing.
 7. Expected UI behavior:
    - Button disables while the job runs.
    - Status reports provider selection, per-file transcription, note
-     preservation, write, summary regeneration, and final success/failure.
+     preservation, write, and final success/failure.
    - Missing audio, missing credentials, script failures, timeouts, and empty
      provider transcripts are shown without replacing the original transcript.
 8. Expected files after success:
    - `transcript.md` contains the upgraded transcript.
    - `transcript.upgraded.md` contains the same upgraded output.
    - `transcript.backup-<stamp>.md` preserves the prior rough transcript.
-   - Existing `summary.md` is backed up as `summary.backup-<stamp>.md`.
-   - `summary.md` is regenerated from the upgraded transcript.
    - Inline `📝 Note:` rows from the old transcript are preserved at their
      approximate timestamps/order.
 9. Confirm the HUD is absent from a QuickTime or meeting screen share.
@@ -189,6 +187,6 @@ meeting processing, and Neon indexing.
 ## I. Real meeting (the final gate)
 - [ ] Join a real call. Both sides transcribe (the Transcript tab shows your runs on the right as "You" and the call's voices on the left as "Speaker N").
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
-- [ ] The Notes, Guide and Findings tabs populate (when enabled in Setup).
+- [ ] The Auto tab surfaces cards (when enabled in Prepare).
 - [ ] Overlay is absent from the screen share (QuickTime/Zoom — §4/§5 above).
 - [ ] Stop → the session folder appears in the vault under `…/databases/projects/personal/rti/sessions/<stamp>/` with `transcript.md`, `audio-mic.wav` and `audio-system.wav` (the audio is kept for the transcript upgrade); mic released (orange dot clears, other apps can use the mic).

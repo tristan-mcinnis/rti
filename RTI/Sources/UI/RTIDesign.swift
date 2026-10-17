@@ -61,7 +61,7 @@ enum RTIDesign {
         static let chipActiveBg = House.ColorToken.selectionFill
         static let chipActiveText = House.ColorToken.textPrimary
 
-        // Soft tinted card for AI/assistant outputs (Summary blocks, Q&A turns).
+        // Soft tinted card for AI/assistant outputs (Q&A turns).
         static let aiCardBackground = House.ColorToken.surfaceTint
         static let aiCardBorder = House.ColorToken.stroke
 
@@ -643,7 +643,7 @@ extension View {
     }
 
     /// Caps content at a comfortable reading width and centers it. Used on
-    /// text-stream tabs (Summary, Q&A) and the wider Transcript tab.
+    /// text-stream tabs (Q&A) and the wider Transcript tab.
     func readingWidth(_ maxWidth: CGFloat = 720) -> some View {
         HStack(spacing: 0) {
             Spacer(minLength: 0)

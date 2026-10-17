@@ -13,7 +13,7 @@ final class ComposerUnknownCommandTests: XCTestCase {
     }
 
     func testKnownAliasStillRuns() {
-        XCTAssertEqual(ComposerState(draft: "/summarize").action.label, "Run")
+        XCTAssertEqual(ComposerState(draft: "/saynext").action.label, "Run")
         XCTAssertEqual(ComposerState(draft: "/grep budget").action.label, "Run")
     }
 
@@ -61,7 +61,7 @@ final class ComposerUnknownCommandTests: XCTestCase {
 
     func testOnlyAnUnknownLineIsRefused() {
         XCTAssertFalse(ComposerState(draft: "/recap").isUnknownSlashCommand)
-        XCTAssertFalse(ComposerState(draft: "/summarize").isUnknownSlashCommand)
+        XCTAssertFalse(ComposerState(draft: "/saynext").isUnknownSlashCommand)
         XCTAssertFalse(ComposerState(draft: "/clear").isUnknownSlashCommand)
         XCTAssertFalse(ComposerState(draft: "/").isUnknownSlashCommand, "a bare slash is not a command word")
         XCTAssertFalse(ComposerState(draft: "what did we decide?").isUnknownSlashCommand)

@@ -85,9 +85,8 @@ final class ChatTurnRecordTests: XCTestCase {
     func test_cannedAction_namesItsGlyph() {
         XCTAssertEqual(ChatTurnRecordBuilder.cannedAction(for: "Assist")?.symbol, "sparkles")
         XCTAssertEqual(ChatTurnRecordBuilder.cannedAction(for: "Recap")?.symbol, "arrow.clockwise")
-        XCTAssertEqual(ChatTurnRecordBuilder.cannedAction(for: "Summary")?.symbol, "doc.text")
         XCTAssertEqual(ChatTurnRecordBuilder.cannedAction(for: "Answer latest")?.label, "Answer latest")
-        for action in ["Assist", "Answer latest", "Say next", "Follow-ups", "Key tensions", "Probe", "Themes", "Recap", "Quick recap", "Summary"] {
+        for action in ["Assist", "Answer latest", "Say next", "Follow-ups", "Key tensions", "Probe", "Themes", "Recap", "Quick recap"] {
             XCTAssertNotNil(ChatTurnRecordBuilder.cannedAction(for: action), action)
         }
     }
