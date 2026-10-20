@@ -28,7 +28,7 @@ final class SettingsNavigation {
 /// `ModesTab.swift`, …).
 struct SettingsView: View {
     enum SettingsTab: String, CaseIterable, Identifiable {
-        case providers, modes, prompts, glossary, voices, general, logs, about
+        case providers, modes, prompts, glossary, general, logs, about
 
         var id: String { rawValue }
 
@@ -38,7 +38,6 @@ struct SettingsView: View {
             case .modes: "Modes"
             case .prompts: "Prompts"
             case .glossary: "Glossary"
-            case .voices: "Voices"
             case .general: "General"
             case .logs: "Logs"
             case .about: "About"
@@ -51,7 +50,6 @@ struct SettingsView: View {
             case .modes: "square.stack.3d.up"
             case .prompts: "text.bubble"
             case .glossary: "character.book.closed"
-            case .voices: "person.wave.2"
             case .general: "gearshape"
             case .logs: "doc.text.magnifyingglass"
             case .about: "info.circle"
@@ -65,7 +63,6 @@ struct SettingsView: View {
             case .modes: "The assistant's persona and reference text for each mode."
             case .prompts: "The instructions RTI sends to the model for each action."
             case .glossary: "Names, acronyms, and terms the model keeps as written."
-            case .voices: "The voice samples behind speaker name suggestions."
             case .general: "Capture, audio, notes, Auto mode, appearance, and hotkeys."
             case .logs: "Recent activity and the crash log."
             case .about: "Version, updates, and diagnostics."
@@ -77,7 +74,6 @@ struct SettingsView: View {
             switch self {
             case .providers, .modes: "Changes apply when you save"
             case .prompts, .glossary: "Applies on the next call"
-            case .voices: "Changes go to the vault voice store"
             case .general: "Applies immediately"
             case .logs: "Logs stay on this Mac"
             case .about: "Version and updates"
@@ -91,7 +87,6 @@ struct SettingsView: View {
             case .modes: ["persona", "system prompt", "reference", "meeting", "interview"]
             case .prompts: ["Assist", "recap", "instructions"]
             case .glossary: ["terms", "names", "acronyms", "spelling"]
-            case .voices: ["speakers", "voice profiles", "samples"]
             case .general: ["login", "microphone", "audio", "input", "echo", "Bluetooth", "screen", "privacy", "capture",
                             "notes", "auto", "appearance", "theme", "dark", "light", "text size", "font", "motion",
                             "speaker colours", "hotkeys", "shortcuts", "folder", "data"]
@@ -193,7 +188,6 @@ struct SettingsView: View {
                 case .modes: ModesTab(modeStore: modeStore)
                 case .prompts: PromptsTab()
                 case .glossary: GlossaryTab()
-                case .voices: VoicesTab()
                 case .general: GeneralTab()
                 case .logs: LogsView(fixture: logsFixture)
                 case .about: AboutTab()

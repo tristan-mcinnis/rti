@@ -1281,7 +1281,6 @@ private struct SpeakerEditorSheet: View {
                                     set: { model.setSpeakerName($0, for: label) }
                                 ))
                                 .textFieldStyle(.roundedBorder)
-                                suggestion(for: label)
                             }
                         }
                     }
@@ -1299,21 +1298,5 @@ private struct SpeakerEditorSheet: View {
         .padding(House.Spacing.xl)
         .frame(width: House.Layout.chatRail * 2)
         .background(House.ColorToken.surface)
-    }
-
-    /// The vault voice matcher's suggestion (accept or maybe band) with its
-    /// score. "Use" fills the field; nothing applies until Save.
-    @ViewBuilder
-    private func suggestion(for label: String) -> some View {
-        if let entry = model.speakerSuggestions[label], let name = entry.suggestion, entry.isAccept || entry.isMaybe {
-            HStack(spacing: House.Spacing.xs) {
-                Text("Voice match: \(name) (\(String(format: "%.2f", entry.score ?? 0))\(entry.isMaybe ? ", weak" : ""))")
-                    .font(House.TypeToken.caption)
-                    .foregroundStyle(House.ColorToken.textSecondary)
-                Button("Use") { model.setSpeakerName(name, for: label) }
-                    .buttonStyle(.link)
-                    .font(House.TypeToken.caption)
-            }
-        }
     }
 }

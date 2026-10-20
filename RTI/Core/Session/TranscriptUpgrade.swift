@@ -173,8 +173,7 @@ public enum TranscriptUpgradePipeline {
         providerDisplayName: String,
         frontmatter: [String],
         progress: Progress,
-        transcribe: Transcribe,
-        runRouter: @Sendable () -> Void
+        transcribe: Transcribe
     ) async throws -> TranscriptUpgradeExecutionResult {
         let originalTranscriptURL = sessionDir.appendingPathComponent("transcript.md")
         guard let originalTranscript = try? String(contentsOf: originalTranscriptURL, encoding: .utf8) else {
@@ -240,8 +239,6 @@ public enum TranscriptUpgradePipeline {
 
         progress("Writing upgraded transcript")
         let artifactResult = try TranscriptUpgradeArtifacts.installUpgradedTranscript(markdown: md, in: sessionDir)
-
-        runRouter()
 
         return TranscriptUpgradeExecutionResult(
             transcriptURL: originalTranscriptURL,
@@ -492,8 +489,7 @@ public enum CanonicalMeetingTranscript {
     }
 
     /// The same leg-aware labels as the archived `transcript.md` (`You`,
-    /// `Room speaker N`, `Remote speaker N`), so `speaker-names.json` keys and
-    /// the vault's speaker-profiles leg rule match this export too.
+    /// `Room speaker N`, `Remote speaker N`), so `speaker-names.json` keys match this export too.
     private static func speakerLabeler(for _: [LiveEntry]) -> (String) -> String {
         { id in SpeakerLabelMapping.displayLabel(forRawKey: id) ?? id }
     }

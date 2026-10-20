@@ -334,7 +334,6 @@ final class TranscriptUpgradeTests: XCTestCase {
 
         let progress = Box<[String]>([])
         let transcribed = Box<[String]>([])
-        let routerRuns = Box(0)
         let startedAt = Date(timeIntervalSince1970: 1_782_000_000)
 
         let result = try await TranscriptUpgradePipeline.upgrade(
@@ -350,16 +349,12 @@ final class TranscriptUpgradeTests: XCTestCase {
                     return "[00:01] System audio upgraded."
                 }
                 return "[00:01] Speaker 1: Mic audio upgraded."
-            },
-            runRouter: {
-                routerRuns.value += 1
             }
         )
 
         XCTAssertEqual(result.segmentCount, 2)
         XCTAssertEqual(result.sourceFiles, ["audio-mic.m4a", "audio-system.m4a"])
         XCTAssertEqual(transcribed.value, ["audio-mic.m4a", "audio-system.m4a"])
-        XCTAssertEqual(routerRuns.value, 1)
         XCTAssertTrue(progress.value.contains("Writing upgraded transcript"))
 
         let transcript = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
@@ -404,8 +399,7 @@ final class TranscriptUpgradeTests: XCTestCase {
                 providerDisplayName: "Empty Provider",
                 frontmatter: [],
                 progress: { _ in },
-                transcribe: { _, _ in "" },
-                runRouter: { XCTFail("Router should not run for empty provider output") }
+                transcribe: { _, _ in "" }
             )
             XCTFail("Expected empty provider output to fail")
         } catch let error as TranscriptUpgradePipelineError {
@@ -437,8 +431,7 @@ final class TranscriptUpgradeTests: XCTestCase {
             sessionDir: dir, startedAt: Date(timeIntervalSince1970: 1_782_000_000),
             providerID: "p", providerDisplayName: "P", frontmatter: [],
             progress: { progress.value.append($0) },
-            transcribe: { url, _ in url.lastPathComponent == "audio-mic.m4a" ? "[00:01] Speaker 1: upgraded mic" : "" },
-            runRouter: {}
+            transcribe: { url, _ in url.lastPathComponent == "audio-mic.m4a" ? "[00:01] Speaker 1: upgraded mic" : "" }
         )
         XCTAssertEqual(result.segmentCount, 2)
         let transcript = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
@@ -465,8 +458,7 @@ final class TranscriptUpgradeTests: XCTestCase {
             sessionDir: dir, startedAt: Date(timeIntervalSince1970: 1_782_000_000),
             providerID: "p", providerDisplayName: "P", frontmatter: [],
             progress: { progress.value.append($0) },
-            transcribe: { url, _ in url.lastPathComponent == "audio-system.m4a" ? "[00:03] Remote speaker 1: upgraded remote" : "" },
-            runRouter: {}
+            transcribe: { url, _ in url.lastPathComponent == "audio-system.m4a" ? "[00:03] Remote speaker 1: upgraded remote" : "" }
         )
         XCTAssertEqual(result.segmentCount, 1)
         XCTAssertTrue(progress.value.contains { $0.contains("one-sided") })

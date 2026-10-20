@@ -66,16 +66,8 @@ enum VaultSearch {
         guard !trimmed.isEmpty else {
             return "No query was provided. Pass a short phrase describing what to look for."
         }
-        // Prefer the Neon hybrid index (semantic, the shared "one brain"). It
-        // returns nil only when unavailable (offline, db down, bun missing) —
-        // an empty-but-successful search is honoured, not retried by grep. When
-        // scoped, pull a deeper page so the in-project filter has candidates.
-        if let neon = await VaultSearchCLI.search(query: trimmed, limit: scopeRelativePath == nil ? 6 : 16) {
-            let scoped = applyScope(neon, scope: scopeRelativePath)
-            return format(scoped.results, query: trimmed, scopedHit: scoped.inScope)
-        }
-        // Fallback: local grep scan so vault search still works offline. Scoped
-        // first; if the project has no match, broaden to the whole vault.
+        // Keyword scan. Scoped first; if the project has no match, broaden to
+        // the whole notes folder.
         var inScope = scopeRelativePath != nil
         var results = await grep(query: trimmed, scopeRelativePath: scopeRelativePath)
         if results.isEmpty, scopeRelativePath != nil {

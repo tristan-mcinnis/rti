@@ -32,8 +32,7 @@ final class TranscriptContextLabelTests: XCTestCase {
 }
 
 /// The archived transcript prints the leg-aware labels that key
-/// speaker-names.json and that the vault's speaker-profiles.py reads the audio
-/// leg from, whoever speaks first, and keeps names out of the file.
+/// speaker-names.json, whoever speaks first, and keeps names out of the file.
 final class ArchivedTranscriptLabelTests: XCTestCase {
     private func entry(_ speaker: String, _ text: String, _ start: Int) -> LiveEntry {
         LiveEntry(speakerId: speaker, text: text, startMs: start, confidence: 1,

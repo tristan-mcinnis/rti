@@ -20,7 +20,7 @@ final class SessionsWindowModel {
     /// What the model reaches outside the archive. `live` in the app;
     /// render proofs pass their own (no network, no writes).
     struct Dependencies {
-        /// Content search through the vault's index (tier 2). Nil: the rail
+        /// Keyword content search over the notes folder (tier 2). Nil: the rail
         /// says "Content search unavailable" and filters titles only.
         var contentSearch: (@Sendable (String) async -> [VaultSearch.Result]?)?
         var now: @Sendable () -> Date
@@ -30,7 +30,7 @@ final class SessionsWindowModel {
         /// library is unavailable instead of showing an empty one.
         var chatLibrary: ChatLibraryLocation? = nil
 
-        /// The running app: the vault search CLI, trash, and share. These
+        /// The running app: keyword search, trash, and share. These
         /// switch off outside RTI's own bundle (a test runner), so no test
         /// can reach the network or write into an archive.
         static var live: Dependencies {
@@ -47,13 +47,10 @@ final class SessionsWindowModel {
                 NSSharingServicePicker(items: [text]).show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
             }
             dependencies.contentSearch = { query in
-                await VaultSearchCLI.search(query: query, limit: contentResultLimit)
+                await Task.detached { VaultSearch.search(query: query) }.value
             }
             return dependencies
         }
-
-        /// Vault search results asked for per content search.
-        static let contentResultLimit = 12
     }
 
     // MARK: - Types
@@ -282,7 +279,6 @@ final class SessionsWindowModel {
     var isEditingTranscript = false
     var transcriptTurns: [SessionTranscriptTurn] = []
     var isSpeakerEditorPresented = false
-    private(set) var speakerSuggestions: [String: SpeakerSuggestions.Entry] = [:]
     var isUpgradeChoicePresented = false
     private(set) var pendingUpgradeRowID: String?
     private(set) var upgradingRowID: String?
@@ -811,7 +807,6 @@ final class SessionsWindowModel {
         case .ask: askInRTI(row)
         case .rename: beginRename(id)
         case .nameSpeakers:
-            loadSpeakerSuggestions()
             isSpeakerEditorPresented = true
         case .editTranscript:
             selectFile(named: "transcript")
@@ -1109,16 +1104,6 @@ final class SessionsWindowModel {
 
     func setSpeakerName(_ name: String, for label: String) { speakerNames[label] = name }
 
-    private func loadSpeakerSuggestions() {
-        guard let row = openRow, row.session.isRTIArchive,
-              let file = SpeakerSuggestions.load(fromSessionDir: row.session.url)
-        else {
-            speakerSuggestions = [:]
-            return
-        }
-        speakerSuggestions = file.speakers.reduce(into: [:]) { $0[$1.label] = $1 }
-    }
-
     func saveSpeakerNames() {
         guard let row = openRow else { return }
         let names = speakerNames.reduce(into: [String: String]()) { result, pair in
@@ -1131,9 +1116,6 @@ final class SessionsWindowModel {
         } else if let data = try? JSONEncoder().encode(names) {
             try? data.write(to: url, options: .atomic)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-            // Save is the human confirm: let the vault enroll these voices so
-            // future sessions get suggestions automatically.
-            SpeakerEnrollment.fireAndForget(sessionDir: row.session.url)
         }
         speakerNames = names
         isSpeakerEditorPresented = false

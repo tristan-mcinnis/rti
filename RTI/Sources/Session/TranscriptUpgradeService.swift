@@ -96,9 +96,6 @@ enum TranscriptUpgradeService {
                 progress: { message in progress(.running(message)) },
                 transcribe: { audioURL, outputBaseURL in
                     try await provider.transcribe(audioURL: audioURL, outputBaseURL: outputBaseURL)
-                },
-                runRouter: {
-                    SessionArchive.runVaultRouter(sessionDir: session.url)
                 }
             )
         } catch {

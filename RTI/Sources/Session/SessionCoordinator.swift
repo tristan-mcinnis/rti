@@ -394,10 +394,6 @@ final class SessionCoordinator {
         // call", not just the transcript. Read fresh each start; no-op when none.
         MeetingContextStore.shared.loadBriefForSession(meetingName: nil)
 
-        // Meetings are when vault searches cluster — wake Neon now so the first
-        // in-session search is warm, not a ~10-15s cold-start.
-        VaultSearchCLI.warmUp()
-
         // The chat projection is gathered only when a session stops, so it
         // still holds the previous recording's threads. The 5-minute
         // checkpoint and a quit-time archive write this session's chat.md
@@ -452,7 +448,6 @@ final class SessionCoordinator {
 
         // Each task self-gates on its Settings toggle.
         AutoAssistScheduler.shared.start(interval: NotesSettings.tickInterval)
-        startKeepWarm()
 
         publishState()
         micMuted = false
@@ -479,8 +474,6 @@ final class SessionCoordinator {
         // partial audio and deliver final transcripts.
         audioPipeline.finalize()
         AutoAssistScheduler.shared.stop()
-        keepWarmTimer?.invalidate()
-        keepWarmTimer = nil
         checkpointTask?.cancel()
         checkpointTask = nil
         phase = .finishing
@@ -681,7 +674,6 @@ final class SessionCoordinator {
             includeAudio: route
         )
         let dir = SessionFinalizer(snapshot: snapshot).archive()
-        if route, let dir { SessionArchive.runVaultRouter(sessionDir: dir) }
         if route {
             exportCanonicalMeeting(
                 startedAt: startedAt,
@@ -825,23 +817,5 @@ final class SessionCoordinator {
             guard !Task.isCancelled else { return }
             self?.lastError = nil
         }
-    }
-
-    // MARK: - Keep-warm
-
-    /// During a session, vault searches (Assist tool calls + Auto mode) cluster.
-    /// Neon's serverless compute suspends after a few minutes idle, which would
-    /// make the next search eat a ~15s cold start (past VaultSearchCLI's 12s
-    /// timeout → silent grep fallback). A light periodic ping keeps it warm so
-    /// every in-session search stays on the ~2.4s semantic path.
-    private var keepWarmTimer: Timer?
-    private static let keepWarmInterval: TimeInterval = 240
-
-    private func startKeepWarm() {
-        keepWarmTimer?.invalidate()
-        keepWarmTimer = Timer.scheduledTimer(withTimeInterval: Self.keepWarmInterval, repeats: true) { _ in
-            VaultSearchCLI.warmUp()
-        }
-        keepWarmTimer?.tolerance = 30
     }
 }

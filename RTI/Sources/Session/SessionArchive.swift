@@ -9,9 +9,9 @@ import RTICore
 /// entries), the chat log with the assistant, and session-local audio legs used
 /// only by the narrow Upgrade Transcript workflow.
 ///
-/// Layout: <vault>/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
-/// (falls back to ~/Library/Application Support/RTI/sessions/ if the vault
-/// can't be located via RTI's config, `~/.config/rti/config.json`):
+/// Layout: <sessions_dir>/<yyyy-MM-dd HHmmss>/ (`sessions_dir` in RTI's
+/// config, `~/.config/rti/config.json`; default
+/// ~/Documents/Work/Inner-Chapter/meetings/sessions):
 ///   transcript.md         — the live transcript, notes inline
 ///   chat.md               — the assistant chat log (only written if non-empty)
 ///   notes.md              — generated meeting notes (only if any)
@@ -60,10 +60,9 @@ enum SessionArchive {
     /// Persist a session. Silently no-ops if there's nothing to save or the
     /// Application Support directory can't be resolved — archiving is a
     /// best-effort side record, never something that should fail a stop.
-    /// Returns the session directory it wrote (nil if nothing was saved) so
-    /// the caller can hand it to the vault-side router. `workstreamSlug` is a
-    /// pure DECLARATION stamped into frontmatter — all routing policy lives
-    /// in the vault's triage tooling, never in this app.
+    /// Returns the session directory it wrote (nil if nothing was saved).
+    /// `workstreamSlug` is a pure DECLARATION stamped into frontmatter —
+    /// routing policy lives in the `/meeting` skill, never in this app.
     @discardableResult
     static func write(
         startedAt: Date,
@@ -103,7 +102,7 @@ enum SessionArchive {
         }
 
         // Serialize keyed by display labels ("Remote speaker 1"), not raw ids
-        // (`remote_1`): the post-hoc rename UI and any vault-side consumer
+        // (`remote_1`): the post-hoc rename UI and the `/meeting` skill
         // match names against the labels transcripts actually print.
         let displayKeyedNames = SpeakerLabelMapping.displayKeyedNames(speakerNames)
         if !displayKeyedNames.isEmpty, let data = try? JSONEncoder().encode(displayKeyedNames) {
@@ -176,17 +175,9 @@ enum SessionArchive {
         return dir
     }
 
-    /// Fire the vault-side session router (capture + declare here; route
-    /// there). Best-effort and fire-and-forget: missing script or python is a
-    /// silent no-op, and the app never waits on or parses the result.
-    static func runVaultRouter(sessionDir: URL) {
-        guard let script = VaultPaths.vaultToolURL(".claude/tools/triage/route-rti-session.py") else { return }
-        ExternalTools.launchDetached(ExternalTools.systemPython, arguments: [script.path, sessionDir.path])
-    }
-
-    /// Export RTI's live transcript into the vault's raw-transcript lane
-    /// (`meetings/transcripts-raw/`), where the existing `/meeting` pipeline
-    /// turns it into the canonical meeting note + Neon-indexed vault document.
+    /// Export RTI's live transcript into the raw-transcript lane
+    /// (`meetings/transcripts-raw/`), where the `/meeting` skill turns it into
+    /// the canonical meeting note.
     /// This copies out of the RTI archive; it does not move or delete the archive.
     @discardableResult
     static func writeCanonicalMeetingExport(
@@ -236,8 +227,7 @@ enum SessionArchive {
             RTILog.log("meeting processor: claude CLI not found; skipped \(transcriptURL.lastPathComponent)", category: .archive)
             return
         }
-        let workdir = vaultRoot(startingAt: transcriptURL.deletingLastPathComponent())
-            ?? transcriptURL.deletingLastPathComponent()
+        let workdir = MeetingProcessorConfig.workingDirectory()
         let prompt = meetingProcessorPrompt(transcriptURL: transcriptURL)
         let args = MeetingProcessorConfig.permissionArguments(config: appConfig())
 
@@ -405,10 +395,6 @@ enum SessionArchive {
         return lines.joined(separator: "\n")
     }
 
-    private static func vaultRoot(startingAt dir: URL) -> URL? {
-        VaultPaths.vaultRoot(startingAt: dir)
-    }
-
     private static func meetingProcessorPrompt(transcriptURL: URL) -> String {
         let template = appConfig()["auto_process_prompt"] as? String
             ?? defaultMeetingProcessorPrompt
@@ -433,10 +419,12 @@ enum SessionArchive {
             .appendingPathComponent("meeting-process-\(stem).log")
     }
 
+    private static let workRoot = NSHomeDirectory() + "/Documents/Work"
+
     private static let defaultMeetingProcessorPrompt = """
     /meeting {transcript}
 
-    IMPORTANT — this run is UNATTENDED (fired automatically after an RTI session), so be conservative: (1) Always write the meeting note. (2) Set 'projects:' ONLY to an existing project you are confident about. (3) Do NOT create any new vault project folder, do NOT create a Todoist project, and do NOT push Todoist tasks. (4) If the project is new, ambiguous, or you are unsure, set 'projects: [unsorted]' and add a '## Needs routing' section with your best guess and reasoning for the user to confirm. Never guess a project into existence.
+    IMPORTANT: this run is UNATTENDED (fired automatically after an RTI recording), so be conservative. (1) Always write the meeting note. (2) File it in a project only when you are confident which existing project under \(workRoot) it belongs to. (3) Never create a project folder, never send anything, never edit client shared files. (4) If the project is new, ambiguous or unsure, leave the note unrouted in \(workRoot)/Inner-Chapter/meetings with 'projects: [unsorted]' and a '## Needs routing' section giving your best guess and why. Never guess a project into existence.
     """
 
     static func sessionDirectory(startedAt: Date) -> URL? {
@@ -501,8 +489,7 @@ enum SessionArchive {
 
         // Leg-aware labels from the speaker id, never renumbered by who spoke
         // first: `You`, `Room speaker N` (mic), `Remote speaker N` (system).
-        // They are the keys of speaker-names.json and the labels the vault's
-        // speaker-profiles.py reads the audio leg from, so names stay out of
+        // They are the keys of speaker-names.json, so names stay out of
         // this file: the Sessions browser and /meeting apply them from
         // speaker-names.json. (Printing appearance-ordered "Speaker N" with
         // names substituted left the names file matching no label, sent
@@ -637,9 +624,8 @@ enum SessionArchive {
             "date: \(date)",
             "source: rti",
         ]
-        // Declaration for the vault-side router (route-rti-session.py):
-        // which workstream this session was set up against. Facts only —
-        // routing policy lives in the vault.
+        // Declaration: which workstream this session was set up against.
+        // Facts only — routing policy lives in the `/meeting` skill.
         if let workstreamSlug, !workstreamSlug.isEmpty {
             lines.append("workstream: \(yamlQuoted(workstreamSlug))")
         }
@@ -734,15 +720,9 @@ extension SessionArchive {
         let displayName: String
     }
 
-    /// Base dir for per-session records. Prefer the vault so captured sessions
-    /// live with everything else under `…/projects/personal/rti/sessions`; fall
-    /// back to Application Support if the vault can't be located.
+    /// Base dir for per-session records: `sessions_dir` from RTI's config.
     static func sessionsBaseDirectory() -> URL? {
-        if let vault = VaultLogStore.rtiDirectory()?.appendingPathComponent("sessions", isDirectory: true) {
-            return vault
-        }
-        return AppSupportPaths.rtiDirectory()?
-            .appendingPathComponent("sessions", isDirectory: true)
+        VaultPaths.sessionsDirectory()
     }
 
     /// Recent archived sessions, newest first (folder names are timestamp-

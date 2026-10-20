@@ -15,8 +15,7 @@ struct SessionArchiveMetadata: Codable {
     let mode: String?
     /// The Setup workstream picker's item name (project or client),
     /// regardless of which — unlike `workstreamSlug`/`workstream:`
-    /// frontmatter (project-only, used by route-rti-session.py's routing
-    /// policy). Nil if no workstream was selected.
+    /// frontmatter (project-only). Nil if no workstream was selected.
     let workstream: String?
     /// Wall-clock session length in seconds (endedAt - startedAt).
     let durationSeconds: Int?

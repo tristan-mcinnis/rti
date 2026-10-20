@@ -57,9 +57,9 @@ final class SettingsOnboardingRenderProofTests: RenderProofTestCase {
         )
     }
 
-    func testSettingsPaneKeysAreOneToEight() {
-        XCTAssertEqual(SettingsView.SettingsTab.allCases.map(\.number), Array(1...8))
-        XCTAssertEqual(SettingsView.SettingsTab.about.number, 8)
+    func testSettingsPaneKeysAreOneToSeven() {
+        XCTAssertEqual(SettingsView.SettingsTab.allCases.map(\.number), Array(1...7))
+        XCTAssertEqual(SettingsView.SettingsTab.about.number, 7)
         let hits = SettingsSearch.filter(SettingsView.SettingsTab.allCases.map(\.searchPane), query: "micro")
         XCTAssertEqual(hits.map(\.id), ["general"])
     }

@@ -403,10 +403,9 @@ final class LLMController {
     /// field so a failed send never loses what the user typed.
     private(set) var pendingDraftRestore: String?
 
-    /// The last vault answer's state, in words: a real no-match, a degraded
-    /// answer from the keyword fallback, or an unavailable index. Nil when no
-    /// retrieval has run. Shown as-is so "nothing matched" never reads like
-    /// "the index is broken".
+    /// The last vault answer's state, in words: a real no-match or an
+    /// unavailable scan. Nil when no retrieval has run. Shown as-is so
+    /// "nothing matched" never reads like "the scan is broken".
     private(set) var retrievalDiagnostic: String?
 
     func clearPendingDraftRestore() {
@@ -1498,14 +1497,12 @@ final class LLMController {
             startedAt: Date(),
             error: error
         )
-        // The vault's four states are kept apart: a genuine no-match is not a
-        // degraded answer, and neither is an unavailable index.
+        // A genuine no-match is not an unavailable scan.
         let matched: Bool?
         let complete: Bool?
         switch retrievalStatus {
         case .available: matched = true; complete = true
         case .noMatch: matched = false; complete = true
-        case .degraded: matched = nil; complete = false
         case .unavailable: matched = false; complete = false
         case nil: matched = nil; complete = nil
         }
@@ -1554,7 +1551,6 @@ final class LLMController {
         switch status {
         case .available: "available"
         case .noMatch: "noMatch"
-        case .degraded: "degraded"
         case .unavailable: "unavailable"
         }
     }
@@ -1567,8 +1563,6 @@ final class LLMController {
             return nil
         case .noMatch:
             return "Vault search found nothing for that question."
-        case let .degraded(reason):
-            return "Vault search fell back to the keyword scan: \(reason)"
         case let .unavailable(reason):
             return "Vault search is unavailable: \(reason)"
         }

@@ -9,12 +9,41 @@ enum MeetingProcessorConfig {
         (config["auto_process"] as? Bool) ?? false
     }
 
-    /// Permission flags for the run. The default is the safer `acceptEdits`
-    /// mode; `auto_process_yolo: true` opts in to skipping every prompt.
-    static func permissionArguments(config: [String: Any]) -> [String] {
-        let yolo = (config["auto_process_yolo"] as? Bool) ?? false
-        return yolo
-            ? ["--dangerously-skip-permissions"]
-            : ["--permission-mode", "acceptEdits"]
+    /// Where the run starts: the work tree the `/meeting` skill files into.
+    static func workingDirectory(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home.appendingPathComponent("Documents/Work", isDirectory: true)
+    }
+
+    /// What the `/meeting` skill needs and nothing more: file tools, a few
+    /// read and copy commands, its own helper scripts, and the memory repo's
+    /// add, commit, pull and push. Nothing else runs in an unattended session.
+    static func allowedTools(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [String] {
+        let memory = home.appendingPathComponent("memory").path
+        let skills = home.appendingPathComponent("skills").path
+        return [
+            "Read", "Write", "Edit", "Glob", "Grep",
+            "Bash(cp *)", "Bash(mkdir *)", "Bash(ls *)", "Bash(head *)", "Bash(cat *)",
+            "Bash(python3 -I \(skills)/*)",
+            "Bash(git -C \(memory) add *)",
+            "Bash(git -C \(memory) commit *)",
+            "Bash(git -C \(memory) push *)",
+            "Bash(git -C \(memory) pull *)",
+        ]
+    }
+
+    /// Permission flags for the run. The mode is always `acceptEdits`;
+    /// `auto_process_scoped_tools: true` also allows the scoped tool list
+    /// above, without prompts, and lets the run edit the memory repo.
+    /// Permissions are never skipped.
+    static func permissionArguments(
+        config: [String: Any],
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [String] {
+        var arguments = ["--permission-mode", "acceptEdits"]
+        if (config["auto_process_scoped_tools"] as? Bool) ?? false {
+            arguments += ["--allowedTools"] + allowedTools(home: home)
+            arguments += ["--add-dir", home.appendingPathComponent("memory").path]
+        }
+        return arguments
     }
 }

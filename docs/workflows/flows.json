@@ -196,13 +196,7 @@
       "id": "VaultRetrieval",
       "subsystem": "llm",
       "file": "RTI/Sources/LLM/VaultRetrieval.swift",
-      "description": "search_vault: vault hybrid search, scoped when asked."
-    },
-    {
-      "id": "VaultSearchCLI",
-      "subsystem": "llm",
-      "file": "RTI/Sources/LLM/VaultSearchCLI.swift",
-      "description": "Runs the vault-search CLI with bun; drains both pipes."
+      "description": "search_vault: keyword search of the notes folder, scoped when asked."
     },
     {
       "id": "LLMRequest",
@@ -354,9 +348,9 @@
         {
           "from": "TranscriptUpgradePipeline",
           "to": "SessionArchive",
-          "label": "runVaultRouter / runMeetingProcessor",
-          "passes": "Vault-side routing and the /meeting processor are handed the finished folder.",
-          "ref": "RTI/Sources/Session/SessionArchive.swift · static func runVaultRouter"
+          "label": "runMeetingProcessor",
+          "passes": "The /meeting processor is handed the finished folder.",
+          "ref": "RTI/Sources/Session/SessionArchive.swift · static func runMeetingProcessor"
         }
       ]
     },
@@ -495,15 +489,8 @@
           "from": "ToolExecutor",
           "to": "VaultRetrieval",
           "label": "search_vault",
-          "passes": "Vault search runs through the CLI.",
+          "passes": "Vault search runs the local keyword scan.",
           "ref": "RTI/Sources/LLM/LLMTools.swift · VaultRetrieval.search"
-        },
-        {
-          "from": "VaultRetrieval",
-          "to": "VaultSearchCLI",
-          "label": "searchOutcome",
-          "passes": "bun runs the vault-search CLI against the Neon index.",
-          "ref": "RTI/Sources/LLM/VaultRetrieval.swift · VaultSearchCLI.searchOutcome"
         }
       ]
     },

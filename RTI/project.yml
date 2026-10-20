@@ -130,7 +130,6 @@ targets:
       - path: Sources/Session/VaultWorkstreamStore.swift
       - path: Sources/Session/VaultPaths.swift
       - path: Sources/LLM/VaultSearch.swift
-      - path: Sources/LLM/VaultSearchCLI.swift
       - path: Sources/LLM/VaultRetrieval.swift
       - path: Sources/LLM/AssistantTurnBuilder.swift
       - path: Sources/LLM/ToolExecutor.swift

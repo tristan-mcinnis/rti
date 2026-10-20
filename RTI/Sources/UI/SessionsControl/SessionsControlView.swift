@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// RTI's preferences and diagnostics window (Providers, Modes, Prompts,
-/// Glossary, Voices, General, Logs).
+/// Glossary, General, Logs).
 ///
 /// Shim during the house-style migration: past sessions moved to their own
 /// window (`SessionsWindowController`), so this window no longer lists them.
@@ -15,7 +15,6 @@ struct SessionsControlView: View {
         case modes = "Modes"
         case prompts = "Prompts"
         case glossary = "Glossary"
-        case voices = "Voices"
         case general = "General"
         case logs = "Logs"
 
@@ -26,7 +25,7 @@ struct SessionsControlView: View {
         var section: Section {
             switch self {
             case .sessions:                                        return .meetings
-            case .providers, .modes, .prompts, .glossary, .voices, .general: return .preferences
+            case .providers, .modes, .prompts, .glossary, .general:        return .preferences
             case .logs:                                            return .support
             }
         }
@@ -38,7 +37,6 @@ struct SessionsControlView: View {
             case .modes:          return "square.stack.3d.up"
             case .prompts:        return "text.bubble"
             case .glossary:       return "character.book.closed"
-            case .voices:         return "person.wave.2.fill"
             case .general:        return "gearshape.fill"
             case .logs:           return "doc.text.magnifyingglass"
             }
@@ -91,7 +89,7 @@ struct SessionsControlView: View {
             .padding(.top, RTIDesign.Spacing.md)
 
             // Derived from Tab.allCases so a newly added tab can never be
-            // silently missing from the sidebar (bitten 2026-08-30: Voices
+            // silently missing from the sidebar (bitten 2026-08-30: a tab
             // existed in the enum + content switch but not in this list).
             sidebarSection("Preferences", tabs: Tab.allCases.filter { $0.section == .preferences })
             sidebarSection("Support", tabs: Tab.allCases.filter { $0.section == .support })
@@ -145,8 +143,6 @@ struct SessionsControlView: View {
             PromptsTab()
         case .glossary:
             GlossaryTab()
-        case .voices:
-            VoicesTab()
         case .general:
             GeneralTab()
 

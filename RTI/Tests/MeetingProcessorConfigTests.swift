@@ -26,14 +26,37 @@ final class MeetingProcessorConfigTests: XCTestCase {
         )
     }
 
-    func testSkippingPermissionsNeedsAnExplicitYolo() {
-        XCTAssertEqual(
-            MeetingProcessorConfig.permissionArguments(config: ["auto_process_yolo": true]),
-            ["--dangerously-skip-permissions"]
+    func testScopedToolsNeedAnExplicitOptIn() {
+        let home = URL(fileURLWithPath: "/Users/test", isDirectory: true)
+        let arguments = MeetingProcessorConfig.permissionArguments(
+            config: ["auto_process_scoped_tools": true],
+            home: home
         )
+
+        XCTAssertEqual(Array(arguments.prefix(3)), ["--permission-mode", "acceptEdits", "--allowedTools"])
+        XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory push *)"))
+        XCTAssertTrue(arguments.contains("Bash(python3 -I /Users/test/skills/*)"))
+        XCTAssertEqual(Array(arguments.suffix(2)), ["--add-dir", "/Users/test/memory"])
         XCTAssertEqual(
-            MeetingProcessorConfig.permissionArguments(config: ["auto_process_yolo": false]),
+            MeetingProcessorConfig.permissionArguments(config: ["auto_process_scoped_tools": false], home: home),
             ["--permission-mode", "acceptEdits"]
+        )
+    }
+
+    func testPermissionsAreNeverSkippedAndNoBareBashIsAllowed() {
+        let arguments = MeetingProcessorConfig.permissionArguments(
+            config: ["auto_process_scoped_tools": true, "auto_process_yolo": true]
+        )
+
+        XCTAssertFalse(arguments.contains("--dangerously-skip-permissions"))
+        XCTAssertFalse(arguments.contains("Bash"))
+        XCTAssertTrue(arguments.filter { $0.hasPrefix("Bash(") }.allSatisfy { $0.hasSuffix(")") })
+    }
+
+    func testWorkingDirectoryIsTheWorkTree() {
+        XCTAssertEqual(
+            MeetingProcessorConfig.workingDirectory(home: URL(fileURLWithPath: "/Users/test")).path,
+            "/Users/test/Documents/Work"
         )
     }
 }

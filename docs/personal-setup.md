@@ -40,7 +40,7 @@ The file also carries `auto_process_prompt`, a custom prompt for the unattended 
 **1. The session archive**, one folder per session:
 
 ```
-~/vault/kb/databases/projects/personal/rti/sessions/<yyyy-MM-dd HHmmss>/
+~/Documents/Work/Inner-Chapter/meetings/sessions/<yyyy-MM-dd HHmmss>/   # sessions_dir in the config
   transcript.md         # live transcript, YAML frontmatter, inline notes
   chat.md               # assistant chat log (only if you chatted)
   screen-context.md     # screen trail: OCR, vision summaries, frame refs (only if any)
@@ -53,7 +53,7 @@ The file also carries `auto_process_prompt`, a custom prompt for the unattended 
   audio-system.wav      # system-audio leg
 ```
 
-Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `source: rti`, `workstream:` when a project was picked in Setup, `projects: [rti]`, `tags: [rti]`) so the vault's Neon ingester titles and links it. Structured chat threads live under `~/vault/kb/databases/projects/personal/rti/chats/threads/`. Their source and request blobs live in `~/Library/Application Support/RTI/chat-assets/`.
+Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `source: rti`, `workstream:` when a project was picked in Setup, `projects: [rti]`, `tags: [rti]`) so downstream tools can title and link it. Structured chat threads live under `~/vault/kb/databases/projects/personal/rti/chats/threads/`. Their source and request blobs live in `~/Library/Application Support/RTI/chat-assets/`.
 
 **2. The canonical meeting lane.** On finish, and again after the automatic transcript upgrade, RTI exports plain text into the raw-transcript lane:
 
@@ -63,12 +63,11 @@ Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `
   rti-session-<yyyyMMdd-HHmmss>-rti.md            # sidecar: notes, screen context and chat (source: rti-live)
 ```
 
-**3. Vault ingestion** happens vault-side, never in the app:
+**3. Meeting processing** happens in the `/meeting` skill, never in the app:
 
-- On session stop RTI starts `~/vault/.claude/tools/triage/route-rti-session.py` and does not wait for it. With a workstream declared, it files a field-notes companion in that project. Otherwise the session stays in `rti/sessions/`.
 - The `com.tristan.rti-meeting-drain` LaunchAgent runs every 30 minutes. It finds unprocessed `-transcript.txt` files and runs `/meeting` headless. That writes the canonical meeting note at `~/vault/kb/databases/meetings/YYYYMMDD-<type>-<topic>.md`, folds the `-rti.md` sidecar in as priority signal, and writes a speaker-resolved `-transcript.named.txt` sibling. The raw transcript is never edited.
-- RTI also fires the same `/meeting` run itself through `claude -p`. This Mac sets `auto_process` and `auto_process_yolo` to true. Both default to false for everyone else.
-- The Neon/Hermes ingest watcher indexes the archive's Markdown for search. The assistant reaches it through the `search_vault` tool, which uses `bun` and the vault's search CLI.
+- RTI also fires the same `/meeting` run itself through `claude -p`. This Mac sets `auto_process` and `auto_process_scoped_tools` to true. Both default to false for everyone else. The run uses `--permission-mode acceptEdits` plus a fixed `--allowedTools` list; RTI never passes `--dangerously-skip-permissions`.
+- The assistant's `search_vault` tool is a local keyword scan of the notes folder. There is no search index.
 
 Legacy files you may still see: `meetings/recordings/rti-<UUID>-mic.m4a` (old builds kept audio there) and `*.meeting.json` sidecars from Meeting Sentinel. The Sessions browser still lists them as recorded meetings.
 
@@ -88,11 +87,11 @@ The upgrade script is `~/Documents/code/file-transcriber/skills/file-transcriber
 
 ## Tests on this Mac
 
-The public README runs the tests without the vault. Here, also run the live tests when you touch vault search:
+The public README runs the tests without the vault. Here, also run the live tests when you touch the keyword search:
 
 ```bash
 TEST_RUNNER_RTI_LIVE_VAULT=1 xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug \
-  -derivedDataPath .deriveddata test -only-testing:RTITests/VaultSearchCLITests
+  -derivedDataPath .deriveddata test -only-testing:RTITests/VaultSearchTests
 ```
 
 CI never sets that variable. Render proofs use an invented fixture vault, never the real one.
