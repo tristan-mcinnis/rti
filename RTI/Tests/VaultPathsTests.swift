@@ -28,28 +28,14 @@ final class VaultPathsTests: XCTestCase {
         )
     }
 
-    func testPrefersCompleteNearbyKnowledgeBaseWhenConfiguredRecordingsMoved() throws {
-        let root = FileManager.default.temporaryDirectory
+    func testTranscriptsDirOverridesTheDerivedTranscriptsFolder() throws {
+        let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let retiredRecordings = root.appendingPathComponent("vault/databases/meetings/recordings", isDirectory: true)
-        let activeDatabases = root.appendingPathComponent("kb/databases", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: retiredRecordings.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("projects"),
-            withIntermediateDirectories: true
-        )
-        try FileManager.default.createDirectory(at: activeDatabases.appendingPathComponent("projects"), withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: activeDatabases.appendingPathComponent("meetings/recordings"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("config.json")
+        try #"{"recordings_dir":"/m/recordings","transcripts_dir":"/m/raw"}"#.write(to: url, atomically: true, encoding: .utf8)
 
-        let config = writeConfig(retiredRecordings.path)
-
-        XCTAssertEqual(
-            VaultPaths.preferredDatabasesDirectory(configURL: config)?.path,
-            activeDatabases.path
-        )
-        XCTAssertEqual(
-            VaultPaths.rtiDirectory(configURL: config)?.path,
-            activeDatabases.appendingPathComponent("projects/personal/rti").path
-        )
+        XCTAssertEqual(VaultPaths.meetingTranscriptsRawDirectory(configURL: url)?.path, "/m/raw")
     }
 
     func testRecordedMeetingsIncludesOnlyTranscribedSidecarsWithExistingTranscript() throws {

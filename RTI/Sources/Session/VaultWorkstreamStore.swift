@@ -14,9 +14,7 @@ struct VaultItem: Identifiable, Hashable {
 /// here. The vault is located via RTI's config — the same
 /// mechanism `MeetingBriefStore` uses — so no path is hardcoded.
 enum VaultWorkstreamStore {
-    /// `<vault>/databases` — resolved from RTI's configured recordings
-    /// path, with a nearby moved `kb/databases` tree preferred when the
-    /// configured path is stale.
+    /// `<vault>/databases` — resolved from RTI's configured recordings path.
     static func databasesDir() -> URL? {
         VaultPaths.preferredDatabasesDirectory()
     }

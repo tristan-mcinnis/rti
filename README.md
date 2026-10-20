@@ -185,7 +185,7 @@ scripts/scrub.sh   # no personal paths, ids or keys in tracked files; must print
 xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug -derivedDataPath .deriveddata test
 ```
 
-That runs `RTITests` and `RTIRenderTests`. The tests that need a live notes folder skip unless `TEST_RUNNER_RTI_LIVE_VAULT=1` is set.
+That runs `RTITests` and `RTIRenderTests`.
 
 Package a DMG with `scripts/make-dmg.sh`. It builds with ad hoc signing, checks the image without launching the app, and writes the DMG, `SHA256SUMS` and `RELEASE_NOTES.md` to `dist/release`. It needs a clean working tree. It publishes nothing. A Developer ID holder can use `scripts/release.sh` and [RELEASE.md](RELEASE.md) for a notarized build.
 

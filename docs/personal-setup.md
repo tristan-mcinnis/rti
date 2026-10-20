@@ -17,10 +17,11 @@ general terms. This file records the specific wiring, with `~` paths.
 
 ```json
 {
-  "recordings_dir": "~/vault/kb/databases/meetings/recordings",
-  "transcripts_dir": "~/vault/kb/databases/meetings/transcripts-raw",
+  "recordings_dir": "~/Documents/Work/Inner-Chapter/meetings/recordings",
+  "transcripts_dir": "~/Documents/Work/Inner-Chapter/meetings/transcripts-raw",
+  "sessions_dir": "~/Documents/Work/Inner-Chapter/meetings/sessions",
   "auto_process": true,
-  "auto_process_yolo": true,
+  "auto_process_scoped_tools": true,
   "local_vision": {
     "enabled": true,
     "endpoint": "http://127.0.0.1:8078",
@@ -33,7 +34,7 @@ general terms. This file records the specific wiring, with `~` paths.
 }
 ```
 
-The file also carries `auto_process_prompt`, a custom prompt for the unattended `/meeting` run. `auto_process` (default false) turns that run on; `auto_process_yolo` (default false) adds `--dangerously-skip-permissions`, and without it the run uses `--permission-mode acceptEdits`. Optional keys: `soniox_file_script` moves the transcript-upgrade script. The local vision lane talks to the local-models daemon.
+The file also carries `auto_process_prompt`, a custom prompt for the unattended `/meeting` run. `auto_process` (default false) turns that run on; `auto_process_scoped_tools` (default false) adds the fixed `--allowedTools` list; the run always uses `--permission-mode acceptEdits` and never skips permissions. Optional keys: `soniox_file_script` moves the transcript-upgrade script. The local vision lane talks to the local-models daemon.
 
 ## Where everything goes
 
@@ -53,19 +54,19 @@ The file also carries `auto_process_prompt`, a custom prompt for the unattended 
   audio-system.wav      # system-audio leg
 ```
 
-Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `source: rti`, `workstream:` when a project was picked in Setup, `projects: [rti]`, `tags: [rti]`) so downstream tools can title and link it. Structured chat threads live under `~/vault/kb/databases/projects/personal/rti/chats/threads/`. Their source and request blobs live in `~/Library/Application Support/RTI/chat-assets/`.
+Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `source: rti`, `workstream:` when a project was picked in Setup, `projects: [rti]`, `tags: [rti]`) so downstream tools can title and link it. Structured chat threads live under `the RTI owner folder under `chats/threads/``. Their source and request blobs live in `~/Library/Application Support/RTI/chat-assets/`.
 
 **2. The canonical meeting lane.** On finish, and again after the automatic transcript upgrade, RTI exports plain text into the raw-transcript lane:
 
 ```
-~/vault/kb/databases/meetings/transcripts-raw/
+~/Documents/Work/Inner-Chapter/meetings/transcripts-raw/
   rti-session-<yyyyMMdd-HHmmss>-transcript.txt    # canonical raw transcript (plain text)
   rti-session-<yyyyMMdd-HHmmss>-rti.md            # sidecar: notes, screen context and chat (source: rti-live)
 ```
 
 **3. Meeting processing** happens in the `/meeting` skill, never in the app:
 
-- The `com.tristan.rti-meeting-drain` LaunchAgent runs every 30 minutes. It finds unprocessed `-transcript.txt` files and runs `/meeting` headless. That writes the canonical meeting note at `~/vault/kb/databases/meetings/YYYYMMDD-<type>-<topic>.md`, folds the `-rti.md` sidecar in as priority signal, and writes a speaker-resolved `-transcript.named.txt` sibling. The raw transcript is never edited.
+- The `com.tristan.rti-meeting-drain` LaunchAgent runs every 30 minutes. It finds unprocessed `-transcript.txt` files and runs `/meeting` headless. That writes the canonical meeting note in the project's `07-fieldwork/transcripts/meeting/` (or the meetings inbox, unrouted) as `YYYYMMDD-<type>-<topic>.md`, folds the `-rti.md` sidecar in as priority signal, and writes a speaker-resolved `-transcript.named.txt` sibling. The raw transcript is never edited.
 - RTI also fires the same `/meeting` run itself through `claude -p`. This Mac sets `auto_process` and `auto_process_scoped_tools` to true. Both default to false for everyone else. The run uses `--permission-mode acceptEdits` plus a fixed `--allowedTools` list; RTI never passes `--dangerously-skip-permissions`.
 - The assistant's `search_vault` tool is a local keyword scan of the notes folder. There is no search index.
 
@@ -87,11 +88,11 @@ The upgrade script is `~/Documents/code/file-transcriber/skills/file-transcriber
 
 ## Tests on this Mac
 
-The public README runs the tests without the vault. Here, also run the live tests when you touch the keyword search:
+Run the tests, including the keyword-search tests, with:
 
 ```bash
-TEST_RUNNER_RTI_LIVE_VAULT=1 xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug \
+xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug \
   -derivedDataPath .deriveddata test -only-testing:RTITests/VaultSearchTests
 ```
 
-CI never sets that variable. Render proofs use an invented fixture vault, never the real one.
+Render proofs use an invented fixture vault, never the real one.

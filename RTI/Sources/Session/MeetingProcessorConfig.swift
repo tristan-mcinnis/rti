@@ -14,20 +14,19 @@ enum MeetingProcessorConfig {
         home.appendingPathComponent("Documents/Work", isDirectory: true)
     }
 
-    /// What the `/meeting` skill needs and nothing more: file tools, a few
-    /// read and copy commands, its own helper scripts, and the memory repo's
-    /// add, commit, pull and push. Nothing else runs in an unattended session.
+    /// What the `/meeting` skill needs and nothing more: read tools, mkdir and
+    /// ls, and the memory repo's add, commit, pull and push. No scripts, no
+    /// cat or cp, no bare Write or Edit: file writes come from `acceptEdits`,
+    /// which covers the working directory and `--add-dir` only.
     static func allowedTools(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [String] {
         let memory = home.appendingPathComponent("memory").path
-        let skills = home.appendingPathComponent("skills").path
         return [
-            "Read", "Write", "Edit", "Glob", "Grep",
-            "Bash(cp *)", "Bash(mkdir *)", "Bash(ls *)", "Bash(head *)", "Bash(cat *)",
-            "Bash(python3 -I \(skills)/*)",
-            "Bash(git -C \(memory) add *)",
-            "Bash(git -C \(memory) commit *)",
-            "Bash(git -C \(memory) push *)",
-            "Bash(git -C \(memory) pull *)",
+            "Read", "Glob", "Grep",
+            "Bash(mkdir *)", "Bash(ls *)",
+            "Bash(git -C \(memory) add tasks.md)",
+            "Bash(git -C \(memory) commit -m *)",
+            "Bash(git -C \(memory) pull --rebase)",
+            "Bash(git -C \(memory) push)",
         ]
     }
 

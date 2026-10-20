@@ -34,8 +34,9 @@ final class MeetingProcessorConfigTests: XCTestCase {
         )
 
         XCTAssertEqual(Array(arguments.prefix(3)), ["--permission-mode", "acceptEdits", "--allowedTools"])
-        XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory push *)"))
-        XCTAssertTrue(arguments.contains("Bash(python3 -I /Users/test/skills/*)"))
+        XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory push)"))
+        XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory add tasks.md)"))
+        XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory pull --rebase)"))
         XCTAssertEqual(Array(arguments.suffix(2)), ["--add-dir", "/Users/test/memory"])
         XCTAssertEqual(
             MeetingProcessorConfig.permissionArguments(config: ["auto_process_scoped_tools": false], home: home),
@@ -51,6 +52,24 @@ final class MeetingProcessorConfigTests: XCTestCase {
         XCTAssertFalse(arguments.contains("--dangerously-skip-permissions"))
         XCTAssertFalse(arguments.contains("Bash"))
         XCTAssertTrue(arguments.filter { $0.hasPrefix("Bash(") }.allSatisfy { $0.hasSuffix(")") })
+    }
+
+    func testAllowedToolsExcludeScriptsReadersAndBareWrites() {
+        let tools = MeetingProcessorConfig.allowedTools(home: URL(fileURLWithPath: "/Users/test"))
+
+        XCTAssertEqual(
+            tools,
+            [
+                "Read", "Glob", "Grep",
+                "Bash(mkdir *)", "Bash(ls *)",
+                "Bash(git -C /Users/test/memory add tasks.md)",
+                "Bash(git -C /Users/test/memory commit -m *)",
+                "Bash(git -C /Users/test/memory pull --rebase)",
+                "Bash(git -C /Users/test/memory push)",
+            ]
+        )
+        XCTAssertFalse(tools.contains { $0.contains("python3") || $0.hasPrefix("Bash(cp") || $0.hasPrefix("Bash(cat") })
+        XCTAssertFalse(tools.contains("Write") || tools.contains("Edit"))
     }
 
     func testWorkingDirectoryIsTheWorkTree() {

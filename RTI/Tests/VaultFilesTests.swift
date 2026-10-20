@@ -9,7 +9,9 @@ final class VaultFilesTests: XCTestCase {
         // A normal in-vault path either resolves (vault present) or is nil
         // (vault not locatable in this environment) — never something outside.
         let u = VaultFiles.resolve("projects/foo/00-status.md")
-        if let u { XCTAssertTrue(u.path.contains("/databases/")) }
+        if let u, let databases = VaultPaths.preferredDatabasesDirectory() {
+            XCTAssertTrue(u.path.hasPrefix(databases.path))
+        }
     }
 
     func testParentTraversalRefused() {
@@ -24,7 +26,9 @@ final class VaultFilesTests: XCTestCase {
         // not "always nil".
         for p in ["/etc/passwd", "/Users/someone/.ssh/id_rsa"] {
             if let u = VaultFiles.resolve(p) {
-                XCTAssertTrue(u.path.contains("/databases/"))
+                if let databases = VaultPaths.preferredDatabasesDirectory() {
+                    XCTAssertTrue(u.path.hasPrefix(databases.path))
+                }
                 XCTAssertFalse(u.path == "/etc/passwd")
             }
         }
