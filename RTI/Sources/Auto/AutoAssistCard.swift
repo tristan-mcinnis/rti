@@ -13,9 +13,139 @@ struct AutoAssistCard: Identifiable, Equatable {
     let text: String
     /// Why it's relevant right now (one short line), or empty.
     let why: String
-    /// The project document the suggestion draws on, when grounded in
-    /// one (e.g. "00-status.md", "Group 1 transcript"), else nil.
+    /// The retrieved document the suggestion draws on, or nil when the model
+    /// gave no handle that resolves to a document this pass actually injected.
+    /// Built only by `AutoCardCitation`, never from model text.
+    let citation: VaultSearch.Citation?
+
+    /// The icon and label for the card's source row. Reads the retrieved
+    /// document's own name, so a fabricated label can never appear here.
+    var source: String? { citation?.label }
+}
+
+// MARK: - Assembly
+
+extension AutoAssistCard {
+    /// Build one card from a decoded model item. This is the only path Auto uses
+    /// to create cards, so tests exercise the same seam the running app does.
+    ///
+    /// `sourceID` is the handle the model emitted (the bracketed ID printed with
+    /// the injected material, or a full vault-relative path). It resolves only
+    /// by exact allowlist match against this pass's retrieved records — never by
+    /// substring or title matching — so an invented name, a title typed back, or
+    /// a title that merely contains a real one yields a card with no citation.
+    static func make(
+        kind: AutoCardKind,
+        text: String,
+        why: String?,
+        sourceID: String?,
+        citations: [VaultSearch.Citation],
+        timestamp: Date = Date()
+    ) -> AutoAssistCard? {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return nil }
+        return AutoAssistCard(
+            timestamp: timestamp,
+            kind: kind,
+            text: body,
+            why: (why ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            citation: AutoCardCitation.resolve(sourceID, in: citations)
+        )
+    }
+
+    /// Build one card straight from a decoded wire item. Auto uses this call, so
+    /// a test that decodes model JSON and calls it exercises the same decoding
+    /// and citation gate the running app does.
+    static func make(
+        from item: AutoCardItem,
+        citations: [VaultSearch.Citation],
+        timestamp: Date = Date()
+    ) -> AutoAssistCard? {
+        make(
+            kind: AutoCardKind(raw: item.kind ?? "RECALL"),
+            text: item.text,
+            why: item.why,
+            sourceID: item.sourceHandle,
+            citations: citations,
+            timestamp: timestamp
+        )
+    }
+}
+
+/// Wire shape for one card in the model's JSON response. Everything but `text`
+/// is optional so a slightly malformed item still decodes; the lenient array
+/// decoder drops only the items it can't and keeps the rest of the batch.
+struct AutoCardItem: Decodable {
+    let kind: String?
+    let text: String
+    let why: String?
+    /// Handle for a document the pass injected; the current prompt asks for it.
+    let sourceId: String?
+    /// Older prompt shape: a free-form document name. Usable only as a handle.
     let source: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, text, why, source, sourceId
+        case sourceIdSnake = "source_id"
+        case sourceIdCaps = "sourceID"
+    }
+
+    /// Accept the field under the spelling the model happened to emit. Every
+    /// spelling is still only a handle candidate for the citation gate.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        text = try container.decode(String.self, forKey: .text)
+        why = try container.decodeIfPresent(String.self, forKey: .why)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        sourceId = try container.decodeIfPresent(String.self, forKey: .sourceId)
+            ?? container.decodeIfPresent(String.self, forKey: .sourceIdSnake)
+            ?? container.decodeIfPresent(String.self, forKey: .sourceIdCaps)
+    }
+
+    /// The handle the citation gate should try: the explicit source field when
+    /// it says something, otherwise the older free-form `source`.
+    var sourceHandle: String? {
+        AutoCardCitation.normalize(sourceId) ?? source
+    }
+}
+
+/// Exact allowlist resolution for a model-emitted source handle. The allowed
+/// set is the documents this pass retrieved, so a citation can only name a real
+/// document, and the card's label comes from that record rather than the model.
+enum AutoCardCitation {
+    /// Resolve a handle to one retrieved record, or nil. Accepted handles are an
+    /// exact document ID (`S1`) or an exact vault-relative path. Nothing else:
+    /// no title match, no substring, no splitting of compound strings.
+    static func resolve(_ raw: String?, in citations: [VaultSearch.Citation]) -> VaultSearch.Citation? {
+        guard let handle = normalize(raw), !citations.isEmpty else { return nil }
+        if let byID = citations.first(where: { $0.id.caseInsensitiveCompare(handle) == .orderedSame }) {
+            return byID
+        }
+        let folded = handle.lowercased()
+        return citations.first { $0.relativePath.lowercased() == folded }
+    }
+
+    /// Trim, drop one layer of wrapping brackets or quotes, and reject the
+    /// model's ways of saying "none". Deliberately no splitting or partial
+    /// extraction: `"S1, S2"` or `"S1 (Group 1 transcript)"` stays one handle
+    /// and matches nothing.
+    static func normalize(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let wrappers = CharacterSet(charactersIn: "[]()\"'`“”‘’「」")
+        var handle = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let first = handle.unicodeScalars.first, wrappers.contains(first) {
+            handle.removeFirst()
+        }
+        while let last = handle.unicodeScalars.last, wrappers.contains(last) {
+            handle.removeLast()
+        }
+        handle = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !handle.isEmpty else { return nil }
+        let noneValues: Set<String> = ["null", "nil", "none", "unknown", "n/a", "-", "—", "?"]
+        guard !noneValues.contains(handle.lowercased()) else { return nil }
+        return handle
+    }
 }
 
 /// What kind of help a card offers. Drives its icon and label.

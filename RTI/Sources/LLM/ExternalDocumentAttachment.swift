@@ -62,6 +62,20 @@ struct ExternalDocumentAttachment: Identifiable, Equatable {
         self.limitSummary = limitSummary
     }
 
+    /// The prefix a pathless attachment is sent under. One literal: the
+    /// thread's projection parses it back into a file name.
+    static let attachedFilePrefix = "Attached file: "
+
+    /// The path this attachment's wire reference carries: its own path, or the
+    /// name the send gives a pathless chip.
+    var wirePath: String { path ?? Self.attachedFilePrefix + name }
+
+    /// The id the wire deduplicates this attachment by, from the one shared
+    /// rule, so the composer's preview and the request agree.
+    var wireSourceID: String {
+        LLMController.wireSourceID(path: path, fallback: wirePath)
+    }
+
     /// The reference a chip and a sent question carry: never the text.
     var ref: ChatAttachmentRef {
         ChatAttachmentRef(kind: kind, name: name, path: path, byteCount: byteCount, pageCount: pageCount, wasCut: wasCut)

@@ -549,7 +549,10 @@ actor ChatThreadStore {
     /// Write the partial answer of a turn that is still streaming.
     ///
     /// Called periodically, so a process death leaves a recoverable record with
-    /// the status the turn was actually in. The terminal write replaces it.
+    /// the status the turn was actually in. The terminal write replaces it, and
+    /// a terminal outcome is final: a checkpoint that was already inside this
+    /// store when the terminal write landed is dropped rather than putting the
+    /// turn back to `.streaming` and overwriting the answer the user saw.
     func checkpoint(
         conversationID: String,
         turnID: String,
@@ -564,6 +567,7 @@ actor ChatThreadStore {
                 throw ChatThreadStoreError.threadDeleted(id: conversationID)
             }
             if let index = record.turns.lastIndex(where: { $0.id == turnID }) {
+                guard !Self.isTerminal(record.turns[index].request?.status) else { return }
                 record.turns[index].text = text
                 record.turns[index].request?.status = .streaming
                 if !toolRounds.isEmpty { record.turns[index].toolRounds = toolRounds }
@@ -678,6 +682,15 @@ actor ChatThreadStore {
     }
 
     // MARK: Reading and housekeeping
+
+    /// A status a turn never leaves. A checkpoint that lands after one of these
+    /// is stale by definition.
+    private static func isTerminal(_ status: RequestStatus?) -> Bool {
+        switch status {
+        case .completed, .cancelled, .failed, .refused: true
+        case .pending, .streaming, .unknown, .none: false
+        }
+    }
 
     func summaries() async throws -> [ConversationSummary] {
         try await conversations.list()

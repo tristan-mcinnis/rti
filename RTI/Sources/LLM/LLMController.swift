@@ -288,6 +288,11 @@ final class LLMController {
     private let makeToolExecutor: (@MainActor (Bool, Bool) -> ToolExecutor)?
     /// Where a completed turn is logged. Nil means the vault turn log.
     private let turnLogger: ((VaultLogStore.TurnRecord) -> Void)?
+    /// Where this turn's ambient screen trail comes from. Nil reads the live
+    /// recording and its trail; a test injects a synthetic reading so the
+    /// composer's label and the request's screen block can be pinned without a
+    /// capture. Never starts or touches a recording.
+    private let ambientScreenProvider: (@MainActor () -> String?)?
     /// A test's or render proof's mode store. Nil falls back LAZILY to the
     /// shared store on first use, so a controller with an injected store never
     /// initializes the live one.
@@ -344,41 +349,63 @@ final class LLMController {
         retainedSources.compactMap(\.payload).filter { $0.normalizedImage?.isEmpty == false }.count
     }
 
+    /// The one identity a source is deduplicated by on the wire, so the
+    /// composer's preview and the send count the same source once. A tray
+    /// attachment has no payload in the composer, so its display path stands in
+    /// for the id its reference will carry.
+    nonisolated static func wireSourceID(path: String?, fallback: String) -> String {
+        path ?? fallback
+    }
+
+    private static func sourceID(_ ref: ReferencedDocument) -> String {
+        wireSourceID(path: ref.payload?.path, fallback: ref.path)
+    }
+
     /// One reference per source id, first occurrence kept (fresh-first order).
     private static func deduped(_ references: [ReferencedDocument]) -> [ReferencedDocument] {
         var seen = Set<String>()
         var out: [ReferencedDocument] = []
         for ref in references {
-            let id = ref.payload?.path ?? ref.path
-            if seen.insert(id).inserted { out.append(ref) }
+            if seen.insert(sourceID(ref)).inserted { out.append(ref) }
         }
         return out
     }
 
     /// The image count the turn would actually carry, resolved with the SAME
-    /// policy and the SAME fresh-vs-retained choice the send uses. The
-    /// composer calls this so the preview route and the frozen route agree:
-    /// a fresh-source turn never counts (or sends) the retained old images.
+    /// policy, the SAME fresh-vs-retained choice and the SAME dedup the send
+    /// uses. The composer calls this so the preview route and the frozen route
+    /// agree: a fresh-source turn never counts (or sends) the retained old
+    /// images, and a source reattached in a comparison is counted once because
+    /// the wire sends it once.
+    ///
+    /// `freshSourceIDs` and `freshImageIDs` are the wire ids of the composer's
+    /// own sources (tray chips, `@` mentions) and of those that carry an image.
+    /// The dated hand-over and the retained archive come from this controller.
     func chosenImageCount(
         question: String,
-        freshSourceCount: Int,
-        freshImageCount: Int,
+        freshSourceIDs: [String],
+        freshImageIDs: [String],
         screenImageCount: Int
     ) -> Int {
-        let decision = ContextPolicy.standard.resolve(ChatContextRequestBuilder.request(
-            question: question,
-            currentSourceCount: freshSourceCount,
-            historyTurnCount: entries.filter { $0.role == "user" }.count,
-            historyHasSources: entries.contains { $0.role == "user" && !$0.attachments.isEmpty },
-            broaderToggleOn: broaderSearchEnabled
-        ))
+        let (wire, freshIDs) = previewWire(question: question, freshSourceIDs: freshSourceIDs)
+        let freshImages = Set(freshImageIDs).intersection(freshIDs)
+        let retainedImageIDs = retainedSources.compactMap { ref -> String? in
+            guard ref.payload?.normalizedImage?.isEmpty == false else { return nil }
+            return Self.sourceID(ref)
+        }
         let referenceImages: Int
-        if freshSourceCount == 0 {
+        switch wire.choice {
+        case .none:
+            referenceImages = 0
+        case .fresh:
+            referenceImages = freshImages.count
+        case .retained:
             referenceImages = retainedImageCount
-        } else if decision.includesHistory {
-            referenceImages = freshImageCount + retainedImageCount
-        } else {
-            referenceImages = freshImageCount
+        case .freshAndRetained:
+            // The wire keeps the fresh copy and drops a retained source with the
+            // same id, so its image is not retransmitted. Counting both would
+            // promise the model two images and send one.
+            referenceImages = freshImages.count + retainedImageIDs.filter { !freshIDs.contains($0) }.count
         }
         return referenceImages + screenImageCount
     }
@@ -546,7 +573,8 @@ final class LLMController {
         routeResolver: (@MainActor (ChatModelSelection, Int, Bool) -> Result<ChatRouteConfiguration, ChatRouteBlocker>)? = nil,
         makeToolExecutor: (@MainActor (Bool, Bool) -> ToolExecutor)? = nil,
         modeStore: ModeStore? = nil,
-        turnLogger: ((VaultLogStore.TurnRecord) -> Void)? = nil
+        turnLogger: ((VaultLogStore.TurnRecord) -> Void)? = nil,
+        ambientScreenProvider: (@MainActor () -> String?)? = nil
     ) {
         self.request = request
         self.injectedStore = chatStore
@@ -556,6 +584,7 @@ final class LLMController {
         self.makeToolExecutor = makeToolExecutor
         self.injectedModeStore = modeStore
         self.turnLogger = turnLogger
+        self.ambientScreenProvider = ambientScreenProvider
         let smartDefault = UserDefaults.standard.bool(forKey: LLMSettingsDefaults.smartModeKey)
         smartMode = smartDefault
         chatSelection = ChatModelSelection(
@@ -648,31 +677,37 @@ final class LLMController {
         // The payloads the user handed over for THIS turn. Retained sources
         // from earlier turns are already in the store and are not rewritten.
         let freshPayloads = freshReferences.compactMap(\.payload)
-        // The policy resolves on THIS TURN's sources, so a fresh source is
-        // source-first. Retained history is admitted only when the question
-        // asks for it, or when there is no fresh source at all. This is
-        // resolved BEFORE the wire set is composed, so the receipt and the
-        // wire can never disagree.
-        let decision = ContextPolicy.standard.resolve(ChatContextRequestBuilder.request(
+        // The wire set and the policy decision are composed together, on the
+        // one set the turn will actually carry: a fresh source, or the retained
+        // archive when nothing new came. The receipt, the tool policy, the
+        // composer preview and the prompt all read this value, so none of them
+        // can describe a source set the request did not send.
+        let wire = ChatWireSources.compose(
             question: userInput,
-            currentSourceCount: freshReferences.count,
+            freshSourceCount: freshReferences.count,
+            retainedSourceCount: retainedSources.count,
             historyTurnCount: entries.filter { $0.role == "user" }.count,
             historyHasSources: entries.contains { $0.role == "user" && !$0.attachments.isEmpty },
             broaderToggleOn: broaderSearchEnabled
-        ))
-        // The wire set: a follow-up with nothing new reads the retained
-        // archive; a fresh source is answered from itself unless the question
-        // explicitly asks to include earlier turns. Fresh first for budget, and
-        // an old image is never retransmitted on a fresh-source-scope turn.
+        )
+        let decision = wire.decision
+        // Fresh first for budget, and an old image is never retransmitted on a
+        // fresh-source-scope turn.
         let sentReferences: [ReferencedDocument]
-        if freshReferences.isEmpty {
-            sentReferences = retainedSources
-        } else if decision.includesHistory {
-            sentReferences = Self.deduped(freshReferences + retainedSources)
-        } else {
-            sentReferences = freshReferences
+        switch wire.choice {
+        case .none: sentReferences = []
+        case .fresh: sentReferences = freshReferences
+        case .retained: sentReferences = retainedSources
+        case .freshAndRetained: sentReferences = Self.deduped(freshReferences + retainedSources)
         }
         prepared.references = sentReferences
+        // What the turn carries, by origin, for the prompt's own sentence: a
+        // newly attached source and one retained from earlier in this chat are
+        // named differently, and neither claims the other's origin.
+        let sourceContext = TurnSourceContext(
+            freshCount: wire.carriesFreshSources ? freshReferences.count : 0,
+            retainedCount: wire.carriesRetainedSources ? retainedSources.count : 0
+        )
         // The screen tools are a separate permission: only the user's own
         // wording about the screen opens them on a source-first turn.
         let toolPolicy = ChatToolPolicy(
@@ -698,6 +733,7 @@ final class LLMController {
                 initialTrace: prepared.references.isEmpty ? nil : label,
                 attachments: Self.attachmentRefs(references: prepared.references),
                 sourcePayloads: freshPayloads,
+                sourceContext: sourceContext,
                 enqueuedAt: enqueuedAt,
                 consumedDatedSources: datedSources,
                 toolPolicy: toolPolicy,
@@ -719,6 +755,7 @@ final class LLMController {
                 referencedDocuments: prepared.references,
                 attachments: Self.attachmentRefs(references: prepared.references),
                 sourcePayloads: freshPayloads,
+                sourceContext: sourceContext,
                 enqueuedAt: enqueuedAt,
                 consumedDatedSources: datedSources,
                 toolPolicy: toolPolicy,
@@ -757,6 +794,7 @@ final class LLMController {
                 initialTrace: retrieval.trace,
                 attachments: Self.attachmentRefs(references: prepared.references),
                 sourcePayloads: freshPayloads,
+                sourceContext: sourceContext,
                 initialTools: [ToolTraceParser.searchLine(resultCount: retrieval.results.count, scoped: scope != nil)],
                 initialSources: Self.chatSources(retrieval),
                 retrievalSeconds: Double(retrieval.elapsedMS) / 1000,
@@ -1001,23 +1039,53 @@ final class LLMController {
         sendTask?.cancel()
         sendTask = nil
         request.cancel()
-        stopCheckpointing()
+        // The checkpoint write may already be inside the store. Keep its task
+        // so the terminal write can wait for it instead of racing it.
+        let checkpoint = stopCheckpointing()
         streaming = false
         reasoning = false
         toolStatus = nil
+        // The text the user could read at Stop is the answer: read it before
+        // the entry is pruned, and keep it in the stored turn.
+        let stopped = pendingTurn
+        let partial = stopped.flatMap { turn in entries.first { $0.id == turn.id }?.text } ?? ""
+        pendingTurn = nil
         pruneTrailingEmptyAssistant()
         streamingEntryID = nil
         // A stopped answer is a turn too, with status cancelled, so the
         // question is never left in the thread without its outcome.
-        let stopped = pendingTurn
-        pendingTurn = nil
         if let stopped {
-            Task { await self.persistTurnResult(stopped, text: "", status: .cancelled, error: nil) }
+            persistTerminalTurn(stopped, text: partial, status: .cancelled, error: nil, after: checkpoint)
+        }
+    }
+
+    /// The one way a turn's final answer is filed: wait for any checkpoint that
+    /// is still inside the store, then write the terminal row.
+    ///
+    /// The order matters. A checkpoint that lands after the terminal write
+    /// would put the turn back to `.streaming`; the store refuses that, and this
+    /// keeps it from happening in the first place.
+    private func persistTerminalTurn(
+        _ pending: PendingTurn,
+        text: String,
+        status: RequestStatus,
+        error: String?,
+        after checkpoint: Task<Void, Never>?
+    ) {
+        Task { @MainActor [weak self] in
+            await checkpoint?.value
+            await self?.persistTurnResult(pending, text: text, status: status, error: error)
         }
     }
 
     /// Cancel any in-flight stream and drop the in-memory entries without
     /// touching persisted chat_messages.
+    ///
+    /// The active retained-source archive goes with them. It is context for the
+    /// chat that is ending, not saved history: the thread and its attachment
+    /// bytes stay on disk, and a resumed chat rehydrates only its own sources.
+    /// Leaving it here is what used to put a previous chat's documents and
+    /// images on the wire after `/new` or at the start of the next recording.
     func resetMemory() {
         cancel()
         clearPendingScreenContext()
@@ -1026,9 +1094,17 @@ final class LLMController {
         lastError = nil
         lastErrorIsAuth = false
         lastErrorTurnID = nil
+        clearRetainedSources()
         // The chat's identity changed: an in-flight send may no longer write
         // into it or start a provider call on its behalf.
         generation &+= 1
+    }
+
+    /// Drop the active retained-source archive and its notice. The saved thread
+    /// and its assets are untouched.
+    private func clearRetainedSources() {
+        retainedSources = []
+        retainedSourceNotice = nil
     }
 
     /// Start a new chat: `/new` and `/clear`.
@@ -1129,6 +1205,12 @@ final class LLMController {
         guard store.contains(id: id) else { return nil }
         let thread = try await store.load(id: id)
         chatThread = thread
+        // Adopting a thread here does not swap the live entries, so the active
+        // source archive must not survive pointing at the chat that was just
+        // left behind. Drop it: no stale document or image can then ride a turn
+        // filed into the adopted thread. The thread and its own bytes stay on
+        // disk; `resumeChat(id:)` is the path that restores them.
+        clearRetainedSources()
         return thread
     }
 
@@ -1199,7 +1281,7 @@ final class LLMController {
             document: retained.document
         )
         return ReferencedDocument(
-            path: retained.path ?? "Attached file: \(retained.name)",
+            path: retained.path ?? ExternalDocumentAttachment.attachedFilePrefix + retained.name,
             content: retained.extractedText ?? "",
             document: retained.document,
             payload: payload
@@ -1210,7 +1292,7 @@ final class LLMController {
     /// turn was just sent, so a follow-up reads the same bytes with no reread.
     private static func referencedDocument(from payload: ChatSourcePayload) -> ReferencedDocument {
         ReferencedDocument(
-            path: payload.path ?? "Attached file: \(payload.name)",
+            path: payload.path ?? ExternalDocumentAttachment.attachedFilePrefix + payload.name,
             content: payload.extractedText ?? "",
             document: payload.document,
             payload: payload
@@ -1776,9 +1858,12 @@ final class LLMController {
         }
     }
 
-    private func stopCheckpointing() {
-        checkpointTask?.cancel()
+    @discardableResult
+    private func stopCheckpointing() -> Task<Void, Never>? {
+        let task = checkpointTask
+        task?.cancel()
         checkpointTask = nil
+        return task
     }
 
     /// One checkpoint write. Silent when there is nothing to say yet, and loud
@@ -1951,6 +2036,9 @@ final class LLMController {
         initialTrace: String? = nil,
         attachments: [ChatAttachmentRef] = [],
         sourcePayloads: [ChatSourcePayload] = [],
+        /// What the turn's sources are, by origin, for the prompt's own
+        /// sentence. Empty when the turn carries no source.
+        sourceContext: TurnSourceContext = TurnSourceContext(),
         initialTools: [ChatToolLine] = [],
         initialSources: [ChatSource] = [],
         retrievalSeconds: Double? = nil,
@@ -2019,9 +2107,7 @@ final class LLMController {
                 return LLMImage(jpegData: data, mimeType: payload.normalizedImageMimeType ?? "image/jpeg")
             }
             : []
-        let ambientScreenContext = SessionCoordinator.shared.isRunning
-            ? VisualContextTrail.shared.recentPromptContext()
-            : nil
+        let ambientScreenContext = ambientScreenRead()
         let screenContext = [ambientScreenContext, manualScreenContext]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -2052,7 +2138,8 @@ final class LLMController {
             workstreamScopePath: MeetingContextStore.shared.workstreamScopePath,
             hasWorkstreamName: MeetingContextStore.shared.workstreamName != nil,
             priorSuggestions: priorSuggestions(action: action),
-            hasReferencedDocuments: !referencedDocuments.isEmpty,
+            sourceContext: sourceContext,
+            externalRetrievalAllowed: toolPolicy.allowsExternalRetrieval,
             retrievalContext: retrievalContext,
             baseSystemPrompt: basePrompt,
             listenerSystemSuffix: PromptStore.shared.text(.listenerSystemSuffix),
@@ -2070,7 +2157,7 @@ final class LLMController {
 
         // Turn records for the thread: what went with the question, and what
         // the answer read before the model ran. Display only.
-        let ambientScreenRead = !(ambientScreenContext?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let ambientTrailPresent = !(ambientScreenContext?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         var sentAttachments = attachments
         if screenAttached, !sentAttachments.contains(where: { $0.kind == .screen }) {
             sentAttachments.append(ChatAttachmentRef(kind: .screen, name: "Screenshot"))
@@ -2079,7 +2166,7 @@ final class LLMController {
             transcriptMinutes: turn.contextUsed ? transcriptWindowMinutes(fullWindow: fullTranscript, maxSeconds: transcriptSeconds) : nil,
             wholeTranscript: fullTranscript,
             screenRead: screenAttached,
-            screenFromTrail: ambientScreenRead
+            screenFromTrail: ambientTrailPresent
         )
         for line in initialTools {
             answerTools = ChatTurnRecordBuilder.appending(line, to: answerTools)
@@ -2292,6 +2379,9 @@ final class LLMController {
                             self.finalizeAssistantTurn(streamingEntryID: thisEntryID)
                         case let .error(message, isAuth):
                             guard self.streamingEntryID == thisEntryID else { return }
+                            // The partial the user could read is the answer to
+                            // this failed turn; keep it in the stored row.
+                            let partial = self.entries.first { $0.id == thisEntryID }?.text ?? ""
                             self.lastError = message
                             self.lastErrorIsAuth = isAuth
                             self.streaming = false
@@ -2301,13 +2391,13 @@ final class LLMController {
                             // The failed question stays; its error draws under it.
                             self.lastErrorTurnID = self.entries.last?.role == "user" ? self.entries.last?.id : nil
                             self.streamingEntryID = nil
-                            self.stopCheckpointing()
+                            let checkpoint = self.stopCheckpointing()
                             // A failed answer is still a turn: store it with its
                             // error so the thread does not lose the question.
                             let failed = self.pendingTurn
                             self.pendingTurn = nil
                             if let failed {
-                                Task { await self.persistTurnResult(failed, text: "", status: .failed, error: message) }
+                                self.persistTerminalTurn(failed, text: partial, status: .failed, error: message, after: checkpoint)
                             }
                             RTILog.log("LLM stream error: \(message)", category: .llm)
                         }
@@ -2326,12 +2416,12 @@ final class LLMController {
         // in the durable thread with its receipt and tool rounds.
         let finished = pendingTurn
         let finalText = entries.first { $0.id == thisEntryID }?.text ?? ""
-        stopCheckpointing()
+        let checkpoint = stopCheckpointing()
         logCompletedTurn(thisEntryID)
         pruneTrailingEmptyAssistant()
         streamingEntryID = nil
         if let finished {
-            Task { await self.persistTurnResult(finished, text: finalText, status: .completed, error: nil) }
+            persistTerminalTurn(finished, text: finalText, status: .completed, error: nil, after: checkpoint)
         }
     }
 
@@ -2468,7 +2558,7 @@ final class LLMController {
         // collapses it to a name for persistence to re-read later.
         var references = attachments.map {
             ReferencedDocument(
-                path: $0.path ?? "Attached file: \($0.name)",
+                path: $0.wirePath,
                 content: $0.text,
                 document: $0.document,
                 payload: ChatSourcePayload(from: $0)
@@ -2819,30 +2909,87 @@ extension LLMController {
         }
     }
 
+    /// The ambient OCR trail this turn carries, or nil when nothing is
+    /// recording. The send and the composer's label read this one function, so
+    /// a screen block on the wire is always named before Send.
+    private func ambientScreenRead() -> String? {
+        if let ambientScreenProvider { return ambientScreenProvider() }
+        return SessionCoordinator.shared.isRunning
+            ? VisualContextTrail.shared.recentPromptContext()
+            : nil
+    }
+
     /// Compact, user-facing description of the context the next assistant turn
     /// can see. Mirrors `performSend` without exposing prompt internals.
-    func contextPreviewLabels() -> [String] {
-        var labels: [String] = []
-        let hasTranscript = SessionCoordinator.shared.liveEntries.contains {
-            $0.translationStatus != "translation"
-                && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    ///
+    /// It takes the same two inputs the image preview and the withheld notice
+    /// take, the actual draft `question` and the composer's fresh source ids, and
+    /// reads the same `previewWire`. A comparison question therefore names the
+    /// retained sources it will send, and a pending dated hand-over is treated as
+    /// the fresh source it is. A count alone could not know either.
+    func contextPreviewLabels(question: String, freshSourceIDs: [String]) -> [String] {
+        let (wire, _) = previewWire(question: question, freshSourceIDs: freshSourceIDs)
+        return ContextDisclosureLabels.make(ContextDisclosureInput(
+            hasLiveTranscript: SessionCoordinator.shared.liveEntries.contains {
+                $0.translationStatus != "translation"
+                    && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            },
+            workstreamName: MeetingContextStore.shared.workstreamName,
+            hasMeetingNote: !MeetingContextStore.shared.note
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            hasBrief: MeetingContextStore.shared.briefContext != nil,
+            glossaryEntryCount: GlossaryStore.shared.entries.count,
+            hasPendingScreenCapture: pendingScreenContext != nil,
+            // The same read `performSend` makes, so the label and the screen
+            // block cannot disagree.
+            hasAmbientScreenRead: ambientScreenRead().map {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            } == true,
+            retainedSourceNames: wire.carriesRetainedSources ? retainedSourceNames : [],
+            datedSourceName: pendingDatedSourceName
+        ))
+    }
+
+    /// The chat's retained sources, by display name, for the composer's own
+    /// footnote. Never a path: the composer names sources the way the chips do.
+    var retainedSourceNames: [String] {
+        retainedSources.map { source in
+            let name = source.document?.name ?? (source.path as NSString).lastPathComponent
+            return name.isEmpty ? (source.path as NSString).lastPathComponent : name
         }
-        if hasTranscript { labels.append("Live transcript") }
-        if let workstream = MeetingContextStore.shared.workstreamName, !workstream.isEmpty {
-            labels.append(workstream)
+    }
+
+    /// Why the next turn cannot reach the vault, in one line, or nil when it
+    /// can (or carries no source at all). The composer shows it before Send and
+    /// points at the existing Broader Search row; nothing is hidden, and the
+    /// tool policy itself is unchanged.
+    func vaultWithheldNotice(question: String, freshSourceIDs: [String]) -> String? {
+        let (wire, _) = previewWire(question: question, freshSourceIDs: freshSourceIDs)
+        guard wire.carriesSources, !wire.decision.allowsExternalRetrieval else { return nil }
+        return ContextDisclosureLabels.vaultWithheldLine
+    }
+
+    /// The wire the composer state would send, from ONE id set: the composer's
+    /// own fresh sources plus the dated hand-over this controller holds. The
+    /// image preview, the withheld notice and the context labels all read this,
+    /// so the preview cannot compose a different source set than the send.
+    private func previewWire(
+        question: String,
+        freshSourceIDs: [String]
+    ) -> (wire: ChatWireSources, freshIDs: Set<String>) {
+        var ids = freshSourceIDs
+        if let dated = pendingDatedSources.first {
+            ids.append(Self.sourceID(dated))
         }
-        if !MeetingContextStore.shared.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            labels.append("Meeting note")
-        }
-        if MeetingContextStore.shared.briefContext != nil {
-            labels.append("Brief")
-        }
-        if !GlossaryStore.shared.entries.isEmpty {
-            labels.append("Glossary")
-        }
-        if pendingScreenContext != nil {
-            labels.append("Screen OCR")
-        }
-        return labels
+        let freshIDs = Set(ids)
+        let wire = ChatWireSources.compose(
+            question: question,
+            freshSourceCount: freshIDs.count,
+            retainedSourceCount: retainedSources.count,
+            historyTurnCount: entries.filter { $0.role == "user" }.count,
+            historyHasSources: entries.contains { $0.role == "user" && !$0.attachments.isEmpty },
+            broaderToggleOn: broaderSearchEnabled
+        )
+        return (wire, freshIDs)
     }
 }

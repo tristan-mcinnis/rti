@@ -23,6 +23,13 @@ public struct PromptContext {
     /// Full text of any vault documents the user explicitly referenced with
     /// `@...` in the composer for this one turn.
     public var referencedDocuments: String?
+    /// What the referenced documents are, by origin: attached for this turn, or
+    /// retained from earlier in this chat. Drives the block's own header, so a
+    /// retained source is never described as new.
+    public var sourceContext: TurnSourceContext
+    /// The turn's tool policy: the documents header must not forbid a search
+    /// the offered tools permit.
+    public var externalRetrievalAllowed: Bool
 
     public init(
         baseSystemPrompt: String = "",
@@ -32,7 +39,9 @@ public struct PromptContext {
         referenceText: String? = nil,
         referenceModeName: String? = nil,
         screenContext: String? = nil,
-        referencedDocuments: String? = nil
+        referencedDocuments: String? = nil,
+        sourceContext: TurnSourceContext = TurnSourceContext(),
+        externalRetrievalAllowed: Bool = false
     ) {
         self.baseSystemPrompt = baseSystemPrompt
         self.meetingContext = meetingContext
@@ -42,6 +51,8 @@ public struct PromptContext {
         self.referenceModeName = referenceModeName
         self.screenContext = screenContext
         self.referencedDocuments = referencedDocuments
+        self.sourceContext = sourceContext
+        self.externalRetrievalAllowed = externalRetrievalAllowed
     }
 
     public var hasContent: Bool {
@@ -125,13 +136,18 @@ public enum PromptBuilder {
 
         if let referencedDocuments = context.referencedDocuments?.trimmingCharacters(in: .whitespacesAndNewlines),
            !referencedDocuments.isEmpty {
+            // The block's header comes from the same source origins and the same
+            // policy as the question's own sentence (AssistantTurnBuilder), so a
+            // retained source is never called newly attached here and the
+            // header cannot forbid a search the tool list permits.
+            let header = TurnSourceInstruction.documentsHeader(
+                for: context.sourceContext,
+                externalRetrievalAllowed: context.externalRetrievalAllowed
+            ) ?? "The following document(s) are included with this question."
             msgs.append(LLMMessage(
                 role: "system",
                 content: """
-                The user explicitly attached or @mentioned the following document(s) for this turn. \
-                Treat them as the authoritative source material for the question. Do not search the vault or \
-                replace them with broader retrieved sources unless the user explicitly asks you to compare, \
-                verify, or look beyond these documents.
+                \(header)
                 ---
                 \(referencedDocuments)
                 ---

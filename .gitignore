@@ -9,6 +9,7 @@ DerivedData/
 .deriveddata/
 .deriveddata-tests/
 .deriveddata-acceptance/
+.deriveddata-publish/
 build/
 *.xcuserdatad/
 xcuserdata/

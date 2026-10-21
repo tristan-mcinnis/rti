@@ -15,13 +15,40 @@ import Foundation
 ///     is a sibling directory and so is excluded for free.
 ///   • The scan runs off the main actor; the pure `rank` core is testable.
 enum VaultSearch {
-    struct Result: Equatable {
+    struct Result: Equatable, Sendable {
         let title: String
         /// Path relative to `databases/`, e.g. `projects/acmewear/00-status.md`.
         let relativePath: String
         let modified: Date
         let excerpt: String
         let score: Int
+    }
+
+    /// A citeable handle for one retrieved document. `id` is the short handle
+    /// the model is told to cite (`S1`, `S2`, …); the title, path and label
+    /// always come from the retrieval record itself, never from model text.
+    struct Citation: Equatable, Sendable {
+        let id: String
+        let title: String
+        let relativePath: String
+
+        /// Compact label for a card's source row: the document's file name.
+        var label: String {
+            URL(fileURLWithPath: relativePath).lastPathComponent
+        }
+    }
+
+    /// One retrieval pass in structured form: the ranked records, the handles a
+    /// citation may use, and the same human-readable material the model reads.
+    /// Both halves are produced together, so a caller never has to parse a
+    /// citation back out of the display string.
+    struct Retrieval: Equatable, Sendable {
+        let results: [Result]
+        let citations: [Citation]
+        let formatted: String
+        let scopedHit: Bool
+
+        var isEmpty: Bool { results.isEmpty }
     }
 
     /// Directories under `databases/` that are noise for a knowledge query:
@@ -62,9 +89,27 @@ enum VaultSearch {
     /// matches does the search broaden to the whole vault — so "what did Group
     /// One say about their favourite store" lands on this project's transcript.
     static func searchFormatted(query: String, scopeRelativePath: String? = nil) async -> String {
+        await retrieve(query: query, scopeRelativePath: scopeRelativePath).formatted
+    }
+
+    /// Structured form of a search: the ranked records, their citeable handles,
+    /// and the material the model reads, from one pass. `citeable` prints each
+    /// document's handle in the material so a citation names an exact ID instead
+    /// of a document name the model types from memory. Pass `citeable: false`
+    /// (the default, and what `searchFormatted` does) for the existing format.
+    static func retrieve(
+        query: String,
+        scopeRelativePath: String? = nil,
+        citeable: Bool = false
+    ) async -> Retrieval {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return "No query was provided. Pass a short phrase describing what to look for."
+            return Retrieval(
+                results: [],
+                citations: [],
+                formatted: "No query was provided. Pass a short phrase describing what to look for.",
+                scopedHit: false
+            )
         }
         // Keyword scan. Scoped first; if the project has no match, broaden to
         // the whole notes folder.
@@ -74,7 +119,21 @@ enum VaultSearch {
             inScope = false
             results = await grep(query: trimmed, scopeRelativePath: nil)
         }
-        return format(results, query: trimmed, scopedHit: inScope && !results.isEmpty)
+        let scopedHit = inScope && !results.isEmpty
+        return Retrieval(
+            results: results,
+            citations: citations(for: results),
+            formatted: format(results, query: trimmed, scopedHit: scopedHit, citeable: citeable),
+            scopedHit: scopedHit
+        )
+    }
+
+    /// Assign the citeable handles in rank order. Kept beside `format` so the
+    /// printed handle and the acceptable handle can never drift apart.
+    static func citations(for results: [Result]) -> [Citation] {
+        results.enumerated().map { index, result in
+            Citation(id: "S\(index + 1)", title: result.title, relativePath: result.relativePath)
+        }
     }
 
     /// Async wrapper over the synchronous `search` core, off the main thread.
@@ -309,19 +368,30 @@ enum VaultSearch {
         return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : url.lastPathComponent
     }
 
-    private static func format(_ results: [Result], query: String, scopedHit: Bool = false) -> String {
+    /// Render the material the model reads. Internal rather than private so the
+    /// citeable and plain renderings can be tested without touching the disk.
+    static func format(
+        _ results: [Result],
+        query: String,
+        scopedHit: Bool = false,
+        citeable: Bool = false
+    ) -> String {
         guard !results.isEmpty else {
             return "No vault documents matched \"\(query)\". The knowledge base may not cover this — try different or broader terms, or rely on the live transcript."
         }
+        let handles = citations(for: results)
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyy-MM-dd"
         let focus = scopedHit ? " (focused on this meeting's project)" : ""
         var out = "Found \(results.count) relevant vault document\(results.count == 1 ? "" : "s")\(focus) for \"\(query)\":\n"
         for (i, r) in results.enumerated() {
-            out += "\n\(i + 1). \(r.title) (\(r.relativePath), updated \(stamp.string(from: r.modified)))"
+            let handle = citeable ? "[\(handles[i].id)] " : ""
+            out += "\n\(i + 1). \(handle)\(r.title) (\(r.relativePath), updated \(stamp.string(from: r.modified)))"
             if !r.excerpt.isEmpty { out += "\n   \(r.excerpt)" }
         }
-        out += "\n\nThese are from the user's knowledge vault. Cite the document name when you use one; say so if none actually answers the question."
+        out += citeable
+            ? "\n\nThese are from the user's knowledge vault. Cite one only by its bracketed ID, exactly as shown; say so if none actually answers the question."
+            : "\n\nThese are from the user's knowledge vault. Cite the document name when you use one; say so if none actually answers the question."
         return out
     }
 }

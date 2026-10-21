@@ -13,7 +13,12 @@ enum AssistantTurnBuilder {
         let workstreamScopePath: String?
         let hasWorkstreamName: Bool
         let priorSuggestions: String
-        let hasReferencedDocuments: Bool
+        /// What this turn carries, by origin: attached now, or retained from
+        /// earlier in this chat. Drives the source instruction's wording.
+        let sourceContext: TurnSourceContext
+        /// The tool policy's own answer for this turn, so the prompt never
+        /// forbids a search the offered tools permit.
+        let externalRetrievalAllowed: Bool
         let retrievalContext: String?
         let baseSystemPrompt: String
         let listenerSystemSuffix: String
@@ -62,8 +67,11 @@ enum AssistantTurnBuilder {
         if !prior.isEmpty {
             fullContent += "\n\nYou already suggested the following earlier in this session — do NOT repeat or rephrase these; build on the newest conversation instead:\n\(prior)"
         }
-        if input.hasReferencedDocuments {
-            fullContent += "\n\nThe user explicitly attached source material for this turn. Answer directly from it. Do not search the vault or substitute unrelated sources unless the user explicitly asks for a comparison, broader lookup, or verification."
+        if let instruction = TurnSourceInstruction.text(
+            for: input.sourceContext,
+            externalRetrievalAllowed: input.externalRetrievalAllowed
+        ) {
+            fullContent += "\n\n\(instruction)"
         }
         if let retrievalContext = input.retrievalContext?.trimmingCharacters(in: .whitespacesAndNewlines), !retrievalContext.isEmpty {
             fullContent += "\n\n\(retrievalContext)\nUse these retrieved vault results when relevant. Cite the source path briefly when you rely on them. Do not narrate the search process or say you will do another search. If the retrieved results are not relevant enough, say that directly and ask for a project/client selection or a narrower term."
@@ -82,7 +90,9 @@ enum AssistantTurnBuilder {
             referenceText: input.referenceText,
             referenceModeName: input.referenceModeName,
             screenContext: input.screenContext,
-            referencedDocuments: input.referencedDocumentsText
+            referencedDocuments: input.referencedDocumentsText,
+            sourceContext: input.sourceContext,
+            externalRetrievalAllowed: input.externalRetrievalAllowed
         )
 
         var entries = input.existingEntries

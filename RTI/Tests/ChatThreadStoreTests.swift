@@ -506,6 +506,91 @@ final class ChatThreadStoreTests: XCTestCase {
         XCTAssertEqual(finished.turns.last?.request?.status, .completed)
     }
 
+    /// Stop, a provider failure, and `/new` mid-stream all file the turn with
+    /// the text the user could read. A checkpoint that ran first must not make
+    /// that impossible.
+    func testACancelledAndAFailedAnswerKeepTheTextTheyWereFiled() async throws {
+        let store = try store()
+        var conversation = try await store.thread(
+            id: "chat-1", title: nil, surface: .rtiCopilot, session: nil, appVersion: nil
+        )
+        conversation = try await store.appendTurn(to: conversation, turn: submittedTurn(text: "summarise this")).conversation
+
+        for status in [RequestStatus.cancelled, .failed] {
+            let turnID = UUID().uuidString
+            try await store.checkpoint(
+                conversationID: "chat-1",
+                turnID: turnID,
+                text: "Partial answer the user could read.",
+                startedAt: Date(),
+                model: nil
+            )
+            let checkpointed = try await store.load(id: "chat-1")
+            _ = try await store.appendTurn(
+                to: checkpointed,
+                turn: ChatThreadStore.SubmittedTurn(
+                    id: turnID,
+                    text: "Partial answer the user could read.",
+                    role: .assistant,
+                    request: RequestReceipt(status: status),
+                    error: status == .failed ? "HTTP 500" : nil
+                )
+            )
+            let reloaded = try await store.load(id: "chat-1")
+            let saved = try XCTUnwrap(reloaded.turns.last)
+            XCTAssertEqual(saved.request?.status, status)
+            XCTAssertEqual(
+                saved.text,
+                "Partial answer the user could read.",
+                "a \(status.rawValue) turn must keep the partial answer the user read"
+            )
+        }
+    }
+
+    /// A checkpoint already inside the store when the terminal write landed
+    /// must not put the turn back to `.streaming` or rewrite its text. The
+    /// terminal outcome is final, whichever write is last.
+    func testALateCheckpointCannotRegressATerminalTurn() async throws {
+        let store = try store()
+        var conversation = try await store.thread(
+            id: "chat-1", title: nil, surface: .rtiCopilot, session: nil, appVersion: nil
+        )
+        conversation = try await store.appendTurn(to: conversation, turn: submittedTurn(text: "summarise this")).conversation
+
+        let turnID = UUID().uuidString
+        try await store.checkpoint(
+            conversationID: "chat-1",
+            turnID: turnID,
+            text: "Partial answer.",
+            startedAt: Date(),
+            model: nil
+        )
+        _ = try await store.appendTurn(
+            to: conversation,
+            turn: ChatThreadStore.SubmittedTurn(
+                id: turnID,
+                text: "Partial answer.",
+                role: .assistant,
+                request: RequestReceipt(status: .cancelled)
+            )
+        )
+
+        // The checkpoint that was already in flight when Stop was pressed.
+        try await store.checkpoint(
+            conversationID: "chat-1",
+            turnID: turnID,
+            text: "Partial answer, one more token.",
+            startedAt: Date(),
+            model: nil
+        )
+
+        let reloaded = try await store.load(id: "chat-1")
+        let saved = try XCTUnwrap(reloaded.turns.last)
+        XCTAssertEqual(saved.request?.status, .cancelled, "a finished turn never goes back to streaming")
+        XCTAssertEqual(saved.text, "Partial answer.", "nor is its text rewritten by a stale checkpoint")
+        XCTAssertEqual(reloaded.turns.count, 2, "the checkpoint does not add a row")
+    }
+
     func testAProcessDeathLeavesAnInterruptedTurn() async throws {
         let store = try store()
         let conversation = try await store.thread(

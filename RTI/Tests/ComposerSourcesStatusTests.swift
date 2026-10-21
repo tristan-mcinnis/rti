@@ -52,6 +52,33 @@ final class ComposerSourcesStatusTests: XCTestCase {
         XCTAssertEqual(status.notice, "Vault search fell back to the keyword scan: the index was slow")
     }
 
+    /// A source-grounded turn withholds the vault tools. The composer says so
+    /// before Send and names the existing widening control; the policy itself
+    /// is unchanged.
+    func testAWithheldVaultSearchIsSaidOutLoud() {
+        let status = ComposerSourcesStatus(
+            vaultWithheldNotice: "Vault search off while this chat uses attached sources. Choose Broader Search to search the vault."
+        )
+        XCTAssertEqual(
+            status.notice,
+            "Vault search off while this chat uses attached sources. Choose Broader Search to search the vault."
+        )
+    }
+
+    func testTheWithholdLineSitsBeforeTheImageRouteAndTheRetrievalState() {
+        let status = ComposerSourcesStatus(
+            retainedNotice: "a saved source is unreadable",
+            imageRouteLabel: "Images stay on this Mac; text only",
+            retrievalNotice: "Vault search found nothing for that question.",
+            vaultWithheldNotice: "Vault search off while this chat uses attached sources. Choose Broader Search to search the vault."
+        )
+        let expected = "a saved source is unreadable"
+            + " · Vault search off while this chat uses attached sources. Choose Broader Search to search the vault."
+            + " · Images stay on this Mac; text only"
+            + " · Vault search found nothing for that question."
+        XCTAssertEqual(status.notice, expected)
+    }
+
     func testAnEmptyControllerNoticeAddsNothing() {
         let status = ComposerSourcesStatus(retainedNotice: "", retrievalNotice: "")
         XCTAssertNil(status.notice)

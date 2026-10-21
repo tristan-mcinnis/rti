@@ -10,9 +10,13 @@ final class AssistantTurnBuilderTests: XCTestCase {
         hasWorkstream: Bool = false,
         listenerMode: Bool = false,
         images: [LLMImage] = [],
-        referencedDocumentsText: String? = nil
+        referencedDocumentsText: String? = nil,
+        sourceContext: TurnSourceContext? = nil,
+        externalRetrievalAllowed: Bool = false
     ) -> AssistantTurnBuilder.Output {
-        AssistantTurnBuilder.build(.init(
+        let sources = sourceContext
+            ?? TurnSourceContext(freshCount: referencedDocumentsText == nil ? 0 : 1)
+        return AssistantTurnBuilder.build(.init(
             userInput: "What should I say?",
             action: action,
             transcript: transcript,
@@ -21,7 +25,8 @@ final class AssistantTurnBuilderTests: XCTestCase {
             workstreamScopePath: scope,
             hasWorkstreamName: hasWorkstream,
             priorSuggestions: "Ask about timing",
-            hasReferencedDocuments: referencedDocumentsText != nil,
+            sourceContext: sources,
+            externalRetrievalAllowed: externalRetrievalAllowed,
             retrievalContext: "Vault search ran for this question (searched: 0 results).",
             baseSystemPrompt: "Base system",
             listenerSystemSuffix: "Listener suffix",
@@ -86,5 +91,36 @@ final class AssistantTurnBuilderTests: XCTestCase {
 
         XCTAssertTrue(latest.contains("The user explicitly attached source material"))
         XCTAssertTrue(systemMessages.contains("Doc body"))
+    }
+
+    /// A bare follow-up re-sends this chat's retained sources. The prompt must
+    /// say so, and must not call them newly attached for this turn.
+    func testARetainedSourceIsNotDescribedAsAttachedForThisTurn() {
+        let output = build(
+            referencedDocumentsText: "Doc body",
+            sourceContext: TurnSourceContext(freshCount: 0, retainedCount: 1)
+        )
+        let latest = output.apiMessages.last?.content ?? ""
+        XCTAssertFalse(latest.contains("for this turn"))
+        XCTAssertTrue(latest.contains("earlier turns"))
+    }
+
+    /// When the user widened the search, the prompt must not forbid what the
+    /// tool list permits.
+    func testAWidenedSearchIsNotForbiddenByThePrompt() {
+        let output = build(
+            referencedDocumentsText: "Doc body",
+            sourceContext: TurnSourceContext(freshCount: 0, retainedCount: 1),
+            externalRetrievalAllowed: true
+        )
+        let latest = output.apiMessages.last?.content ?? ""
+        XCTAssertFalse(latest.contains("Do not search the vault"))
+        XCTAssertTrue(latest.contains("the vault tools are available too"))
+    }
+
+    func testNoSourceMeansNoSourceSentence() {
+        let latest = build().apiMessages.last?.content ?? ""
+        XCTAssertFalse(latest.contains("attached source material"))
+        XCTAssertFalse(latest.contains("Do not search the vault"))
     }
 }

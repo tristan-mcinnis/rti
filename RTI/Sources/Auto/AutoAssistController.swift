@@ -145,10 +145,14 @@ final class AutoAssistController {
         // what's being discussed right now, so a RECALL card can be real. Only
         // when a project is picked (scope present) — keeps generic meetings cheap.
         var vaultMaterial: String?
+        var citations: [VaultSearch.Citation] = []
         if let scope = MeetingContextStore.shared.workstreamScopePath {
-            let found = await VaultSearch.searchFormatted(query: window, scopeRelativePath: scope)
+            let found = await VaultSearch.retrieve(query: window, scopeRelativePath: scope, citeable: true)
             // Only inject a genuine hit, not the "nothing matched" sentinel.
-            if found.hasPrefix("Found ") { vaultMaterial = found }
+            if !found.isEmpty {
+                vaultMaterial = found.formatted
+                citations = found.citations
+            }
         }
 
         let priorList: String = cards.isEmpty
@@ -161,6 +165,7 @@ final class AutoAssistController {
         }
         if let vaultMaterial {
             prompt += "\n\nRelevant project vault material for what's being discussed (use for RECALL/FLAG; cite the source; do not fabricate):\n---\n\(vaultMaterial)\n---"
+            prompt += "\n\nTo cite one of those documents, set \"sourceId\" on the card to its bracketed ID exactly as shown (for example \"S1\"). Only those IDs are accepted. A card with any other value, or none, shows no citation."
         }
         prompt += "\n\nRecent conversation window:\n\(window)"
 
@@ -169,18 +174,12 @@ final class AutoAssistController {
         ), !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         guard passGeneration == generation else { return nil }
 
-        let items = JSONExtractor.decodeArrayLenient(response, key: "cards", as: CardItem.self)
+        let items = JSONExtractor.decodeArrayLenient(response, key: "cards", as: AutoCardItem.self)
         let existing = Set(cards.map { Self.norm($0.text) })
         let fresh: [AutoAssistCard] = items.compactMap { item in
-            let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty, !existing.contains(Self.norm(text)) else { return nil }
-            return AutoAssistCard(
-                timestamp: Date(),
-                kind: AutoCardKind(raw: item.kind ?? "RECALL"),
-                text: text,
-                why: (item.why ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                source: Self.cleaned(item.source)
-            )
+            guard let card = AutoAssistCard.make(from: item, citations: citations),
+                  !existing.contains(Self.norm(card.text)) else { return nil }
+            return card
         }
         cards.append(contentsOf: fresh)
         unseenCount += fresh.count
@@ -192,21 +191,5 @@ final class AutoAssistController {
 
     private static func norm(_ s: String) -> String {
         s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func cleaned(_ s: String?) -> String? {
-        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !t.isEmpty, t.lowercased() != "null" else { return nil }
-        return t
-    }
-
-    /// Wire shape for one card. Everything but `text` is optional so a slightly
-    /// malformed item still decodes; the lenient array decoder drops only the
-    /// items it can't and keeps the rest of the batch.
-    private struct CardItem: Decodable {
-        let kind: String?
-        let text: String
-        let why: String?
-        let source: String?
     }
 }

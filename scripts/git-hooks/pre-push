@@ -1,0 +1,31 @@
+#!/bin/bash
+# Main-only publish guard, chained by the unchanged global pre-push hook.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+zero=0000000000000000000000000000000000000000
+expected=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ "$remote_ref" == "refs/heads/main" ]] || continue
+  if [[ "$local_sha" == "$zero" ]]; then
+    echo "Refusing deletion of main." >&2; exit 1
+  fi
+  if [[ "$remote_sha" != "$zero" ]] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+    echo "Refusing non-fast-forward main. Fetch and compare before retrying." >&2; exit 1
+  fi
+  expected="$local_sha"
+done
+[[ -n "$expected" ]] || exit 0
+if [[ "${SKIP_TESTS:-0}" == "1" ]]; then
+  echo "Refusing main publish with SKIP_TESTS=1." >&2; exit 1
+fi
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]] || [[ "$(git rev-parse HEAD)" != "$expected" ]]; then
+  echo "Refusing publish: main must match the clean checkout under test." >&2; exit 1
+fi
+sh scripts/scrub.sh
+xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug \
+  -derivedDataPath .deriveddata-publish test -only-testing:RTITests \
+  -only-testing:RTIRenderTests/ChatSourceLifecycleTests \
+  -only-testing:RTIRenderTests/ChatRuntimeIntegrationTests
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]] || [[ "$(git rev-parse HEAD)" != "$expected" ]]; then
+  echo "Refusing publish: checkout changed during verification." >&2; exit 1
+fi

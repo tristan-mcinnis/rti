@@ -183,6 +183,10 @@ struct ComposerRenderSeed {
     var retainedNotice: String?
     /// Stands in for `LLMController.retrievalDiagnostic`.
     var retrievalNotice: String?
+    /// Stands in for `LLMController.vaultWithheldNotice`: a chat whose attached
+    /// sources keep the vault tools withheld, so a proof can draw the exact
+    /// line without a vault or a provider.
+    var vaultWithheldNotice: String?
     /// Stands in for the resolved route, so a proof does not depend on the
     /// machine's credential store.
     var route: ComposerRoutePreview?
@@ -503,6 +507,7 @@ struct AssistantInputView: View {
     private let routeOverride: ComposerRoutePreview?
     private let retainedNoticeOverride: String?
     private let retrievalNoticeOverride: String?
+    private let vaultWithheldNoticeOverride: String?
     private let datedSourceNameOverride: String?
     private let availableHeight: CGFloat
 
@@ -537,6 +542,7 @@ struct AssistantInputView: View {
         routeOverride = seed.route
         retainedNoticeOverride = seed.retainedNotice
         retrievalNoticeOverride = seed.retrievalNotice
+        vaultWithheldNoticeOverride = seed.vaultWithheldNotice
         datedSourceNameOverride = seed.pendingDatedSourceName
     }
 
@@ -554,19 +560,32 @@ struct AssistantInputView: View {
         documents.compactMap(\.attachment)
     }
 
-    /// Images this turn would carry, derived with the SAME fresh-vs-retained
-    /// choice the controller makes: a fresh source turn counts only its own
-    /// images, a bare follow-up counts the retained archive, and an explicit
-    /// comparison counts both. The preview route and the frozen route agree.
+    /// Wire ids of the sources this turn attaches itself: the tray chips and
+    /// the `@` mentions. The controller adds the dated hand-over and the
+    /// retained archive, and applies the same dedup the send does.
+    private var freshSourceIDs: [String] {
+        readyAttachments.map(\.wireSourceID) + selectedMentionPaths
+    }
+
+    /// The subset of those ids that carries an image, so a source reattached
+    /// in a comparison is counted once rather than once per copy.
+    private var freshImageIDs: [String] {
+        readyAttachments
+            .filter { $0.normalizedImage?.data.isEmpty == false }
+            .map(\.wireSourceID)
+    }
+
+    /// Images this turn would carry, resolved by the controller with the SAME
+    /// fresh-vs-retained choice and the SAME dedup the send uses: a fresh source
+    /// turn counts only its own images, a bare follow-up counts the retained
+    /// archive, an explicit comparison counts both but a reattached source
+    /// once. The preview route and the frozen route agree.
     private var pendingImageCount: Int {
-        let tray = readyAttachments
-        let freshImageCount = tray.filter { $0.normalizedImage?.data.isEmpty == false }.count
         let screen = (pendingImageOverride ?? (llm.pendingScreenImage != nil)) ? 1 : 0
-        let freshSourceCount = tray.count + selectedMentionPaths.count + (datedSourceName != nil ? 1 : 0)
         return llm.chosenImageCount(
             question: input,
-            freshSourceCount: freshSourceCount,
-            freshImageCount: freshImageCount,
+            freshSourceIDs: freshSourceIDs,
+            freshImageIDs: freshImageIDs,
             screenImageCount: screen
         )
     }
@@ -634,6 +653,8 @@ struct AssistantInputView: View {
             retainedNotice: retainedNoticeOverride ?? llm.retainedSourceNotice,
             imageRouteLabel: pendingImageCount > 0 ? routePreview.imageRouteLabel : "",
             retrievalNotice: retrievalNoticeOverride ?? llm.retrievalDiagnostic,
+            vaultWithheldNotice: vaultWithheldNoticeOverride
+                ?? llm.vaultWithheldNotice(question: input, freshSourceIDs: freshSourceIDs),
             savesToVault: savesToVault
         )
     }
@@ -1401,12 +1422,12 @@ struct AssistantInputView: View {
     }
 
     /// "Next answer uses: Live transcript, Northwind app, Glossary".
+    ///
+    /// Built from the controller's own state, including the ambient screen
+    /// trail and this chat's retained sources, so the footnote names what the
+    /// turn actually sends. The screen label is no longer filtered out here.
     private var contextPreviewLabels: [String] {
-        var labels = llm.contextPreviewLabels().filter { $0 != "Screen OCR" }
-        // A dated hand-over grounds the next turn even though it is not one of
-        // the composer's own chips, so the preview names it first.
-        if let datedSourceName { labels.insert(datedSourceName, at: 0) }
-        return labels
+        llm.contextPreviewLabels(question: input, freshSourceIDs: freshSourceIDs)
     }
 
     private var contextFootnote: String? {

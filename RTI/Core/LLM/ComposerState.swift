@@ -361,6 +361,10 @@ public struct ComposerSourcesStatus: Equatable, Sendable {
     /// The last vault answer's retrieval state ("found nothing", "fell back to
     /// the keyword scan", "unavailable"), in the controller's own words.
     public var retrievalNotice: String?
+    /// Why the next turn cannot reach the vault: the sources in this chat
+    /// ground it, and the existing Broader Search row is the way to widen.
+    /// Shown before Send, because the withhold is otherwise only in the log.
+    public var vaultWithheldNotice: String?
     /// False when the app has no vault configured: chat works, nothing is written.
     public var savesToVault: Bool
 
@@ -370,6 +374,7 @@ public struct ComposerSourcesStatus: Equatable, Sendable {
         retainedNotice: String? = nil,
         imageRouteLabel: String = "",
         retrievalNotice: String? = nil,
+        vaultWithheldNotice: String? = nil,
         savesToVault: Bool = true
     ) {
         self.readiness = readiness
@@ -377,6 +382,7 @@ public struct ComposerSourcesStatus: Equatable, Sendable {
         self.retainedNotice = retainedNotice
         self.imageRouteLabel = imageRouteLabel
         self.retrievalNotice = retrievalNotice
+        self.vaultWithheldNotice = vaultWithheldNotice
         self.savesToVault = savesToVault
     }
 
@@ -386,6 +392,7 @@ public struct ComposerSourcesStatus: Equatable, Sendable {
         if let readinessNotice = readiness.notice { lines.append(readinessNotice) }
         lines.append(contentsOf: partial.map(\.line))
         if let retainedNotice, !retainedNotice.isEmpty { lines.append(retainedNotice) }
+        if let vaultWithheldNotice, !vaultWithheldNotice.isEmpty { lines.append(vaultWithheldNotice) }
         if !imageRouteLabel.isEmpty { lines.append(imageRouteLabel) }
         if let retrievalNotice, !retrievalNotice.isEmpty { lines.append(retrievalNotice) }
         if !savesToVault { lines.append("Not saved: no vault configured") }

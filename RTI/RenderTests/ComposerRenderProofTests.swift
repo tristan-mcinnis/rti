@@ -354,6 +354,21 @@ final class ComposerRenderProofTests: RenderProofTestCase {
         )
     }
 
+    /// A chat whose attached sources keep the vault tools withheld says so in
+    /// the composer before Send, in the controller's own words, and names the
+    /// existing Broader Search row as the way to widen. Drawn at the default
+    /// width and at the narrowest, where the long line has to wrap without
+    /// pushing the field or the chips out of the panel.
+    func testWithheldVaultSearchIsSaidBeforeSend() throws {
+        let seed = ComposerRenderSeed(
+            draft: "And what did they say about the store?",
+            isBroaderSearch: false,
+            vaultWithheldNotice: ContextDisclosureLabels.vaultWithheldLine
+        )
+        try render("composer-vault-withheld", seed: seed, thread: false)
+        try render("composer-vault-withheld-600", seed: seed, size: Self.narrow, thread: false)
+    }
+
     /// An unknown slash command stays local: the field offers the explicit
     /// Send as Text action and no key that would send it by accident.
     func testUnknownSlashCommandStaysLocal() throws {

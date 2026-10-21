@@ -68,7 +68,8 @@ final class PromptBuilderTests: XCTestCase {
         let ctx = PromptContext(
             baseSystemPrompt: "BASE",
             screenContext: "SCREEN",
-            referencedDocuments: "## projects/acme/discussion-guide.md\n\nGUIDE"
+            referencedDocuments: "## projects/acme/discussion-guide.md\n\nGUIDE",
+            sourceContext: TurnSourceContext(freshCount: 1)
         )
         let msgs = PromptBuilder.buildSystemMessages(context: ctx)
         XCTAssertEqual(msgs.count, 3)
@@ -78,6 +79,35 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertTrue(msgs[2].content?.contains("Do not search the vault") ?? false)
         XCTAssertTrue(msgs[2].content?.contains("discussion-guide.md") ?? false)
         XCTAssertTrue(msgs[2].content?.contains("GUIDE") ?? false)
+    }
+
+    /// A bare follow-up re-sends this chat's sources. The system block must not
+    /// call them new, and a widened turn must not forbid the vault.
+    func test_systemMessages_retainedDocumentsAreNotCalledNew() {
+        let retained = PromptBuilder.buildSystemMessages(context: PromptContext(
+            referencedDocuments: "GUIDE",
+            sourceContext: TurnSourceContext(freshCount: 0, retainedCount: 1)
+        ))
+        let retainedText = retained.last?.content ?? ""
+        XCTAssertFalse(retainedText.contains("for this turn"))
+        XCTAssertTrue(retainedText.contains("retained from an earlier turn"))
+
+        let widened = PromptBuilder.buildSystemMessages(context: PromptContext(
+            referencedDocuments: "GUIDE",
+            sourceContext: TurnSourceContext(freshCount: 0, retainedCount: 1),
+            externalRetrievalAllowed: true
+        ))
+        XCTAssertFalse((widened.last?.content ?? "").contains("Do not search the vault"))
+    }
+
+    /// A context built without an origin says nothing about when the source
+    /// arrived and permits nothing new.
+    func test_systemMessages_aHeaderWithoutAnOriginClaimsNeither() {
+        let msgs = PromptBuilder.buildSystemMessages(context: PromptContext(referencedDocuments: "GUIDE"))
+        let text = msgs.last?.content ?? ""
+        XCTAssertFalse(text.contains("for this turn"))
+        XCTAssertFalse(text.contains("Do not search the vault"))
+        XCTAssertTrue(text.contains("GUIDE"))
     }
 
     func test_promptContext_hasContentWhenReferencedDocumentsPresent() {
