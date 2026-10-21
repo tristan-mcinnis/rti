@@ -1,6 +1,9 @@
 #!/bin/bash
 # Main-only publish guard, chained by the unchanged global pre-push hook.
 set -euo pipefail
+# Keep all repository inspection, scrub and dependency builds in this checkout.
+git_environment="$(git rev-parse --local-env-vars)"
+for variable in $git_environment; do unset "$variable"; done
 cd "$(git rev-parse --show-toplevel)"
 zero=0000000000000000000000000000000000000000
 expected=""
@@ -22,8 +25,13 @@ if [[ -n "$(git status --porcelain --untracked-files=normal)" ]] || [[ "$(git re
   echo "Refusing publish: main must match the clean checkout under test." >&2; exit 1
 fi
 sh scripts/scrub.sh
+# Background xctest cannot always read bundles under protected Documents.
+# Keep its private, reusable build cache outside that TCC-protected folder.
+umask 077
+derived="$HOME/Library/Caches/com.tristan.rti/publish-tests"
+mkdir -p "$derived"
 xcodebuild -project RTI/RTI.xcodeproj -scheme RTI -configuration Debug \
-  -derivedDataPath .deriveddata-publish test -only-testing:RTITests \
+  -derivedDataPath "$derived" test -only-testing:RTITests \
   -only-testing:RTIRenderTests/ChatSourceLifecycleTests \
   -only-testing:RTIRenderTests/ChatRuntimeIntegrationTests
 if [[ -n "$(git status --porcelain --untracked-files=normal)" ]] || [[ "$(git rev-parse HEAD)" != "$expected" ]]; then
