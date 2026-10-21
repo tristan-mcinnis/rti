@@ -14,23 +14,37 @@ enum MeetingProcessorConfig {
         home.appendingPathComponent("Documents/Work", isDirectory: true)
     }
 
-    /// What the `/meeting` skill needs and nothing more: read tools, mkdir and
-    /// ls, and the memory repo's add, commit, pull and push. No scripts, no
+    /// What the `/meeting` skill needs and nothing more: read tools, mkdir
+    /// under the work tree and ls, and the memory repo's add, one fixed
+    /// commit, pull and push. No scripts, no
     /// cat or cp, no bare Write or Edit: file writes come from `acceptEdits`,
     /// which covers the working directory and `--add-dir` only.
     static func allowedTools(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [String] {
         let memory = home.appendingPathComponent("memory").path
         return [
             "Read", "Glob", "Grep",
-            "Bash(mkdir *)", "Bash(ls *)",
+            "Bash(mkdir -p \(home.appendingPathComponent("Documents/Work").path)/*)", "Bash(ls *)",
             "Bash(git -C \(memory) add tasks.md)",
-            "Bash(git -C \(memory) commit -m *)",
+            "Bash(git -C \(memory) commit -m meeting-tasks -- tasks.md)",
             "Bash(git -C \(memory) pull --rebase)",
             "Bash(git -C \(memory) push)",
         ]
     }
 
-    /// Permission flags for the run. The mode is always `acceptEdits`;
+    /// Tools denied outright, on top of the allow list.
+    static let disallowedTools = ["WebFetch", "WebSearch", "Bash(curl *)"]
+
+    /// Inline settings for the run: only the send-guard hook, no allow rules.
+    static func guardSettings(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String {
+        let guardPath = home.appendingPathComponent("skills/_lib/guards/guard-send-gates.py").path
+        return "{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\","
+            + "\"command\":\"python3 \(guardPath)\",\"timeout\":5}]}]}}"
+    }
+
+    /// Permission flags for the run. The mode is always `acceptEdits`, and
+    /// the run never loads user settings (`project,local` only, from a
+    /// working directory with no `.claude`), so the user's broad allow rules
+    /// and MCP servers do not apply; only the send guard is added back.
     /// `auto_process_scoped_tools: true` also allows the scoped tool list
     /// above, without prompts, and lets the run edit the memory repo.
     /// Permissions are never skipped.
@@ -38,7 +52,13 @@ enum MeetingProcessorConfig {
         config: [String: Any],
         home: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> [String] {
-        var arguments = ["--permission-mode", "acceptEdits"]
+        var arguments = [
+            "--permission-mode", "acceptEdits",
+            "--setting-sources", "project,local",
+            "--strict-mcp-config",
+            "--settings", guardSettings(home: home),
+            "--disallowedTools",
+        ] + disallowedTools
         if (config["auto_process_scoped_tools"] as? Bool) ?? false {
             arguments += ["--allowedTools"] + allowedTools(home: home)
             arguments += ["--add-dir", home.appendingPathComponent("memory").path]

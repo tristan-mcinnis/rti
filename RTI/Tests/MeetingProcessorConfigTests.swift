@@ -16,14 +16,9 @@ final class MeetingProcessorConfigTests: XCTestCase {
     }
 
     func testPermissionModeDefaultsToAcceptEdits() {
-        XCTAssertEqual(
-            MeetingProcessorConfig.permissionArguments(config: [:]),
-            ["--permission-mode", "acceptEdits"]
-        )
-        XCTAssertEqual(
-            MeetingProcessorConfig.permissionArguments(config: ["auto_process": true]),
-            ["--permission-mode", "acceptEdits"]
-        )
+        XCTAssertEqual(MeetingProcessorConfig.permissionArguments(config: [:]).prefix(2), ["--permission-mode", "acceptEdits"])
+        XCTAssertFalse(MeetingProcessorConfig.permissionArguments(config: [:]).contains("--allowedTools"))
+        XCTAssertFalse(MeetingProcessorConfig.permissionArguments(config: ["auto_process": true]).contains("--allowedTools"))
     }
 
     func testScopedToolsNeedAnExplicitOptIn() {
@@ -33,14 +28,15 @@ final class MeetingProcessorConfigTests: XCTestCase {
             home: home
         )
 
-        XCTAssertEqual(Array(arguments.prefix(3)), ["--permission-mode", "acceptEdits", "--allowedTools"])
+        XCTAssertEqual(Array(arguments.prefix(2)), ["--permission-mode", "acceptEdits"])
+        XCTAssertTrue(arguments.contains("--allowedTools"))
         XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory push)"))
         XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory add tasks.md)"))
         XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory pull --rebase)"))
         XCTAssertEqual(Array(arguments.suffix(2)), ["--add-dir", "/Users/test/memory"])
-        XCTAssertEqual(
-            MeetingProcessorConfig.permissionArguments(config: ["auto_process_scoped_tools": false], home: home),
-            ["--permission-mode", "acceptEdits"]
+        XCTAssertFalse(
+            MeetingProcessorConfig.permissionArguments(config: ["auto_process_scoped_tools": false], home: home)
+                .contains("--allowedTools")
         )
     }
 
@@ -54,6 +50,27 @@ final class MeetingProcessorConfigTests: XCTestCase {
         XCTAssertTrue(arguments.filter { $0.hasPrefix("Bash(") }.allSatisfy { $0.hasSuffix(")") })
     }
 
+    func testRunIgnoresUserSettingsAndMCPButKeepsTheSendGuard() throws {
+        let home = URL(fileURLWithPath: "/Users/test", isDirectory: true)
+        for config in [[:], ["auto_process_scoped_tools": true]] as [[String: Any]] {
+            let arguments = MeetingProcessorConfig.permissionArguments(config: config, home: home)
+            let sources = try XCTUnwrap(arguments.firstIndex(of: "--setting-sources"))
+            XCTAssertEqual(arguments[sources + 1], "project,local")
+            XCTAssertTrue(arguments.contains("--strict-mcp-config"))
+            XCTAssertFalse(arguments.contains("--dangerously-skip-permissions"))
+            let settings = try XCTUnwrap(arguments.firstIndex(of: "--settings"))
+            let json = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(arguments[settings + 1].utf8)) as? [String: Any]
+            )
+            XCTAssertEqual(Set(json.keys), ["hooks"])
+            let hooks = try XCTUnwrap(json["hooks"] as? [String: Any])
+            XCTAssertEqual(Set(hooks.keys), ["PreToolUse"])
+            XCTAssertTrue(arguments[settings + 1].contains("python3 /Users/test/skills/_lib/guards/guard-send-gates.py"))
+            let denied = try XCTUnwrap(arguments.firstIndex(of: "--disallowedTools"))
+            XCTAssertEqual(Array(arguments[(denied + 1)...].prefix(3)), ["WebFetch", "WebSearch", "Bash(curl *)"])
+        }
+    }
+
     func testAllowedToolsExcludeScriptsReadersAndBareWrites() {
         let tools = MeetingProcessorConfig.allowedTools(home: URL(fileURLWithPath: "/Users/test"))
 
@@ -61,9 +78,9 @@ final class MeetingProcessorConfigTests: XCTestCase {
             tools,
             [
                 "Read", "Glob", "Grep",
-                "Bash(mkdir *)", "Bash(ls *)",
+                "Bash(mkdir -p /Users/test/Documents/Work/*)", "Bash(ls *)",
                 "Bash(git -C /Users/test/memory add tasks.md)",
-                "Bash(git -C /Users/test/memory commit -m *)",
+                "Bash(git -C /Users/test/memory commit -m meeting-tasks -- tasks.md)",
                 "Bash(git -C /Users/test/memory pull --rebase)",
                 "Bash(git -C /Users/test/memory push)",
             ]
