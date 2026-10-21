@@ -422,7 +422,7 @@ enum SessionArchive {
     private static let workRoot = NSHomeDirectory() + "/Documents/Work"
 
     private static let defaultMeetingProcessorPrompt = """
-    /meeting {transcript}
+    Read \(NSHomeDirectory())/skills/meeting/SKILL.md and its references/method.md, then follow that skill for this transcript: {transcript}
 
     IMPORTANT: this run is UNATTENDED (fired automatically after an RTI recording), so be conservative. (1) Always write the meeting note. (2) File it in a project only when you are confident which existing project under \(workRoot) it belongs to. (3) Never create a project folder, never send anything, never edit client shared files. (4) If the project is new, ambiguous or unsure, leave the note unrouted in \(workRoot)/Inner-Chapter/meetings with 'projects: [unsorted]' and a '## Needs routing' section giving your best guess and why. Never guess a project into existence.
     """
