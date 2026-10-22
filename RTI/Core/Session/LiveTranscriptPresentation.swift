@@ -6,6 +6,8 @@ public enum LiveTranscriptPresentation {
         public let speakerId: String
         public let speakerLabel: String
         public let startMs: Int
+        /// Canonical display continuation, including a peer-corrected fragment.
+        public let streamID: UUID?
         public var original: String
         public var translation: String
         public var translationLanguage: String?
@@ -21,10 +23,28 @@ public enum LiveTranscriptPresentation {
     public struct InterimSegment: Equatable {
         public let speakerId: String
         public let text: String
+        public let textOrigin: LiveEntry.TextOrigin
+        public let startMs: Int?
+        public let translationStatus: String
+        public let language: String?
+        public let streamID: UUID?
 
-        public init(speakerId: String, text: String) {
+        public init(
+            speakerId: String,
+            text: String,
+            textOrigin: LiveEntry.TextOrigin = .standalone,
+            startMs: Int? = nil,
+            translationStatus: String = "none",
+            language: String? = nil,
+            streamID: UUID? = nil
+        ) {
             self.speakerId = speakerId
             self.text = text
+            self.textOrigin = textOrigin
+            self.startMs = startMs
+            self.translationStatus = translationStatus
+            self.language = language
+            self.streamID = streamID
         }
     }
 
@@ -81,13 +101,14 @@ public enum LiveTranscriptPresentation {
             let canMerge = !entry.speakerId.isEmpty
                 && entry.speakerId != "note"
                 && result.last?.speakerId == entry.speakerId
+                && result.last?.streamID == entry.displayStreamID
 
             if canMerge, let lastIndex = result.indices.last {
                 if isTranslation {
-                    append(entry.text, to: &result[lastIndex].translation)
+                    append(entry.text, origin: entry.textOrigin, to: &result[lastIndex].translation)
                     result[lastIndex].translationLanguage = entry.language ?? result[lastIndex].translationLanguage
                 } else {
-                    append(entry.text, to: &result[lastIndex].original)
+                    append(entry.text, origin: entry.textOrigin, to: &result[lastIndex].original)
                 }
             } else {
                 result.append(Row(
@@ -95,6 +116,7 @@ public enum LiveTranscriptPresentation {
                     speakerId: entry.speakerId,
                     speakerLabel: label(for: entry.speakerId, names: names),
                     startMs: entry.startMs,
+                    streamID: entry.displayStreamID,
                     original: isTranslation ? "" : entry.text,
                     translation: isTranslation ? entry.text : "",
                     translationLanguage: isTranslation ? entry.language : nil
@@ -163,13 +185,21 @@ public enum LiveTranscriptPresentation {
     /// own below it (`trailing`). So interim words settle where they appear.
     public static func placeInterim(
         _ segments: [InterimSegment],
-        afterSpeaker lastSpeakerId: String?
-    ) -> (inline: String, trailing: [InterimSegment]) {
+        afterSpeaker lastSpeakerId: String?,
+        afterStreamID lastStreamID: UUID? = nil
+    ) -> (inline: String, inlineOrigin: LiveEntry.TextOrigin, trailing: [InterimSegment]) {
         guard let lastSpeakerId, lastSpeakerId != "note", !lastSpeakerId.isEmpty else {
-            return ("", segments)
+            return ("", .standalone, segments)
         }
-        let inline = segments.filter { $0.speakerId == lastSpeakerId }.map(\.text).joined(separator: " ")
-        return (inline, segments.filter { $0.speakerId != lastSpeakerId })
+        let continuesRun: (InterimSegment) -> Bool = {
+            $0.speakerId == lastSpeakerId && $0.streamID == lastStreamID
+        }
+        let matching = segments.filter(continuesRun)
+        var inline = ""
+        for segment in matching {
+            append(segment.text, origin: segment.textOrigin, to: &inline)
+        }
+        return (inline, matching.first?.textOrigin ?? .standalone, segments.filter { !continuesRun($0) })
     }
 
     /// Split one speaker's run into reading paragraphs. A paragraph closes at
@@ -234,7 +264,23 @@ public enum LiveTranscriptPresentation {
         return Int(key.dropFirst(prefix.count))
     }
 
-    private static func append(_ text: String, to target: inout String) {
+    /// Provider fragments already include every word boundary, including no
+    /// boundary within a word or between CJK tokens. Standalone text keeps the
+    /// existing space-separated behavior for notes and authored fixtures.
+    public static func joining(_ fragment: String, origin: LiveEntry.TextOrigin, to prefix: String) -> String {
+        var text = prefix
+        append(fragment, origin: origin, to: &text)
+        return text
+    }
+
+    private static func append(_ text: String, origin: LiveEntry.TextOrigin, to target: inout String) {
+        switch origin {
+        case .providerTokens, .providerCorrection:
+            target += text
+            return
+        case .standalone:
+            break
+        }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         target += (target.isEmpty ? "" : " ") + trimmed

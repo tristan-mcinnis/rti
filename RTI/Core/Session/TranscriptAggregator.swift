@@ -19,8 +19,10 @@ public final class TranscriptAggregator {
     /// session (2026-09-22).
     private(set) var normalizedEntries: [NormalizedEntry] = []
     public private(set) var interimText: String? = nil
+    public private(set) var interimSegments: [LiveTranscriptPresentation.InterimSegment] = []
     private var lastEndMs: Int = 0
     private var zeroSeen: Set<String> = []
+    private var streamID = UUID()
     private let channel: String
 
     /// Added to each emitted entry's `startMs` to put this channel on a
@@ -68,7 +70,9 @@ public final class TranscriptAggregator {
                     confidence: run.confidence,
                     translationStatus: run.translationStatus,
                     language: run.language,
-                    sourceLanguage: run.sourceLanguage
+                    sourceLanguage: run.sourceLanguage,
+                    textOrigin: .providerTokens,
+                    streamID: streamID
                 )
             }
             for entry in newEntries {
@@ -97,8 +101,20 @@ public final class TranscriptAggregator {
 
         if interims.isEmpty {
             interimText = nil
+            interimSegments = []
         } else {
             let runs = SpeakerTurn.collapse(interims)
+            interimSegments = runs.map {
+                LiveTranscriptPresentation.InterimSegment(
+                    speakerId: SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: channel),
+                    text: $0.text,
+                    textOrigin: .providerTokens,
+                    startMs: $0.startMs + startMsOffset,
+                    translationStatus: $0.translationStatus,
+                    language: $0.language,
+                    streamID: streamID
+                )
+            }
             interimText = runs.map {
                 "\(SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: channel)): \($0.text)"
             }.joined(separator: "  ")
@@ -111,8 +127,10 @@ public final class TranscriptAggregator {
         entries = []
         normalizedEntries = []
         interimText = nil
+        interimSegments = []
         lastEndMs = 0
         zeroSeen = []
+        streamID = UUID()
         startMsOffset = 0
     }
 
@@ -127,6 +145,8 @@ public final class TranscriptAggregator {
         lastEndMs = 0
         zeroSeen = []
         interimText = nil
+        interimSegments = []
+        streamID = UUID()
     }
 
     /// A new stream opened on this channel `atMs` into the session: an
@@ -140,6 +160,8 @@ public final class TranscriptAggregator {
         lastEndMs = 0
         zeroSeen = []
         interimText = nil
+        interimSegments = []
+        streamID = UUID()
     }
 }
 

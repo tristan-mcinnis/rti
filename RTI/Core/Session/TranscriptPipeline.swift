@@ -114,14 +114,25 @@ public final class TranscriptPipeline {
                 // Keep the more complete transcription, in the earlier slot.
                 if entry.text.count > out[m].text.count {
                     let kept = out[m]
+                    // The peer's token boundaries belong to another socket.
+                    // Replace the interior, retaining the canonical fragment's
+                    // exact edges so neither neighbour gains or loses spacing.
+                    let leading = kept.text.prefix(while: \.isWhitespace)
+                    let trailing = kept.text.reversed().prefix(while: \.isWhitespace).reversed()
+                    let correctedText = String(leading)
+                        + entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        + String(trailing)
                     out[m] = LiveEntry(
                         speakerId: kept.speakerId,
-                        text: entry.text,
+                        text: correctedText,
                         startMs: kept.startMs,
                         confidence: kept.confidence,
                         translationStatus: kept.translationStatus,
                         language: kept.language,
-                        sourceLanguage: kept.sourceLanguage
+                        sourceLanguage: kept.sourceLanguage,
+                        id: kept.id,
+                        textOrigin: .providerCorrection(continuingStreamID: kept.displayStreamID),
+                        streamID: entry.streamID
                     )
                     // That slot's text just changed, so its cached normal form
                     // must follow it: later entries compare against this one.
@@ -221,6 +232,13 @@ public final class TranscriptPipeline {
             .compactMap { $0 }
             .filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: "  ")
+    }
+
+    /// Native presentation consumes the raw fragments, not the legacy labelled
+    /// line: encoding and parsing that line loses provider whitespace.
+    public var interimSegments: [LiveTranscriptPresentation.InterimSegment] {
+        (micAggregator.interimSegments + systemAggregator.interimSegments)
+            .sorted { ($0.startMs ?? 0) < ($1.startMs ?? 0) }
     }
 
     /// Returns `true` when new final entries were appended (so the caller can

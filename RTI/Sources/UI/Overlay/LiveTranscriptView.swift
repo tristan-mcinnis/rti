@@ -7,8 +7,7 @@ import HouseDesign
 /// The live transcript as a calm reading column: no box per speaker, one
 /// quiet label per run of the same speaker, the mic wearer's runs on the
 /// right in a soft bubble, everyone else as plain text on the left. Interim
-/// words appear in a lighter ink where they will settle, so a final result
-/// changes only the ink, not the layout.
+/// words appear in lighter ink in their speaker's current run.
 ///
 /// Performance for a two-hour meeting: rows sit in a `LazyVStack`; only the
 /// last run and the tail read the fast-changing interim line, so an interim
@@ -35,7 +34,7 @@ struct LiveTranscriptList: View {
                             carriesInterim: row.id == rows.last?.id
                         )
                     }
-                    LiveInterimTail(lastSpeakerId: rows.last?.speakerId) {
+                    LiveInterimTail(lastSpeakerId: rows.last?.speakerId, lastStreamID: rows.last?.streamID) {
                         if following { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
                     }
                     Color.clear.frame(height: House.hairline).id(Self.bottomID)
@@ -151,22 +150,26 @@ private struct LiveTranscriptRun: View {
     let carriesInterim: Bool
 
     var body: some View {
+        let pending = interim
         TranscriptRunView(
             speakerId: row.speakerId,
             label: row.speakerLabel,
             startMs: row.startMs,
             original: row.original,
             translation: showTranslation ? row.translation : "",
-            interim: interim
+            interim: pending.text,
+            interimOrigin: pending.origin
         )
     }
 
-    private var interim: String {
-        guard carriesInterim, let raw = SessionCoordinator.shared.interimLine else { return "" }
-        return LiveTranscriptPresentation.placeInterim(
-            LiveTranscriptPresentation.interimSegments(raw),
-            afterSpeaker: row.speakerId
-        ).inline
+    private var interim: (text: String, origin: LiveEntry.TextOrigin) {
+        guard carriesInterim else { return ("", .standalone) }
+        let placement = LiveTranscriptPresentation.placeInterim(
+            SessionCoordinator.shared.interimSegments.filter { $0.translationStatus != "translation" },
+            afterSpeaker: row.speakerId,
+            afterStreamID: row.streamID
+        )
+        return (placement.inline, placement.inlineOrigin)
     }
 }
 
@@ -174,6 +177,7 @@ private struct LiveTranscriptRun: View {
 /// the run it will become, in the lighter ink, below the final runs.
 private struct LiveInterimTail: View {
     let lastSpeakerId: String?
+    let lastStreamID: UUID?
     let onChange: () -> Void
     private let session = SessionCoordinator.shared
     private let names = SpeakerNameStore.shared
@@ -185,21 +189,22 @@ private struct LiveInterimTail: View {
                 TranscriptRunView(
                     speakerId: segment.speakerId,
                     label: LiveTranscriptPresentation.label(for: segment.speakerId, names: names.names),
-                    startMs: nil,
+                    startMs: segment.startMs,
                     original: "",
                     translation: "",
-                    interim: segment.text
+                    interim: segment.text,
+                    interimOrigin: segment.textOrigin
                 )
             }
         }
-        .onChange(of: session.interimLine) { _, _ in onChange() }
+        .onChange(of: session.interimSegments) { _, _ in onChange() }
     }
 
     private var trailing: [LiveTranscriptPresentation.InterimSegment] {
-        guard let raw = session.interimLine else { return [] }
-        return LiveTranscriptPresentation.placeInterim(
-            LiveTranscriptPresentation.interimSegments(raw),
-            afterSpeaker: lastSpeakerId
+        LiveTranscriptPresentation.placeInterim(
+            session.interimSegments.filter { $0.translationStatus != "translation" },
+            afterSpeaker: lastSpeakerId,
+            afterStreamID: lastStreamID
         ).trailing
     }
 }
@@ -215,6 +220,7 @@ private struct TranscriptRunView: View {
     let original: String
     let translation: String
     let interim: String
+    let interimOrigin: LiveEntry.TextOrigin
 
     private var isSelf: Bool { speakerId == "self" }
     private var isNote: Bool { speakerId == "note" }
@@ -279,7 +285,12 @@ private struct TranscriptRunView: View {
         let paragraphs = LiveTranscriptPresentation.paragraphs(original)
         let settled = paragraphs.dropLast()
         let open = paragraphs.last ?? ""
-        let settling = interim.trimmingCharacters(in: .whitespacesAndNewlines)
+        let settling = interim
+        // Paragraph layout trims its edges; a provider's trailing space still
+        // belongs to the final/interim seam ("Hello " + "world").
+        let final = interimOrigin == .providerTokens && !open.isEmpty && !settling.isEmpty
+            ? open + String(original.reversed().prefix { $0.isWhitespace }.reversed())
+            : open
         return VStack(alignment: .leading, spacing: House.Spacing.xxs) {
             // A long run reads as paragraphs. Only the open paragraph takes
             // the interim words, so an interim frame re-lays out that one
@@ -290,7 +301,7 @@ private struct TranscriptRunView: View {
                     spokenStyle(Text(paragraph).foregroundStyle(finalInk))
                 }
                 if !open.isEmpty || !settling.isEmpty {
-                    spokenStyle(spoken(open, settling: settling))
+                    spokenStyle(spoken(final, settling: settling))
                 }
             }
             if !translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -322,17 +333,22 @@ private struct TranscriptRunView: View {
     /// Final words in full ink, interim words after them in tertiary ink:
     /// one `Text`, so a final result recolours words in place.
     private func spoken(_ final: String, settling: String) -> Text {
+        let joined = LiveTranscriptPresentation.joining(settling, origin: interimOrigin, to: final)
+        if final.isEmpty {
+            return Text(joined.trimmingCharacters(in: .whitespacesAndNewlines))
+                .foregroundStyle(House.ColorToken.textTertiary)
+        }
         var text = Text(final).foregroundStyle(finalInk)
-        if !settling.isEmpty {
-            text = text + Text((final.isEmpty ? "" : " ") + settling).foregroundStyle(House.ColorToken.textTertiary)
+        let suffix = String(joined.dropFirst(final.count))
+        if !suffix.isEmpty {
+            text = text + Text(suffix).foregroundStyle(House.ColorToken.textTertiary)
         }
         return text
     }
 
     private var accessibilityText: String {
-        let final = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        let settling = interim.trimmingCharacters(in: .whitespacesAndNewlines)
-        let spoken = [final, settling].filter { !$0.isEmpty }.joined(separator: " ")
+        let spoken = LiveTranscriptPresentation.joining(interim, origin: interimOrigin, to: original)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return "\(label): \(spoken)"
     }
 }

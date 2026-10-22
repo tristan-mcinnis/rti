@@ -120,6 +120,131 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         try renderOverlay("transcript-live-long-run", width: Self.narrowWidth)
     }
 
+    /// Keep one hosting view alive through real Core event batches. Still
+    /// images of separate view trees cannot prove that existing rows update
+    /// without moving when a later batch settles or corrects an earlier row.
+    func testLiveTokenSequence() throws {
+        for (suffix, appearanceName) in [("dark", NSAppearance.Name.darkAqua), ("light", NSAppearance.Name.aqua)] {
+            let pipeline = TranscriptPipeline()
+            let session = SessionCoordinator.shared
+            let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
+            session.seedForRenderProof(entries: [], interim: nil, phase: .recording, startedAt: startedAt)
+            let appearance = try XCTUnwrap(NSAppearance(named: appearanceName))
+            UserDefaults.standard.set(
+                appearanceName == .darkAqua ? RTIAppearanceMode.dark.rawValue : RTIAppearanceMode.light.rawValue,
+                forKey: OverlayAppearanceDefaults.appearanceModeKey
+            )
+            let hosting = NSHostingView(rootView: AnyView(
+                TranscriptTabView()
+                    .padding(House.Spacing.lg)
+                    .background(House.ColorToken.surface)
+            ))
+            hosting.appearance = appearance
+            hosting.frame = NSRect(x: 0, y: 0, width: Self.narrowWidth, height: Self.height)
+            defer {
+                // An offscreen host can outlive this iteration through AppKit's
+                // deferred layout work. Retire its observers before the next
+                // appearance resets the shared session and replays its frames.
+                hosting.rootView = AnyView(EmptyView())
+                hosting.layoutSubtreeIfNeeded()
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                hosting.layoutSubtreeIfNeeded()
+            }
+
+            func word(_ text: String, _ speaker: Int, _ start: Int, final: Bool) -> SonioxWord {
+                SonioxWord(text: text, startMs: start, endMs: start + 100, speaker: speaker,
+                           confidence: 1, isFinal: final, translationStatus: "none", language: nil, sourceLanguage: nil)
+            }
+            func publish(_ words: [SonioxWord], channel: String = "system", frame: String) throws -> (pixels: Data, prefix: Data) {
+                let changed = pipeline.process(words: words, channel: channel)
+                session.seedForRenderProof(
+                    entries: pipeline.liveEntries,
+                    interim: pipeline.interimLine,
+                    interimSegments: pipeline.interimSegments,
+                    transcriptChanged: changed,
+                    phase: .recording,
+                    startedAt: startedAt
+                )
+                return try captureSequenceFrame(hosting, appearance: appearance, name: "transcript-sequence-\(frame)-\(suffix)")
+            }
+
+            _ = try publish([word("Hello", 1, 0, final: false)], frame: "01-first-interim")
+            XCTAssertTrue(session.liveEntries.isEmpty)
+            XCTAssertFalse(session.interimSegments.isEmpty)
+            _ = try publish([word("Hello", 1, 0, final: true), word(", world!", 1, 100, final: false)], frame: "02-punctuation-interim")
+            let settled = try publish([
+                word(",", 1, 100, final: true), word(" world", 1, 200, final: true), word("!", 1, 300, final: true),
+            ], frame: "03-english-final")
+            XCTAssertEqual(LiveTranscriptPresentation.rows(from: pipeline.liveEntries, showTranslations: false).first?.original, "Hello, world!")
+
+            let cjkInterim = try publish([word("你好", 2, 2_000, final: false)], frame: "04-cjk-interim")
+            let cjkMixed = try publish([
+                word("你好", 2, 2_000, final: true), word("世界。", 2, 2_100, final: false),
+            ], frame: "05-cjk-mixed")
+            let cjkPunctuation = try publish([
+                word("世界", 2, 2_100, final: true), word("。", 2, 2_200, final: false),
+            ], frame: "06-cjk-punctuation")
+            let cjkFinal = try publish([word("。", 2, 2_200, final: true)], frame: "07-cjk-final")
+            XCTAssertEqual(LiveTranscriptPresentation.rows(from: pipeline.liveEntries, showTranslations: false).last?.original, "你好世界。")
+            for frame in [cjkInterim, cjkMixed, cjkPunctuation, cjkFinal] {
+                XCTAssertEqual(frame.prefix, settled.prefix, "Settled first-row pixels moved while a later speaker's words settled")
+            }
+
+            _ = try publish([
+                word("The ", 3, 4_000, final: true), word("pilot.", 3, 4_100, final: false),
+            ], frame: "08-provider-trailing-space")
+            _ = try publish([word("pilot.", 3, 4_100, final: true)], frame: "09-trailing-space-final")
+            let beforeCorrection = try publish([
+                word("We agree on the design", 4, 6_000, final: true), word("A new topic.", 5, 10_000, final: true),
+            ], frame: "10-before-late-correction")
+            let priorEntries = pipeline.liveEntries
+            let priorRows = LiveTranscriptPresentation.rows(from: priorEntries, showTranslations: false)
+            let corrected = try publish([
+                word("We agree on the design today.", 1, 6_050, final: true),
+            ], channel: "mic", frame: "11-late-correction")
+            let correctedRows = LiveTranscriptPresentation.rows(from: pipeline.liveEntries, showTranslations: false)
+            XCTAssertEqual(pipeline.liveEntries.count, priorEntries.count)
+            XCTAssertEqual(pipeline.liveEntries.last?.id, priorEntries.last?.id)
+            XCTAssertEqual(correctedRows.map(\.id), priorRows.map(\.id))
+            XCTAssertEqual(correctedRows[3].original, "We agree on the design today.")
+            XCTAssertNotEqual(corrected.pixels, beforeCorrection.pixels, "A final revision must refresh text even when count and last ID are unchanged")
+            XCTAssertEqual(corrected.prefix, settled.prefix, "The unchanged first row moved after a delayed final")
+        }
+    }
+
+    private func captureSequenceFrame(
+        _ hosting: NSHostingView<AnyView>,
+        appearance: NSAppearance,
+        name: String
+    ) throws -> (pixels: Data, prefix: Data) {
+        for _ in 0..<2 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            hosting.layoutSubtreeIfNeeded()
+        }
+        var captured: NSBitmapImageRep?
+        appearance.performAsCurrentDrawingAppearance {
+            guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return }
+            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+            captured = bitmap
+        }
+        let bitmap = try XCTUnwrap(captured)
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: RenderProofHarness.outputDirectory.appendingPathComponent("\(name).png"))
+        XCTAssertGreaterThan(png.count, 2_000)
+
+        // This short fixture fits without scrolling. The top region contains
+        // the toolbar and the complete first run, but no changing second run.
+        let prefixHeight = House.Control.railRow + House.Control.input + House.Spacing.lg
+        let scale = CGFloat(bitmap.pixelsHigh) / hosting.bounds.height
+        let image = try XCTUnwrap(bitmap.cgImage)
+        let crop = try XCTUnwrap(image.cropping(to: CGRect(x: 0, y: 0, width: CGFloat(bitmap.pixelsWide), height: CGFloat(prefixHeight) * scale)))
+        let prefix = NSBitmapImageRep(cgImage: crop)
+        return (
+            Data(bytes: try XCTUnwrap(bitmap.bitmapData), count: bitmap.bytesPerRow * bitmap.pixelsHigh),
+            Data(bytes: try XCTUnwrap(prefix.bitmapData), count: prefix.bytesPerRow * prefix.pixelsHigh)
+        )
+    }
+
     // MARK: - Archived (Sessions window)
 
     private func archiveModel() async throws -> SessionsWindowModel {

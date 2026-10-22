@@ -48,22 +48,16 @@ struct TranscriptTabView: View {
             if let notice = session.systemAudioNotice {
                 Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
             }
-            if session.liveEntries.isEmpty {
-                overlayEmptyHints([
-                    overlayRecordHint(),
-                    "What you say shows on the right, everyone else on the left",
-                    "Click a speaker to give them a name",
-                ])
-            } else {
-                LiveTranscriptList(rows: paragraphs, showTranslations: translationEnabled)
-            }
+            LiveTranscriptList(rows: paragraphs, showTranslations: translationEnabled)
+                .overlay {
+                    if session.liveEntries.isEmpty { TranscriptEmptyHints() }
+                }
         }
         // SessionCoordinator observes UserDefaults and is the sole writer of
         // `translationConfig`. The view only reads the same defaults keys for
         // its controls; it no longer pushes config directly.
         .onAppear { paragraphs = makeParagraphs() }
-        .onChange(of: session.liveEntries.count) { _, _ in paragraphs = makeParagraphs() }
-        .onChange(of: session.liveEntries.last?.id) { _, _ in paragraphs = makeParagraphs() }
+        .onChange(of: session.transcriptRevision) { _, _ in paragraphs = makeParagraphs() }
         .onChange(of: translationEnabled) { _, _ in paragraphs = makeParagraphs() }
         .onChange(of: speakerNames.names) { _, _ in paragraphs = makeParagraphs() }
     }
@@ -177,6 +171,24 @@ struct TranscriptTabView: View {
         case .reconnecting: return "Reconnecting…"
         case .failed: return "Connection lost"
         case .idle: return "Recording…"
+        }
+    }
+}
+
+/// First provisional words are readable before any final entry arrives.
+/// Only this empty-state layer observes the rapid interim updates.
+private struct TranscriptEmptyHints: View {
+    private let session = SessionCoordinator.shared
+
+    var body: some View {
+        if !session.interimSegments.contains(where: {
+            $0.translationStatus != "translation" && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) {
+            overlayEmptyHints([
+                overlayRecordHint(),
+                "What you say shows on the right, everyone else on the left",
+                "Click a speaker to give them a name",
+            ])
         }
     }
 }

@@ -4,16 +4,24 @@ import XCTest
 /// Pins TranscriptPipeline's cross-channel merge, note buffering, and offset
 /// behavior — the combined live transcript the UI observes.
 final class TranscriptPipelineTests: XCTestCase {
-    private func word(_ text: String, speaker: Int, start: Int, end: Int) -> SonioxWord {
+    private func word(
+        _ text: String,
+        speaker: Int,
+        start: Int,
+        end: Int,
+        final: Bool = true,
+        translationStatus: String = "none",
+        language: String? = nil
+    ) -> SonioxWord {
         SonioxWord(
             text: text,
             startMs: start,
             endMs: end,
             speaker: speaker,
             confidence: 1.0,
-            isFinal: true,
-            translationStatus: "none",
-            language: nil,
+            isFinal: final,
+            translationStatus: translationStatus,
+            language: language,
             sourceLanguage: nil
         )
     }
@@ -22,6 +30,104 @@ final class TranscriptPipelineTests: XCTestCase {
         let p = TranscriptPipeline()
         p.process(words: [word("hello", speaker: 0, start: 0, end: 100)], channel: "mic")
         XCTAssertEqual(p.liveEntries.map(\.text), ["hello"])
+    }
+
+    /// A provider's token boundaries are not word boundaries. The same words
+    /// must display identically however the provider batches its final tokens.
+    func test_displayText_preservesProviderSpacingAcrossFinalPacketBoundaries() {
+        let sequences = [
+            ["Hello", ",", " world", "!"],
+            ["你", "好", "世界", "。"],
+            ["some", "thing", " works", "."],
+            ["one ", "  two", "\nthree"],
+            ["half", " ", "and", " ", "half"],
+        ]
+
+        for fragments in sequences {
+            // Every partition of the same token sequence, including one batch
+            // and one token per batch, exercises the production aggregation.
+            for boundaries in 0..<(1 << (fragments.count - 1)) {
+                let p = TranscriptPipeline()
+                var batch: [SonioxWord] = []
+                for (index, fragment) in fragments.enumerated() {
+                    batch.append(word(fragment, speaker: 0, start: index * 100, end: (index + 1) * 100))
+                    if index == fragments.count - 1 || boundaries & (1 << index) != 0 {
+                        p.process(words: batch, channel: "mic")
+                        batch = []
+                    }
+                }
+                let rows = LiveTranscriptPresentation.rows(from: p.liveEntries, showTranslations: false)
+                XCTAssertEqual(rows.map(\.original), [fragments.joined()], "packet boundaries: \(boundaries), tokens: \(fragments)")
+            }
+        }
+    }
+
+    func test_displayTranslation_preservesProviderSpacingAcrossFinalPacketBoundaries() {
+        let fragments = ["你", "好", "。", "Hello", ",", " world", "!"]
+        for boundaries in 0..<(1 << (fragments.count - 1)) {
+            let p = TranscriptPipeline()
+            var batch: [SonioxWord] = []
+            for (index, fragment) in fragments.enumerated() {
+                batch.append(SonioxWord(
+                    text: fragment,
+                    startMs: index * 100,
+                    endMs: (index + 1) * 100,
+                    speaker: 1,
+                    confidence: 1,
+                    isFinal: true,
+                    translationStatus: index < 3 ? "original" : "translation",
+                    language: index < 3 ? "zh" : "en",
+                    sourceLanguage: index < 3 ? nil : "zh"
+                ))
+                if index == fragments.count - 1 || boundaries & (1 << index) != 0 {
+                    p.process(words: batch, channel: "system")
+                    batch = []
+                }
+            }
+            let rows = LiveTranscriptPresentation.rows(from: p.liveEntries, showTranslations: true)
+            XCTAssertEqual(rows.map(\.original), ["你好。"], "packet boundaries: \(boundaries)")
+            XCTAssertEqual(rows.map(\.translation), ["Hello, world!"], "packet boundaries: \(boundaries)")
+        }
+    }
+
+    func test_interimSegments_preserveRawSpacingTimelineAndTranslationMetadata() {
+        let p = TranscriptPipeline()
+        p.setSystemStartOffset(ms: 8000)
+        p.process(words: [
+            word(" Hello", speaker: 1, start: 100, end: 200, final: false, language: "en"),
+            word(", ", speaker: 1, start: 200, end: 300, final: false, language: "en"),
+            word("你好。", speaker: 1, start: 300, end: 400, final: false, translationStatus: "translation", language: "zh"),
+        ], channel: "system")
+
+        XCTAssertEqual(p.interimSegments.map(\.text), [" Hello, ", "你好。"])
+        XCTAssertEqual(p.interimSegments.map(\.speakerId), ["remote_1", "remote_1"])
+        XCTAssertEqual(p.interimSegments.map(\.startMs), [8100, 8300])
+        XCTAssertEqual(p.interimSegments.map(\.translationStatus), ["none", "translation"])
+        XCTAssertEqual(p.interimSegments.map(\.language), ["en", "zh"])
+        XCTAssertTrue(p.interimSegments.allSatisfy { $0.textOrigin == .providerTokens })
+        XCTAssertNotNil(p.interimLine, "the labelled-line compatibility surface remains available")
+    }
+
+    func test_interimSegments_shareFinalStreamIdentityAndRotateOnReconnect() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("hel", speaker: 0, start: 0, end: 100, final: false)], channel: "mic")
+        let stream = p.interimSegments.first?.streamID
+        XCTAssertNotNil(stream)
+
+        p.process(words: [word("hello", speaker: 0, start: 0, end: 100, final: false)], channel: "mic")
+        XCTAssertEqual(p.interimSegments.first?.streamID, stream)
+        p.process(words: [word("hello", speaker: 0, start: 0, end: 100)], channel: "mic")
+        XCTAssertEqual(p.liveEntries.first?.streamID, stream)
+        XCTAssertTrue(p.interimSegments.isEmpty)
+
+        p.restartStream(channel: "mic", atMs: 5000)
+        p.process(words: [word("after", speaker: 0, start: 0, end: 100, final: false)], channel: "mic")
+        let restartedStream = p.interimSegments.first?.streamID
+        XCTAssertNotNil(restartedStream)
+        XCTAssertNotEqual(restartedStream, stream)
+        XCTAssertEqual(p.interimSegments.first?.startMs, 5000)
+        p.process(words: [word("after", speaker: 0, start: 0, end: 100)], channel: "mic")
+        XCTAssertEqual(p.liveEntries.last?.streamID, restartedStream)
     }
 
     func test_liveEntries_mergedAcrossChannelsSortedByStartMs() {
@@ -75,6 +181,90 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(p.liveEntries.first?.text, "我下了班会进行力量训练", "fuller transcription wins")
     }
 
+    func test_crossChannel_longerTextKeepsCanonicalIdentityAcrossLaterMerges() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("agree on design", speaker: 0, start: 0, end: 100)], channel: "mic")
+        let canonicalID = p.liveEntries.first?.id
+        let canonicalStreamID = p.liveEntries.first?.streamID
+
+        // Near-duplicate, not exact containment: takes the longer-text
+        // replacement branch instead of dropping the mic echo outright.
+        p.process(words: [word("agree on the design", speaker: 1, start: 500, end: 600)], channel: "system")
+        XCTAssertEqual(p.liveEntries.count, 1)
+        XCTAssertEqual(p.liveEntries.first?.text, "agree on the design")
+        XCTAssertEqual(p.liveEntries.first?.id, canonicalID)
+        XCTAssertEqual(p.liveEntries.first?.displayStreamID, canonicalStreamID)
+        let replacementStreamID = p.liveEntries.first?.streamID
+        XCTAssertNotEqual(replacementStreamID, canonicalStreamID, "source stream and display lineage are distinct after a peer correction")
+        let priorRow = LiveTranscriptPresentation.rows(from: p.liveEntries, showTranslations: false).first
+
+        p.process(words: [word("a completely separate later contribution", speaker: 2, start: 10_000, end: 10_100)], channel: "system")
+        let rows = LiveTranscriptPresentation.rows(from: p.liveEntries, showTranslations: false)
+        XCTAssertEqual(p.liveEntries.first?.id, canonicalID)
+        XCTAssertEqual(p.liveEntries.first?.displayStreamID, canonicalStreamID)
+        XCTAssertEqual(p.liveEntries.first?.streamID, replacementStreamID)
+        XCTAssertEqual(rows.first?.id, priorRow?.id)
+        XCTAssertEqual(rows.first?.original, priorRow?.original)
+        XCTAssertEqual(rows.first?.speakerId, priorRow?.speakerId)
+        XCTAssertEqual(rows.first?.startMs, priorRow?.startMs)
+    }
+
+    func test_crossChannel_correctionPreservesCanonicalBoundariesOnBothSides() {
+        let cases = [
+            ("Let’s discuss", " the design", "the design today", " next.", "Let’s discuss the design today next."),
+            ("我们讨论", "今天的设计方案", "今天的设计方案已经完成", "请继续", "我们讨论今天的设计方案已经完成请继续"),
+            ("Let’s discuss ", "the design ", "the design today", "next.", "Let’s discuss the design today next."),
+            ("Let’s discuss", "  the design\t", "\nthe design today  ", "next.", "Let’s discuss  the design today\tnext."),
+        ]
+        for (prefix, canonical, replacement, suffix, expected) in cases {
+            let p = TranscriptPipeline()
+            p.process(words: [word(prefix, speaker: 1, start: 0, end: 100)], channel: "system")
+            p.process(words: [word(canonical, speaker: 1, start: 100, end: 200)], channel: "system")
+            let canonicalID = p.liveEntries[1].id
+
+            p.process(words: [word(replacement, speaker: 1, start: 150, end: 250)], channel: "mic")
+            let corrected = p.liveEntries[1]
+            p.process(words: [word(suffix, speaker: 1, start: 1000, end: 1100)], channel: "system")
+            let rows = LiveTranscriptPresentation.rows(from: p.liveEntries, showTranslations: false)
+            XCTAssertEqual(rows.map(\.original), [expected])
+            XCTAssertEqual(corrected.id, canonicalID)
+            XCTAssertEqual(p.liveEntries[1].id, canonicalID)
+            XCTAssertEqual(p.liveEntries[1].text, corrected.text)
+        }
+    }
+
+    func test_crossChannel_correctionKeepsItsTranslationInTheCanonicalDisplayRun() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("Let’s discuss", speaker: 1, start: 0, end: 100)], channel: "system")
+        p.process(words: [word(" the design", speaker: 1, start: 100, end: 200)], channel: "system")
+        p.process(words: [word("我们来讨论设计。", speaker: 1, start: 110, end: 210, translationStatus: "translation", language: "zh")], channel: "system")
+        p.process(words: [word("the design today", speaker: 1, start: 150, end: 250)], channel: "mic")
+        p.process(words: [word(" next.", speaker: 1, start: 1000, end: 1100)], channel: "system")
+
+        let rows = LiveTranscriptPresentation.rows(from: p.liveEntries, showTranslations: true)
+        XCTAssertEqual(rows.map(\.original), ["Let’s discuss the design today next."])
+        XCTAssertEqual(rows.map(\.translation), ["我们来讨论设计。"])
+        XCTAssertEqual(rows.map(\.translationLanguage), ["zh"])
+    }
+
+    func test_crossChannel_repeatedCorrectionsKeepCanonicalDisplayLineage() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("Let’s discuss", speaker: 1, start: 0, end: 100)], channel: "system")
+        p.process(words: [word(" the design ", speaker: 1, start: 100, end: 200)], channel: "system")
+        let canonical = p.liveEntries[1]
+        p.process(words: [word("the design today", speaker: 1, start: 150, end: 250)], channel: "mic")
+        let firstSourceStream = p.liveEntries[1].streamID
+
+        p.restartStream(channel: "mic", atMs: 250)
+        p.process(words: [word("the design today tomorrow", speaker: 1, start: 0, end: 100)], channel: "mic")
+        let corrected = p.liveEntries[1]
+        XCTAssertEqual(corrected.id, canonical.id)
+        XCTAssertEqual(corrected.text, " the design today tomorrow ")
+        XCTAssertEqual(corrected.displayStreamID, canonical.streamID)
+        XCTAssertNotEqual(corrected.streamID, firstSourceStream)
+        XCTAssertEqual(corrected.textOrigin, .providerCorrection(continuingStreamID: canonical.streamID))
+    }
+
     func test_crossChannel_distinctContent_isKept() {
         let p = TranscriptPipeline()
         p.process(words: [word("我每天早上都会去跑步", speaker: 0, start: 1000, end: 1100)], channel: "system")
@@ -123,6 +313,21 @@ final class TranscriptPipelineTests: XCTestCase {
 
         XCTAssertEqual(p.liveEntries.map(\.text), ["before the drop", "after the drop"])
         XCTAssertEqual(p.liveEntries.map(\.startMs), [1_799_000, 1_805_500])
+    }
+
+    func test_restartStream_startsANewDisplayRunWithoutChangingSpeakerName() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("before", speaker: 0, start: 0, end: 100)], channel: "mic")
+        p.restartStream(channel: "mic", atMs: 5000)
+        p.process(words: [word("after", speaker: 0, start: 0, end: 100)], channel: "mic")
+
+        let rows = LiveTranscriptPresentation.rows(
+            from: p.liveEntries,
+            showTranslations: false,
+            names: ["self": "Sam"]
+        )
+        XCTAssertEqual(rows.map(\.original), ["before", "after"])
+        XCTAssertEqual(rows.map(\.speakerLabel), ["Sam", "Sam"])
     }
 
     func test_restartStream_onTheSystemLeg_leavesTheMicLegAlone() {

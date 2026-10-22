@@ -43,7 +43,11 @@ final class SessionCoordinator {
     /// Short status shown by the recording HUD while the offline pass runs.
     private(set) var postProcessingStatus: String?
     private(set) var liveEntries: [LiveEntry] = []
+    /// Final entries can change without changing their count or identity.
+    /// Transcript views rebuild their historical rows only at this revision.
+    private(set) var transcriptRevision = 0
     private(set) var interimLine: String?
+    private(set) var interimSegments: [LiveTranscriptPresentation.InterimSegment] = []
     private(set) var lastError: String?
     /// True when `lastError` came from a Soniox auth/billing failure
     /// (`SonioxFailure.isAuth`). UI uses this to gate the "Open Settings"
@@ -117,17 +121,21 @@ final class SessionCoordinator {
     func seedForRenderProof(
         entries: [LiveEntry],
         interim: String?,
+        interimSegments: [LiveTranscriptPresentation.InterimSegment]? = nil,
+        transcriptChanged: Bool = true,
         phase: Phase,
         startedAt: Date?,
         lastError: String? = nil,
         lastErrorIsAuth: Bool = false
     ) {
-        self.liveEntries = entries
+        if transcriptChanged { self.liveEntries = entries }
         self.interimLine = interim
+        self.interimSegments = interimSegments ?? LiveTranscriptPresentation.interimSegments(interim ?? "")
         self.phase = phase
         self.startedAt = startedAt
         self.lastError = lastError
         self.lastErrorIsAuth = lastErrorIsAuth
+        if transcriptChanged { transcriptRevision += 1 }
     }
 #endif
 
@@ -403,7 +411,9 @@ final class SessionCoordinator {
 
         // Reset the live transcript for the fresh session.
         liveEntries = []
+        transcriptRevision += 1
         interimLine = nil
+        interimSegments = []
         transcriptPipeline.reset()
         SpeakerNameStore.shared.reset()
 
@@ -783,14 +793,17 @@ final class SessionCoordinator {
         }
     }
 
-    /// Copy the latest pipeline state into the observed properties. `interimLine`
-    /// is cheap; the big `liveEntries` array is republished only when finals
-    /// actually appended (interim-only frames just refresh the partial line).
+    /// Copy the latest pipeline state into the observed properties. Typed
+    /// interim fragments retain provider whitespace. Historical rows are
+    /// republished only when finals changed, never for an interim-only frame.
     private func flushPublishState(entriesChanged: Bool) {
         let newInterim = transcriptPipeline.interimLine
         if newInterim != interimLine { interimLine = newInterim }
+        let newSegments = transcriptPipeline.interimSegments
+        if newSegments != interimSegments { interimSegments = newSegments }
         if entriesChanged {
             liveEntries = transcriptPipeline.liveEntries
+            transcriptRevision += 1
             // New speech just landed → let Auto mode react proactively (it
             // debounces and rate-limits internally, so this is cheap to call).
             AutoAssistController.shared.noteActivity()

@@ -163,6 +163,42 @@ final class LiveTranscriptPresentationTests: XCTestCase {
         XCTAssertEqual(afterNote.trailing.count, 2)
     }
 
+    func test_providerInterimJoinsWithoutChangingItsTokenBoundary() {
+        let stream = UUID()
+        for (final, interim, expected) in [
+            ("Hello", ",", "Hello,"),
+            ("Hello ", "world", "Hello world"),
+            ("some", "thing", "something"),
+            ("你好", "世界", "你好世界"),
+        ] {
+            let segment = LiveTranscriptPresentation.InterimSegment(
+                speakerId: "self",
+                text: interim,
+                textOrigin: .providerTokens,
+                streamID: stream
+            )
+            let placed = LiveTranscriptPresentation.placeInterim([segment], afterSpeaker: "self", afterStreamID: stream)
+            XCTAssertEqual(placed.inlineOrigin, .providerTokens)
+            XCTAssertEqual(
+                LiveTranscriptPresentation.joining(placed.inline, origin: placed.inlineOrigin, to: final),
+                expected
+            )
+            XCTAssertTrue(placed.trailing.isEmpty)
+        }
+    }
+
+    func test_interimFromANewStreamDoesNotContinueThePreviousStream() {
+        let segment = LiveTranscriptPresentation.InterimSegment(
+            speakerId: "self",
+            text: "after reconnect",
+            textOrigin: .providerTokens,
+            streamID: UUID()
+        )
+        let placed = LiveTranscriptPresentation.placeInterim([segment], afterSpeaker: "self", afterStreamID: UUID())
+        XCTAssertEqual(placed.inline, "")
+        XCTAssertEqual(placed.trailing, [segment])
+    }
+
     // MARK: - Attendee names
 
     func test_nameChoicesOfferInviteesOnce() {
