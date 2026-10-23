@@ -68,13 +68,20 @@ enum TranscriptContext {
     /// "User notes" preamble at the top so the LLM treats them as
     /// authoritative corrections rather than low-priority chronological
     /// lines. They are also left inline so context isn't lost.
-    static func format(_ entries: [LiveEntry], label: ((String) -> String)? = nil) -> String {
+    static func format(
+        _ entries: [LiveEntry],
+        label: ((String) -> String)? = nil,
+        noteLabel: String = "[user note]"
+    ) -> String {
         let label = label ?? speakerLabeler(for: entries)
-        let notes = entries.filter { $0.speakerId == "note" }
-        let inline = entries
+        // Provider messages can end halfway through a word. Group complete
+        // spoken phrases before adding labels, using the reader's same rule.
+        let utterances = LiveTranscriptPresentation.utterances(from: entries)
+        let notes = utterances.filter { $0.speakerId == "note" }
+        let inline = utterances
             .map { e in
                 e.speakerId == "note"
-                    ? "[user note]: \(e.text)"
+                    ? "\(noteLabel): \(e.text)"
                     : "\(label(e.speakerId)): \(e.text)"
             }
             .joined(separator: "\n")

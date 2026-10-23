@@ -1,3 +1,4 @@
+import Observation
 import RTICore
 import XCTest
 
@@ -28,6 +29,91 @@ final class TranscriptContextLabelTests: XCTestCase {
         SpeakerNameStore.shared.rename("remote_1", to: "Priya Shah")
         let text = TranscriptContext.format([entry("remote_1", "Yes.", 1_000), entry("room_1", "Agreed.", 2_000)])
         XCTAssertEqual(text, "Priya Shah: Yes.\nRoom speaker 1: Agreed.")
+    }
+
+    func testNotesContextKeepsWordsWholeAcrossFinalMessagesWhileTranscriptIsHidden() async throws {
+        try RenderProofHarness.prepare()
+        let session = SessionCoordinator.shared
+        session.beginTranscriptReplayForProof()
+        defer { session.endTranscriptReplayForProof() }
+
+        try await SplitWordTranscriptReplay.publish(in: session)
+
+        let text = TranscriptContext.text(forSessionId: try XCTUnwrap(session.currentSessionId))
+        XCTAssertTrue(text.contains("Avery: The blue lantern prototype is ready."),
+                      "A provider packet boundary must not insert a label or newline inside lantern: \(text)")
+        XCTAssertTrue(text.contains("Taylor: The battery test starts tomorrow."))
+        XCTAssertFalse(text.contains("TRANSLATION_ONLY_MARKER"))
+        XCTAssertFalse(text.contains("PENDING_ONLY_MARKER"))
+        XCTAssertFalse(text.contains("remote_1:"))
+        XCTAssertFalse(text.contains("self:"))
+        XCTAssertTrue(session.transcriptRows.isEmpty, "Notes must not depend on opening Transcript")
+    }
+}
+
+/// Shared by the Notes-context and actual Ask-request regressions. The invented
+/// live-provider fixture finalized " lan" and "tern" in separate messages.
+@MainActor
+enum SplitWordTranscriptReplay {
+    static func publish(in session: SessionCoordinator) async throws {
+        // Retire any reader a preceding test owned without opening a view.
+        let owner = UUID()
+        session.activateTranscriptPresentation(for: owner)
+        session.deactivateTranscriptPresentation(for: owner)
+        let hiddenRevision = session.transcriptDisplayRevision
+
+        try await publishFinals(in: session) {
+            session.receiveTranscriptWordsForProof([
+                word("The", start: 900, end: 960),
+                word(" blue", start: 1140, end: 1320),
+                word(" lan", start: 1440, end: 1500),
+            ], channel: "mic")
+            XCTAssertTrue(session.liveEntries.isEmpty, "Final publication must use the real coalescer")
+        }
+        XCTAssertEqual(session.liveEntries.first?.text, "The blue lan")
+
+        try await publishFinals(in: session) {
+            session.receiveTranscriptWordsForProof([
+                word("The battery test starts tomorrow.", start: 1550, end: 2600),
+                word("TRANSLATION_ONLY_MARKER", start: 2650, end: 2800, translation: true),
+            ], channel: "system")
+            session.receiveTranscriptWordsForProof([
+                word("tern", start: 1620, end: 1680),
+                word(" prototype is ready.", start: 1920, end: 3120),
+                word("PENDING_ONLY_MARKER", start: 5000, end: 5200, final: false),
+            ], channel: "mic")
+        }
+        // Resolve names after publication, as a user rename would.
+        SpeakerNameStore.shared.rename("self", to: "Avery")
+        SpeakerNameStore.shared.rename("remote_1", to: "Taylor")
+        XCTAssertEqual(session.transcriptDisplayRevision, hiddenRevision)
+        XCTAssertTrue(session.transcriptRows.isEmpty)
+        XCTAssertFalse(session.interimSegments.isEmpty, "The excluded interim must actually be present")
+        XCTAssertTrue(session.liveEntries.contains { $0.translationStatus == "translation" },
+                      "The excluded translation must actually be present")
+    }
+
+    private static func publishFinals(in session: SessionCoordinator, receive: () -> Void) async throws {
+        let published = XCTestExpectation(description: "Coalesced final transcript publication")
+        withObservationTracking {
+            _ = session.transcriptRevision
+        } onChange: {
+            published.fulfill()
+        }
+        receive()
+        let result = await XCTWaiter.fulfillment(of: [published], timeout: 3)
+        guard result == .completed else {
+            XCTFail("The real transcript publisher did not commit the fixture")
+            throw PublicationTimeout()
+        }
+    }
+
+    private struct PublicationTimeout: Error {}
+
+    private static func word(_ text: String, start: Int, end: Int, final: Bool = true, translation: Bool = false) -> SonioxWord {
+        SonioxWord(text: text, startMs: start, endMs: end, speaker: 1, confidence: 1,
+                   isFinal: final, translationStatus: translation ? "translation" : "original",
+                   language: translation ? "zh" : "en", sourceLanguage: translation ? "en" : nil)
     }
 }
 

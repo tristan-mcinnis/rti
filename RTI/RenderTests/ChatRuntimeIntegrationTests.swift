@@ -104,7 +104,8 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
             routeResolver: routeResolver ?? { _, imageCount, _ in .success(Self.route(imageCount: imageCount)) },
             makeToolExecutor: makeToolExecutor,
             modeStore: modeStore ?? .inMemory(),
-            turnLogger: turnLogger ?? { _ in }
+            turnLogger: turnLogger ?? { _ in },
+            ambientScreenProvider: { nil }
         )
     }
 
@@ -126,6 +127,41 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
 
     private func pdfFixture() -> ExternalDocumentAttachment {
         ExternalDocumentAttachment.fixture(name: "report.pdf", text: "The number is 42.", kind: .pdf)
+    }
+
+    func testAskRequestKeepsWordsWholeAcrossFinalMessagesWhileTranscriptIsHidden() async throws {
+        try RenderProofHarness.prepare()
+        MeetingContextStore.shared.resetAfterSession()
+        let session = SessionCoordinator.shared
+        session.beginTranscriptReplayForProof()
+        defer {
+            session.endTranscriptReplayForProof()
+            SpeakerNameStore.shared.reset()
+            MeetingContextStore.shared.resetAfterSession()
+        }
+        try await SplitWordTranscriptReplay.publish(in: session)
+
+        let calls = Counter()
+        let stream: LLMRequest.ToolStream = { messages, _, _, _, onContent, _ in
+            calls.increment()
+            let prompt = messages.last(where: { $0.role == "user" })?.content ?? ""
+            XCTAssertTrue(prompt.contains("Avery: The blue lantern prototype is ready."),
+                          "The actual Ask request must not split lantern at a provider packet boundary: \(prompt)")
+            XCTAssertTrue(prompt.contains("Taylor: The battery test starts tomorrow."))
+            XCTAssertFalse(prompt.contains("TRANSLATION_ONLY_MARKER"))
+            XCTAssertFalse(prompt.contains("PENDING_ONLY_MARKER"))
+            XCTAssertFalse(prompt.contains("remote_1:"))
+            XCTAssertFalse(prompt.contains("self:"))
+            onContent("Stub answer")
+            return LLMClient.StreamResult(toolCalls: [], finishReason: "stop", reasoningCharacters: 0)
+        }
+        let controller = makeController(sessionBox: SessionBox(session.currentSessionId), stream: stream)
+        defer { controller.cancel() }
+        controller.sendAskAnything("What is ready?")
+
+        _ = try await waitForStoredTurns(2)
+        XCTAssertEqual(calls.count, 1, "The assertion must inspect an actual request, not a helper prompt")
+        XCTAssertTrue(session.transcriptRows.isEmpty, "Ask must not depend on opening Transcript")
     }
 
     // MARK: - Defect 1 & 6: per-attachment bytes

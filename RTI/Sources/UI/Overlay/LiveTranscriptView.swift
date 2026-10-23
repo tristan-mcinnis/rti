@@ -1,3 +1,4 @@
+import AppKit
 import RTICore
 import SwiftUI
 import HouseDesign
@@ -9,109 +10,161 @@ import HouseDesign
 /// right in a soft bubble, everyone else as plain text on the left. Interim
 /// words appear in lighter ink in their speaker's current run.
 ///
-/// Performance for a two-hour meeting: rows sit in a `LazyVStack`; only the
-/// last run and the tail read the fast-changing interim line, so an interim
-/// frame redraws those two views and nothing above them.
-struct LiveTranscriptList: View {
-    let rows: [LiveTranscriptPresentation.Row]
-    let showTranslations: Bool
+/// The Core projection shares its frozen history and replaces only its live
+/// tail. Stable row IDs and revisions let the lazy list skip unchanged runs.
+struct LiveTranscriptList: View, Equatable {
+    let rows: LiveTranscriptPresentation.LiveRows
+    let revision: Int
+    var isActive = true
+    var sessionID: String?
 
     /// Render proofs start scrolled away from the latest line to show the
     /// "Jump to latest" control; the app always starts following.
     static var startsFollowing = true
 
     @State private var following = LiveTranscriptList.startsFollowing
-    private static let bottomID = "transcript-bottom"
+    @State private var readingAnchor: LiveTranscriptPresentation.RunID?
+
+    private struct FollowUpdate: Equatable {
+        let revision: Int
+        let isActive: Bool
+        let sessionID: String?
+    }
+
+    private var followUpdate: FollowUpdate {
+        FollowUpdate(revision: revision, isActive: isActive, sessionID: sessionID)
+    }
+
+    /// The owner advances the revision whenever it replaces the snapshot.
+    /// Raw arrivals while hidden therefore skip even the historical ID diff.
+    nonisolated static func == (lhs: LiveTranscriptList, rhs: LiveTranscriptList) -> Bool {
+        lhs.revision == rhs.revision && lhs.isActive == rhs.isActive && lhs.sessionID == rhs.sessionID
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: House.Spacing.lg) {
                     ForEach(rows) { row in
-                        LiveTranscriptRun(
-                            row: row,
-                            showTranslation: showTranslations,
-                            carriesInterim: row.id == rows.last?.id
-                        )
+                        TranscriptRunView(row: row)
+                            .equatable()
                     }
-                    LiveInterimTail(lastSpeakerId: rows.last?.speakerId, lastStreamID: rows.last?.streamID) {
-                        if following { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
-                    }
-                    Color.clear.frame(height: House.hairline).id(Self.bottomID)
                 }
+                .scrollTargetLayout()
                 .padding(.top, House.Spacing.xxs)
                 .padding(.bottom, House.Spacing.xs)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background(TranscriptScrollTracking(following: $following, isActive: isActive))
             }
             .scrollContentBackground(.hidden)
-            .modifier(FollowLatestTracking(following: $following))
+            .scrollPosition(id: $readingAnchor)
+            .accessibilityIdentifier("rti-live-transcript")
             .overlay(alignment: .bottom) {
                 if !following {
                     JumpToLatestButton {
                         following = true
-                        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                        scrollToLatest(proxy)
                     }
                     .padding(.bottom, House.Spacing.sm)
                     .transition(.opacity)
                 }
             }
-            .onChange(of: growthKey) { _, _ in
-                if following { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
-            }
-            // Returning to this tab re-instantiates the view at the top: jump
-            // straight back to the latest line.
-            .onAppear {
-                if following { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
-            }
-        }
-    }
-
-    /// Changes when a run is added or the last run grows, and only then.
-    private var growthKey: String {
-        guard let last = rows.last else { return "" }
-        return "\(rows.count)-\(last.original.count)-\(last.translation.count)"
-    }
-}
-
-/// Follow the latest line until the user scrolls up; follow again once they
-/// scroll back to the bottom. Content growing under a following list is not
-/// a user scroll, so only scrolling the user does can stop following.
-/// macOS 14 has no scroll phase API: there the list always follows.
-private struct FollowLatestTracking: ViewModifier {
-    @Binding var following: Bool
-
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.modifier(ScrollPhaseFollowTracking(following: $following))
-        } else {
-            content
-        }
-    }
-}
-
-@available(macOS 15.0, *)
-private struct ScrollPhaseFollowTracking: ViewModifier {
-    @Binding var following: Bool
-    @State private var userScrolling = false
-
-    func body(content: Content) -> some View {
-        content
-            .onScrollPhaseChange { _, phase in
-                userScrolling = phase == .interacting || phase == .decelerating
-            }
-            // nil while everything fits (and during the first, empty layout
-            // pass): there is nothing to scroll, so following is left alone.
-            .onScrollGeometryChange(for: Bool?.self) { geometry in
-                guard geometry.contentSize.height > geometry.containerSize.height else { return nil }
-                return geometry.visibleRect.maxY >= geometry.contentSize.height - House.Spacing.xl
-            } action: { _, atBottom in
-                guard let atBottom else { return }
-                if atBottom {
+            // Activation, a new session and a new snapshot can arrive in one
+            // frame. Resolve their follow policy once before issuing a scroll.
+            .onChange(of: followUpdate, initial: true) { previous, current in
+                if previous.sessionID != current.sessionID {
                     following = true
-                } else if userScrolling {
-                    following = false
+                    readingAnchor = nil
                 }
+                if current.isActive, following { scrollToLatest(proxy) }
             }
+        }
+    }
+
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        if let last = rows.last { proxy.scrollTo(last.id, anchor: .bottom) }
+    }
+}
+
+/// Observe the existing SwiftUI scroll view through its AppKit seam. This
+/// keeps user scroll intent distinct from content growth on macOS 14 too.
+private struct TranscriptScrollTracking: NSViewRepresentable {
+    @Binding var following: Bool
+    let isActive: Bool
+
+    func makeNSView(context: Context) -> TranscriptScrollTrackingView {
+        TranscriptScrollTrackingView()
+    }
+
+    func updateNSView(_ view: TranscriptScrollTrackingView, context: Context) {
+        view.isActive = isActive
+        view.onFollowingChange = { value in
+            if following != value { following = value }
+        }
+        view.connectIfNeeded()
+    }
+
+    static func dismantleNSView(_ view: TranscriptScrollTrackingView, coordinator: ()) {
+        view.disconnect()
+    }
+}
+
+private final class TranscriptScrollTrackingView: NSView {
+    var isActive = true
+    var onFollowingChange: ((Bool) -> Void)?
+    private weak var scrollView: NSScrollView?
+    private var userScrolling = false
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if superview == nil { disconnect() } else { connectIfNeeded() }
+    }
+
+    override func layout() {
+        super.layout()
+        connectIfNeeded()
+    }
+
+    func connectIfNeeded() {
+        guard let enclosing = enclosingScrollView, enclosing !== scrollView else { return }
+        disconnect()
+        scrollView = enclosing
+        enclosing.contentView.postsBoundsChangedNotifications = true
+        let center = NotificationCenter.default
+        // AppKit posts these on the main thread during native scrolling.
+        center.addObserver(self, selector: #selector(boundsChanged), name: NSView.boundsDidChangeNotification, object: enclosing.contentView)
+        center.addObserver(self, selector: #selector(scrollStarted), name: NSScrollView.willStartLiveScrollNotification, object: enclosing)
+        center.addObserver(self, selector: #selector(scrollChanged), name: NSScrollView.didLiveScrollNotification, object: enclosing)
+        center.addObserver(self, selector: #selector(scrollEnded), name: NSScrollView.didEndLiveScrollNotification, object: enclosing)
+    }
+
+    func disconnect() {
+        NotificationCenter.default.removeObserver(self)
+        scrollView = nil
+        userScrolling = false
+    }
+
+    @objc private func scrollStarted(_ notification: Notification) { userScrolling = true }
+
+    @objc private func scrollChanged(_ notification: Notification) { reportScroll(userDriven: true) }
+
+    @objc private func scrollEnded(_ notification: Notification) {
+        reportScroll(userDriven: true)
+        userScrolling = false
+    }
+
+    @objc private func boundsChanged(_ notification: Notification) {
+        reportScroll(userDriven: userScrolling)
+    }
+
+    private func reportScroll(userDriven: Bool) {
+        guard isActive, userDriven, let scrollView, let document = scrollView.documentView else { return }
+        let visible = scrollView.documentVisibleRect
+        guard visible.height > 0 else { return }
+        let atBottom = document.isFlipped
+            ? visible.maxY >= document.bounds.maxY - House.Spacing.xl
+            : visible.minY <= document.bounds.minY + House.Spacing.xl
+        onFollowingChange?(atBottom)
     }
 }
 
@@ -137,93 +190,21 @@ private struct JumpToLatestButton: View {
         .buttonStyle(.plain)
         .help("Scroll to the latest line and keep following")
         .accessibilityLabel("Jump to latest")
+        .accessibilityIdentifier("rti-transcript-jump-latest")
     }
 }
 
 // MARK: - One run
 
-/// One final run. The last run also shows the interim words of its speaker,
-/// read here so that only this view redraws on an interim frame.
-private struct LiveTranscriptRun: View {
-    let row: LiveTranscriptPresentation.Row
-    let showTranslation: Bool
-    let carriesInterim: Bool
-
-    var body: some View {
-        let pending = interim
-        TranscriptRunView(
-            speakerId: row.speakerId,
-            label: row.speakerLabel,
-            startMs: row.startMs,
-            original: row.original,
-            translation: showTranslation ? row.translation : "",
-            interim: pending.text,
-            interimOrigin: pending.origin
-        )
-    }
-
-    private var interim: (text: String, origin: LiveEntry.TextOrigin) {
-        guard carriesInterim else { return ("", .standalone) }
-        let placement = LiveTranscriptPresentation.placeInterim(
-            SessionCoordinator.shared.interimSegments.filter { $0.translationStatus != "translation" },
-            afterSpeaker: row.speakerId,
-            afterStreamID: row.streamID
-        )
-        return (placement.inline, placement.inlineOrigin)
-    }
-}
-
-/// Interim words from anyone other than the last run's speaker: each opens
-/// the run it will become, in the lighter ink, below the final runs.
-private struct LiveInterimTail: View {
-    let lastSpeakerId: String?
-    let lastStreamID: UUID?
-    let onChange: () -> Void
-    private let session = SessionCoordinator.shared
-    private let names = SpeakerNameStore.shared
-
-    var body: some View {
-        let segments = trailing
-        VStack(alignment: .leading, spacing: House.Spacing.lg) {
-            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                TranscriptRunView(
-                    speakerId: segment.speakerId,
-                    label: LiveTranscriptPresentation.label(for: segment.speakerId, names: names.names),
-                    startMs: segment.startMs,
-                    original: "",
-                    translation: "",
-                    interim: segment.text,
-                    interimOrigin: segment.textOrigin
-                )
-            }
-        }
-        .onChange(of: session.interimSegments) { _, _ in onChange() }
-    }
-
-    private var trailing: [LiveTranscriptPresentation.InterimSegment] {
-        LiveTranscriptPresentation.placeInterim(
-            session.interimSegments.filter { $0.translationStatus != "translation" },
-            afterSpeaker: lastSpeakerId,
-            afterStreamID: lastStreamID
-        ).trailing
-    }
-}
-
 /// The run itself. Others: a small muted label line (speaker dot, name,
 /// time), then plain text capped at the reading width. The mic wearer: the
 /// same label line on the right over a soft `chipFill` bubble, as the house
 /// thread draws the user's turns. A note: a glyph label and secondary ink.
-private struct TranscriptRunView: View {
-    let speakerId: String
-    let label: String
-    let startMs: Int?
-    let original: String
-    let translation: String
-    let interim: String
-    let interimOrigin: LiveEntry.TextOrigin
+private struct TranscriptRunView: View, Equatable {
+    let row: LiveTranscriptPresentation.LiveRow
 
-    private var isSelf: Bool { speakerId == "self" }
-    private var isNote: Bool { speakerId == "note" }
+    private var isSelf: Bool { row.isSelf }
+    private var isNote: Bool { row.isNote }
 
     var body: some View {
         if isSelf {
@@ -236,7 +217,7 @@ private struct TranscriptRunView: View {
         } else {
             VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                 // Interim text the pipeline did not attribute has no label.
-                if !speakerId.isEmpty { header }
+                if !row.speakerId.isEmpty { header }
                 texts
                     .answerWidth()
             }
@@ -251,16 +232,16 @@ private struct TranscriptRunView: View {
                     .font(House.TypeToken.caption)
                     .foregroundStyle(House.ColorToken.textTertiary)
                     .accessibilityHidden(true)
-                Text(label)
+                Text(row.speakerLabel)
                     .font(House.TypeToken.meta.weight(.medium))
                     .foregroundStyle(House.ColorToken.textSecondary)
             } else {
                 if !isSelf {
-                    SlateStatusDot(color: SpeakerLabels.chipColor(for: speakerId))
+                    SlateStatusDot(color: SpeakerLabels.chipColor(for: row.speakerId))
                 }
-                SpeakerNameControl(speakerId: speakerId, label: label)
+                SpeakerNameControl(speakerId: row.speakerId, label: row.speakerLabel)
             }
-            if let startMs {
+            if let startMs = row.startMs {
                 Text(TimeFormat.elapsedMs(startMs))
                     .font(House.TypeToken.caption)
                     .monospacedDigit()
@@ -282,30 +263,17 @@ private struct TranscriptRunView: View {
     }
 
     private var texts: some View {
-        let paragraphs = LiveTranscriptPresentation.paragraphs(original)
-        let settled = paragraphs.dropLast()
-        let open = paragraphs.last ?? ""
-        let settling = interim
-        // Paragraph layout trims its edges; a provider's trailing space still
-        // belongs to the final/interim seam ("Hello " + "world").
-        let final = interimOrigin == .providerTokens && !open.isEmpty && !settling.isEmpty
-            ? open + String(original.reversed().prefix { $0.isWhitespace }.reversed())
-            : open
-        return VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            // A long run reads as paragraphs. Only the open paragraph takes
-            // the interim words, so an interim frame re-lays out that one
-            // paragraph, not the whole run. Paragraphs sit `sm` apart: clearly
-            // more than a line gap, clearly less than the gap between runs.
+        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            // Boundaries come from all visible words. Marking a span final
+            // changes only its ink; it cannot introduce a paragraph break.
             VStack(alignment: .leading, spacing: House.Spacing.sm) {
-                ForEach(Array(settled.enumerated()), id: \.offset) { _, paragraph in
-                    spokenStyle(Text(paragraph).foregroundStyle(finalInk))
-                }
-                if !open.isEmpty || !settling.isEmpty {
-                    spokenStyle(spoken(final, settling: settling))
+                ForEach(row.paragraphs) { paragraph in
+                    TranscriptParagraphView(paragraph: paragraph, isNote: isNote)
+                        .equatable()
                 }
             }
-            if !translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(translation.trimmingCharacters(in: .whitespacesAndNewlines))
+            if !row.translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(row.translation.trimmingCharacters(in: .whitespacesAndNewlines))
                     .font(House.TypeToken.bodySmall)
                     .italic()
                     .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
@@ -315,41 +283,25 @@ private struct TranscriptRunView: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
     }
+}
+
+private struct TranscriptParagraphView: View, Equatable {
+    let paragraph: LiveTranscriptPresentation.Paragraph
+    let isNote: Bool
 
     private var finalInk: Color {
         isNote ? House.ColorToken.textSecondary : House.ColorToken.textPrimary
     }
 
-    private func spokenStyle(_ text: Text) -> some View {
-        text
-            .font(House.TypeToken.bodySmall)
-            .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    /// Final words in full ink, interim words after them in tertiary ink:
-    /// one `Text`, so a final result recolours words in place.
-    private func spoken(_ final: String, settling: String) -> Text {
-        let joined = LiveTranscriptPresentation.joining(settling, origin: interimOrigin, to: final)
-        if final.isEmpty {
-            return Text(joined.trimmingCharacters(in: .whitespacesAndNewlines))
-                .foregroundStyle(House.ColorToken.textTertiary)
+    var body: some View {
+        paragraph.spans.reduce(Text("")) { text, span in
+            text + Text(span.text).foregroundStyle(span.isFinal ? finalInk : House.ColorToken.textTertiary)
         }
-        var text = Text(final).foregroundStyle(finalInk)
-        let suffix = String(joined.dropFirst(final.count))
-        if !suffix.isEmpty {
-            text = text + Text(suffix).foregroundStyle(House.ColorToken.textTertiary)
-        }
-        return text
-    }
-
-    private var accessibilityText: String {
-        let spoken = LiveTranscriptPresentation.joining(interim, origin: interimOrigin, to: original)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return "\(label): \(spoken)"
+        .font(House.TypeToken.bodySmall)
+        .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -44,10 +44,17 @@ final class SessionCoordinator {
     private(set) var postProcessingStatus: String?
     private(set) var liveEntries: [LiveEntry] = []
     /// Final entries can change without changing their count or identity.
-    /// Transcript views rebuild their historical rows only at this revision.
+    /// This final-only revision is separate from provisional display updates.
     private(set) var transcriptRevision = 0
     private(set) var interimLine: String?
     private(set) var interimSegments: [LiveTranscriptPresentation.InterimSegment] = []
+    /// One ordered snapshot owns pending and final runs, so a finalization
+    /// publishes text and styling together without replacing the row identity.
+    private(set) var transcriptRows = LiveTranscriptPresentation.LiveRows()
+    private(set) var transcriptDisplayRevision = 0
+    @ObservationIgnored private var transcriptProjection = LiveTranscriptPresentation.Projection()
+    @ObservationIgnored private var transcriptPresentationOwner: UUID?
+    @ObservationIgnored private var transcriptFinalsNeedProjection = true
     private(set) var lastError: String?
     /// True when `lastError` came from a Soniox auth/billing failure
     /// (`SonioxFailure.isAuth`). UI uses this to gate the "Open Settings"
@@ -114,6 +121,43 @@ final class SessionCoordinator {
     private var stopErrorRetireTask: Task<Void, Never>?
 
 #if DEBUG
+    private var isTranscriptReplayForProof = false
+
+    /// Replay invented provider frames through the production receive and
+    /// 120 ms publish path. This never opens capture, a socket, or a scheduler.
+    func beginTranscriptReplayForProof(startedAt: Date = Date()) {
+        isTranscriptReplayForProof = true
+        resetTranscriptState()
+        currentSessionId = UUID().uuidString
+        self.startedAt = startedAt
+        endedAt = nil
+        phase = .recording
+        lastError = nil
+        lastErrorIsAuth = false
+        SpeakerNameStore.shared.reset()
+    }
+
+    func receiveTranscriptWordsForProof(_ words: [SonioxWord], channel: String) {
+        precondition(isTranscriptReplayForProof)
+        precondition(channel == "mic" || channel == "system")
+        if channel == "mic" { handleWords(words) } else { handleSystemWords(words) }
+    }
+
+    func restartTranscriptStreamForProof(channel: String, atMs: Int) {
+        precondition(isTranscriptReplayForProof)
+        handleStreamRestarted(channel: channel, atMs: atMs)
+    }
+
+    func endTranscriptReplayForProof() {
+        precondition(isTranscriptReplayForProof)
+        isTranscriptReplayForProof = false
+        currentSessionId = nil
+        startedAt = nil
+        endedAt = nil
+        phase = .idle
+        resetTranscriptState()
+    }
+
     /// Debug-only seam for the offscreen render proof (`RTIRenderTests`). It
     /// pushes transcript rows and a phase straight into the published state so
     /// the design can be compared against the mockups without a live meeting.
@@ -136,6 +180,8 @@ final class SessionCoordinator {
         self.lastError = lastError
         self.lastErrorIsAuth = lastErrorIsAuth
         if transcriptChanged { transcriptRevision += 1 }
+        if transcriptChanged, entries.isEmpty { transcriptProjection.reset() }
+        refreshTranscriptPresentation(finalsChanged: transcriptChanged)
     }
 #endif
 
@@ -199,9 +245,7 @@ final class SessionCoordinator {
             self?.transcriptPipeline.setSystemStartOffset(ms: offsetMs)
         }
         audioPipeline.onStreamRestarted = { [weak self] channel, atMs in
-            guard let self, isRunning else { return }
-            transcriptPipeline.restartStream(channel: channel, atMs: atMs)
-            publishState()
+            self?.handleStreamRestarted(channel: channel, atMs: atMs)
         }
         audioPipeline.onError = { [weak self] message, isAuth in
             self?.lastError = message
@@ -410,11 +454,7 @@ final class SessionCoordinator {
         unreadableChatCount = 0
 
         // Reset the live transcript for the fresh session.
-        liveEntries = []
-        transcriptRevision += 1
-        interimLine = nil
-        interimSegments = []
-        transcriptPipeline.reset()
+        resetTranscriptState()
         SpeakerNameStore.shared.reset()
 
         // Bind live notes and Auto mode to the fresh session. The periodic
@@ -767,6 +807,29 @@ final class SessionCoordinator {
         publishState(entriesChanged: entriesChanged)
     }
 
+    private func handleStreamRestarted(channel: String, atMs: Int) {
+        guard isRunning else { return }
+        transcriptPipeline.restartStream(channel: channel, atMs: atMs)
+        publishState()
+    }
+
+    private func resetTranscriptState() {
+        // A queued publish from the previous session must not flush into the
+        // new one. The existing task checks this generation after its delay.
+        publishGeneration += 1
+        publishFlushScheduled = false
+        pendingEntriesChanged = false
+        transcriptPipeline.reset()
+        liveEntries = []
+        interimLine = nil
+        interimSegments = []
+        transcriptRevision += 1
+        transcriptProjection.reset()
+        transcriptFinalsNeedProjection = true
+        transcriptRows = LiveTranscriptPresentation.LiveRows()
+        transcriptDisplayRevision += 1
+    }
+
     // Coalesced UI publishing. Soniox delivers frames many times a second; each
     // one updating the @Observable `interimLine`/`liveEntries` makes SwiftUI
     // re-run the transcript view's O(n) body. At ~40min that flooded the main
@@ -777,15 +840,17 @@ final class SessionCoordinator {
     // how long the session runs.
     private var publishFlushScheduled = false
     private var pendingEntriesChanged = false
+    private var publishGeneration = 0
     private static let publishIntervalNs: UInt64 = 120_000_000 // ~8 Hz
 
     private func publishState(entriesChanged: Bool = true) {
         pendingEntriesChanged = pendingEntriesChanged || entriesChanged
         guard !publishFlushScheduled else { return }
         publishFlushScheduled = true
+        let generation = publishGeneration
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: Self.publishIntervalNs)
-            guard let self else { return }
+            guard let self, generation == publishGeneration else { return }
             publishFlushScheduled = false
             let changed = pendingEntriesChanged
             pendingEntriesChanged = false
@@ -800,14 +865,60 @@ final class SessionCoordinator {
         let newInterim = transcriptPipeline.interimLine
         if newInterim != interimLine { interimLine = newInterim }
         let newSegments = transcriptPipeline.interimSegments
-        if newSegments != interimSegments { interimSegments = newSegments }
+        let interimChanged = newSegments != interimSegments
+        if interimChanged { interimSegments = newSegments }
         if entriesChanged {
             liveEntries = transcriptPipeline.liveEntries
             transcriptRevision += 1
+        }
+        if entriesChanged || interimChanged {
+            refreshTranscriptPresentation(finalsChanged: entriesChanged)
+        }
+        if entriesChanged {
             // New speech just landed → let Auto mode react proactively (it
             // debounces and rate-limits internally, so this is cheap to call).
+#if DEBUG
+            // A fixture exercises publication, never a provider request.
+            if isTranscriptReplayForProof { return }
+#endif
             AutoAssistController.shared.noteActivity()
         }
+    }
+
+    /// Only a visible reader needs text layout. A token prevents a retired
+    /// view's delayed disappearance from deactivating its replacement.
+    func activateTranscriptPresentation(for owner: UUID) {
+        transcriptPresentationOwner = owner
+        // Options and names may have changed before the first visit, when no
+        // Transcript view existed to observe them.
+        refreshTranscriptPresentation()
+    }
+
+    func deactivateTranscriptPresentation(for owner: UUID) {
+        if transcriptPresentationOwner == owner { transcriptPresentationOwner = nil }
+    }
+
+    /// Copy the same ordered, committed runs the reader already projected.
+    /// Formatting is the only traversal; no layout or provisional state changes.
+    func transcriptTextForCopy() -> String {
+        LiveTranscriptPresentation.copyText(rows: transcriptProjection.committedRows)
+    }
+
+    /// Raw transcript publication continues while hidden. Finals are marked
+    /// dirty, and the next visible reader projects the latest snapshot once.
+    func refreshTranscriptPresentation(finalsChanged: Bool = true) {
+        transcriptFinalsNeedProjection = transcriptFinalsNeedProjection || finalsChanged
+        guard transcriptPresentationOwner != nil else { return }
+        if transcriptFinalsNeedProjection {
+            transcriptProjection.updateFinals(
+                liveEntries,
+                names: SpeakerNameStore.shared.names,
+                showTranslations: TranslationStore.currentConfig() != nil
+            )
+            transcriptFinalsNeedProjection = false
+        }
+        transcriptRows = transcriptProjection.updateInterims(interimSegments)
+        transcriptDisplayRevision += 1
     }
 
     /// Retire the failure notice this session left behind.

@@ -12,6 +12,9 @@ public struct SpeakerTurn {
     public let translationStatus: String
     public let language: String?
     public let sourceLanguage: String?
+    /// Used only by live aggregation to preserve the provider's exact timing.
+    /// The joined text and public batch semantics stay unchanged.
+    let words: [SonioxWord]
 }
 
 extension SpeakerTurn {
@@ -54,7 +57,8 @@ extension SpeakerTurn {
                 confidence: confidenceAvg,
                 translationStatus: group[0].translationStatus,
                 language: group[0].language,
-                sourceLanguage: group[0].sourceLanguage
+                sourceLanguage: group[0].sourceLanguage,
+                words: group
             )
         }
     }

@@ -72,7 +72,10 @@ public final class TranscriptAggregator {
                     language: run.language,
                     sourceLanguage: run.sourceLanguage,
                     textOrigin: .providerTokens,
-                    streamID: streamID
+                    streamID: streamID,
+                    tokens: run.words.map {
+                        LiveEntry.TimedToken(text: $0.text, startMs: $0.startMs + startMsOffset, endMs: $0.endMs + startMsOffset)
+                    }
                 )
             }
             for entry in newEntries {
@@ -112,7 +115,10 @@ public final class TranscriptAggregator {
                     startMs: $0.startMs + startMsOffset,
                     translationStatus: $0.translationStatus,
                     language: $0.language,
-                    streamID: streamID
+                    streamID: streamID,
+                    tokens: $0.words.map {
+                        LiveEntry.TimedToken(text: $0.text, startMs: $0.startMs + startMsOffset, endMs: $0.endMs + startMsOffset)
+                    }
                 )
             }
             interimText = runs.map {

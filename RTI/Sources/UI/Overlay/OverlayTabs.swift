@@ -7,15 +7,15 @@ import HouseDesign
 // MARK: - Transcript
 
 struct TranscriptTabView: View {
+    var isActive = true
     private let session = SessionCoordinator.shared
     @AppStorage(TranslationDefaults.enabledKey) private var translationEnabled = false
     @AppStorage(TranslationDefaults.modeKey) private var translationMode = "one_way"
     @AppStorage(TranslationDefaults.targetLanguageKey) private var targetLanguage = "en"
     @AppStorage(TranslationDefaults.languageAKey) private var languageA = "en"
     @AppStorage(TranslationDefaults.languageBKey) private var languageB = "zh"
-    @State private var paragraphs: [LiveTranscriptPresentation.Row] = []
-    /// Live speaker names (click a name to set one). Rows are rebuilt when a
-    /// name changes, so the label and the copied text both use it.
+    @State private var presentationOwner = UUID()
+    /// A rename refreshes the shared projection and copied text together.
     private let speakerNames = SpeakerNameStore.shared
 
     private static let languageOptions: [(code: String, label: String)] = [
@@ -39,7 +39,7 @@ struct TranscriptTabView: View {
             } trailing: {
                 translateControl
                 OverlayToolbarButton(icon: "doc.on.doc", help: "Copy transcript", disabled: session.liveEntries.isEmpty) {
-                    NSPasteboard.copyString(transcriptText())
+                    NSPasteboard.copyString(session.transcriptTextForCopy())
                 }
             }
             if let notice = session.micAudioNotice {
@@ -48,18 +48,30 @@ struct TranscriptTabView: View {
             if let notice = session.systemAudioNotice {
                 Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
             }
-            LiveTranscriptList(rows: paragraphs, showTranslations: translationEnabled)
+            LiveTranscriptList(rows: session.transcriptRows, revision: session.transcriptDisplayRevision,
+                               isActive: isActive, sessionID: session.currentSessionId)
+                .equatable()
                 .overlay {
-                    if session.liveEntries.isEmpty { TranscriptEmptyHints() }
+                    if session.transcriptRows.isEmpty {
+                        overlayEmptyHints([
+                            overlayRecordHint(),
+                            "What you say shows on the right, everyone else on the left",
+                            "Click a speaker to give them a name",
+                        ])
+                    }
                 }
         }
         // SessionCoordinator observes UserDefaults and is the sole writer of
         // `translationConfig`. The view only reads the same defaults keys for
         // its controls; it no longer pushes config directly.
-        .onAppear { paragraphs = makeParagraphs() }
-        .onChange(of: session.transcriptRevision) { _, _ in paragraphs = makeParagraphs() }
-        .onChange(of: translationEnabled) { _, _ in paragraphs = makeParagraphs() }
-        .onChange(of: speakerNames.names) { _, _ in paragraphs = makeParagraphs() }
+        .onAppear { if isActive { activatePresentation() } }
+        .onDisappear { session.deactivateTranscriptPresentation(for: presentationOwner) }
+        .onChange(of: isActive) { _, active in
+            if active { activatePresentation() }
+            else { session.deactivateTranscriptPresentation(for: presentationOwner) }
+        }
+        .onChange(of: translationEnabled) { _, _ in session.refreshTranscriptPresentation() }
+        .onChange(of: speakerNames.names) { _, _ in session.refreshTranscriptPresentation() }
     }
 
     // MARK: - Translation control
@@ -122,34 +134,12 @@ struct TranscriptTabView: View {
             : languageLabel(targetLanguage)
     }
 
-    // MARK: - Speaker turns (one stream, coalesced by speaker)
-
-    /// Build the transcript as speaker turns, merging each speaker's consecutive
-    /// fragments into one run. Each turn keeps BOTH its original and its
-    /// translation text; the run shows the translation under the original when
-    /// translating, so turning translation on mid-session never erases the
-    /// (untranslated) history before it.
-    ///
-    /// Labels are stable per speaker id (`LiveTranscriptPresentation.label`):
-    /// "You" for the mic wearer, "Speaker N" for the call's voices, and any
-    /// name the user gave.
-    ///
-    /// Cached in `@State` and rebuilt only when `liveEntries` changes, so long
-    /// transcripts don't re-coalesce on every SwiftUI render.
-    private func makeParagraphs() -> [LiveTranscriptPresentation.Row] {
-        LiveTranscriptPresentation.rows(
-            from: session.liveEntries,
-            showTranslations: translationEnabled,
-            names: speakerNames.names
-        )
+    private func activatePresentation() {
+        session.activateTranscriptPresentation(for: presentationOwner)
     }
 
     private func languageLabel(_ code: String) -> String {
         Self.languageOptions.first { $0.code == code }?.label ?? code.uppercased()
-    }
-
-    private func transcriptText() -> String {
-        LiveTranscriptPresentation.copyText(rows: paragraphs, showTranslations: translationEnabled)
     }
 
     private var healthColor: Color {
@@ -171,24 +161,6 @@ struct TranscriptTabView: View {
         case .reconnecting: return "Reconnecting…"
         case .failed: return "Connection lost"
         case .idle: return "Recording…"
-        }
-    }
-}
-
-/// First provisional words are readable before any final entry arrives.
-/// Only this empty-state layer observes the rapid interim updates.
-private struct TranscriptEmptyHints: View {
-    private let session = SessionCoordinator.shared
-
-    var body: some View {
-        if !session.interimSegments.contains(where: {
-            $0.translationStatus != "translation" && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }) {
-            overlayEmptyHints([
-                overlayRecordHint(),
-                "What you say shows on the right, everyone else on the left",
-                "Click a speaker to give them a name",
-            ])
         }
     }
 }

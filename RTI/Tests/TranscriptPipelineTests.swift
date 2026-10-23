@@ -130,6 +130,74 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(p.liveEntries.last?.streamID, restartedStream)
     }
 
+    func test_liveProjectionPreservesWordTimingAcrossLegsAndFinalPacketShapes() {
+        let p = TranscriptPipeline()
+        p.process(words: [
+            word("Alpha ", speaker: 1, start: 0, end: 500, final: false),
+            word("again.", speaker: 1, start: 2000, end: 2500, final: false),
+        ], channel: "mic")
+        p.process(words: [word("Other voice.", speaker: 1, start: 1000, end: 1500)], channel: "system")
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals(p.liveEntries)
+        let pendingRows = projection.updateInterims(p.interimSegments)
+        XCTAssertEqual(pendingRows.map(\.speakerId), ["self", "remote_1", "self"])
+        XCTAssertEqual(pendingRows.map(\.visibleText), ["Alpha", "Other voice.", "again."])
+
+        p.process(words: [
+            word("Alpha ", speaker: 1, start: 0, end: 500),
+            word("again.", speaker: 1, start: 2000, end: 2500, final: false),
+        ], channel: "mic")
+        projection.updateFinals(p.liveEntries)
+        let partialRows = projection.updateInterims(p.interimSegments)
+        XCTAssertEqual(partialRows.map(\.id), pendingRows.map(\.id))
+        XCTAssertEqual(partialRows.map(\.visibleText), pendingRows.map(\.visibleText))
+
+        p.process(words: [word("again.", speaker: 1, start: 2000, end: 2500)], channel: "mic")
+        projection.updateFinals(p.liveEntries)
+        XCTAssertEqual(projection.updateInterims([]).map(\.id), pendingRows.map(\.id))
+
+        for onePacket in [true, false] {
+            let packets = TranscriptPipeline()
+            packets.process(words: [word("Other voice.", speaker: 1, start: 1000, end: 1500)], channel: "system")
+            let words = [word("Alpha ", speaker: 1, start: 0, end: 500), word("again.", speaker: 1, start: 2000, end: 2500)]
+            if onePacket {
+                packets.process(words: words, channel: "mic")
+                XCTAssertEqual(packets.liveEntries.first?.text, "Alpha again.", "the archive/notes batch text is unchanged")
+            } else {
+                words.forEach { packets.process(words: [$0], channel: "mic") }
+            }
+            var packetProjection = LiveTranscriptPresentation.Projection()
+            packetProjection.updateFinals(packets.liveEntries)
+            XCTAssertEqual(packetProjection.updateInterims([]).map(\.visibleText), pendingRows.map(\.visibleText))
+        }
+    }
+
+    func test_liveProjectionCopyUsesCommittedTokenOrderNamesAndTranslationSetting() {
+        let p = TranscriptPipeline()
+        p.process(words: [
+            word("Alpha ", speaker: 1, start: 0, end: 500),
+            word("again.", speaker: 1, start: 2000, end: 2500),
+        ], channel: "mic")
+        p.process(words: [word("Other voice.", speaker: 1, start: 1000, end: 1500)], channel: "system")
+        p.process(words: [word("别的声音。", speaker: 1, start: 1100, end: 1600,
+                               translationStatus: "translation", language: "zh")], channel: "system")
+        p.process(words: [word(" Never copy this.", speaker: 1, start: 3000, end: 3500, final: false)], channel: "mic")
+        let names = ["self": "Sam", "remote_1": "Lee"]
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals(p.liveEntries, names: names, showTranslations: true)
+        _ = projection.updateInterims(p.interimSegments)
+        let before = projection.committedRows
+        let copied = LiveTranscriptPresentation.copyText(rows: projection.committedRows)
+        XCTAssertEqual(copied, "[00:00] Sam: Alpha\n\n[00:01] Lee: Other voice.\n[00:01] Translation ZH: 别的声音。\n\n[00:02] Sam: again.")
+        XCTAssertFalse(copied.contains("Never copy"))
+        XCTAssertEqual(before.map(\.revision), projection.committedRows.map(\.revision))
+        XCTAssertEqual(before.map(\.id), projection.committedRows.map(\.id))
+
+        projection.updateFinals(p.liveEntries, names: names, showTranslations: false)
+        XCTAssertEqual(LiveTranscriptPresentation.copyText(rows: projection.committedRows),
+                       "[00:00] Sam: Alpha\n\n[00:01] Lee: Other voice.\n\n[00:02] Sam: again.")
+    }
+
     func test_liveEntries_mergedAcrossChannelsSortedByStartMs() {
         let p = TranscriptPipeline()
         p.process(words: [word("later-mic", speaker: 0, start: 1000, end: 1100)], channel: "mic")
@@ -263,6 +331,7 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(corrected.displayStreamID, canonical.streamID)
         XCTAssertNotEqual(corrected.streamID, firstSourceStream)
         XCTAssertEqual(corrected.textOrigin, .providerCorrection(continuingStreamID: canonical.streamID))
+        XCTAssertTrue(corrected.tokens.isEmpty, "a peer correction has no fabricated word alignment")
     }
 
     func test_crossChannel_distinctContent_isKept() {

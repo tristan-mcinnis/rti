@@ -6,6 +6,20 @@ import Foundation
 /// session timeline. Ephemeral build: these live in memory for the duration
 /// of a session only.
 public struct LiveEntry: Identifiable {
+    /// Exact provider timing, retained separately from the archive/notes batch
+    /// text so another audio leg can appear between words of the same batch.
+    public struct TimedToken: Equatable, Sendable {
+        public let text: String
+        public let startMs: Int
+        public let endMs: Int
+
+        public init(text: String, startMs: Int, endMs: Int) {
+            self.text = text
+            self.startMs = startMs
+            self.endMs = endMs
+        }
+    }
+
     /// Provider tokens already carry their word boundaries. A standalone
     /// entry (for example a typed note or fixture) is a separate text block.
     public enum TextOrigin: Equatable, Sendable {
@@ -19,6 +33,9 @@ public struct LiveEntry: Identifiable {
     public let id: UUID
     public let speakerId: String
     public let text: String
+    /// Empty for authored/legacy entries and peer corrections without a known
+    /// word alignment. Those remain one explicit presentation fragment.
+    public let tokens: [TimedToken]
     public let textOrigin: TextOrigin
     /// One provider socket's token sequence. A reconnect starts a new sequence
     /// whose first token must not be glued to the previous stream's last one.
@@ -50,11 +67,13 @@ public struct LiveEntry: Identifiable {
         sourceLanguage: String?,
         id: UUID = UUID(),
         textOrigin: TextOrigin = .standalone,
-        streamID: UUID? = nil
+        streamID: UUID? = nil,
+        tokens: [TimedToken] = []
     ) {
         self.id = id
         self.speakerId = speakerId
         self.text = text
+        self.tokens = tokens
         self.textOrigin = textOrigin
         self.streamID = streamID
         self.startMs = startMs

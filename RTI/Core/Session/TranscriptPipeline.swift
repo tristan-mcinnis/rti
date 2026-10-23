@@ -122,6 +122,8 @@ public final class TranscriptPipeline {
                     let correctedText = String(leading)
                         + entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
                         + String(trailing)
+                    // No word alignment was established for this substitution.
+                    // Leave timed tokens empty rather than inventing timestamps.
                     out[m] = LiveEntry(
                         speakerId: kept.speakerId,
                         text: correctedText,

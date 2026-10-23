@@ -152,15 +152,245 @@ final class LiveTranscriptPresentationTests: XCTestCase {
         )
     }
 
-    func test_interimFromTheLastSpeakerContinuesTheirRun() {
-        let segments = LiveTranscriptPresentation.interimSegments("self: sure  remote_1: and I'll tag design")
-        let placed = LiveTranscriptPresentation.placeInterim(segments, afterSpeaker: "remote_1")
-        XCTAssertEqual(placed.inline, "and I'll tag design")
-        XCTAssertEqual(placed.trailing, [.init(speakerId: "self", text: "sure")])
+    private func providerEntry(_ text: String, speaker: String, at ms: Int, stream: UUID) -> LiveEntry {
+        LiveEntry(speakerId: speaker, text: text, startMs: ms, confidence: 1,
+                  translationStatus: "none", language: nil, sourceLanguage: nil,
+                  textOrigin: .providerTokens, streamID: stream)
+    }
 
-        let afterNote = LiveTranscriptPresentation.placeInterim(segments, afterSpeaker: "note")
-        XCTAssertEqual(afterNote.inline, "")
-        XCTAssertEqual(afterNote.trailing.count, 2)
+    private func pending(_ text: String, speaker: String, at ms: Int, stream: UUID) -> LiveTranscriptPresentation.InterimSegment {
+        .init(speakerId: speaker, text: text, textOrigin: .providerTokens, startMs: ms, streamID: stream)
+    }
+
+    private func timedEntry(_ text: String, speaker: String, start: Int, end: Int, stream: UUID, translated: Bool = false) -> LiveEntry {
+        LiveEntry(speakerId: speaker, text: text, startMs: start, confidence: 1,
+                  translationStatus: translated ? "translation" : "none", language: translated ? "zh" : "en", sourceLanguage: nil,
+                  textOrigin: .providerTokens, streamID: stream,
+                  tokens: [.init(text: text, startMs: start, endMs: end)])
+    }
+
+    func test_utterancePolicyUsesMeasuredPauseAndNotPacketBoundaries() {
+        let stream = UUID()
+        let first = timedEntry("Hello", speaker: "self", start: 0, end: 100, stream: stream)
+        let continued = timedEntry(" world.", speaker: "self", start: 1099, end: 1199, stream: stream)
+        let afterPause = timedEntry(" Next.", speaker: "self", start: 2199, end: 2299, stream: stream)
+        XCTAssertEqual(LiveTranscriptPresentation.utterances(from: [first, continued, afterPause]).map(\.text),
+                       ["Hello world.", " Next."])
+        let batched = LiveEntry(speakerId: "self", text: "Hello world. Next.", startMs: 0, confidence: 1,
+                               translationStatus: "none", language: "en", sourceLanguage: nil,
+                               textOrigin: .providerTokens, streamID: stream,
+                               tokens: first.tokens + continued.tokens + afterPause.tokens)
+        XCTAssertEqual(LiveTranscriptPresentation.utterances(from: [batched]).map(\.text),
+                       LiveTranscriptPresentation.utterances(from: [first, continued, afterPause]).map(\.text))
+    }
+
+    func test_olderUtteranceExtensionMatchesColdProjectionAcrossAnotherLeg() {
+        let mic = UUID()
+        let system = UUID()
+        let first = timedEntry("Alpha", speaker: "self", start: 0, end: 100, stream: mic)
+        let other = timedEntry("Other voice.", speaker: "remote_1", start: 150, end: 250, stream: system)
+        let continued = timedEntry(" again.", speaker: "self", start: 200, end: 300, stream: mic)
+        var incremental = LiveTranscriptPresentation.Projection()
+        incremental.updateFinals([first, other])
+        let before = incremental.committedRows
+        incremental.updateFinals([first, other, continued])
+        var cold = LiveTranscriptPresentation.Projection()
+        cold.updateFinals([first, other, continued])
+        XCTAssertEqual(incremental.committedRows.map(\.visibleText), ["Alpha again.", "Other voice."])
+        XCTAssertEqual(incremental.committedRows.map(\.id), cold.committedRows.map(\.id))
+        XCTAssertEqual(incremental.committedRows.map(\.visibleText), cold.committedRows.map(\.visibleText))
+        XCTAssertEqual(before[1], incremental.committedRows[1], "unrelated overlapping utterance stays cached")
+    }
+
+    func test_delayedTranslationPairsByTimestampAndMatchesColdProjection() {
+        let stream = UUID()
+        let first = timedEntry("First.", speaker: "remote_1", start: 0, end: 100, stream: stream)
+        let second = timedEntry("Second.", speaker: "remote_1", start: 2000, end: 2100, stream: stream)
+        let translated = timedEntry("第一句。", speaker: "remote_1", start: 0, end: 100, stream: stream, translated: true)
+        var incremental = LiveTranscriptPresentation.Projection()
+        incremental.updateFinals([first, second], showTranslations: true)
+        incremental.updateFinals([first, second, translated], showTranslations: true)
+        var cold = LiveTranscriptPresentation.Projection()
+        cold.updateFinals([first, second, translated], showTranslations: true)
+        XCTAssertEqual(incremental.committedRows.map(\.translation), ["第一句。", ""])
+        XCTAssertEqual(incremental.committedRows.map(\.id), cold.committedRows.map(\.id))
+        XCTAssertEqual(incremental.committedRows.map(\.translation), cold.committedRows.map(\.translation))
+    }
+
+    func test_translationFirstReattachesWhenSourceArrivesWithoutDuplicateIDs() {
+        let stream = UUID()
+        let original = timedEntry("First.", speaker: "remote_1", start: 0, end: 100, stream: stream)
+        let translated = timedEntry("第一句。", speaker: "remote_1", start: 0, end: 100, stream: stream, translated: true)
+        var incremental = LiveTranscriptPresentation.Projection()
+        incremental.updateFinals([translated], showTranslations: true)
+        let orphanID = incremental.committedRows[0].id
+        incremental.updateFinals([translated, original], showTranslations: true)
+        var cold = LiveTranscriptPresentation.Projection()
+        cold.updateFinals([translated, original], showTranslations: true)
+        XCTAssertEqual(incremental.committedRows.count, 1)
+        XCTAssertEqual(incremental.committedRows[0].visibleText, "First.")
+        XCTAssertEqual(incremental.committedRows[0].translation, "第一句。")
+        XCTAssertNotEqual(orphanID, incremental.committedRows[0].id, "translation-only and spoken rows have distinct kinds")
+        XCTAssertEqual(incremental.committedRows.map(\.id), cold.committedRows.map(\.id))
+        XCTAssertEqual(Set(incremental.committedRows.map(\.id)).count, incremental.committedRows.count)
+    }
+
+    func test_previouslyPairedTranslationMovesToItsLaterArrivingSource() {
+        let stream = UUID()
+        let first = timedEntry("First.", speaker: "remote_1", start: 0, end: 100, stream: stream)
+        let second = timedEntry("Second.", speaker: "remote_1", start: 2000, end: 2100, stream: stream)
+        let translated = timedEntry("第二句。", speaker: "remote_1", start: 2000, end: 2100, stream: stream, translated: true)
+        var incremental = LiveTranscriptPresentation.Projection()
+        incremental.updateFinals([first], showTranslations: true)
+        incremental.updateFinals([first, translated], showTranslations: true)
+        incremental.updateFinals([first, translated, second], showTranslations: true)
+        var cold = LiveTranscriptPresentation.Projection()
+        cold.updateFinals([first, translated, second], showTranslations: true)
+        XCTAssertEqual(incremental.committedRows.map(\.translation), ["", "第二句。"])
+        XCTAssertEqual(incremental.committedRows.map(\.id), cold.committedRows.map(\.id))
+        XCTAssertEqual(incremental.committedRows.map(\.translation), cold.committedRows.map(\.translation))
+    }
+
+    func test_liveProjectionKeepsInterleavedOrderAndIdentityAsPrefixesFinalize() {
+        let stream = UUID()
+        let first = providerEntry("Alpha.", speaker: "remote_1", at: 0, stream: stream)
+        let continued = providerEntry(" Continue.", speaker: "remote_1", at: 100, stream: stream)
+        let second = providerEntry("Beta.", speaker: "remote_2", at: 200, stream: stream)
+        let returned = providerEntry(" Return.", speaker: "remote_1", at: 300, stream: stream)
+        let interim = [
+            pending(" Continue.", speaker: "remote_1", at: 100, stream: stream),
+            pending("Beta.", speaker: "remote_2", at: 200, stream: stream),
+            pending(" Return.", speaker: "remote_1", at: 300, stream: stream),
+        ]
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals([first])
+        let initial = projection.updateInterims(interim)
+        let identities = initial.map(\.id)
+        XCTAssertEqual(initial.map(\.speakerId), ["remote_1", "remote_2", "remote_1"])
+        XCTAssertEqual(initial.map(\.visibleText), ["Alpha. Continue.", "Beta.", "Return."])
+
+        for finalizedCount in 1...3 {
+            projection.updateFinals([first] + Array([continued, second, returned].prefix(finalizedCount)))
+            let rows = projection.updateInterims(Array(interim.dropFirst(finalizedCount)))
+            XCTAssertEqual(rows.map(\.id), identities)
+            XCTAssertEqual(rows.map(\.visibleText), initial.map(\.visibleText))
+        }
+    }
+
+    func test_liveProjectionPlacesEarlierPendingLegBeforeLaterFinalLeg() {
+        let mic = UUID()
+        let system = UUID()
+        let later = providerEntry("Later final.", speaker: "remote_1", at: 2000, stream: system)
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals([later])
+        let before = projection.updateInterims([pending("Earlier pending.", speaker: "self", at: 1000, stream: mic)])
+        XCTAssertEqual(before.map(\.speakerId), ["self", "remote_1"])
+        projection.updateFinals([providerEntry("Earlier pending.", speaker: "self", at: 1000, stream: mic), later])
+        let after = projection.updateInterims([])
+        XCTAssertEqual(before.map(\.id), after.map(\.id))
+        XCTAssertEqual(before.map(\.visibleText), after.map(\.visibleText))
+    }
+
+    func test_liveProjectionParagraphsDependOnVisibleTextNotFinality() {
+        let cases = [
+            (String(repeating: "word ", count: 90), "finished.", " Tail stays here."),
+            (String(repeating: "word ", count: 239), "final", " Tail stays here."),
+            (String(repeating: "汉", count: 449), "。", "后面的文字保持原位。"),
+            (String(repeating: "word ", count: 90) + "Version ", "3.", "14 stays here."),
+        ]
+        for (prefix, promoted, suffix) in cases {
+            let stream = UUID()
+            var projection = LiveTranscriptPresentation.Projection()
+            let first = providerEntry(prefix, speaker: "self", at: 0, stream: stream)
+            projection.updateFinals([first])
+            let initial = projection.updateInterims([pending(promoted + suffix, speaker: "self", at: 100, stream: stream)])[0]
+            projection.updateFinals([first, providerEntry(promoted, speaker: "self", at: 100, stream: stream)])
+            let middle = projection.updateInterims([pending(suffix, speaker: "self", at: 200, stream: stream)])[0]
+            projection.updateFinals([first, providerEntry(promoted + suffix, speaker: "self", at: 100, stream: stream)])
+            let final = projection.updateInterims([])[0]
+            XCTAssertEqual(initial.id, middle.id)
+            XCTAssertEqual(initial.id, final.id)
+            XCTAssertEqual(initial.paragraphs.map(\.id), middle.paragraphs.map(\.id))
+            XCTAssertEqual(initial.paragraphs.map(\.id), final.paragraphs.map(\.id))
+            XCTAssertEqual(initial.paragraphs.map(\.text), middle.paragraphs.map(\.text))
+            XCTAssertEqual(initial.paragraphs.map(\.text), final.paragraphs.map(\.text))
+            XCTAssertTrue(initial.hasPending)
+            XCTAssertFalse(final.hasPending)
+            XCTAssertTrue(final.paragraphs.flatMap(\.spans).allSatisfy(\.isFinal))
+        }
+    }
+
+    func test_liveProjectionReusesFrozenRowsDuringInterimOnlyRevisions() {
+        let stream = UUID()
+        let entries = (0..<2000).map {
+            providerEntry("Sentence \($0).", speaker: "remote_\($0 % 2 + 1)", at: $0 * 1000, stream: stream)
+        }
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals(entries)
+        let first = projection.updateInterims([pending(" Next", speaker: "remote_2", at: 2_000_000, stream: stream)])
+        let next = projection.updateInterims([pending(" Next words.", speaker: "remote_2", at: 2_000_000, stream: stream)])
+        XCTAssertEqual(first[0], next[0], "historical row equality does not scan or revise its text")
+        XCTAssertEqual(first[1998], next[1998])
+        XCTAssertEqual(first.last?.id, next.last?.id)
+        XCTAssertNotEqual(first.last?.revision, next.last?.revision)
+    }
+
+    func test_liveProjectionKeepsCorrectionLineageTranslationAndReconnectNames() {
+        let canonicalStream = UUID()
+        let peerStream = UUID()
+        let canonical = providerEntry("Hello ", speaker: "remote_1", at: 0, stream: canonicalStream)
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals([canonical], names: ["remote_1": "Sam"], showTranslations: true)
+        let original = projection.updateInterims([pending("world.", speaker: "remote_1", at: 100, stream: canonicalStream)])[0]
+        let corrected = LiveEntry(
+            speakerId: "remote_1", text: "Hello there ", startMs: 0, confidence: 1,
+            translationStatus: "none", language: "en", sourceLanguage: nil,
+            id: canonical.id, textOrigin: .providerCorrection(continuingStreamID: canonicalStream), streamID: peerStream
+        )
+        let translation = LiveEntry(
+            speakerId: "remote_1", text: "你好。", startMs: 50, confidence: 1,
+            translationStatus: "translation", language: "zh", sourceLanguage: "en",
+            textOrigin: .providerTokens, streamID: canonicalStream
+        )
+        projection.updateFinals([corrected, translation], names: ["remote_1": "Sam"], showTranslations: true)
+        let revised = projection.updateInterims([pending("world.", speaker: "remote_1", at: 100, stream: canonicalStream)])[0]
+        XCTAssertEqual(revised.id, original.id)
+        XCTAssertEqual(revised.visibleText, "Hello there world.")
+        XCTAssertEqual(revised.translation, "你好。")
+        XCTAssertEqual(revised.speakerLabel, "Sam")
+
+        let restarted = UUID()
+        let before = projection.updateInterims([pending("New stream.", speaker: "remote_1", at: 5000, stream: restarted)])
+        XCTAssertEqual(before.count, 2)
+        projection.updateFinals([corrected, translation, providerEntry("New stream.", speaker: "remote_1", at: 5000, stream: restarted)],
+                                names: ["remote_1": "Sam"], showTranslations: true)
+        let after = projection.updateInterims([])
+        XCTAssertEqual(before.map(\.id), after.map(\.id))
+        XCTAssertEqual(after.map(\.speakerLabel), ["Sam", "Sam"])
+    }
+
+    func test_liveProjectionTranslationToggleHidesAndRestoresPairedText() {
+        let stream = UUID()
+        let original = providerEntry("Hello.", speaker: "remote_1", at: 0, stream: stream)
+        let translation = LiveEntry(
+            speakerId: "remote_1", text: "你好。", startMs: 100, confidence: 1,
+            translationStatus: "translation", language: "zh", sourceLanguage: "en",
+            textOrigin: .providerTokens, streamID: stream
+        )
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals([original, translation], showTranslations: true)
+        let shown = projection.updateInterims([])[0]
+        XCTAssertEqual(shown.translation, "你好。")
+
+        projection.updateFinals([original, translation], showTranslations: false)
+        let hidden = projection.updateInterims([])[0]
+        XCTAssertEqual(hidden.id, shown.id)
+        XCTAssertEqual(hidden.visibleText, "Hello.")
+        XCTAssertEqual(hidden.translation, "")
+        XCTAssertNil(hidden.translationLanguage)
+
+        projection.updateFinals([original, translation], showTranslations: true)
+        XCTAssertEqual(projection.updateInterims([])[0].translation, shown.translation)
     }
 
     func test_providerInterimJoinsWithoutChangingItsTokenBoundary() {
@@ -171,32 +401,19 @@ final class LiveTranscriptPresentationTests: XCTestCase {
             ("some", "thing", "something"),
             ("你好", "世界", "你好世界"),
         ] {
-            let segment = LiveTranscriptPresentation.InterimSegment(
-                speakerId: "self",
-                text: interim,
-                textOrigin: .providerTokens,
-                streamID: stream
-            )
-            let placed = LiveTranscriptPresentation.placeInterim([segment], afterSpeaker: "self", afterStreamID: stream)
-            XCTAssertEqual(placed.inlineOrigin, .providerTokens)
-            XCTAssertEqual(
-                LiveTranscriptPresentation.joining(placed.inline, origin: placed.inlineOrigin, to: final),
-                expected
-            )
-            XCTAssertTrue(placed.trailing.isEmpty)
+            var projection = LiveTranscriptPresentation.Projection()
+            projection.updateFinals([providerEntry(final, speaker: "self", at: 0, stream: stream)])
+            let rows = projection.updateInterims([pending(interim, speaker: "self", at: 100, stream: stream)])
+            XCTAssertEqual(rows.map(\.visibleText), [expected])
+            XCTAssertTrue(rows[0].hasPending)
         }
     }
 
     func test_interimFromANewStreamDoesNotContinueThePreviousStream() {
-        let segment = LiveTranscriptPresentation.InterimSegment(
-            speakerId: "self",
-            text: "after reconnect",
-            textOrigin: .providerTokens,
-            streamID: UUID()
-        )
-        let placed = LiveTranscriptPresentation.placeInterim([segment], afterSpeaker: "self", afterStreamID: UUID())
-        XCTAssertEqual(placed.inline, "")
-        XCTAssertEqual(placed.trailing, [segment])
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals([providerEntry("Before reconnect.", speaker: "self", at: 0, stream: UUID())])
+        let rows = projection.updateInterims([pending("After reconnect.", speaker: "self", at: 5000, stream: UUID())])
+        XCTAssertEqual(rows.map(\.visibleText), ["Before reconnect.", "After reconnect."])
     }
 
     // MARK: - Attendee names

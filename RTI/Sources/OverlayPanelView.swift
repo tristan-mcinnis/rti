@@ -29,6 +29,7 @@ struct OverlayPanelView: View {
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
     @State private var tab: OverlayTab = .assist
+    @State private var hasVisitedTranscript = false
 
     // Prepare is the pre-call surface, not a live tab — it's pulled out of the
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
@@ -58,14 +59,25 @@ struct OverlayPanelView: View {
             if let message = hotkeyNotice.message {
                 OverlayNoticeBanner(text: message, onDismiss: { hotkeyNotice.dismiss() })
             }
-            Group {
+            ZStack(alignment: .topLeading) {
+                // Keep the reader's scroll view and local edit state after its
+                // first visit. Hidden readers hold their last displayed rows;
+                // they catch up once on return instead of laying out each frame.
+                if hasVisitedTranscript || tab == .transcript {
+                    TranscriptTabView(isActive: tab == .transcript)
+                        .tabContentPadding()
+                        .opacity(tab == .transcript ? 1 : 0)
+                        .allowsHitTesting(tab == .transcript)
+                        .disabled(tab != .transcript)
+                        .accessibilityHidden(tab != .transcript)
+                }
                 switch tab {
                 case .assist:
                     assistTab
                 case .auto:
                     AutoTabView().tabContentPadding()
                 case .transcript:
-                    TranscriptTabView().tabContentPadding()
+                    EmptyView()
                 case .notes:
                     NotesTabView().tabContentPadding()
                 case .setup:
@@ -90,6 +102,9 @@ struct OverlayPanelView: View {
         .preferredColorScheme(preferredColorScheme)
         .overlay(themeRefreshToken)
         .onAppear { shell.registerEscape() }
+        .onChange(of: tab) { _, selection in
+            if selection == .transcript { hasVisitedTranscript = true }
+        }
     }
 
     /// The tabs in a row under the header: Prepare, then the live tabs.

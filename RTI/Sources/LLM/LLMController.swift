@@ -2878,17 +2878,11 @@ final class LLMController {
         // Labels come from the speaker id, as in the Transcript tab, so "Speaker
         // 2" in a question and in the answer is the person the tab shows.
         let names = SpeakerNameStore.shared.names
-        let formatLine: (LiveEntry) -> String = { entry in
-            if entry.speakerId == "note" { return "[my note]: \(entry.text)" }
-            return "\(TranscriptContext.speakerLabel(for: entry.speakerId, names: names)): \(entry.text)"
-        }
-        let inline = windowed.map(formatLine).joined(separator: "\n")
-
-        let notes = windowed.filter { $0.speakerId == "note" }
-        guard !notes.isEmpty else { return inline }
-        let header = "## User notes (authoritative — trust these over any transcript ambiguity)"
-        let bullets = notes.map { "- \($0.text)" }.joined(separator: "\n")
-        return "\(header)\n\(bullets)\n\n\(inline)"
+        return TranscriptContext.format(
+            windowed,
+            label: { TranscriptContext.speakerLabel(for: $0, names: names) },
+            noteLabel: "[my note]"
+        )
     }
 }
 
