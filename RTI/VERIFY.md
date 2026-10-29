@@ -1,6 +1,6 @@
-# RTI POC-1 — User Verification Guide
+# RTI — User Verification Guide
 
-This is what you run to finish verifying POC-1. Ralph automated what it could; these steps need your hands on the Mac.
+This is what you run to verify RTI by hand. Ralph automated what it could; these steps need your hands on the Mac.
 
 ## 1. Launch
 
@@ -10,9 +10,9 @@ open ~/Library/Developer/Xcode/DerivedData/RTI-*/Build/Products/Debug/RTI.app
 ```
 
 You should see:
-- A dark translucent panel at the top-left of your main screen, ~420×560, with "RTI" and "overlay — POC-1" text
-- An "RTI" label in the macOS menubar, with a menu containing **Toggle Overlay** and **Quit RTI**
-- NO Dock icon (accessory app)
+- A normal titled RTI window on your main screen. It is a regular window, not a floating panel (no float, no translucency).
+- An RTI icon in the Dock, and RTI in the ⌘Tab list. The app is a regular Dock app (`LSUIElement=NO` since 2026-09-01).
+- An "RTI" item in the macOS menubar. It is kept alongside the Dock icon. Its menu has **Quit RTI** and the panel toggles.
 
 If any of those are missing, note it in `POC1-findings.md` → Anomalies.
 

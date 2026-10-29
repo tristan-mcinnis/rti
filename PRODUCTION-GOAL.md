@@ -26,8 +26,9 @@ anything. Hardening only — **no new product surface**.
 ## Rules of engagement (non-negotiable)
 
 1. **Ephemeral-by-design is law.** No database, no history UI, no cross-session search, no
-   corpus, no audio retention. The only disk writes remain: config (Keychain-style store +
-   `modes.json`) and the write-only `SessionArchive` Markdown. If a change tempts you toward
+   corpus. Audio is kept: per-session WAV legs, owner-only files (superseded on purpose
+   2026-08-28, see Progress and `CLAUDE.md`). The disk writes are: config (Keychain-style store +
+   `modes.json`), the `SessionArchive` Markdown and the retained WAV legs. If a change tempts you toward
    persistence, stop — you've misread the task. Do not revive any removed surface (the
    `CLAUDE.md` "History note" lists it; treat any stray reference as a leftover to delete,
    not revive).
@@ -83,7 +84,7 @@ from `git log`:
 **Still open from the original gate:** a signed + notarized Developer ID DMG
 (6.1) has never been cut; local installs use `scripts/install-local.sh` with an
 Apple Development identity so TCC grants survive. The last tag is
-`v0.1.0-beta9` (2026-05-26); nothing since has been tagged as a release.
+`v0.2.0` (2026-10-03); earlier betas ran to `v0.1.0-beta9` (2026-05-26).
 
 ---
 
@@ -276,7 +277,7 @@ Beta = other people's meetings on their machines. Close the leaks.
   can't contain transcript content (follows from 5.1) and add a one-line caution if any
   session data could still appear.
   - `verify:` copy logs after a session, paste, confirm no meeting content.
-- **5.4 — WAV-deletion audit.** Confirm the temp WAV is deleted on **every** stop path —
+- **5.4 — WAV-deletion audit.** (Superseded: WAV legs are now kept, see Progress.) Confirm the temp WAV is deleted on **every** stop path —
   normal stop, emergency shutdown (`applicationWillTerminate`), and start-failure. Add a
   belt-and-suspenders sweep of stale `RTI/sessions/*.wav` temp files on launch.
   - `verify:` force-quit mid-session, relaunch, confirm no orphaned WAV remains.
@@ -319,7 +320,7 @@ No item here is done on faith. Run the real thing.
 - **7.2 — Real-meeting smoke test.** Join an actual call. Both sides transcribe. ⌘↵ assist is
   fast and useful. ⌘⇧H screenshot-OCR attaches. Notes/Dossiers/Discussion-Guide panels
   populate. Kill + restore wifi mid-call — health indicator reflects it, transcription
-  recovers. Stop — confirm the Markdown archive is written, the WAV is gone, the mic is
+  recovers. Stop — confirm the Markdown archive is written, the WAV legs are kept in the archive folder (owner-only), the mic is
   released (orange dot clears; another app can take the mic).
 - **7.3 — Doc truth-up.** README, `RELEASE.md`, and `VERIFY.md` match the shipped behavior
   (hotkey table, first-run, auto-update, security notes). Update the memory note
@@ -338,8 +339,8 @@ No item here is done on faith. Run the real thing.
 - [ ] Fresh-machine first-run takes a non-technical friend from DMG to live transcription in
       <2 min, with permissions explained, **screenshot-verified**.
 - [ ] Errors are always visible and actionable; the user can always tell if audio is flowing.
-- [ ] No transcript content in logs by default; session files `0600`/dirs `0700`; WAV deleted
-      on every path.
+- [ ] No transcript content in logs by default; session files `0600`/dirs `0700`; WAV legs kept per
+      session and owner-only (the old "WAV deleted on every path" rule was superseded on purpose).
 - [ ] Notarized DMG installs clean on a never-run Mac (real `spctl` output reported);
       auto-update mechanism verified.
 - [ ] Full `VERIFY.md` + one real meeting passed; docs match reality.
@@ -349,7 +350,7 @@ No item here is done on faith. Run the real thing.
 ## Explicitly OUT of scope (do not do these)
 
 - Any persistence, history, search, corpus, Q&A-over-past-sessions, or session-browser UI.
-- Audio retention of any kind.
+- Audio retention beyond the per-session WAV legs and the offline upgrade (the old "none" rule was superseded on purpose).
 - New "modes," new panels, new LLM features, plugin systems, multi-account/multi-tenant.
 - Cross-platform (iOS/iPadOS), App Store sandboxing, public distribution.
 - Reviving any feature listed in `CLAUDE.md`'s removed-surface "History note."
