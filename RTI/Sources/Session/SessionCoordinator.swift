@@ -101,7 +101,8 @@ final class SessionCoordinator {
     private let transcriptPipeline = TranscriptPipeline()
     /// Set while a start is in flight (during the async mic-permission prompt)
     /// so a second start can't kick off a duplicate permission dialog + launch.
-    private var isStarting = false
+    private var startGate = PendingStartGate()
+    private var isStarting: Bool { startGate.isPending }
     private var delayedCompleteTask: Task<Void, Never>?
     private var checkpointTask: Task<Void, Never>?
     private var translationDefaultsObserver: NSObjectProtocol?
@@ -314,6 +315,8 @@ final class SessionCoordinator {
         case .recording, .paused:
             stopSession()
         case .idle, .done, .upgrading:
+            // A second press while the mic prompt is open cancels the start.
+            if startGate.cancel() { return }
             startSession(userInitiated: true)
         case .finishing:
             break
@@ -372,7 +375,7 @@ final class SessionCoordinator {
         if delayedCompleteTask != nil { return }
         if !userInitiated,
            let stopped = lastStopAt, Date().timeIntervalSince(stopped) < Self.restartCooldown { return }
-        isStarting = true
+        guard let startToken = startGate.begin() else { return }
         lastError = nil
         lastErrorIsAuth = false
         // A retire task left over from the last session must not clear this
@@ -385,8 +388,9 @@ final class SessionCoordinator {
         audioPipeline.requestPermission { [weak self] granted in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // A stop pressed during the prompt cancelled this start.
+                guard startGate.resolve(startToken) else { return }
                 guard granted else {
-                    isStarting = false
                     lastError = "Microphone permission denied."
                     promptForMicrophoneAccess()
                     return
@@ -413,7 +417,6 @@ final class SessionCoordinator {
     }
 
     private func launchSession() {
-        isStarting = false
         let now = Date()
         let sessionId = UUID().uuidString
         currentSessionId = sessionId
@@ -507,6 +510,8 @@ final class SessionCoordinator {
     }
 
     func stopSession() {
+        // Stop while the mic prompt is open: cancel the pending start.
+        if startGate.cancel() { return }
         guard isRunning, let sessionId = currentSessionId else { return }
         lastStopAt = Date()
         VisualContextTrail.shared.stopCapturing()
