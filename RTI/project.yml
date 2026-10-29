@@ -143,8 +143,6 @@ targets:
       - path: Sources/Audio/AudioInputDevice.swift
       - path: Sources/Support/AppLog.swift
       - path: Sources/Support/AppSupportPaths.swift
-      - path: Sources/Support/CrashLog.swift
-      - path: Sources/Support/CrashNotice.swift
       - path: Sources/LLM/ChatThreadStore.swift
       - path: Sources/Support/NotificationNames.swift
       - path: Sources/UI/SessionsControl/ChatLibraryRules.swift

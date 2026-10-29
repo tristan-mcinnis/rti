@@ -1,23 +1,16 @@
+import RTICore
 import XCTest
 
 final class CrashNoticeTests: XCTestCase {
-    private let t0 = Date(timeIntervalSince1970: 1_000_000)
-
-    func test_noCrashLog_doesNotShow() {
-        XCTAssertFalse(CrashNotice.shouldShow(crashLogModified: nil, lastAcknowledged: nil))
-        XCTAssertFalse(CrashNotice.shouldShow(crashLogModified: nil, lastAcknowledged: t0))
+    func test_cleanExit_doesNotShow() {
+        XCTAssertFalse(CrashNoticeDecision.shouldShow(previousExitWasClean: true, onboardingNeeded: false))
     }
 
-    func test_crashNeverAcknowledged_shows() {
-        XCTAssertTrue(CrashNotice.shouldShow(crashLogModified: t0, lastAcknowledged: nil))
+    func test_uncleanExit_shows() {
+        XCTAssertTrue(CrashNoticeDecision.shouldShow(previousExitWasClean: false, onboardingNeeded: false))
     }
 
-    func test_crashNewerThanAcknowledged_shows() {
-        XCTAssertTrue(CrashNotice.shouldShow(crashLogModified: t0.addingTimeInterval(5), lastAcknowledged: t0))
-    }
-
-    func test_crashAtOrBeforeAcknowledged_doesNotShow() {
-        XCTAssertFalse(CrashNotice.shouldShow(crashLogModified: t0, lastAcknowledged: t0))
-        XCTAssertFalse(CrashNotice.shouldShow(crashLogModified: t0.addingTimeInterval(-5), lastAcknowledged: t0))
+    func test_firstRun_doesNotShow() {
+        XCTAssertFalse(CrashNoticeDecision.shouldShow(previousExitWasClean: false, onboardingNeeded: true))
     }
 }

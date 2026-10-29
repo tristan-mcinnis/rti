@@ -1,40 +1,25 @@
 import AppKit
 import Foundation
 
-/// One-time notice after a launch that follows a recorded crash. The crash log
-/// file's modification time says when the last crash was written; one
-/// UserDefaults timestamp says which crash the user has already seen.
+/// The alert shown after a launch that follows an unclean exit. The decision
+/// lives in RTICore (`CrashNoticeDecision`). `crash.log` is extra detail: it
+/// only exists for uncaught exceptions, so the button shows only when it does.
 enum CrashNotice {
-    static let acknowledgedKey = "crashNoticeLastAcknowledged"
-
-    /// Show only when a crash was written after the last one the user saw.
-    static func shouldShow(crashLogModified: Date?, lastAcknowledged: Date?) -> Bool {
-        guard let crashLogModified else { return false }
-        guard let lastAcknowledged else { return true }
-        return crashLogModified > lastAcknowledged
-    }
-
-    /// Defers to the next run-loop turn so launch finishes before the alert.
     @MainActor
-    static func presentIfNeeded() {
+    static func present() {
         DispatchQueue.main.async {
-            guard let url = CrashLog.logURL,
-                  let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-                  let modified = attrs[.modificationDate] as? Date else { return }
-            let defaults = UserDefaults.standard
-            let acknowledged = defaults.object(forKey: acknowledgedKey) as? Date
-            guard shouldShow(crashLogModified: modified, lastAcknowledged: acknowledged) else { return }
-
-            // Record first, so a crash inside the alert cannot loop the notice.
-            defaults.set(modified, forKey: acknowledgedKey)
-
+            let logURL = CrashLog.logURL.flatMap {
+                FileManager.default.fileExists(atPath: $0.path) ? $0 : nil
+            }
             let alert = NSAlert()
-            alert.messageText = "RTI crashed last time"
-            alert.informativeText = "A crash report was saved. You can find it in Settings > Logs."
-            alert.addButton(withTitle: "Show in Finder")
+            alert.messageText = "RTI quit unexpectedly last time"
+            alert.informativeText = logURL == nil
+                ? "The last run did not exit normally."
+                : "The last run did not exit normally. A crash report was saved. You can also find it in Settings > Logs."
+            if logURL != nil { alert.addButton(withTitle: "Show in Finder") }
             alert.addButton(withTitle: "Dismiss")
-            if alert.runModal() == .alertFirstButtonReturn {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
+            if alert.runModal() == .alertFirstButtonReturn, let logURL {
+                NSWorkspace.shared.activateFileViewerSelecting([logURL])
             }
         }
     }
