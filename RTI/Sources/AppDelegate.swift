@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         CredentialStore.migrateLegacyIfNeeded()
 
         continueLaunch()
+        CrashNotice.presentIfNeeded()
     }
 
     @MainActor private func continueLaunch() {
