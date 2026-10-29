@@ -1,5 +1,19 @@
 # RTI Change Log
 
+## 2026-10-30: Work project folders are readable during a call
+
+- **Project root.** RTI now reads client projects at
+  `~/Documents/Work/<client>/<year>/<project>/` (read only). The optional
+  `project_roots` array in `~/.config/rti/config.json` replaces the default;
+  an empty array turns it off. Where RTI writes does not change.
+- **Picker.** Projects from this year and last year that have a
+  `00-status.md` show as "Client · project". Picking one loads its status and
+  overview and scopes search to that folder.
+- **Tools.** `search_vault`, `grep_vault`, `list_files` and `read_document`
+  reach those files as `work/<client>/<year>/<project>/…`, including `.txt`
+  transcripts. Paths that escape the root, symlinked files, and media and
+  output folders are skipped.
+
 ## 2026-10-29: Live transcript reads as turns, echo removed
 
 - **Echo.** When the remote voice plays through the speakers, the mic heard

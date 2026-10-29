@@ -205,33 +205,55 @@ public enum VaultSearch {
 
         // Paths stay relative to `databases/` (not the scoped root) so results
         // read the same whether or not a scope is applied.
-        let walkRoot: URL = {
-            guard let scope = scopeRelativePath, !scope.isEmpty else { return databases }
+        // A scope under a read-only project root (`work/<client>/<year>/<project>`)
+        // walks that folder. No scope walks the knowledge base plus this
+        // year's and last year's project folders.
+        let roots = ProjectRoots.roots()
+        var walkRoots: [(url: URL, isProjectRoot: Bool)] = {
+            guard let scope = scopeRelativePath, !scope.isEmpty else {
+                return [(databases, false)] + ProjectRoots.searchFolders(roots: roots).map { ($0, true) }
+            }
+            if ProjectRoots.claims(scope, roots: roots) {
+                return ProjectRoots.resolve(scope, roots: roots).map { [($0, true)] } ?? []
+            }
             let dir = databases.appendingPathComponent(scope, isDirectory: true)
-            return (try? dir.checkResourceIsReachable()) == true ? dir : databases
+            return [((try? dir.checkResourceIsReachable()) == true ? dir : databases, false)]
         }()
 
         // Phase 1 — cheap walk to collect candidate files (no content reads).
         // Reading + scoring ~7k files is the expensive part, so we do it in
         // parallel below rather than inline here.
-        guard let enumerator = FileManager.default.enumerator(
-            at: walkRoot,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
-
+        let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
         var candidates: [(url: URL, modified: Date)] = []
-        for case let url as URL in enumerator {
-            if skipDirComponents.contains(url.lastPathComponent) {
-                enumerator.skipDescendants()
+        func consider(_ url: URL) -> Bool {
+            guard let vals = try? url.resourceValues(forKeys: Set(keys)),
+                  vals.isRegularFile == true,
+                  (vals.fileSize ?? 0) <= maxFileBytes else { return true }
+            candidates.append((url, vals.contentModificationDate ?? .distantPast))
+            return candidates.count < maxFilesScanned
+        }
+        walk: while !walkRoots.isEmpty {
+            let walk = walkRoots.removeFirst()
+            if walk.isProjectRoot {
+                var more = true
+                ProjectRoots.walkFiles(under: walk.url, extraSkips: skipDirComponents, keys: keys) { url in
+                    more = consider(url)
+                    return more
+                }
+                if !more { break walk }
                 continue
             }
-            guard url.pathExtension.lowercased() == "md" else { continue }
-            guard let vals = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
-                  vals.isRegularFile == true,
-                  (vals.fileSize ?? 0) <= maxFileBytes else { continue }
-            candidates.append((url, vals.contentModificationDate ?? .distantPast))
-            if candidates.count >= maxFilesScanned { break }
+            guard let enumerator = FileManager.default.enumerator(
+                at: walk.url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]
+            ) else { continue }
+            for case let url as URL in enumerator {
+                if skipDirComponents.contains(url.lastPathComponent) {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                guard url.pathExtension.lowercased() == "md" else { continue }
+                if !consider(url) { break walk }
+            }
         }
         guard !candidates.isEmpty else { return [] }
 
@@ -249,7 +271,7 @@ public enum VaultSearch {
             for i in start..<end {
                 let (url, modified) = candidates[i]
                 guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-                let relative = relativePath(of: url, under: databases)
+                let relative = relativePath(of: url, under: databases, roots: roots)
                 let title = documentTitle(content: content, url: url)
                 let (score, excerpt) = rank(terms: terms, title: title, relativePath: relative, content: content)
                 guard score > 0 else { continue }
@@ -398,10 +420,11 @@ public enum VaultSearch {
         return value.isEmpty ? nil : value
     }
 
-    private static func relativePath(of url: URL, under base: URL) -> String {
+    private static func relativePath(of url: URL, under base: URL, roots: [ProjectRoots.Root]) -> String {
         let full = url.standardizedFileURL.path
         let basePath = base.standardizedFileURL.path + "/"
-        return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : url.lastPathComponent
+        if full.hasPrefix(basePath) { return String(full.dropFirst(basePath.count)) }
+        return ProjectRoots.displayPath(of: url, roots: roots) ?? url.lastPathComponent
     }
 
     /// Render the material the model reads. Internal rather than private so the

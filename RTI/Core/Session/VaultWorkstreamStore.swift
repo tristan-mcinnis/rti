@@ -46,7 +46,7 @@ public enum VaultWorkstreamStore {
                 && url.lastPathComponent != "past-projects"
         } makeItem: { url in
             VaultItem(id: url.path, name: prettify(url.lastPathComponent), url: url, isProject: true)
-        }
+        } + ProjectRoots.projects()
     }
 
     /// The text fed to the assistant for a selection: the client note, or a
@@ -78,16 +78,17 @@ public enum VaultWorkstreamStore {
     /// single note, not a directory tree to scope to — or when the vault can't
     /// be located.
     public static func scopeRelativePath(for item: VaultItem) -> String? {
-        guard item.isProject, let base = databasesDir() else { return nil }
-        return relativePath(for: item, under: base)
+        guard item.isProject else { return nil }
+        if let base = databasesDir(), let rel = relativePath(for: item, under: base) { return rel }
+        return ProjectRoots.displayPath(of: item.url)
     }
 
     /// Path for either a project directory or a client note, relative to
     /// `databases/`. Used by direct file access (`@...`) where a selected client
     /// should narrow to its one note, not broaden to the whole vault.
     public static func fileAccessRelativePath(for item: VaultItem) -> String? {
-        guard let base = databasesDir() else { return nil }
-        return relativePath(for: item, under: base)
+        if let base = databasesDir(), let rel = relativePath(for: item, under: base) { return rel }
+        return ProjectRoots.displayPath(of: item.url)
     }
 
     private static func relativePath(for item: VaultItem, under base: URL) -> String? {

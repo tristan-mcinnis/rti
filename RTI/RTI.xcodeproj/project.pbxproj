@@ -155,6 +155,7 @@
 		5D8C45EAA65A25AB196AC885 /* LiveTranscriptTurnTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA634E64E56B6860051885A6 /* LiveTranscriptTurnTests.swift */; };
 		5E325A98D8F551443D7F7BFC /* GeneralTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5737BB32DCB2D1D9E552E004 /* GeneralTab.swift */; };
 		5E7C66700230FDCC75361CC4 /* VaultLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8692D426BD6060B58810BFD3 /* VaultLogStore.swift */; };
+		5F4A2591087AB6F93A7EB658 /* ProjectRootsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F92064286DCA972F5A9DDB68 /* ProjectRootsTests.swift */; };
 		5FDDEF1F7691B954741886BF /* ScreenshotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22E402C93F783C8020AFDCDE /* ScreenshotManager.swift */; };
 		60C03A578DEFF2CD92C71079 /* PendingStartGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545C3E5B297006BFA41E9F25 /* PendingStartGate.swift */; };
 		612DFEE40E06BD5CDA5800C7 /* LocalVisionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E8A6E0C2CD739BFACEA9D2 /* LocalVisionService.swift */; };
@@ -280,6 +281,7 @@
 		A9B1CBF63258AAF8C6575FC5 /* TranscriptUpgradeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9BCBE70FE527756A0AEE91 /* TranscriptUpgradeTests.swift */; };
 		AB042BAD2EAAFDE0B529BD39 /* ScreenFrameEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D13DE8BC98F4F42B98C7A2A /* ScreenFrameEncoderTests.swift */; };
 		AB0A01CA22B357B67182E9B5 /* ComposerUnknownCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED873957C9FF986DDCB130A8 /* ComposerUnknownCommandTests.swift */; };
+		AB0DB49ADC3C65851D9EE73F /* ProjectRoots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1288E39D8F55C327C25FE33B /* ProjectRoots.swift */; };
 		AB1F3263F87719DF1864ED75 /* AssistantInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC5292C23D09D793067E231 /* AssistantInputView.swift */; };
 		AB2C96914FF558D5D8A3802E /* OverlayTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A242BA4653FB39E2D02749 /* OverlayTabs.swift */; };
 		AB52D0CC721DF630D8DEAAAB /* OverlayMicControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEABD1BAE63B2784CF6F677D /* OverlayMicControl.swift */; };
@@ -488,6 +490,7 @@
 		102CC17C75BC5D2D58D69AD7 /* LLMAdmissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMAdmissionTests.swift; sourceTree = "<group>"; };
 		11CAA5FC3CFBA01C2F56F17C /* KeysTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeysTab.swift; sourceTree = "<group>"; };
 		122FBF481A55A4A3854F9616 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		1288E39D8F55C327C25FE33B /* ProjectRoots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRoots.swift; sourceTree = "<group>"; };
 		13DCBA1DF42DC790D1708139 /* AutoAssistCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoAssistCardTests.swift; sourceTree = "<group>"; };
 		14596BF8078F9F2029A29B65 /* VaultSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearchTests.swift; sourceTree = "<group>"; };
 		162A40F547281A11B7BF0585 /* RenderFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderFixtures.swift; sourceTree = "<group>"; };
@@ -768,6 +771,7 @@
 		F6E1F0DC59DEB434AAD37C32 /* VaultFilesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFilesTests.swift; sourceTree = "<group>"; };
 		F88EA5A5405F40A4AF56C7C5 /* SpeakerLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabels.swift; sourceTree = "<group>"; };
 		F8FB6C92413255E54E6F1820 /* LiveNotesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveNotesTests.swift; sourceTree = "<group>"; };
+		F92064286DCA972F5A9DDB68 /* ProjectRootsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRootsTests.swift; sourceTree = "<group>"; };
 		FA159B350466B311F95C6E82 /* RTIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTIApp.swift; sourceTree = "<group>"; };
 		FA62D4617672980963ADE883 /* ChatTurnRecords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTurnRecords.swift; sourceTree = "<group>"; };
 		FA88DD8B337F3A13759BC5B1 /* AutoAssistController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoAssistController.swift; sourceTree = "<group>"; };
@@ -973,6 +977,7 @@
 				D4B85DFB7EB29D69F47AC554 /* LiveTranscriptTurns.swift */,
 				C66329D063891D9A0DD7848A /* MeetingProcessorConfig.swift */,
 				545C3E5B297006BFA41E9F25 /* PendingStartGate.swift */,
+				1288E39D8F55C327C25FE33B /* ProjectRoots.swift */,
 				D4326F9CC201900F37F9AF73 /* SessionArchiveActionRules.swift */,
 				C30A413461474A35055A4848 /* SessionArchiveMetadata.swift */,
 				3EBFAB18345DC168411A667C /* SessionAudioTimeline.swift */,
@@ -1119,6 +1124,7 @@
 				EB1E083E51DE168EE3CA83A0 /* OverlayShellStatusTests.swift */,
 				9286AE73783D2EE35BC7C79D /* PendingStartGateTests.swift */,
 				55502C3BEF5649DD3C951A14 /* ProcessOutputCollectorTests.swift */,
+				F92064286DCA972F5A9DDB68 /* ProjectRootsTests.swift */,
 				509A39C86FD52EB3F522B733 /* PromptBuilderTests.swift */,
 				EA5DD7D9DF3E60B90ADF8190 /* PromptCatalogueTests.swift */,
 				982A704E0126F8142A9D4574 /* PromptRegistryTests.swift */,
@@ -1814,6 +1820,7 @@
 				1D976E05A13ADD089CAF0719 /* OverlayShellStatusTests.swift in Sources */,
 				F3978B5519D7006E778F58D3 /* PendingStartGateTests.swift in Sources */,
 				D2F3ACF8CD6CEF7D268C882A /* ProcessOutputCollectorTests.swift in Sources */,
+				5F4A2591087AB6F93A7EB658 /* ProjectRootsTests.swift in Sources */,
 				807CF4F7B4714747A5B8438D /* PromptBuilderTests.swift in Sources */,
 				8B7C7A2CDBAFAD2310CFEA78 /* PromptCatalogueTests.swift in Sources */,
 				2C9F1BBF1AE0054D3B2F0866 /* PromptRegistryTests.swift in Sources */,
@@ -1907,6 +1914,7 @@
 				D901625023A1513634A0AA62 /* OverlayNoticeRules.swift in Sources */,
 				A0D5210ADC823F2670B8F2B4 /* OverlayShellStatus.swift in Sources */,
 				60C03A578DEFF2CD92C71079 /* PendingStartGate.swift in Sources */,
+				AB0DB49ADC3C65851D9EE73F /* ProjectRoots.swift in Sources */,
 				4F03A0990EC6A6A4CEB49A07 /* PromptBuilder.swift in Sources */,
 				CD402CE562E0C04C9FF82420 /* PromptCatalogue.swift in Sources */,
 				CF3B0B41A0905491B0F6EB15 /* PromptComposer.swift in Sources */,

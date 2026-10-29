@@ -78,10 +78,13 @@ public enum VaultFiles {
     /// shapes the other tools print (`projects/foo/00-status.md`, or with a
     /// leading `vault/databases/` / `databases/`). Returns nil if it escapes.
     public static func resolve(_ relative: String) -> URL? {
-        guard let dbs = VaultWorkstreamStore.databasesDir() else { return nil }
         var rel = relative.trimmingCharacters(in: .whitespaces)
         for p in ["vault/databases/", "databases/"] where rel.hasPrefix(p) { rel = String(rel.dropFirst(p.count)) }
         while rel.hasPrefix("/") { rel = String(rel.dropFirst()) }
+        // A read-only project root (`work/<client>/<year>/<project>/…`).
+        let roots = ProjectRoots.roots()
+        if ProjectRoots.claims(rel, roots: roots) { return ProjectRoots.resolve(rel, roots: roots) }
+        guard let dbs = VaultWorkstreamStore.databasesDir() else { return nil }
         let base = dbs.standardizedFileURL
         let url = base.appendingPathComponent(rel).standardizedFileURL
         // Confinement: the resolved, symlink-collapsed path must stay under base.
@@ -184,9 +187,10 @@ public enum VaultFiles {
     public static func grep(query: String, scopeRelativePath: String?) -> String {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty, let dbs = VaultWorkstreamStore.databasesDir() else { return "No query provided." }
+        let roots = ProjectRoots.roots()
         let root = scopeRelativePath.flatMap { resolve($0) } ?? dbs
         if (try? root.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
-            guard root.pathExtension.lowercased() == "md",
+            guard ["md", "txt"].contains(root.pathExtension.lowercased()),
                   let text = try? String(contentsOf: root, encoding: .utf8),
                   text.lowercased().contains(needle) else {
                 return "No files in this context contain \"\(query)\"."
@@ -198,16 +202,12 @@ public enum VaultFiles {
                     let t = line.trimmingCharacters(in: .whitespaces)
                     return "    " + (t.count > 200 ? String(t.prefix(200)) + "…" : t)
                 }
-            return "Files matching \"\(query)\" in this context:\n\n• \(relativePath(of: root, under: dbs))\n" + matched.joined(separator: "\n")
+            return "Files matching \"\(query)\" in this context:\n\n• \(relativePath(of: root, under: dbs, roots: roots))\n" + matched.joined(separator: "\n")
         }
-        guard let en = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return "Nothing to search." }
-
         var blocks: [String] = []
-        for case let url as URL in en {
-            guard url.pathExtension.lowercased() == "md",
-                  let text = try? String(contentsOf: url, encoding: .utf8),
-                  text.lowercased().contains(needle) else { continue }
+        func consider(_ url: URL) -> Bool {
+            guard let text = try? String(contentsOf: url, encoding: .utf8),
+                  text.lowercased().contains(needle) else { return true }
             let matched = text.components(separatedBy: .newlines)
                 .filter { $0.lowercased().contains(needle) }
                 .prefix(maxLinesPerFile)
@@ -215,8 +215,27 @@ public enum VaultFiles {
                     let t = line.trimmingCharacters(in: .whitespaces)
                     return "    " + (t.count > 200 ? String(t.prefix(200)) + "…" : t)
                 }
-            blocks.append("• \(relativePath(of: url, under: dbs))\n" + matched.joined(separator: "\n"))
-            if blocks.count >= maxGrepFiles { break }
+            blocks.append("• \(relativePath(of: url, under: dbs, roots: roots))\n" + matched.joined(separator: "\n"))
+            return blocks.count < maxGrepFiles
+        }
+        for walk in walkRoots(root: root, dbs: dbs, scoped: scopeRelativePath != nil, roots: roots) {
+            if walk.isProjectRoot {
+                var more = true
+                ProjectRoots.walkFiles(under: walk.url) { url in
+                    more = consider(url)
+                    return more
+                }
+                if !more { break }
+                continue
+            }
+            guard let en = FileManager.default.enumerator(
+                at: walk.url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { continue }
+            var more = true
+            for case let url as URL in en where url.pathExtension.lowercased() == "md" {
+                more = consider(url)
+                if !more { break }
+            }
+            if !more { break }
         }
         let where_ = scopeRelativePath != nil ? " in this project" : ""
         guard !blocks.isEmpty else { return "No files\(where_) contain \"\(query)\". Try search_vault for a meaning-based match." }
@@ -229,25 +248,39 @@ public enum VaultFiles {
     /// case-insensitive substring of the path — "what files do we have on X".
     public static func list(scopeRelativePath: String?, pattern: String?) -> String {
         guard let dbs = VaultWorkstreamStore.databasesDir() else { return "Vault not found." }
+        let roots = ProjectRoots.roots()
         let root = scopeRelativePath.flatMap { resolve($0) } ?? dbs
         let pat = pattern?.trimmingCharacters(in: .whitespaces).lowercased()
         if (try? root.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
-            let rel = relativePath(of: root, under: dbs)
+            let rel = relativePath(of: root, under: dbs, roots: roots)
             guard pat == nil || pat == "" || rel.lowercased().contains(pat ?? "") else {
                 return "No files in this context matching \"\(pat ?? "")\"."
             }
             return "Files in this context:\n  \(rel)"
         }
-        guard let en = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return "Nothing to list." }
-
         var files: [String] = []
-        for case let url as URL in en {
-            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
-            let rel = relativePath(of: url, under: dbs)
-            if let pat, !pat.isEmpty, !rel.lowercased().contains(pat) { continue }
+        func consider(_ url: URL) -> Bool {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return true }
+            let rel = relativePath(of: url, under: dbs, roots: roots)
+            if let pat, !pat.isEmpty, !rel.lowercased().contains(pat) { return true }
             files.append(rel)
-            if files.count >= maxListItems { break }
+            return files.count < maxListItems
+        }
+        for walk in walkRoots(root: root, dbs: dbs, scoped: scopeRelativePath != nil, roots: roots) {
+            var more = true
+            if walk.isProjectRoot {
+                ProjectRoots.walkFiles(under: walk.url) { url in
+                    more = consider(url)
+                    return more
+                }
+            } else if let en = FileManager.default.enumerator(
+                at: walk.url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
+                for case let url as URL in en {
+                    more = consider(url)
+                    if !more { break }
+                }
+            }
+            if !more { break }
         }
         files.sort()
         let where_ = scopeRelativePath != nil ? " in this project" : ""
@@ -258,10 +291,25 @@ public enum VaultFiles {
 
     // MARK: - Helpers
 
-    private static func relativePath(of url: URL, under base: URL) -> String {
+    private static func relativePath(of url: URL, under base: URL, roots: [ProjectRoots.Root] = []) -> String {
         let full = url.standardizedFileURL.path
         let basePath = base.standardizedFileURL.path + "/"
-        return full.hasPrefix(basePath) ? String(full.dropFirst(basePath.count)) : url.lastPathComponent
+        if full.hasPrefix(basePath) { return String(full.dropFirst(basePath.count)) }
+        return ProjectRoots.displayPath(of: url, roots: roots) ?? url.lastPathComponent
+    }
+
+    /// The trees a grep or list walks. A scoped call walks its one root; an
+    /// unscoped call walks the knowledge base, then this year's and last
+    /// year's project folders under the read-only project roots.
+    private static func walkRoots(
+        root: URL, dbs: URL, scoped: Bool, roots: [ProjectRoots.Root]
+    ) -> [(url: URL, isProjectRoot: Bool)] {
+        if scoped {
+            // A scope that did not resolve falls back to the knowledge base only.
+            guard root != dbs else { return [(dbs, false)] }
+            return [(root, !root.standardizedFileURL.path.hasPrefix(dbs.standardizedFileURL.path + "/"))]
+        }
+        return [(dbs, false)] + ProjectRoots.searchFolders(roots: roots).map { ($0, true) }
     }
 
     /// ONE bounded read that produces both the text a model reads and the
@@ -297,7 +345,7 @@ public enum VaultFiles {
             guard let url = resolve(candidate),
                   (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
             guard let dbs = VaultWorkstreamStore.databasesDir() else { return nil }
-            return relativePath(of: url, under: dbs)
+            return relativePath(of: url, under: dbs, roots: ProjectRoots.roots())
         }
         return nil
     }
@@ -305,19 +353,20 @@ public enum VaultFiles {
     private static func matchingPaths(for query: String, scopeRelativePath: String?) -> [String] {
         guard let dbs = VaultWorkstreamStore.databasesDir() else { return [] }
         let root = scopeRelativePath.flatMap { resolve($0) } ?? dbs
+        let roots = ProjectRoots.roots()
         let needle = query.lowercased()
         if needle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return listRecentPaths(root: root, under: dbs)
+            return listRecentPaths(root: root, under: dbs, roots: roots)
         }
         if (try? root.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]).isRegularFile) == true {
-            return scoreMentionFile(root, needle: needle, under: dbs).map { [$0.path] } ?? []
+            return scoreMentionFile(root, needle: needle, under: dbs, roots: roots).map { [$0.path] } ?? []
         }
         guard let en = FileManager.default.enumerator(
             at: root, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles]) else { return [] }
 
         var scored: [(path: String, score: Int)] = []
         for case let url as URL in en {
-            if let match = scoreMentionFile(url, needle: needle, under: dbs) {
+            if let match = scoreMentionFile(url, needle: needle, under: dbs, roots: roots) {
                 scored.append(match)
             }
         }
@@ -519,9 +568,9 @@ public enum VaultFiles {
         }
     }
 
-    private static func listRecentPaths(root: URL, under dbs: URL) -> [String] {
+    private static func listRecentPaths(root: URL, under dbs: URL, roots: [ProjectRoots.Root]) -> [String] {
         if (try? root.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
-            return [relativePath(of: root, under: dbs)]
+            return [relativePath(of: root, under: dbs, roots: roots)]
         }
         guard let en = FileManager.default.enumerator(
             at: root,
@@ -533,17 +582,19 @@ public enum VaultFiles {
             guard url.pathExtension.lowercased() == "md",
                   let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
                   values.isRegularFile == true else { continue }
-            files.append((relativePath(of: url, under: dbs), values.contentModificationDate ?? .distantPast))
+            files.append((relativePath(of: url, under: dbs, roots: roots), values.contentModificationDate ?? .distantPast))
             if files.count >= 200 { break }
         }
         return files.sorted { $0.modified > $1.modified }.map(\.path)
     }
 
-    private static func scoreMentionFile(_ url: URL, needle: String, under dbs: URL) -> (path: String, score: Int)? {
+    private static func scoreMentionFile(
+        _ url: URL, needle: String, under dbs: URL, roots: [ProjectRoots.Root]
+    ) -> (path: String, score: Int)? {
         guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
               values.isRegularFile == true,
               url.pathExtension.lowercased() == "md" else { return nil }
-        let rel = relativePath(of: url, under: dbs)
+        let rel = relativePath(of: url, under: dbs, roots: roots)
         let relLower = rel.lowercased()
         let basename = url.lastPathComponent.lowercased()
         let stem = url.deletingPathExtension().lastPathComponent.lowercased()
