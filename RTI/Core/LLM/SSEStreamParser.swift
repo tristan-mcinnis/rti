@@ -51,6 +51,11 @@ public struct SSEStreamParser {
 
         // A chunk that does not decode would silently drop answer text, so
         // fail the stream. Report the byte length only, never the content.
+        // Keepalives (empty payload) and objects without `choices` (usage or
+        // ping chunks) carry no answer text and are ignored.
+        if payload.isEmpty { return [] }
+        let json = try? JSONSerialization.jsonObject(with: data)
+        if let obj = json as? [String: Any], obj["choices"] == nil { return [] }
         guard let chunk = try? JSONDecoder().decode(LLMStreamChunk.self, from: data) else {
             return [.streamError("Malformed stream chunk (\(data.count) bytes)")]
         }

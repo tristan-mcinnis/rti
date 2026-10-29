@@ -75,6 +75,23 @@ final class SSEStreamParserTests: XCTestCase {
         XCTAssertFalse(all.contains(.streamError("SECRET-ANSWER")))
     }
 
+    func test_emptyDataLine_isIgnored() {
+        var p = SSEStreamParser()
+        XCTAssertEqual(p.consume(line: "data:"), [])
+        XCTAssertEqual(p.consume(line: "data:   "), [])
+    }
+
+    func test_objectWithoutChoicesKey_isIgnored() {
+        var p = SSEStreamParser()
+        XCTAssertEqual(p.consume(line: dataLine(#"{"usage":{"total_tokens":3}}"#)), [])
+        XCTAssertEqual(p.consume(line: dataLine(#"{"type":"ping"}"#)), [])
+    }
+
+    func test_choicesPresentButUndecodable_emitsStreamError() {
+        var p = SSEStreamParser()
+        XCTAssertEqual(p.consume(line: dataLine(#"{"choices":"oops"}"#)), [.streamError("Malformed stream chunk (18 bytes)")])
+    }
+
     func test_validChunkWithNoChoices_isStillIgnored() {
         var p = SSEStreamParser()
         XCTAssertEqual(p.consume(line: dataLine(#"{"choices":[],"usage":{"total_tokens":3}}"#)), [])
