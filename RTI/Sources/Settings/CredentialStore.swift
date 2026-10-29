@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// File-backed credential storage at
 /// ~/Library/Application Support/RTI/credentials.json (mode 0600).

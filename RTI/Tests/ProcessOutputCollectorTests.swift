@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// A child that writes more than a pipe buffer (64 KB) to stderr before it
 /// writes stdout used to deadlock callers that read stdout to the end first:

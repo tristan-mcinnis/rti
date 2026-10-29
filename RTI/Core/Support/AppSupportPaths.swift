@@ -5,11 +5,11 @@ import Foundation
 /// owns (credentials, modes, crash log, the no-vault sessions fallback) is
 /// placed through here so the folder is created once, the same way, and a
 /// future relocation is a one-line change.
-enum AppSupportPaths {
+public enum AppSupportPaths {
     /// `~/Library/Application Support/RTI`, created on first use unless
     /// `createIfNeeded` is false. Nil only if Application Support itself
     /// cannot be resolved, which never happens on a normal user account.
-    static func rtiDirectory(createIfNeeded: Bool = true) -> URL? {
+    public static func rtiDirectory(createIfNeeded: Bool = true) -> URL? {
         guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }
@@ -24,12 +24,12 @@ enum AppSupportPaths {
     /// manifest (`House/commands/rti.json`) lives beside RTI's folder, not
     /// inside it, and still resolves the base through here rather than at the
     /// call site.
-    static func applicationSupportBase() -> URL? {
+    public static func applicationSupportBase() -> URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
     }
 
     /// A file directly inside the RTI config home, e.g. `credentials.json`.
-    static func file(_ name: String, createDirectory: Bool = true) -> URL? {
+    public static func file(_ name: String, createDirectory: Bool = true) -> URL? {
         rtiDirectory(createIfNeeded: createDirectory)?.appendingPathComponent(name)
     }
 }

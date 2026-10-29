@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// A pre-meeting prep brief authored by the Hermes "Meeting Prep" job and
 /// saved into the vault at `<meetings>/briefs/`. RTI only reads these — it

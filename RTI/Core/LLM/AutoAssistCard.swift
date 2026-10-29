@@ -4,28 +4,42 @@ import Foundation
 /// Ephemeral: cards accumulate in memory for the session and are dropped on
 /// `clear()`. A card is an in-the-moment nudge for the user — something to say,
 /// ask, recall, or flag, grounded in the meeting's project context.
-struct AutoAssistCard: Identifiable, Equatable {
-    let id = UUID()
+public struct AutoAssistCard: Identifiable, Equatable {
+    public let id = UUID()
     /// Wall-clock time the card was surfaced.
-    let timestamp: Date
-    let kind: AutoCardKind
+    public let timestamp: Date
+    public let kind: AutoCardKind
     /// The suggestion itself (one line; what to say / ask / recall).
-    let text: String
+    public let text: String
     /// Why it's relevant right now (one short line), or empty.
-    let why: String
+    public let why: String
     /// The retrieved document the suggestion draws on, or nil when the model
     /// gave no handle that resolves to a document this pass actually injected.
     /// Built only by `AutoCardCitation`, never from model text.
-    let citation: VaultSearch.Citation?
+    public let citation: VaultSearch.Citation?
 
     /// The icon and label for the card's source row. Reads the retrieved
     /// document's own name, so a fabricated label can never appear here.
-    var source: String? { citation?.label }
+    public var source: String? { citation?.label }
+
+    public init(
+        timestamp: Date,
+        kind: AutoCardKind,
+        text: String,
+        why: String,
+        citation: VaultSearch.Citation?
+    ) {
+        self.timestamp = timestamp
+        self.kind = kind
+        self.text = text
+        self.why = why
+        self.citation = citation
+    }
 }
 
 // MARK: - Assembly
 
-extension AutoAssistCard {
+public extension AutoAssistCard {
     /// Build one card from a decoded model item. This is the only path Auto uses
     /// to create cards, so tests exercise the same seam the running app does.
     ///
@@ -34,7 +48,7 @@ extension AutoAssistCard {
     /// by exact allowlist match against this pass's retrieved records — never by
     /// substring or title matching — so an invented name, a title typed back, or
     /// a title that merely contains a real one yields a card with no citation.
-    static func make(
+    public static func make(
         kind: AutoCardKind,
         text: String,
         why: String?,
@@ -56,7 +70,7 @@ extension AutoAssistCard {
     /// Build one card straight from a decoded wire item. Auto uses this call, so
     /// a test that decodes model JSON and calls it exercises the same decoding
     /// and citation gate the running app does.
-    static func make(
+    public static func make(
         from item: AutoCardItem,
         citations: [VaultSearch.Citation],
         timestamp: Date = Date()
@@ -75,14 +89,14 @@ extension AutoAssistCard {
 /// Wire shape for one card in the model's JSON response. Everything but `text`
 /// is optional so a slightly malformed item still decodes; the lenient array
 /// decoder drops only the items it can't and keeps the rest of the batch.
-struct AutoCardItem: Decodable {
-    let kind: String?
-    let text: String
-    let why: String?
+public struct AutoCardItem: Decodable {
+    public let kind: String?
+    public let text: String
+    public let why: String?
     /// Handle for a document the pass injected; the current prompt asks for it.
-    let sourceId: String?
+    public let sourceId: String?
     /// Older prompt shape: a free-form document name. Usable only as a handle.
-    let source: String?
+    public let source: String?
 
     private enum CodingKeys: String, CodingKey {
         case kind, text, why, source, sourceId
@@ -92,7 +106,7 @@ struct AutoCardItem: Decodable {
 
     /// Accept the field under the spelling the model happened to emit. Every
     /// spelling is still only a handle candidate for the citation gate.
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
         text = try container.decode(String.self, forKey: .text)
@@ -105,7 +119,7 @@ struct AutoCardItem: Decodable {
 
     /// The handle the citation gate should try: the explicit source field when
     /// it says something, otherwise the older free-form `source`.
-    var sourceHandle: String? {
+    public var sourceHandle: String? {
         AutoCardCitation.normalize(sourceId) ?? source
     }
 }
@@ -113,11 +127,11 @@ struct AutoCardItem: Decodable {
 /// Exact allowlist resolution for a model-emitted source handle. The allowed
 /// set is the documents this pass retrieved, so a citation can only name a real
 /// document, and the card's label comes from that record rather than the model.
-enum AutoCardCitation {
+public enum AutoCardCitation {
     /// Resolve a handle to one retrieved record, or nil. Accepted handles are an
     /// exact document ID (`S1`) or an exact vault-relative path. Nothing else:
     /// no title match, no substring, no splitting of compound strings.
-    static func resolve(_ raw: String?, in citations: [VaultSearch.Citation]) -> VaultSearch.Citation? {
+    public static func resolve(_ raw: String?, in citations: [VaultSearch.Citation]) -> VaultSearch.Citation? {
         guard let handle = normalize(raw), !citations.isEmpty else { return nil }
         if let byID = citations.first(where: { $0.id.caseInsensitiveCompare(handle) == .orderedSame }) {
             return byID
@@ -130,7 +144,7 @@ enum AutoCardCitation {
     /// model's ways of saying "none". Deliberately no splitting or partial
     /// extraction: `"S1, S2"` or `"S1 (Group 1 transcript)"` stays one handle
     /// and matches nothing.
-    static func normalize(_ raw: String?) -> String? {
+    public static func normalize(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let wrappers = CharacterSet(charactersIn: "[]()\"'`“”‘’「」")
         var handle = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -149,7 +163,7 @@ enum AutoCardCitation {
 }
 
 /// What kind of help a card offers. Drives its icon and label.
-enum AutoCardKind: String, Codable, Equatable, CaseIterable {
+public enum AutoCardKind: String, Codable, Equatable, CaseIterable {
     /// A line the user could say or a point to make now.
     case say
     /// A question worth asking / a thread to follow up.
@@ -162,7 +176,7 @@ enum AutoCardKind: String, Codable, Equatable, CaseIterable {
     case flag
 
     /// Tolerant parse of whatever the model emitted.
-    init(raw: String) {
+    public init(raw: String) {
         switch raw.uppercased() {
         case "SAY": self = .say
         case "ASK": self = .ask
@@ -172,7 +186,7 @@ enum AutoCardKind: String, Codable, Equatable, CaseIterable {
         }
     }
 
-    var label: String {
+    public var label: String {
         switch self {
         case .say: "Say"
         case .ask: "Ask"
@@ -181,7 +195,7 @@ enum AutoCardKind: String, Codable, Equatable, CaseIterable {
         }
     }
 
-    var icon: String {
+    public var icon: String {
         switch self {
         case .say: "quote.bubble"
         case .ask: "questionmark.circle"

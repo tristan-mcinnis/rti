@@ -1,4 +1,5 @@
 import Carbon.HIToolbox
+import RTICore
 
 /// Registers global hotkeys from the shared `[RTICommand]` registry.
 /// Commands with non-nil `hotkeyKeyCode` and `hotkeyModifiers` get a

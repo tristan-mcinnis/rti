@@ -3,8 +3,8 @@ import Foundation
 /// Pure retrieval-policy helpers shared by the Ask/Answer-latest lanes.
 /// Foundation-only and stateless so the test bundle compiles them directly
 /// (LLMController itself is not part of the test target).
-enum RetrievalHeuristics {
-    static func compactKey(_ text: String) -> String {
+public enum RetrievalHeuristics {
+    public static func compactKey(_ text: String) -> String {
         text.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
@@ -12,7 +12,7 @@ enum RetrievalHeuristics {
     /// search must be surfaced as a hard "nothing here" rather than softened:
     /// it names a known project/client by name, or it repeats (normalized) a
     /// question already asked earlier in this session.
-    static func shouldForceVaultSearch(query: String, workstreamNames: [String], recentQuestions: [String]) -> Bool {
+    public static func shouldForceVaultSearch(query: String, workstreamNames: [String], recentQuestions: [String]) -> Bool {
         let compact = compactKey(query)
         guard !compact.isEmpty else { return false }
         if workstreamNames.contains(where: { name in
@@ -29,7 +29,7 @@ enum RetrievalHeuristics {
     /// question names known vault context, or it clearly asks about past or
     /// document-backed material. This keeps a simple live question from being
     /// polluted by semantically-near but unrelated vault notes.
-    static func shouldSearchVault(
+    public static func shouldSearchVault(
         query: String,
         hasSelectedScope: Bool,
         workstreamNames: [String],

@@ -1,9 +1,9 @@
 import Foundation
 
-enum VaultRetrieval {
+public enum VaultRetrieval {
     /// The normalized state of one retrieval, so a caller can tell "the scan
     /// found nothing" apart from "the scan could not run".
-    enum Status: Equatable {
+    public enum Status: Equatable {
         /// The keyword scan found rows.
         case available
         /// The keyword scan ran and has nothing for the query.
@@ -12,7 +12,7 @@ enum VaultRetrieval {
         case unavailable(reason: String)
 
         /// Why the scan could not run; nil otherwise. One short diagnostic line.
-        var reason: String? {
+        public var reason: String? {
             switch self {
             case .available, .noMatch: nil
             case .unavailable(let reason): reason
@@ -20,27 +20,27 @@ enum VaultRetrieval {
         }
     }
 
-    enum ZeroResultPolicy: Equatable {
+    public enum ZeroResultPolicy: Equatable {
         case soft
         case hard
         case latestPoint
     }
 
-    struct Response: Equatable {
-        let query: String
-        let scopeRelativePath: String?
-        let results: [VaultSearch.Result]
-        let inScope: Bool
-        let elapsedMS: Int
-        let zeroResultPolicy: ZeroResultPolicy
+    public struct Response: Equatable {
+        public let query: String
+        public let scopeRelativePath: String?
+        public let results: [VaultSearch.Result]
+        public let inScope: Bool
+        public let elapsedMS: Int
+        public let zeroResultPolicy: ZeroResultPolicy
         /// Which retrieval state this answer is in.
-        let status: Status
+        public let status: Status
 
-        var hasResults: Bool { !results.isEmpty }
-        var scopeLabel: String { scopeRelativePath == nil ? "Vault-wide" : "Project-scoped" }
-        var sourcePaths: [String] { results.map(\.relativePath) }
+        public var hasResults: Bool { !results.isEmpty }
+        public var scopeLabel: String { scopeRelativePath == nil ? "Vault-wide" : "Project-scoped" }
+        public var sourcePaths: [String] { results.map(\.relativePath) }
 
-        var trace: String {
+        public var trace: String {
             var text = "\(scopeRelativePath == nil ? "Vault-wide" : "Scoped") search · \(elapsedMS)ms"
             if !sourcePaths.isEmpty {
                 text += " · \(sourcePaths.count) source\(sourcePaths.count == 1 ? "" : "s"): "
@@ -50,7 +50,7 @@ enum VaultRetrieval {
             return text
         }
 
-        var modelContextForQuestion: String {
+        public var modelContextForQuestion: String {
             if hasResults {
                 return "\(scopeLabel) retrieval for this question:\n---\n\(formattedResults)\n---"
             }
@@ -68,7 +68,7 @@ enum VaultRetrieval {
             }
         }
 
-        var formattedResults: String {
+        public var formattedResults: String {
             // The model reads this through the `search_vault` tool, so a run
             // that never reached the index must not read as an empty vault.
             if results.isEmpty, case .unavailable(let reason) = status {
@@ -92,9 +92,27 @@ enum VaultRetrieval {
             out += "\n\nThese are from the user's knowledge vault. Cite the document name when you use one; say so if none actually answers the question."
             return out
         }
+
+        public init(
+            query: String,
+            scopeRelativePath: String?,
+            results: [VaultSearch.Result],
+            inScope: Bool,
+            elapsedMS: Int,
+            zeroResultPolicy: ZeroResultPolicy,
+            status: Status
+        ) {
+            self.query = query
+            self.scopeRelativePath = scopeRelativePath
+            self.results = results
+            self.inScope = inScope
+            self.elapsedMS = elapsedMS
+            self.zeroResultPolicy = zeroResultPolicy
+            self.status = status
+        }
     }
 
-    static func search(
+    public static func search(
         query: String,
         scopeRelativePath: String?,
         zeroResultPolicy: ZeroResultPolicy = .soft
@@ -119,7 +137,7 @@ enum VaultRetrieval {
         )
     }
 
-    static func localResponse(
+    public static func localResponse(
         query: String,
         scopeRelativePath: String?,
         results: [VaultSearch.Result],

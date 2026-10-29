@@ -1,5 +1,6 @@
 import HouseChatCore
 import XCTest
+import RTICore
 
 /// The Chats library's rules and its read-only legacy adapter, against
 /// injected temporary roots. Nothing here touches the live vault, the real

@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// Pins the pure scoring + tokenisation behind the `search_vault` LLM tool.
 /// The filesystem scan is exercised against the real vault elsewhere; here we

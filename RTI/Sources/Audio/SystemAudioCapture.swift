@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import Foundation
 import ScreenCaptureKit
+import RTICore
 
 enum SystemAudioError: Error {
     case noDisplay

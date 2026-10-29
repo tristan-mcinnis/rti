@@ -1,5 +1,6 @@
 import Carbon.HIToolbox
 import Foundation
+import RTICore
 
 final class GlobalHotkey {
     private var refs: [UInt32: EventHotKeyRef] = [:]

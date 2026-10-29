@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// Pins `session.json`'s shape: the mode/workstream/duration fields
 /// round-trip, and legacy archives (written before this fix, missing

@@ -1,17 +1,27 @@
 import Foundation
 
-struct RecordedMeeting: Equatable {
-    let name: String
-    let startedAt: Date?
-    let transcriptURL: URL
+public struct RecordedMeeting: Equatable {
+    public let name: String
+    public let startedAt: Date?
+    public let transcriptURL: URL
+
+    public init(
+        name: String,
+        startedAt: Date?,
+        transcriptURL: URL
+    ) {
+        self.name = name
+        self.startedAt = startedAt
+        self.transcriptURL = transcriptURL
+    }
 }
 
 /// Single path authority for everything RTI writes into or reads from the
 /// vault. Config lives at `~/.config/rti/config.json` (override the directory
 /// with `RTI_CONFIG_HOME` for tests); `recordings_dir` inside it anchors the
 /// whole tree — change the vault location by editing that one file.
-enum VaultPaths {
-    static func homeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+public enum VaultPaths {
+    public static func homeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         if let override = environment["RTI_CONFIG_HOME"], !override.isEmpty {
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)
         }
@@ -19,11 +29,11 @@ enum VaultPaths {
             .appendingPathComponent(".config/rti", isDirectory: true)
     }
 
-    static func configURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+    public static func configURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         homeDirectory(environment: environment).appendingPathComponent("config.json")
     }
 
-    static func configDictionary(configURL: URL = configURL()) -> [String: Any] {
+    public static func configDictionary(configURL: URL = configURL()) -> [String: Any] {
         guard let data = try? Data(contentsOf: configURL),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return [:]
@@ -31,45 +41,45 @@ enum VaultPaths {
         return obj
     }
 
-    static func recordingsDirectory(configURL: URL = configURL()) -> URL? {
+    public static func recordingsDirectory(configURL: URL = configURL()) -> URL? {
         recordingsDirectory(config: configDictionary(configURL: configURL))
     }
 
-    static func recordingsDirectory(config: [String: Any]) -> URL? {
+    public static func recordingsDirectory(config: [String: Any]) -> URL? {
         guard let recordings = config["recordings_dir"] as? String, !recordings.isEmpty else { return nil }
         return URL(fileURLWithPath: (recordings as NSString).expandingTildeInPath, isDirectory: true)
     }
 
-    static func databasesDirectory(recordingsDirectory: URL) -> URL {
+    public static func databasesDirectory(recordingsDirectory: URL) -> URL {
         recordingsDirectory
             .deletingLastPathComponent() // recordings -> meetings
             .deletingLastPathComponent() // meetings -> databases
     }
 
-    static func databasesDirectory(configURL: URL = configURL()) -> URL? {
+    public static func databasesDirectory(configURL: URL = configURL()) -> URL? {
         recordingsDirectory(configURL: configURL).map(databasesDirectory(recordingsDirectory:))
     }
 
     /// The databases directory RTI uses: `knowledge_base_dir` when set,
     /// otherwise the tree `recordings_dir` sits in.
-    static func preferredDatabasesDirectory(configURL: URL = configURL()) -> URL? {
+    public static func preferredDatabasesDirectory(configURL: URL = configURL()) -> URL? {
         let config = configDictionary(configURL: configURL)
         return explicitKnowledgeBaseDirectory(config: config)
             ?? recordingsDirectory(config: config).map(databasesDirectory(recordingsDirectory:))
     }
 
-    static func rtiDirectory(configURL: URL = configURL()) -> URL? {
+    public static func rtiDirectory(configURL: URL = configURL()) -> URL? {
         preferredDatabasesDirectory(configURL: configURL)?
             .appendingPathComponent("projects/personal/rti", isDirectory: true)
     }
 
     /// Where finished session folders are archived. `sessions_dir` in the
     /// config overrides the default.
-    static func sessionsDirectory(configURL: URL = configURL()) -> URL {
+    public static func sessionsDirectory(configURL: URL = configURL()) -> URL {
         sessionsDirectory(config: configDictionary(configURL: configURL))
     }
 
-    static func sessionsDirectory(config: [String: Any]) -> URL {
+    public static func sessionsDirectory(config: [String: Any]) -> URL {
         if let configured = config["sessions_dir"] as? String, !configured.isEmpty {
             return URL(fileURLWithPath: (configured as NSString).expandingTildeInPath, isDirectory: true)
         }
@@ -77,7 +87,7 @@ enum VaultPaths {
             .appendingPathComponent("Documents/Work/Inner-Chapter/meetings/sessions", isDirectory: true)
     }
 
-    static func meetingTranscriptsRawDirectory(configURL: URL = configURL()) -> URL? {
+    public static func meetingTranscriptsRawDirectory(configURL: URL = configURL()) -> URL? {
         let config = configDictionary(configURL: configURL)
         if let transcripts = config["transcripts_dir"] as? String, !transcripts.isEmpty {
             return URL(fileURLWithPath: (transcripts as NSString).expandingTildeInPath, isDirectory: true)
@@ -86,7 +96,7 @@ enum VaultPaths {
             .appendingPathComponent("meetings/transcripts-raw", isDirectory: true)
     }
 
-    static func briefsDirectory(configURL: URL = configURL()) -> URL? {
+    public static func briefsDirectory(configURL: URL = configURL()) -> URL? {
         preferredDatabasesDirectory(configURL: configURL)?
             .appendingPathComponent("meetings/briefs", isDirectory: true)
     }
@@ -95,7 +105,7 @@ enum VaultPaths {
     /// `.meeting.json` sidecars in the recordings directory. Sidecars are
     /// authoritative; loose transcript files may be partial, imported from an
     /// older install, or already represented by an RTI archive.
-    static func recordedMeetings(
+    public static func recordedMeetings(
         configURL: URL = configURL(),
         fileManager: FileManager = .default
     ) -> [RecordedMeeting] {
@@ -136,12 +146,12 @@ enum VaultPaths {
     }
 
     private struct RecordedMeetingRecord: Decodable {
-        let name: String
-        let startedAt: String
-        let status: String
-        let transcriptFile: String?
+        public let name: String
+        public let startedAt: String
+        public let status: String
+        public let transcriptFile: String?
 
-        enum CodingKeys: String, CodingKey {
+        public enum CodingKeys: String, CodingKey {
             case name, status
             case startedAt = "started_at"
             case transcriptFile = "transcript_file"

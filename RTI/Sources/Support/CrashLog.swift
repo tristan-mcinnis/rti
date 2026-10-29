@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 enum CrashLog {
     private static let maxBytes: Int = 1_000_000 // 1 MB

@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// The unattended `/meeting` run is opt-in and safe by default.
 final class MeetingProcessorConfigTests: XCTestCase {
