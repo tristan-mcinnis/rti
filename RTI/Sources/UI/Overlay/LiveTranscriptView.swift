@@ -6,8 +6,8 @@ import HouseDesign
 // MARK: - The list
 
 /// The live transcript as a calm reading column: no box per speaker, one
-/// quiet label per run of the same speaker, the mic wearer's runs on the
-/// right in a soft bubble, everyone else as plain text on the left. Interim
+/// quiet label per turn of one speaker (`LiveTranscriptPresentation.turns`),
+/// the mic wearer's turns on the right in a soft bubble, everyone else as plain text on the left. Interim
 /// words appear in lighter ink in their speaker's current run.
 ///
 /// The Core projection shares its frozen history and replaces only its live
@@ -41,12 +41,14 @@ struct LiveTranscriptList: View, Equatable {
         lhs.revision == rhs.revision && lhs.isActive == rhs.isActive && lhs.sessionID == rhs.sessionID
     }
 
+    private var turns: [LiveTranscriptPresentation.Turn] { LiveTranscriptPresentation.turns(rows) }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: House.Spacing.lg) {
-                    ForEach(rows) { row in
-                        TranscriptRunView(row: row)
+                    ForEach(turns) { turn in
+                        TranscriptRunView(turn: turn)
                             .equatable()
                     }
                 }
@@ -82,7 +84,7 @@ struct LiveTranscriptList: View, Equatable {
     }
 
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
-        if let last = rows.last { proxy.scrollTo(last.id, anchor: .bottom) }
+        if let last = turns.last { proxy.scrollTo(last.id, anchor: .bottom) }
     }
 }
 
@@ -196,15 +198,15 @@ private struct JumpToLatestButton: View {
 
 // MARK: - One run
 
-/// The run itself. Others: a small muted label line (speaker dot, name,
+/// The turn itself. Others: a small muted label line (speaker dot, name,
 /// time), then plain text capped at the reading width. The mic wearer: the
 /// same label line on the right over a soft `chipFill` bubble, as the house
 /// thread draws the user's turns. A note: a glyph label and secondary ink.
 private struct TranscriptRunView: View, Equatable {
-    let row: LiveTranscriptPresentation.LiveRow
+    let turn: LiveTranscriptPresentation.Turn
 
-    private var isSelf: Bool { row.isSelf }
-    private var isNote: Bool { row.isNote }
+    private var isSelf: Bool { turn.isSelf }
+    private var isNote: Bool { turn.isNote }
 
     var body: some View {
         if isSelf {
@@ -217,7 +219,7 @@ private struct TranscriptRunView: View, Equatable {
         } else {
             VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                 // Interim text the pipeline did not attribute has no label.
-                if !row.speakerId.isEmpty { header }
+                if !turn.speakerId.isEmpty { header }
                 texts
                     .answerWidth()
             }
@@ -232,16 +234,16 @@ private struct TranscriptRunView: View, Equatable {
                     .font(House.TypeToken.caption)
                     .foregroundStyle(House.ColorToken.textTertiary)
                     .accessibilityHidden(true)
-                Text(row.speakerLabel)
+                Text(turn.speakerLabel)
                     .font(House.TypeToken.meta.weight(.medium))
                     .foregroundStyle(House.ColorToken.textSecondary)
             } else {
                 if !isSelf {
-                    SlateStatusDot(color: SpeakerLabels.chipColor(for: row.speakerId))
+                    SlateStatusDot(color: SpeakerLabels.chipColor(for: turn.speakerId))
                 }
-                SpeakerNameControl(speakerId: row.speakerId, label: row.speakerLabel)
+                SpeakerNameControl(speakerId: turn.speakerId, label: turn.speakerLabel)
             }
-            if let startMs = row.startMs {
+            if let startMs = turn.startMs {
                 Text(TimeFormat.elapsedMs(startMs))
                     .font(House.TypeToken.caption)
                     .monospacedDigit()
@@ -267,13 +269,13 @@ private struct TranscriptRunView: View, Equatable {
             // Boundaries come from all visible words. Marking a span final
             // changes only its ink; it cannot introduce a paragraph break.
             VStack(alignment: .leading, spacing: House.Spacing.sm) {
-                ForEach(row.paragraphs) { paragraph in
-                    TranscriptParagraphView(paragraph: paragraph, isNote: isNote)
+                ForEach(Array(turn.paragraphs.enumerated()), id: \.offset) { _, spans in
+                    TranscriptParagraphView(spans: spans, isNote: isNote)
                         .equatable()
                 }
             }
-            if !row.translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(row.translation.trimmingCharacters(in: .whitespacesAndNewlines))
+            if !turn.translation.isEmpty {
+                Text(turn.translation)
                     .font(House.TypeToken.bodySmall)
                     .italic()
                     .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
@@ -287,7 +289,7 @@ private struct TranscriptRunView: View, Equatable {
 }
 
 private struct TranscriptParagraphView: View, Equatable {
-    let paragraph: LiveTranscriptPresentation.Paragraph
+    let spans: [LiveTranscriptPresentation.Span]
     let isNote: Bool
 
     private var finalInk: Color {
@@ -295,7 +297,7 @@ private struct TranscriptParagraphView: View, Equatable {
     }
 
     var body: some View {
-        paragraph.spans.reduce(Text("")) { text, span in
+        spans.reduce(Text("")) { text, span in
             text + Text(span.text).foregroundStyle(span.isFinal ? finalInk : House.ColorToken.textTertiary)
         }
         .font(House.TypeToken.bodySmall)

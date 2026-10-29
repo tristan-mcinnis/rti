@@ -1,5 +1,16 @@
 # RTI Change Log
 
+## 2026-10-29: Live transcript reads as turns, echo removed
+
+- **Echo.** When the remote voice plays through the speakers, the mic heard
+  it again and the transcript showed it twice ("Speaker 1" and "Room speaker
+  1") or split a sentence between them. The mic's echo of the system leg is
+  now removed word by word, for final and interim text (`EchoFilter`). This
+  also cleans the archived transcript.
+- **Turns.** Consecutive lines from one speaker share one label and time,
+  until another speaker, a note, or 30 s of silence.
+- Design and study notes: `docs/live-transcript-redesign-20261029.md`.
+
 ## 2026-10-17: Live Notes restored
 
 Live Notes came back after the trim. They are the one in-app analysis kept.

@@ -79,6 +79,21 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         try renderOverlay("transcript-live-wide", width: Self.wideWidth)
     }
 
+    /// A remote voice heard on both legs, cut into batches at different
+    /// points: one speaker's turn with no split word and no echoed line.
+    func testLiveEchoMeeting() throws {
+        let pipeline = TranscriptPipeline()
+        EchoMeetingFixture.replay(into: pipeline)
+        SessionCoordinator.shared.seedForRenderProof(
+            entries: pipeline.liveEntries,
+            interim: pipeline.interimLine,
+            interimSegments: pipeline.interimSegments,
+            phase: .recording,
+            startedAt: Date().addingTimeInterval(-30)
+        )
+        try renderOverlay("transcript-live-echo", width: Self.narrowWidth)
+    }
+
     /// Scrolled up from the latest line: following stops and "Jump to
     /// latest" appears.
     func testLiveScrolledUp() throws {

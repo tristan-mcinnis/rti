@@ -40,7 +40,7 @@ public final class TranscriptPipeline {
         for note in noteEntries {
             merged.append(NormalizedEntry(entry: note, dedupText: "", sequenceText: ""))
         }
-        merged.append(contentsOf: micEntries)
+        merged.append(contentsOf: withoutEcho(micEntries, system: systemEntries))
         merged.append(contentsOf: systemEntries)
         merged.sort(by: { $0.entry.startMs < $1.entry.startMs })
         let deduped = Self.dedupedAcrossChannels(merged)
@@ -49,6 +49,66 @@ public final class TranscriptPipeline {
     }
 
     // MARK: - Cross-channel echo dedup
+
+    /// Final entries never change, so each keeps its assembled words here
+    /// rather than normalising the whole session on every pass.
+    private var echoSources: [UUID: EchoFilter.Source] = [:]
+
+    private func echoSource(_ entry: LiveEntry) -> EchoFilter.Source {
+        if let cached = echoSources[entry.id] { return cached }
+        let source = EchoFilter.Source(speakerId: entry.speakerId, tokens: entry.tokens)
+        echoSources[entry.id] = source
+        return source
+    }
+
+    /// The mic entries with the room's echo of the system leg removed, word
+    /// by word (`EchoFilter`). The batch dedup below remains for entries
+    /// without timed tokens.
+    private func withoutEcho(_ mic: [NormalizedEntry], system: [NormalizedEntry]) -> [NormalizedEntry] {
+        let echo = EchoFilter.echoTokens(mic: mic.map { echoSource($0.entry) },
+                                         system: system.map { echoSource($0.entry) })
+        return zip(mic, echo).compactMap { merged, dropped in
+            guard !dropped.isEmpty else { return merged }
+            let entry = merged.entry
+            let kept = entry.tokens.enumerated().filter { !dropped.contains($0.offset) }.map(\.element)
+            guard let first = kept.first else { return nil }
+            let text = kept.map(\.text).joined()
+            let trimmed = LiveEntry(
+                speakerId: entry.speakerId, text: text, startMs: first.startMs, confidence: entry.confidence,
+                translationStatus: entry.translationStatus, language: entry.language, sourceLanguage: entry.sourceLanguage,
+                id: entry.id, textOrigin: entry.textOrigin, streamID: entry.streamID, tokens: kept
+            )
+            return NormalizedEntry(entry: trimmed, dedupText: TranscriptTextNormalization.dedup(text),
+                                   sequenceText: TranscriptTextNormalization.sequence(text))
+        }
+    }
+
+    /// Mic interims judged against everything the system leg has said
+    /// nearby: its interims and its recent finals.
+    private static func interimsWithoutEcho(
+        mic: [LiveTranscriptPresentation.InterimSegment],
+        system: [LiveTranscriptPresentation.InterimSegment],
+        systemFinals: [LiveEntry]
+    ) -> [LiveTranscriptPresentation.InterimSegment] {
+        guard !mic.isEmpty else { return mic }
+        let earliest = mic.compactMap { $0.tokens.first?.startMs }.min() ?? 0
+        // A final batch rarely runs a minute; older ones cannot overlap.
+        let recent = systemFinals.reversed().prefix { $0.startMs >= earliest - 60_000 }
+        let heard = system.map { EchoFilter.Source(speakerId: $0.speakerId, tokens: $0.tokens) }
+            + recent.map { EchoFilter.Source(speakerId: $0.speakerId, tokens: $0.tokens) }
+        let echo = EchoFilter.echoTokens(mic: mic.map { EchoFilter.Source(speakerId: $0.speakerId, tokens: $0.tokens) },
+                                         system: heard)
+        return zip(mic, echo).compactMap { segment, dropped in
+            guard !dropped.isEmpty else { return segment }
+            let kept = segment.tokens.enumerated().filter { !dropped.contains($0.offset) }.map(\.element)
+            guard let first = kept.first else { return nil }
+            return LiveTranscriptPresentation.InterimSegment(
+                speakerId: segment.speakerId, text: kept.map(\.text).joined(), textOrigin: segment.textOrigin,
+                startMs: first.startMs, translationStatus: segment.translationStatus, language: segment.language,
+                streamID: segment.streamID, tokens: kept
+            )
+        }
+    }
 
     /// When the mic leg and the system-audio (tap) leg both capture the same
     /// voices — e.g. a Zoom call with echo cancellation off, where the remote
@@ -239,7 +299,10 @@ public final class TranscriptPipeline {
     /// Native presentation consumes the raw fragments, not the legacy labelled
     /// line: encoding and parsing that line loses provider whitespace.
     public var interimSegments: [LiveTranscriptPresentation.InterimSegment] {
-        (micAggregator.interimSegments + systemAggregator.interimSegments)
+        let mic = Self.interimsWithoutEcho(mic: micAggregator.interimSegments,
+                                           system: systemAggregator.interimSegments,
+                                           systemFinals: systemAggregator.entries)
+        return (mic + systemAggregator.interimSegments)
             .sorted { ($0.startMs ?? 0) < ($1.startMs ?? 0) }
     }
 
@@ -291,6 +354,7 @@ public final class TranscriptPipeline {
         micAggregator.reset()
         systemAggregator.reset()
         noteEntries = []
+        echoSources = [:]
         cachedLiveEntries = nil
     }
 

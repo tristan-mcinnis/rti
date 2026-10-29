@@ -176,6 +176,7 @@ targets:
     platform: macOS
     sources:
       - path: RenderTests
+      - path: Tests/EchoMeetingFixture.swift
       - path: Sources
         excludes:
           - Info.plist

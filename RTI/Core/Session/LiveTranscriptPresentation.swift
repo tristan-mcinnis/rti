@@ -358,6 +358,8 @@ extension LiveTranscriptPresentation {
         public let speakerId: String
         public let speakerLabel: String
         public let startMs: Int?
+        /// The last timed word's end, when the provider gave one.
+        public let endMs: Int?
         public let streamID: UUID?
         public let paragraphs: Paragraphs
         public let translation: String
@@ -717,6 +719,7 @@ extension LiveTranscriptPresentation {
         var translationLanguage: String?
         var hasOriginal = false
         var hasPending = false
+        var endMs: Int?
 
         init(_ fragment: LiveFragment) {
             id = fragment.id
@@ -731,6 +734,7 @@ extension LiveTranscriptPresentation {
                 body.append(fragment.text, origin: fragment.origin, isFinal: fragment.isFinal)
                 hasOriginal = hasOriginal || !fragment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 hasPending = hasPending || !fragment.isFinal
+                if let end = fragment.endMs { endMs = max(endMs ?? end, end) }
             }
         }
 
@@ -741,7 +745,7 @@ extension LiveTranscriptPresentation {
         func row(names: [String: String], revision: UInt64, showTranslations: Bool) -> LiveRow {
             LiveRow(id: id, revision: revision, speakerId: id.speakerId,
                     speakerLabel: label(for: id.speakerId, names: names), startMs: id.untimedOrdinal == nil ? id.startMs : nil,
-                    streamID: id.streamID, paragraphs: body.paragraphs,
+                    endMs: endMs, streamID: id.streamID, paragraphs: body.paragraphs,
                     translation: showTranslations ? translation : "",
                     translationLanguage: showTranslations ? translationLanguage : nil, hasPending: hasPending)
         }
