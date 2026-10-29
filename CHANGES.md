@@ -9,6 +9,11 @@
   also cleans the archived transcript.
 - **Turns.** Consecutive lines from one speaker share one label and time,
   until another speaker, a note, or 30 s of silence.
+- **Look.** One left column for every speaker: the name in its speaker
+  colour (light and dark pairs), the time on the right, larger text, a top
+  fade. The mic wearer's bubble and the speaker dot are gone.
+- **Reading position.** When you scroll up to read, new lines no longer pull
+  you back to the start of the turn at the top.
 - Design and study notes: `docs/live-transcript-redesign-20261029.md`.
 
 ## 2026-10-17: Live Notes restored
