@@ -14,9 +14,12 @@ enum MeetingProcessorConfig {
         home.appendingPathComponent("Documents/Work", isDirectory: true)
     }
 
+    /// The lanes whose `tasks/<lane>.md` the skill may commit, one entry each.
+    static let taskLanes = ["cs-web", "cs-work", "inner-chapter", "harness", "personal", "finance"]
+
     /// What the `/meeting` skill needs and nothing more: read tools, mkdir
-    /// under the work tree and ls, and the memory repo's add, one fixed
-    /// commit, pull and push. No scripts, no
+    /// under the work tree and ls, and the memory repo's add and fixed
+    /// commit per lane task file, pull and push. No scripts, no
     /// cat or cp, no bare Write or Edit: file writes come from `acceptEdits`,
     /// which covers the working directory and `--add-dir` only.
     static func allowedTools(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [String] {
@@ -24,11 +27,23 @@ enum MeetingProcessorConfig {
         return [
             "Read", "Glob", "Grep",
             "Bash(mkdir -p \(home.appendingPathComponent("Documents/Work").path)/*)", "Bash(ls *)",
-            "Bash(git -C \(memory) add tasks.md)",
-            "Bash(git -C \(memory) commit -m meeting-tasks -- tasks.md)",
+        ] + taskLanes.flatMap { lane in
+            [
+                "Bash(git -C \(memory) add tasks/\(lane).md)",
+                "Bash(git -C \(memory) commit -m meeting-tasks -- tasks/\(lane).md)",
+            ]
+        } + [
             "Bash(git -C \(memory) pull --rebase)",
             "Bash(git -C \(memory) push)",
         ]
+    }
+
+    /// One log line for a finished run, or nil on a clean exit. Carries the
+    /// status only, never any of the run's output.
+    static func exitLogLine(name: String, status: Int32, reason: Process.TerminationReason) -> String? {
+        if reason == .uncaughtSignal { return "meeting processor killed by signal \(status) for \(name)" }
+        guard status != 0 else { return nil }
+        return "meeting processor exited with status \(status) for \(name)"
     }
 
     /// Tools denied outright, on top of the allow list.

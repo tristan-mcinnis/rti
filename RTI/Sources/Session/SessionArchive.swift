@@ -244,7 +244,15 @@ enum SessionArchive {
         if let logHandle {
             proc.standardOutput = logHandle
             proc.standardError = logHandle
-            proc.terminationHandler = { _ in try? logHandle.close() }
+        }
+        let name = transcriptURL.lastPathComponent
+        proc.terminationHandler = { finished in
+            try? logHandle?.close()
+            if let line = MeetingProcessorConfig.exitLogLine(
+                name: name, status: finished.terminationStatus, reason: finished.terminationReason
+            ) {
+                RTILog.log(line, category: .archive)
+            }
         }
         do {
             try proc.run()
