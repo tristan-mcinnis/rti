@@ -72,14 +72,25 @@ enum RTIDesign {
 
         // Speaker chip palette — the one allowed categorical palette (DESIGN.md).
         // Indexed by trailing digit so Speaker 1 / 2 / 3 are stable across sessions.
+        // Each hue has a lighter dark-appearance tint, so a speaker's name
+        // stays readable as text on the dark ground, not only as a dot.
         static let speakerPalette: [SwiftUI.Color] = [
-            SwiftUI.Color(red: 0.024, green: 0.463, blue: 0.847), // blue (self/0)
-            SwiftUI.Color(red: 0.847, green: 0.314, blue: 0.235), // red
-            SwiftUI.Color(red: 0.196, green: 0.604, blue: 0.380), // green
-            SwiftUI.Color(red: 0.580, green: 0.341, blue: 0.737), // purple
-            SwiftUI.Color(red: 0.890, green: 0.553, blue: 0.110), // amber
-            SwiftUI.Color(red: 0.180, green: 0.522, blue: 0.620)  // teal
+            speaker(light: (0.024, 0.463, 0.847), dark: (0.392, 0.667, 1.000)), // blue (self/0)
+            speaker(light: (0.847, 0.314, 0.235), dark: (1.000, 0.494, 0.431)), // red
+            speaker(light: (0.196, 0.604, 0.380), dark: (0.384, 0.804, 0.541)), // green
+            speaker(light: (0.580, 0.341, 0.737), dark: (0.780, 0.580, 0.949)), // purple
+            speaker(light: (0.890, 0.553, 0.110), dark: (1.000, 0.718, 0.322)), // amber
+            speaker(light: (0.180, 0.522, 0.620), dark: (0.400, 0.765, 0.859)), // teal
         ]
+
+        private static func speaker(
+            light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)
+        ) -> SwiftUI.Color {
+            SwiftUI.Color(nsColor: NSColor(name: nil) { appearance in
+                let rgb = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+                return NSColor(srgbRed: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
+            })
+        }
     }
 
     // MARK: - Spacing

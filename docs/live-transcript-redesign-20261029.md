@@ -39,3 +39,21 @@ Tests (XCTest: SWIFT.md keeps rti on XCTest and forbids mixing in a target):
 echo run dropped, real overlap kept, interim echo dropped, turn merge, gap
 split, a synthetic two-leg fixture renders with no split words and no
 duplicate lines.
+
+## Restyle after Tristan's superwhisper screenshots (same day)
+
+superwhisper (live meeting window, observed in screenshots): one left column
+for every speaker; the name in a speaker colour, semibold; the time at the
+right edge; larger text with tight lines; no bubbles or dots. Its binary
+names (REA static pass; Hopper was blocked by macOS Automation permission)
+show `SpeakerTranscriptBlock`, `MeetingTranscriptBlockPolicy`,
+`TranscriptRevealWord` with `BlurFade` (new words fade in), `ProgressiveBlur`
+(edge fade), `TranscriptBottomAnchor`, `TranscriptScrollToBottomButton`,
+`SpeakerColorIdentity`.
+
+RTI now matches that layout: the mic wearer's bubble and the speaker dot are
+gone, the name takes the speaker's palette colour, the time sits on the
+right, text is `body` with `Spacing.xxs` between lines, and the top edge
+fades. DESIGN.md "Live transcript" is updated in design-system to match.
+Not copied: word-level blur reveal (SwiftUI `Text` cannot blur one span;
+interim ink stays `textTertiary`).

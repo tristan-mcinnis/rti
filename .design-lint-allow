@@ -7,3 +7,8 @@
 # data, so Speaker 1, 2, 3 stay distinct. They stay local to RTI. The rest of
 # RTIDesign.swift is linted normally.
 RTI/Sources/UI/RTIDesign.swift:SwiftUI\.Color\(red:.*// (blue|red|green|purple|amber|teal)
+# The same six colours need a lighter tint in the dark appearance, because the
+# live transcript draws each speaker's name in its colour (DESIGN.md "Live
+# transcript"). Each pair is one palette entry, built by one helper.
+RTI/Sources/UI/RTIDesign.swift:speaker\(light:.*// (blue|red|green|purple|amber|teal)
+RTI/Sources/UI/RTIDesign.swift:NSColor\(srgbRed: rgb\.0

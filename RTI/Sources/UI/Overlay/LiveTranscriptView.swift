@@ -24,6 +24,7 @@ struct LiveTranscriptList: View, Equatable {
 
     @State private var following = LiveTranscriptList.startsFollowing
     @State private var readingAnchor: LiveTranscriptPresentation.RunID?
+    @State private var reader = ReadingPosition()
 
     private struct FollowUpdate: Equatable {
         let revision: Int
@@ -50,15 +51,28 @@ struct LiveTranscriptList: View, Equatable {
                     ForEach(turns) { turn in
                         TranscriptRunView(turn: turn)
                             .equatable()
+                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView).minY } action: { top in
+                                if !following { reader.turnMoved(turn.id, top: top) }
+                            }
                     }
                 }
                 .scrollTargetLayout()
                 .padding(.top, House.Spacing.xxs)
                 .padding(.bottom, House.Spacing.xs)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(TranscriptScrollTracking(following: $following, isActive: isActive))
+                .background(TranscriptScrollTracking(following: $following, isActive: isActive, reader: reader))
             }
             .scrollContentBackground(.hidden)
+            // Room for the fade above the first line, outside the reading anchor's layout.
+            .contentMargins(.top, House.Spacing.lg - House.Spacing.xxs, for: .scrollContent)
+            // Lines leaving the top fade out instead of cutting at the edge.
+            .mask {
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                        .frame(height: House.Spacing.lg)
+                    Color.black
+                }
+            }
             .scrollPosition(id: $readingAnchor)
             .accessibilityIdentifier("rti-live-transcript")
             .overlay(alignment: .bottom) {
@@ -77,7 +91,9 @@ struct LiveTranscriptList: View, Equatable {
                 if previous.sessionID != current.sessionID {
                     following = true
                     readingAnchor = nil
+                    reader.reset()
                 }
+                if !following { reader.hold(readingAnchor) }
                 if current.isActive, following { scrollToLatest(proxy) }
             }
         }
@@ -88,11 +104,62 @@ struct LiveTranscriptList: View, Equatable {
     }
 }
 
+/// Where the reader sits inside the top turn. `scrollPosition(id:)` brings
+/// that turn back after an update but drops the offset inside it; a long
+/// turn would pull the reader back to its first line. The last user scroll
+/// sets the offset, and once each later update has laid out, the view is
+/// shifted back to it. A plain reference, so scroll-rate geometry never
+/// invalidates the list.
+@MainActor
+private final class ReadingPosition {
+    weak var scrollView: NSScrollView?
+    private var tops: [LiveTranscriptPresentation.RunID: CGFloat] = [:]
+    private var held: (id: LiveTranscriptPresentation.RunID, top: CGFloat)?
+
+    func turnMoved(_ id: LiveTranscriptPresentation.RunID, top: CGFloat) {
+        tops[id] = top
+    }
+
+    /// Called as an update arrives, before it lays out. Mid-layout tops are
+    /// transient, so the shift waits for the next run-loop pass. A run-loop
+    /// block, not the main queue: it also runs inside a nested run loop.
+    func hold(_ anchor: LiveTranscriptPresentation.RunID?) {
+        if held == nil, let anchor, let top = tops[anchor] { held = (anchor, top) }
+        guard held != nil else { return }
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated { self?.restore() }
+        }
+    }
+
+    /// The user scrolled: the next update holds the new position.
+    func release() { held = nil }
+
+    private func restore() {
+        guard let held, let top = tops[held.id], abs(top - held.top) > 0.5 else { return }
+        shift(by: top - held.top)
+    }
+
+    func reset() {
+        held = nil
+        tops = [:]
+    }
+
+    private func shift(by delta: CGFloat) {
+        guard let scrollView, let document = scrollView.documentView else { return }
+        let clip = scrollView.contentView
+        var origin = clip.bounds.origin
+        origin.y += document.isFlipped ? delta : -delta
+        clip.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clip)
+    }
+}
+
 /// Observe the existing SwiftUI scroll view through its AppKit seam. This
 /// keeps user scroll intent distinct from content growth on macOS 14 too.
 private struct TranscriptScrollTracking: NSViewRepresentable {
     @Binding var following: Bool
     let isActive: Bool
+    let reader: ReadingPosition
 
     func makeNSView(context: Context) -> TranscriptScrollTrackingView {
         TranscriptScrollTrackingView()
@@ -100,6 +167,7 @@ private struct TranscriptScrollTracking: NSViewRepresentable {
 
     func updateNSView(_ view: TranscriptScrollTrackingView, context: Context) {
         view.isActive = isActive
+        view.reader = reader
         view.onFollowingChange = { value in
             if following != value { following = value }
         }
@@ -114,6 +182,9 @@ private struct TranscriptScrollTracking: NSViewRepresentable {
 private final class TranscriptScrollTrackingView: NSView {
     var isActive = true
     var onFollowingChange: ((Bool) -> Void)?
+    var reader: ReadingPosition? {
+        didSet { reader?.scrollView = scrollView }
+    }
     private weak var scrollView: NSScrollView?
     private var userScrolling = false
 
@@ -131,6 +202,7 @@ private final class TranscriptScrollTrackingView: NSView {
         guard let enclosing = enclosingScrollView, enclosing !== scrollView else { return }
         disconnect()
         scrollView = enclosing
+        reader?.scrollView = enclosing
         enclosing.contentView.postsBoundsChangedNotifications = true
         let center = NotificationCenter.default
         // AppKit posts these on the main thread during native scrolling.
@@ -163,6 +235,7 @@ private final class TranscriptScrollTrackingView: NSView {
         guard isActive, userDriven, let scrollView, let document = scrollView.documentView else { return }
         let visible = scrollView.documentVisibleRect
         guard visible.height > 0 else { return }
+        reader?.release()
         let atBottom = document.isFlipped
             ? visible.maxY >= document.bounds.maxY - House.Spacing.xl
             : visible.minY <= document.bounds.minY + House.Spacing.xl
@@ -193,38 +266,48 @@ private struct JumpToLatestButton: View {
         .help("Scroll to the latest line and keep following")
         .accessibilityLabel("Jump to latest")
         .accessibilityIdentifier("rti-transcript-jump-latest")
+        .background(AppKitIdentifier("rti-transcript-jump-latest"))
     }
 }
 
-// MARK: - One run
+/// Render tests cannot see SwiftUI identifiers, so this names the control's frame in AppKit.
+private struct AppKitIdentifier: NSViewRepresentable {
+    let identifier: String
 
-/// The turn itself. Others: a small muted label line (speaker dot, name,
-/// time), then plain text capped at the reading width. The mic wearer: the
-/// same label line on the right over a soft `chipFill` bubble, as the house
-/// thread draws the user's turns. A note: a glyph label and secondary ink.
+    init(_ identifier: String) { self.identifier = identifier }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = PassThroughView()
+        view.identifier = NSUserInterfaceItemIdentifier(identifier)
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    private final class PassThroughView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
+// MARK: - One turn
+
+/// One turn: the name in the speaker's colour with the time on the right,
+/// then the text across the reading width. Everyone, the mic wearer too,
+/// reads down one left edge, so the eye never jumps sides. A note: a glyph
+/// label and secondary ink.
 private struct TranscriptRunView: View, Equatable {
     let turn: LiveTranscriptPresentation.Turn
 
-    private var isSelf: Bool { turn.isSelf }
     private var isNote: Bool { turn.isNote }
 
     var body: some View {
-        if isSelf {
-            VStack(alignment: .trailing, spacing: House.Spacing.xxs) {
-                header
-                bubble
-            }
-            .padding(.leading, House.Spacing.xxxxl)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-        } else {
-            VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-                // Interim text the pipeline did not attribute has no label.
-                if !turn.speakerId.isEmpty { header }
-                texts
-                    .answerWidth()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            // Interim text the pipeline did not attribute has no label.
+            if !turn.speakerId.isEmpty { header }
+            texts
         }
+        .answerWidth()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
@@ -235,33 +318,20 @@ private struct TranscriptRunView: View, Equatable {
                     .foregroundStyle(House.ColorToken.textTertiary)
                     .accessibilityHidden(true)
                 Text(turn.speakerLabel)
-                    .font(House.TypeToken.meta.weight(.medium))
+                    .font(House.TypeToken.label)
                     .foregroundStyle(House.ColorToken.textSecondary)
             } else {
-                if !isSelf {
-                    SlateStatusDot(color: SpeakerLabels.chipColor(for: turn.speakerId))
-                }
-                SpeakerNameControl(speakerId: turn.speakerId, label: turn.speakerLabel)
+                SpeakerNameControl(speakerId: turn.speakerId, label: turn.speakerLabel,
+                                   color: SpeakerLabels.chipColor(for: turn.speakerId))
             }
+            Spacer(minLength: House.Spacing.sm)
             if let startMs = turn.startMs {
                 Text(TimeFormat.elapsedMs(startMs))
-                    .font(House.TypeToken.caption)
+                    .font(House.TypeToken.meta)
                     .monospacedDigit()
                     .foregroundStyle(House.ColorToken.textTertiary)
             }
         }
-        .frame(minHeight: House.Control.keyCap)
-    }
-
-    private var bubble: some View {
-        texts
-            .padding(.horizontal, House.Spacing.sm)
-            .padding(.vertical, House.Spacing.xs)
-            .background(
-                RoundedRectangle(cornerRadius: House.Radius.pill, style: .continuous)
-                    .fill(House.ColorToken.chipFill)
-            )
-            .frame(maxWidth: RTIDesign.Layout.answerMaxWidth, alignment: .trailing)
     }
 
     private var texts: some View {
@@ -300,8 +370,8 @@ private struct TranscriptParagraphView: View, Equatable {
         spans.reduce(Text("")) { text, span in
             text + Text(span.text).foregroundStyle(span.isFinal ? finalInk : House.ColorToken.textTertiary)
         }
-        .font(House.TypeToken.bodySmall)
-        .lineSpacing(RTIDesign.Font.bodySmallLineSpacing)
+        .font(House.TypeToken.body)
+        .lineSpacing(House.Spacing.xxs)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -309,7 +379,7 @@ private struct TranscriptParagraphView: View, Equatable {
 
 // MARK: - Speaker name
 
-/// The speaker's name as small muted text. Click to name the speaker: with a
+/// The speaker's name in the speaker's colour. Click to name the speaker: with a
 /// confirmed calendar meeting, a menu offers its invitees first; otherwise
 /// (or from "Type a name…") an inline field takes the name. Return commits to
 /// `SpeakerNameStore`, so the live view and the archive both use it; Escape
@@ -317,6 +387,7 @@ private struct TranscriptParagraphView: View, Equatable {
 private struct SpeakerNameControl: View {
     let speakerId: String
     let label: String
+    let color: Color
 
     private let names = SpeakerNameStore.shared
     private let meeting = MeetingContextStore.shared
@@ -328,7 +399,7 @@ private struct SpeakerNameControl: View {
         if editing {
             TextField("Name", text: $draft)
                 .textFieldStyle(.plain)
-                .font(House.TypeToken.meta.weight(.medium))
+                .font(House.TypeToken.label.weight(.semibold))
                 .foregroundStyle(House.ColorToken.textPrimary)
                 .frame(width: House.Layout.chatRail - House.Spacing.xxxl)
                 .focused($fieldFocused)
@@ -372,8 +443,8 @@ private struct SpeakerNameControl: View {
 
     private var nameText: some View {
         Text(label)
-            .font(House.TypeToken.meta.weight(.medium))
-            .foregroundStyle(House.ColorToken.textSecondary)
+            .font(House.TypeToken.label.weight(.semibold))
+            .foregroundStyle(color)
             .lineLimit(1)
             .truncationMode(.tail)
             .frame(maxWidth: House.Layout.chatRail, alignment: .leading)

@@ -434,8 +434,10 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         let returned = try textAnchor(marker.text, in: after)
         XCTAssertEqual(returned.midY * Self.height, marker.boundingBox.midY * Self.height, accuracy: 4)
 
-        let jump = try textAnchor("Jump to latest", in: after)
-        try pressAcceptanceLabel(jump, in: hosting)
+        _ = try textAnchor("Jump to latest", in: after)
+        // OCR can merge the floating button with the transcript line behind
+        // it, so press the control itself rather than the recognized box.
+        try pressAcceptanceElement("rti-transcript-jump-latest", in: hosting)
         settleAcceptanceHost(hosting)
         let latest = try await acceptanceWords(hosting, appearance: appearance, name: "acceptance-reader-latest")
         _ = try textAnchor("A phrase received while the reader was hidden", in: latest)
@@ -592,7 +594,20 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         let window = try XCTUnwrap(hosting.window as? NSPanel)
         let point = NSPoint(x: (rect.minX + rect.width * horizontalFraction) * hosting.bounds.width,
                             y: (hosting.isFlipped ? 1 - rect.midY : rect.midY) * hosting.bounds.height)
-        let location = hosting.convert(point, to: nil)
+        try sendAcceptanceClick(at: hosting.convert(point, to: nil), in: window)
+    }
+
+    private func pressAcceptanceElement(_ identifier: String, in hosting: NSHostingView<AnyView>) throws {
+        let window = try XCTUnwrap(hosting.window as? NSPanel)
+        func find(_ view: NSView) -> NSView? {
+            view.identifier?.rawValue == identifier ? view : view.subviews.lazy.compactMap(find).first
+        }
+        let control = try XCTUnwrap(find(hosting), "No view identified as \(identifier)")
+        let frame = control.convert(control.bounds, to: nil)
+        try sendAcceptanceClick(at: NSPoint(x: frame.midX, y: frame.midY), in: window)
+    }
+
+    private func sendAcceptanceClick(at location: NSPoint, in window: NSPanel) throws {
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [],
                                                         timestamp: ProcessInfo.processInfo.systemUptime,
