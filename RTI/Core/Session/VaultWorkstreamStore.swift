@@ -1,11 +1,24 @@
 import Foundation
+import RTICore
 
 /// A pickable client or project from the vault.
-struct VaultItem: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let url: URL
-    let isProject: Bool
+public struct VaultItem: Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let url: URL
+    public let isProject: Bool
+
+    public init(
+        id: String,
+        name: String,
+        url: URL,
+        isProject: Bool
+    ) {
+        self.id = id
+        self.name = name
+        self.url = url
+        self.isProject = isProject
+    }
 }
 
 /// Read-only access to the vault's clients + projects so the Context tab can
@@ -13,13 +26,13 @@ struct VaultItem: Identifiable, Hashable {
 /// pull that workstream's content in as assistant context. RTI never writes
 /// here. The vault is located via RTI's config — the same
 /// mechanism `MeetingBriefStore` uses — so no path is hardcoded.
-enum VaultWorkstreamStore {
+public enum VaultWorkstreamStore {
     /// `<vault>/databases` — resolved from RTI's configured recordings path.
-    static func databasesDir() -> URL? {
+    public static func databasesDir() -> URL? {
         VaultPaths.preferredDatabasesDirectory()
     }
 
-    static func clients() -> [VaultItem] {
+    public static func clients() -> [VaultItem] {
         items(in: "clients", isProject: false) { url in
             url.pathExtension == "md"
         } makeItem: { url in
@@ -27,7 +40,7 @@ enum VaultWorkstreamStore {
         }
     }
 
-    static func projects() -> [VaultItem] {
+    public static func projects() -> [VaultItem] {
         items(in: "projects", isProject: true) { url in
             (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
                 && url.lastPathComponent != "past-projects"
@@ -42,7 +55,7 @@ enum VaultWorkstreamStore {
     /// project file from bloating every prompt.
     private static let contextCap = 6000
 
-    static func context(for item: VaultItem) -> String {
+    public static func context(for item: VaultItem) -> String {
         let raw: String
         if item.isProject {
             // Status first (most relevant during a call), then the overview.
@@ -64,7 +77,7 @@ enum VaultWorkstreamStore {
     /// `projects/acme-running-retail-concept`). nil for clients — a client is a
     /// single note, not a directory tree to scope to — or when the vault can't
     /// be located.
-    static func scopeRelativePath(for item: VaultItem) -> String? {
+    public static func scopeRelativePath(for item: VaultItem) -> String? {
         guard item.isProject, let base = databasesDir() else { return nil }
         return relativePath(for: item, under: base)
     }
@@ -72,7 +85,7 @@ enum VaultWorkstreamStore {
     /// Path for either a project directory or a client note, relative to
     /// `databases/`. Used by direct file access (`@...`) where a selected client
     /// should narrow to its one note, not broaden to the whole vault.
-    static func fileAccessRelativePath(for item: VaultItem) -> String? {
+    public static func fileAccessRelativePath(for item: VaultItem) -> String? {
         guard let base = databasesDir() else { return nil }
         return relativePath(for: item, under: base)
     }
@@ -88,7 +101,7 @@ enum VaultWorkstreamStore {
     /// the item whose name appears (whole-word) in the meeting name, preferring
     /// projects, then the longest match. Conservative: only names of 4+ chars
     /// match, so a short slug can't false-positive. Pure (no FS) for testing.
-    static func match(meetingName: String, in items: [VaultItem]) -> VaultItem? {
+    public static func match(meetingName: String, in items: [VaultItem]) -> VaultItem? {
         let haystack = " \(normalize(meetingName)) "
         guard haystack.count > 2 else { return nil }
         return items
@@ -106,7 +119,7 @@ enum VaultWorkstreamStore {
 
     /// Lowercase, fold every non-alphanumeric run to a single space. Lets a
     /// hyphenated slug ("acme-digital") match a spaced title ("Acme Digital").
-    static func normalize(_ s: String) -> String {
+    public static func normalize(_ s: String) -> String {
         String(s.lowercased().map { $0.isLetter || $0.isNumber ? $0 : " " })
             .split(separator: " ")
             .joined(separator: " ")

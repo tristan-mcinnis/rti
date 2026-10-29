@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Appends a line-per-turn JSONL log of every assistant turn into the vault, so
 /// past chats — and the prompts/modes that produced them — stay reviewable
@@ -8,57 +9,135 @@ import Foundation
 /// Location: `<vault>/databases/projects/personal/rti/turns/<yyyy-MM-dd>.jsonl`,
 /// derived from RTI's configured `recordings_dir` so the vault path is never
 /// hardcoded here. Per-day files keep any single iCloud/git-synced file small.
-enum VaultLogStore {
-    struct TurnRecord: Codable {
-        struct Latency: Codable {
-            let totalMs: Int
-            let firstTokenMs: Int?
-            let toolMs: Int
-            let toolCount: Int
+public enum VaultLogStore {
+    public struct TurnRecord: Codable {
+        public struct Latency: Codable {
+            public let totalMs: Int
+            public let firstTokenMs: Int?
+            public let toolMs: Int
+            public let toolCount: Int
+
+            public init(
+                totalMs: Int,
+                firstTokenMs: Int?,
+                toolMs: Int,
+                toolCount: Int
+            ) {
+                self.totalMs = totalMs
+                self.firstTokenMs = firstTokenMs
+                self.toolMs = toolMs
+                self.toolCount = toolCount
+            }
         }
 
-        let ts: String            // ISO-8601, stamped when the turn was sent
-        let action: String        // "Ask" | "Assist" | "Recap" | …
-        let mode: String?         // active prompt mode, if any
+        public let ts: String            // ISO-8601, stamped when the turn was sent
+        public let action: String        // "Ask" | "Assist" | "Recap" | …
+        public let mode: String?         // active prompt mode, if any
         // `provider`/`model`/`smart` stay the EFFECTIVE values: the model that
         // actually ran. The added fields are the chosen side plus the facts a
         // later audit needs. Keys are only added, never removed, so older days
         // still decode.
-        let provider: String
-        let model: String
-        let smart: Bool
-        let selectedProvider: String?
-        let selectedModel: String?
-        let reasoning: String?
-        let thinkingSent: Bool?
-        let imageRoute: String?
-        let imageCount: Int?
-        let toolPolicy: String?
-        let inSession: Bool       // was a live session running
-        let contextUsed: Bool     // transcript attached
-        let screenUsed: Bool      // OCR screen attached
-        let userInput: String
-        let transcriptContext: String
-        let output: String
-        let latency: Latency?
-        let sources: [String]
+        public let provider: String
+        public let model: String
+        public let smart: Bool
+        public let selectedProvider: String?
+        public let selectedModel: String?
+        public let reasoning: String?
+        public let thinkingSent: Bool?
+        public let imageRoute: String?
+        public let imageCount: Int?
+        public let toolPolicy: String?
+        public let inSession: Bool       // was a live session running
+        public let contextUsed: Bool     // transcript attached
+        public let screenUsed: Bool      // OCR screen attached
+        public let userInput: String
+        public let transcriptContext: String
+        public let output: String
+        public let latency: Latency?
+        public let sources: [String]
         /// One entry per tool the assistant actually called, in call order.
-        let toolCalls: [ToolCall]?
+        public let toolCalls: [ToolCall]?
         /// The chat thread this turn belongs to, and the turn's own id. These
         /// are the precise links between the daily log and the structured
         /// thread, and the only rows a thread deletion may remove.
-        let threadID: String?
-        let turnID: String?
+        public let threadID: String?
+        public let turnID: String?
 
         /// The evidence behind a tool line: what was asked, what came back,
         /// how long it took. App-side, in RTI's own legacy turn log; the
         /// structured thread stores the shared schema's `ToolCall` instead.
-        struct ToolCall: Codable {
-            let name: String
-            let arguments: String
-            let status: String
-            let elapsedMS: Int
-            let resultCharacters: Int
+        public struct ToolCall: Codable {
+            public let name: String
+            public let arguments: String
+            public let status: String
+            public let elapsedMS: Int
+            public let resultCharacters: Int
+
+            public init(
+                name: String,
+                arguments: String,
+                status: String,
+                elapsedMS: Int,
+                resultCharacters: Int
+            ) {
+                self.name = name
+                self.arguments = arguments
+                self.status = status
+                self.elapsedMS = elapsedMS
+                self.resultCharacters = resultCharacters
+            }
+        }
+
+        public init(
+            ts: String,
+            action: String,
+            mode: String?,
+            provider: String,
+            model: String,
+            smart: Bool,
+            selectedProvider: String?,
+            selectedModel: String?,
+            reasoning: String?,
+            thinkingSent: Bool?,
+            imageRoute: String?,
+            imageCount: Int?,
+            toolPolicy: String?,
+            inSession: Bool,
+            contextUsed: Bool,
+            screenUsed: Bool,
+            userInput: String,
+            transcriptContext: String,
+            output: String,
+            latency: Latency?,
+            sources: [String],
+            toolCalls: [ToolCall]?,
+            threadID: String?,
+            turnID: String?
+        ) {
+            self.ts = ts
+            self.action = action
+            self.mode = mode
+            self.provider = provider
+            self.model = model
+            self.smart = smart
+            self.selectedProvider = selectedProvider
+            self.selectedModel = selectedModel
+            self.reasoning = reasoning
+            self.thinkingSent = thinkingSent
+            self.imageRoute = imageRoute
+            self.imageCount = imageCount
+            self.toolPolicy = toolPolicy
+            self.inSession = inSession
+            self.contextUsed = contextUsed
+            self.screenUsed = screenUsed
+            self.userInput = userInput
+            self.transcriptContext = transcriptContext
+            self.output = output
+            self.latency = latency
+            self.sources = sources
+            self.toolCalls = toolCalls
+            self.threadID = threadID
+            self.turnID = turnID
         }
     }
 
@@ -66,13 +145,22 @@ enum VaultLogStore {
     /// Failures are reported, never swallowed: a projection that could not be
     /// cleaned is named so the caller can say so instead of pretending the
     /// delete was complete.
-    struct ProjectionCleanup: Sendable, Equatable {
-        var removedJSONLRows: Int = 0
-        var removedMarkdownBlocks: Int = 0
-        var failures: [String] = []
+    public struct ProjectionCleanup: Sendable, Equatable {
+        public var removedJSONLRows: Int = 0
+        public var removedMarkdownBlocks: Int = 0
+        public var failures: [String] = []
+        public init(
+            removedJSONLRows: Int = 0,
+            removedMarkdownBlocks: Int = 0,
+            failures: [String] = []
+        ) {
+            self.removedJSONLRows = removedJSONLRows
+            self.removedMarkdownBlocks = removedMarkdownBlocks
+            self.failures = failures
+        }
 
-        var isClean: Bool { failures.isEmpty }
-        var removedAnything: Bool { removedJSONLRows > 0 || removedMarkdownBlocks > 0 }
+        public var isClean: Bool { failures.isEmpty }
+        public var removedAnything: Bool { removedJSONLRows > 0 || removedMarkdownBlocks > 0 }
     }
 
     /// Remove the daily-log rows that belong to one chat thread, by exact ID.
@@ -80,7 +168,7 @@ enum VaultLogStore {
     /// unknown row is never assumed to belong to the thread being deleted.
     /// Returns how many rows went.
     @discardableResult
-    static func removeTurns(threadID: String) -> Int {
+    public static func removeTurns(threadID: String) -> Int {
         removeOwnedProjections(threadID: threadID).removedJSONLRows
     }
 
@@ -90,7 +178,7 @@ enum VaultLogStore {
     /// unlinked legacy row is never touched and no original source, meeting,
     /// or recording is removed here.
     @discardableResult
-    static func removeOwnedProjections(threadID: String) -> ProjectionCleanup {
+    public static func removeOwnedProjections(threadID: String) -> ProjectionCleanup {
         var report = ProjectionCleanup()
         guard !threadID.isEmpty, let rtiDir = rtiDirectory() else { return report }
         let turnsDir = rtiDir.appendingPathComponent("turns", isDirectory: true)
@@ -127,7 +215,7 @@ enum VaultLogStore {
     /// Pure: drop the JSONL rows whose record carries this exact thread id.
     /// A row that does not decode, or carries no thread id, is kept: an
     /// unknown row is never assumed to belong to the thread being deleted.
-    static func removingJSONLRows(threadID: String, from text: String) -> (text: String, removed: Int) {
+    public static func removingJSONLRows(threadID: String, from text: String) -> (text: String, removed: Int) {
         var kept: [String] = []
         var removed = 0
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -167,7 +255,7 @@ enum VaultLogStore {
     /// Pure: drop each `start → end` block that carries this exact thread id,
     /// including any `##` heading inside the answer. An unmatched marker or a
     /// legacy block with no markers is left untouched.
-    static func removingMarkdownBlocks(threadID: String, from text: String) -> (text: String, removed: Int) {
+    public static func removingMarkdownBlocks(threadID: String, from text: String) -> (text: String, removed: Int) {
         let start = markdownStartMarker(threadID: threadID)
         let end = markdownEndMarker(threadID: threadID)
         let lines = text.components(separatedBy: "\n")
@@ -198,7 +286,7 @@ enum VaultLogStore {
     /// offset and overwrite each other's row.
     private static let writeQueue = DispatchQueue(label: "rti.vaultlog.write", qos: .utility)
 
-    static func append(_ record: TurnRecord) {
+    public static func append(_ record: TurnRecord) {
         writeQueue.async {
             guard let rtiDir = rtiDirectory() else { return }
             let turnsDir = rtiDir.appendingPathComponent("turns", isDirectory: true)
@@ -216,13 +304,13 @@ enum VaultLogStore {
 
     /// `<vault>/databases/projects/personal/rti`, derived from RTI's config.
     /// Also used by SessionArchive to place per-session records in the vault.
-    static func rtiDirectory() -> URL? {
+    public static func rtiDirectory() -> URL? {
         VaultPaths.rtiDirectory()
     }
 
     /// The vault's meeting recordings directory. RTI uses this only to derive
     /// adjacent vault paths for its text handoff; it never writes audio here.
-    static func recordingsDirectory() -> URL? {
+    public static func recordingsDirectory() -> URL? {
         VaultPaths.preferredDatabasesDirectory()?
             .appendingPathComponent("meetings/recordings", isDirectory: true)
     }

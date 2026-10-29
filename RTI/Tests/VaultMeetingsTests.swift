@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// Locks the filename→sort-stamp parsing that orders meetings newest-first —
 /// the core of recency-aware retrieval. A session note with a time must sort

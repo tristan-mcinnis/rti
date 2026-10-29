@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import HouseDesign
+import RTICore
 
 /// Owns every window in the app. Centralises presentation policy so
 /// AppDelegate doesn't need to know about `NSWindow` or `NSHostingView`.

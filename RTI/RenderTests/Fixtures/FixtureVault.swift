@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// A small, invented vault for render proofs, so no proof reads the real
 /// vault or real meetings.

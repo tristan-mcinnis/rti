@@ -1,5 +1,6 @@
 import HouseChatCore
 import XCTest
+import RTICore
 
 /// The Chats library's own behaviour: what it loads, what it changes through
 /// the store, what it refuses to lose, and what it says when there is no

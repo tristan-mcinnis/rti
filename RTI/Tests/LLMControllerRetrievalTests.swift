@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// Pins the pure heuristic behind the Ask retrieval fix: which zero-result
 /// vault searches must be surfaced to the model as a hard "nothing here"

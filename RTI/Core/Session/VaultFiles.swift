@@ -10,8 +10,8 @@ import Foundation
 /// escapes the base (via `..`, an absolute path, a symlink target) is refused,
 /// so untrusted transcript/meeting content can never steer a read to `~/.ssh`
 /// or anywhere outside the knowledge base. Read-only; RTI never writes the vault.
-enum VaultFiles {
-    enum MentionResolution {
+public enum VaultFiles {
+    public enum MentionResolution {
         /// A resolved mention, with the ONE bounded read that produced both the
         /// text and the bytes. `bytes` is that same snapshot (never re-read),
         /// and `wasCut` says the file exceeded the snapshot cap.
@@ -33,21 +33,21 @@ enum VaultFiles {
     private static let mentionIndexCache = MentionIndexCache()
 
     private struct MentionIndexEntry: Sendable {
-        let path: String
-        let lowerPath: String
-        let basename: String
-        let stem: String
-        let compactPath: String
-        let compactStem: String
-        let pathTokens: [String]
-        let stemAcronym: String
-        let modified: Date
+        public let path: String
+        public let lowerPath: String
+        public let basename: String
+        public let stem: String
+        public let compactPath: String
+        public let compactStem: String
+        public let pathTokens: [String]
+        public let stemAcronym: String
+        public let modified: Date
     }
 
     private struct MentionRankedPath {
-        let path: String
-        let score: Int
-        let modified: Date
+        public let path: String
+        public let score: Int
+        public let modified: Date
     }
 
     private final class MentionIndexCache: @unchecked Sendable {
@@ -56,7 +56,7 @@ enum VaultFiles {
         private var builtAt: Date?
         private var entries: [MentionIndexEntry] = []
 
-        func get(base: URL) -> [MentionIndexEntry]? {
+        public func get(base: URL) -> [MentionIndexEntry]? {
             lock.lock()
             defer { lock.unlock() }
             guard basePath == base.path,
@@ -65,7 +65,7 @@ enum VaultFiles {
             return entries
         }
 
-        func set(base: URL, entries: [MentionIndexEntry]) {
+        public func set(base: URL, entries: [MentionIndexEntry]) {
             lock.lock()
             self.basePath = base.path
             self.builtAt = Date()
@@ -77,7 +77,7 @@ enum VaultFiles {
     /// Resolve a vault-relative path safely under `databases/`. Accepts the path
     /// shapes the other tools print (`projects/foo/00-status.md`, or with a
     /// leading `vault/databases/` / `databases/`). Returns nil if it escapes.
-    static func resolve(_ relative: String) -> URL? {
+    public static func resolve(_ relative: String) -> URL? {
         guard let dbs = VaultWorkstreamStore.databasesDir() else { return nil }
         var rel = relative.trimmingCharacters(in: .whitespaces)
         for p in ["vault/databases/", "databases/"] where rel.hasPrefix(p) { rel = String(rel.dropFirst(p.count)) }
@@ -96,7 +96,7 @@ enum VaultFiles {
 
     /// Full text of one vault document (capped). The model passes a path printed
     /// by search_vault / recent_meetings / grep_vault / list_files.
-    static func read(relativePath: String) -> String {
+    public static func read(relativePath: String) -> String {
         guard let url = resolve(relativePath) else {
             return "Refused: \"\(relativePath)\" is outside the vault knowledge base."
         }
@@ -113,14 +113,14 @@ enum VaultFiles {
     /// The raw bytes of a resolved vault document, read once at hand-over
     /// time. The chat turns these into the durable record's original bytes; it
     /// never reads the path again later.
-    static func rawBytes(relativePath: String) -> Data? {
+    public static func rawBytes(relativePath: String) -> Data? {
         readBounded(relativePath: relativePath)?.bytes
     }
 
     /// Resolve an inline `@file` mention to one readable vault document.
     /// Prefers an exact path inside the current project/client scope, then a
     /// fuzzy filename/path match within that scope, finally broadening vault-wide.
-    static func resolveMention(_ mention: String, scopeRelativePath: String?) -> MentionResolution {
+    public static func resolveMention(_ mention: String, scopeRelativePath: String?) -> MentionResolution {
         let query = mention.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return .missing(query: mention) }
 
@@ -148,7 +148,7 @@ enum VaultFiles {
         return .missing(query: query)
     }
 
-    static func mentionCandidates(_ query: String, scopeRelativePath: String?, limit: Int = 6) -> [String] {
+    public static func mentionCandidates(_ query: String, scopeRelativePath: String?, limit: Int = 6) -> [String] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let dbs = VaultWorkstreamStore.databasesDir() else { return [] }
         let entries = mentionIndex(under: dbs)
@@ -158,12 +158,12 @@ enum VaultFiles {
         return rankedMentionCandidates(trimmed, entries: entries, limit: limit).map(\.path)
     }
 
-    static func prewarmMentionIndex() {
+    public static func prewarmMentionIndex() {
         guard let dbs = VaultWorkstreamStore.databasesDir() else { return }
         _ = mentionIndex(under: dbs)
     }
 
-    static func mentionCandidatesForTesting(
+    public static func mentionCandidatesForTesting(
         _ query: String,
         paths: [String],
         scopeRelativePath: String? = nil,
@@ -181,7 +181,7 @@ enum VaultFiles {
     /// Keyword search across `.md` files (exact substring, case-insensitive) —
     /// the precise complement to semantic search. Scoped to a project subtree
     /// when `scopeRelativePath` is set, else the whole knowledge base.
-    static func grep(query: String, scopeRelativePath: String?) -> String {
+    public static func grep(query: String, scopeRelativePath: String?) -> String {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty, let dbs = VaultWorkstreamStore.databasesDir() else { return "No query provided." }
         let root = scopeRelativePath.flatMap { resolve($0) } ?? dbs
@@ -227,7 +227,7 @@ enum VaultFiles {
 
     /// List documents in the project (or whole vault), optionally filtered by a
     /// case-insensitive substring of the path — "what files do we have on X".
-    static func list(scopeRelativePath: String?, pattern: String?) -> String {
+    public static func list(scopeRelativePath: String?, pattern: String?) -> String {
         guard let dbs = VaultWorkstreamStore.databasesDir() else { return "Vault not found." }
         let root = scopeRelativePath.flatMap { resolve($0) } ?? dbs
         let pat = pattern?.trimmingCharacters(in: .whitespaces).lowercased()
@@ -269,7 +269,7 @@ enum VaultFiles {
     /// file, and never a second read for the hash. The snapshot cap and the
     /// character cap are applied to the same bytes; `wasCut` is true when
     /// either cut.
-    static func readBounded(relativePath: String) -> (text: String, bytes: Data, wasCut: Bool)? {
+    public static func readBounded(relativePath: String) -> (text: String, bytes: Data, wasCut: Bool)? {
         let cap = maxMentionSnapshotBytes
         guard let url = resolve(relativePath),
               let handle = try? FileHandle(forReadingFrom: url) else { return nil }

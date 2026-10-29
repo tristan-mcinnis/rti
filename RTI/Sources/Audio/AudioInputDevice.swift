@@ -1,6 +1,7 @@
 import AppKit
 import CoreAudio
 import Foundation
+import RTICore
 
 /// Lightweight wrapper around CoreAudio HAL device enumeration so the user can
 /// pick a non-default input (typically BlackHole or an aggregate device that

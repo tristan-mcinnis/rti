@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// Pins the conservative meeting-name → vault-workstream matcher that
 /// pre-selects the Context tab from a matched meeting name.

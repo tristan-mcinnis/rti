@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import RTICore
 
 enum LaunchAtLogin {
     static var isEnabled: Bool {

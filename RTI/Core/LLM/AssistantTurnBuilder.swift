@@ -1,51 +1,115 @@
 import Foundation
 import RTICore
 
-enum AssistantTurnBuilder {
-    struct Input {
-        let userInput: String
-        let action: String
-        let transcript: String
-        let fullTranscript: Bool
+public enum AssistantTurnBuilder {
+    public struct Input {
+        public let userInput: String
+        public let action: String
+        public let transcript: String
+        public let fullTranscript: Bool
         /// Nominal minutes the trailing window covers, for the context label
         /// (5 for Quick recap, 15 by default). Ignored when `fullTranscript`.
-        let transcriptWindowMinutes: Int
-        let workstreamScopePath: String?
-        let hasWorkstreamName: Bool
-        let priorSuggestions: String
+        public let transcriptWindowMinutes: Int
+        public let workstreamScopePath: String?
+        public let hasWorkstreamName: Bool
+        public let priorSuggestions: String
         /// What this turn carries, by origin: attached now, or retained from
         /// earlier in this chat. Drives the source instruction's wording.
-        let sourceContext: TurnSourceContext
+        public let sourceContext: TurnSourceContext
         /// The tool policy's own answer for this turn, so the prompt never
         /// forbids a search the offered tools permit.
-        let externalRetrievalAllowed: Bool
-        let retrievalContext: String?
-        let baseSystemPrompt: String
-        let listenerSystemSuffix: String
-        let listenerMode: Bool
-        let meetingContext: String?
-        let meetingBrief: String?
-        let glossaryFragment: String?
-        let referenceText: String?
-        let referenceModeName: String?
-        let screenContext: String?
+        public let externalRetrievalAllowed: Bool
+        public let retrievalContext: String?
+        public let baseSystemPrompt: String
+        public let listenerSystemSuffix: String
+        public let listenerMode: Bool
+        public let meetingContext: String?
+        public let meetingBrief: String?
+        public let glossaryFragment: String?
+        public let referenceText: String?
+        public let referenceModeName: String?
+        public let screenContext: String?
         /// Every image this turn carries, from each source's own normalized
         /// bytes (tray files, retained sources, and the screen capture). Rides
         /// the latest user message.
-        let images: [LLMImage]
-        let referencedDocumentsText: String?
-        let existingEntries: [ChatEntry]
+        public let images: [LLMImage]
+        public let referencedDocumentsText: String?
+        public let existingEntries: [ChatEntry]
+
+        public init(
+            userInput: String,
+            action: String,
+            transcript: String,
+            fullTranscript: Bool,
+            transcriptWindowMinutes: Int,
+            workstreamScopePath: String?,
+            hasWorkstreamName: Bool,
+            priorSuggestions: String,
+            sourceContext: TurnSourceContext,
+            externalRetrievalAllowed: Bool,
+            retrievalContext: String?,
+            baseSystemPrompt: String,
+            listenerSystemSuffix: String,
+            listenerMode: Bool,
+            meetingContext: String?,
+            meetingBrief: String?,
+            glossaryFragment: String?,
+            referenceText: String?,
+            referenceModeName: String?,
+            screenContext: String?,
+            images: [LLMImage],
+            referencedDocumentsText: String?,
+            existingEntries: [ChatEntry]
+        ) {
+            self.userInput = userInput
+            self.action = action
+            self.transcript = transcript
+            self.fullTranscript = fullTranscript
+            self.transcriptWindowMinutes = transcriptWindowMinutes
+            self.workstreamScopePath = workstreamScopePath
+            self.hasWorkstreamName = hasWorkstreamName
+            self.priorSuggestions = priorSuggestions
+            self.sourceContext = sourceContext
+            self.externalRetrievalAllowed = externalRetrievalAllowed
+            self.retrievalContext = retrievalContext
+            self.baseSystemPrompt = baseSystemPrompt
+            self.listenerSystemSuffix = listenerSystemSuffix
+            self.listenerMode = listenerMode
+            self.meetingContext = meetingContext
+            self.meetingBrief = meetingBrief
+            self.glossaryFragment = glossaryFragment
+            self.referenceText = referenceText
+            self.referenceModeName = referenceModeName
+            self.screenContext = screenContext
+            self.images = images
+            self.referencedDocumentsText = referencedDocumentsText
+            self.existingEntries = existingEntries
+        }
     }
 
-    struct Output {
-        let fullContent: String
-        let promptContext: PromptContext
-        let apiMessages: [LLMMessage]
-        let contextUsed: Bool
-        let screenUsed: Bool
+    public struct Output {
+        public let fullContent: String
+        public let promptContext: PromptContext
+        public let apiMessages: [LLMMessage]
+        public let contextUsed: Bool
+        public let screenUsed: Bool
+
+        public init(
+            fullContent: String,
+            promptContext: PromptContext,
+            apiMessages: [LLMMessage],
+            contextUsed: Bool,
+            screenUsed: Bool
+        ) {
+            self.fullContent = fullContent
+            self.promptContext = promptContext
+            self.apiMessages = apiMessages
+            self.contextUsed = contextUsed
+            self.screenUsed = screenUsed
+        }
     }
 
-    static func build(_ input: Input) -> Output {
+    public static func build(_ input: Input) -> Output {
         let transcript = input.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let contextUsed = !transcript.isEmpty
         let contextLabel = input.fullTranscript

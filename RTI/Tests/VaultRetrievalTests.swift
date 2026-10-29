@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 final class VaultRetrievalTests: XCTestCase {
     private func result(_ path: String, title: String = "Doc") -> VaultSearch.Result {

@@ -1,5 +1,6 @@
 import CoreAudio
 import Foundation
+import RTICore
 
 /// Keeps Bluetooth headphones at full volume while RTI records.
 ///

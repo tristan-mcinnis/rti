@@ -1,5 +1,6 @@
 import AVFoundation
 import XCTest
+import RTICore
 
 final class MeetingRecorderTests: XCTestCase {
     func testWritesBothDurableWAVLegs() throws {

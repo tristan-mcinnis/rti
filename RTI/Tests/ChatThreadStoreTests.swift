@@ -1,5 +1,6 @@
 import HouseChatCore
 import XCTest
+import RTICore
 
 /// RTI's durable chat store, against injected temporary roots. Nothing here
 /// touches the live vault or the app's real Application Support folder.

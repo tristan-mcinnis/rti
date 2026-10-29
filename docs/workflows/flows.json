@@ -87,7 +87,7 @@
     {
       "id": "MeetingRecorder",
       "subsystem": "audio",
-      "file": "RTI/Sources/Audio/WAVWriter.swift",
+      "file": "RTI/Core/Audio/WAVWriter.swift",
       "description": "Durable per-leg WAV recordings in the session folder."
     },
     {
@@ -171,7 +171,7 @@
     {
       "id": "AssistantTurnBuilder",
       "subsystem": "llm",
-      "file": "RTI/Sources/LLM/AssistantTurnBuilder.swift",
+      "file": "RTI/Core/LLM/AssistantTurnBuilder.swift",
       "description": "Builds one turn's messages and tool policy from the context."
     },
     {
@@ -189,13 +189,13 @@
     {
       "id": "ToolExecutor",
       "subsystem": "llm",
-      "file": "RTI/Sources/LLM/ToolExecutor.swift",
+      "file": "RTI/Core/LLM/ToolExecutor.swift",
       "description": "Runs one tool call under the turn's tool policy."
     },
     {
       "id": "VaultRetrieval",
       "subsystem": "llm",
-      "file": "RTI/Sources/LLM/VaultRetrieval.swift",
+      "file": "RTI/Core/LLM/VaultRetrieval.swift",
       "description": "search_vault: keyword search of the notes folder, scoped when asked."
     },
     {
@@ -448,7 +448,7 @@
           "to": "AssistantTurnBuilder",
           "label": "build",
           "passes": "The turn's messages, route and tool policy are built.",
-          "ref": "RTI/Sources/LLM/AssistantTurnBuilder.swift · static func build"
+          "ref": "RTI/Core/LLM/AssistantTurnBuilder.swift · static func build"
         },
         {
           "from": "AssistantTurnBuilder",
@@ -483,7 +483,7 @@
           "to": "ToolExecutor",
           "label": "execute",
           "passes": "A tool call runs under the turn's policy.",
-          "ref": "RTI/Sources/LLM/ToolExecutor.swift · func execute"
+          "ref": "RTI/Core/LLM/ToolExecutor.swift · func execute"
         },
         {
           "from": "ToolExecutor",
@@ -518,7 +518,7 @@
           "to": "AssistantTurnBuilder",
           "label": "build with the mode",
           "passes": "The mode's prompt and reference text enter the system messages.",
-          "ref": "RTI/Sources/LLM/AssistantTurnBuilder.swift · PromptBuilder.buildSystemMessages"
+          "ref": "RTI/Core/LLM/AssistantTurnBuilder.swift · PromptBuilder.buildSystemMessages"
         }
       ]
     },

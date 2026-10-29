@@ -5,23 +5,43 @@ import Foundation
 /// compile it without dragging in the archive writer's app dependencies;
 /// `SessionArchive.ArchiveMetadata` remains the canonical spelling via a
 /// typealias.
-struct SessionArchiveMetadata: Codable {
-    let sessionId: String?
-    let systemAudioStartOffsetMs: Int?
-    let micAudioFile: String?
-    let systemAudioFile: String?
+public struct SessionArchiveMetadata: Codable {
+    public let sessionId: String?
+    public let systemAudioStartOffsetMs: Int?
+    public let micAudioFile: String?
+    public let systemAudioFile: String?
     /// The active mode's display name at session end (e.g. "Meeting",
     /// "Interview"). Nil if no mode was active.
-    let mode: String?
+    public let mode: String?
     /// The Setup workstream picker's item name (project or client),
     /// regardless of which — unlike `workstreamSlug`/`workstream:`
     /// frontmatter (project-only). Nil if no workstream was selected.
-    let workstream: String?
+    public let workstream: String?
     /// Wall-clock session length in seconds (endedAt - startedAt).
-    let durationSeconds: Int?
+    public let durationSeconds: Int?
     /// The calendar event picked in Prepare, if any. The Sessions window
     /// uses it as a title when the title file and the vault note have none
     /// (`SessionTitleResolver` rule 4). Defaults to nil, so existing call
     /// sites and legacy `session.json` files are unchanged.
-    var calendarTitle: String? = nil
+    public var calendarTitle: String? = nil
+
+    public init(
+        sessionId: String?,
+        systemAudioStartOffsetMs: Int?,
+        micAudioFile: String?,
+        systemAudioFile: String?,
+        mode: String?,
+        workstream: String?,
+        durationSeconds: Int?,
+        calendarTitle: String? = nil
+    ) {
+        self.sessionId = sessionId
+        self.systemAudioStartOffsetMs = systemAudioStartOffsetMs
+        self.micAudioFile = micAudioFile
+        self.systemAudioFile = systemAudioFile
+        self.mode = mode
+        self.workstream = workstream
+        self.durationSeconds = durationSeconds
+        self.calendarTitle = calendarTitle
+    }
 }

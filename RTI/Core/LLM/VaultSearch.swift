@@ -14,27 +14,51 @@ import Foundation
 ///   • Scope is `databases/` only — never `memory/` (session transcripts), which
 ///     is a sibling directory and so is excluded for free.
 ///   • The scan runs off the main actor; the pure `rank` core is testable.
-enum VaultSearch {
-    struct Result: Equatable, Sendable {
-        let title: String
+public enum VaultSearch {
+    public struct Result: Equatable, Sendable {
+        public let title: String
         /// Path relative to `databases/`, e.g. `projects/acmewear/00-status.md`.
-        let relativePath: String
-        let modified: Date
-        let excerpt: String
-        let score: Int
+        public let relativePath: String
+        public let modified: Date
+        public let excerpt: String
+        public let score: Int
+
+        public init(
+            title: String,
+            relativePath: String,
+            modified: Date,
+            excerpt: String,
+            score: Int
+        ) {
+            self.title = title
+            self.relativePath = relativePath
+            self.modified = modified
+            self.excerpt = excerpt
+            self.score = score
+        }
     }
 
     /// A citeable handle for one retrieved document. `id` is the short handle
     /// the model is told to cite (`S1`, `S2`, …); the title, path and label
     /// always come from the retrieval record itself, never from model text.
-    struct Citation: Equatable, Sendable {
-        let id: String
-        let title: String
-        let relativePath: String
+    public struct Citation: Equatable, Sendable {
+        public let id: String
+        public let title: String
+        public let relativePath: String
 
         /// Compact label for a card's source row: the document's file name.
-        var label: String {
+        public var label: String {
             URL(fileURLWithPath: relativePath).lastPathComponent
+        }
+
+        public init(
+            id: String,
+            title: String,
+            relativePath: String
+        ) {
+            self.id = id
+            self.title = title
+            self.relativePath = relativePath
         }
     }
 
@@ -42,13 +66,25 @@ enum VaultSearch {
     /// citation may use, and the same human-readable material the model reads.
     /// Both halves are produced together, so a caller never has to parse a
     /// citation back out of the display string.
-    struct Retrieval: Equatable, Sendable {
-        let results: [Result]
-        let citations: [Citation]
-        let formatted: String
-        let scopedHit: Bool
+    public struct Retrieval: Equatable, Sendable {
+        public let results: [Result]
+        public let citations: [Citation]
+        public let formatted: String
+        public let scopedHit: Bool
 
-        var isEmpty: Bool { results.isEmpty }
+        public var isEmpty: Bool { results.isEmpty }
+
+        public init(
+            results: [Result],
+            citations: [Citation],
+            formatted: String,
+            scopedHit: Bool
+        ) {
+            self.results = results
+            self.citations = citations
+            self.formatted = formatted
+            self.scopedHit = scopedHit
+        }
     }
 
     /// Directories under `databases/` that are noise for a knowledge query:
@@ -72,10 +108,10 @@ enum VaultSearch {
     private final class ResultSink: @unchecked Sendable {
         private let lock = NSLock()
         private var items: [Result] = []
-        func add(_ batch: [Result]) {
+        public func add(_ batch: [Result]) {
             lock.lock(); items.append(contentsOf: batch); lock.unlock()
         }
-        func drain() -> [Result] { items }
+        public func drain() -> [Result] { items }
     }
 
     // MARK: - Public entry (async, off the main thread)
@@ -88,7 +124,7 @@ enum VaultSearch {
     /// meetings, findings) are preferred, and only if nothing in the project
     /// matches does the search broaden to the whole vault — so "what did Group
     /// One say about their favourite store" lands on this project's transcript.
-    static func searchFormatted(query: String, scopeRelativePath: String? = nil) async -> String {
+    public static func searchFormatted(query: String, scopeRelativePath: String? = nil) async -> String {
         await retrieve(query: query, scopeRelativePath: scopeRelativePath).formatted
     }
 
@@ -97,7 +133,7 @@ enum VaultSearch {
     /// document's handle in the material so a citation names an exact ID instead
     /// of a document name the model types from memory. Pass `citeable: false`
     /// (the default, and what `searchFormatted` does) for the existing format.
-    static func retrieve(
+    public static func retrieve(
         query: String,
         scopeRelativePath: String? = nil,
         citeable: Bool = false
@@ -130,7 +166,7 @@ enum VaultSearch {
 
     /// Assign the citeable handles in rank order. Kept beside `format` so the
     /// printed handle and the acceptable handle can never drift apart.
-    static func citations(for results: [Result]) -> [Citation] {
+    public static func citations(for results: [Result]) -> [Citation] {
         results.enumerated().map { index, result in
             Citation(id: "S\(index + 1)", title: result.title, relativePath: result.relativePath)
         }
@@ -147,7 +183,7 @@ enum VaultSearch {
 
     /// Keep only results inside the scoped project; if none, return the
     /// unfiltered top (broaden) and report the miss so the caller can label it.
-    static func applyScope(_ results: [Result], scope: String?) -> (results: [Result], inScope: Bool) {
+    public static func applyScope(_ results: [Result], scope: String?) -> (results: [Result], inScope: Bool) {
         guard let scope, !scope.isEmpty else { return (Array(results.prefix(resultLimit)), false) }
         let prefix = scope.hasSuffix("/") ? scope : scope + "/"
         let hits = results.filter { $0.relativePath.hasPrefix(prefix) }
@@ -162,7 +198,7 @@ enum VaultSearch {
     /// matches.
     /// `scopeRelativePath` restricts the walk to a project subtree under
     /// `databases/` (e.g. `projects/foo`); nil scans the whole knowledge base.
-    static func search(query: String, scopeRelativePath: String? = nil) -> [Result] {
+    public static func search(query: String, scopeRelativePath: String? = nil) -> [Result] {
         guard let databases = VaultWorkstreamStore.databasesDir() else { return [] }
         let terms = tokenize(query)
         guard !terms.isEmpty else { return [] }
@@ -232,7 +268,7 @@ enum VaultSearch {
 
     /// Pure scorer for one document. Returns its score and the best excerpt.
     /// Exposed (internal) so it can be unit-tested without the filesystem.
-    static func rank(terms: [String], title: String, relativePath: String, content: String) -> (score: Int, excerpt: String) {
+    public static func rank(terms: [String], title: String, relativePath: String, content: String) -> (score: Int, excerpt: String) {
         let haystack = content.lowercased()
         let titleHay = title.lowercased()
         let pathHay = relativePath.lowercased()
@@ -264,7 +300,7 @@ enum VaultSearch {
     /// >= 2); CJK runs — which aren't space-delimited — become character bigrams
     /// (overlapping 2-grams), the standard way to get recall on Chinese text
     /// (`什么时候` → 什么, 么时, 时候). A lone CJK char stands as its own token.
-    static func tokenize(_ query: String) -> [String] {
+    public static func tokenize(_ query: String) -> [String] {
         var tokens: [String] = []
         var latin = ""
         var cjk: [Character] = []
@@ -370,7 +406,7 @@ enum VaultSearch {
 
     /// Render the material the model reads. Internal rather than private so the
     /// citeable and plain renderings can be tested without touching the disk.
-    static func format(
+    public static func format(
         _ results: [Result],
         query: String,
         scopedHit: Bool = false,
@@ -399,7 +435,7 @@ enum VaultSearch {
 private extension Character {
     /// True for CJK ideographs / kana / hangul — scripts that aren't space
     /// delimited, so each character is treated as its own token.
-    var isCJK: Bool {
+    public var isCJK: Bool {
         unicodeScalars.contains { scalar in
             (0x4E00...0x9FFF).contains(scalar.value) ||   // CJK Unified
             (0x3400...0x4DBF).contains(scalar.value) ||   // CJK Ext A

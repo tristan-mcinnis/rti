@@ -7,12 +7,12 @@ import Foundation
 /// Rules: probe a fixed candidate list, take the first executable, never
 /// consult `PATH` (the app is launched from Finder/launchd with a minimal
 /// environment), never route through a shell.
-enum ExternalTools {
+public enum ExternalTools {
     /// Apple's system Python, for tools that need only the standard library.
-    static let systemPython = URL(fileURLWithPath: "/usr/bin/python3")
+    public static let systemPython = URL(fileURLWithPath: "/usr/bin/python3")
 
     /// The Claude Code CLI, for the headless `/meeting` processor.
-    static func claude() -> URL? {
+    public static func claude() -> URL? {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return firstExecutable([
             home.appendingPathComponent(".local/bin/claude"),
@@ -22,7 +22,7 @@ enum ExternalTools {
         ])
     }
 
-    static func firstExecutable(_ candidates: [URL]) -> URL? {
+    public static func firstExecutable(_ candidates: [URL]) -> URL? {
         candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 }
@@ -32,20 +32,20 @@ enum ExternalTools {
 /// the end before the other deadlocks as soon as the unread pipe passes its
 /// 64 KB buffer: the child waits for a reader, and the reader waits for the
 /// child to close the other pipe. Start it right after `Process.run()`.
-final class ProcessOutputCollector: @unchecked Sendable {
+public final class ProcessOutputCollector: @unchecked Sendable {
     private let group = DispatchGroup()
     private let lock = NSLock()
     private var stdoutData = Data()
     private var stderrData = Data()
 
-    init(stdout: Pipe, stderr: Pipe) {
+    public init(stdout: Pipe, stderr: Pipe) {
         read(stdout) { data in self.stdoutData = data }
         read(stderr) { data in self.stderrData = data }
     }
 
     /// Blocks until both pipes reach end of file, which happens when the
     /// child (and anything it spawned with the same pipes) exits.
-    func wait() -> (stdout: Data, stderr: Data) {
+    public func wait() -> (stdout: Data, stderr: Data) {
         group.wait()
         lock.lock()
         defer { lock.unlock() }

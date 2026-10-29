@@ -6,28 +6,40 @@ import Observation
 /// Settings → Logs window observes. Mostly useful when something goes wrong
 /// in the field and the user can't conveniently run `log show` in Terminal.
 @Observable @MainActor
-final class AppLog {
-    static let shared = AppLog()
+public final class AppLog {
+    public static let shared = AppLog()
 
     /// Tunable; 500 lines is plenty for a single session and keeps the UI
     /// responsive even when the audio path logs aggressively.
     private let maxEntries = 500
 
-    private(set) var entries: [Entry] = []
+    public private(set) var entries: [Entry] = []
 
-    struct Entry: Identifiable, Equatable {
-        let id: UUID = UUID()
-        let timestamp: Date
-        let level: LogLevel
-        let category: String
-        let message: String
+    public struct Entry: Identifiable, Equatable {
+        public let id: UUID = UUID()
+        public let timestamp: Date
+        public let level: LogLevel
+        public let category: String
+        public let message: String
+
+        public init(
+            timestamp: Date,
+            level: LogLevel,
+            category: String,
+            message: String
+        ) {
+            self.timestamp = timestamp
+            self.level = level
+            self.category = category
+            self.message = message
+        }
     }
 
     /// On-disk log home: ~/Library/Logs/RTI/rti-YYYY-MM-DD.log, one file per
     /// day, pruned past `retentionDays`. The in-memory ring buffer stays the
     /// "Live" view; these files are the "Past" view — so a crash or quit no
     /// longer erases the evidence.
-    nonisolated static let logsDirectory = FileManager.default
+    public nonisolated static let logsDirectory = FileManager.default
         .homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
     private static let retentionDays = 14
@@ -48,7 +60,7 @@ final class AppLog {
         Self.fileQueue.async { Self.pruneOldFiles() }
     }
 
-    func log(_ message: String, level: LogLevel = .info, category: String = LogCategory.general.rawValue) {
+    public func log(_ message: String, level: LogLevel = .info, category: String = LogCategory.general.rawValue) {
         let entry = Entry(timestamp: Date(), level: level, category: category, message: message)
         entries.append(entry)
         if entries.count > maxEntries {
@@ -86,7 +98,7 @@ final class AppLog {
     }
 
     /// Daily log files on disk, newest first — the "Past" view's source.
-    nonisolated static func pastLogFiles() -> [URL] {
+    public nonisolated static func pastLogFiles() -> [URL] {
         let files = (try? FileManager.default.contentsOfDirectory(
             at: logsDirectory, includingPropertiesForKeys: nil)) ?? []
         return files
@@ -94,11 +106,11 @@ final class AppLog {
             .sorted { $0.lastPathComponent > $1.lastPathComponent }
     }
 
-    func clear() {
+    public func clear() {
         entries.removeAll(keepingCapacity: true)
     }
 
-    func renderForCopy() -> String {
+    public func renderForCopy() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss.SSS"
         return entries.map { e in
@@ -110,13 +122,13 @@ final class AppLog {
 
 /// Severity of a log line. `.info` is the default and matches what every
 /// pre-level call site produced; the others add a tag to the rendered line.
-enum LogLevel: Int, Comparable, Sendable {
+public enum LogLevel: Int, Comparable, Sendable {
     case debug
     case info
     case warning
     case error
 
-    var tag: String {
+    public var tag: String {
         switch self {
         case .debug: "DEBUG"
         case .info: "INFO"
@@ -125,12 +137,12 @@ enum LogLevel: Int, Comparable, Sendable {
         }
     }
 
-    static func < (lhs: LogLevel, rhs: LogLevel) -> Bool { lhs.rawValue < rhs.rawValue }
+    public static func < (lhs: LogLevel, rhs: LogLevel) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
 /// The subsystem a log line belongs to. Raw values are the strings shown in
 /// the Logs window and written to disk; they predate the enum, so keep them.
-enum LogCategory: String, Sendable {
+public enum LogCategory: String, Sendable {
     case general = "RTI"
     case archive
     case audio
@@ -150,14 +162,14 @@ enum LogCategory: String, Sendable {
 
 /// `RTILog.log("…")` is the call-site form so existing NSLog locations are
 /// trivially upgradable. `RTILog.log(...)` always lands on the main actor.
-enum RTILog {
-    static func log(_ message: String, level: LogLevel = .info, category: LogCategory = .general) {
+public enum RTILog {
+    public static func log(_ message: String, level: LogLevel = .info, category: LogCategory = .general) {
         log(message, level: level, category: category.rawValue)
     }
 
     /// String-category form, for messages that arrive from RTICore's
     /// `CoreLog` sink with a category the app does not model.
-    static func log(_ message: String, level: LogLevel = .info, category: String) {
+    public static func log(_ message: String, level: LogLevel = .info, category: String) {
         if Thread.isMainThread {
             MainActor.assumeIsolated { AppLog.shared.log(message, level: level, category: category) }
         } else {

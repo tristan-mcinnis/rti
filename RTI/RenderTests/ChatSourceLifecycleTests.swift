@@ -1,6 +1,6 @@
 import HouseChatCore
 import HouseChatDocuments
-import RTICore
+@testable import RTICore
 import XCTest
 
 /// The real controller-to-request boundary for a chat's sources and for the

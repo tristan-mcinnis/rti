@@ -3,16 +3,32 @@ import HouseChatCore
 import RTICore
 
 @MainActor
-struct ToolExecutor {
-    struct ExecutionResult: Equatable {
-        let toolName: String
-        let status: String?
+public struct ToolExecutor {
+    public struct ExecutionResult: Equatable {
+        public let toolName: String
+        public let status: String?
         /// How the call ended, so a receipt never claims a success that did
         /// not happen.
-        let outcome: ToolRoundStatus
-        let resultText: String
-        let elapsedMS: Int
-        let executed: Bool
+        public let outcome: ToolRoundStatus
+        public let resultText: String
+        public let elapsedMS: Int
+        public let executed: Bool
+
+        public init(
+            toolName: String,
+            status: String?,
+            outcome: ToolRoundStatus,
+            resultText: String,
+            elapsedMS: Int,
+            executed: Bool
+        ) {
+            self.toolName = toolName
+            self.status = status
+            self.outcome = outcome
+            self.resultText = resultText
+            self.elapsedMS = elapsedMS
+            self.executed = executed
+        }
     }
 
     private let tools: [String: LLMToolDefinition]
@@ -26,7 +42,7 @@ struct ToolExecutor {
     private let allowsScreenTools: Bool
     private var callCounts: [String: Int] = [:]
 
-    init(
+    public init(
         tools: [LLMToolDefinition],
         maxCallsPerTurn: [String: Int] = [:],
         allowsExternalRetrieval: Bool = true,
@@ -38,7 +54,7 @@ struct ToolExecutor {
         self.allowsScreenTools = allowsScreenTools
     }
 
-    mutating func execute(_ call: LLMToolCall) async -> ExecutionResult {
+    public mutating func execute(_ call: LLMToolCall) async -> ExecutionResult {
         guard let tool = tools[call.function.name] else {
             return ExecutionResult(
                 toolName: call.function.name,

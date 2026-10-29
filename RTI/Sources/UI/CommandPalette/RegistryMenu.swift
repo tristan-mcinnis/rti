@@ -1,4 +1,5 @@
 import SwiftUI
+import RTICore
 
 /// SwiftUI menu contents built from the shared `CommandRegistry`. Renders
 /// every command that has a `menuSection`, grouped in the same order as

@@ -80,7 +80,7 @@ RTI/Sources/Database/RTIDatabase.swift
 RTI/Sources/Database/Models/Session.swift
 RTI/Sources/Database/Models/TranscriptEntry.swift
 RTI/Sources/Audio/AudioCaptureManager.swift
-RTI/Sources/Audio/WAVWriter.swift
+RTI/Core/Audio/WAVWriter.swift
 RTI/Sources/Soniox/SonioxClient.swift
 RTI/Sources/Soniox/SonioxProtocol.swift
 RTI/Sources/Session/SessionCoordinator.swift

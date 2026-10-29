@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 /// Locks the path-confinement of VaultFiles.resolve — the security boundary that
 /// keeps an untrusted transcript from steering a read outside databases/. These

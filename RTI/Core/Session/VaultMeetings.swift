@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Date-sorted access to a project's meetings and sessions — the recency-aware
 /// half of vault retrieval. Semantic search (`VaultSearch`) answers "what do we
@@ -8,19 +9,35 @@ import Foundation
 /// not today's session). This fills that gap: it lists the project's meetings
 /// and session notes newest-first, straight off disk — local, instant, no Neon,
 /// no cold-start.
-enum VaultMeetings {
-    struct Meeting {
+public enum VaultMeetings {
+    public struct Meeting {
         /// Sort key: `yyyymmddHHMM` parsed from the filename (HHMM = 0000 when
         /// the name carries only a date). Newest sorts highest.
-        let stamp: String
-        let displayDate: String   // yyyy-mm-dd
-        let title: String
-        let relativePath: String
-        let kind: String          // "meeting" | "session"
+        public let stamp: String
+        public let displayDate: String   // yyyy-mm-dd
+        public let title: String
+        public let relativePath: String
+        public let kind: String          // "meeting" | "session"
         /// A real content blurb — the Overview / summary / key-points text, not
         /// the file's meta-preamble. Generous (up to ~1600 chars) so the most
         /// recent meeting can be answered inline without a second lookup.
-        let summary: String
+        public let summary: String
+
+        public init(
+            stamp: String,
+            displayDate: String,
+            title: String,
+            relativePath: String,
+            kind: String,
+            summary: String
+        ) {
+            self.stamp = stamp
+            self.displayDate = displayDate
+            self.title = title
+            self.relativePath = relativePath
+            self.kind = kind
+            self.summary = summary
+        }
     }
 
     /// The project's meetings + session notes, newest first. `scopeRelativePath`
@@ -28,7 +45,7 @@ enum VaultMeetings {
     /// nil (no workstream set), falls back to the newest meeting notes across
     /// the whole vault so an unscoped "what was my meeting this morning" still
     /// answers instead of returning empty.
-    static func recent(scopeRelativePath: String?, limit: Int = 6) -> [Meeting] {
+    public static func recent(scopeRelativePath: String?, limit: Int = 6) -> [Meeting] {
         guard let dbs = VaultWorkstreamStore.databasesDir() else { return [] }
         guard let scope = scopeRelativePath, !scope.isEmpty else {
             return recentGlobal(under: dbs, limit: limit)
@@ -63,7 +80,7 @@ enum VaultMeetings {
     }
 
     /// Format the recency list as the string the model sees.
-    static func recentFormatted(scopeRelativePath: String?, limit: Int = 6) -> String {
+    public static func recentFormatted(scopeRelativePath: String?, limit: Int = 6) -> String {
         let items = recent(scopeRelativePath: scopeRelativePath, limit: limit)
         let scoped = scopeRelativePath?.isEmpty == false
         guard !items.isEmpty else {
@@ -123,7 +140,7 @@ enum VaultMeetings {
     /// `yyyymmddHHMM` from a filename carrying `20YYMMDD` and an optional `-HHMM`
     /// (e.g. `rti-session-20260622-1630.md` → `202606221630`; a date-only name →
     /// `…0000`). nil when the name has no date. Pure — unit-tested.
-    static func parseStamp(_ filename: String) -> String? {
+    public static func parseStamp(_ filename: String) -> String? {
         guard let dr = filename.range(of: "20[0-9]{6}", options: .regularExpression) else { return nil }
         let date = String(filename[dr])
         let rest = filename[dr.upperBound...]
@@ -159,7 +176,7 @@ enum VaultMeetings {
     /// auto-generated meeting summary lives), skipping headings, fences, and the
     /// "use this as signal / analyze the transcript" disclaimer lines that open a
     /// field-notes file. Concatenated up to `maxChars`. Exposed for testing.
-    static func summary(from text: String, maxChars: Int) -> String {
+    public static func summary(from text: String, maxChars: Int) -> String {
         var lines = text.components(separatedBy: .newlines)
         if lines.first == "---", let end = lines.dropFirst().firstIndex(of: "---") {
             lines = Array(lines[(end + 1)...])

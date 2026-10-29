@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
+import RTICore
 
 /// The offscreen render harness every RTI render proof shares.
 ///

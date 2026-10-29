@@ -1,4 +1,5 @@
 import XCTest
+import RTICore
 
 @MainActor
 final class CommandRegistryTests: XCTestCase {

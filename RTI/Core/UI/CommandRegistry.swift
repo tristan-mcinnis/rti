@@ -6,58 +6,58 @@ import Observation
 /// source of truth for "what can the user do right now." Menu items and
 /// global hotkeys are derived from this same registry — adding a command
 /// here registers it everywhere.
-struct RTICommand: Identifiable {
+public struct RTICommand: Identifiable {
     /// Stable id used for recents persistence. Format: `<group>.<verb>`.
-    let id: String
+    public let id: String
     /// Human-readable title shown in the palette, menu, and shortcuts UI.
-    let title: String
+    public let title: String
     /// Optional shortcut hint shown right-aligned in the palette row
     /// (e.g. "⌘⇧R"). Purely informational — no key binding here.
-    let subtitle: String?
+    public let subtitle: String?
     /// Free-form match terms in addition to `title`. Lowercased on match.
-    let keywords: [String]
+    public let keywords: [String]
     /// Re-evaluated on every keystroke. Returning `false` hides the command
     /// from results and from recents. Default: always available.
-    let isAvailable: () -> Bool
+    public let isAvailable: () -> Bool
     /// Fired on Enter / menu click / hotkey press. Runs on the main actor.
-    let perform: () -> Void
+    public let perform: () -> Void
 
     /// Menus and palettes describe the same current action, including toggles.
-    var currentTitle: String { menuTitleProvider?() ?? title }
+    public var currentTitle: String { menuTitleProvider?() ?? title }
 
     // MARK: - Menu integration
 
     /// Which section the menu item appears in. `nil` hides it from the
     /// status-item menu (palette-only commands like say-next / followups).
-    let menuSection: MenuSection?
+    public let menuSection: MenuSection?
     /// When set, the menu item is nested inside a submenu with this title
     /// (within its section) instead of appearing flat. Commands sharing the
     /// same `menuParent` in the same section collect under one submenu — used
     /// to keep families like "Set ⌘⏎ to: …" and provider switches from
     /// flooding the top-level menu.
-    let menuParent: String?
+    public let menuParent: String?
     /// When non-nil, the menu item title is re-evaluated on every menu-open
     /// so commands like "Start / Stop Recording" stay in sync.
-    let menuTitleProvider: (() -> String)?
+    public let menuTitleProvider: (() -> String)?
     /// When non-nil, the command is rendered as a stateful toggle in the
     /// SwiftUI menu (with a native checkmark) and as an `.on/.off` menu
     /// item in the NSMenu. Used for ON/OFF commands like Smart Mode and
     /// Hide-from-Screen-Capture where "current state" matters more than
     /// "what clicking will do". `nil` → render as a plain Button/MenuItem.
-    let menuStateProvider: (() -> Bool)?
+    public let menuStateProvider: (() -> Bool)?
 
     // MARK: - Hotkey integration
 
     /// Carbon `kVK_*` key code. `nil` means no global hotkey.
-    let hotkeyKeyCode: UInt32?
+    public let hotkeyKeyCode: UInt32?
     /// Carbon modifier mask (`cmdKey`, `shiftKey`, `optionKey`).
-    let hotkeyModifiers: UInt32?
+    public let hotkeyModifiers: UInt32?
     /// When true, the global hotkey is held only while a session is
     /// recording. Outside a session the chord (e.g. ⌘⏎) belongs to
     /// whatever app the user is in — RTI must not steal it all day.
-    let hotkeySessionScoped: Bool
+    public let hotkeySessionScoped: Bool
 
-    init(
+    public init(
         id: String,
         title: String,
         subtitle: String? = nil,
@@ -90,7 +90,7 @@ struct RTICommand: Identifiable {
 
 /// Sections in the status-item menu, in display order. Commands are
 /// grouped by section; sections with no commands are skipped.
-enum MenuSection: String, CaseIterable {
+public enum MenuSection: String, CaseIterable {
     case session
     case navigation
     case actions
@@ -99,32 +99,32 @@ enum MenuSection: String, CaseIterable {
 }
 
 @Observable @MainActor
-final class CommandRegistry {
-    static let shared = CommandRegistry()
+public final class CommandRegistry {
+    public static let shared = CommandRegistry()
 
     /// All registered commands, in their natural order. Filtered by
     /// `isAvailable` at query time.
-    private(set) var commands: [RTICommand] = []
+    public private(set) var commands: [RTICommand] = []
 
-    nonisolated private static let recentsCap = 5
+    nonisolated public static let recentsCap = 5
 
     private init() {}
 
-    func register(_ commands: [RTICommand]) {
+    public func register(_ commands: [RTICommand]) {
         self.commands.append(contentsOf: commands)
     }
 
     /// Replace all registered commands. Used when the dynamic mode list
     /// changes (ModeStore re-emits) and we need to rebuild "Switch to <Mode>"
     /// rows.
-    func replaceAll(_ commands: [RTICommand]) {
+    public func replaceAll(_ commands: [RTICommand]) {
         self.commands = commands
     }
 
     /// Search the available command set. Empty query returns recents first
     /// (filtered by availability), then everything else in registration
     /// order. Non-empty queries fuzzy-match titles and keywords.
-    func search(_ query: String) -> [RTICommand] {
+    public func search(_ query: String) -> [RTICommand] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         let available = commands.filter { $0.isAvailable() }
         guard !trimmed.isEmpty else {
@@ -134,7 +134,7 @@ final class CommandRegistry {
     }
 
     /// Shared by registry commands and a composer's contextual commands.
-    static func matching(_ commands: [RTICommand], query: String) -> [RTICommand] {
+    public static func matching(_ commands: [RTICommand], query: String) -> [RTICommand] {
         let needle = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
         let available = commands.filter { $0.isAvailable() }
         guard !needle.isEmpty else { return available }
@@ -147,7 +147,7 @@ final class CommandRegistry {
     }
 
     /// One scorer for every command palette, including session actions.
-    nonisolated static func matchScore(query: String, title: String, keywords: [String] = []) -> Int? {
+    public nonisolated static func matchScore(query: String, title: String, keywords: [String] = []) -> Int? {
         let needle = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !needle.isEmpty else { return 0 }
         let titleScore = fuzzyScore(needle, candidate: fold(title)).map { $0 + 10_000 }
@@ -180,7 +180,7 @@ final class CommandRegistry {
 
     /// Push `id` to the front of the persisted recents list. Called when a
     /// command executes successfully.
-    func recordExecution(_ id: String) {
+    public func recordExecution(_ id: String) {
         var recents = persistedRecents()
         recents.removeAll { $0 == id }
         recents.insert(id, at: 0)
@@ -192,7 +192,7 @@ final class CommandRegistry {
 
     /// Available commands ordered by recency. Internal helper exposed for
     /// tests; production code uses `search("")`.
-    func recents(limit: Int = recentsCap) -> [RTICommand] {
+    public func recents(limit: Int = recentsCap) -> [RTICommand] {
         let ids = persistedRecents()
         let byId = Dictionary(uniqueKeysWithValues: commands.map { ($0.id, $0) })
         return ids.prefix(limit).compactMap { byId[$0] }.filter { $0.isAvailable() }

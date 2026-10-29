@@ -3,6 +3,7 @@ import HouseChatCore
 import SwiftUI
 import XCTest
 import HouseDesign
+import RTICore
 
 /// The Chats library in the Sessions window: the rail, the reader, the saved
 /// source list, a dated legacy log, and the whole window in Chats mode.
