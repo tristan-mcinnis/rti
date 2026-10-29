@@ -54,9 +54,30 @@ final class SSEStreamParserTests: XCTestCase {
         XCTAssertEqual(p.consume(line: "event: ping"), [])
     }
 
-    func test_malformedJSON_isIgnored() {
+    func test_malformedJSON_emitsStreamErrorWithByteLengthOnly() {
         var p = SSEStreamParser()
-        XCTAssertEqual(p.consume(line: dataLine("{not json")), [])
+        let events = p.consume(line: dataLine("{not json"))
+        XCTAssertEqual(events, [.streamError("Malformed stream chunk (9 bytes)")])
+    }
+
+    func test_malformedChunkMidStream_surfacesAndValidChunksStillArrive() {
+        var p = SSEStreamParser()
+        var all: [SSEStreamParser.Event] = []
+        all += p.consume(line: dataLine(#"{"choices":[{"delta":{"content":"before"}}]}"#))
+        all += p.consume(line: dataLine(#"{"choices":[{"delta":{"content":"SECRET-ANSWER"#))
+        all += p.consume(line: dataLine(#"{"choices":[{"delta":{"content":"after"}}]}"#))
+        XCTAssertEqual(all, [
+            .content("before"),
+            .streamError("Malformed stream chunk (46 bytes)"),
+            .content("after"),
+        ])
+        // The detail carries a byte count, never chunk content.
+        XCTAssertFalse(all.contains(.streamError("SECRET-ANSWER")))
+    }
+
+    func test_validChunkWithNoChoices_isStillIgnored() {
+        var p = SSEStreamParser()
+        XCTAssertEqual(p.consume(line: dataLine(#"{"choices":[],"usage":{"total_tokens":3}}"#)), [])
     }
 
     func test_finishReason_isCaptured() {

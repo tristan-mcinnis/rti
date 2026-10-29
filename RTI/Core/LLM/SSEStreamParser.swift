@@ -13,7 +13,7 @@ public struct SSEStreamParser {
         case reasoning(String)
         /// The `data: [DONE]` sentinel — the caller should stop reading.
         case done
-        /// A mid-stream `{"error": …}` object — the caller should fail.
+        /// A mid-stream `{"error": …}` object or an undecodable data chunk — the caller should fail.
         case streamError(String)
     }
 
@@ -27,8 +27,8 @@ public struct SSEStreamParser {
 
     /// Process one raw SSE line. A single line can yield both a reasoning and
     /// a content event; tool-call fragments are accumulated internally and
-    /// produce no event until assembled. Comment/non-data/undecodable lines
-    /// yield no events.
+    /// produce no event until assembled. Comment/non-data lines yield no
+    /// events; an undecodable data chunk yields `.streamError`.
     public mutating func consume(line rawLine: String) -> [Event] {
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
         // Comments per the SSE spec start with a colon.
@@ -49,8 +49,12 @@ public struct SSEStreamParser {
             return [.streamError(detail)]
         }
 
-        guard let chunk = try? JSONDecoder().decode(LLMStreamChunk.self, from: data),
-              let choice = chunk.choices.first else { return [] }
+        // A chunk that does not decode would silently drop answer text, so
+        // fail the stream. Report the byte length only, never the content.
+        guard let chunk = try? JSONDecoder().decode(LLMStreamChunk.self, from: data) else {
+            return [.streamError("Malformed stream chunk (\(data.count) bytes)")]
+        }
+        guard let choice = chunk.choices.first else { return [] }
 
         var events: [Event] = []
         if let reason = choice.finish_reason { finishReason = reason }
