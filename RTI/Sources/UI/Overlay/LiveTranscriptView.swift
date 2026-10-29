@@ -69,7 +69,7 @@ struct LiveTranscriptList: View, Equatable {
             .mask {
                 VStack(spacing: 0) {
                     LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: House.Spacing.lg)
+                        .frame(height: House.Spacing.sm)
                     Color.black
                 }
             }
