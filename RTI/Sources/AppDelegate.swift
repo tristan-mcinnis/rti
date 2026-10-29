@@ -18,10 +18,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     /// Marker the crash watchdog reads: present = last exit was a clean quit
     /// (don't relaunch); absent while not running = crash (relaunch).
     private static let cleanExitFlag = NSString(string: "~/.local/state/rti/clean-exit").expandingTildeInPath
+    /// Read at launch before the marker is cleared; drives the crash notice.
+    private var previousExitWasClean = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Running again — clear the clean-exit marker so the watchdog knows a
         // disappearance from here on is a crash, not a quit.
+        previousExitWasClean = FileManager.default.fileExists(atPath: Self.cleanExitFlag)
         try? FileManager.default.removeItem(atPath: Self.cleanExitFlag)
 
         guard ensureSingleInstance() else { return }
@@ -141,7 +144,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
         registerNotificationObservers()
 
-        if !LLMProviders.activeHasKey || !STTProviders.activeHasKey {
+        let needsOnboarding = !LLMProviders.activeHasKey || !STTProviders.activeHasKey
+        if CrashNoticeDecision.shouldShow(previousExitWasClean: previousExitWasClean, onboardingNeeded: needsOnboarding) {
+            CrashNotice.present()
+        }
+        if needsOnboarding {
             // First run (or keys cleared): guide setup instead of cold-dropping
             // into Settings.
             onboarding.show()
