@@ -6,14 +6,14 @@ import RTICore
 /// copy duplicated `MeetingRecorder`'s mic leg (about 115 MB an hour) and was
 /// never read, so it is no longer written; the sweep still removes files an
 /// earlier build left behind.
-enum WAVWriter {
+public enum WAVWriter {
     private static var recordingsDir: URL {
         URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("RTI/sessions", isDirectory: true)
     }
 
     /// Delete orphan WAV files left in temp by an earlier build or a crash.
-    static func sweepStaleRecordings() {
+    public static func sweepStaleRecordings() {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: recordingsDir, includingPropertiesForKeys: nil
         ) else { return }
@@ -26,16 +26,18 @@ enum WAVWriter {
 /// Durable dual-leg source recording for the automatic post-meeting pass.
 /// Keeping mic and system audio separate gives the upgrader clean channel
 /// identity and avoids mixing two independently-clocked capture streams.
-final class MeetingRecorder {
-    var onWriteFailure: ((String) -> Void)?
+public final class MeetingRecorder {
+    public var onWriteFailure: ((String) -> Void)?
     private var micFile: DurableWAVFile?
     private var systemFile: DurableWAVFile?
-    private(set) var micURL: URL?
-    private(set) var systemURL: URL?
+    public private(set) var micURL: URL?
+    public private(set) var systemURL: URL?
     private var micFrames = 0
     private var systemFrames = 0
 
-    func open(in directory: URL) throws {
+    public init() {}
+
+    public func open(in directory: URL) throws {
         try? micFile?.close()
         try? systemFile?.close()
         micFile = nil
@@ -64,19 +66,19 @@ final class MeetingRecorder {
         }
     }
 
-    func appendMic(_ buffer: AVAudioPCMBuffer) {
+    public func appendMic(_ buffer: AVAudioPCMBuffer) {
         if write(buffer, to: micFile) { micFrames += Int(buffer.frameLength) }
     }
 
-    func appendSystem(_ buffer: AVAudioPCMBuffer) {
+    public func appendSystem(_ buffer: AVAudioPCMBuffer) {
         if write(buffer, to: systemFile) { systemFrames += Int(buffer.frameLength) }
     }
 
-    func appendMicSilence(matching buffer: AVAudioPCMBuffer) {
+    public func appendMicSilence(matching buffer: AVAudioPCMBuffer) {
         if writeSilence(frameCount: Int(buffer.frameLength), to: micFile) { micFrames += Int(buffer.frameLength) }
     }
 
-    func appendSystemSilence(matching buffer: AVAudioPCMBuffer) {
+    public func appendSystemSilence(matching buffer: AVAudioPCMBuffer) {
         if writeSilence(frameCount: Int(buffer.frameLength), to: systemFile) { systemFrames += Int(buffer.frameLength) }
     }
 
@@ -108,7 +110,7 @@ final class MeetingRecorder {
         }
     }
 
-    func close() {
+    public func close() {
         try? micFile?.close()
         try? systemFile?.close()
         micFile = nil
@@ -139,7 +141,7 @@ private final class DurableWAVFile {
     private var dataByteCount: UInt32 = 0
     private var isClosed = false
 
-    init(url: URL) throws {
+    public init(url: URL) throws {
         FileManager.default.createFile(atPath: url.path, contents: nil)
         handle = try FileHandle(forUpdating: url)
         try handle.truncate(atOffset: 0)
@@ -147,7 +149,7 @@ private final class DurableWAVFile {
         try handle.synchronize()
     }
 
-    func append(samples: UnsafePointer<Int16>, count: Int) throws {
+    public func append(samples: UnsafePointer<Int16>, count: Int) throws {
         guard !isClosed, count > 0 else { return }
         let byteCount = count * Int(Self.bytesPerSample)
         guard UInt64(dataByteCount) + UInt64(byteCount) <= UInt64(UInt32.max - 36) else {
@@ -160,7 +162,7 @@ private final class DurableWAVFile {
         try writeHeader(dataBytes: dataByteCount)
     }
 
-    func appendSilence(frameCount: Int) throws {
+    public func appendSilence(frameCount: Int) throws {
         guard frameCount > 0 else { return }
         let silence = [Int16](repeating: 0, count: frameCount)
         try silence.withUnsafeBufferPointer { buffer in
@@ -169,7 +171,7 @@ private final class DurableWAVFile {
         }
     }
 
-    func close() throws {
+    public func close() throws {
         guard !isClosed else { return }
         try handle.synchronize()
         try handle.close()

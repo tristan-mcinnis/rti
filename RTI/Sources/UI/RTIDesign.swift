@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import HouseDesign
+import RTICore
 
 /// RTI's view of the house design system ("Slate", direction 1b).
 ///

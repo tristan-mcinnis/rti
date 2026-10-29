@@ -124,15 +124,9 @@ targets:
     platform: macOS
     sources:
       - path: Tests
-      - path: Sources/UI/CommandPalette/CommandRegistry.swift
       - path: Sources/UI/StatusItemSymbol.swift
       # StatusItemSymbol reads House.Control.statusGlyph (HouseDesign product).
-      - path: Sources/Audio/WAVWriter.swift
       - path: Sources/Audio/AudioInputDevice.swift
-      - path: Sources/Support/NotificationNames.swift
-      - path: Sources/UI/SessionsControl/ChatLibraryRules.swift
-      - path: Sources/UI/SessionsControl/ChatLibraryLegacy.swift
-      - path: Sources/Support/SettingsKeys.swift
     dependencies:
       - target: RTICore
       - package: Yams

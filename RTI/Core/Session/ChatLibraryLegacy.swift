@@ -18,17 +18,17 @@ import RTICore
 /// Read only. Nothing here writes, renames, truncates, or imports a log, and
 /// nothing here opens `chats/<yyyy-MM-dd>.md`, which is the same turns in a
 /// skim form (`VaultLogStore` writes both from one record).
-actor ChatLibraryLegacyReader {
+public actor ChatLibraryLegacyReader {
     /// `<vault>/databases/projects/personal/rti/turns`. Injected.
-    let root: URL
+    public let root: URL
 
-    init(root: URL) {
+    public init(root: URL) {
         self.root = root
     }
 
     /// Every day log, newest day first. An unreadable file is reported as a
     /// log with a state, never skipped and never replaced.
-    func logs() -> [ChatLibraryLegacy.Log] {
+    public func logs() -> [ChatLibraryLegacy.Log] {
         let manager = FileManager.default
         guard manager.fileExists(atPath: root.path) else { return [] }
         guard let names = try? manager.contentsOfDirectory(atPath: root.path) else {
@@ -82,8 +82,8 @@ actor ChatLibraryLegacyReader {
 }
 
 /// One legacy day log, and the turns inside it.
-struct ChatLibraryLegacy {
-    enum State: Equatable, Sendable {
+public struct ChatLibraryLegacy {
+    public enum State: Equatable, Sendable {
         /// Read. `skippedLines` counts the lines that did not decode.
         case read(skippedLines: Int)
         /// The file could not be read at all; the reason is shown as written.
@@ -95,25 +95,25 @@ struct ChatLibraryLegacy {
     /// The fields are the ones a reader needs. `transcriptContext` is
     /// deliberately not kept: a live transcript attached to a turn can be
     /// large, and the library never shows it.
-    struct Turn: Decodable, Equatable, Sendable, Identifiable {
+    public struct Turn: Decodable, Equatable, Sendable, Identifiable {
         /// The line number in the day's file, stable within that file. Not a
         /// stored field, so decoding leaves it at zero until `with(id:)`.
-        private(set) var id: Int = 0
-        let ts: String?
-        let action: String?
-        let mode: String?
-        let inSession: Bool?
-        let userInput: String?
-        let output: String?
-        let sources: [String]?
-        let toolCalls: [ToolCall]?
+        public private(set) var id: Int = 0
+        public let ts: String?
+        public let action: String?
+        public let mode: String?
+        public let inSession: Bool?
+        public let userInput: String?
+        public let output: String?
+        public let sources: [String]?
+        public let toolCalls: [ToolCall]?
         /// The saved chat thread this row belongs to, when a newer build wrote
         /// it from a structured turn. Such a row is a projection of a chat the
         /// Chats list already shows.
-        let threadID: String?
+        public let threadID: String?
 
-        struct ToolCall: Decodable, Equatable, Sendable {
-            let name: String?
+        public struct ToolCall: Decodable, Equatable, Sendable {
+            public let name: String?
         }
 
         /// The stored keys this reader keeps. A line written by a newer build
@@ -124,23 +124,23 @@ struct ChatLibraryLegacy {
 
         /// True when the row belongs to a saved chat and therefore belongs in
         /// the Chats list, not in the dated log.
-        var isProjectionOfSavedChat: Bool {
+        public var isProjectionOfSavedChat: Bool {
             !(threadID ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
-        var isReadable: Bool {
+        public var isReadable: Bool {
             !(userInput ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || !(output ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
-        func with(id: Int) -> Turn {
+        public func with(id: Int) -> Turn {
             var copy = self
             copy.id = id
             return copy
         }
 
         /// "15:04" in this Mac's zone, or the raw stamp when it does not parse.
-        var timeText: String {
+        public var timeText: String {
             guard let ts else { return "" }
             guard let date = try? Date(ts, strategy: .iso8601) else { return ts }
             return SessionsWindowRules.timeText(date)
@@ -148,16 +148,16 @@ struct ChatLibraryLegacy {
 
         /// What the turn was asked as: the canned action, the slash command,
         /// or the typed question.
-        var question: String { userInput ?? "" }
+        public var question: String { userInput ?? "" }
 
-        var answer: String { output ?? "" }
+        public var answer: String { output ?? "" }
 
-        var toolNames: [String] {
+        public var toolNames: [String] {
             (toolCalls ?? []).compactMap(\.name)
         }
 
         /// "Ask · screen · 2 tools · northwind-brief.md", for the entry's line.
-        var detailText: String {
+        public var detailText: String {
             var parts: [String] = []
             if let action, !action.isEmpty { parts.append(action) }
             if let mode, !mode.isEmpty { parts.append(mode) }
@@ -169,35 +169,35 @@ struct ChatLibraryLegacy {
     }
 
     /// One day of the legacy log.
-    struct Log: Identifiable, Equatable, Sendable {
+    public struct Log: Identifiable, Equatable, Sendable {
         /// The day, as the file names it: "2026-09-12".
-        let day: String
+        public let day: String
         /// The log file this day came from, as metadata. Nothing here reads it
         /// back; a seed carries it as a reference.
-        let sourcePath: String?
+        public let sourcePath: String?
         /// The dated entries no saved chat owns, in recorded order.
-        let turns: [Turn]
+        public let turns: [Turn]
         /// Rows of this day that belong to saved chats. Counted, never shown:
         /// they are listed under Chats.
-        let projectedTurnCount: Int
-        let skippedLines: Int
-        let state: State
+        public let projectedTurnCount: Int
+        public let skippedLines: Int
+        public let state: State
 
-        var id: String { day }
+        public var id: String { day }
 
-        static func unreadable(day: String, path: String? = nil, reason: String) -> Log {
+        public static func unreadable(day: String, path: String? = nil, reason: String) -> Log {
             Log(day: day, sourcePath: path, turns: [], projectedTurnCount: 0, skippedLines: 0, state: .unreadable(reason))
         }
 
-        var turnCount: Int { turns.count }
+        public var turnCount: Int { turns.count }
 
         /// True when every readable row in this day belongs to a saved chat:
         /// the day has nothing of its own to show.
-        var isEntirelyProjected: Bool { turns.isEmpty && projectedTurnCount > 0 }
+        public var isEntirelyProjected: Bool { turns.isEmpty && projectedTurnCount > 0 }
 
         /// "12 Sep 2026 · 14 turns". The date is the file's day, parsed
         /// without a time zone of its own.
-        var title: String {
+        public var title: String {
             guard let date = Self.date(fromDay: day) else { return day }
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -205,7 +205,7 @@ struct ChatLibraryLegacy {
             return formatter.string(from: date)
         }
 
-        var detailText: String {
+        public var detailText: String {
             switch state {
             case .read(let skipped):
                 var parts = ["\(turnCount) turn\(turnCount == 1 ? "" : "s")"]
@@ -219,7 +219,7 @@ struct ChatLibraryLegacy {
 
         /// Where the rows this day does not show went. Nil when none were
         /// left out.
-        var projectionNote: String? {
+        public var projectionNote: String? {
             guard projectedTurnCount > 0 else { return nil }
             let rows = "\(projectedTurnCount) row\(projectedTurnCount == 1 ? "" : "s")"
             let verb = projectedTurnCount == 1 ? "belongs" : "belong"
@@ -227,11 +227,11 @@ struct ChatLibraryLegacy {
         }
 
         /// The honest line about what this is, shown above the entries.
-        var orientationText: String {
+        public var orientationText: String {
             "A dated log, not a saved chat. Each entry below is one turn as it was recorded; nothing says where one chat ended and the next began."
         }
 
-        static func date(fromDay day: String) -> Date? {
+        public static func date(fromDay day: String) -> Date? {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = "yyyy-MM-dd"
@@ -256,16 +256,16 @@ struct ChatLibraryLegacy {
 /// file: a legacy row has none, and the seed says so by carrying no original
 /// path. Nothing is sent by seeding: the handler attaches `sourceText`, leaves
 /// `prompt` editable, and waits for the user.
-struct ChatLibraryDatedSeed: Equatable, Sendable {
+public struct ChatLibraryDatedSeed: Equatable, Sendable {
     /// The notification the library posts, with the seed as its object.
     ///
     /// Spelled on the seed rather than as a `Notification.Name` extension
     /// member, so it can never collide with a central name: the handler
     /// observes `Notification.Name("rtiSeedDatedChat")` or this constant.
-    static let notificationName = Notification.Name("rtiSeedDatedChat")
+    public static let notificationName = Notification.Name("rtiSeedDatedChat")
 
     /// How much of the log is being reused.
-    enum Scope: String, Sendable, Equatable {
+    public enum Scope: String, Sendable, Equatable {
         /// Every displayed entry in the day.
         case day
         /// One dated entry, from one line of the log.
@@ -273,49 +273,69 @@ struct ChatLibraryDatedSeed: Equatable, Sendable {
     }
 
     /// One dated turn, as recorded.
-    struct Entry: Equatable, Sendable {
+    public struct Entry: Equatable, Sendable {
         /// The line of the day's file this entry came from.
-        let line: Int
-        let day: String
+        public let line: Int
+        public let day: String
         /// The raw ISO stamp, when the row had one.
-        let stamp: String?
+        public let stamp: String?
         /// "07:04" in this Mac's zone, or the raw stamp when it does not parse.
-        let timeText: String
-        let action: String?
-        let mode: String?
-        let inSession: Bool
-        let question: String
-        let answer: String
+        public let timeText: String
+        public let action: String?
+        public let mode: String?
+        public let inSession: Bool
+        public let question: String
+        public let answer: String
         /// Files the turn mentioned. A reference the log recorded, not an
         /// original this library holds.
-        let sources: [String]
+        public let sources: [String]
         /// The tools the turn called, in call order.
-        let tools: [String]
+        public let tools: [String]
     }
 
     /// "legacy-day-2026-09-12" or "legacy-entry-2026-09-12-2".
-    let id: String
-    let day: String
-    let scope: Scope
+    public let id: String
+    public let day: String
+    public let scope: Scope
     /// "12 Sep 2026", or "12 Sep 2026 · 07:04" for one entry.
-    let title: String
+    public let title: String
     /// The log file this came from, kept as a reference and never read.
-    let sourcePath: String?
-    let entries: [Entry]
+    public let sourcePath: String?
+    public let entries: [Entry]
     /// The entries as the text an editor attaches, each keeping its own
     /// timestamp, in recorded order, with nothing summarised or merged.
-    let sourceText: String
+    public let sourceText: String
     /// The draft the composer starts with. Editable, and never sent by itself.
-    let prompt: String
+    public let prompt: String
 
     /// True when this seed carries something to reuse.
-    var isEmpty: Bool { entries.isEmpty }
+    public var isEmpty: Bool { entries.isEmpty }
+
+    public init(
+        id: String,
+        day: String,
+        scope: Scope,
+        title: String,
+        sourcePath: String?,
+        entries: [Entry],
+        sourceText: String,
+        prompt: String
+    ) {
+        self.id = id
+        self.day = day
+        self.scope = scope
+        self.title = title
+        self.sourcePath = sourcePath
+        self.entries = entries
+        self.sourceText = sourceText
+        self.prompt = prompt
+    }
 }
 
-extension ChatLibraryDatedSeed {
+public extension ChatLibraryDatedSeed {
     /// The whole displayed day. Nil when the day has nothing a chat could
     /// reuse, which is the honest answer for an empty or unreadable log.
-    static func day(_ log: ChatLibraryLegacy.Log) -> ChatLibraryDatedSeed? {
+    public static func day(_ log: ChatLibraryLegacy.Log) -> ChatLibraryDatedSeed? {
         guard !log.turns.isEmpty else { return nil }
         let entries = log.turns.map { Entry(turn: $0, day: log.day) }
         let count = entries.count
@@ -337,7 +357,7 @@ extension ChatLibraryDatedSeed {
 
     /// One dated entry. Nil for a row that belongs to a saved chat or has no
     /// turn in it, so a projection is never reused as if it were legacy.
-    static func entry(_ turn: ChatLibraryLegacy.Turn, in log: ChatLibraryLegacy.Log) -> ChatLibraryDatedSeed? {
+    public static func entry(_ turn: ChatLibraryLegacy.Turn, in log: ChatLibraryLegacy.Log) -> ChatLibraryDatedSeed? {
         guard log.turns.contains(where: { $0.id == turn.id }), turn.isReadable else { return nil }
         let entry = Entry(turn: turn, day: log.day)
         let time = entry.timeText.isEmpty ? log.title : "\(log.title) · \(entry.timeText)"
@@ -360,7 +380,7 @@ extension ChatLibraryDatedSeed {
     /// The dated entries as source material. Each keeps its own timestamp and
     /// its recorded order; the header says plainly that these are dated
     /// records, not one conversation.
-    static func sourceText(
+    public static func sourceText(
         entries: [Entry],
         heading: String,
         orientation: String
@@ -390,8 +410,8 @@ extension ChatLibraryDatedSeed {
     }
 }
 
-extension ChatLibraryDatedSeed.Entry {
-    init(turn: ChatLibraryLegacy.Turn, day: String) {
+public extension ChatLibraryDatedSeed.Entry {
+    public init(turn: ChatLibraryLegacy.Turn, day: String) {
         self.init(
             line: turn.id,
             day: day,

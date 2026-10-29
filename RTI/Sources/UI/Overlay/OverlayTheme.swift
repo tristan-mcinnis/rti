@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import HouseDesign
+import RTICore
 
 // The overlay's colour vocabulary. Every entry is a house token
 // (HouseDesign.swift); the only local behaviour is the user's contrast

@@ -87,7 +87,7 @@
     {
       "id": "MeetingRecorder",
       "subsystem": "audio",
-      "file": "RTI/Sources/Audio/WAVWriter.swift",
+      "file": "RTI/Core/Audio/WAVWriter.swift",
       "description": "Durable per-leg WAV recordings in the session folder."
     },
     {

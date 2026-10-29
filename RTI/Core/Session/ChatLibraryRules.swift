@@ -6,10 +6,10 @@ import RTICore
 /// (`ChatThreadStore`) and the legacy daily turn logs beside it. Injected, so
 /// a test or a render proof never touches the live vault or the real
 /// Application Support folder.
-struct ChatLibraryLocation: Sendable {
-    let store: ChatThreadStore
+public struct ChatLibraryLocation: Sendable {
+    public let store: ChatThreadStore
     /// `<vault>/databases/projects/personal/rti/turns`, read only.
-    let legacyTurnsRoot: URL
+    public let legacyTurnsRoot: URL
 
     /// The running app's roots.
     ///
@@ -17,7 +17,7 @@ struct ChatLibraryLocation: Sendable {
     /// assistant writes through: a rename, a pin, or a deletion from the
     /// library is serialized with a streaming answer instead of racing a
     /// second store over the same files. Nil when RTI has no vault.
-    static func applicationDefault() -> ChatLibraryLocation? {
+    public static func applicationDefault() -> ChatLibraryLocation? {
         guard let store = try? ChatThreadStore.shared(),
               let rti = VaultPaths.rtiDirectory()
         else { return nil }
@@ -26,6 +26,14 @@ struct ChatLibraryLocation: Sendable {
             legacyTurnsRoot: rti.appendingPathComponent("turns", isDirectory: true)
         )
     }
+
+    public init(
+        store: ChatThreadStore,
+        legacyTurnsRoot: URL
+    ) {
+        self.store = store
+        self.legacyTurnsRoot = legacyTurnsRoot
+    }
 }
 
 /// One saved chat as the Chats rail draws it.
@@ -33,47 +41,85 @@ struct ChatLibraryLocation: Sendable {
 /// Everything the rail needs is on the row: a chat is loaded once per refresh
 /// so the pin (an `appPayload` field the summaries do not carry) and the
 /// searchable text do not cost a second read.
-struct ChatLibraryRow: Identifiable, Equatable, Sendable {
-    let id: String
+public struct ChatLibraryRow: Identifiable, Equatable, Sendable {
+    public let id: String
     /// The stored name, or the first question when the chat has no name.
-    let title: String
+    public let title: String
     /// True when the title is the chat's own, not the first question.
-    let titleIsStored: Bool
-    let createdAt: Date?
-    let updatedAt: Date?
-    let turnCount: Int
-    let isPinned: Bool
+    public let titleIsStored: Bool
+    public let createdAt: Date?
+    public let updatedAt: Date?
+    public let turnCount: Int
+    public let isPinned: Bool
     /// A file on disk that could not be read (or was written by a newer
     /// build). The row still shows, and it says so.
-    let issue: ConversationIssue?
-    let byteCount: Int?
-    let surface: ChatSurface?
+    public let issue: ConversationIssue?
+    public let byteCount: Int?
+    public let surface: ChatSurface?
     /// The chat's own name and the text of every turn, for the rail search.
     /// Nothing else from a turn is kept in memory.
-    let searchText: String
+    public let searchText: String
     /// True for a saved thread; false for a dated legacy log.
-    var isLegacy: Bool { false }
+    public var isLegacy: Bool { false }
 
     /// The title a chat with no name falls back to: its first question.
-    static let untitled = "Untitled chat"
+    public static let untitled = "Untitled chat"
     /// How much of a first question a fallback title keeps.
-    static let fallbackTitleLength = 60
+    public static let fallbackTitleLength = 60
+
+    public init(
+        id: String,
+        title: String,
+        titleIsStored: Bool,
+        createdAt: Date?,
+        updatedAt: Date?,
+        turnCount: Int,
+        isPinned: Bool,
+        issue: ConversationIssue?,
+        byteCount: Int?,
+        surface: ChatSurface?,
+        searchText: String
+    ) {
+        self.id = id
+        self.title = title
+        self.titleIsStored = titleIsStored
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.turnCount = turnCount
+        self.isPinned = isPinned
+        self.issue = issue
+        self.byteCount = byteCount
+        self.surface = surface
+        self.searchText = searchText
+    }
 }
 
 /// One chat as the reader draws it: the stored record when it could be read,
 /// and the state of every byte it points at.
-struct ChatLibraryDetail: Equatable, Sendable {
-    let id: String
+public struct ChatLibraryDetail: Equatable, Sendable {
+    public let id: String
     /// Nil when the file could not be read. The pane then says so and never
     /// invents turns.
-    let record: ConversationRecord?
-    let issue: ConversationIssue?
-    let sources: [ChatLibrarySource]
+    public let record: ConversationRecord?
+    public let issue: ConversationIssue?
+    public let sources: [ChatLibrarySource]
 
-    var turns: [TurnRecord] { record?.turns ?? [] }
+    public var turns: [TurnRecord] { record?.turns ?? [] }
 
-    func source(for attachmentID: String) -> ChatLibrarySource? {
+    public func source(for attachmentID: String) -> ChatLibrarySource? {
         sources.first { $0.id == attachmentID }
+    }
+
+    public init(
+        id: String,
+        record: ConversationRecord?,
+        issue: ConversationIssue?,
+        sources: [ChatLibrarySource]
+    ) {
+        self.id = id
+        self.record = record
+        self.issue = issue
+        self.sources = sources
     }
 }
 
@@ -83,27 +129,27 @@ struct ChatLibraryDetail: Equatable, Sendable {
 /// The library never reads the user's original file: the record keeps that
 /// path as a reference, and every check runs against the store's own copy by
 /// hash.
-struct ChatLibrarySource: Identifiable, Equatable, Sendable {
+public struct ChatLibrarySource: Identifiable, Equatable, Sendable {
     /// The attachment's id, so a turn can find its own sources.
-    let id: String
-    let name: String
+    public let id: String
+    public let name: String
     /// "PDF", "Screenshot", "Link", "Text"…
-    let kindLabel: String
-    let byteCount: Int?
-    let pageCount: Int?
+    public let kindLabel: String
+    public let byteCount: Int?
+    public let pageCount: Int?
     /// SHA-256 of the original bytes. Nil for images, which are archived
     /// without one, and then the source says so.
-    let contentHash: String?
+    public let contentHash: String?
     /// The file on this Mac the user attached. Shown, never read.
-    let sourcePath: String?
+    public let sourcePath: String?
     /// How many archived copies this attachment has (original, normalized
     /// image, extracted text).
-    let archivedCopies: Int
-    let state: State
+    public let archivedCopies: Int
+    public let state: State
     /// A trim or truncation note, when the record has one.
-    let note: String?
+    public let note: String?
 
-    enum State: Equatable, Sendable {
+    public enum State: Equatable, Sendable {
         /// Every archived copy hashes to what the record says.
         case verified
         /// The record points at a copy that is not in the store.
@@ -117,7 +163,7 @@ struct ChatLibrarySource: Identifiable, Equatable, Sendable {
         case noArchive
     }
 
-    var stateText: String {
+    public var stateText: String {
         switch state {
         case .verified: "Verified"
         case .missing: "Missing"
@@ -128,7 +174,7 @@ struct ChatLibrarySource: Identifiable, Equatable, Sendable {
     }
 
     /// The second line: what the state means for this source.
-    var detailText: String {
+    public var detailText: String {
         switch state {
         case .verified:
             archivedCopies == 1
@@ -147,19 +193,43 @@ struct ChatLibrarySource: Identifiable, Equatable, Sendable {
 
     /// "PDF · 1.2 MB · 12 pages". What the source is, not its state: the
     /// state line below says whether its copies are still there.
-    var factsText: String {
+    public var factsText: String {
         var parts = [kindLabel]
         if let byteCount { parts.append(ChatLibraryFormat.bytes(byteCount)) }
         if let pageCount { parts.append("\(pageCount) page\(pageCount == 1 ? "" : "s")") }
         if let note, !note.isEmpty { parts.append(note) }
         return parts.joined(separator: " · ")
     }
+
+    public init(
+        id: String,
+        name: String,
+        kindLabel: String,
+        byteCount: Int?,
+        pageCount: Int?,
+        contentHash: String?,
+        sourcePath: String?,
+        archivedCopies: Int,
+        state: State,
+        note: String?
+    ) {
+        self.id = id
+        self.name = name
+        self.kindLabel = kindLabel
+        self.byteCount = byteCount
+        self.pageCount = pageCount
+        self.contentHash = contentHash
+        self.sourcePath = sourcePath
+        self.archivedCopies = archivedCopies
+        self.state = state
+        self.note = note
+    }
 }
 
 /// The pure rules behind the Chats library: what a row says, which rows a
 /// query matches, how they are grouped, and what an export contains. No I/O
 /// and no views, so every rule is testable on its own.
-enum ChatLibraryRules {
+public enum ChatLibraryRules {
     // MARK: - Rows
 
     /// Build the rail's rows from the store's records, newest first.
@@ -167,7 +237,7 @@ enum ChatLibraryRules {
     /// `summaries` carry the file's byte count and the state of the file on
     /// disk. A summary with no record behind it keeps its row: a file that
     /// could not be read is reported, never hidden and never replaced.
-    static func rows(
+    public static func rows(
         records: [ConversationRecord],
         summaries: [ConversationSummary]
     ) -> [ChatLibraryRow] {
@@ -200,7 +270,7 @@ enum ChatLibraryRules {
             }
     }
 
-    static func row(from record: ConversationRecord, summary: ConversationSummary?) -> ChatLibraryRow {
+    public static func row(from record: ConversationRecord, summary: ConversationSummary?) -> ChatLibraryRow {
         let stored = record.title?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasStored = !(stored ?? "").isEmpty
         return ChatLibraryRow(
@@ -219,7 +289,7 @@ enum ChatLibraryRules {
     }
 
     /// The first question, trimmed to one line and one row's worth of text.
-    static func fallbackTitle(for record: ConversationRecord) -> String {
+    public static func fallbackTitle(for record: ConversationRecord) -> String {
         guard let question = record.turns.first(where: { $0.role == .user })?.text
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !question.isEmpty
@@ -233,11 +303,11 @@ enum ChatLibraryRules {
     /// record's `appPayload`, under the namespace and key the store documents
     /// (`ChatThreadStore.pinnedPayloadKey`), read through that one constant so
     /// the two sides cannot drift.
-    static func isPinned(_ record: ConversationRecord) -> Bool {
+    public static func isPinned(_ record: ConversationRecord) -> Bool {
         record.appPayload?[ChatThreadStore.pinnedPayloadKey]?.boolValue ?? false
     }
 
-    static func searchText(for record: ConversationRecord, title: String) -> String {
+    public static func searchText(for record: ConversationRecord, title: String) -> String {
         ([title] + record.turns.map(\.text)).joined(separator: "\n")
     }
 
@@ -249,7 +319,7 @@ enum ChatLibraryRules {
     /// `check` is the store's own verification, injected so this stays a pure
     /// rule. Every check runs against the archived copy by hash; the record's
     /// `path` is shown as a reference and never read.
-    static func sources(
+    public static func sources(
         for record: ConversationRecord,
         check: @Sendable (ArtifactRef) async -> ChatLibrarySource.State
     ) async -> [ChatLibrarySource] {
@@ -290,18 +360,18 @@ enum ChatLibraryRules {
 
     // MARK: - Grouping and the query
 
-    static let foldOptions: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+    public static let foldOptions: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
 
     /// True when every word of the query appears in the chat's own text.
     /// An empty query matches everything.
-    static func matches(_ row: ChatLibraryRow, query: String) -> Bool {
+    public static func matches(_ row: ChatLibraryRow, query: String) -> Bool {
         let terms = terms(query)
         guard !terms.isEmpty else { return true }
         return terms.allSatisfy { row.searchText.range(of: $0, options: foldOptions) != nil }
     }
 
     /// The query's words, lowercased, without empty pieces.
-    static func terms(_ query: String) -> [String] {
+    public static func terms(_ query: String) -> [String] {
         query.lowercased()
             .split(whereSeparator: { $0.isWhitespace })
             .map(String.init)
@@ -310,7 +380,7 @@ enum ChatLibraryRules {
 
     /// Pinned first, then the rest. While a query is typed: one Results list,
     /// pinned chats still ahead.
-    static func sections(
+    public static func sections(
         rows: [ChatLibraryRow],
         query: String,
         isSearching: Bool
@@ -326,7 +396,7 @@ enum ChatLibraryRules {
 
     /// True when there is nothing to show yet, rather than nothing matching:
     /// an empty library and an empty result say different things.
-    static func emptyText(hasRows: Bool, isSearching: Bool, hasLoaded: Bool) -> String {
+    public static func emptyText(hasRows: Bool, isSearching: Bool, hasLoaded: Bool) -> String {
         guard hasLoaded else { return "Loading chats…" }
         guard hasRows else { return "No saved chats yet" }
         return isSearching ? "No chats match" : "No saved chats yet"
@@ -336,7 +406,7 @@ enum ChatLibraryRules {
 
     /// The row's second line: the turn count, then the time today or the day
     /// before, and a word when the file on disk is damaged.
-    static func detail(for row: ChatLibraryRow, now: Date, calendar: Calendar = .current) -> String {
+    public static func detail(for row: ChatLibraryRow, now: Date, calendar: Calendar = .current) -> String {
         var parts = ["\(row.turnCount) turn\(row.turnCount == 1 ? "" : "s")"]
         let date = row.updatedAt ?? row.createdAt
         if let date { parts.append(SessionsWindowRules.dayOrTime(date, now: now, calendar: calendar)) }
@@ -346,7 +416,7 @@ enum ChatLibraryRules {
 
     /// The header's line for the open chat: the full day and time, the turn
     /// count, and the pin.
-    static func headerLine(for row: ChatLibraryRow, now: Date, calendar: Calendar = .current) -> String {
+    public static func headerLine(for row: ChatLibraryRow, now: Date, calendar: Calendar = .current) -> String {
         var parts: [String] = []
         let date = row.updatedAt ?? row.createdAt
         if let date {
@@ -359,7 +429,7 @@ enum ChatLibraryRules {
     }
 
     /// What the row and the pane say about a file that could not be read.
-    static func issueText(_ issue: ConversationIssue) -> String {
+    public static func issueText(_ issue: ConversationIssue) -> String {
         switch issue {
         case .corrupt: "Damaged file"
         case .unsupportedSchema: "Newer format"
@@ -368,7 +438,7 @@ enum ChatLibraryRules {
     }
 
     /// What a chat with no name says about its own title.
-    static func titleNote(for row: ChatLibraryRow) -> String? {
+    public static func titleNote(for row: ChatLibraryRow) -> String? {
         row.titleIsStored ? nil : "Named from the first question"
     }
 
@@ -376,7 +446,7 @@ enum ChatLibraryRules {
 
     /// One chat as Markdown, in the same grammar the archived `chat.md` uses,
     /// so a reader sees one shape across both records.
-    static func markdown(for record: ConversationRecord) -> String {
+    public static func markdown(for record: ConversationRecord) -> String {
         var lines: [String] = ["# \(row(from: record, summary: nil).title)", ""]
         if let created = record.createdAt {
             lines.append("- Created: \(exportStamp(created))")
@@ -421,7 +491,7 @@ enum ChatLibraryRules {
         return lines.joined(separator: "\n")
     }
 
-    static func sourceLine(_ attachment: AttachmentRecord) -> String {
+    public static func sourceLine(_ attachment: AttachmentRecord) -> String {
         var parts = [kindLabel(attachment.kind)]
         if let bytes = attachment.byteCount { parts.append(ChatLibraryFormat.bytes(bytes)) }
         if let pages = attachment.pageCount { parts.append("\(pages) pages") }
@@ -430,11 +500,11 @@ enum ChatLibraryRules {
         return parts.joined(separator: " · ")
     }
 
-    static func sessionText(_ link: SessionLink) -> String {
+    public static func sessionText(_ link: SessionLink) -> String {
         [link.label, link.kind, link.id].compactMap { $0 }.joined(separator: " · ")
     }
 
-    static func exportStamp(_ date: Date) -> String {
+    public static func exportStamp(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
@@ -442,7 +512,7 @@ enum ChatLibraryRules {
     }
 
     /// "PDF", "Screenshot", "Link"… for a source row.
-    static func kindLabel(_ kind: AttachmentKind) -> String {
+    public static func kindLabel(_ kind: AttachmentKind) -> String {
         switch kind {
         case .pdf: "PDF"
         case .word: "Word"
@@ -462,15 +532,15 @@ enum ChatLibraryRules {
 }
 
 /// Small formatting rules the library shares.
-enum ChatLibraryFormat {
+public enum ChatLibraryFormat {
     /// "1.2 MB", "345 KB", "912 bytes".
-    static func bytes(_ count: Int) -> String {
+    public static func bytes(_ count: Int) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
     }
 
     /// "12 chats · 4.2 MB saved". Nil until the store has answered, so the
     /// line is never a zero standing in for an unknown.
-    static func storageLine(chats: Int, legacyLogs: Int, bytes: Int?) -> String? {
+    public static func storageLine(chats: Int, legacyLogs: Int, bytes: Int?) -> String? {
         guard let bytes else { return nil }
         var parts = ["\(chats) saved chat\(chats == 1 ? "" : "s")"]
         if legacyLogs > 0 { parts.append("\(legacyLogs) dated log\(legacyLogs == 1 ? "" : "s")") }
@@ -480,7 +550,7 @@ enum ChatLibraryFormat {
 
     /// The same facts in the fewest words, for the footer beside four buttons
     /// and the primary action. Nil until the store has answered.
-    static func compactStorageLine(chats: Int, legacyLogs: Int, bytes: Int?) -> String? {
+    public static func compactStorageLine(chats: Int, legacyLogs: Int, bytes: Int?) -> String? {
         guard let bytes else { return nil }
         var parts = [chatCount(chats)]
         if legacyLogs > 0 { parts.append(logCount(legacyLogs)) }
@@ -490,23 +560,23 @@ enum ChatLibraryFormat {
 
     /// The footer line without the size: what fits at the window's minimum
     /// width, so the size is dropped whole rather than clipped.
-    static func countsLine(chats: Int, legacyLogs: Int) -> String {
+    public static func countsLine(chats: Int, legacyLogs: Int) -> String {
         var parts = [chatCount(chats)]
         if legacyLogs > 0 { parts.append(logCount(legacyLogs)) }
         return parts.joined(separator: " · ")
     }
 
     /// "4 chats": the last thing the footer keeps.
-    static func chatCount(_ chats: Int) -> String {
+    public static func chatCount(_ chats: Int) -> String {
         "\(chats) chat\(chats == 1 ? "" : "s")"
     }
 
-    static func logCount(_ logs: Int) -> String {
+    public static func logCount(_ logs: Int) -> String {
         "\(logs) log\(logs == 1 ? "" : "s")"
     }
 
     /// The first eight hex characters of a hash, for a row that shows one.
-    static func shortHash(_ hash: String) -> String {
+    public static func shortHash(_ hash: String) -> String {
         hash.count <= 8 ? hash : String(hash.prefix(8)) + "…"
     }
 }
@@ -515,10 +585,10 @@ enum ChatLibraryFormat {
 
 /// The one boundary between the Chats library and RTI's live chat: a
 /// notification, so the library never reaches into the composer.
-enum ChatLibraryResume {
+public enum ChatLibraryResume {
     /// Continue a saved chat in RTI's live chat surface. The id is the whole
     /// contract: the handler loads that thread, or reports that it is gone.
-    static func resume(id: String) {
+    public static func resume(id: String) {
         NotificationCenter.default.post(name: .rtiResumeChat, object: id)
     }
 
@@ -528,7 +598,7 @@ enum ChatLibraryResume {
     /// source material, puts `seed.prompt` in the composer as an editable
     /// draft, and sends nothing. A dated log has no chat boundaries to reopen,
     /// so nothing is joined and no chat id is named.
-    static func seedDatedChat(_ seed: ChatLibraryDatedSeed) {
+    public static func seedDatedChat(_ seed: ChatLibraryDatedSeed) {
         NotificationCenter.default.post(name: ChatLibraryDatedSeed.notificationName, object: seed)
     }
 }

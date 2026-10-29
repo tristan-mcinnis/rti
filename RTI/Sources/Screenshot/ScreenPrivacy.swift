@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// Apps whose windows must never appear in RTI's screen captures. Enforced at
 /// the ScreenCaptureKit content filter (the single choke point every capture

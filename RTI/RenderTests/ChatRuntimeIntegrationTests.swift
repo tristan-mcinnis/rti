@@ -1,6 +1,6 @@
 import HouseChatCore
 import HouseChatDocuments
-import RTICore
+@testable import RTICore
 import XCTest
 
 /// The real runtime send path, not a helper harness.
