@@ -200,6 +200,7 @@ final class OverlayShellModel {
     static let shared = OverlayShellModel()
 
     enum Chooser: Equatable {
+        case options
         case model
         case mode
     }
@@ -325,16 +326,14 @@ struct OverlayShellHeader: View {
     }
 }
 
-/// The title over the state line: status dot and word, then the mode (in
-/// full ink, like an assistant's name), then the model. Mode and model open
-/// in-window choosers.
+/// The meeting title and capture state stay visible. Mode and model live in
+/// one in-window options layer, alongside the existing mode/model choosers.
 struct OverlayHeaderTitle: View {
     let status: OverlayShellStatus
     /// The mode store, injected so a proof never reads the live one.
     var modes: ModeStore = .shared
 
     private let context = MeetingContextStore.shared
-    private let llm = LLMController.shared
     private let shell = OverlayShellModel.shared
 
     private var title: String {
@@ -345,19 +344,14 @@ struct OverlayHeaderTitle: View {
         )
     }
 
-    private var modelTitle: String {
-        let name = LLMProviders.active.displayName
-        return llm.smartMode ? "\(name) · Smart" : name
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            Text(title)
-                .font(HouseChatType.subheading)
-                .foregroundStyle(House.ColorToken.textPrimary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            HStack(spacing: House.Spacing.xxs) {
+        HStack(spacing: House.Spacing.xs) {
+            VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                Text(title)
+                    .font(HouseChatType.subheading)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 HStack(spacing: House.Spacing.xxs) {
                     SlateStatusDot(color: status.tone.color)
                     Text(status.word)
@@ -368,57 +362,22 @@ struct OverlayHeaderTitle: View {
                 .fixedSize()
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("State: \(status.word)")
-                if let mode = modes.activeMode?.name {
-                    separator
-                    chooserButton(
-                        mode,
-                        emphasised: true,
-                        kind: .mode,
-                        label: "Mode: \(mode)",
-                        hint: "Change the mode"
-                    )
-                }
-                separator
-                chooserButton(
-                    modelTitle,
-                    emphasised: false,
-                    kind: .model,
-                    label: "Model: \(modelTitle)",
-                    hint: "Change the model"
-                )
             }
+            Button {
+                shell.toggle(.options)
+            } label: {
+                Label("Assistant options", systemImage: "ellipsis")
+                    .labelStyle(.iconOnly)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .frame(width: House.Control.pill, height: House.Control.pill)
+            .contentShape(Rectangle())
+            .accessibilityLabel("Assistant options")
+            .accessibilityValue(shell.chooser == .options ? "Open" : "Closed")
+            .help("Change the mode or model")
         }
-    }
-
-    private var separator: some View {
-        Text("·")
-            .font(House.TypeToken.meta)
-            .foregroundStyle(House.ColorToken.textTertiary)
-            .accessibilityHidden(true)
-    }
-
-    private func chooserButton(
-        _ text: String,
-        emphasised: Bool,
-        kind: OverlayShellModel.Chooser,
-        label: String,
-        hint: String
-    ) -> some View {
-        Button {
-            shell.toggle(kind)
-        } label: {
-            Text(text)
-                .font(House.TypeToken.meta)
-                .foregroundStyle(emphasised ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityHint(hint)
-        .accessibilityValue(shell.chooser == kind ? "Open" : "Closed")
-        .help(hint)
     }
 }
 
@@ -435,7 +394,7 @@ extension OverlayStatusTone {
 
 // MARK: - Header choosers
 
-/// The model or mode chooser, floating under the title block on panel glass
+/// Assistant options and model/mode choosers float under the title block on panel glass
 /// (chat-surfaces.md section 3 "Floating layers"). In-window SwiftUI, so it
 /// inherits the overlay's `sharingType = .none`. A click outside or `esc`
 /// closes it.
@@ -475,12 +434,41 @@ struct OverlayHeaderChooser: View {
     private let llm = LLMController.shared
     @State private var hovered: String?
 
+    private var title: String {
+        switch kind {
+        case .options: "Assistant options"
+        case .model: "Model · \(llm.chatRouteLabel)"
+        case .mode: "Mode"
+        }
+    }
+
+    private var accessibilityTitle: String {
+        switch kind {
+        case .options: "Assistant options"
+        case .model: "Choose a model"
+        case .mode: "Choose a mode"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            SlateSectionLabel(text: kind == .model ? "Model · \(llm.chatRouteLabel)" : "Mode")
+            if kind != .options {
+                row(id: "options", title: "Back to assistant options", detail: nil, isChecked: false, dismissesChooser: false) {
+                    shell.chooser = .options
+                }
+                HouseDivider().padding(.vertical, House.Spacing.xxs)
+            }
+            SlateSectionLabel(text: title)
                 .padding(.horizontal, House.Spacing.xs)
                 .padding(.top, House.Spacing.xxs)
             switch kind {
+            case .options:
+                row(id: "mode", title: "Mode", detail: modes.activeMode?.name, isChecked: false, dismissesChooser: false) {
+                    shell.chooser = .mode
+                }
+                row(id: "model", title: "Model", detail: llm.chatRouteLabel, isChecked: false, dismissesChooser: false) {
+                    shell.chooser = .model
+                }
             case .model:
                 ForEach(LLMProviders.all) { provider in
                     row(id: provider.id, title: provider.displayName, detail: provider.model,
@@ -505,13 +493,13 @@ struct OverlayHeaderChooser: View {
         }
         .padding(House.Spacing.xs)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(kind == .model ? "Choose a model" : "Choose a mode")
+        .accessibilityLabel(accessibilityTitle)
     }
 
-    private func row(id: String, title: String, detail: String?, isChecked: Bool, action: @escaping () -> Void) -> some View {
+    private func row(id: String, title: String, detail: String?, isChecked: Bool, dismissesChooser: Bool = true, action: @escaping () -> Void) -> some View {
         Button {
             action()
-            shell.chooser = nil
+            if dismissesChooser { shell.chooser = nil }
         } label: {
             HStack(spacing: House.Spacing.xs) {
                 Image(systemName: "checkmark")

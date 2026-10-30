@@ -12,6 +12,7 @@ extension Notification.Name {
     /// Sent synchronously before a successful reset clears controller context.
     /// Only that controller's composer discards its pending draft and sources.
     static let rtiComposerWillResetConversation = Notification.Name("rti.composerWillResetConversation")
+    static let rtiComposerDidFinishResume = Notification.Name("rti.composerDidFinishResume")
 }
 
 /// The exact bytes and facts behind one source a turn was handed.
@@ -431,6 +432,7 @@ final class LLMController {
     /// `personal/rti/chats/threads`. Nil until a submitted turn is saved.
     /// An unavailable archive blocks Send and keeps the draft.
     private var chatThread: ConversationRecord?
+    var currentConversationID: String? { chatThread?.id }
     private var threadStore: ChatThreadStore?
     /// The sources this thread was sent, rehydrated from the store's own bytes.
     /// A follow-up reads these, so a moved or deleted original does not break
@@ -1105,9 +1107,12 @@ final class LLMController {
     /// bytes stay on disk, and a resumed chat rehydrates only its own sources.
     /// Leaving it here is what used to put a previous chat's documents and
     /// images on the wire after `/new` or at the start of the next recording.
-    func resetMemory() {
+    func resetMemory(resumingChatID: String? = nil) {
         resumeRequestID = nil
-        NotificationCenter.default.post(name: .rtiComposerWillResetConversation, object: self)
+        NotificationCenter.default.post(
+            name: .rtiComposerWillResetConversation, object: self,
+            userInfo: resumingChatID.map { ["resumingChatID": $0] }
+        )
         pendingDraftRestore = nil
         cancel()
         clearPendingScreenContext()
@@ -1246,8 +1251,16 @@ final class LLMController {
     func resumeChat(id: String) async {
         let requestID = UUID()
         resumeRequestID = requestID
+        var succeeded = false
         defer {
-            if resumeRequestID == requestID { resumeRequestID = nil }
+            let isLatestRequest = resumeRequestID == requestID
+            if isLatestRequest { resumeRequestID = nil }
+            if succeeded || isLatestRequest {
+                NotificationCenter.default.post(
+                    name: .rtiComposerDidFinishResume, object: self,
+                    userInfo: ["conversationID": id, "succeeded": succeeded]
+                )
+            }
         }
         do {
             guard let store = try chatStore() else {
@@ -1281,7 +1294,7 @@ final class LLMController {
             let retained = try await store.retainedAttachments(id: id)
             guard resumeRequestID == requestID, !Task.isCancelled else { return }
 
-            resetMemory()
+            resetMemory(resumingChatID: id)
             chatThread = thread
             entries = Self.entries(from: thread)
             retainedSources = retained.map(Self.referencedDocument(from:))
@@ -1291,6 +1304,7 @@ final class LLMController {
             lastError = nil
             lastErrorIsAuth = false
             lastErrorTurnID = nil
+            succeeded = true
         } catch {
             guard resumeRequestID == requestID, !Task.isCancelled else { return }
             // A damaged record is reported, never replaced with an empty chat.

@@ -70,6 +70,8 @@ final class SessionsWindowModel {
         var hasRetainedAudio = false
         /// `transcript.md` relative to `databases/`, for Ask in RTI.
         var vaultTranscriptPath: String?
+        /// Durable identity from session.json, matching saved chat SessionLink ids.
+        var sessionID: String?
 
         var id: String { session.url.path }
         var folderName: String { session.url.lastPathComponent }
@@ -202,6 +204,8 @@ final class SessionsWindowModel {
     /// The saved chats (Chats mode). Its own object, so the meeting list's
     /// state and the chat library's state never touch each other.
     let chatLibrary: ChatLibraryModel
+    @ObservationIgnored var onAsk: (() -> Void)?
+    @ObservationIgnored var onOpenRelatedChat: ((String) -> Void)?
     /// Which library the window shows. Sessions keeps every meeting path
     /// exactly as it was.
     var mode: LibraryMode = .sessions
@@ -287,6 +291,7 @@ final class SessionsWindowModel {
     @ObservationIgnored private var contentSearchTask: Task<Void, Never>?
     @ObservationIgnored private var pendingFolder: String?
     @ObservationIgnored private var isLoading = false
+    @ObservationIgnored private var reloadGeneration = 0
 
     static let railVisibleKey = "rti.sessions.railVisible"
     /// How many sessions the list loads.
@@ -371,6 +376,33 @@ final class SessionsWindowModel {
         return parts.joined(separator: " · ")
     }
 
+    /// Only explicit durable links connect a saved conversation to a session.
+    var relatedChats: [ChatLibraryRow] {
+        guard let sessionID = openRow?.sessionID else { return [] }
+        return chatLibrary.rows.filter { row in
+            chatLibrary.sessionLinksByID[row.id]?.contains {
+                $0.kind == "rti-session" && $0.id == sessionID
+            } == true
+        }
+    }
+
+    struct ReadingOrigin: Equatable {
+        let rowID: String
+        let fileName: String?
+        let railVisible: Bool
+    }
+
+    var readingOrigin: ReadingOrigin? {
+        openRowID.map { ReadingOrigin(rowID: $0, fileName: selectedFile?.name, railVisible: isRailVisible) }
+    }
+
+    func restore(_ origin: ReadingOrigin) {
+        guard rows.contains(where: { $0.id == origin.rowID }) else { return }
+        open(origin.rowID)
+        selectFile(named: origin.fileName)
+        setRailVisible(origin.railVisible, remember: false)
+    }
+
     // MARK: - Find
 
     private func recomputeFindHits() {
@@ -435,12 +467,15 @@ final class SessionsWindowModel {
     /// keep the open session (or open the newest one) and start the lazy
     /// title generation.
     func reload() async {
+        reloadGeneration &+= 1
+        let generation = reloadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == reloadGeneration { isLoading = false } }
         let limit = Self.listLimit
         let loaded = await Task.detached(priority: .userInitiated) {
             Self.loadRows(limit: limit)
         }.value
+        guard !Task.isCancelled, generation == reloadGeneration else { return }
         apply(rows: loaded.rows, titleMap: loaded.map)
     }
 
@@ -545,7 +580,8 @@ final class SessionsWindowModel {
             mode: metadata?.mode,
             speakerNames: speakers,
             stamp: stamp,
-            transcriptStatus: SessionsWindowRules.transcriptStatus(fileNames: names)
+            transcriptStatus: SessionsWindowRules.transcriptStatus(fileNames: names),
+            sessionID: metadata?.sessionId
         )
     }
 
@@ -575,6 +611,7 @@ final class SessionsWindowModel {
     /// Open a session in the reader.
     func open(_ rowID: String) {
         guard rows.contains(where: { $0.id == rowID }) else { return }
+        pendingFolder = nil
         let changed = openRowID != rowID
         openRowID = rowID
         if let index = railRows.firstIndex(where: { $0.id == rowID }) { railIndex = index }
@@ -1206,6 +1243,7 @@ final class SessionsWindowModel {
     /// as an `@` mention. The Sessions window itself never answers.
     private func askInRTI(_ row: Row) {
         guard let path = row.vaultTranscriptPath else { return }
+        onAsk?()
         WindowCoordinator.shared.showOverlay()
         NotificationCenter.default.post(name: .rtiSelectTab, object: "assist")
         NotificationCenter.default.post(name: .rtiSeedChatMention, object: path)

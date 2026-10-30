@@ -42,3 +42,9 @@ Workflow verification:
 - Independent review findings on stale resume/storage results and false mode-save success were repaired and cleared on re-review.
 - A queued-send test uses a valid fixture attachment so a blocked send cannot create a false pass. Failed-send coverage injects an actual storage error.
 - Strict changed-file House lint and source scrub pass. Workflow contracts name the state preserved or reset at each boundary.
+
+Session/chat and compact-chrome follow-up:
+- Related saved chats use exact rti-session links and session.json identities. Return to session preserves the selected file, search, rail and mounted reader. Failed or pending resumes cannot show a false origin; new archives refresh on Chats entry.
+- Header retains capture state, with mode/model options in the protected in-window chooser. Chat footer is Continue chat plus More; secondary actions and totals remain available.
+- Twenty focused navigation/chrome/composer checks passed, including eight navigation cases and both appearances at compact size. Earlier integrated workflow checks remain green.
+- Signing was isolated from the app using a disposable executable. The same identity failed headlessly and signed successfully through a PTY. docs/personal-setup.md records the repeatable interactive install path without keychain permission changes.

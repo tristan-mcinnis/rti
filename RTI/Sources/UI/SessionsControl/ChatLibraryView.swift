@@ -638,12 +638,7 @@ struct ChatLibraryReader: View {
                 .frame(maxWidth: .infinity)
             }
             HStack(spacing: House.Spacing.sm) {
-                Text(library.compactStorageLine ?? "")
-                    .font(House.TypeToken.meta)
-                    .foregroundStyle(House.ColorToken.textTertiary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(library.storageLine ?? "")
+                libraryDetailsMenu
                 Spacer(minLength: House.Spacing.sm)
                 Button("Use dated log in new chat") { library.openDatedLogAsNewChat() }
                     .buttonStyle(InkButtonStyle())
@@ -670,57 +665,38 @@ struct ChatLibraryReader: View {
         // action on a damaged record.
         let readable = library.detail?.record != nil
         return HStack(spacing: House.Spacing.sm) {
-            // The room beside four buttons and the primary action runs out at
-            // the window's minimum width, so the line drops whole facts
-            // rather than clipping a number.
-            ViewThatFits(in: .horizontal) {
-                storageFooterLine(library.compactStorageLine)
-                storageFooterLine(library.countsStorageLine)
-                storageFooterLine(library.chatsStorageLine)
-            }
-            Spacer(minLength: House.Spacing.sm)
-            Button {
-                Task { await library.togglePin(id: row.id) }
-            } label: {
-                Image(systemName: row.isPinned ? "pin.slash" : "pin")
-            }
-            .buttonStyle(SessionCircleButtonStyle())
-            .disabled(!readable)
-            .help(row.isPinned ? "Unpin this chat" : "Pin this chat")
-            .accessibilityLabel(row.isPinned ? "Unpin chat" : "Pin chat")
-            Button {
-                library.beginRename(id: row.id)
-            } label: {
-                Image(systemName: "pencil")
-            }
-            .buttonStyle(SessionCircleButtonStyle())
-            .disabled(!readable)
-            .help("Rename this chat")
-            .accessibilityLabel("Rename chat")
             Menu {
-                Button("Export Record (JSON)") { Task { await library.exportJSON(id: row.id) } }
-                Button("Export Markdown") { Task { await library.exportMarkdown(id: row.id) } }
+                Button(row.isPinned ? "Unpin chat" : "Pin chat") {
+                    // A menu action bridges into the store's async operation.
+                    Task { await library.togglePin(id: row.id) }
+                }
+                .disabled(!readable)
+                Button("Rename chat…") { library.beginRename(id: row.id) }
+                    .disabled(!readable)
+                Menu("Export") {
+                    Button("Record (JSON)") { Task { await library.exportJSON(id: row.id) } }
+                    Button("Markdown") { Task { await library.exportMarkdown(id: row.id) } }
+                }
+                .disabled(!readable)
+                Divider()
+                Button("Delete chat…", role: .destructive) { library.requestDeletion(id: row.id) }
+                Divider()
+                Menu("Library details") { libraryDetails }
             } label: {
-                Image(systemName: "arrow.down.doc")
+                Label("More", systemImage: "ellipsis")
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textSecondary)
             }
             .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .frame(width: House.Control.pill, height: House.Control.pill)
-            .disabled(!readable)
-            .help(readable ? "Export this chat" : "This chat's record could not be read, so there is nothing to export")
-            .accessibilityLabel("Export chat")
-            Button {
-                library.requestDeletion(id: row.id)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(SessionCircleButtonStyle())
-            .help("Delete this chat, keeping linked meetings and your own files")
-            .accessibilityLabel("Delete chat")
-            Button("Resume in RTI") { library.resume(id: row.id) }
+            .fixedSize()
+            .frame(height: House.Control.pill)
+            .accessibilityLabel("More chat actions")
+            .help("Pin, rename, export, or delete this chat; view library details")
+            Spacer(minLength: House.Spacing.sm)
+            Button("Continue chat") { library.resume(id: row.id) }
                 .buttonStyle(InkButtonStyle())
                 .disabled(!readable)
-                .help("Continue this chat in RTI's own chat surface")
+                .help(readable ? "Continue this saved chat in Live" : "This chat's record could not be read")
         }
         // The footer spans the reading column the same way the pane's content
         // does: the column caps the content, then the inset.
@@ -734,12 +710,25 @@ struct ChatLibraryReader: View {
         }
     }
 
-    private func storageFooterLine(_ text: String?) -> some View {
-        Text(text ?? "")
-            .font(House.TypeToken.meta)
-            .foregroundStyle(House.ColorToken.textTertiary)
-            .lineLimit(1)
-            .help(library.storageLine ?? "")
+    private var libraryDetailsMenu: some View {
+        Menu {
+            libraryDetails
+        } label: {
+            Label("Library details", systemImage: "info.circle")
+                .labelStyle(.iconOnly)
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textTertiary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: House.Control.pill, height: House.Control.pill)
+        .accessibilityLabel("Library details")
+        .help(library.storageLine ?? "Library details")
+    }
+
+    @ViewBuilder
+    private var libraryDetails: some View {
+        Text(library.storageLine ?? "Library details are loading…")
     }
 
     private func noticeLine(_ text: String) -> some View {        HStack(spacing: House.Spacing.xs) {

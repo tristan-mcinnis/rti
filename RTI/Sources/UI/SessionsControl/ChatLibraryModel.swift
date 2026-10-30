@@ -52,6 +52,8 @@ final class ChatLibraryModel {
     // MARK: - List state
 
     private(set) var rows: [ChatLibraryRow] = []
+    private(set) var sessionLinksByID: [String: [SessionLink]] = [:]
+    @ObservationIgnored var onResume: ((String) -> Void)?
     private(set) var legacyLogs: [ChatLibraryLegacy.Log] = []
     /// Days whose readable rows all belong to saved chats. Counted so the rail
     /// can say where those turns are listed instead of showing a duplicate day.
@@ -226,6 +228,7 @@ final class ChatLibraryModel {
         let generation = reloadGeneration
         guard let location else {
             rows = []
+            sessionLinksByID = [:]
             legacyLogs = []
             storageBytes = nil
             hasLoaded = true
@@ -246,6 +249,9 @@ final class ChatLibraryModel {
             guard !Task.isCancelled, reloadGeneration == generation else { return }
 
             rows = ChatLibraryRules.rows(records: records, summaries: summaries)
+            sessionLinksByID = Dictionary(uniqueKeysWithValues: records.map {
+                ($0.id, $0.sessionLinks + $0.turns.flatMap(\.sessionLinks))
+            })
             storageBytes = bytes
             errorText = nil
             hasLoaded = true
@@ -406,6 +412,7 @@ final class ChatLibraryModel {
     /// handler loads that thread (or starts one when nothing is stored).
     func resume(id: String) {
         select(id: id)
+        onResume?(id)
         showAssistSurface()
         ChatLibraryResume.resume(id: id)
         notice = "Opening this chat in RTI. Continue it there."

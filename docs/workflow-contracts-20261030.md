@@ -16,3 +16,7 @@ Working brief: follow each user goal through entry, action, result, navigation a
 The House visual components remain the interface vocabulary. These contracts govern what those components do together. A passing render proves layout; state-transition checks prove that work lands in the right conversation and survives navigation.
 
 Verification: 82 integrated workflow/chat checks passed, including 22 new regressions. A separate read-only reviewer identified stale asynchronous completions and false save success; those findings were fixed and re-reviewed before release. Provider and mode failures use injected test writers; composer tests use temporary stores and fake provider streams.
+
+Session conversations keep an explicit origin. Related links use the archived session identifier, never its folder name, title or date. A return restores the file and list state the reader left. A resume must finish successfully before its origin appears beside Live; failure clears that pending origin. Standalone chats have no invented meeting link. Archive rows refresh when opening Chats so a recently finished recording remains reachable.
+
+Persistent chrome shows capture state. Mode/model selection and private conversation/session choices stay within the protected workspace. The saved-chat footer exposes Continue chat and More, with secondary actions and library totals behind More.

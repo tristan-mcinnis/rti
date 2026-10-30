@@ -80,8 +80,9 @@ The upgrade script is `~/Documents/code/file-transcriber/skills/file-transcriber
 
 `scripts/install-local.sh` builds Release, re-signs the app with the Apple Development certificate, and replaces `/Applications/RTI.app`.
 
-- The signing identity comes from `RTI_SIGN_IDENTITY` in the environment, or from the gitignored `.release.env`, or from the first Apple Development identity in the login keychain.
+- The signing identity comes from `RTI_SIGN_IDENTITY` in the environment, or from the gitignored `.release.env`, or from the first available Apple Development identity in the user keychain search list.
 - Why a stable identity: an ad hoc signature changes on every build and resets every permission grant. A certificate keeps the designated requirement the same, so the grants survive.
+- Run the installer in an interactive shell. In an agent terminal, request a PTY (`tty: true`). A headless invocation can fail with `errSecInternalComponent` even when the same identity is valid and the login keychain is unlocked. A disposable signing probe confirmed the interactive-shell path on 2026-10-30. Keep the same identity; no keychain ACL or trust change is needed.
 - The script refuses a dirty tree, because the build compiles the working tree. It stamps the pinned `HouseChatCore` and `HouseDesign` versions and revisions (from the committed `Package.resolved`) into the bundle.
 - It will not quit RTI while a recording is running or paused. It asks the running app for its status over the control socket first.
 - `scripts/sign-install.sh` is the older route with a self-signed identity. Prefer `install-local.sh`.

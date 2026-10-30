@@ -29,6 +29,7 @@ struct WorkspaceView: View {
                 processingStatus: session.postProcessingStatus
             ), modes: modes, fill: House.ColorToken.surfaceSunken)
             navigation
+            sessionChatContext
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
                 // position survive trips to the archive or preferences.
@@ -74,21 +75,80 @@ struct WorkspaceView: View {
             .frame(width: House.Layout.chatWidth, height: House.Layout.chatHeight)
             .background(House.ColorToken.surface)
         }
-        .task(id: model.reloadRequest) {
-            guard model.isWindowVisible else { return }
-            switch model.page {
-            case .sessions: await model.sessions.reload()
-            case .chats: await model.sessions.loadActiveLibrary()
-            case .live, .settings: break
-            }
-        }
+        .task(id: model.reloadRequest) { await model.reloadVisiblePage() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didHideNotification)) { _ in
             model.setWindowVisible(false)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didUnhideNotification)) { _ in
             model.setWindowVisible(WindowCoordinator.shared.overlayIsVisible)
         }
+        .onChange(of: LLMController.shared.currentConversationID) { _, id in
+            model.conversationDidChange(to: id)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiComposerWillResetConversation)) { note in
+            guard (note.object as? LLMController) === LLMController.shared else { return }
+            model.conversationWillReset(resumingChatID: note.userInfo?["resumingChatID"] as? String)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiComposerDidFinishResume)) { note in
+            guard (note.object as? LLMController) === LLMController.shared,
+                  let id = note.userInfo?["conversationID"] as? String,
+                  let succeeded = note.userInfo?["succeeded"] as? Bool else { return }
+            model.conversationDidFinishResume(id: id, succeeded: succeeded)
+        }
         .onDisappear { model.sessions.playback.pause() }
+    }
+
+    @ViewBuilder
+    private var sessionChatContext: some View {
+        if let row = model.returnSessionRow {
+            HStack(spacing: House.Spacing.sm) {
+                Button { model.returnToSession(row) } label: {
+                    Label("Return to session", systemImage: "arrow.left")
+                }
+                .buttonStyle(.plain)
+                .font(House.TypeToken.label)
+                .help("Return to the session and the file you were reading")
+                Text(row.title.text)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, House.Spacing.md)
+            .frame(minHeight: House.Control.row)
+            .foregroundStyle(House.ColorToken.textPrimary)
+            .background(House.ColorToken.surfaceSunken)
+        } else if model.page == .chats, model.sessions.chatLibrary.openID != nil {
+            HStack(spacing: House.Spacing.sm) {
+                Text(model.selectedChatHasSessionLink ? "Session chat" : "Saved chat")
+                    .font(House.TypeToken.meta)
+                if model.linkedSessionRows.count > 1 {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: House.Spacing.sm) {
+                            ForEach(model.linkedSessionRows) { row in
+                                Button(row.title.text) { model.returnToSession(row) }
+                                    .buttonStyle(.plain)
+                                    .font(House.TypeToken.label)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, House.Spacing.sm)
+                                    .frame(minHeight: House.Control.pill)
+                                    .background(House.ColorToken.chipFill, in: Capsule())
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    .frame(height: House.Control.pill)
+                } else if model.selectedChatHasSessionLink {
+                    Text("Session unavailable")
+                        .font(House.TypeToken.meta)
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(House.ColorToken.textSecondary)
+            .padding(.horizontal, House.Spacing.md)
+            .frame(minHeight: House.Control.row)
+            .background(House.ColorToken.surfaceSunken)
+        }
     }
 
     private var navigation: some View {

@@ -112,12 +112,19 @@ struct SessionsBrowserView: View {
     /// leaves every meeting path below untouched.
     @ViewBuilder
     private var readingColumn: some View {
-        switch model.mode {
-        case .sessions: conversation
-        case .chats:
-            VStack(spacing: 0) {
-                if !embedded { SessionsHeader(model: model) }
-                ChatLibraryReader(library: model.chatLibrary)
+        ZStack {
+            // Keep the session reader mounted while following a saved chat.
+            // Its scroll position and find state belong to the reading origin.
+            conversation
+                .opacity(model.mode == .sessions ? 1 : 0)
+                .allowsHitTesting(model.mode == .sessions)
+                .disabled(model.mode != .sessions)
+                .accessibilityHidden(model.mode != .sessions)
+            if model.mode == .chats {
+                VStack(spacing: 0) {
+                    if !embedded { SessionsHeader(model: model) }
+                    ChatLibraryReader(library: model.chatLibrary)
+                }
             }
         }
     }
@@ -153,24 +160,63 @@ struct SessionsBrowserView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     // The scroll view would otherwise draw up under the header.
                     .clipped()
-                if model.selectedFile?.name == "chat", model.openRow?.vaultTranscriptPath != nil {
-                    HStack(spacing: House.Spacing.sm) {
-                        Text("Saved chat")
-                            .font(House.TypeToken.meta)
-                            .foregroundStyle(House.ColorToken.textTertiary)
-                        Spacer(minLength: House.Spacing.sm)
-                        Button("Ask about this session", systemImage: "bubble.left.and.text.bubble.right") { model.perform(.ask) }
+                if model.selectedFile?.name == "chat" {
+                    VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                        if model.relatedChats.count == 1, let chat = model.relatedChats.first {
+                            Button {
+                                model.onOpenRelatedChat?(chat.id)
+                            } label: {
+                                Label("Continue saved chat: \(chat.title)", systemImage: "bubble.left.and.text.bubble.right")
+                                    .lineLimit(1)
+                            }
                             .buttonStyle(.plain)
                             .font(House.TypeToken.label)
-                            .padding(.horizontal, House.Spacing.sm)
+                            .foregroundStyle(House.ColorToken.textPrimary)
                             .frame(minHeight: House.Control.pill)
-                            .background(House.ColorToken.chipFill, in: Capsule())
-                            .help("Open RTI's chat composer with this session's transcript attached")
+                        } else if !model.relatedChats.isEmpty {
+                            Text("Related saved chats")
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.textSecondary)
+                            ScrollView(.horizontal) {
+                                HStack(spacing: House.Spacing.sm) {
+                                    ForEach(model.relatedChats) { chat in
+                                        Button(chat.title) { model.onOpenRelatedChat?(chat.id) }
+                                            .buttonStyle(.plain)
+                                            .font(House.TypeToken.label)
+                                            .foregroundStyle(House.ColorToken.textPrimary)
+                                            .lineLimit(1)
+                                            .padding(.horizontal, House.Spacing.sm)
+                                            .frame(minHeight: House.Control.pill)
+                                            .background(House.ColorToken.chipFill, in: Capsule())
+                                    }
+                                }
+                            }
+                            .scrollIndicators(.hidden)
+                    .frame(height: House.Control.pill)
+                        }
+                        if model.openRow?.vaultTranscriptPath != nil {
+                            HStack(spacing: House.Spacing.sm) {
+                                Text("Archived session chat")
+                                    .font(House.TypeToken.meta)
+                                    .foregroundStyle(House.ColorToken.textTertiary)
+                                Spacer(minLength: House.Spacing.sm)
+                                Button("Ask about this session", systemImage: "bubble.left.and.text.bubble.right") { model.perform(.ask) }
+                                    .buttonStyle(.plain)
+                                    .font(House.TypeToken.label)
+                                    .padding(.horizontal, House.Spacing.sm)
+                                    .frame(minHeight: House.Control.pill)
+                                    .background(House.ColorToken.chipFill, in: Capsule())
+                                    .help("Open RTI's chat composer with this session's transcript attached")
+                            }
+                        }
                     }
                     .frame(maxWidth: Self.columnWidth)
                     .padding(.horizontal, House.Spacing.lg)
                     .padding(.vertical, House.Spacing.xs)
                     .frame(maxWidth: .infinity)
+                    .task(id: model.selectedFile?.url) {
+                        await model.chatLibrary.reload()
+                    }
                 }
             } else {
                 emptyState
