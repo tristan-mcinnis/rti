@@ -33,7 +33,7 @@ struct LogsView: View {
     private var entries: [AppLog.Entry] { fixture?.entries ?? log.entries }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: House.Spacing.xl) {
             toolbar
             HouseDivider()
 
@@ -44,7 +44,7 @@ struct LogsView: View {
                         .foregroundStyle(House.ColorToken.textPrimary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, House.Spacing.lg)
+                        .padding(.horizontal, House.Spacing.xxl)
                         .padding(.vertical, House.Spacing.sm)
                 }
             } else {
@@ -95,8 +95,7 @@ struct LogsView: View {
                 Button("Show in Finder") { revealPastLogs() }
             }
         }
-        .padding(.horizontal, House.Spacing.lg)
-        .padding(.bottom, House.Spacing.sm)
+        .padding(.horizontal, House.Spacing.xxl)
     }
 
     /// The in-memory log. The scroll follows the newest line.
@@ -116,7 +115,7 @@ struct LogsView: View {
                             .padding(.vertical, House.Spacing.md)
                     }
                 }
-                .padding(.horizontal, House.Spacing.lg)
+                .padding(.horizontal, House.Spacing.xxl)
                 .padding(.vertical, House.Spacing.sm)
             }
             .onChange(of: entries.count) { _, _ in
@@ -153,8 +152,8 @@ struct LogsView: View {
                     .disabled(fixture != nil)
             }
         }
-        .padding(.horizontal, House.Spacing.lg)
-        .padding(.vertical, House.Spacing.xs)
+        .padding(.horizontal, House.Spacing.xxl)
+        .padding(.bottom, House.Spacing.xxxl)
     }
 
     private func row(_ entry: AppLog.Entry) -> some View {

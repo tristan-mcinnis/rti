@@ -26,9 +26,9 @@ struct ProvidersTab: View {
 
     var body: some View {
         SettingsPage(maxWidth: 720) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: House.Spacing.xl) {
                 SettingsCard("Provider Routing", detail: "Pick the assistant provider. Soniox handles live transcription and the automatic improved pass after Finish.") {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: House.Spacing.lg) {
                         providerPicker(
                             title: "Assistant",
                             selection: $draft.selectedLLMProviderId,
@@ -53,7 +53,7 @@ struct ProvidersTab: View {
                 }
 
                 SettingsCard("Assistant Provider Keys", detail: "Store whichever LLM keys you use. RTI only requires a key for the currently selected assistant provider.") {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: House.Spacing.lg) {
                         ForEach(LLMProviders.all) { provider in
                             field(
                                 provider.apiKeyLabel,
@@ -65,7 +65,7 @@ struct ProvidersTab: View {
                 }
 
                 SettingsCard("Speech-to-Text Provider Keys", detail: "Soniox powers live transcription and the transcript upgrade after Finish.") {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: House.Spacing.lg) {
                         field("Soniox API key", "soniox-...", binding(for: "soniox"))
                     }
                 }
@@ -88,7 +88,7 @@ struct ProvidersTab: View {
                     SettingsStatusLabel(text: saveError, systemImage: "xmark.octagon.fill", color: RTIDesign.Color.danger)
                 }
 
-                HStack {
+                HStack(spacing: House.Spacing.xs) {
                     if draft.hasUnsavedChanges {
                         SettingsStatusLabel(text: "Unsaved changes", systemImage: "pencil", color: House.ColorToken.textSecondary)
                     } else if draft.saved {
@@ -128,7 +128,7 @@ struct ProvidersTab: View {
         options: [(String, String)],
         detail: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
@@ -150,7 +150,7 @@ struct ProvidersTab: View {
     }
 
     private func staticProviderRow(title: String, value: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
@@ -181,7 +181,7 @@ struct ProvidersTab: View {
     }
 
     private func field(_ label: String, _ placeholder: String, _ text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             Text(label).font(.system(size: House.TypeToken.Size.meta, weight: .medium))
             SecureField(placeholder, text: text)
                 .textFieldStyle(.roundedBorder)

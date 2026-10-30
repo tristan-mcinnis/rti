@@ -64,7 +64,7 @@ packages:
   # The House design tokens (HouseDesign product), pinned by tag.
   DesignSystem:
     url: https://github.com/tristan-mcinnis/design-system
-    from: "1.0.0"
+    from: "1.1.0"
 
 targets:
   # Pure-Swift logic core (no AppKit/SwiftUI, no @MainActor). Extracted so the

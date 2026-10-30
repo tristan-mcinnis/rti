@@ -11,7 +11,7 @@ import RTICore
 struct GeneralTab: View {
     var body: some View {
         SettingsPage {
-            VStack(alignment: .leading, spacing: House.Spacing.sm) {
+            VStack(alignment: .leading, spacing: House.Spacing.xl) {
                 LaunchAtLoginSection()
                 CaptureAccessSection()
                 ScreenPrivacySection()
@@ -403,7 +403,7 @@ private struct DataAndSupportSection: View {
 struct AboutTab: View {
     var body: some View {
         SettingsPage {
-            VStack(alignment: .leading, spacing: House.Spacing.sm) {
+            VStack(alignment: .leading, spacing: House.Spacing.xl) {
                 SettingsCard("Version", rows: true) {
                     SettingsRow(title: "RTI", isFirst: true) {
                         Text(Self.versionLine)

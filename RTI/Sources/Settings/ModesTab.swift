@@ -73,7 +73,7 @@ struct ModesTab: View {
 
             SettingsPage(maxWidth: 720) {
                 if draft.selection != nil {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: House.Spacing.xl) {
                         SettingsCard("Mode Identity", detail: "The name appears in the overlay and command surfaces.") {
                             TextField("Mode name", text: $draft.name)
                                 .textFieldStyle(.roundedBorder)
@@ -97,7 +97,7 @@ struct ModesTab: View {
                             SettingsStatusLabel(text: error, systemImage: "exclamationmark.triangle", color: House.ColorToken.danger)
                         }
 
-                        HStack {
+                        HStack(spacing: House.Spacing.xs) {
                             Button("Set Active") {
                                 if let id = draft.selection { store.activeModeId = id }
                             }

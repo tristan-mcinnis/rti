@@ -1,4 +1,5 @@
 import SwiftUI
+import HouseDesign
 
 // MARK: - Glossary
 
@@ -7,7 +8,7 @@ struct GlossaryTab: View {
 
     var body: some View {
         SettingsPage(maxWidth: 760) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: House.Spacing.xl) {
                 SettingsCard("How Glossary Terms Are Used", detail: "Names, acronyms, and domain terms are sent as a system instruction before every chat and recall call.") {
                     Text("Use this for proper names, client-specific jargon, and in-house spellings that the model should preserve exactly.")
                         .font(RTIDesign.Font.meta)
@@ -16,7 +17,7 @@ struct GlossaryTab: View {
                 }
 
                 SettingsCard("Entries", detail: "One entry per line: `Term — meaning`. Separators can be em dash, colon, or hyphen. Lines starting with `#` are ignored as section headers.") {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                         TextEditor(text: $store.rawText)
                             .font(.system(.body, design: .monospaced))
                             .frame(minHeight: 260)

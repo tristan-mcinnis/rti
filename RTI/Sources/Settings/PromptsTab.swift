@@ -138,9 +138,9 @@ private struct PromptEditorView: View {
 
     var body: some View {
         SettingsPage(maxWidth: 820) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: House.Spacing.xl) {
                 SettingsCard(id.title, detail: id.help) {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                         if store.defaultChangedSinceEdit(id) {
                             SettingsStatusLabel(text: "The shipped default changed since you edited this.", systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
                         }
@@ -166,7 +166,7 @@ private struct PromptEditorView: View {
                     }
                 }
 
-                HStack {
+                HStack(spacing: House.Spacing.xs) {
                     if store.isOverridden(id) {
                         SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: RTIDesign.Color.textSecondary)
                     } else {

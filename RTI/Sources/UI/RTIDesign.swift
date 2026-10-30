@@ -101,10 +101,10 @@ enum RTIDesign {
         static let xs = House.Spacing.xs     // 8
         static let sm = House.Spacing.sm     // 12
         static let md = House.Spacing.md     // 16
-        static let lg = House.Spacing.xl     // 24
-        static let xl = House.Spacing.xxl    // 32
-        static let xxl = House.Spacing.xxxl  // 48
-        static let xxxl = House.Spacing.xxxxl // 64
+        static let lg = House.Spacing.lg     // 20
+        static let xl = House.Spacing.xl     // 24
+        static let xxl = House.Spacing.xxl   // 32
+        static let xxxl = House.Spacing.xxxl // 48
     }
 
     // MARK: - Radius

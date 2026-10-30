@@ -185,22 +185,10 @@ struct SettingsView: View {
 
     private var pane: some View {
         VStack(spacing: 0) {
-            paneHeader
-            Group {
-                switch navigation.pane {
-                case .providers: ProvidersTab(draft: navigation.providerDraft)
-                case .modes: ModesTab(modeStore: modeStore, draft: navigation.modeDraft)
-                case .prompts: PromptsTab(draft: navigation.promptDraft)
-                case .glossary: GlossaryTab()
-                case .general: GeneralTab()
-                case .logs: LogsView(fixture: logsFixture)
-                case .about: AboutTab()
-                }
+            VStack(spacing: House.Spacing.xl) {
+                paneHeader
+                paneBody
             }
-            // A fresh subtree per pane: a ScrollView-rooted pane swapped in
-            // place can mount without painting (seen 2026-08-30).
-            .id(navigation.pane)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             SlateFooter(statusColor: nil, status: navigation.pane.footerHint) {
                 KeyHint(label: "Next", keys: ["⌘", "\(nextNumber)"])
             }
@@ -208,8 +196,26 @@ struct SettingsView: View {
         .background(House.ColorToken.surface)
     }
 
+    private var paneBody: some View {
+        Group {
+            switch navigation.pane {
+            case .providers: ProvidersTab(draft: navigation.providerDraft)
+            case .modes: ModesTab(modeStore: modeStore, draft: navigation.modeDraft)
+            case .prompts: PromptsTab(draft: navigation.promptDraft)
+            case .glossary: GlossaryTab()
+            case .general: GeneralTab()
+            case .logs: LogsView(fixture: logsFixture)
+            case .about: AboutTab()
+            }
+        }
+        // A fresh subtree per pane: a ScrollView-rooted pane swapped in
+        // place can mount without painting (seen 2026-08-30).
+        .id(navigation.pane)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
     private var paneHeader: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             Text(navigation.pane.label)
                 .font(House.TypeToken.title)
                 .foregroundStyle(House.ColorToken.textPrimary)
@@ -219,8 +225,8 @@ struct SettingsView: View {
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, House.Spacing.lg)
-        .padding(.vertical, House.Spacing.md)
+        .padding(.horizontal, House.Spacing.xxl)
+        .padding(.top, House.Spacing.xxxl)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
@@ -367,8 +373,9 @@ struct SettingsSurfaceBackground: View {
     }
 }
 
-/// A pane's scrolling body: the cards stacked `Spacing.sm` apart at the
-/// pane's side inset, capped at `maxWidth` on a wide window.
+/// A pane's scrolling body at the pane's `Spacing.xxl` side inset, with
+/// `Spacing.xxxl` below the last card, capped at `maxWidth` on a wide
+/// window. Each pane stacks its cards `Spacing.xl` apart.
 struct SettingsPage<Content: View>: View {
     let maxWidth: CGFloat
     private let content: Content
@@ -385,8 +392,8 @@ struct SettingsPage<Content: View>: View {
                     .frame(maxWidth: maxWidth, alignment: .leading)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, House.Spacing.lg)
-            .padding(.bottom, House.Spacing.md)
+            .padding(.horizontal, House.Spacing.xxl)
+            .padding(.bottom, House.Spacing.xxxl)
         }
         .background(SettingsSurfaceBackground())
         // Toggles are ink, never blue (DESIGN.md).
@@ -414,7 +421,7 @@ struct SettingsCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: rows ? 0 : House.Spacing.sm) {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
             if title != nil || detail != nil {
                 VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                     if let title {
@@ -425,7 +432,6 @@ struct SettingsCard<Content: View>: View {
                     }
                 }
                 .padding(.top, rows ? House.Spacing.sm : 0)
-                .padding(.bottom, rows ? House.Spacing.xxs : 0)
             }
             content
         }

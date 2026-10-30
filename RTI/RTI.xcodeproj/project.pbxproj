@@ -2573,7 +2573,7 @@
 			repositoryURL = "https://github.com/tristan-mcinnis/design-system";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
+				minimumVersion = 1.1.0;
 			};
 		};
 		FDF0A317C13BF74ADCFA0CB4 /* XCRemoteSwiftPackageReference "house-chat-core" */ = {
