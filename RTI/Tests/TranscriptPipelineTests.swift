@@ -230,6 +230,48 @@ final class TranscriptPipelineTests: XCTestCase {
 
     // MARK: - Cross-channel echo dedup
 
+    func test_lateSystemContextInvalidatesPreviouslyPublishedMicCoverage() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("alpha beta gamma", speaker: 2, start: 2_000, end: 2_400)], channel: "mic")
+        XCTAssertEqual(p.liveEntries.map(\.text), ["alpha beta gamma"])
+
+        p.process(words: [word("alpha beta", speaker: 0, start: 1_800, end: 2_100)], channel: "system")
+        XCTAssertEqual(p.liveEntries.map(\.text), ["alpha beta gamma"])
+        p.process(words: [word(" gamma", speaker: 0, start: 2_250, end: 2_600)], channel: "system")
+        XCTAssertEqual(p.liveEntries.map(\.text), ["alpha beta", " gamma"])
+        XCTAssertTrue(p.liveEntries.allSatisfy { $0.speakerId.hasPrefix("remote_") })
+    }
+
+    func test_outOfOrderReconnectedSystemContextRechecksOldMicWindow() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("alpha beta gamma", speaker: 2, start: 2_000, end: 2_400)], channel: "mic")
+        p.process(words: [word("a later unrelated system contribution", speaker: 0, start: 10_000, end: 10_400)], channel: "system")
+        XCTAssertEqual(p.liveEntries.count, 2)
+
+        p.restartStream(channel: "system", atMs: 1_500)
+        p.process(words: [word("alpha beta gamma delta", speaker: 0, start: 0, end: 400)], channel: "system")
+        XCTAssertEqual(p.liveEntries.map(\.text), ["alpha beta gamma delta", "a later unrelated system contribution"])
+        XCTAssertTrue(p.liveEntries.allSatisfy { $0.speakerId.hasPrefix("remote_") })
+    }
+
+    func test_echoTrimmingRechecksComparisonForSameEntryIdentity() {
+        let p = TranscriptPipeline()
+        p.process(words: [
+            word("echo", speaker: 2, start: 0, end: 100),
+            word(" room contribution", speaker: 2, start: 3_000, end: 3_100)
+        ], channel: "mic")
+        p.process(words: [word("unrelated distant system speech", speaker: 0, start: 10_000, end: 10_100)], channel: "system")
+        let micID = p.liveEntries.first?.id
+        XCTAssertEqual(p.liveEntries.first?.text, "echo room contribution")
+        p.restartStream(channel: "system", atMs: 0)
+        p.process(words: [word("echo", speaker: 0, start: 0, end: 100)], channel: "system")
+        let remainingMic = p.liveEntries.first { $0.speakerId == "room_1" }
+        XCTAssertEqual(remainingMic?.id, micID)
+        XCTAssertEqual(remainingMic?.text, " room contribution")
+        XCTAssertEqual(remainingMic?.startMs, 3_000)
+        XCTAssertEqual(remainingMic?.tokens.map(\.text), [" room contribution"])
+    }
+
     func test_crossChannel_echo_collapsesNearDuplicate() {
         let p = TranscriptPipeline()
         // System tap captures the full line; the mic re-hears the same audio a

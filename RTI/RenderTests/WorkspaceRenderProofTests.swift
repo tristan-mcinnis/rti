@@ -18,6 +18,32 @@ final class WorkspaceRenderProofTests: RenderProofTestCase {
         try await super.tearDown()
     }
 
+    func testTwoHourTranscriptFitsTheMinimumWorkspace() throws {
+        let entries = (0..<14_400).map { index in
+            RenderFixtures.liveEntry(
+                index.isMultiple(of: 2) ? "self" : "remote_1",
+                index.isMultiple(of: 2) ? "Invented English speech segment \(index)." : "合成普通话片段 \(index)。",
+                index * 500
+            )
+        }
+        SessionCoordinator.shared.seedForRenderProof(
+            entries: entries, interim: nil, phase: .recording,
+            startedAt: Date().addingTimeInterval(-7_200)
+        )
+        let model = WorkspaceModel()
+        try renderBothAppearances(
+            name: "workspace-two-hour-transcript-minimum",
+            size: WorkspaceLayout.minimumSize,
+            view: WorkspaceView(model: model, modes: .inMemory())
+                .onAppear { NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.transcript.rawValue) }
+        )
+        model.select(.sessions)
+        model.select(.live)
+        XCTAssertEqual(SessionCoordinator.shared.phase, .recording)
+        XCTAssertEqual(SessionCoordinator.shared.liveEntries.count, entries.count)
+        XCTAssertEqual(model.page, .live)
+    }
+
     func testEveryPageInBothAppearances() async throws {
         let model = WorkspaceModel()
         await model.sessions.reload()

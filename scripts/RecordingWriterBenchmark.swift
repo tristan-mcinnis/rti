@@ -249,6 +249,8 @@ struct RecordingWriterBenchmark {
         recorder.close()
         let elapsed = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000
         try require(failures.isEmpty, "replay reported write failures")
+        var recordingUsage = rusage()
+        getrusage(RUSAGE_SELF, &recordingUsage)
         var actualHashes: [String] = []
         for (leg, name) in ["audio-mic.wav", "audio-system.wav"].enumerated() {
             let url = directory.appendingPathComponent(name)
@@ -258,7 +260,14 @@ struct RecordingWriterBenchmark {
             defer { try? handle.close() }
             try handle.seek(toOffset: 44)
             var actual: UInt64 = 14_695_981_039_346_656_037
-            while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty { hash(data, into: &actual) }
+            // Foundation's read can return autoreleased backing storage.
+            // Release each chunk before reading the next one so verification
+            // does not retain a copy of the entire two-hour WAV payload.
+            while try autoreleasepool(invoking: {
+                guard let data = try handle.read(upToCount: 1_048_576), !data.isEmpty else { return false }
+                hash(data, into: &actual)
+                return true
+            }) {}
             try require(actual == expectedHashes[leg], "PCM byte hash differs for \(name)")
             actualHashes.append(String(actual, radix: 16))
         }
@@ -277,6 +286,7 @@ struct RecordingWriterBenchmark {
             "p50_append_ms": percentile(0.50), "p95_append_ms": percentile(0.95),
             "p99_append_ms": percentile(0.99), "maximum_schedule_lateness_ms": Double(maximumScheduleLatenessNs) / 1_000_000,
             "process_peak_rss_bytes": usage.ru_maxrss,
+            "recording_phase_peak_rss_bytes": recordingUsage.ru_maxrss,
             "output_bytes": frames.reduce(88) { $0 + $1 * 2 },
             "source_frames": sources.map { $0?.count ?? 0 },
             "source_shape": "optional invented speech, looped with four-sample leg/second markers",

@@ -5,9 +5,10 @@ import Foundation
 import RTICore
 import XCTest
 
-/// Opt-in, wall-clock replay through AudioPipeline's real PCM and transcript
+/// Opt-in replay through AudioPipeline's real PCM and transcript
 /// callbacks. Process metrics include XCTest. Capture devices and STT transport
 /// are injected; this does not measure hardware capture or recognition quality.
+/// Default cadence is real time; acceleration verifies audio-time workload only.
 @MainActor
 final class RealTimePipelineEnduranceTests: XCTestCase {
     func testTwoLegsAtRealTimeCadence() async throws {
@@ -19,6 +20,8 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
             XCTFail("RTI_PIPELINE_ENDURANCE_SECONDS must be between 1 and 7200")
             return
         }
+        let accelerated = environment["RTI_PIPELINE_ENDURANCE_ACCELERATED"] == "1"
+        let cadence = accelerated ? "accelerated" : "realtime"
         let directory = URL(fileURLWithPath: environment["RTI_PIPELINE_ENDURANCE_ARTIFACT_DIR"]
             ?? "/tmp/rti-pipeline-endurance-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -89,9 +92,11 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
         let silence = Data(count: frameCount * 2)
         let pauseStart = min(30.0, seconds / 3)
         let pauseLength = min(3.0, seconds / 6)
-        async let pings = Self.schedulerPings(startedAt: began, seconds: seconds)
+        async let pings = Self.schedulerPings(startedAt: began, seconds: accelerated ? 0 : seconds)
         try writeJSON([
             "state": "running", "seconds_requested": seconds, "started_at": ISO8601DateFormatter().string(from: Date()),
+            "cadence": cadence, "playback_seconds_requested": Double(totalBlocks) / 50,
+            "scheduling_metrics_available": !accelerated,
             "scope": "Real AudioPipeline, MeetingRecorder, WAVWriter and TranscriptPipeline; injected capture/STT and no-op pipeline logs; XCTest process metrics",
             "mic_source": micSource.url.path, "mic_source_sha256": micSource.sha256,
             "system_source": systemSource.url.path, "system_source_sha256": systemSource.sha256,
@@ -104,10 +109,12 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
             try Task.checkCancellation()
             let target = began + Double(block) / 50
             let wait = target - ProcessInfo.processInfo.systemUptime
-            if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
-            let lag = max(0, ProcessInfo.processInfo.systemUptime - target)
-            schedulingLag.record(lag * 1_000)
-            if lag >= 0.02 { lateBlocks += 1 }
+            if !accelerated {
+                if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
+                let lag = max(0, ProcessInfo.processInfo.systemUptime - target)
+                schedulingLag.record(lag * 1_000)
+                if lag >= 0.02 { lateBlocks += 1 }
+            }
             let elapsed = Double(block) / 50
             let pausePosition = (elapsed - pauseStart).truncatingRemainder(dividingBy: 600)
             pipeline.suspended = elapsed >= pauseStart && pausePosition >= 0 && pausePosition < pauseLength
@@ -134,17 +141,23 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
             if wallElapsed >= nextProgress {
                 let rss = Self.residentBytes()
                 peakRSS = max(peakRSS, rss)
-                snapshots.append(["elapsed_seconds": wallElapsed, "rss_bytes": rss,
+                var sample: [String: Any] = ["elapsed_seconds": wallElapsed, "rss_bytes": rss,
+                                  "cadence": cadence, "playback_seconds": Double(block + 1) / 50,
                                   "cpu_seconds": Self.cpuSeconds() - initialCPU,
                                   "blocks_per_leg": block + 1, "late_blocks": lateBlocks,
                                   "transcript_entries": transcript.liveEntries.count,
-                                  "callback_ms": callbackTiming.json, "scheduler_lag_ms": schedulingLag.json])
+                                  "callback_ms": callbackTiming.json, "scheduler_lag_ms": schedulingLag.json]
+                if accelerated { sample["scheduler_lag_ms"] = NSNull(); sample["late_blocks"] = NSNull() }
+                snapshots.append(sample)
                 try writeJSON(["state": "running", "samples": snapshots], to: directory.appendingPathComponent("progress.json"))
                 nextProgress += 30
             }
+            // Accelerated replay still lets the production lazy-client bridge
+            // and lifecycle tasks run; it does not wait for audio wall time.
+            if accelerated, block % 50 == 0 { await Task.yield() }
         }
         let finalWait = began + seconds - ProcessInfo.processInfo.systemUptime
-        if finalWait > 0 { try await Task.sleep(for: .seconds(finalWait)) }
+        if !accelerated, finalWait > 0 { try await Task.sleep(for: .seconds(finalWait)) }
         let wallSeconds = ProcessInfo.processInfo.systemUptime - began
         pipeline.suspended = false
         let captureCPU = Self.cpuSeconds() - initialCPU
@@ -163,8 +176,10 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
         let expectedFrames = Int64(totalBlocks * frameCount)
         let finalRSS = Self.residentBytes()
         peakRSS = max(peakRSS, finalRSS)
-        let result: [String: Any] = [
+        var result: [String: Any] = [
             "state": "complete", "wall_seconds": wallSeconds, "seconds_requested": seconds,
+            "cadence": cadence, "playback_seconds": Double(expectedFrames) / 16_000,
+            "scheduling_metrics_available": !accelerated,
             "blocks_per_leg": totalBlocks, "frames_per_leg": expectedFrames,
             "paused_blocks": pausedBlocks, "late_blocks": lateBlocks,
             "callback_ms": callbackTiming.json, "scheduler_lag_ms": schedulingLag.json,
@@ -180,6 +195,12 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
             "verified_pcm_integrity": micProof.sha256 == expectedMicHash && systemProof.sha256 == expectedSystemHash && micProof.frames == expectedFrames && systemProof.frames == expectedFrames,
             "scope": "Metrics include XCTest and injected PCM generation. Pipeline logs use a no-op sink. No physical capture, live provider or full UI rendering."
         ]
+        if accelerated {
+            result["scheduler_lag_ms"] = NSNull()
+            result["independent_main_actor_ping_ms"] = NSNull()
+            result["late_blocks"] = NSNull()
+            result["scope"] = "Accelerated workload and retained-byte verification only. No realtime responsiveness or physical-device-health claim. Capture, STT and pipeline logs are injected."
+        }
         try writeJSON(result, to: directory.appendingPathComponent("result.json"))
         XCTAssertTrue(fatalErrors.isEmpty, "\(fatalErrors)")
         XCTAssertTrue(providerErrors.isEmpty, "\(providerErrors)")
@@ -187,7 +208,7 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
         XCTAssertEqual(systemProof.frames, expectedFrames)
         XCTAssertEqual(micProof.sha256, expectedMicHash)
         XCTAssertEqual(systemProof.sha256, expectedSystemHash)
-        XCTAssertGreaterThanOrEqual(wallSeconds, seconds)
+        if !accelerated { XCTAssertGreaterThanOrEqual(wallSeconds, seconds) }
         XCTAssertGreaterThan(callbackWordCount, 0)
         XCTAssertGreaterThan(initialRSS, 0, "Mach process metrics must be available")
     }

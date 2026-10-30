@@ -61,5 +61,9 @@ Must not: Use client audio, change permissions or credentials, interrupt a real 
 - Baseline probes reproduced overwriting existing audio and inconsistent WAV length after bounded write failure. Fixed writer rejects collisions/unsupported formats, rolls back partial writes and reports close failures.
 - Transcription transport failure now preserves audio capture and offers Retry transcription. Device failure and archive failure remain separate, explicit outcomes.
 - Close/write errors cannot claim Session saved or enter automatic upgrade. A persistent archive warning survives relaunch; a failed archive cannot leave known bad recordings queued.
-- Final focused suites passed 33 checks including the added visual proof; independent review cleared the repairs. Details and reproducible commands: docs/recording-acceptance-20261030.md.
-- Two-hour writer and pipeline runs remain in progress. Physical-device capture, recognition accuracy, power loss and installed-app long-session rendering remain unverified.
+- The integrated run passed 95 checks; the earlier transcript-focused run passed 70 overlapping checks. Independent reviews cleared recovery, cache semantics and benchmark scope. Details: docs/recording-acceptance-20261030.md.
+- Repaired pipeline passed 15 minutes at real cadence and a complete two-hour audio workload in accelerated mode. Both retained hashes and frame counts match; close was clean. The original slow baseline was stopped after 79 measured minutes and is not counted as a PCM pass.
+- Optimized two-hour transcript fixture: steady merge mean 562 to 24 ms; CPU 21.9 times lower; all 89 semantic snapshots match. Minimum-size two-hour workspace renders pass in both appearances. Paused retry retains silence and truthful status.
+- The actual two-hour writer run passed: 707,970 append calls, zero write failures, exact retained hashes/frame counts and pause silence. Final source, signature, installed bytes and process checks gate delivery. Physical-device capture, recognition accuracy, power loss and installed-app long-session rendering remain unverified.
+
+- A matched memory probe isolated historical writer RSS growth to verification-read autoreleases. A harness-only pool reduced 600-second verification-inclusive peak from 53.0 MB to 16.1 MB, with identical PCM hashes; production writer stayed unchanged.

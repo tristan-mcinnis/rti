@@ -86,6 +86,25 @@ final class AudioPipelineRecoveryTests: XCTestCase {
                        Array(repeating: 1_000, count: 320) + Array(repeating: 2_000, count: 320) + Array(repeating: 3_000, count: 320))
     }
 
+    func testProviderRetryWhilePausedRetainsSilenceAndTruthfulStatus() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        var message = ""
+        fixture.pipeline.onTranscriptionError = { value, _, _ in message = value }
+        try fixture.start()
+        fixture.pipeline.suspended = true
+        fixture.clients[0].onError?(.transient(reason: "injected while paused"), true)
+        fixture.audio.emit(try pcm(value: 1_234))
+        fixture.pipeline.reconfigureStreamingClients()
+        XCTAssertTrue(fixture.pipeline.suspended, "Retry must not resume a paused recording")
+        fixture.audio.emit(try pcm(value: 5_678))
+        fixture.pipeline.finalize()
+        XCTAssertTrue(fixture.pipeline.finish())
+        XCTAssertTrue(message.contains("Recording remains paused"))
+        XCTAssertFalse(message.contains("Audio is still recording"))
+        XCTAssertEqual(try samples(fixture.pipeline.micRecordingURL), Array(repeating: 0, count: 640))
+    }
+
     func testAuthenticationFailureKeepsCaptureAndShowsFailedHealth() throws {
         let fixture = try Fixture()
         defer { fixture.cleanUp() }

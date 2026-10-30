@@ -444,8 +444,9 @@ final class AudioPipeline {
         else { micStatusChanged(.failed) }
         // Retryable failures reach onError only when the client's retry budget
         // is exhausted. Its ordinary drop message still says "reconnecting".
+        let captureState = suspended ? "Recording remains paused." : "Audio is still recording."
         let message = failure.shouldRetry
-            ? "Live transcription stopped after repeated connection failures. Audio is still recording."
+            ? "Live transcription stopped after repeated connection failures. \(captureState)"
             : failure.userMessage(didOpen: didOpen)
         onTranscriptionError?((system ? "System audio: " : "") + message, failure.isAuth, system ? "system" : "mic")
     }
