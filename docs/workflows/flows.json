@@ -70,7 +70,7 @@
       "id": "WindowCoordinator",
       "subsystem": "app",
       "file": "RTI/Sources/UI/WindowCoordinator.swift",
-      "description": "Owns the overlay, Sessions and Settings windows."
+      "description": "Owns the main workspace window and routes its pages and attached brief."
     },
     {
       "id": "AudioPipeline",
@@ -239,6 +239,12 @@
       "subsystem": "settings",
       "file": "RTI/Sources/Settings/CredentialStore.swift",
       "description": "Owner-only credentials.json for API keys."
+    },
+    {
+      "id": "ProviderSettingsDraft",
+      "subsystem": "settings",
+      "file": "RTI/Sources/Settings/ProviderSettingsDraft.swift",
+      "description": "Retains unsaved provider edits and verifies explicit saves before changing the active provider."
     }
   ],
   "flows": [
@@ -525,21 +531,28 @@
     {
       "id": "change-provider",
       "title": "Change LLM provider / API key",
-      "summary": "The Providers pane writes keys to CredentialStore and the active provider id; the next request reads both on demand.",
+      "summary": "The Providers pane retains edits in its draft owner. Explicit Save verifies changed keys before selecting the provider; the next request reads confirmed settings.",
       "steps": [
         {
           "from": "ProvidersTab",
+          "to": "ProviderSettingsDraft",
+          "label": "Save Provider Settings",
+          "passes": "Unsaved values survive navigation; Save commits only verified changes.",
+          "ref": "RTI/Sources/Settings/KeysTab.swift · draft.save()"
+        },
+        {
+          "from": "ProviderSettingsDraft",
           "to": "CredentialStore",
           "label": "setValue(_:for:)",
           "passes": "Keys are saved to the owner-only credentials file.",
-          "ref": "RTI/Sources/Settings/KeysTab.swift · CredentialStore.setValue"
+          "ref": "RTI/Sources/Settings/ProviderSettingsDraft.swift · CredentialStore.setValue"
         },
         {
-          "from": "ProvidersTab",
+          "from": "ProviderSettingsDraft",
           "to": "LLMProviders",
           "label": "activeId = id",
           "passes": "The selected assistant provider becomes active.",
-          "ref": "RTI/Sources/Settings/KeysTab.swift · LLMProviders.activeId = selectedLLMProviderId"
+          "ref": "RTI/Sources/Settings/ProviderSettingsDraft.swift · LLMProviders.activeId = $0"
         },
         {
           "from": "LLMClient",
