@@ -32,16 +32,42 @@ final class WorkspaceRenderProofTests: RenderProofTestCase {
             model.select(page)
             try renderBothAppearances(
                 name: "workspace-\(page.rawValue.lowercased())",
-                size: CGSize(width: House.Layout.chatWidth, height: House.Layout.chatHeight),
+                size: WorkspaceLayout.standardSize,
                 view: WorkspaceView(model: model, modes: .inMemory())
             )
         }
         model.select(.live)
         try renderBothAppearances(
             name: "workspace-live-minimum",
-            size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: OverlayAppearanceDefaults.defaultHeight),
+            size: WorkspaceLayout.minimumSize,
             view: WorkspaceView(model: model, modes: .inMemory())
         )
+    }
+
+    /// Every page must fit the same minimum frame and use the extra room on
+    /// a larger display. The user judges clipping and hierarchy in these PNGs.
+    func testAllPagesAtMinimumAndLargeSizes() async throws {
+        let model = WorkspaceModel()
+        await model.sessions.reload()
+        model.sessions.setRailVisible(true, remember: false)
+        model.settings.pane = .about
+        LLMController.shared.seedForRenderProof(entries: RenderFixtures.assistTurns)
+        let sizes: [(String, CGSize)] = [
+            ("minimum", WorkspaceLayout.minimumSize),
+            ("large", CGSize(
+                width: WorkspaceLayout.standardSize.width + House.Layout.chatRail,
+                height: WorkspaceLayout.standardSize.height + House.Spacing.xxxxl * 2
+            ))
+        ]
+        for page in WorkspaceModel.Page.allCases {
+            model.select(page)
+            for (name, size) in sizes {
+                try renderBothAppearances(
+                    name: "workspace-depth-\(page.rawValue.lowercased())-\(name)",
+                    size: size, view: WorkspaceView(model: model, modes: .inMemory())
+                )
+            }
+        }
     }
 
     func testPopulatedChatReaderKeepsReturnNavigationWithListHidden() async throws {
@@ -69,7 +95,7 @@ final class WorkspaceRenderProofTests: RenderProofTestCase {
         await model.sessions.chatLibrary.loadDetail()
         try renderBothAppearances(
             name: "workspace-chat-reader-list-hidden",
-            size: CGSize(width: House.Layout.chatMinWidth, height: House.Layout.chatMinHeight),
+            size: WorkspaceLayout.minimumSize,
             view: WorkspaceView(model: model, modes: .inMemory())
         )
         model.select(.sessions)

@@ -17,3 +17,9 @@ Verification, 2026-10-30:
 - The prior reference report describes features retired on 2026-10-17 and records no runtime navigation test. Current code governs this change.
 
 Release uses scripts/install-local.sh, its idle-recording guard and stable signature. The installed app records RTIBuiltFromCommit for the final identity check.
+
+Sizing and depth follow-up, 2026-10-30:
+- One starting size, 860 x 660, and one minimum, 720 x 520, apply to every page. Navigation no longer changes the window frame. Saved frames above the minimum are retained.
+- Existing House tokens now distinguish sunken chrome and rails, the workspace ground, and raised reading panels, cards and composer. Card shadows and top highlights provide depth in both appearances.
+- Six workspace tests pass. Renders cover all four pages at minimum, standard and larger sizes in light and dark. Supporting text clears 4.5:1 on each surface; metadata clears 3:1 on the raised ground.
+- Strict design lint and the source scrub pass. No shared colour values or font sizes changed.

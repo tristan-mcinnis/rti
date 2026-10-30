@@ -94,7 +94,7 @@ struct OverlayPanelView: View {
             if !embedded { OverlayHeaderChooserLayer(modes: modes) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(House.ColorToken.surface)
+        .background(embedded ? House.ColorToken.surfaceRaised : House.ColorToken.surface)
         // The header shares the title-bar row with the traffic lights.
         .ignoresSafeArea(.container, edges: embedded ? [] : .top)
         .font(.system(size: CGFloat(uiFontSize), weight: .regular))
@@ -118,6 +118,7 @@ struct OverlayPanelView: View {
         }
         .padding(.horizontal, House.Spacing.sm)
         .frame(height: House.Control.railRow)
+        .background(embedded ? House.ColorToken.surface : Color.clear)
         // If the active tab gets turned off in Prepare, fall back to Assist.
         .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
         .onChange(of: autoAssistEnabled) { _, _ in normalizeSelection() }
@@ -176,6 +177,7 @@ struct OverlayPanelView: View {
 
             AssistantInputView(availableHeight: geometry.size.height - House.Spacing.xs)
                 .padding(House.Spacing.xs)
+                .background(embedded ? House.ColorToken.surface : Color.clear)
           }
         }
     }
@@ -251,6 +253,7 @@ struct OverlayShellHeader: View {
     /// The mode store the title reads. Defaults to the shared one so
     /// production is unchanged; a proof passes an in-memory store.
     var modes: ModeStore = .shared
+    var fill: Color = House.ColorToken.surface
 
     private let chrome = OverlayWindowChrome.shared
     @State private var width: CGFloat = 0
@@ -306,7 +309,7 @@ struct OverlayShellHeader: View {
         .frame(height: House.Control.composer)
         .background {
             ZStack {
-                House.ColorToken.surface
+                fill
                 // The title-bar row drags the window, as a normal title bar
                 // does (macOS 14 stand-in for WindowDragGesture).
                 WindowDragArea()

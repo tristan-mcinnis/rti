@@ -255,10 +255,7 @@ final class OverlayWindowController {
         // call, and the same ground as every house chat window.
         win.isOpaque = true
         win.backgroundColor = House.NSColorToken.surface
-        win.contentMinSize = NSSize(
-            width: OverlayAppearanceDefaults.widthRange.lowerBound,
-            height: OverlayAppearanceDefaults.heightRange.lowerBound
-        )
+        win.contentMinSize = WorkspaceLayout.minimumSize
 
         let hosting = NSHostingView(rootView: WorkspaceView(model: .shared))
         // The window sizes the view, not the other way round: the frame is
@@ -305,17 +302,6 @@ final class OverlayWindowController {
             win.makeFirstResponder(nil)
             win.identifier = NSUserInterfaceItemIdentifier(page.windowKind.windowIdentifier)
             RTIKeyWindowTracker.shared.refresh()
-            let minimum = NSSize(
-                width: page == .live ? OverlayAppearanceDefaults.widthRange.lowerBound : House.Layout.chatMinWidth,
-                height: page == .live ? OverlayAppearanceDefaults.heightRange.lowerBound : House.Layout.chatMinHeight
-            )
-            win.contentMinSize = minimum
-            if page != .live {
-                let content = win.contentRect(forFrameRect: win.frame).size
-                if content.width < House.Layout.settingsWidth || content.height < House.Layout.settingsHeight {
-                    win.setContentSize(NSSize(width: max(content.width, House.Layout.settingsWidth), height: max(content.height, House.Layout.settingsHeight)))
-                }
-            }
         }
         restoreFrame()
     }
@@ -332,20 +318,8 @@ final class OverlayWindowController {
         OverlayAppearanceDefaults.nsAppearance()
     }
 
-    /// The first-launch size: the size a user last set with the retired
-    /// width and height sliders, else 700 × 440. The keys are only read now;
-    /// the autosaved frame is the size from here on.
-    private static func configuredSize() -> NSSize {
-        let d = UserDefaults.standard
-        let storedWidth = d.double(forKey: OverlayAppearanceDefaults.widthKey)
-        let storedHeight = d.double(forKey: OverlayAppearanceDefaults.heightKey)
-        let width = storedWidth > 0 ? storedWidth : OverlayAppearanceDefaults.defaultWidth
-        let height = storedHeight > 0 ? storedHeight : OverlayAppearanceDefaults.defaultHeight
-        return NSSize(
-            width: min(max(width, OverlayAppearanceDefaults.widthRange.lowerBound), OverlayAppearanceDefaults.widthRange.upperBound),
-            height: min(max(height, OverlayAppearanceDefaults.heightRange.lowerBound), OverlayAppearanceDefaults.heightRange.upperBound)
-        )
-    }
+    /// The unified workspace has one starting size; saved frames remain canonical.
+    private static func configuredSize() -> NSSize { WorkspaceLayout.standardSize }
 
     // MARK: - Frame
 

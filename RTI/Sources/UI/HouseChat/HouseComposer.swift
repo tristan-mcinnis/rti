@@ -70,6 +70,7 @@ struct ComposerErrorLine: Equatable {
 /// The field itself is the owner's (RTI keeps its `NSTextView`: it grows,
 /// handles `↩` and `⇧↩`, and respects IME composition).
 struct HouseComposer<Field: View>: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     let action: ComposerAction
     var placeholder: String
     var showsPlaceholder: Bool
@@ -188,6 +189,12 @@ struct HouseComposer<Field: View>: View {
             // `Radius.pill` is half the row height, so this is a capsule,
             // drawn as a circular rounded rectangle: `Capsule`'s stroke
             // leaves a stray hairline outside its left cap. Outline only.
+            .background {
+                if embedded {
+                    Self.fieldShape.fill(House.ColorToken.surfaceRaised)
+                        .houseShadow(House.Shadow.card)
+                }
+            }
             .overlay(Self.fieldShape.strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline))
             .accessibilityElement(children: .contain)
             .accessibilityValue("\(action.label), \(action.keys.joined(separator: " "))")

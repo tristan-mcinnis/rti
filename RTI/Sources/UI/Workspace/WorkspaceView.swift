@@ -18,15 +18,16 @@ struct WorkspaceView: View {
     @Bindable var model: WorkspaceModel
     var modes: ModeStore = .shared
     private let session = SessionCoordinator.shared
+    @State private var hoveredPage: WorkspaceModel.Page?
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(spacing: 0) {
             OverlayShellHeader(status: OverlayShellStatus(
                 phase: session.phase.livePhase,
                 processingStatus: session.postProcessingStatus
-            ), modes: modes)
+            ), modes: modes, fill: House.ColorToken.surfaceSunken)
             navigation
-            HouseDivider()
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
                 // position survive trips to the archive or preferences.
@@ -42,7 +43,9 @@ struct WorkspaceView: View {
             }
             .environment(\.isWorkspaceEmbedded, true)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous))
+            .slateRaisedCard(cornerRadius: House.Radius.lg)
+            .padding(House.Spacing.xs)
         }
         .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(modes: modes) }
         .background(House.ColorToken.surface)
@@ -85,9 +88,20 @@ struct WorkspaceView: View {
                         .foregroundStyle(model.page == page ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
                         .padding(.horizontal, House.Spacing.sm)
                         .frame(height: House.Control.chip)
-                        .slateRaisedTile(model.page == page, cornerRadius: House.Radius.sm)
+                        .background {
+                            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                                .fill(model.page == page ? House.ColorToken.surfaceRaised : (hoveredPage == page ? House.ColorToken.hoverFill : Color.clear))
+                                .overlay {
+                                    if model.page == page {
+                                        RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                                            .strokeBorder(House.ColorToken.selectionRing, lineWidth: House.hairline)
+                                    }
+                                }
+                                .slateSelectionShadow(scheme, active: model.page == page)
+                        }
                 }
                 .buttonStyle(.plain)
+                .onHover { hoveredPage = $0 ? page : nil }
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option])
                 .accessibilityAddTraits(model.page == page ? .isSelected : [])
                 .help("\(page.rawValue) (⌥⌘\(index + 1))")
@@ -104,7 +118,8 @@ struct WorkspaceView: View {
             }
         }
         .padding(.horizontal, House.Spacing.sm)
-        .frame(height: House.Control.railRow)
+        .frame(height: House.Control.row)
+        .background(House.ColorToken.surfaceSunken)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workspace navigation")
     }

@@ -354,6 +354,7 @@ struct ChatLibraryRail: View {
 /// It also owns the one destructive confirmation and the read of the
 /// selection, so a chat's turns and sources are read once per selection.
 struct ChatLibraryReader: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     @Bindable var library: ChatLibraryModel
 
     var body: some View {
@@ -369,7 +370,7 @@ struct ChatLibraryReader: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(House.ColorToken.surface)
+        .background(embedded ? House.ColorToken.surfaceRaised : House.ColorToken.surface)
         .task(id: library.selectionKey) { await library.loadDetail() }
         .task(id: library.deletionRequest) { await library.deleteConfirmed() }
         .alert("Delete this chat?", isPresented: $library.isDeleteConfirmationPresented) {

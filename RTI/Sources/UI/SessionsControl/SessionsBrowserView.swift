@@ -46,7 +46,7 @@ struct SessionsBrowserView: View {
             minHeight: embedded ? nil : House.Layout.chatMinHeight,
             maxHeight: .infinity
         )
-        .background(House.ColorToken.surface)
+        .background(embedded ? House.ColorToken.surfaceRaised : House.ColorToken.surface)
         // The header shares the title-bar row with the traffic lights.
         .ignoresSafeArea(.container, edges: embedded ? [] : .top)
         .animation(reduceMotion ? nil : .easeOut(duration: House.Motion.select), value: model.isRailVisible)

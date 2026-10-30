@@ -429,7 +429,8 @@ struct SettingsCard<Content: View>: View {
         .padding(.top, rows ? 0 : House.Spacing.sm)
         .padding(.bottom, rows ? House.Spacing.xxs : House.Spacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .raisedCard()
+        .raisedCard(fill: House.ColorToken.surfaceRaised)
+        .houseShadow(House.Shadow.card)
     }
 }
 
