@@ -23,3 +23,4 @@ Sizing and depth follow-up, 2026-10-30:
 - Existing House tokens now distinguish sunken chrome and rails, the workspace ground, and raised reading panels, cards and composer. Card shadows and top highlights provide depth in both appearances.
 - Six workspace tests pass. Renders cover all four pages at minimum, standard and larger sizes in light and dark. Supporting text clears 4.5:1 on each surface; metadata clears 3:1 on the raised ground.
 - Strict design lint and the source scrub pass. No shared colour values or font sizes changed.
+- The compact layout also exposed an answer Copy control over the text. A fixed action gutter now keeps the control and its Copied label clear of prose.

@@ -533,6 +533,7 @@ private struct AssistAnswerRow: View, Equatable {
                 sourceList(sources)
             }
         }
+        .padding(.trailing, House.Control.input + House.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .topTrailing) { copyButton }
         .contentShape(Rectangle())
@@ -547,7 +548,8 @@ private struct AssistAnswerRow: View, Equatable {
     /// Copy, always at the row's top right: drawn in every state and always
     /// clickable (user preference, 2026-09-14 — a control that appears only
     /// on hover is a control that cannot be found). The hover only deepens
-    /// its ink. It takes no space, so the control never moves the text.
+    /// its ink. The fixed action gutter keeps prose clear of both the glyph
+    /// and the Copied label without moving the text after a click.
     private var copyButton: some View {
         Button {
             copy(text)
