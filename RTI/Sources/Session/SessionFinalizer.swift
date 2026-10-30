@@ -22,12 +22,17 @@ struct SessionFinalizer {
         /// Chats in this recording that could not be read. Reported in the
         /// projection, never silently dropped.
         var unreadableChatCount: Int = 0
+        var recordingError: String? = nil
     }
 
     let snapshot: Snapshot
 
     func archive() -> URL? {
-        SessionArchive.write(
+        if snapshot.recordingError != nil {
+            guard let directory = SessionArchive.sessionDirectory(startedAt: snapshot.startedAt),
+                  SessionArchive.clearAutomaticUpgradePending(in: directory) else { return nil }
+        }
+        return SessionArchive.write(
             startedAt: snapshot.startedAt,
             endedAt: snapshot.endedAt,
             transcript: snapshot.transcript,
@@ -47,7 +52,8 @@ struct SessionFinalizer {
             // rule 4). Read from the store here, the same way speakerNames is.
             calendarTitle: Self.calendarTitleForArchive(),
             chatThreads: snapshot.chatThreads,
-            unreadableChatCount: snapshot.unreadableChatCount
+            unreadableChatCount: snapshot.unreadableChatCount,
+            recordingError: snapshot.recordingError
         )
     }
 

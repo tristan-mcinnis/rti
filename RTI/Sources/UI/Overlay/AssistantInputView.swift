@@ -732,7 +732,10 @@ struct AssistantInputView: View {
             isAddContextOpen: isAddContextOpen,
             isPaletteOpen: isPaletteOpen,
             isDropTargeted: isDropTargeted,
-            onFix: { SettingsWindowController.shared.show(pane: .providers) },
+            onFix: {
+                if session.canRetryLiveTranscription && !session.lastErrorIsAuth { session.retryLiveTranscription() }
+                else { SettingsWindowController.shared.show(pane: .providers) }
+            },
             onAddContext: toggleAddContext,
             onAction: { performAction(state.action) },
             onPalette: togglePalette,
@@ -949,7 +952,7 @@ struct AssistantInputView: View {
     /// errors stay in the thread.
     private var errorLine: ComposerErrorLine? {
         if let message = session.lastError, !message.isEmpty {
-            return .init(message: message, fixTitle: session.lastErrorIsAuth ? "Open Settings" : nil)
+            return .init(message: message, fixTitle: session.lastErrorIsAuth ? "Open Settings" : (session.canRetryLiveTranscription ? "Retry transcription" : nil))
         }
         if llm.lastErrorIsAuth, let message = llm.lastError, !message.isEmpty {
             return .init(message: message, fixTitle: "Open Settings")

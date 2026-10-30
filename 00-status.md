@@ -48,3 +48,18 @@ Session/chat and compact-chrome follow-up:
 - Header retains capture state, with mode/model options in the protected in-window chooser. Chat footer is Continue chat plus More; secondary actions and totals remain available.
 - Twenty focused navigation/chrome/composer checks passed, including eight navigation cases and both appearances at compact size. Earlier integrated workflow checks remain green.
 - Signing was isolated from the app using a disposable executable. The same identity failed headlessly and signed successfully through a PTY. docs/personal-setup.md records the repeatable interactive install path without keychain permission changes.
+
+Recording integrity and recovery, 2026-10-30:
+Intent: Prove retained audio integrity and truthful recovery states with invented audio, then install the verified repair.
+Criteria:
+- Both PCM legs retain the expected bytes and pause silence. check: writer and pipeline two-hour SHA/frame receipts
+- Provider, device, close and archive failures have truthful outcomes. check: recording/recovery regression suites
+- Long-session resource costs are measured. check: endurance result.json CPU, RSS and latency histograms
+- The installed app matches the reviewed commit. check: publish checks, binary hashes, signature and control socket
+Must not: Use client audio, change permissions or credentials, interrupt a real recording, or exhaust the main disk.
+
+- Baseline probes reproduced overwriting existing audio and inconsistent WAV length after bounded write failure. Fixed writer rejects collisions/unsupported formats, rolls back partial writes and reports close failures.
+- Transcription transport failure now preserves audio capture and offers Retry transcription. Device failure and archive failure remain separate, explicit outcomes.
+- Close/write errors cannot claim Session saved or enter automatic upgrade. A persistent archive warning survives relaunch; a failed archive cannot leave known bad recordings queued.
+- Final focused suites passed 33 checks including the added visual proof; independent review cleared the repairs. Details and reproducible commands: docs/recording-acceptance-20261030.md.
+- Two-hour writer and pipeline runs remain in progress. Physical-device capture, recognition accuracy, power loss and installed-app long-session rendering remain unverified.

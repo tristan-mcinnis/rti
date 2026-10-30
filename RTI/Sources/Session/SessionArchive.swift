@@ -28,39 +28,66 @@ enum SessionArchive {
 
     private static let automaticUpgradeMarker = "automatic-upgrade.pending"
 
-    static func markAutomaticUpgradePending(in dir: URL) {
+    @discardableResult
+    static func markAutomaticUpgradePending(in dir: URL) -> Bool {
         writeOwnerOnly(ISO8601DateFormatter().string(from: Date()), to: dir.appendingPathComponent(automaticUpgradeMarker))
     }
 
-    static func seedTranscriptForAutomaticUpgrade(in dir: URL, startedAt: Date) {
+    @discardableResult
+    static func seedTranscriptForAutomaticUpgrade(in dir: URL, startedAt: Date) -> Bool {
         let url = dir.appendingPathComponent("transcript.md")
-        guard !FileManager.default.fileExists(atPath: url.path) else { return }
+        if FileManager.default.fileExists(atPath: url.path) {
+            guard isRegularFile(url), FileManager.default.isReadableFile(atPath: url.path) else {
+                RTILog.log("Recovery transcript is not a readable file: \(url.path)", level: .error, category: .archive)
+                return false
+            }
+            return true
+        }
         let body = (frontmatter(kind: "Transcript", startedAt: startedAt) + [
             "# Transcript",
             "",
             "_Recording recovered from retained audio._",
             "",
         ]).joined(separator: "\n")
-        writeOwnerOnly(body, to: url)
+        return writeOwnerOnly(body, to: url)
     }
 
-    static func clearAutomaticUpgradePending(in dir: URL) {
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent(automaticUpgradeMarker))
+    @discardableResult
+    static func clearAutomaticUpgradePending(in dir: URL) -> Bool {
+        let marker = dir.appendingPathComponent(automaticUpgradeMarker)
+        guard FileManager.default.fileExists(atPath: marker.path) else { return true }
+        guard isRegularFile(marker) else { return false }
+        do {
+            try FileManager.default.removeItem(at: marker)
+            return true
+        } catch {
+            RTILog.log("Could not clear automatic processing marker: \(error.localizedDescription)", level: .error, category: .archive)
+            return false
+        }
     }
 
     static func pendingAutomaticUpgrades() -> [ArchivedSession] {
-        recentSessions(limit: 200).filter {
+        // Recovery is not a Recent-sessions view: an older interrupted job
+        // must not disappear just because newer sessions were recorded.
+        recentSessions(limit: .max).filter {
             $0.isRTIArchive
                 && $0.date != nil
                 && FileManager.default.fileExists(atPath: $0.url.appendingPathComponent(automaticUpgradeMarker).path)
                 && !TranscriptUpgradeAudioDiscovery.inputs(in: $0.url).isEmpty
+                && recordingError(in: $0.url) == nil
         }
     }
 
-    /// Persist a session. Silently no-ops if there's nothing to save or the
-    /// Application Support directory can't be resolved — archiving is a
-    /// best-effort side record, never something that should fail a stop.
-    /// Returns the session directory it wrote (nil if nothing was saved).
+    static func recordingError(in directory: URL) -> String? {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("session.json")),
+              let metadata = try? JSONDecoder().decode(ArchiveMetadata.self, from: data) else { return nil }
+        return metadata.recordingError
+    }
+
+    /// Persist a session. Returns its directory only when every required
+    /// text, metadata, and retained-audio artifact was saved. A failure is
+    /// logged and returns nil, so the caller can retain the snapshot for retry.
+    /// An empty session also returns nil without writing anything.
     /// `workstreamSlug` is a pure DECLARATION stamped into frontmatter —
     /// routing policy lives in the `/meeting` skill, never in this app.
     @discardableResult
@@ -81,34 +108,40 @@ enum SessionArchive {
         speakerNames: [String: String] = [:],
         calendarTitle: String? = nil,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
-        unreadableChatCount: Int = 0
+        unreadableChatCount: Int = 0,
+        recordingError: String? = nil
     ) -> URL? {
         let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
             .compactMap { $0 }
-            .contains { FileManager.default.fileExists(atPath: $0.path) }
-        guard !transcript.isEmpty || !chat.isEmpty || !notes.isEmpty || !visualContext.isEmpty || hasRetainedAudio else { return nil }
+            .contains { isRegularFile($0) }
+        let expectsAudio = micRecordingURL != nil || systemRecordingURL != nil
+        guard !transcript.isEmpty || !chat.isEmpty || !notes.isEmpty || !visualContext.isEmpty || !chatThreads.isEmpty || unreadableChatCount > 0 || expectsAudio else { return nil }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
 
         func fm(_ kind: String) -> [String] {
             frontmatter(kind: kind, startedAt: startedAt, workstreamSlug: workstreamSlug)
         }
 
-        // Only archive a transcript when there's real spoken content (a
-        // non-note entry) — a header-only transcript.md just pollutes search.
-        if transcript.contains(where: { $0.speakerId != "note" }) || hasRetainedAudio {
+        // User-authored notes are content too, even before the first spoken
+        // word. Retained audio also needs a transcript target for recovery.
+        if !transcript.isEmpty || hasRetainedAudio {
             let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, selfName: speakerNames["self"])
             let md = (fm("Transcript") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md"))
+            guard writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md")) else { return nil }
         }
 
         // Serialize keyed by display labels ("Remote speaker 1"), not raw ids
         // (`remote_1`): the post-hoc rename UI and the `/meeting` skill
         // match names against the labels transcripts actually print.
         let displayKeyedNames = SpeakerLabelMapping.displayKeyedNames(speakerNames)
-        if !displayKeyedNames.isEmpty, let data = try? JSONEncoder().encode(displayKeyedNames) {
-            let url = dir.appendingPathComponent("speaker-names.json")
-            try? data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        if !displayKeyedNames.isEmpty {
+            do {
+                let data = try JSONEncoder().encode(displayKeyedNames)
+                guard writeOwnerOnly(String(decoding: data, as: UTF8.self), to: dir.appendingPathComponent("speaker-names.json")) else { return nil }
+            } catch {
+                RTILog.log("Could not encode speaker-names.json: \(error.localizedDescription)", level: .error, category: .archive)
+                return nil
+            }
         }
 
         // Structured threads are the authority when the recording has any:
@@ -116,7 +149,7 @@ enum SessionArchive {
         // a recording that held several chats keeps all of them. The flat dated
         // list is used only when there are no structured threads at all, and it
         // never invents boundaries between them.
-        if !chatThreads.isEmpty {
+        if !chatThreads.isEmpty || (chat.isEmpty && unreadableChatCount > 0) {
             let body = ChatProjectionMarkdown.render(
                 threads: chatThreads,
                 startedAt: startedAt,
@@ -125,7 +158,7 @@ enum SessionArchive {
                 header: header(startedAt: startedAt, endedAt: endedAt)
             )
             let md = (fm("Chat") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
+            guard writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md")) else { return nil }
         } else if !chat.isEmpty {
             let body = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
             var lines = [body]
@@ -134,18 +167,18 @@ enum SessionArchive {
                 lines.append("_\(unreadableChatCount) stored chat\(unreadableChatCount == 1 ? "" : "s") in this recording could not be read and \(unreadableChatCount == 1 ? "is" : "are") not shown here. Nothing was removed._")
             }
             let md = (fm("Chat") + lines).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md"))
+            guard writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md")) else { return nil }
         }
 
         if !notes.isEmpty {
             let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(notes)]).joined(separator: "\n")
             let md = (fm("Notes") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
+            guard writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md")) else { return nil }
         }
         if !visualContext.isEmpty {
             let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(visualContext)]).joined(separator: "\n")
             let md = (fm("Screen context") + [body]).joined(separator: "\n")
-            writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md"))
+            guard writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md")) else { return nil }
         }
         // Frames staged during the session (local-vision lane) move into
         // `frames/` beside screen-context.md; gitignored, owner-only.
@@ -158,8 +191,10 @@ enum SessionArchive {
             RTILog.log("Archived \(movedFrames) screen frame(s) into \(dir.lastPathComponent)/frames.", category: .screenshot)
         }
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
+        guard micRecordingURL == nil || micName != nil else { return nil }
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
-        writeMetadata(
+        guard systemRecordingURL == nil || systemName != nil else { return nil }
+        guard writeMetadata(
             ArchiveMetadata(
                 sessionId: sessionId,
                 systemAudioStartOffsetMs: systemAudioStartOffsetMs,
@@ -168,10 +203,11 @@ enum SessionArchive {
                 mode: mode,
                 workstream: workstreamName,
                 durationSeconds: Int(max(0, endedAt.timeIntervalSince(startedAt))),
-                calendarTitle: calendarTitle
+                calendarTitle: calendarTitle,
+                recordingError: recordingError
             ),
             to: dir
-        )
+        ) else { return nil }
         return dir
     }
 
@@ -291,8 +327,7 @@ enum SessionArchive {
         )
         guard !sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let url = transcriptsRaw.appendingPathComponent("\(stem)-rti.md")
-        writeOwnerOnly(sidecar, to: url)
-        return url
+        return writeOwnerOnly(sidecar, to: url) ? url : nil
     }
 
     @discardableResult
@@ -311,7 +346,7 @@ enum SessionArchive {
 
         let stem = canonicalMeetingStem(startedAt: startedAt)
         let transcriptURL = transcriptsRaw.appendingPathComponent("\(stem)-transcript.txt")
-        writeOwnerOnly(text + "\n", to: transcriptURL)
+        guard writeOwnerOnly(text + "\n", to: transcriptURL) else { return nil }
 
         let sidecarURL: URL?
         if writeSidecar {
@@ -327,7 +362,7 @@ enum SessionArchive {
                 sidecarURL = nil
             } else {
                 let url = transcriptsRaw.appendingPathComponent("\(stem)-rti.md")
-                writeOwnerOnly(sidecar, to: url)
+                guard writeOwnerOnly(sidecar, to: url) else { return nil }
                 sidecarURL = url
             }
         } else {
@@ -444,6 +479,7 @@ enum SessionArchive {
             // unreadable by other users on a shared Mac.
             try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
         } catch {
+            RTILog.log("Could not create session archive \(folder.path): \(error.localizedDescription)", level: .error, category: .archive)
             return nil
         }
         return folder
@@ -452,36 +488,56 @@ enum SessionArchive {
     /// Write `string` atomically, then restrict the file to owner-only (0600).
     /// Used for every session-record file (transcript/chat/notes/etc.) so
     /// meeting content isn't world-readable on a multi-user machine.
-    private static func writeOwnerOnly(_ string: String, to url: URL) {
-        guard (try? string.write(to: url, atomically: true, encoding: .utf8)) != nil else { return }
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    @discardableResult
+    private static func writeOwnerOnly(_ string: String, to url: URL) -> Bool {
+        do {
+            try string.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            return true
+        } catch {
+            RTILog.log("Could not save \(url.path): \(error.localizedDescription)", level: .error, category: .archive)
+            return false
+        }
     }
 
-    /// Move a kept session-audio artifact into the archive folder so the
-    /// transcript, chat, summary, and retained audio live together. If the file
-    /// is already in place or missing, quietly no-op.
+    /// Move retained audio without replacing an earlier recording. A collision
+    /// leaves both files in place and fails the archive, so neither copy is lost.
+    /// Checkpoints pass no source: keep the name of any audio already in place.
     private static func stageRecordingIfPresent(_ sourceURL: URL?, as fileName: String, in dir: URL) -> String? {
-        guard let sourceURL else { return nil }
-        guard FileManager.default.fileExists(atPath: sourceURL.path) else { return nil }
         let destination = dir.appendingPathComponent(fileName)
-        if sourceURL.standardizedFileURL == destination.standardizedFileURL { return fileName }
-        try? FileManager.default.removeItem(at: destination)
+        guard let sourceURL else { return isRegularFile(destination) ? fileName : nil }
+        guard isRegularFile(sourceURL) else {
+            RTILog.log("Retained audio is missing or is not a file: \(sourceURL.path)", level: .error, category: .archive)
+            return nil
+        }
+        if sourceURL.standardizedFileURL.resolvingSymlinksInPath() == destination.standardizedFileURL.resolvingSymlinksInPath() { return fileName }
+        guard !FileManager.default.fileExists(atPath: destination.path) else {
+            RTILog.log("Retained audio collision; both recordings were kept: \(destination.path)", level: .error, category: .archive)
+            return nil
+        }
         do {
             try FileManager.default.moveItem(at: sourceURL, to: destination)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
             return fileName
         } catch {
-            // Best-effort archive: if move fails (e.g. cross-volume edge case),
-            // leave the source in place rather than failing the stop path.
+            RTILog.log("Could not retain audio \(sourceURL.path): \(error.localizedDescription)", level: .error, category: .archive)
             return nil
         }
     }
 
-    private static func writeMetadata(_ metadata: ArchiveMetadata, to dir: URL) {
+    private static func isRegularFile(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+    }
+
+    private static func writeMetadata(_ metadata: ArchiveMetadata, to dir: URL) -> Bool {
         let url = dir.appendingPathComponent("session.json")
-        guard let data = try? JSONEncoder().encode(metadata),
-              let string = String(data: data, encoding: .utf8) else { return }
-        writeOwnerOnly(string, to: url)
+        do {
+            let data = try JSONEncoder().encode(metadata)
+            return writeOwnerOnly(String(decoding: data, as: UTF8.self), to: url)
+        } catch {
+            RTILog.log("Could not encode session.json: \(error.localizedDescription)", level: .error, category: .archive)
+            return false
+        }
     }
 
     // MARK: - Rendering

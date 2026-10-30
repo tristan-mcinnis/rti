@@ -53,3 +53,6 @@ build-test/
 
 # Local third-party reverse-engineering evidence, not application source
 /docs/superwhisper-meetings-20261015/
+
+# Isolated acceptance builds must never enter source control.
+.deriveddata-recovery-verification/

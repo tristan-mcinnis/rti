@@ -56,6 +56,9 @@ final class SessionCoordinator {
     @ObservationIgnored private var transcriptPresentationOwner: UUID?
     @ObservationIgnored private var transcriptFinalsNeedProjection = true
     private(set) var lastError: String?
+    private var captureFailureMessage: String?
+    private var transcriptionFailures: [String: (message: String, isAuth: Bool)] = [:]
+    var canRetryLiveTranscription: Bool { isRunning && !transcriptionFailures.isEmpty }
     /// True when `lastError` came from a Soniox auth/billing failure
     /// (`SonioxFailure.isAuth`). UI uses this to gate the "Open Settings"
     /// affordance on the error banner.
@@ -136,6 +139,10 @@ final class SessionCoordinator {
         lastError = nil
         lastErrorIsAuth = false
         SpeakerNameStore.shared.reset()
+    }
+
+    func receiveTranscriptionFailureForProof(_ message: String, isAuth: Bool, channel: String) {
+        audioPipeline.onTranscriptionError?(message, isAuth, channel)
     }
 
     func receiveTranscriptWordsForProof(_ words: [SonioxWord], channel: String) {
@@ -251,22 +258,49 @@ final class SessionCoordinator {
         audioPipeline.onError = { [weak self] message, isAuth in
             self?.lastError = message
             self?.lastErrorIsAuth = isAuth
+            self?.captureFailureMessage = message
             if self?.isRunning == true { self?.stopSession() }
+        }
+        audioPipeline.onTranscriptionError = { [weak self] message, isAuth, channel in
+            self?.handleLiveTranscriptionFailure(message, isAuth: isAuth, channel: channel)
         }
         audioPipeline.onMicNotice = { [weak self] notice in self?.micAudioNotice = notice }
         audioPipeline.onTranscriptionHealth = { [weak self] health in
             self?.transcriptionHealth = health
+            if health == .live { self?.retireLiveTranscriptionFailure(channel: "mic") }
         }
         audioPipeline.onSystemAudioHealth = { [weak self] health in
             switch health {
             case .failed:
-                self?.systemAudioNotice = "Other-party audio stopped — still capturing your mic."
+                self?.systemAudioNotice = "Other-party audio or live transcription is unavailable. Microphone recording continues."
             case .live:
                 self?.systemAudioNotice = nil
+                self?.retireLiveTranscriptionFailure(channel: "system")
             case .idle, .connecting, .reconnecting:
                 break
             }
         }
+    }
+
+    /// A provider outage degrades live text, never the retained capture.
+    func handleLiveTranscriptionFailure(_ message: String, isAuth: Bool, channel: String) {
+        transcriptionFailures[channel] = (message, isAuth)
+        lastError = message
+        lastErrorIsAuth = isAuth
+    }
+
+    func retireLiveTranscriptionFailure(channel: String) {
+        guard let retired = transcriptionFailures.removeValue(forKey: channel), lastError == retired.message else { return }
+        let remaining = transcriptionFailures["mic"] ?? transcriptionFailures["system"]
+        lastError = remaining?.message
+        lastErrorIsAuth = remaining?.isAuth ?? false
+    }
+
+    func retryLiveTranscription() {
+        guard canRetryLiveTranscription else { return }
+        transcriptPipeline.prepareForReconnect()
+        audioPipeline.reconfigureStreamingClients()
+        publishState()
     }
 
     private func handleActiveSTTProviderChanged() {
@@ -378,6 +412,8 @@ final class SessionCoordinator {
         guard let startToken = startGate.begin() else { return }
         lastError = nil
         lastErrorIsAuth = false
+        transcriptionFailures = [:]
+        captureFailureMessage = nil
         // A retire task left over from the last session must not clear this
         // one's failure.
         stopErrorRetireTask?.cancel()
@@ -478,10 +514,17 @@ final class SessionCoordinator {
                 throw AudioPipelineError.recordingArchiveUnavailable
             }
             try audioPipeline.prepare(recordingDirectory: recordingDirectory)
-            SessionArchive.seedTranscriptForAutomaticUpgrade(in: recordingDirectory, startedAt: now)
-            SessionArchive.markAutomaticUpgradePending(in: recordingDirectory)
+            guard SessionArchive.seedTranscriptForAutomaticUpgrade(in: recordingDirectory, startedAt: now),
+                  SessionArchive.markAutomaticUpgradePending(in: recordingDirectory) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
         } catch {
-            lastError = "Couldn't create audio file: \(error)"
+            if case AudioPipelineError.missingSTTKey = error {
+                lastError = "Live transcription needs a Soniox key. Recording did not start. Open Settings to add the key."
+                lastErrorIsAuth = true
+            } else {
+                lastError = "Couldn't prepare recoverable meeting audio: \(error.localizedDescription)"
+            }
             audioPipeline.abort()
             BluetoothMicGuard.shared.release()
             return
@@ -586,7 +629,7 @@ final class SessionCoordinator {
         // re-archive on quit long after the session ended.
         delayedCompleteTask = nil
 
-        audioPipeline.finish()
+        let audioFinished = audioPipeline.finish()
         // Restore the user's original default mic now that capture has stopped.
         BluetoothMicGuard.shared.release()
         self.endedAt = endedAt
@@ -603,6 +646,14 @@ final class SessionCoordinator {
             let visualContext = snapshot.visualContext
             let notes = snapshot.notes
 
+            if !audioFinished || snapshot.recordingError != nil {
+                phase = .done
+                resetWorkspaceForDone()
+                reportArchiveSaveFailure(recordingError: snapshot.recordingError ?? audioPipeline.recordingFailureMessage)
+                MeetingContextStore.shared.resetAfterSession()
+                publishState()
+                return
+            }
             if let archiveDir {
                 // Preserve chat and screen context in the sidecar without
                 // writing a provisional raw transcript. Only upgraded text
@@ -652,18 +703,11 @@ final class SessionCoordinator {
                     }
                 }
             } else {
-                // Nothing worth keeping (or archive failed) — go straight to
-                // done and still route whatever was captured.
                 phase = .done
                 resetWorkspaceForDone()
-                exportCanonicalMeeting(
-                    startedAt: startedAt,
-                    transcript: transcript,
-                    chat: chat,
-                    visualContext: visualContext,
-                    notes: notes,
-                    archiveDir: archiveDir
-                )
+                if Self.archiveWasExpected(for: snapshot) {
+                    reportArchiveSaveFailure()
+                }
             }
             MeetingContextStore.shared.resetAfterSession()
         } else {
@@ -762,7 +806,8 @@ final class SessionCoordinator {
             workstreamItem: MeetingContextStore.shared.workstreamItem,
             modeName: ModeStore.shared.activeMode?.name,
             chatThreads: chatThreadProjection,
-            unreadableChatCount: unreadableChatCount
+            unreadableChatCount: unreadableChatCount,
+            recordingError: captureFailureMessage ?? audioPipeline.recordingFailureMessage
         )
     }
 
@@ -798,6 +843,21 @@ final class SessionCoordinator {
                 archiveCurrentSession(endedAt: Date(), route: false)
             }
         }
+    }
+
+    static func archiveWasExpected(for snapshot: SessionFinalizer.Snapshot) -> Bool {
+        !snapshot.transcript.isEmpty || !snapshot.chat.isEmpty || !snapshot.notes.isEmpty ||
+        !snapshot.visualContext.isEmpty || !snapshot.chatThreads.isEmpty || snapshot.unreadableChatCount > 0 ||
+        snapshot.micRecordingURL != nil || snapshot.systemRecordingURL != nil
+    }
+
+    func reportArchiveSaveFailure(recordingError: String? = nil) {
+        stopErrorRetireTask?.cancel()
+        stopErrorRetireTask = nil
+        postProcessingStatus = "Save failed · check retained files"
+        lastError = recordingError.map { "Recording needs review: \($0) Existing files were kept; check retained audio before processing." }
+            ?? "The session could not be fully saved. Existing files were not removed. Check the session folder and retained audio before using Upgrade transcript in Sessions."
+        lastErrorIsAuth = false
     }
 
     private func handleSystemWords(_ words: [SonioxWord]) {

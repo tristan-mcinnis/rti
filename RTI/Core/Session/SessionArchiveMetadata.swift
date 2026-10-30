@@ -24,6 +24,8 @@ public struct SessionArchiveMetadata: Codable {
     /// (`SessionTitleResolver` rule 4). Defaults to nil, so existing call
     /// sites and legacy `session.json` files are unchanged.
     public var calendarTitle: String? = nil
+    /// A known capture/write/close failure. Retained audio needs review before processing.
+    public var recordingError: String? = nil
 
     public init(
         sessionId: String?,
@@ -33,7 +35,8 @@ public struct SessionArchiveMetadata: Codable {
         mode: String?,
         workstream: String?,
         durationSeconds: Int?,
-        calendarTitle: String? = nil
+        calendarTitle: String? = nil,
+        recordingError: String? = nil
     ) {
         self.sessionId = sessionId
         self.systemAudioStartOffsetMs = systemAudioStartOffsetMs
@@ -43,5 +46,6 @@ public struct SessionArchiveMetadata: Codable {
         self.workstream = workstream
         self.durationSeconds = durationSeconds
         self.calendarTitle = calendarTitle
+        self.recordingError = recordingError
     }
 }

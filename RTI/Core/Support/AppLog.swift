@@ -39,9 +39,19 @@ public final class AppLog {
     /// day, pruned past `retentionDays`. The in-memory ring buffer stays the
     /// "Live" view; these files are the "Past" view — so a crash or quit no
     /// longer erases the evidence.
-    public nonisolated static let logsDirectory = FileManager.default
-        .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
+    public nonisolated static let logsDirectory: URL = {
+        let environment = ProcessInfo.processInfo.environment
+        if let path = environment["RTI_LOG_DIRECTORY"], path.hasPrefix("/") {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        // Hostless acceptance tests must not append to or prune the user's logs.
+        if ProcessInfo.processInfo.processName == "xctest" || environment["XCTestConfigurationFilePath"] != nil {
+            return FileManager.default.temporaryDirectory
+                .appendingPathComponent("RTI-test-logs-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
+    }()
     private static let retentionDays = 14
     private static let fileQueue = DispatchQueue(label: "rti.applog.file", qos: .utility)
     private static let dayStamp: DateFormatter = {

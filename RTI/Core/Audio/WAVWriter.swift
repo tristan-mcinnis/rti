@@ -1,6 +1,6 @@
 import AVFoundation
+import Darwin
 import Foundation
-import RTICore
 
 /// Temp-directory cleanup for the live pipeline's former mic-only WAV. That
 /// copy duplicated `MeetingRecorder`'s mic leg (about 115 MB an hour) and was
@@ -38,10 +38,7 @@ public final class MeetingRecorder {
     public init() {}
 
     public func open(in directory: URL) throws {
-        try? micFile?.close()
-        try? systemFile?.close()
-        micFile = nil
-        systemFile = nil
+        close()
         micURL = nil
         systemURL = nil
         micFrames = 0
@@ -52,12 +49,20 @@ public final class MeetingRecorder {
         do {
             micFile = try DurableWAVFile(url: mic)
             systemFile = try DurableWAVFile(url: system)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: mic.path)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: system.path)
             micURL = mic
             systemURL = system
         } catch {
-            RTILog.log("MeetingRecorder.open failed: \(error)", category: .audio)
+            CoreLog.log("MeetingRecorder.open failed: \(error)", category: "audio")
+            // Only remove files this open created. Existing recordings are
+            // refused by the exclusive create and must survive the failure.
+            if let micFile {
+                try? micFile.close()
+                try? FileManager.default.removeItem(at: mic)
+            }
+            if let systemFile {
+                try? systemFile.close()
+                try? FileManager.default.removeItem(at: system)
+            }
             micFile = nil
             systemFile = nil
             micURL = nil
@@ -75,10 +80,12 @@ public final class MeetingRecorder {
     }
 
     public func appendMicSilence(matching buffer: AVAudioPCMBuffer) {
+        guard validFormat(buffer) else { return }
         if writeSilence(frameCount: Int(buffer.frameLength), to: micFile) { micFrames += Int(buffer.frameLength) }
     }
 
     public func appendSystemSilence(matching buffer: AVAudioPCMBuffer) {
+        guard validFormat(buffer) else { return }
         if writeSilence(frameCount: Int(buffer.frameLength), to: systemFile) { systemFrames += Int(buffer.frameLength) }
     }
 
@@ -89,14 +96,14 @@ public final class MeetingRecorder {
             return true
         } catch {
             let message = "Durable meeting audio write failed: \(error.localizedDescription)"
-            RTILog.log(message, category: .audio)
+            CoreLog.log(message, category: "audio")
             onWriteFailure?(message)
             return false
         }
     }
 
     private func write(_ input: AVAudioPCMBuffer, to file: DurableWAVFile?) -> Bool {
-        guard let file, let source = input.int16ChannelData else { return false }
+        guard let file, validFormat(input), let source = input.int16ChannelData else { return false }
         let count = Int(input.frameLength)
         guard count > 0 else { return false }
         do {
@@ -104,15 +111,20 @@ public final class MeetingRecorder {
             return true
         } catch {
             let message = "Durable meeting audio write failed: \(error.localizedDescription)"
-            RTILog.log(message, category: .audio)
+            CoreLog.log(message, category: "audio")
             onWriteFailure?(message)
             return false
         }
     }
 
     public func close() {
-        try? micFile?.close()
-        try? systemFile?.close()
+        for file in [micFile, systemFile] {
+            do { try file?.close() } catch {
+                let message = "Durable meeting audio close failed: \(error.localizedDescription)"
+                CoreLog.log(message, category: "audio")
+                onWriteFailure?(message)
+            }
+        }
         micFile = nil
         systemFile = nil
         if micFrames == 0, let micURL {
@@ -124,14 +136,28 @@ public final class MeetingRecorder {
             self.systemURL = nil
         }
     }
+
+    private func validFormat(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard buffer.format.commonFormat == .pcmFormatInt16,
+              buffer.format.sampleRate == Double(AudioFormat.sampleRateHz),
+              buffer.format.channelCount == 1 else {
+            let message = "Durable meeting audio requires 16 kHz mono Int16 PCM."
+            CoreLog.log(message, category: "audio")
+            onWriteFailure?(message)
+            return false
+        }
+        return true
+    }
 }
 
 /// PCM WAV writer whose header is valid after every appended audio block.
 /// AVAudioFile finalizes its WAV header only when closed, which makes a
 /// force-quit recording look empty. Here payload is appended first and the
-/// RIFF/data sizes are then updated and synchronized. A kill between those
-/// operations leaves the preceding complete block readable rather than
-/// invalidating the whole meeting.
+/// RIFF/data sizes are then updated. The file is synchronized on close, not
+/// after each block: process termination after append returns retains a
+/// readable file, but this does not promise survival of sudden power loss.
+/// A kill before a header update leaves the preceding complete block
+/// readable. Termination during a header write is not an atomic checkpoint.
 private final class DurableWAVFile {
     private static let headerBytes = 44
     private static let sampleRate = UInt32(AudioFormat.sampleRateHz)
@@ -142,11 +168,17 @@ private final class DurableWAVFile {
     private var isClosed = false
 
     public init(url: URL) throws {
-        FileManager.default.createFile(atPath: url.path, contents: nil)
-        handle = try FileHandle(forUpdating: url)
-        try handle.truncate(atOffset: 0)
-        try writeHeader(dataBytes: 0)
-        try handle.synchronize()
+        let descriptor = Darwin.open(url.path, O_RDWR | O_CREAT | O_EXCL, 0o600)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        do {
+            try writeHeader(dataBytes: 0)
+            try handle.synchronize()
+        } catch {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
     }
 
     public func append(samples: UnsafePointer<Int16>, count: Int) throws {
@@ -156,10 +188,20 @@ private final class DurableWAVFile {
             throw CocoaError(.fileWriteOutOfSpace)
         }
         let data = Data(bytes: samples, count: byteCount)
-        try handle.seekToEnd()
-        try handle.write(contentsOf: data)
-        dataByteCount += UInt32(byteCount)
-        try writeHeader(dataBytes: dataByteCount)
+        let committedBytes = dataByteCount
+        do {
+            try handle.seek(toOffset: UInt64(Self.headerBytes) + UInt64(committedBytes))
+            try handle.write(contentsOf: data)
+            let nextBytes = committedBytes + UInt32(byteCount)
+            try writeHeader(dataBytes: nextBytes)
+            dataByteCount = nextBytes
+        } catch {
+            // FileHandle can write a prefix before throwing (for example
+            // ENOSPC/EFBIG). Do not let that prefix contaminate a later block.
+            try? handle.truncate(atOffset: UInt64(Self.headerBytes) + UInt64(committedBytes))
+            try? writeHeader(dataBytes: committedBytes)
+            throw error
+        }
     }
 
     public func appendSilence(frameCount: Int) throws {
@@ -173,9 +215,12 @@ private final class DurableWAVFile {
 
     public func close() throws {
         guard !isClosed else { return }
-        try handle.synchronize()
+        defer { isClosed = true }
+        do { try handle.synchronize() } catch {
+            try? handle.close()
+            throw error
+        }
         try handle.close()
-        isClosed = true
     }
 
     private func writeHeader(dataBytes: UInt32) throws {

@@ -93,7 +93,6 @@ struct ResponseView: View {
         } else if let error, !error.isEmpty, errorIsAuth || llm.lastErrorTurnID == nil {
             AssistComposerNotice(message: error, fixTitle: errorIsAuth ? "Open Settings" : nil, onFix: onOpenSettings)
         }
-        AssistCaptureErrorNotice()
     }
 
     private var missingKeysMessage: String {
@@ -144,17 +143,5 @@ struct ResponseView: View {
             : VaultPaths.databasesDirectory()?.appendingPathComponent(source.path)
         guard let url, FileManager.default.fileExists(atPath: url.path) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-}
-
-/// A capture fault (`SessionCoordinator.lastError`) above the composer. Its
-/// own small view, so only it observes the session.
-private struct AssistCaptureErrorNotice: View {
-    private let session = SessionCoordinator.shared
-
-    var body: some View {
-        if let message = session.lastError, !message.isEmpty {
-            AssistComposerNotice(message: message)
-        }
     }
 }

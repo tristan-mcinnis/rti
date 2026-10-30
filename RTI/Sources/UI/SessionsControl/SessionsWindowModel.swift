@@ -64,7 +64,7 @@ final class SessionsWindowModel {
         let mode: String?
         let speakerNames: [String]
         let stamp: String?
-        let transcriptStatus: String?
+        var transcriptStatus: String?
         /// Read once at load (off the main thread), so row menus stay cheap.
         var hasTranscript = false
         var hasRetainedAudio = false
@@ -72,6 +72,7 @@ final class SessionsWindowModel {
         var vaultTranscriptPath: String?
         /// Durable identity from session.json, matching saved chat SessionLink ids.
         var sessionID: String?
+        var recordingError: String? = nil
 
         var id: String { session.url.path }
         var folderName: String { session.url.lastPathComponent }
@@ -512,6 +513,8 @@ final class SessionsWindowModel {
     ) -> Row {
         var row = makeBareRow(session, titleMap: titleMap)
         let fm = FileManager.default
+        row.recordingError = SessionArchive.recordingError(in: session.url)
+        if row.recordingError != nil { row.transcriptStatus = "Recording needs review" }
         row.hasTranscript = fm.fileExists(atPath: session.transcriptURL.path)
         row.hasRetainedAudio = session.isRTIArchive && !TranscriptUpgradeService.audioInputs(in: session.url).isEmpty
         if row.hasTranscript, let databases {
@@ -1233,8 +1236,9 @@ final class SessionsWindowModel {
 
     /// The notice line for the open session, and whether a job still runs.
     var openNotice: (text: String, isRunning: Bool)? {
-        guard let notice, notice.rowID == openRowID else { return nil }
-        return (notice.text, upgradingRowID == notice.rowID)
+        if let notice, notice.rowID == openRowID { return (notice.text, upgradingRowID == notice.rowID) }
+        if let error = openRow?.recordingError { return ("Recording needs review: \(error)", false) }
+        return nil
     }
 
     // MARK: - Ask and export

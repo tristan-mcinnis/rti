@@ -10,7 +10,20 @@ enum AudioCaptureError: Error {
     case deviceSelectionFailed(OSStatus)
 }
 
-final class AudioCaptureManager: @unchecked Sendable {
+/// The capture lifecycle consumed by AudioPipeline. Tests deliver synthetic PCM
+/// through the same callback as the engine tap, without opening a real device.
+protocol MicrophoneCapturing: AnyObject, Sendable {
+    var onPCMBuffer: ((AVAudioPCMBuffer) -> Void)? { get set }
+    var onRestarted: (() -> Void)? { get set }
+    var micMuted: Bool { get set }
+    func start() throws
+    func stop()
+    func restart() throws
+    func secondsSinceLastBuffer() -> TimeInterval?
+    func secondsAllZero() -> TimeInterval?
+}
+
+final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
     static let targetFormat: AVAudioFormat = {
         guard let fmt = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
@@ -93,6 +106,7 @@ final class AudioCaptureManager: @unchecked Sendable {
         stop()
         engine = AVAudioEngine()
         try start()
+        onRestarted?()
     }
 
     private func markBufferReceived() {
@@ -207,7 +221,6 @@ final class AudioCaptureManager: @unchecked Sendable {
             RTILog.log("audio engine configuration changed — rebinding mic", category: .audio)
             do {
                 try restart()
-                onRestarted?()
             } catch {
                 RTILog.log("mic rebind after configuration change failed: \(error)", category: .audio)
             }

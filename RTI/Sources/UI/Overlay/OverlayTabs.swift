@@ -37,6 +37,12 @@ struct TranscriptTabView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Transcription: \(healthLabel)")
             } trailing: {
+                if session.canRetryLiveTranscription {
+                    Button("Retry transcription", systemImage: "arrow.clockwise") { session.retryLiveTranscription() }
+                        .buttonStyle(.plain)
+                        .font(House.TypeToken.meta)
+                        .foregroundStyle(House.ColorToken.textPrimary)
+                }
                 translateControl
                 OverlayToolbarButton(icon: "doc.on.doc", help: "Copy transcript", disabled: session.liveEntries.isEmpty) {
                     NSPasteboard.copyString(session.transcriptTextForCopy())
