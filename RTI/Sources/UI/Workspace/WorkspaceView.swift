@@ -1,3 +1,4 @@
+import AppKit
 import HouseDesign
 import RTICore
 import SwiftUI
@@ -31,7 +32,7 @@ struct WorkspaceView: View {
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
                 // position survive trips to the archive or preferences.
-                OverlayPanelView(onOpenSettings: { model.showSettings() }, modes: modes)
+                OverlayPanelView(onOpenSettings: { model.showSettings() }, modes: modes, isActive: model.isLivePageActive)
                     .workspacePage(isActive: model.page == .live)
                 if model.hasVisitedLibrary {
                     SessionsBrowserView(model: model.sessions)
@@ -74,7 +75,18 @@ struct WorkspaceView: View {
             .background(House.ColorToken.surface)
         }
         .task(id: model.reloadRequest) {
-            if model.page == .sessions { await model.sessions.reload() }
+            guard model.isWindowVisible else { return }
+            switch model.page {
+            case .sessions: await model.sessions.reload()
+            case .chats: await model.sessions.loadActiveLibrary()
+            case .live, .settings: break
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didHideNotification)) { _ in
+            model.setWindowVisible(false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didUnhideNotification)) { _ in
+            model.setWindowVisible(WindowCoordinator.shared.overlayIsVisible)
         }
         .onDisappear { model.sessions.playback.pause() }
     }

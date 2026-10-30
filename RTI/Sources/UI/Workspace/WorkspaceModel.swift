@@ -31,6 +31,8 @@ final class WorkspaceModel {
     private(set) var previousPage: Page = .live
     private(set) var hasVisitedLibrary = false
     private(set) var reloadRequest = 0
+    private(set) var isWindowVisible = true
+    var isLivePageActive: Bool { isWindowVisible && page == .live }
     let sessions: SessionsWindowModel
     var isBriefPresented = false
     let brief = MeetingBriefModel()
@@ -54,7 +56,7 @@ final class WorkspaceModel {
             hasVisitedLibrary = true
             sessions.mode = page == .sessions ? .sessions : .chats
         }
-        sessions.isWindowVisible = page == .sessions || page == .chats
+        updateLibraryVisibility()
         if !sessions.isWindowVisible {
             sessions.playback.pause()
             sessions.closeActions()
@@ -62,6 +64,23 @@ final class WorkspaceModel {
         }
         reloadRequest &+= 1
         onNavigate?(page)
+    }
+
+    /// Hiding the window retires UI work, never capture or the current draft.
+    func setWindowVisible(_ visible: Bool) {
+        let becameVisible = visible && !isWindowVisible
+        isWindowVisible = visible
+        updateLibraryVisibility()
+        if becameVisible { reloadRequest &+= 1 }
+        if !visible {
+            sessions.playback.pause()
+            sessions.closeActions()
+            sessions.isCommandHeld = false
+        }
+    }
+
+    private func updateLibraryVisibility() {
+        sessions.isWindowVisible = isWindowVisible && (page == .sessions || page == .chats)
     }
 
     func showSettings(_ pane: SettingsView.SettingsTab = .providers) {

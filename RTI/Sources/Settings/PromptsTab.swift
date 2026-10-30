@@ -9,9 +9,11 @@ import HouseDesign
 /// with per-prompt and global "reset to defaults". Edits persist in
 /// `PromptStore`; the running app reads them on the next call.
 struct PromptsTab: View {
-    @State private var selection: PromptID = .systemDefault
+    @Bindable var draft: PromptSettingsDraft
     @State private var showResetAllConfirm = false
     private var store = PromptStore.shared
+
+    init(draft: PromptSettingsDraft = PromptSettingsDraft()) { self.draft = draft }
 
     var body: some View {
         HSplitView {
@@ -38,7 +40,7 @@ struct PromptsTab: View {
                     .padding(.horizontal, 22)
                     .padding(.vertical, 16)
                 Divider()
-                PromptEditorView(id: selection)
+                PromptEditorView(id: draft.selection, draft: draft)
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                     .background(SettingsSurfaceBackground())
             }
@@ -71,14 +73,14 @@ struct PromptsTab: View {
                 "Reset every prompt to its shipped default? Your edits will be lost.",
                 isPresented: $showResetAllConfirm, titleVisibility: .visible
             ) {
-                Button("Reset all prompts", role: .destructive) { store.resetAll() }
+                Button("Reset all prompts", role: .destructive) { store.resetAll(); draft.resetAll(read: store.text) }
                 Button("Cancel", role: .cancel) {}
             }
         }
     }
 
     private var promptList: some View {
-        List(selection: $selection) {
+        List(selection: $draft.selection) {
             ForEach(PromptID.Group.allCases, id: \.self) { group in
                 Section(group.rawValue) {
                     ForEach(PromptID.allCases.filter { $0.group == group }, id: \.self) { id in
@@ -113,11 +115,17 @@ struct PromptsTab: View {
 /// composed recap leaves) a preview of the fully assembled prompt.
 private struct PromptEditorView: View {
     let id: PromptID
-    @State private var text: String = ""
+    @Bindable var draft: PromptSettingsDraft
+    private var text: String { draft.texts[id] ?? store.text(id) }
     private var store = PromptStore.shared
 
-    init(id: PromptID) {
+    init(id: PromptID, draft: PromptSettingsDraft) {
         self.id = id
+        self.draft = draft
+    }
+
+    private var textBinding: Binding<String> {
+        Binding(get: { text }, set: { draft.texts[id] = $0 })
     }
 
     private var isDirty: Bool {
@@ -137,7 +145,7 @@ private struct PromptEditorView: View {
                             SettingsStatusLabel(text: "The shipped default changed since you edited this.", systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
                         }
 
-                        TextEditor(text: $text)
+                        TextEditor(text: textBinding)
                             .font(.system(.callout, design: .monospaced))
                             .frame(minHeight: 280)
                             .settingsEditorBorder()
@@ -167,19 +175,19 @@ private struct PromptEditorView: View {
                     Spacer()
                     Button("Reset to Default") {
                         store.reset(id)
-                        text = store.text(id)
+                        draft.replace(id, with: store.text(id))
                     }
                     .disabled(!store.isOverridden(id))
-                    Button("Revert Edits") { text = store.text(id) }
+                    Button("Revert Edits") { draft.replace(id, with: store.text(id)) }
                         .disabled(!isDirty)
-                    Button("Save") { store.setOverride(id, text) }
+                    Button("Save") { store.setOverride(id, text); draft.replace(id, with: store.text(id)) }
                         .keyboardShortcut("s", modifiers: .command)
                         .disabled(!isDirty)
                 }
             }
         }
-        .onAppear { text = store.text(id) }
-        .onChange(of: id) { _, newID in text = store.text(newID) }
+        .onAppear { draft.prepare(id, read: store.text) }
+        .onChange(of: id) { _, newID in draft.prepare(newID, read: store.text) }
     }
 
     /// For recap leaves, show the fully composed prompt so the user sees what

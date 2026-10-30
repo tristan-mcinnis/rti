@@ -24,3 +24,21 @@ Sizing and depth follow-up, 2026-10-30:
 - Six workspace tests pass. Renders cover all four pages at minimum, standard and larger sizes in light and dark. Supporting text clears 4.5:1 on each surface; metadata clears 3:1 on the raised ground.
 - Strict design lint and the source scrub pass. No shared colour values or font sizes changed.
 - The compact layout also exposed an answer Copy control over the text. A fixed action gutter now keeps the control and its Copied label clear of prose.
+
+Workflow completion, 2026-10-30:
+Intent: Make RTI's main workflows predictable and verify the installed revision.
+Criteria:
+- New-chat hand-offs clear old pending context. check: composer boundary regressions
+- Settings retain unsaved edits across navigation. check: settings draft regressions and installed UI
+- Chats refresh their list and selected detail. check: store-backed freshness regressions
+- Hidden pages retire presentation work without stopping capture. check: workspace visibility regressions
+- The installed app matches the committed build. check: lint, publish checks, signature and commit stamp
+Must not: Lose saved chats, change real credentials during tests or interrupt recording.
+
+The working brief and transition rules are in docs/workflow-contracts-20261030.md. Separate agents own composer, Settings and Chats fixes; an independent reviewer checks the integrated result before installation.
+
+Workflow verification:
+- 82 integrated checks passed, including 22 new composer, Settings, chat freshness and visibility regressions.
+- Independent review findings on stale resume/storage results and false mode-save success were repaired and cleared on re-review.
+- A queued-send test uses a valid fixture attachment so a blocked send cannot create a false pass. Failed-send coverage injects an actual storage error.
+- Strict changed-file House lint and source scrub pass. Workflow contracts name the state preserved or reset at each boundary.

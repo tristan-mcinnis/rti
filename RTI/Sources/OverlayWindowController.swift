@@ -192,9 +192,18 @@ private final class OverlayWindow: NSWindow {
     }
 
     override func close() {
-        WorkspaceModel.shared.sessions.isWindowVisible = false
-        WorkspaceModel.shared.sessions.playback.pause()
+        WorkspaceModel.shared.setWindowVisible(false)
         super.close()
+    }
+
+    override func miniaturize(_ sender: Any?) {
+        WorkspaceModel.shared.setWindowVisible(false)
+        super.miniaturize(sender)
+    }
+
+    override func deminiaturize(_ sender: Any?) {
+        WorkspaceModel.shared.setWindowVisible(true)
+        super.deminiaturize(sender)
     }
 
     private static func isPlainEscape(_ event: NSEvent) -> Bool {
@@ -302,6 +311,7 @@ final class OverlayWindowController {
             win.makeFirstResponder(nil)
             win.identifier = NSUserInterfaceItemIdentifier(page.windowKind.windowIdentifier)
             RTIKeyWindowTracker.shared.refresh()
+            if page == .live { OverlayInputState.shared.requestFocus() }
         }
         restoreFrame()
     }
@@ -372,15 +382,16 @@ final class OverlayWindowController {
 
     // MARK: - Showing
 
-    var isVisible: Bool { window.isVisible }
+    var isVisible: Bool { window.isVisible && !window.isMiniaturized && !NSApp.isHidden }
 
     func setSharingInvisible(_ invisible: Bool) {
         window.sharingType = invisible ? .none : .readOnly
     }
 
     func show(initialLaunch: Bool = false) {
+        if window.isMiniaturized { window.deminiaturize(nil) }
         let workspace = WorkspaceModel.shared
-        workspace.sessions.isWindowVisible = workspace.page == .sessions || workspace.page == .chats
+        workspace.setWindowVisible(true)
         // Bring RTI forward with the keyboard, even from another app (the
         // global ⌘\ key), so typing lands in the composer, not behind it.
         RTIActivation.bringToFront(window)
@@ -392,13 +403,12 @@ final class OverlayWindowController {
     }
 
     func hide() {
-        WorkspaceModel.shared.sessions.isWindowVisible = false
-        WorkspaceModel.shared.sessions.playback.pause()
+        WorkspaceModel.shared.setWindowVisible(false)
         window.orderOut(nil)
     }
 
     func toggle() {
-        if window.isVisible {
+        if isVisible {
             hide()
         } else {
             show()

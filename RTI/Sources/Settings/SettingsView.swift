@@ -12,10 +12,14 @@ import HouseDesign
 final class SettingsNavigation {
     var pane: SettingsView.SettingsTab
     var query: String
+    let providerDraft: ProviderSettingsDraft
+    let modeDraft = ModeSettingsDraft()
+    let promptDraft = PromptSettingsDraft()
 
-    init(pane: SettingsView.SettingsTab = .providers, query: String = "") {
+    init(pane: SettingsView.SettingsTab = .providers, query: String = "", providerDraft: ProviderSettingsDraft = ProviderSettingsDraft()) {
         self.pane = pane
         self.query = query
+        self.providerDraft = providerDraft
     }
 }
 
@@ -184,9 +188,9 @@ struct SettingsView: View {
             paneHeader
             Group {
                 switch navigation.pane {
-                case .providers: ProvidersTab()
-                case .modes: ModesTab(modeStore: modeStore)
-                case .prompts: PromptsTab()
+                case .providers: ProvidersTab(draft: navigation.providerDraft)
+                case .modes: ModesTab(modeStore: modeStore, draft: navigation.modeDraft)
+                case .prompts: PromptsTab(draft: navigation.promptDraft)
                 case .glossary: GlossaryTab()
                 case .general: GeneralTab()
                 case .logs: LogsView(fixture: logsFixture)

@@ -12,6 +12,8 @@ final class ModeStore {
     private let defaults: UserDefaults?
     /// False in a memory-only store: no file is read, written, or resolved.
     private let persistsToDisk: Bool
+    /// Failure tests inject a writer without resolving the user's modes file.
+    private let persistOverride: (([Mode]) throws -> Void)?
 
     var activeModeId: String? {
         didSet {
@@ -27,6 +29,7 @@ final class ModeStore {
     /// Production: the live modes file and the standard defaults.
     private init() {
         persistsToDisk = true
+        persistOverride = nil
         defaults = .standard
         let loaded = Self.fileURL.flatMap { ModeStorage.load(from: $0) } ?? ModeStorage.builtinSeeds()
         // A file that exists but did not decode is about to be overwritten by
@@ -55,13 +58,15 @@ final class ModeStore {
     /// live preferences.
     static func inMemory(
         modes: [Mode]? = nil,
-        activeModeId: String? = "builtin.meeting"
+        activeModeId: String? = "builtin.meeting",
+        writer: (([Mode]) throws -> Void)? = nil
     ) -> ModeStore {
-        ModeStore(inMemory: modes, activeModeId: activeModeId)
+        ModeStore(inMemory: modes, activeModeId: activeModeId, writer: writer)
     }
 
-    private init(inMemory modes: [Mode]?, activeModeId: String?) {
+    private init(inMemory modes: [Mode]?, activeModeId: String?, writer: (([Mode]) throws -> Void)?) {
         persistsToDisk = false
+        persistOverride = writer
         defaults = nil
         self.modes = ModeStorage.upgradingBuiltins(in: modes ?? ModeStorage.builtinSeeds())
         // A fresh in-memory active mode is a plain assignment, not a shared
@@ -83,12 +88,16 @@ final class ModeStore {
         modes = loaded
     }
 
-    func update(id: String, name: String, systemPrompt: String, referenceText: String?) {
-        guard let idx = modes.firstIndex(where: { $0.id == id }) else { return }
-        modes[idx].name = name
-        modes[idx].systemPrompt = systemPrompt
-        modes[idx].referenceText = (referenceText?.isEmpty == true) ? nil : referenceText
-        persist()
+    @discardableResult
+    func update(id: String, name: String, systemPrompt: String, referenceText: String?) -> Bool {
+        guard let idx = modes.firstIndex(where: { $0.id == id }) else { return false }
+        var updated = modes
+        updated[idx].name = name
+        updated[idx].systemPrompt = systemPrompt
+        updated[idx].referenceText = (referenceText?.isEmpty == true) ? nil : referenceText
+        guard persist(updated) else { return false }
+        modes = updated
+        return true
     }
 
     /// Insert a new user-defined mode. Returns the new id, or nil if invalid.
@@ -124,12 +133,19 @@ final class ModeStore {
         AppSupportPaths.file("modes.json")
     }
 
-    private func persist() {
-        guard persistsToDisk, let url = Self.fileURL else { return }
+    @discardableResult
+    private func persist(_ candidate: [Mode]? = nil) -> Bool {
+        let values = candidate ?? modes
         do {
-            try ModeStorage.save(modes, to: url)
+            if let persistOverride { try persistOverride(values) }
+            else if persistsToDisk {
+                guard let url = Self.fileURL else { return false }
+                try ModeStorage.save(values, to: url)
+            }
+            return true
         } catch {
             RTILog.log("ModeStore persist failed: \(error)", category: .modes)
+            return false
         }
     }
 }

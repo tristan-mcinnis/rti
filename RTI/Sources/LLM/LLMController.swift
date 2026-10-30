@@ -5,6 +5,15 @@ import HouseChatDocuments
 import Observation
 import RTICore
 
+extension Notification.Name {
+    /// Sent synchronously before a conversation change can cancel a stream.
+    /// The object is the controller whose composer must retire its queued turn.
+    static let rtiComposerWillSwitchConversation = Notification.Name("rti.composerWillSwitchConversation")
+    /// Sent synchronously before a successful reset clears controller context.
+    /// Only that controller's composer discards its pending draft and sources.
+    static let rtiComposerWillResetConversation = Notification.Name("rti.composerWillResetConversation")
+}
+
 /// The exact bytes and facts behind one source a turn was handed.
 ///
 /// Built once at send time from the typed attachment or the captured
@@ -274,11 +283,17 @@ final class LLMController {
     /// cancels this, so a `/new` during a multi-round turn stops the next
     /// round's provider call and tools too, not just the current stream.
     private var sendTask: Task<Void, Never>?
+#if DEBUG
+    /// Captures the exact in-flight send so a storage-race proof can await it.
+    var activeSendForProof: Task<Void, Never>? { sendTask }
+#endif
 
     /// The injected store, when a test supplied one. `storeIsInjected` makes a
     /// nil store mean "no vault" rather than "fall back to the shared store".
     private let injectedStore: ChatThreadStore?
     private let storeIsInjected: Bool
+    /// Deterministic storage delay/failure injection. Nil in the running app.
+    private let beforeSubmissionPersistence: (@Sendable () async throws -> Void)?
     /// Where the current recording's session id comes from. Nil uses the live
     /// coordinator.
     private let sessionIDProvider: (@MainActor () -> String?)?
@@ -320,6 +335,8 @@ final class LLMController {
     /// Increments whenever the live chat's identity changes. A send captures
     /// it and refuses to install a result into a chat it no longer owns.
     private var generation: Int = 0
+    /// Only the latest requested conversation may adopt async history reads.
+    @ObservationIgnored private var resumeRequestID: UUID?
     /// The turn this send regenerates, when it is a regenerate. Consumed once
     /// by the next `performSend` and recorded on the new turn's receipt.
     private var regenerationParentTurnID: String?
@@ -574,11 +591,13 @@ final class LLMController {
         makeToolExecutor: (@MainActor (Bool, Bool) -> ToolExecutor)? = nil,
         modeStore: ModeStore? = nil,
         turnLogger: ((VaultLogStore.TurnRecord) -> Void)? = nil,
-        ambientScreenProvider: (@MainActor () -> String?)? = nil
+        ambientScreenProvider: (@MainActor () -> String?)? = nil,
+        beforeSubmissionPersistence: (@Sendable () async throws -> Void)? = nil
     ) {
         self.request = request
         self.injectedStore = chatStore
         self.storeIsInjected = storeIsInjected
+        self.beforeSubmissionPersistence = beforeSubmissionPersistence
         self.sessionIDProvider = sessionIDProvider
         self.routeResolver = routeResolver
         self.makeToolExecutor = makeToolExecutor
@@ -1087,6 +1106,9 @@ final class LLMController {
     /// Leaving it here is what used to put a previous chat's documents and
     /// images on the wire after `/new` or at the start of the next recording.
     func resetMemory() {
+        resumeRequestID = nil
+        NotificationCenter.default.post(name: .rtiComposerWillResetConversation, object: self)
+        pendingDraftRestore = nil
         cancel()
         clearPendingScreenContext()
         entries = []
@@ -1116,7 +1138,7 @@ final class LLMController {
     /// and in the session archive.
     func newChat() {
         let plan = ChatResetPlan.forNewChat
-        if plan.cancelsStream { cancel() }
+        // resetMemory retires the composer's queue before cancelling the stream.
         resetMemory()
         if plan.resetsModelSelection {
             chatSelection = ChatModelSelection(
@@ -1222,6 +1244,11 @@ final class LLMController {
     /// stored attachment references are drawn again. Nothing here touches the
     /// recording, and an answer that is streaming is stopped first.
     func resumeChat(id: String) async {
+        let requestID = UUID()
+        resumeRequestID = requestID
+        defer {
+            if resumeRequestID == requestID { resumeRequestID = nil }
+        }
         do {
             guard let store = try chatStore() else {
                 lastError = "No vault is configured, so stored chats cannot be read."
@@ -1235,16 +1262,25 @@ final class LLMController {
                 lastErrorTurnID = nil
                 return
             }
+            // A queued follow-up belongs to the chat being left. Disarm it
+            // before an await or cancellation can finish that chat's stream;
+            // preserve the draft if the saved record cannot be opened.
+            NotificationCenter.default.post(name: .rtiComposerWillSwitchConversation, object: self)
+            guard resumeRequestID == requestID, !Task.isCancelled else { return }
+            cancel()
+            guard resumeRequestID == requestID, !Task.isCancelled else { return }
             // A turn a process death left mid-answer becomes a cancelled turn
             // before anything is shown, so the chat tells the truth.
             let marked = try await store.markInterrupted(id: id)
+            guard resumeRequestID == requestID, !Task.isCancelled else { return }
             if marked > 0 {
                 RTILog.log("marked \(marked) interrupted turn(s) in \(id)", category: .llm)
             }
             let thread = try await store.load(id: id)
+            guard resumeRequestID == requestID, !Task.isCancelled else { return }
             let retained = try await store.retainedAttachments(id: id)
+            guard resumeRequestID == requestID, !Task.isCancelled else { return }
 
-            cancel()
             resetMemory()
             chatThread = thread
             entries = Self.entries(from: thread)
@@ -1256,6 +1292,7 @@ final class LLMController {
             lastErrorIsAuth = false
             lastErrorTurnID = nil
         } catch {
+            guard resumeRequestID == requestID, !Task.isCancelled else { return }
             // A damaged record is reported, never replaced with an empty chat.
             lastError = "Could not open that chat: \(error.localizedDescription)"
             lastErrorIsAuth = false
@@ -1395,11 +1432,15 @@ final class LLMController {
         sessionID: String?,
         generation: Int
     ) async -> PersistOutcome {
+        guard generation == self.generation, !Task.isCancelled else { return .aborted }
         let store: ChatThreadStore
         do {
+            if let beforeSubmissionPersistence { try await beforeSubmissionPersistence() }
+            guard generation == self.generation, !Task.isCancelled else { return .aborted }
             guard let created = try chatStore() else { return .noStore }
             store = created
         } catch {
+            guard generation == self.generation, !Task.isCancelled else { return .aborted }
             return .failed("Could not open the chat store: \(error.localizedDescription)")
         }
 
@@ -1434,9 +1475,10 @@ final class LLMController {
                 )
                 // A `/new` during this write means this send has no chat: do
                 // not adopt the created thread, do not write the turn.
-                guard generation == self.generation else { return .aborted }
+                guard generation == self.generation, !Task.isCancelled else { return .aborted }
                 thread = created
             }
+            guard generation == self.generation, !Task.isCancelled else { return .aborted }
             let commit = try await store.appendTurn(
                 to: thread,
                 turn: ChatThreadStore.SubmittedTurn(
@@ -1461,7 +1503,7 @@ final class LLMController {
             )
             // A `/new` between the append and here must not reinstate the old
             // thread as the live one.
-            guard generation == self.generation else { return .aborted }
+            guard generation == self.generation, !Task.isCancelled else { return .aborted }
             chatThread = commit.conversation
             // The chat's retained archive accumulates every source it has been
             // sent, deduped by id, so a later bare follow-up can still read
@@ -1473,6 +1515,7 @@ final class LLMController {
             }
             return .saved(conversationID: commit.conversation.id)
         } catch {
+            guard generation == self.generation, !Task.isCancelled else { return .aborted }
             return .failed("Could not save this question: \(error.localizedDescription)")
         }
     }
@@ -2277,6 +2320,11 @@ final class LLMController {
                 sessionID: turnSessionID,
                 generation: capturedGeneration
             )
+            // A replaced or cancelled send owns none of the current UI state,
+            // even if an old storage operation completed without cancellation.
+            guard self.generation == capturedGeneration,
+                  self.pendingTurn?.id == thisEntryID,
+                  !Task.isCancelled else { return }
             switch outcome {
             case let .failed(failure):
                 self.entries.removeAll { $0.id == userEntry.id || $0.id == assistantEntry.id }
@@ -2293,11 +2341,6 @@ final class LLMController {
             case .aborted:
                 // The chat the user is in is no longer this turn's. Do not
                 // reinstate the old thread and do not start the provider.
-                self.entries.removeAll { $0.id == userEntry.id || $0.id == assistantEntry.id }
-                self.streaming = false
-                self.reasoning = false
-                self.streamingEntryID = nil
-                if self.pendingTurn?.id == thisEntryID { self.pendingTurn = nil }
                 return
             case let .saved(conversationID):
                 self.pendingTurn?.conversationID = conversationID
@@ -2309,16 +2352,6 @@ final class LLMController {
             case .noStore:
                 self.clearDatedSources(consumedDatedSources)
                 break
-            }
-            // A `/new` or resume that landed while the question was written
-            // must not let this send proceed on the old chat's behalf.
-            guard self.generation == capturedGeneration else {
-                self.entries.removeAll { $0.id == userEntry.id || $0.id == assistantEntry.id }
-                self.streaming = false
-                self.reasoning = false
-                self.streamingEntryID = nil
-                if self.pendingTurn?.id == thisEntryID { self.pendingTurn = nil }
-                return
             }
             // The question is on disk; from here the partial answer is
             // checkpointed periodically so process death leaves a record with
@@ -2335,6 +2368,8 @@ final class LLMController {
                 allowsScreenTools: toolPolicy.allowsScreenTools,
                 onEvent: { event in
                     MainActor.assumeIsolated {
+                        guard self.generation == capturedGeneration,
+                              self.streamingEntryID == thisEntryID else { return }
                         switch event {
                         case let .contentDelta(delta):
                             if self.streamingEntryID != thisEntryID { return }

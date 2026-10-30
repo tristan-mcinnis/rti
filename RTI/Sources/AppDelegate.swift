@@ -197,11 +197,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         windows.showOverlay()
     }
 
-    /// Clear the current session's chat immediately — no confirmation modal.
-    /// The chat is ephemeral (no persisted history) and the live transcript is
-    /// untouched, so a blocking "Are you sure?" alert was pure friction; clearing
-    /// is now a single click / keystroke. Static so `CommandPaletteFactory` can
-    /// reference it without a live AppDelegate instance.
+    /// Start a fresh conversation and clear its pending composer work.
+    /// Saved chats and the live transcript remain available. This action does
+    /// not delete history or end recording, so it needs no deletion prompt.
+    /// Static so `CommandPaletteFactory` can call it without an AppDelegate.
     static func clearChatNow() {
         LLMController.shared.clear()
     }

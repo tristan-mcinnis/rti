@@ -4,23 +4,22 @@ import HouseDesign
 // MARK: - Providers
 
 struct ProvidersTab: View {
-    @State private var selectedLLMProviderId = LLMProviders.activeId
-    @State private var keyValues: [String: String] = [:]
-    @State private var saved = false
-    @State private var saveError: String?
+    @Bindable var draft: ProviderSettingsDraft
+
+    init(draft: ProviderSettingsDraft = ProviderSettingsDraft()) { self.draft = draft }
 
     private var activeLLMOption: LLMProviderOption {
-        LLMProviders.option(id: selectedLLMProviderId)
+        LLMProviders.option(id: draft.selectedLLMProviderId)
     }
 
     private var activeLLMHasKey: Bool {
-        !(keyValues[activeLLMOption.keychainAccount] ?? "")
+        !(draft.keyValues[activeLLMOption.keychainAccount] ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
     }
 
     private var activeRealtimeSTTHasKey: Bool {
-        !(keyValues["soniox"] ?? "")
+        !(draft.keyValues["soniox"] ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
     }
@@ -32,7 +31,7 @@ struct ProvidersTab: View {
                     VStack(alignment: .leading, spacing: 12) {
                         providerPicker(
                             title: "Assistant",
-                            selection: $selectedLLMProviderId,
+                            selection: $draft.selectedLLMProviderId,
                             options: LLMProviders.all.map { ($0.id, $0.displayName) },
                             detail: "\(activeLLMOption.model) • \(activeLLMOption.config.baseURL.host ?? activeLLMOption.config.baseURL.absoluteString)"
                         )
@@ -85,21 +84,25 @@ struct ProvidersTab: View {
                         color: RTIDesign.Color.warning
                     )
                 }
-                if let saveError {
+                if let saveError = draft.saveError {
                     SettingsStatusLabel(text: saveError, systemImage: "xmark.octagon.fill", color: RTIDesign.Color.danger)
                 }
 
                 HStack {
-                    if saved {
+                    if draft.hasUnsavedChanges {
+                        SettingsStatusLabel(text: "Unsaved changes", systemImage: "pencil", color: House.ColorToken.textSecondary)
+                    } else if draft.saved {
                         SettingsStatusLabel(text: "Saved", systemImage: "checkmark.circle.fill", color: RTIDesign.Color.success)
                     }
                     Spacer()
-                    Button("Save Provider Settings") { save() }
+                    Button("Discard Changes") { draft.discardChanges() }
+                        .disabled(!draft.hasUnsavedChanges)
+                    Button("Save Provider Settings") { draft.save() }
                         .keyboardShortcut(.defaultAction)
                 }
             }
         }
-        .onAppear(perform: load)
+        .onAppear { draft.loadIfNeeded() }
     }
 
     private var storageLocation: some View {
@@ -172,8 +175,8 @@ struct ProvidersTab: View {
 
     private func binding(for account: String) -> Binding<String> {
         Binding(
-            get: { keyValues[account] ?? "" },
-            set: { keyValues[account] = $0 }
+            get: { draft.keyValues[account] ?? "" },
+            set: { draft.keyValues[account] = $0 }
         )
     }
 
@@ -186,46 +189,4 @@ struct ProvidersTab: View {
         }
     }
 
-    private func load() {
-        selectedLLMProviderId = LLMProviders.activeId
-        var next: [String: String] = [:]
-        for provider in LLMProviders.all {
-            next[provider.keychainAccount] = CredentialStore.value(for: provider.keychainAccount) ?? ""
-        }
-        next["soniox"] = CredentialStore.soniox ?? ""
-        keyValues = next
-    }
-
-    private func save() {
-        saveError = nil
-
-        for provider in LLMProviders.all {
-            CredentialStore.setValue(
-                (keyValues[provider.keychainAccount] ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                for: provider.keychainAccount
-            )
-        }
-        CredentialStore.setSoniox((keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
-
-        LLMProviders.activeId = selectedLLMProviderId
-        STTProviders.activeId = STTProviders.soniox.id
-
-        let llmKey = (keyValues[activeLLMOption.keychainAccount] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard CredentialStore.value(for: activeLLMOption.keychainAccount) == llmKey else {
-            saveError = "Could not save \(activeLLMOption.displayName) credentials to disk. Check that ~/Library/Application Support/RTI is writable."
-            return
-        }
-
-        let soniox = (keyValues["soniox"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard CredentialStore.soniox == (soniox.isEmpty ? nil : soniox) else {
-            saveError = "Could not save speech-to-text credentials to disk. Check that ~/Library/Application Support/RTI is writable."
-            return
-        }
-
-        saved = true
-        Task {
-            try? await Task.sleep(for: .seconds(1.2))
-            await MainActor.run { saved = false }
-        }
-    }
 }

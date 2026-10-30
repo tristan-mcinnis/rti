@@ -55,7 +55,7 @@ struct SessionsBrowserView: View {
         .toggleStyle(SlateToggleStyle())
         .preferredColorScheme(preferredColorScheme)
         .task { if !embedded { await model.loadIfNeeded() } }
-        .task(id: model.mode) { await model.loadActiveLibrary() }
+        .task(id: model.mode) { if !embedded { await model.loadActiveLibrary() } }
         .task(id: model.playbackDirectory) { await model.playback.run(directory: model.playbackDirectory) }
         .task(id: model.deletionRequest) { await model.deleteConfirmedSession() }
         .alert("Move this session to Trash?", isPresented: $model.isDeleteConfirmationPresented) {

@@ -86,6 +86,8 @@ final class ChatLibraryModel {
     private(set) var isDeleting = false
 
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var reloadGeneration = 0
+    @ObservationIgnored private var detailGeneration = 0
 
     init(location: ChatLibraryLocation?, now: @escaping @Sendable () -> Date = { Date() }) {
         self.location = location
@@ -218,7 +220,10 @@ final class ChatLibraryModel {
     /// do not carry) and its searchable text come from one pass. A failed
     /// read is reported and its row is kept, never dropped.
     func reload() async {
+        guard !Task.isCancelled else { return }
         hasStarted = true
+        reloadGeneration &+= 1
+        let generation = reloadGeneration
         guard let location else {
             rows = []
             legacyLogs = []
@@ -227,55 +232,49 @@ final class ChatLibraryModel {
             return
         }
         isLoading = true
-        defer { isLoading = false }
+        defer { if reloadGeneration == generation { isLoading = false } }
 
         do {
             let summaries = try await location.store.summaries()
             var records: [ConversationRecord] = []
             for summary in summaries where summary.issue == nil {
+                guard !Task.isCancelled, reloadGeneration == generation else { return }
                 if let record = try? await location.store.load(id: summary.id) { records.append(record) }
             }
+            let bytes = try? await location.store.storageUsage()
+            let logs = await legacyReader?.logs() ?? []
+            guard !Task.isCancelled, reloadGeneration == generation else { return }
+
             rows = ChatLibraryRules.rows(records: records, summaries: summaries)
-            storageBytes = try? await location.store.storageUsage()
+            storageBytes = bytes
             errorText = nil
+            hasLoaded = true
+            // The selected chat and search stay in place while the data is
+            // refreshed after a trip to Live. Only a removed record retires
+            // its selection.
+            if let openID, !rows.contains(where: { $0.id == openID }) {
+                self.openID = nil
+                detail = nil
+            }
+            // Projected days already belong to the saved chats above.
+            legacyLogs = logs.filter { !$0.isEntirelyProjected }
+            linkedLogDayCount = logs.filter(\.isEntirelyProjected).count
+            if let openLogID, !legacyLogs.contains(where: { $0.id == openLogID }) {
+                self.openLogID = nil
+            }
+            await loadDetail()
         } catch {
+            guard !Task.isCancelled, reloadGeneration == generation else { return }
             // An unreadable store is not an empty one: keep what is shown.
             errorText = "The chat library could not be read: \(error.localizedDescription)"
             hasLoaded = true
-        }
-        hasLoaded = true
-        if let openID, !rows.contains(where: { $0.id == openID }) {
-            self.openID = nil
-            detail = nil
-        }
-        if let openLogID {
-            // The legacy list is rebuilt below; keep the choice and drop it
-            // only if that day is gone.
-            self.openLogID = openLogID
-        }
-        await reloadLegacy()
-    }
-
-    private func reloadLegacy() async {
-        guard let legacyReader else {
-            legacyLogs = []
-            linkedLogDayCount = 0
-            return
-        }
-        let logs = await legacyReader.logs()
-        // A day whose readable rows all belong to saved chats has nothing of
-        // its own to show: those turns are already listed as chats, and
-        // listing the day too would show one history twice.
-        legacyLogs = logs.filter { !$0.isEntirelyProjected }
-        linkedLogDayCount = logs.filter(\.isEntirelyProjected).count
-        if let openLogID, !legacyLogs.contains(where: { $0.id == openLogID }) {
-            self.openLogID = nil
         }
     }
 
     // MARK: - Selection
 
     func select(id: String) {
+        guard openID != id || openLogID != nil else { return }
         openID = id
         openLogID = nil
         detail = nil
@@ -294,8 +293,11 @@ final class ChatLibraryModel {
     /// Load the selection's record and check every source it points at. The
     /// view drives this from a structured task on the selection.
     func loadDetail() async {
-        guard let location else { return }
+        guard !Task.isCancelled, let location else { return }
+        detailGeneration &+= 1
+        let generation = detailGeneration
         detailError = nil
+        isLoadingDetail = false
         guard openLogID == nil else {
             detail = nil
             return
@@ -305,20 +307,20 @@ final class ChatLibraryModel {
             return
         }
         isLoadingDetail = true
-        defer { isLoadingDetail = false }
+        defer { if detailGeneration == generation { isLoadingDetail = false } }
         do {
             let record = try await location.store.load(id: id)
             let sources = await ChatLibraryRules.sources(for: record) { ref in
                 await Self.check(ref, in: location)
             }
-            guard openID == id else { return }
+            guard !Task.isCancelled, detailGeneration == generation, openID == id, openLogID == nil else { return }
             detail = ChatLibraryDetail(id: id, record: record, issue: nil, sources: sources)
         } catch ConversationArchiveError.missing {
-            guard openID == id else { return }
+            guard !Task.isCancelled, detailGeneration == generation, openID == id, openLogID == nil else { return }
             detail = ChatLibraryDetail(id: id, record: nil, issue: nil, sources: [])
             detailError = "This chat's file is not there any more."
         } catch {
-            guard openID == id else { return }
+            guard !Task.isCancelled, detailGeneration == generation, openID == id, openLogID == nil else { return }
             detail = ChatLibraryDetail(id: id, record: nil, issue: .corrupt, sources: [])
             detailError = "This chat could not be read: \(error.localizedDescription) Its file is left in place."
         }
@@ -572,9 +574,10 @@ extension SessionsWindowModel {
         }
     }
 
-    /// Load the library the window is showing, once, when it is first shown.
+    /// Re-entering Chats refreshes both its list and the selected record.
+    /// The live composer may have saved more turns while this page was hidden.
     func loadActiveLibrary() async {
         guard mode == .chats else { return }
-        await chatLibrary.loadIfNeeded()
+        await chatLibrary.reload()
     }
 }

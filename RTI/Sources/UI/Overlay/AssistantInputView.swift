@@ -495,7 +495,7 @@ struct AssistantInputView: View {
     @State private var focusToken = 0
     @StateObject private var mentionSuggestions = MentionSuggestionStore()
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
-    private let llm = LLMController.shared
+    private let llm: LLMController
     private let session = SessionCoordinator.shared
     private let inputState = OverlayInputState.shared
     private let streamingOverride: Bool?
@@ -511,13 +511,14 @@ struct AssistantInputView: View {
     private let datedSourceNameOverride: String?
     private let availableHeight: CGFloat
 
-    init(availableHeight: CGFloat = CGFloat(OverlayAppearanceDefaults.defaultHeight)) {
-        self.init(seed: nil, availableHeight: availableHeight)
+    init(availableHeight: CGFloat = CGFloat(OverlayAppearanceDefaults.defaultHeight), controller: LLMController = .shared) {
+        self.init(seed: nil, availableHeight: availableHeight, controller: controller)
     }
 
     /// The composer in a state set up front. Render proofs only; the app
     /// uses `init()`.
-    init(seed: ComposerRenderSeed?, availableHeight: CGFloat = CGFloat(OverlayAppearanceDefaults.defaultHeight)) {
+    init(seed: ComposerRenderSeed?, availableHeight: CGFloat = CGFloat(OverlayAppearanceDefaults.defaultHeight), controller: LLMController = .shared) {
+        self.llm = controller
         self.availableHeight = availableHeight
         let seed = seed ?? ComposerRenderSeed()
         _input = State(initialValue: seed.draft)
@@ -798,8 +799,18 @@ struct AssistantInputView: View {
         }
     }
 
-    var body: some View {
+    // Opaque stages bound type-checking cost while keeping the same view tree
+    // and State owner throughout conversation, context, and draft changes.
+    private var conversationLifecycleSurface: some View {
         composerSurface
+        .onReceive(NotificationCenter.default.publisher(for: .rtiComposerWillSwitchConversation)) { note in
+            guard (note.object as? LLMController) === llm else { return }
+            isQueued = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiComposerWillResetConversation)) { note in
+            guard (note.object as? LLMController) === llm else { return }
+            resetPendingConversation()
+        }
         // A draft typed during one meeting must not survive into the next:
         // an accidental ↩ would send stale text into the wrong conversation.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSessionDidStop)) { _ in
@@ -820,6 +831,10 @@ struct AssistantInputView: View {
             inputState.mode = .chat
             focusField()
         }
+    }
+
+    private var contextLifecycleSurface: some View {
+        conversationLifecycleSurface
         .onReceive(NotificationCenter.default.publisher(for: .rtiOverlayDidBecomeKey)) { _ in
             focusField()
             mentionSuggestions.prewarm()
@@ -837,6 +852,10 @@ struct AssistantInputView: View {
             if contextMeetings.isEmpty { contextMeetings = Self.loadContextMeetings() }
         }
         .onChange(of: inputState.paletteRequest) { _, _ in openPalette() }
+    }
+
+    var body: some View {
+        contextLifecycleSurface
         .onChange(of: input) { _, newValue in
             chooserIndex = 0
             if dismissedChooserDraft != nil, dismissedChooserDraft != newValue { dismissedChooserDraft = nil }
@@ -1821,11 +1840,26 @@ struct AssistantInputView: View {
     /// queued follow-up — and starts fresh.
     private func startNewChat() {
         llm.newChat()
+    }
+
+    /// Page navigation keeps the draft; a different conversation owns none of
+    /// its pending sources, queued follow-up, or previous-question recall.
+    private func resetPendingConversation() {
         input = ""
         selectedMentionPaths = []
         documents = []
         focusedChipID = nil
         isQueued = false
+        isDropTargeted = false
+        fileImporterPresented = false
+        isPaletteOpen = false
+        isAddContextOpen = false
+        paletteQuery = ""
+        addContextQuery = ""
+        dismissedChooserDraft = nil
+        chooserIndex = 0
+        inputState.mode = .chat
+        inputState.lastQuestion = nil
     }
 
     @discardableResult

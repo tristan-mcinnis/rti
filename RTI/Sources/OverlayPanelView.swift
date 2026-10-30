@@ -20,6 +20,7 @@ struct OverlayPanelView: View {
     /// The mode store the header reads. Production uses the shared store; a
     /// render proof passes an in-memory one so it never touches live prefs.
     var modes: ModeStore = .shared
+    var isActive = true
 
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
     @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
@@ -65,7 +66,7 @@ struct OverlayPanelView: View {
                 // first visit. Hidden readers hold their last displayed rows;
                 // they catch up once on return instead of laying out each frame.
                 if hasVisitedTranscript || tab == .transcript {
-                    TranscriptTabView(isActive: tab == .transcript)
+                    TranscriptTabView(isActive: isActive && tab == .transcript)
                         .tabContentPadding()
                         .opacity(tab == .transcript ? 1 : 0)
                         .allowsHitTesting(tab == .transcript)

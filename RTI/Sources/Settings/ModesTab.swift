@@ -9,11 +9,7 @@ struct ModesTab: View {
     /// production is unchanged; a render proof passes an in-memory one.
     var modeStore: ModeStore = .shared
     private var store: ModeStore { modeStore }
-    @State private var selection: String?
-    @State private var name = ""
-    @State private var prompt = ""
-    @State private var reference = ""
-    @State private var saved = false
+    @Bindable var draft: ModeSettingsDraft = ModeSettingsDraft()
 
     var body: some View {
         HSplitView {
@@ -24,7 +20,7 @@ struct ModesTab: View {
                     .padding(.horizontal, 10)
                     .padding(.top, 10)
 
-                List(selection: $selection) {
+                List(selection: $draft.selection) {
                     ForEach(store.modes) { mode in
                         HStack(spacing: 8) {
                             Text(mode.name)
@@ -48,7 +44,7 @@ struct ModesTab: View {
                             name: "New Mode",
                             systemPrompt: "You are RTI, a real-time intelligence assistant. Keep responses short and actionable."
                         ) {
-                            selection = newId
+                            draft.selection = newId
                         }
                     } label: {
                         Image(systemName: "plus")
@@ -56,15 +52,15 @@ struct ModesTab: View {
                     .help("New mode")
 
                     Button {
-                        guard let id = selection,
+                        guard let id = draft.selection,
                               let mode = store.modes.first(where: { $0.id == id }),
                               !mode.isBuiltin else { return }
                         store.deleteMode(id: id)
-                        selection = store.activeModeId ?? store.modes.first?.id
+                        draft.selection = store.activeModeId ?? store.modes.first?.id
                     } label: {
                         Image(systemName: "minus")
                     }
-                    .disabled(selection.flatMap { id in store.modes.first { $0.id == id } }?.isBuiltin ?? true)
+                    .disabled(draft.selection.flatMap { id in store.modes.first { $0.id == id } }?.isBuiltin ?? true)
                     .help("Delete mode (built-in modes cannot be deleted)")
                     Spacer()
                 }
@@ -76,40 +72,48 @@ struct ModesTab: View {
             .background(RTIDesign.Color.trackBackground)
 
             SettingsPage(maxWidth: 720) {
-                if selection != nil {
+                if draft.selection != nil {
                     VStack(alignment: .leading, spacing: 14) {
                         SettingsCard("Mode Identity", detail: "The name appears in the overlay and command surfaces.") {
-                            TextField("Mode name", text: $name)
+                            TextField("Mode name", text: $draft.name)
                                 .textFieldStyle(.roundedBorder)
                         }
 
                         SettingsCard("System Prompt", detail: "Baseline behavior for this mode. Keep it short, specific, and operational.") {
-                            TextEditor(text: $prompt)
+                            TextEditor(text: $draft.prompt)
                                 .font(RTIDesign.Font.code)
                                 .frame(minHeight: 150)
                                 .settingsEditorBorder()
                         }
 
                         SettingsCard("Reference Text", detail: "Prepended to every turn and capped at 8k characters. Useful for stable project or client context.") {
-                            TextEditor(text: $reference)
+                            TextEditor(text: $draft.reference)
                                 .font(RTIDesign.Font.code)
                                 .frame(minHeight: 110)
                                 .settingsEditorBorder()
                         }
 
+                        if let error = draft.saveError {
+                            SettingsStatusLabel(text: error, systemImage: "exclamationmark.triangle", color: House.ColorToken.danger)
+                        }
+
                         HStack {
                             Button("Set Active") {
-                                if let id = selection { store.activeModeId = id }
+                                if let id = draft.selection { store.activeModeId = id }
                             }
-                            .disabled(selection == store.activeModeId)
+                            .disabled(draft.selection == store.activeModeId)
 
                             Spacer()
 
-                            if saved {
+                            if draft.hasUnsavedChanges {
+                                SettingsStatusLabel(text: "Unsaved changes", systemImage: "pencil", color: House.ColorToken.textSecondary)
+                            } else if draft.saved {
                                 SettingsStatusLabel(text: "Saved", systemImage: "checkmark.circle.fill", color: RTIDesign.Color.success)
                             }
 
-                            Button("Save Mode") { save() }
+                            Button("Revert Edits") { draft.revert() }
+                                .disabled(!draft.hasUnsavedChanges)
+                            Button("Save Mode") { draft.save() }
                                 .keyboardShortcut(.defaultAction)
                         }
                     }
@@ -120,26 +124,6 @@ struct ModesTab: View {
                 }
             }
         }
-        .onAppear {
-            if selection == nil { selection = store.activeModeId ?? store.modes.first?.id }
-            loadSelection()
-        }
-        .onChange(of: selection) { _, _ in loadSelection() }
-    }
-
-    private func loadSelection() {
-        guard let id = selection, let mode = store.modes.first(where: { $0.id == id }) else { return }
-        name = mode.name
-        prompt = mode.systemPrompt
-        reference = mode.referenceText ?? ""
-    }
-
-    private func save() {
-        guard let id = selection else { return }
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
-        store.update(id: id, name: trimmedName, systemPrompt: prompt, referenceText: reference)
-        saved = true
-        Task { try? await Task.sleep(for: .seconds(1.2)); await MainActor.run { saved = false } }
+        .onAppear { draft.prepare(store: store) }
     }
 }
