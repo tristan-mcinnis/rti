@@ -15,6 +15,7 @@ import HouseDesign
 /// State lives in `SessionsWindowModel`, so the window's keys and the render
 /// proofs drive the same object.
 struct SessionsBrowserView: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     @Bindable var model: SessionsWindowModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode = OverlayAppearanceDefaults.defaultAppearanceMode
@@ -40,20 +41,20 @@ struct SessionsBrowserView: View {
             readingColumn
         }
         .frame(
-            minWidth: House.Layout.chatMinWidth,
+            minWidth: embedded ? nil : House.Layout.chatMinWidth,
             maxWidth: .infinity,
-            minHeight: House.Layout.chatMinHeight,
+            minHeight: embedded ? nil : House.Layout.chatMinHeight,
             maxHeight: .infinity
         )
         .background(House.ColorToken.surface)
         // The header shares the title-bar row with the traffic lights.
-        .ignoresSafeArea(.container, edges: .top)
+        .ignoresSafeArea(.container, edges: embedded ? [] : .top)
         .animation(reduceMotion ? nil : .easeOut(duration: House.Motion.select), value: model.isRailVisible)
         // Chrome is ink, never the system accent.
         .tint(House.ColorToken.textPrimary)
         .toggleStyle(SlateToggleStyle())
         .preferredColorScheme(preferredColorScheme)
-        .task { await model.loadIfNeeded() }
+        .task { if !embedded { await model.loadIfNeeded() } }
         .task(id: model.mode) { await model.loadActiveLibrary() }
         .task(id: model.playbackDirectory) { await model.playback.run(directory: model.playbackDirectory) }
         .task(id: model.deletionRequest) { await model.deleteConfirmedSession() }
@@ -113,7 +114,11 @@ struct SessionsBrowserView: View {
     private var readingColumn: some View {
         switch model.mode {
         case .sessions: conversation
-        case .chats: ChatLibraryReader(library: model.chatLibrary)
+        case .chats:
+            VStack(spacing: 0) {
+                if !embedded { SessionsHeader(model: model) }
+                ChatLibraryReader(library: model.chatLibrary)
+            }
         }
     }
 
@@ -201,19 +206,22 @@ struct SessionsBrowserView: View {
 /// Rail toggle, the session title over its date line, then "Ask in RTI"
 /// and the `⌘K` glyph. No divider under it.
 private struct SessionsHeader: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     @Bindable var model: SessionsWindowModel
 
     var body: some View {
         HStack(spacing: House.Spacing.sm) {
-            QuickAIGlyphButton(
-                symbol: "sidebar.left",
-                font: HouseChatType.glyphSmall,
-                color: House.ColorToken.textSecondary,
-                label: model.isRailVisible ? "Hide Session List" : "Show Session List",
-                help: "\(model.isRailVisible ? "Hide" : "Show") session list (⌃⌘S)",
-                accessibilityValue: model.isRailVisible ? "Open" : "Closed"
-            ) {
-                model.toggleRail()
+            if !embedded {
+                QuickAIGlyphButton(
+                    symbol: "sidebar.left",
+                    font: HouseChatType.glyphSmall,
+                    color: House.ColorToken.textSecondary,
+                    label: model.isRailVisible ? "Hide Session List" : "Show Session List",
+                    help: "\(model.isRailVisible ? "Hide" : "Show") session list (⌃⌘S)",
+                    accessibilityValue: model.isRailVisible ? "Open" : "Closed"
+                ) {
+                    model.toggleRail()
+                }
             }
             HouseTitleBlock(
                 title: model.windowTitle,
@@ -222,7 +230,7 @@ private struct SessionsHeader: View {
             )
             .layoutPriority(1)
             Spacer(minLength: House.Spacing.sm)
-            SessionsModeSwitch(model: model)
+            if !embedded { SessionsModeSwitch(model: model) }
             if model.mode == .sessions, let row = model.openRow, row.vaultTranscriptPath != nil {
                 // The labelled chip; a narrow window keeps its glyph only.
                 ViewThatFits(in: .horizontal) {
@@ -258,7 +266,7 @@ private struct SessionsHeader: View {
             }
         }
         // The traffic lights share this row while the rail is in.
-        .padding(.leading, model.isRailVisible || model.isWindowFullScreen ? House.Spacing.sm : HouseChatMetrics.trafficLightInset)
+        .padding(.leading, embedded || model.isRailVisible || model.isWindowFullScreen ? House.Spacing.sm : HouseChatMetrics.trafficLightInset)
         .padding(.trailing, House.Spacing.lg)
         .frame(height: House.Control.composer)
         .background {
@@ -452,6 +460,7 @@ private struct SessionsFindBar: View {
 /// highlighted row's actions, `⌘1`…`⌘9` jump (every number shows while `⌘`
 /// is held), `esc` clears the search and then hides the list.
 private struct SessionsRail: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     @Bindable var model: SessionsWindowModel
     @FocusState private var searchFocused: Bool
     @FocusState private var renameFocused: Bool
@@ -462,7 +471,7 @@ private struct SessionsRail: View {
         let total = sections.reduce(0) { $0 + $1.rows.count }
         VStack(alignment: .leading, spacing: 0) {
             // The traffic lights' row.
-            Color.clear.frame(height: House.Control.composer)
+            Color.clear.frame(height: embedded ? House.Spacing.xs : House.Control.composer)
             searchField
             ScrollViewReader { proxy in
                 ScrollView {

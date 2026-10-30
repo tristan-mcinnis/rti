@@ -42,6 +42,7 @@ struct SessionsModeSwitch: View {
 /// the legacy dated logs. Selection is the open marker, apart from the
 /// keyboard highlight, exactly as the session rail draws it.
 struct ChatLibraryRail: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     @Bindable var library: ChatLibraryModel
     @FocusState private var renameFocused: Bool
     @State private var hoveredRowID: String?
@@ -49,7 +50,7 @@ struct ChatLibraryRail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // The traffic lights' row.
-            Color.clear.frame(height: House.Control.composer)
+            Color.clear.frame(height: embedded ? House.Spacing.xs : House.Control.composer)
             searchField
             ScrollView {
                 VStack(alignment: .leading, spacing: House.Spacing.xxs) {

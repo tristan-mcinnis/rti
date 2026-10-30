@@ -24,7 +24,7 @@ struct RTIApp: App {
         // route the actual Settings command to RTI's own settings window
         // (`RTIMainMenuCommands`). That avoids stale scene-restoration state
         // from the SwiftUI Settings scene being the primary user path.
-        Settings { SettingsView(onClose: nil) }
+        Settings { EmptyView() }
             // The whole menu bar: RTI, Edit, Session, View, Window.
             .commands { RTIMainMenuCommands() }
     }

@@ -211,7 +211,7 @@ final class SessionsWindowModel {
     private(set) var deletionRequest: UUID?
     private(set) var isDeleting = false
     var playbackDirectory: URL? {
-        guard isWindowVisible, openRow?.hasRetainedAudio == true else { return nil }
+        guard isWindowVisible, mode == .sessions, openRow?.hasRetainedAudio == true else { return nil }
         return openRow?.session.url
     }
     var deletionTitle: String { rows.first { $0.id == pendingDeletionRowID }?.title.text ?? "this session" }

@@ -123,12 +123,32 @@ private final class OverlayWindow: NSWindow {
     override func becomeKey() {
         super.becomeKey()
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
+            if WorkspaceModel.shared.page == .live {
+                NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
+            }
         }
     }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, Self.isPlainEscape(event) {
+        let workspace = WorkspaceModel.shared
+        if event.type == .keyDown, Self.isPlainEscape(event),
+           (firstResponder as? NSTextInputClient)?.hasMarkedText() != true,
+           OverlayShellModel.shared.chooser != nil {
+            OverlayShellModel.shared.chooser = nil
+            return
+        }
+        if workspace.page == .sessions || workspace.page == .chats {
+            switch event.type {
+            case .flagsChanged:
+                workspace.sessions.isCommandHeld = SessionsWindow.modifiers(of: event) == .command
+            case .keyDown:
+                if (firstResponder as? NSTextInputClient)?.hasMarkedText() != true,
+                   let command = SessionsWindowKeys.plainKey(keyCode: event.keyCode, modifiers: SessionsWindow.modifiers(of: event)),
+                   workspace.sessions.handle(command) { return }
+            default: break
+            }
+        }
+        if workspace.page == .live, event.type == .keyDown, Self.isPlainEscape(event) {
             let textView = firstResponder as? NSTextView
             if textView?.hasMarkedText() == true {
                 super.sendEvent(event)
@@ -144,7 +164,15 @@ private final class OverlayWindow: NSWindow {
     /// `esc` that no control took. It used to hide the window; now it pops a
     /// layer or does nothing, so a stray press never hides the cockpit.
     override func cancelOperation(_ sender: Any?) {
-        OverlayEscapeRouter.shared.handleEscape()
+        let workspace = WorkspaceModel.shared
+        if OverlayShellModel.shared.chooser != nil {
+            OverlayShellModel.shared.chooser = nil
+        } else if workspace.page == .settings {
+            if workspace.settings.query.isEmpty { workspace.leaveSettings() }
+            else { workspace.settings.query = "" }
+        } else if workspace.page == .live {
+            OverlayEscapeRouter.shared.handleEscape()
+        }
     }
 
     /// ⌘W hides the window (the close button's path) even when no menu item
@@ -155,7 +183,18 @@ private final class OverlayWindow: NSWindow {
             performClose(nil)
             return true
         }
+        let workspace = WorkspaceModel.shared
+        if workspace.page == .sessions || workspace.page == .chats,
+           (firstResponder as? NSTextInputClient)?.hasMarkedText() != true,
+           let command = SessionsWindowKeys.command(characters: event.charactersIgnoringModifiers ?? "", modifiers: SessionsWindow.modifiers(of: event)),
+           workspace.sessions.handle(command) { return true }
         return super.performKeyEquivalent(with: event)
+    }
+
+    override func close() {
+        WorkspaceModel.shared.sessions.isWindowVisible = false
+        WorkspaceModel.shared.sessions.playback.pause()
+        super.close()
     }
 
     private static func isPlainEscape(_ event: NSEvent) -> Bool {
@@ -221,7 +260,7 @@ final class OverlayWindowController {
             height: OverlayAppearanceDefaults.heightRange.lowerBound
         )
 
-        let hosting = NSHostingView(rootView: OverlayPanelView(onOpenSettings: onOpenSettings))
+        let hosting = NSHostingView(rootView: WorkspaceView(model: .shared))
         // The window sizes the view, not the other way round: the frame is
         // the user's (autosaved), from the minimum up.
         hosting.sizingOptions = []
@@ -261,6 +300,23 @@ final class OverlayWindowController {
             win?.level = onTop ? .floating : .normal
         }
 
+        WorkspaceModel.shared.onNavigate = { [weak win] page in
+            guard let win else { return }
+            win.makeFirstResponder(nil)
+            win.identifier = NSUserInterfaceItemIdentifier(page.windowKind.windowIdentifier)
+            RTIKeyWindowTracker.shared.refresh()
+            let minimum = NSSize(
+                width: page == .live ? OverlayAppearanceDefaults.widthRange.lowerBound : House.Layout.chatMinWidth,
+                height: page == .live ? OverlayAppearanceDefaults.heightRange.lowerBound : House.Layout.chatMinHeight
+            )
+            win.contentMinSize = minimum
+            if page != .live {
+                let content = win.contentRect(forFrameRect: win.frame).size
+                if content.width < House.Layout.settingsWidth || content.height < House.Layout.settingsHeight {
+                    win.setContentSize(NSSize(width: max(content.width, House.Layout.settingsWidth), height: max(content.height, House.Layout.settingsHeight)))
+                }
+            }
+        }
         restoreFrame()
     }
 
@@ -349,15 +405,21 @@ final class OverlayWindowController {
     }
 
     func show(initialLaunch: Bool = false) {
+        let workspace = WorkspaceModel.shared
+        workspace.sessions.isWindowVisible = workspace.page == .sessions || workspace.page == .chats
         // Bring RTI forward with the keyboard, even from another app (the
         // global ⌘\ key), so typing lands in the composer, not behind it.
         RTIActivation.bringToFront(window)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
+            if WorkspaceModel.shared.page == .live {
+                NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
+            }
         }
     }
 
     func hide() {
+        WorkspaceModel.shared.sessions.isWindowVisible = false
+        WorkspaceModel.shared.sessions.playback.pause()
         window.orderOut(nil)
     }
 

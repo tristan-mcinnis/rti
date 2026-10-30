@@ -13,16 +13,10 @@ final class WindowCoordinator {
     static let shared = WindowCoordinator()
 
     private var overlayController: OverlayWindowController?
-    private var sessionsControl: SessionsControlWindowController?
-    private let sessionsWindow = SessionsWindowController()
-    private var meetingBrief: MeetingBriefWindowController?
 
     var overlayIsVisible: Bool { overlayController?.isVisible ?? false }
 
     func install(onOpenSettings: @Sendable @escaping () -> Void) {
-        sessionsControl = SessionsControlWindowController()
-        meetingBrief = MeetingBriefWindowController()
-
         let controller = OverlayWindowController(onOpenSettings: onOpenSettings)
         overlayController = controller
         controller.show(initialLaunch: true)
@@ -47,59 +41,51 @@ final class WindowCoordinator {
 
     // MARK: - Overlay
 
-    func showOverlay() { overlayController?.show() }
+    func showOverlay() {
+        WorkspaceModel.shared.select(.live)
+        overlayController?.show()
+    }
     func hideOverlay() { overlayController?.hide() }
     func toggleOverlay() { overlayController?.toggle() }
 
     // MARK: - Sessions and Preferences
 
-    /// `.sessions` opens the Sessions window; every other tab opens the
-    /// Preferences window on that pane (until the settings shell replaces it).
+    /// Compatibility callers use the same main workspace and settings shell.
     func showSessionsControl(tab: SessionsControlView.Tab = .sessions) {
         if tab == .sessions {
             showSessions()
-        } else {
-            sessionsControl?.show(tab: tab)
+        } else if let pane = SettingsView.SettingsTab(rawValue: tab.rawValue.lowercased()) {
+            openSettings(pane: pane)
         }
     }
 
-    /// The Sessions window, on the last session it showed.
     func showSessions() {
-        sessionsWindow.show()
+        WorkspaceModel.shared.showSession()
+        overlayController?.show()
     }
 
-    /// Open the Sessions window on one archived session folder, with the
-    /// list hidden (a mention link in a chat answer).
     func showSession(folder: String) {
-        sessionsWindow.show(folder: folder)
+        WorkspaceModel.shared.showSession(folder: folder)
+        overlayController?.show()
     }
 
     /// Open the read-only pre-meeting brief browser (Hermes-authored briefs).
-    func showMeetingBrief() {
-        meetingBrief?.show()
+    func showMeetingBrief(brief: URL? = nil) {
+        WorkspaceModel.shared.showBrief(brief)
+        overlayController?.show()
     }
 
     // MARK: - Convenience wrappers used by AppDelegate / menu
 
-    func openSettings() { SettingsWindowController.shared.show() }
+    func openSettings(pane: SettingsView.SettingsTab = .providers) {
+        WorkspaceModel.shared.showSettings(pane)
+        overlayController?.show()
+    }
 
     // MARK: - About
 
-    func showAbout() {
-        let credits = NSMutableAttributedString(
-            string: "Real-time meeting intelligence.\nAudio is transcribed by Soniox; transcripts, prompts, and any screenshot you attach are answered by your configured LLM provider. Everything else stays on this Mac.\n\nhttps://github.com/tristan-mcinnis/rti",
-            attributes: [
-                .foregroundColor: House.NSColorToken.textSecondary,
-                .font: NSFont.systemFont(ofSize: House.TypeToken.Size.caption)
-            ]
-        )
-        let options: [NSApplication.AboutPanelOptionKey: Any] = [
-            .credits: credits,
-            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "© 2026 Tristan McInnis"
-        ]
-        RTIActivation.activateApp()
-        NSApp.orderFrontStandardAboutPanel(options: options)
-    }
+    func showAbout() { openSettings(pane: .about) }
+
 }
 
 extension NSWindow {

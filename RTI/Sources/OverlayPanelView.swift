@@ -8,6 +8,7 @@ import HouseDesign
 /// its live form (section 8): the header says what this meeting is and its
 /// state; there is no footer well.
 struct OverlayPanelView: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     private let llm = LLMController.shared
     private let session = SessionCoordinator.shared
     private let shell = OverlayShellModel.shared
@@ -47,7 +48,7 @@ struct OverlayPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            OverlayShellHeader(status: status, modes: modes)
+            if !embedded { OverlayShellHeader(status: status, modes: modes) }
             tabsRow
             if MuteBannerRule.shows(isRunning: session.isRunning, micMuted: session.micMuted) {
                 OverlayNoticeBanner(
@@ -89,11 +90,13 @@ struct OverlayPanelView: View {
             // transparent title bar.
             .clipped()
         }
-        .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(modes: modes) }
+        .overlay(alignment: .topLeading) {
+            if !embedded { OverlayHeaderChooserLayer(modes: modes) }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(House.ColorToken.surface)
         // The header shares the title-bar row with the traffic lights.
-        .ignoresSafeArea(.container, edges: .top)
+        .ignoresSafeArea(.container, edges: embedded ? [] : .top)
         .font(.system(size: CGFloat(uiFontSize), weight: .regular))
         .foregroundStyle(Color.overlayInk)
         // Chrome is ink: system controls (menus, pickers, prominent buttons)

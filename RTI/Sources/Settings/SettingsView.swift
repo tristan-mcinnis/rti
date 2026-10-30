@@ -6,9 +6,8 @@ import RTICore
 import SwiftUI
 import HouseDesign
 
-/// Which pane the settings window shows and what its rail search holds.
-/// `SettingsWindowController` keeps one, so `show(pane:)` can switch the
-/// pane of a window that is already open.
+/// The workspace owns one settings selection and rail query. Compatibility
+/// entry points switch this same navigation object.
 @Observable @MainActor
 final class SettingsNavigation {
     var pane: SettingsView.SettingsTab
@@ -27,6 +26,7 @@ final class SettingsNavigation {
 /// the window. Each pane lives in its own file (`KeysTab.swift`,
 /// `ModesTab.swift`, …).
 struct SettingsView: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     enum SettingsTab: String, CaseIterable, Identifiable {
         case providers, modes, prompts, glossary, general, logs, about
 
@@ -140,9 +140,9 @@ struct SettingsView: View {
             pane
         }
         .frame(
-            minWidth: House.Layout.settingsWidth,
+            minWidth: embedded ? nil : House.Layout.settingsWidth,
             maxWidth: .infinity,
-            minHeight: House.Layout.settingsHeight,
+            minHeight: embedded ? nil : House.Layout.settingsHeight,
             maxHeight: .infinity
         )
         .background(House.ColorToken.surface)

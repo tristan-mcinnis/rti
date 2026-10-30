@@ -170,6 +170,7 @@ extension MeetingBrief {
 /// list is a rail, hidden until `⌃⌘S` or the header toggle; the brief reads
 /// in one centred column. No composer: briefs are read-only.
 struct MeetingBriefView: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     @Bindable var model: MeetingBriefModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -199,14 +200,14 @@ struct MeetingBriefView: View {
             }
         }
         .frame(
-            minWidth: House.Layout.chatMinWidth,
+            minWidth: embedded ? nil : House.Layout.chatMinWidth,
             maxWidth: .infinity,
-            minHeight: House.Layout.chatMinHeight,
+            minHeight: embedded ? nil : House.Layout.chatMinHeight,
             maxHeight: .infinity
         )
         .background(House.ColorToken.surface)
         // The header shares the title-bar row with the traffic lights.
-        .ignoresSafeArea(.container, edges: .top)
+        .ignoresSafeArea(.container, edges: embedded ? [] : .top)
         .animation(reduceMotion ? nil : .easeOut(duration: House.Motion.select), value: model.isRailVisible)
         .tint(House.ColorToken.textPrimary)
         .background { shortcuts }
@@ -259,7 +260,7 @@ struct MeetingBriefView: View {
             }
         }
         // The traffic lights share this row while the rail is in.
-        .padding(.leading, model.isRailVisible ? House.Spacing.sm : HouseChatMetrics.trafficLightInset)
+        .padding(.leading, embedded || model.isRailVisible ? House.Spacing.sm : HouseChatMetrics.trafficLightInset)
         .padding(.trailing, House.Spacing.lg)
         .frame(height: Self.titleBarHeight)
         .background {
@@ -324,6 +325,7 @@ struct MeetingBriefView: View {
 /// The open brief carries an ink bar on its leading edge, apart from the
 /// keyboard highlight.
 private struct MeetingBriefRail: View {
+    @Environment(\.isWorkspaceEmbedded) private var embedded
     @Bindable var model: MeetingBriefModel
     @FocusState private var searchFocused: Bool
 
@@ -332,7 +334,7 @@ private struct MeetingBriefRail: View {
         let items = BriefRail.flattened(sections)
         VStack(alignment: .leading, spacing: 0) {
             // The traffic lights' row.
-            Color.clear.frame(height: MeetingBriefView.titleBarHeight)
+            Color.clear.frame(height: embedded ? House.Spacing.xs : MeetingBriefView.titleBarHeight)
             searchField
             ScrollViewReader { proxy in
                 ScrollView {
