@@ -7,6 +7,7 @@ for variable in $git_environment; do unset "$variable"; done
 cd "$(git rev-parse --show-toplevel)"
 zero=0000000000000000000000000000000000000000
 expected=""
+base=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   [[ "$remote_ref" == "refs/heads/main" ]] || continue
   if [[ "$local_sha" == "$zero" ]]; then
@@ -16,6 +17,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     echo "Refusing non-fast-forward main. Fetch and compare before retrying." >&2; exit 1
   fi
   expected="$local_sha"
+  base="$remote_sha"
 done
 [[ -n "$expected" ]] || exit 0
 if [[ "${SKIP_TESTS:-0}" == "1" ]]; then
@@ -25,6 +27,17 @@ if [[ -n "$(git status --porcelain --untracked-files=normal)" ]] || [[ "$(git re
   echo "Refusing publish: main must match the clean checkout under test." >&2; exit 1
 fi
 sh scripts/scrub.sh
+# Docs-only pushes skip the tests; the scrub above still runs. Same rule as
+# CI's path filter. docs/workflows/ is not docs-only: WorkflowDocTests reads
+# flows.json there and checks it against the source tree.
+if [[ "$base" != "$zero" ]]; then
+  changed="$(git diff --no-renames --name-only "$base" "$expected")"
+  if [[ -n "$changed" ]] && ! grep -qvE '(\.md$|^LICENSE$|^\.gitignore$|^docs/)' <<<"$changed" \
+    && ! grep -q '^docs/workflows/' <<<"$changed"; then
+    echo "Docs-only push: scrub passed, tests skipped."
+    exit 0
+  fi
+fi
 # Background xctest cannot read protected Documents, including source files
 # used by documentation/identity tests. Test an exact committed snapshot in a
 # private cache instead. No live config or ignored credentials are copied.
@@ -32,6 +45,17 @@ umask 077
 derived="$HOME/Library/Caches/com.tristan.rti/publish-tests"
 mkdir -p "$derived"
 snapshot="$(mktemp -d "$derived/source.XXXXXX")"
+# Keep only this run's snapshot (for debugging a failure); remove older ones
+# on exit, pass or fail. Only source.* folders directly in $derived; the
+# shared build cache stays.
+prune_snapshots() {
+  local old
+  for old in "$derived"/source.??????; do
+    [[ -d "$old" && "$old" != "$snapshot" ]] || continue
+    rm -rf -- "$old"
+  done
+}
+trap prune_snapshots EXIT
 git archive --format=tar "$expected" | tar -xf - -C "$snapshot"
 cp "$snapshot/RTI/Sources/Secrets.swift.example" "$snapshot/RTI/Sources/Secrets.swift"
 printf 'Testing committed snapshot %s at %s\n' "$expected" "$snapshot"
