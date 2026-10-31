@@ -1,4 +1,5 @@
 import Foundation
+import os
 import RTICore
 
 /// Writes a finished session to disk as human-readable Markdown.
@@ -254,6 +255,11 @@ enum SessionArchive {
         )?.transcriptURL
     }
 
+    /// Transcripts with a `/meeting` run still alive. A second run on the
+    /// same transcript would race the first on its note and on the memory
+    /// repo's commit and push.
+    private static let runningMeetingProcessors = OSAllocatedUnfairLock(initialState: Set<String>())
+
     static func runMeetingProcessor(transcriptURL: URL) {
         guard MeetingProcessorConfig.isEnabled(config: appConfig()) else {
             RTILog.log("meeting processor: auto_process is off; skipped \(transcriptURL.lastPathComponent)", category: .archive)
@@ -261,6 +267,11 @@ enum SessionArchive {
         }
         guard let claude = ExternalTools.claude() else {
             RTILog.log("meeting processor: claude CLI not found; skipped \(transcriptURL.lastPathComponent)", category: .archive)
+            return
+        }
+        let key = transcriptURL.standardizedFileURL.path
+        guard runningMeetingProcessors.withLock({ $0.insert(key).inserted }) else {
+            RTILog.log("meeting processor: already running for \(transcriptURL.lastPathComponent); skipped", category: .archive)
             return
         }
         let workdir = MeetingProcessorConfig.workingDirectory()
@@ -283,6 +294,7 @@ enum SessionArchive {
         }
         let name = transcriptURL.lastPathComponent
         proc.terminationHandler = { finished in
+            _ = runningMeetingProcessors.withLock { $0.remove(key) }
             try? logHandle?.close()
             if let line = MeetingProcessorConfig.exitLogLine(
                 name: name, status: finished.terminationStatus, reason: finished.terminationReason
@@ -294,6 +306,7 @@ enum SessionArchive {
             try proc.run()
             RTILog.log("meeting processor started for \(transcriptURL.lastPathComponent)", category: .archive)
         } catch {
+            _ = runningMeetingProcessors.withLock { $0.remove(key) }
             try? logHandle?.close()
             RTILog.log("meeting processor failed to start: \(error.localizedDescription)", category: .archive)
         }

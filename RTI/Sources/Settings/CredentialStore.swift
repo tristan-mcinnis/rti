@@ -17,14 +17,14 @@ import RTICore
 /// `get`/`set`/`delete` primitives; the account accessors stay the same.
 enum CredentialStore {
     nonisolated(unsafe) private static var cached: [String: String]?
-    private static let queue = DispatchQueue(label: "com.tristan.rti.credentials", attributes: .concurrent)
+    private static let queue = DispatchQueue(label: "com.tristan.rti.credentials")
 
     private static var fileURL: URL? {
         AppSupportPaths.file("credentials.json")
     }
 
     static func set(_ value: String, for account: String) {
-        queue.sync(flags: .barrier) {
+        queue.sync {
             var dict = loadLocked()
             if value.isEmpty {
                 dict.removeValue(forKey: account)
@@ -44,7 +44,7 @@ enum CredentialStore {
     }
 
     static func delete(_ account: String) {
-        queue.sync(flags: .barrier) {
+        queue.sync {
             var dict = loadLocked()
             dict.removeValue(forKey: account)
             saveLocked(dict)
