@@ -471,7 +471,6 @@ private struct DiagnosticsSection: View {
             "Assistant: \(provider.displayName) · \(provider.model) · \(provider.baseURL.absoluteString)",
             "Transcription: \(STTProviders.active.displayName)",
         ]
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+        NSPasteboard.copyString(lines.joined(separator: "\n"))
     }
 }

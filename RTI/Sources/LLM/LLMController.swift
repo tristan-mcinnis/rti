@@ -984,23 +984,6 @@ final class LLMController {
         entries.last { $0.role == "assistant" && !$0.text.isEmpty && $0.id != streamingEntryID && progressStatus[$0.id] == nil }
     }
 
-    /// Copy Response: the newest answer, as Markdown. False when there is none.
-    @discardableResult
-    func copyLatestAnswer() -> Bool {
-        guard let answer = latestAnswer else { return false }
-        NSPasteboard.copyString(answer.text)
-        return true
-    }
-
-    /// Copy Sources: the newest answer's source paths, one a line. False
-    /// when it cited none.
-    @discardableResult
-    func copyLatestSources() -> Bool {
-        guard let sources = latestAnswer?.sources, !sources.isEmpty else { return false }
-        NSPasteboard.copyString(ChatTurnRecordBuilder.sourcesText(sources))
-        return true
-    }
-
     /// Replacing or removing an attachment invalidates every suspended reader.
     func beginScreenAttachment(status: String) -> UUID {
         let requestID = UUID()
@@ -1356,13 +1339,6 @@ final class LLMController {
         let missing = retained.filter(\.isMissing).map(\.name)
         guard !missing.isEmpty else { return nil }
         return "Some saved sources are no longer readable from this chat's store (\(missing.joined(separator: ", "))). They are not refetched; the answer uses what was kept."
-    }
-
-    /// The threads a caller can list, newest first. The Chats surface uses
-    /// this; the store owns the reading.
-    func storedThreads() async throws -> [ConversationSummary] {
-        guard let store = try chatStore() else { return [] }
-        return try await store.summaries()
     }
 
     /// The thread redrawn as chat entries: words plus the attachment

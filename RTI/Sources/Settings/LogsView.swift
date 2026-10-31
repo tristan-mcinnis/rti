@@ -205,8 +205,7 @@ struct LogsView: View {
     }
 
     private func copyPast() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(pastText, forType: .string)
+        NSPasteboard.copyString(pastText)
     }
 
     private func revealPastLogs() {
@@ -218,7 +217,6 @@ struct LogsView: View {
     }
 
     private func copyLive() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(log.renderForCopy(), forType: .string)
+        NSPasteboard.copyString(log.renderForCopy())
     }
 }
