@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 @MainActor
 final class MentionSuggestionStore: ObservableObject {

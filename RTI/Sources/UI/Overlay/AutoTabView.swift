@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 // MARK: - Auto
 
@@ -23,7 +23,9 @@ struct AutoTabView: View {
                 OverlayToolbarButton(icon: "arrow.clockwise", help: "Suggest now",
                                      disabled: controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
                 {
-                    if let sid = SessionCoordinator.shared.currentSessionId { Task { _ = await controller.generate(sessionId: sid) } }
+                    if let sid = SessionCoordinator.shared.currentSessionId {
+                        Task { _ = await controller.generate(sessionId: sid) }
+                    }
                 }
             }
             if let error = controller.lastError {
@@ -47,11 +49,15 @@ struct AutoTabView: View {
                     .scrollContentBackground(.hidden)
                     .onChange(of: controller.cards.count) { _, _ in
                         controller.markSeen()
-                        if let last = controller.cards.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                        if let last = controller.cards.last {
+                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        }
                     }
                     .onAppear {
                         controller.markSeen()
-                        if let last = controller.cards.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                        if let last = controller.cards.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
             }

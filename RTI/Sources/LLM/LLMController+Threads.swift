@@ -77,11 +77,15 @@ extension LLMController {
                 reasoning: smartMode ? .thinking : .fast
             )
         }
-        if plan.resetsBroaderSearch { broaderSearchEnabled = false }
+        if plan.resetsBroaderSearch {
+            broaderSearchEnabled = false
+        }
         pendingDatedSources = []
         // A new chat is a new thread: the one just used stays on disk, and the
         // recording is untouched.
-        if plan.preservesSavedThread { chatThread = nil }
+        if plan.preservesSavedThread {
+            chatThread = nil
+        }
         pendingDraftRestore = nil
     }
 
@@ -126,7 +130,9 @@ extension LLMController {
     /// The current recording's session id, from the injected provider or the
     /// live coordinator. Nil when no recording is running.
     func currentSessionID() -> String? {
-        if let sessionIDProvider { return sessionIDProvider() }
+        if let sessionIDProvider {
+            return sessionIDProvider()
+        }
         return SessionCoordinator.shared.isRunning ? SessionCoordinator.shared.currentSessionId : nil
     }
 
@@ -141,8 +147,12 @@ extension LLMController {
     func chatStore() throws -> ChatThreadStore? {
         // An injected store (a test) is used as-is: nil then means "no vault",
         // never a fall back to the live one.
-        if storeIsInjected { return injectedStore }
-        if let threadStore { return threadStore }
+        if storeIsInjected {
+            return injectedStore
+        }
+        if let threadStore {
+            return threadStore
+        }
         // The shared instance, so the chat library and the assistant write to
         // the same serialized store rather than racing separate ones.
         let store = try ChatThreadStore.shared()
@@ -154,8 +164,7 @@ extension LLMController {
     /// starting over. Throws on a damaged record, which is exactly when the
     /// caller must not write.
     func resumeThread(id: String) async throws -> ConversationRecord? {
-        guard let store = try chatStore() else { return nil }
-        guard store.contains(id: id) else { return nil }
+        guard let store = try chatStore(), store.contains(id: id) else { return nil }
         let thread = try await store.load(id: id)
         chatThread = thread
         // Adopting a thread here does not swap the live entries, so the active
@@ -180,7 +189,9 @@ extension LLMController {
         var succeeded = false
         defer {
             let isLatestRequest = resumeRequestID == requestID
-            if isLatestRequest { resumeRequestID = nil }
+            if isLatestRequest {
+                resumeRequestID = nil
+            }
             if succeeded || isLatestRequest {
                 NotificationCenter.default.post(
                     name: .rtiComposerDidFinishResume, object: self,
@@ -368,7 +379,9 @@ extension LLMController {
         guard generation == self.generation, !Task.isCancelled else { return .aborted }
         let store: ChatThreadStore
         do {
-            if let beforeSubmissionPersistence { try await beforeSubmissionPersistence() }
+            if let beforeSubmissionPersistence {
+                try await beforeSubmissionPersistence()
+            }
             guard generation == self.generation, !Task.isCancelled else { return .aborted }
             guard let created = try chatStore() else { return .noStore }
             store = created
@@ -380,7 +393,9 @@ extension LLMController {
         // Every attachment's bytes come from its own typed payload. There is
         // no switch on a display kind and no path is read here.
         var submitted = sourcePayloads.map(\.submitted)
-        if let screenPayload { submitted.append(screenPayload.submitted) }
+        if let screenPayload {
+            submitted.append(screenPayload.submitted)
+        }
 
         // The recording this turn belongs to, on the turn itself, so a chat
         // created standalone and later continued in a recording is projected
@@ -588,7 +603,7 @@ extension LLMController {
         // The versioned record's prompt provenance: which app build shaped the
         // system prompt, and the immutable parent when this turn regenerates
         // another. The full prompt body is the stored request snapshot.
-        if let appVersion = appVersion {
+        if let appVersion {
             receipt.extra["promptVersion"] = .string(appVersion)
         }
         if let parentTurnID {
@@ -618,11 +633,11 @@ extension LLMController {
     static func statusDiagnostic(_ status: VaultRetrieval.Status) -> String? {
         switch status {
         case .available:
-            return nil
+            nil
         case .noMatch:
-            return "Vault search found nothing for that question."
+            "Vault search found nothing for that question."
         case let .unavailable(reason):
-            return "Vault search is unavailable: \(reason)"
+            "Vault search is unavailable: \(reason)"
         }
     }
 
@@ -635,7 +650,7 @@ extension LLMController {
             // A round is only a success when every call in it succeeded.
             let status: ToolRoundStatus = if calls.contains(where: { $0.status == .failed }) {
                 .failed
-            } else if !calls.isEmpty && calls.allSatisfy({ $0.status == .refused }) {
+            } else if !calls.isEmpty, calls.allSatisfy({ $0.status == .refused }) {
                 .refused
             } else {
                 .succeeded
@@ -678,9 +693,12 @@ extension LLMController {
             "imageRoute": route.imageRoute.rawValue,
             "externalRetrieval": toolPolicy.allowsExternalRetrieval,
         ]
-        if let decision { body["contextRationale"] = decision.rationale }
+        if let decision {
+            body["contextRationale"] = decision.rationale
+        }
         if let encoded = try? JSONEncoder().encode(messages),
-           let decoded = try? JSONSerialization.jsonObject(with: encoded) {
+           let decoded = try? JSONSerialization.jsonObject(with: encoded)
+        {
             body["messages"] = decoded
         }
         return try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])

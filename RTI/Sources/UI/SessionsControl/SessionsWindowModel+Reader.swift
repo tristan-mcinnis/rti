@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import Observation
 import RTICore
 import UniformTypeIdentifiers
-import HouseDesign
 
 extension SessionsWindowModel {
     // MARK: - Files and reader
@@ -54,7 +54,8 @@ extension SessionsWindowModel {
         }
         let framesDir = session.url.appendingPathComponent("frames", isDirectory: true)
         if let frames = try? fm.contentsOfDirectory(atPath: framesDir.path),
-           frames.contains(where: { ["jpg", "jpeg", "png"].contains(($0 as NSString).pathExtension.lowercased()) }) {
+           frames.contains(where: { ["jpg", "jpeg", "png"].contains(($0 as NSString).pathExtension.lowercased()) })
+        {
             loaded.append(SessionFile(url: framesDir, name: "frames"))
         }
         if let startedAt = session.date {
@@ -140,15 +141,21 @@ extension SessionsWindowModel {
         return SpeakerLabelMapping.archivedSpeakerLabels(in: text)
     }
 
-    func speakerName(for label: String) -> String { speakerNames[label, default: ""] }
+    func speakerName(for label: String) -> String {
+        speakerNames[label, default: ""]
+    }
 
-    func setSpeakerName(_ name: String, for label: String) { speakerNames[label] = name }
+    func setSpeakerName(_ name: String, for label: String) {
+        speakerNames[label] = name
+    }
 
     func saveSpeakerNames() {
         guard let row = openRow else { return }
         let names = speakerNames.reduce(into: [String: String]()) { result, pair in
             let name = pair.value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !name.isEmpty { result[pair.key] = name }
+            if !name.isEmpty {
+                result[pair.key] = name
+            }
         }
         let url = row.session.url.appendingPathComponent("speaker-names.json")
         if names.isEmpty {
@@ -214,7 +221,9 @@ extension SessionsWindowModel {
         let report: @Sendable (TranscriptUpgradeProgress) -> Void = { [weak self] progress in
             Task { @MainActor in
                 self?.notice = (id, progress.message)
-                if progress.isTerminal { self?.upgradingRowID = nil }
+                if progress.isTerminal {
+                    self?.upgradingRowID = nil
+                }
             }
         }
         Task { [weak self] in
@@ -222,11 +231,11 @@ extension SessionsWindowModel {
                 let result = try await TranscriptUpgradeService.upgrade(session: session, provider: provider, progress: report)
                 guard let self else { return }
                 SessionArchive.clearAutomaticUpgradePending(in: session.url)
-                self.notice = (id, "Transcript upgraded with \(result.provider).")
-                self.upgradingRowID = nil
-                await self.reload()
-                self.open(id)
-                self.selectFile(named: "transcript")
+                notice = (id, "Transcript upgraded with \(result.provider).")
+                upgradingRowID = nil
+                await reload()
+                open(id)
+                selectFile(named: "transcript")
             } catch {
                 self?.notice = (id, (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
                 self?.upgradingRowID = nil
@@ -236,8 +245,12 @@ extension SessionsWindowModel {
 
     /// The notice line for the open session, and whether a job still runs.
     var openNotice: (text: String, isRunning: Bool)? {
-        if let notice, notice.rowID == openRowID { return (notice.text, upgradingRowID == notice.rowID) }
-        if let error = openRow?.recordingError { return ("Recording needs review: \(error)", false) }
+        if let notice, notice.rowID == openRowID {
+            return (notice.text, upgradingRowID == notice.rowID)
+        }
+        if let error = openRow?.recordingError {
+            return ("Recording needs review: \(error)", false)
+        }
         return nil
     }
 

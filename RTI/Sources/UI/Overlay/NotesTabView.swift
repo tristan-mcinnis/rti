@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 // MARK: - Notes
 
@@ -20,7 +20,9 @@ struct NotesTabView: View {
                 OverlayToolbarButton(icon: "arrow.clockwise", help: "Write notes now",
                                      disabled: controller.isGenerating || SessionCoordinator.shared.currentSessionId == nil)
                 {
-                    if let sid = SessionCoordinator.shared.currentSessionId { Task { _ = await controller.generate(sessionId: sid) } }
+                    if let sid = SessionCoordinator.shared.currentSessionId {
+                        Task { _ = await controller.generate(sessionId: sid) }
+                    }
                 }
                 OverlayToolbarButton(icon: "doc.on.doc", help: "Copy all notes", disabled: controller.notes.isEmpty) {
                     NSPasteboard.copyMarkdownRich(combinedMarkdown())
@@ -59,12 +61,16 @@ struct NotesTabView: View {
                     }
                     .scrollContentBackground(.hidden)
                     .onChange(of: controller.notes.count) { _, _ in
-                        if let last = controller.notes.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                        if let last = controller.notes.last {
+                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        }
                     }
                     // Returning to this tab re-instantiates the view at the
                     // top, so jump straight back to the newest note.
                     .onAppear {
-                        if let last = controller.notes.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                        if let last = controller.notes.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -106,8 +112,12 @@ struct NotesTabView: View {
     /// One note block as markdown, the same shape as its slice of combinedMarkdown.
     private func noteMarkdown(_ note: GeneratedNote) -> String {
         var head = "## \(mmss(note.rangeStartMs)) – \(mmss(note.rangeEndMs))"
-        if !note.title.isEmpty { head += " · \(note.title)" }
-        if let local = localRange(note) { head += "\n_Local time: \(local)_" }
+        if !note.title.isEmpty {
+            head += " · \(note.title)"
+        }
+        if let local = localRange(note) {
+            head += "\n_Local time: \(local)_"
+        }
         return "\(head)\n\n\(note.content)"
     }
 

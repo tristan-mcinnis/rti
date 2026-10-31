@@ -15,7 +15,9 @@ extension SessionCoordinator {
     }
 
     func deactivateTranscriptPresentation(for owner: UUID) {
-        if transcriptPresentationOwner == owner { transcriptPresentationOwner = nil }
+        if transcriptPresentationOwner == owner {
+            transcriptPresentationOwner = nil
+        }
     }
 
     /// Copy the same ordered, committed runs the reader already projected.

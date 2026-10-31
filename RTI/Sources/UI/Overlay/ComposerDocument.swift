@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 // MARK: - Documents in the strip
 
@@ -27,11 +27,15 @@ struct ComposerDocument: Identifiable, Equatable {
     }
 
     var attachment: ExternalDocumentAttachment? {
-        if case .ready(let attachment) = phase { return attachment }
+        if case let .ready(attachment) = phase {
+            return attachment
+        }
         return nil
     }
 
-    var isReading: Bool { phase == .reading }
+    var isReading: Bool {
+        phase == .reading
+    }
 
     func isSameSource(as url: URL) -> Bool {
         sourceURL == url.standardizedFileURL
@@ -39,12 +43,12 @@ struct ComposerDocument: Identifiable, Equatable {
 
     var chip: AttachmentChipModel {
         switch phase {
-        case .ready(let attachment):
-            return AttachmentChipModel(ref: attachment.ref, id: id.uuidString)
+        case let .ready(attachment):
+            AttachmentChipModel(ref: attachment.ref, id: id.uuidString)
         case .reading:
-            return AttachmentChipModel(id: id.uuidString, kind: Self.chipKind(forName: name), name: name, phase: .reading)
-        case .failed(let reason):
-            return AttachmentChipModel(id: id.uuidString, kind: Self.chipKind(forName: name), name: name, phase: .failed(reason))
+            AttachmentChipModel(id: id.uuidString, kind: Self.chipKind(forName: name), name: name, phase: .reading)
+        case let .failed(reason):
+            AttachmentChipModel(id: id.uuidString, kind: Self.chipKind(forName: name), name: name, phase: .failed(reason))
         }
     }
 
@@ -52,7 +56,9 @@ struct ComposerDocument: Identifiable, Equatable {
     /// not a text file, even before its bytes are read.
     private static func chipKind(forName name: String) -> ChatAttachmentRef.Kind {
         let lower = name.lowercased()
-        if lower.hasSuffix(".pdf") { return .pdf }
+        if lower.hasSuffix(".pdf") {
+            return .pdf
+        }
         if [".png", ".jpg", ".jpeg", ".heic", ".gif", ".tiff", ".webp"].contains(where: { lower.hasSuffix($0) }) {
             return .image
         }

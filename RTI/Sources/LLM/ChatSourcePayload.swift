@@ -31,38 +31,38 @@ struct ChatSourcePayload: Sendable, Equatable {
     var document: ExtractedDocument?
 
     init(from attachment: ExternalDocumentAttachment) {
-        self.name = attachment.name
-        self.displayKind = attachment.kind
-        self.archiveKind = attachment.document.kind
-        self.path = attachment.path
-        self.byteCount = attachment.byteCount
-        self.pageCount = attachment.pageCount
-        self.wasCut = attachment.wasCut
-        self.originalBytes = attachment.originalBytes.isEmpty ? nil : attachment.originalBytes
-        self.originalExtension = attachment.path.map { URL(fileURLWithPath: $0).pathExtension }
+        name = attachment.name
+        displayKind = attachment.kind
+        archiveKind = attachment.document.kind
+        path = attachment.path
+        byteCount = attachment.byteCount
+        pageCount = attachment.pageCount
+        wasCut = attachment.wasCut
+        originalBytes = attachment.originalBytes.isEmpty ? nil : attachment.originalBytes
+        originalExtension = attachment.path.map { URL(fileURLWithPath: $0).pathExtension }
             .flatMap { $0.isEmpty ? nil : $0 }
-        self.normalizedImage = attachment.normalizedImage?.data
-        self.normalizedImageExtension = Self.fileExtension(forMime: attachment.normalizedImage?.mimeType)
-        self.normalizedImageMimeType = attachment.normalizedImage?.mimeType
-        self.extractedText = attachment.text
-        self.document = attachment.document
+        normalizedImage = attachment.normalizedImage?.data
+        normalizedImageExtension = Self.fileExtension(forMime: attachment.normalizedImage?.mimeType)
+        normalizedImageMimeType = attachment.normalizedImage?.mimeType
+        extractedText = attachment.text
+        document = attachment.document
     }
 
     init(screenJPEG: Data?, ocrText: String?) {
-        self.name = "Screenshot"
-        self.displayKind = .screen
-        self.archiveKind = .screenshot
-        self.path = nil
-        self.byteCount = screenJPEG?.count
-        self.pageCount = nil
-        self.wasCut = false
-        self.originalBytes = screenJPEG
-        self.originalExtension = screenJPEG == nil ? nil : "jpg"
-        self.normalizedImage = screenJPEG
-        self.normalizedImageExtension = screenJPEG == nil ? nil : "jpg"
-        self.normalizedImageMimeType = screenJPEG == nil ? nil : "image/jpeg"
-        self.extractedText = ocrText
-        self.document = nil
+        name = "Screenshot"
+        displayKind = .screen
+        archiveKind = .screenshot
+        path = nil
+        byteCount = screenJPEG?.count
+        pageCount = nil
+        wasCut = false
+        originalBytes = screenJPEG
+        originalExtension = screenJPEG == nil ? nil : "jpg"
+        normalizedImage = screenJPEG
+        normalizedImageExtension = screenJPEG == nil ? nil : "jpg"
+        normalizedImageMimeType = screenJPEG == nil ? nil : "image/jpeg"
+        extractedText = ocrText
+        document = nil
     }
 
     /// A source read back from the store for a follow-up. Its bytes come from
@@ -70,16 +70,16 @@ struct ChatSourcePayload: Sendable, Equatable {
     /// change what the follow-up is answered from.
     init(retained name: String, kind: AttachmentKind, path: String?, originalBytes: Data?, normalizedImage: Data?, normalizedImageMimeType: String?, extractedText: String?, document: ExtractedDocument?) {
         self.name = name
-        self.displayKind = Self.displayKind(for: kind)
-        self.archiveKind = kind
+        displayKind = Self.displayKind(for: kind)
+        archiveKind = kind
         self.path = path
-        self.byteCount = originalBytes?.count
-        self.pageCount = document?.sectionUnit == .page ? document?.unitCount : nil
-        self.wasCut = document?.truncation != nil
+        byteCount = originalBytes?.count
+        pageCount = document?.sectionUnit == .page ? document?.unitCount : nil
+        wasCut = document?.truncation != nil
         self.originalBytes = originalBytes
-        self.originalExtension = Self.fileExtension(forKind: kind, name: name)
+        originalExtension = Self.fileExtension(forKind: kind, name: name)
         self.normalizedImage = normalizedImage
-        self.normalizedImageExtension = Self.fileExtension(forMime: normalizedImageMimeType)
+        normalizedImageExtension = Self.fileExtension(forMime: normalizedImageMimeType)
         self.normalizedImageMimeType = normalizedImageMimeType
         self.extractedText = extractedText ?? document?.text
         self.document = document
@@ -97,7 +97,9 @@ struct ChatSourcePayload: Sendable, Equatable {
 
     private static func fileExtension(forKind kind: AttachmentKind, name: String) -> String? {
         let ext = URL(fileURLWithPath: name).pathExtension
-        if !ext.isEmpty { return ext }
+        if !ext.isEmpty {
+            return ext
+        }
         return kind == .pdf ? "pdf" : nil
     }
 
@@ -105,18 +107,18 @@ struct ChatSourcePayload: Sendable, Equatable {
     /// text is the source; the log path stays a metadata-only reference.
     init(dated name: String, sourcePath: String?, text: String, document: ExtractedDocument?) {
         self.name = name
-        self.displayKind = .text
-        self.archiveKind = .markdown
-        self.path = sourcePath
-        self.byteCount = text.utf8.count
-        self.pageCount = nil
-        self.wasCut = false
-        self.originalBytes = text.data(using: .utf8)
-        self.originalExtension = "txt"
-        self.normalizedImage = nil
-        self.normalizedImageExtension = nil
-        self.normalizedImageMimeType = nil
-        self.extractedText = text
+        displayKind = .text
+        archiveKind = .markdown
+        path = sourcePath
+        byteCount = text.utf8.count
+        pageCount = nil
+        wasCut = false
+        originalBytes = text.data(using: .utf8)
+        originalExtension = "txt"
+        normalizedImage = nil
+        normalizedImageExtension = nil
+        normalizedImageMimeType = nil
+        extractedText = text
         self.document = document
     }
 
@@ -124,19 +126,19 @@ struct ChatSourcePayload: Sendable, Equatable {
     /// were read at hand-over time. Never re-read later.
     init(name: String, path: String, text: String, bytes: Data?, document: ExtractedDocument?, wasCut: Bool = false) {
         self.name = name
-        self.displayKind = .vaultFile
-        self.archiveKind = .markdown
+        displayKind = .vaultFile
+        archiveKind = .markdown
         self.path = path
-        self.byteCount = bytes?.count
-        self.pageCount = nil
+        byteCount = bytes?.count
+        pageCount = nil
         self.wasCut = wasCut
-        self.originalBytes = bytes
-        self.originalExtension = URL(fileURLWithPath: path).pathExtension.isEmpty
+        originalBytes = bytes
+        originalExtension = URL(fileURLWithPath: path).pathExtension.isEmpty
             ? nil : URL(fileURLWithPath: path).pathExtension
-        self.normalizedImage = nil
-        self.normalizedImageExtension = nil
-        self.normalizedImageMimeType = nil
-        self.extractedText = text
+        normalizedImage = nil
+        normalizedImageExtension = nil
+        normalizedImageMimeType = nil
+        extractedText = text
         self.document = document
     }
 

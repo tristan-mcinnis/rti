@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 extension AssistantInputView {
     // MARK: Chips
@@ -18,7 +18,9 @@ extension AssistantInputView {
             )
         }
         chips += documents.map(\.chip)
-        if let screen = screenChip { chips.append(screen) }
+        if let screen = screenChip {
+            chips.append(screen)
+        }
         return chips
     }
 
@@ -102,7 +104,7 @@ extension AssistantInputView {
             llm.sendPrimary()
         case .acceptChooser:
             acceptChooser()
-        case .moveChooser(let delta):
+        case let .moveChooser(delta):
             moveChooser(delta)
         case .closeLayer:
             closeLayer()
@@ -119,7 +121,7 @@ extension AssistantInputView {
             toggleAddContext()
         case .enterStrip:
             focusedChipID = chipIDs.last
-        case .moveStrip(let delta):
+        case let .moveStrip(delta):
             moveStrip(delta)
         case .removeFocusedChip:
             if let id = focusedChipID {
@@ -129,11 +131,13 @@ extension AssistantInputView {
                 focusedChipID = remaining.isEmpty ? nil : remaining[min(index, remaining.count - 1)]
             }
         case .removeNewestChip:
-            if let id = chipIDs.last { removeChip(id) }
-        case .leaveStrip(let alsoPassThrough):
+            if let id = chipIDs.last {
+                removeChip(id)
+            }
+        case let .leaveStrip(alsoPassThrough):
             focusedChipID = nil
             return alsoPassThrough ? .passThrough : .handled
-        case .moveFocus(let forward):
+        case let .moveFocus(forward):
             return .moveFocus(forward: forward)
         }
         return .handled
@@ -198,7 +202,11 @@ extension AssistantInputView {
     }
 
     func togglePalette() {
-        if isPaletteOpen { closePalette() } else { openPalette() }
+        if isPaletteOpen {
+            closePalette()
+        } else {
+            openPalette()
+        }
     }
 
     func openPalette() {
@@ -213,12 +221,11 @@ extension AssistantInputView {
     }
 
     private func moveChooser(_ delta: Int) {
-        let count: Int
-        switch layer {
-        case .mention: count = visibleMentionRows.count
-        case .slash: count = visibleSlashCommands.count
-        case .addContext: count = visibleAddContextRows.count
-        case .palette, .none: count = 0
+        let count: Int = switch layer {
+        case .mention: visibleMentionRows.count
+        case .slash: visibleSlashCommands.count
+        case .addContext: visibleAddContextRows.count
+        case .palette, .none: 0
         }
         guard count > 0 else { return }
         chooserIndex = (chooserIndex + delta + count) % count
@@ -227,14 +234,18 @@ extension AssistantInputView {
     private func acceptChooser() {
         switch layer {
         case .mention:
-            if let row = visibleMentionRows[safe: chooserIndex] { activate(row) }
+            if let row = visibleMentionRows[safe: chooserIndex] {
+                activate(row)
+            }
         case .slash:
             if let command = visibleSlashCommands[safe: chooserIndex] {
                 input = ""
                 runSlashCommand(command.id)
             }
         case .addContext:
-            if let row = visibleAddContextRows[safe: chooserIndex] { activate(row) }
+            if let row = visibleAddContextRows[safe: chooserIndex] {
+                activate(row)
+            }
         case .palette, .none:
             break
         }

@@ -17,8 +17,8 @@ extension LLMController {
         initialTrace: String? = nil,
         attachments: [ChatAttachmentRef] = [],
         sourcePayloads: [ChatSourcePayload] = [],
-        /// What the turn's sources are, by origin, for the prompt's own
-        /// sentence. Empty when the turn carries no source.
+        // What the turn's sources are, by origin, for the prompt's own
+        // sentence. Empty when the turn carries no source.
         sourceContext: TurnSourceContext = TurnSourceContext(),
         initialTools: [ChatToolLine] = [],
         initialSources: [ChatSource] = [],
@@ -59,7 +59,7 @@ extension LLMController {
         // bytes: the tray attachments, the retained sources, and the screen
         // capture. The SAME set the composer counts, so the preview route and
         // the frozen route agree.
-        let imagePayloads = (referencedDocuments.compactMap(\.payload) + [screenPayload].compactMap { $0 })
+        let imagePayloads = (referencedDocuments.compactMap(\.payload) + [screenPayload].compactMap(\.self))
             .filter { $0.normalizedImage?.isEmpty == false }
         let imageCount = imagePayloads.count
 
@@ -187,7 +187,7 @@ extension LLMController {
         // The chat generation this send belongs to. A `/new` or resume that
         // lands while the question is being written must not let this send
         // start a provider call on the old chat's behalf.
-        let capturedGeneration = self.generation
+        let capturedGeneration = generation
         let targetThread = chatThread
 
         pendingTurn = PendingTurn(
@@ -242,7 +242,7 @@ extension LLMController {
             // failure keeps the draft, drops the half-made turn, and never
             // calls the model. The bytes are the typed payloads this turn was
             // handed; nothing is re-read from a path.
-            let outcome = await self.persistSubmittedTurn(
+            let outcome = await persistSubmittedTurn(
                 userInput: userInput,
                 route: route,
                 toolPolicy: toolPolicy,
@@ -260,20 +260,20 @@ extension LLMController {
             )
             // A replaced or cancelled send owns none of the current UI state,
             // even if an old storage operation completed without cancellation.
-            guard self.generation == capturedGeneration,
-                  self.pendingTurn?.id == thisEntryID,
+            guard generation == capturedGeneration,
+                  pendingTurn?.id == thisEntryID,
                   !Task.isCancelled else { return }
             switch outcome {
             case let .failed(failure):
-                self.entries.removeAll { $0.id == userEntry.id || $0.id == assistantEntry.id }
-                self.streaming = false
-                self.reasoning = false
-                self.streamingEntryID = nil
-                self.pendingTurn = nil
-                self.lastError = failure
-                self.lastErrorIsAuth = false
-                self.lastErrorTurnID = nil
-                self.pendingDraftRestore = userInput
+                entries.removeAll { $0.id == userEntry.id || $0.id == assistantEntry.id }
+                streaming = false
+                reasoning = false
+                streamingEntryID = nil
+                pendingTurn = nil
+                lastError = failure
+                lastErrorIsAuth = false
+                lastErrorTurnID = nil
+                pendingDraftRestore = userInput
                 RTILog.log("turn not sent: \(failure)", category: .llm)
                 return
             case .aborted:
@@ -281,21 +281,20 @@ extension LLMController {
                 // reinstate the old thread and do not start the provider.
                 return
             case let .saved(conversationID):
-                self.pendingTurn?.conversationID = conversationID
-                self.pendingTurn?.persistedAt = Date()
+                pendingTurn?.conversationID = conversationID
+                pendingTurn?.persistedAt = Date()
                 // The dated source is consumed only once the question is
                 // committed. A disk failure or a blocked route keeps the chip
                 // and the draft.
-                self.clearDatedSources(consumedDatedSources)
+                clearDatedSources(consumedDatedSources)
             case .noStore:
-                self.clearDatedSources(consumedDatedSources)
-                break
+                clearDatedSources(consumedDatedSources)
             }
             // The question is on disk; from here the partial answer is
             // checkpointed periodically so process death leaves a record with
             // the status it was actually in.
-            self.startCheckpointing(turnID: thisEntryID)
-            let loop = self.makeToolExecutor.map { ToolLoop(request: request, makeToolExecutor: $0) }
+            startCheckpointing(turnID: thisEntryID)
+            let loop = makeToolExecutor.map { ToolLoop(request: request, makeToolExecutor: $0) }
                 ?? ToolLoop(request: request)
             await loop.run(
                 conversation: apiMessages,
@@ -310,8 +309,12 @@ extension LLMController {
                               self.streamingEntryID == thisEntryID else { return }
                         switch event {
                         case let .contentDelta(delta):
-                            if self.streamingEntryID != thisEntryID { return }
-                            if self.reasoning { self.reasoning = false }
+                            if self.streamingEntryID != thisEntryID {
+                                return
+                            }
+                            if self.reasoning {
+                                self.reasoning = false
+                            }
                             self.markFirstTokenIfNeeded()
                             self.appendToStreamingEntry(delta)
                         case .reasoningStarted:
@@ -475,7 +478,9 @@ extension LLMController {
     /// the question text ("acmewear" should hit "Acme Wear") before falling
     /// back to whole-vault RAG.
     static func retrievalScope(for query: String) -> String? {
-        if let selected = MeetingContextStore.shared.workstreamScopePath { return selected }
+        if let selected = MeetingContextStore.shared.workstreamScopePath {
+            return selected
+        }
         let compactQuery = compactKey(query)
         guard !compactQuery.isEmpty else { return nil }
         let match = VaultWorkstreamStore.projects()
@@ -488,7 +493,7 @@ extension LLMController {
         return VaultWorkstreamStore.scopeRelativePath(for: match)
     }
 
-    nonisolated private static func compactKey(_ text: String) -> String {
+    private nonisolated static func compactKey(_ text: String) -> String {
         RetrievalHeuristics.compactKey(text)
     }
 
@@ -611,14 +616,22 @@ extension LLMController {
                 blocks.append("## \(doc.path)\n\n\(selection.note ?? "No passage in this document matched the question.")")
             } else {
                 var block = "## \(doc.path)"
-                if !selection.labels.isEmpty { block += "\n\n_" + selection.labels.joined(separator: " · ") + "_" }
+                if !selection.labels.isEmpty {
+                    block += "\n\n_" + selection.labels.joined(separator: " · ") + "_"
+                }
                 block += "\n\n" + chosen
-                if let note = selection.note { block += "\n\n_" + note + "_" }
+                if let note = selection.note {
+                    block += "\n\n_" + note + "_"
+                }
                 blocks.append(block)
             }
             citations.append(contentsOf: selection.labels.map { "\(doc.path) · \($0)" })
-            if let note = selection.note { diagnostics.append(note) }
-            if !selection.isComplete { diagnostics.append("Not the whole document:\(selection.name.map { " \($0)" } ?? "") coverage is partial.") }
+            if let note = selection.note {
+                diagnostics.append(note)
+            }
+            if !selection.isComplete {
+                diagnostics.append("Not the whole document:\(selection.name.map { " \($0)" } ?? "") coverage is partial.")
+            }
         }
         if plan.truncatedByBudget {
             diagnostics.append("The attachment budget cut the selected passages.")
@@ -667,7 +680,7 @@ extension LLMController {
 
     /// A local search answer, with the retrieval state on its own line. A
     /// no-match and a broken index must not read the same.
-    static func searchAnswerText(label: String, retrieval: VaultRetrieval.Response) -> String {
+    static func searchAnswerText(label _: String, retrieval: VaultRetrieval.Response) -> String {
         var text = retrieval.formattedResults
         if let diagnostic = statusDiagnostic(retrieval.status) {
             text += "\n\n_" + diagnostic + "_"
@@ -678,7 +691,9 @@ extension LLMController {
     func updateLocalAssistant(_ id: UUID, text: String) {
         guard let idx = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[idx].text = text
-        if progressStatus[id] != nil { progressStatus[id] = text }
+        if progressStatus[id] != nil {
+            progressStatus[id] = text
+        }
     }
 
     /// A local search finished: the entry stops being a status and carries
@@ -714,7 +729,7 @@ extension LLMController {
             return
         }
         let userIdx = idx > 0 && entries[idx - 1].role == "user" ? idx - 1 : idx
-        entries.removeSubrange(userIdx...idx)
+        entries.removeSubrange(userIdx ... idx)
         progressStatus[assistantID] = nil
         streaming = false
         streamingEntryID = nil
@@ -805,9 +820,11 @@ extension LLMController {
         let ns = text as NSString
         var out: [String] = []
         for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-            for idx in 1..<match.numberOfRanges where match.range(at: idx).location != NSNotFound {
+            for idx in 1 ..< match.numberOfRanges where match.range(at: idx).location != NSNotFound {
                 let path = ns.substring(with: match.range(at: idx))
-                if !out.contains(path) { out.append(path) }
+                if !out.contains(path) {
+                    out.append(path)
+                }
             }
         }
         return out

@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import Observation
 import RTICore
 import UniformTypeIdentifiers
-import HouseDesign
 
 extension SessionsWindowModel {
     // MARK: - Find
@@ -36,8 +36,13 @@ extension SessionsWindowModel {
         return (ranges, current)
     }
 
-    func findNext() { stepFind(1) }
-    func findPrevious() { stepFind(-1) }
+    func findNext() {
+        stepFind(1)
+    }
+
+    func findPrevious() {
+        stepFind(-1)
+    }
 
     private func stepFind(_ delta: Int) {
         let count = findHits.count
@@ -53,7 +58,9 @@ extension SessionsWindowModel {
     func closeFind() {
         isFindPresented = false
         findQuery = ""
-        if focus == .find { focus = .none }
+        if focus == .find {
+            focus = .none
+        }
     }
 
     // MARK: - Loading
@@ -72,7 +79,11 @@ extension SessionsWindowModel {
         reloadGeneration &+= 1
         let generation = reloadGeneration
         isLoading = true
-        defer { if generation == reloadGeneration { isLoading = false } }
+        defer {
+            if generation == reloadGeneration {
+                isLoading = false
+            }
+        }
         let limit = Self.listLimit
         let loaded = await Task.detached(priority: .userInitiated) {
             Self.loadRows(limit: limit)
@@ -92,7 +103,11 @@ extension SessionsWindowModel {
             refreshFiles(keepSelection: true)
         } else {
             openRowID = nil
-            if let first = newRows.first { open(first.id) } else { clearReader() }
+            if let first = newRows.first {
+                open(first.id)
+            } else {
+                clearReader()
+            }
         }
         clampRailIndex()
     }
@@ -115,18 +130,22 @@ extension SessionsWindowModel {
         var row = makeBareRow(session, titleMap: titleMap)
         let fm = FileManager.default
         row.recordingError = SessionArchive.recordingError(in: session.url)
-        if row.recordingError != nil { row.transcriptStatus = "Recording needs review" }
+        if row.recordingError != nil {
+            row.transcriptStatus = "Recording needs review"
+        }
         row.hasTranscript = fm.fileExists(atPath: session.transcriptURL.path)
         row.hasRetainedAudio = session.isRTIArchive && !TranscriptUpgradeService.audioInputs(in: session.url).isEmpty
         if row.hasTranscript, let databases {
             let base = databases.standardizedFileURL.path
             let path = session.transcriptURL.standardizedFileURL.path
-            if path.hasPrefix(base + "/") { row.vaultTranscriptPath = String(path.dropFirst(base.count + 1)) }
+            if path.hasPrefix(base + "/") {
+                row.vaultTranscriptPath = String(path.dropFirst(base.count + 1))
+            }
         }
         return row
     }
 
-    nonisolated private static func makeBareRow(_ session: SessionArchive.ArchivedSession, titleMap: VaultMeetingTitleMap) -> Row {
+    private nonisolated static func makeBareRow(_ session: SessionArchive.ArchivedSession, titleMap: VaultMeetingTitleMap) -> Row {
         let fm = FileManager.default
         guard session.isRTIArchive else {
             // A legacy recorded meeting: its sidecar name, unless generic.
@@ -196,14 +215,14 @@ extension SessionsWindowModel {
 
     /// A bounded head of `transcript.md`, for `SessionTitleResolver`'s
     /// first-substantive-line title. Nil when there is no transcript.
-    nonisolated private static func transcriptHead(of url: URL) -> String? {
+    private nonisolated static func transcriptHead(of url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let data = try? handle.read(upToCount: transcriptHeadByteLimit), !data.isEmpty else { return nil }
         return String(decoding: data, as: UTF8.self)
     }
 
-    nonisolated private static func canonicalStamp(for date: Date) -> String {
+    private nonisolated static func canonicalStamp(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
@@ -218,7 +237,9 @@ extension SessionsWindowModel {
         pendingFolder = nil
         let changed = openRowID != rowID
         openRowID = rowID
-        if let index = railRows.firstIndex(where: { $0.id == rowID }) { railIndex = index }
+        if let index = railRows.firstIndex(where: { $0.id == rowID }) {
+            railIndex = index
+        }
         if changed {
             isEditingTranscript = false
             refreshFiles(keepSelection: false)
@@ -246,7 +267,7 @@ extension SessionsWindowModel {
 
     func openRow(number: Int) -> Bool {
         let list = railRows
-        guard (1...9).contains(number), list.indices.contains(number - 1) else { return false }
+        guard (1 ... 9).contains(number), list.indices.contains(number - 1) else { return false }
         railIndex = number - 1
         open(list[number - 1].id)
         return true
@@ -256,16 +277,26 @@ extension SessionsWindowModel {
 
     func toggleRail() {
         setRailVisible(!isRailVisible, remember: true)
-        if isRailVisible { railFocusRequest += 1 }
+        if isRailVisible {
+            railFocusRequest += 1
+        }
     }
 
     func setRailVisible(_ visible: Bool, remember: Bool) {
         isRailVisible = visible
-        if remember { UserDefaults.standard.set(visible, forKey: Self.railVisibleKey) }
+        if remember {
+            UserDefaults.standard.set(visible, forKey: Self.railVisibleKey)
+        }
         if !visible {
-            if actionsPlacement == .rail { closeActions() }
-            if renamingRowID != nil { cancelRename() }
-            if focus == .railSearch { focus = .none }
+            if actionsPlacement == .rail {
+                closeActions()
+            }
+            if renamingRowID != nil {
+                cancelRename()
+            }
+            if focus == .railSearch {
+                focus = .none
+            }
         }
     }
 
@@ -333,7 +364,9 @@ extension SessionsWindowModel {
 
     func beginRename(_ rowID: String) {
         guard let row = rows.first(where: { $0.id == rowID }), row.session.isRTIArchive else { return }
-        if !isRailVisible { setRailVisible(true, remember: false) }
+        if !isRailVisible {
+            setRailVisible(true, remember: false)
+        }
         closeActions()
         renamingRowID = rowID
         renameText = row.isFallbackTitle ? "" : row.title.text
@@ -355,7 +388,9 @@ extension SessionsWindowModel {
             FileManager.default.createFile(atPath: manualURL.path, contents: nil)
         }
         renamingRowID = nil
-        if focus == .rename { focus = .none }
+        if focus == .rename {
+            focus = .none
+        }
         if let index = rows.firstIndex(where: { $0.id == rowID }) {
             rows[index] = Self.makeRow(rows[index].session, titleMap: titleMap, databases: VaultPaths.preferredDatabasesDirectory())
         }
@@ -364,6 +399,8 @@ extension SessionsWindowModel {
     func cancelRename() {
         renamingRowID = nil
         renameText = ""
-        if focus == .rename { focus = .none }
+        if focus == .rename {
+            focus = .none
+        }
     }
 }

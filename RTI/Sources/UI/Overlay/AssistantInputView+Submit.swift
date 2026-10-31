@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 extension AssistantInputView {
     // MARK: Drop and import
@@ -51,7 +51,8 @@ extension AssistantInputView {
     /// as a document.
     private func dropFile(_ url: URL) {
         if UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true,
-           let image = NSImage(contentsOf: url) {
+           let image = NSImage(contentsOf: url)
+        {
             ScreenshotManager.shared.attachDroppedImage(image)
         } else {
             addDocument(url)
@@ -93,7 +94,9 @@ extension AssistantInputView {
     }
 
     private func isFailed(_ document: ComposerDocument) -> Bool {
-        if case .failed = document.phase { return true }
+        if case .failed = document.phase {
+            return true
+        }
         return false
     }
 
@@ -139,7 +142,9 @@ extension AssistantInputView {
                     return
                 }
             }
-            if !text.isEmpty { inputState.lastQuestion = text }
+            if !text.isEmpty {
+                inputState.lastQuestion = text
+            }
             llm.sendAskAnything(inputWithSelectedMentions(text), attachments: readyAttachments)
             input = ""
             selectedMentionPaths = []
@@ -202,7 +207,9 @@ extension AssistantInputView {
                     inputState.mode = .chat
                     return .ran
                 default:
-                    if llm.runComposerCommand(id: id, argument: argument) { return .ran }
+                    if llm.runComposerCommand(id: id, argument: argument) {
+                        return .ran
+                    }
                     // A catalogue entry no handler owns: show it locally and
                     // never send it as prompt text.
                     _ = llm.handleComposerCommand(text)

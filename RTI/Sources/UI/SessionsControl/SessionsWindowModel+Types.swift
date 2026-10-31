@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import Observation
 import RTICore
 import UniformTypeIdentifiers
-import HouseDesign
 
 extension SessionsWindowModel {
     // MARK: - Types
@@ -24,12 +24,20 @@ extension SessionsWindowModel {
         var vaultTranscriptPath: String?
         /// Durable identity from session.json, matching saved chat SessionLink ids.
         var sessionID: String?
-        var recordingError: String? = nil
+        var recordingError: String?
 
-        var id: String { session.url.path }
-        var folderName: String { session.url.lastPathComponent }
+        var id: String {
+            session.url.path
+        }
+
+        var folderName: String {
+            session.url.lastPathComponent
+        }
+
         /// A built title (date and length, or a short test), not a name.
-        var isFallbackTitle: Bool { title.source == .fallback || title.source == .shortTest }
+        var isFallbackTitle: Bool {
+            title.source == .fallback || title.source == .shortTest
+        }
 
         var railItem: SessionRailItem {
             SessionRailItem(
@@ -47,7 +55,10 @@ extension SessionsWindowModel {
 
     /// One file pill under the header.
     struct SessionFile: Identifiable, Hashable {
-        var id: URL { url }
+        var id: URL {
+            url
+        }
+
         let url: URL
         /// "notes", "transcript", "chat", "screen-context", "frames", or "log".
         let name: String
@@ -104,7 +115,9 @@ extension SessionsWindowModel {
         case ask, rename, nameSpeakers, editTranscript
         case upgradeTranscript, copy, share, saveMarkdown, savePDF, revealInFinder, trash
 
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
 
         var title: String {
             switch self {

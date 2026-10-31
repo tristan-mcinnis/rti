@@ -40,7 +40,7 @@ extension SessionCoordinator {
         sessionId: String?,
         includeAudio: Bool = true
     ) -> SessionFinalizer.Snapshot {
-        return SessionFinalizer.Snapshot(
+        SessionFinalizer.Snapshot(
             startedAt: startedAt,
             endedAt: endedAt,
             transcript: transcriptPipeline.liveEntries,
@@ -79,7 +79,9 @@ extension SessionCoordinator {
             notes: notes,
             archiveDir: archiveDir
         ) else { return }
-        if process { SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL) }
+        if process {
+            SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL)
+        }
     }
 
     /// Crash-safety checkpoint: while a session runs, re-write the archive
@@ -98,8 +100,8 @@ extension SessionCoordinator {
 
     static func archiveWasExpected(for snapshot: SessionFinalizer.Snapshot) -> Bool {
         !snapshot.transcript.isEmpty || !snapshot.chat.isEmpty || !snapshot.notes.isEmpty ||
-        !snapshot.visualContext.isEmpty || !snapshot.chatThreads.isEmpty || snapshot.unreadableChatCount > 0 ||
-        snapshot.micRecordingURL != nil || snapshot.systemRecordingURL != nil
+            !snapshot.visualContext.isEmpty || !snapshot.chatThreads.isEmpty || snapshot.unreadableChatCount > 0 ||
+            snapshot.micRecordingURL != nil || snapshot.systemRecordingURL != nil
     }
 
     func reportArchiveSaveFailure(recordingError: String? = nil) {

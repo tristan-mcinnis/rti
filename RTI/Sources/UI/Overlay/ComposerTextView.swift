@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 // MARK: - The field
 
@@ -101,7 +101,8 @@ struct ComposerTextView: NSViewRepresentable {
         override func performKeyEquivalent(with event: NSEvent) -> Bool {
             let (key, modifiers) = Self.map(event)
             if !hasMarkedText(), key == .a || key == .s, modifiers == [.command, .shift],
-               let result = onKey?(key, modifiers, false), case .handled = result {
+               let result = onKey?(key, modifiers, false), case .handled = result
+            {
                 return true
             }
             return super.performKeyEquivalent(with: event)
@@ -119,7 +120,7 @@ struct ComposerTextView: NSViewRepresentable {
                 return
             case .passThrough:
                 super.keyDown(with: event)
-            case .moveFocus(let forward):
+            case let .moveFocus(forward):
                 if forward {
                     window?.selectNextKeyView(self)
                 } else {
@@ -131,30 +132,39 @@ struct ComposerTextView: NSViewRepresentable {
         static func map(_ event: NSEvent) -> (ComposerKey, ComposerKeyModifiers) {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             var modifiers: ComposerKeyModifiers = []
-            if flags.contains(.shift) { modifiers.insert(.shift) }
-            if flags.contains(.command) { modifiers.insert(.command) }
-            if flags.contains(.option) { modifiers.insert(.option) }
-            if flags.contains(.control) { modifiers.insert(.control) }
+            if flags.contains(.shift) {
+                modifiers.insert(.shift)
+            }
+            if flags.contains(.command) {
+                modifiers.insert(.command)
+            }
+            if flags.contains(.option) {
+                modifiers.insert(.option)
+            }
+            if flags.contains(.control) {
+                modifiers.insert(.control)
+            }
 
-            let key: ComposerKey
-            switch event.keyCode {
-            case 36, 76: key = .returnKey
-            case 53: key = .escape
-            case 48: key = modifiers.contains(.shift) ? .backTab : .tab
-            case 126: key = .upArrow
-            case 125: key = .downArrow
-            case 123: key = .leftArrow
-            case 124: key = .rightArrow
-            case 51: key = .backspace
+            let key: ComposerKey = switch event.keyCode {
+            case 36, 76: .returnKey
+            case 53: .escape
+            case 48: modifiers.contains(.shift) ? .backTab : .tab
+            case 126: .upArrow
+            case 125: .downArrow
+            case 123: .leftArrow
+            case 124: .rightArrow
+            case 51: .backspace
             default:
                 switch event.charactersIgnoringModifiers?.lowercased() {
-                case "k": key = .k
-                case "a": key = .a
-                case "s": key = .s
-                default: key = .other
+                case "k": .k
+                case "a": .a
+                case "s": .s
+                default: .other
                 }
             }
-            if key == .backTab { modifiers.remove(.shift) }
+            if key == .backTab {
+                modifiers.remove(.shift)
+            }
             return (key, modifiers)
         }
     }

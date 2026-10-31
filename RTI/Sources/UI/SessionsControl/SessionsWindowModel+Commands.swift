@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import Observation
 import RTICore
 import UniformTypeIdentifiers
-import HouseDesign
 
 extension SessionsWindowModel {
     // MARK: - Actions
@@ -52,7 +52,9 @@ extension SessionsWindowModel {
         actionQuery = ""
     }
 
-    var actionsRow: Row? { rows.first { $0.id == actionsRowID } }
+    var actionsRow: Row? {
+        rows.first { $0.id == actionsRowID }
+    }
 
     var visibleActions: [SessionAction] {
         let actions = actionsRow.map(actions(for:)) ?? []
@@ -60,7 +62,7 @@ extension SessionsWindowModel {
         return actions.enumerated().compactMap { index, action -> (Int, Int, SessionAction)? in
             guard let score = CommandRegistry.matchScore(query: actionQuery, title: action.title) else { return nil }
             return (score, index, action)
-        }.sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 > $1.0 }.map { $0.2 }
+        }.sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 > $1.0 }.map(\.2)
     }
 
     func moveActionHighlight(_ delta: Int) {
@@ -81,7 +83,9 @@ extension SessionsWindowModel {
         guard let id = rowID ?? openRowID, let row = rows.first(where: { $0.id == id }) else { return }
         closeActions()
         guard actions(for: row).contains(action) else { return }
-        if action != .rename { open(id) }
+        if action != .rename {
+            open(id)
+        }
         switch action {
         case .ask: askInRTI(row)
         case .rename: beginRename(id)
@@ -129,7 +133,9 @@ extension SessionsWindowModel {
         do {
             try await trash(row.session.url)
             await reload()
-            if let openRowID { notice = (openRowID, "Session moved to Trash. Restore it in Finder if needed.") }
+            if let openRowID {
+                notice = (openRowID, "Session moved to Trash. Restore it in Finder if needed.")
+            }
         } catch {
             notice = (id, error.localizedDescription)
         }

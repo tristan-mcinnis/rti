@@ -1,7 +1,7 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
-import HouseDesign
 
 // MARK: - Editors
 

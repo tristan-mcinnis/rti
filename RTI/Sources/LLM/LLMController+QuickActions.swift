@@ -16,8 +16,12 @@ extension LLMController {
         let kind = modeStore.activeMode?.kind ?? .other
         let listener = listenerMode
         return AssistantAction.all.filter { action in
-            if let lo = action.listenerOnly, lo != listener { return false }
-            if let modes = action.modes, !modes.contains(kind) { return false }
+            if let lo = action.listenerOnly, lo != listener {
+                return false
+            }
+            if let modes = action.modes, !modes.contains(kind) {
+                return false
+            }
             return true
         }
     }
@@ -26,7 +30,9 @@ extension LLMController {
     /// recording. The send and the composer's label read this one function, so
     /// a screen block on the wire is always named before Send.
     func ambientScreenRead() -> String? {
-        if let ambientScreenProvider { return ambientScreenProvider() }
+        if let ambientScreenProvider {
+            return ambientScreenProvider()
+        }
         return SessionCoordinator.shared.isRunning
             ? VisualContextTrail.shared.recentPromptContext()
             : nil

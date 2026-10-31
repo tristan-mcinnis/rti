@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 // MARK: - Transcript
 
@@ -70,11 +70,18 @@ struct TranscriptTabView: View {
         // SessionCoordinator observes UserDefaults and is the sole writer of
         // `translationConfig`. The view only reads the same defaults keys for
         // its controls; it no longer pushes config directly.
-        .onAppear { if isActive { activatePresentation() } }
+        .onAppear {
+            if isActive {
+                activatePresentation()
+            }
+        }
         .onDisappear { session.deactivateTranscriptPresentation(for: presentationOwner) }
         .onChange(of: isActive) { _, active in
-            if active { activatePresentation() }
-            else { session.deactivateTranscriptPresentation(for: presentationOwner) }
+            if active {
+                activatePresentation()
+            } else {
+                session.deactivateTranscriptPresentation(for: presentationOwner)
+            }
         }
         .onChange(of: translationEnabled) { _, _ in session.refreshTranscriptPresentation() }
         .onChange(of: speakerNames.names) { _, _ in session.refreshTranscriptPresentation() }
@@ -149,7 +156,9 @@ struct TranscriptTabView: View {
     }
 
     private var healthColor: Color {
-        if session.isPaused { return RTIDesign.Color.warning }
+        if session.isPaused {
+            return RTIDesign.Color.warning
+        }
         guard session.isRunning else { return Color.overlayInkTertiary }
         switch session.transcriptionHealth {
         case .live: return RTIDesign.Color.success
@@ -159,7 +168,9 @@ struct TranscriptTabView: View {
     }
 
     private var healthLabel: String {
-        if session.isPaused { return "Paused" }
+        if session.isPaused {
+            return "Paused"
+        }
         guard session.isRunning else { return "Idle" }
         switch session.transcriptionHealth {
         case .live: return "Live"

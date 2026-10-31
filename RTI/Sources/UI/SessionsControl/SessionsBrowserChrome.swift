@@ -1,7 +1,7 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
-import HouseDesign
 
 // MARK: - Header
 
@@ -32,7 +32,9 @@ struct SessionsHeader: View {
             )
             .layoutPriority(1)
             Spacer(minLength: House.Spacing.sm)
-            if !embedded { SessionsModeSwitch(model: model) }
+            if !embedded {
+                SessionsModeSwitch(model: model)
+            }
             if model.mode == .sessions, let row = model.openRow, row.vaultTranscriptPath != nil {
                 // The labelled chip; a narrow window keeps its glyph only.
                 ViewThatFits(in: .horizontal) {
@@ -58,8 +60,11 @@ struct SessionsHeader: View {
                         .help("Move this RTI session to Trash…")
                 }
                 Button("Session actions", systemImage: "command") {
-                    if model.actionsPlacement == .header { model.closeActions() }
-                    else { model.showActions(placement: .header) }
+                    if model.actionsPlacement == .header {
+                        model.closeActions()
+                    } else {
+                        model.showActions(placement: .header)
+                    }
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(SessionCircleButtonStyle(isSelected: model.actionsPlacement == .header))
@@ -121,26 +126,26 @@ struct SessionFileChips: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: House.Spacing.xxs) {
-            ForEach(model.files) { file in
-                let isSelected = model.selectedFile == file
-                Button {
-                    model.select(file)
-                } label: {
-                    Text(file.displayName)
-                        .font(House.TypeToken.meta)
-                        .foregroundStyle(isSelected ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
-                        .lineLimit(1)
-                        .padding(.horizontal, House.Spacing.xs)
-                        .frame(height: House.Control.chip)
-                        .background {
-                            RowHighlight(isSelected: isSelected, isHovering: hovered == file.url, radius: House.Radius.pill)
-                        }
-                        .contentShape(Rectangle())
+                ForEach(model.files) { file in
+                    let isSelected = model.selectedFile == file
+                    Button {
+                        model.select(file)
+                    } label: {
+                        Text(file.displayName)
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(isSelected ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
+                            .lineLimit(1)
+                            .padding(.horizontal, House.Spacing.xs)
+                            .frame(height: House.Control.chip)
+                            .background {
+                                RowHighlight(isSelected: isSelected, isHovering: hovered == file.url, radius: House.Radius.pill)
+                            }
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .hoverHighlight($hovered, id: file.url)
+                    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                 }
-                .buttonStyle(.plain)
-                .hoverHighlight($hovered, id: file.url)
-                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-            }
             }
         }
         .padding(.bottom, House.Spacing.xxs)
@@ -244,7 +249,11 @@ struct SessionsFindBar: View {
         .onAppear { focused = true }
         .onChange(of: model.findFocusRequest) { _, _ in focused = true }
         .onChange(of: focused) { _, isFocused in
-            if isFocused { model.focus = .find } else if model.focus == .find { model.focus = .none }
+            if isFocused {
+                model.focus = .find
+            } else if model.focus == .find {
+                model.focus = .none
+            }
         }
         .onChange(of: model.findStatus) { _, status in
             guard !status.isEmpty else { return }

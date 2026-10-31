@@ -1,7 +1,7 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
-import HouseDesign
 
 // MARK: - Rail
 
@@ -59,14 +59,26 @@ struct SessionsRail: View {
         }
         .background(House.ColorToken.surfaceSunken)
         .clipped()
-        .onAppear { if model.focus == .railSearch { searchFocused = true } }
+        .onAppear {
+            if model.focus == .railSearch {
+                searchFocused = true
+            }
+        }
         .onChange(of: model.railFocusRequest) { _, _ in searchFocused = true }
         .onChange(of: model.renameFocusRequest) { _, _ in renameFocused = true }
         .onChange(of: searchFocused) { _, focused in
-            if focused { model.focus = .railSearch } else if model.focus == .railSearch { model.focus = .none }
+            if focused {
+                model.focus = .railSearch
+            } else if model.focus == .railSearch {
+                model.focus = .none
+            }
         }
         .onChange(of: renameFocused) { _, focused in
-            if focused { model.focus = .rename } else if model.focus == .rename { model.focus = .none }
+            if focused {
+                model.focus = .rename
+            } else if model.focus == .rename {
+                model.focus = .none
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Session list")
@@ -214,12 +226,12 @@ struct SessionsRail: View {
     }
 
     /// One rail row: the open marker, two lines, and the `⌘` number.
-    private func rowLayout<Lines: View>(
+    private func rowLayout(
         isSelected: Bool,
         isOpen: Bool,
         isHovering: Bool,
         number: Int?,
-        @ViewBuilder lines: () -> Lines
+        @ViewBuilder lines: () -> some View
     ) -> some View {
         HStack(spacing: House.Spacing.xs) {
             VStack(alignment: .leading, spacing: 0) {
@@ -234,7 +246,9 @@ struct SessionsRail: View {
         .frame(height: House.Control.row)
         .background { RowHighlight(isSelected: isSelected, isHovering: isHovering) }
         .overlay(alignment: .leading) {
-            if isOpen { OpenSessionMarker() }
+            if isOpen {
+                OpenSessionMarker()
+            }
         }
         .contentShape(Rectangle())
     }
@@ -298,7 +312,9 @@ private struct SessionSnippetText: View {
 private struct SessionsLiveSection: View {
     @State private var isHovering = false
 
-    private var session: SessionCoordinator { SessionCoordinator.shared }
+    private var session: SessionCoordinator {
+        SessionCoordinator.shared
+    }
 
     private var isLive: Bool {
         switch session.phase {
@@ -401,39 +417,39 @@ struct SessionActionsCard: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: House.Spacing.xxs) {
-            ForEach(Array(model.visibleActions.enumerated()), id: \.element.id) { index, action in
-                Button {
-                    model.actionIndex = index
-                    model.performHighlightedAction()
-                } label: {
-                    HStack(spacing: House.Spacing.xs) {
-                        Image(systemName: action.systemImage)
-                            .font(House.TypeToken.meta)
-                            .foregroundStyle(House.ColorToken.textSecondary)
-                            .frame(width: House.Control.keyCap)
-                        Text(action.title)
-                            .font(House.TypeToken.label)
-                            .foregroundStyle(House.ColorToken.textPrimary)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        if index == model.actionIndex {
-                            KeyCapGroup(keys: ["↩"])
-                        } else if showsKeys, !action.keys.isEmpty {
-                            KeyCapGroup(keys: action.keys)
+                        ForEach(Array(model.visibleActions.enumerated()), id: \.element.id) { index, action in
+                            Button {
+                                model.actionIndex = index
+                                model.performHighlightedAction()
+                            } label: {
+                                HStack(spacing: House.Spacing.xs) {
+                                    Image(systemName: action.systemImage)
+                                        .font(House.TypeToken.meta)
+                                        .foregroundStyle(House.ColorToken.textSecondary)
+                                        .frame(width: House.Control.keyCap)
+                                    Text(action.title)
+                                        .font(House.TypeToken.label)
+                                        .foregroundStyle(House.ColorToken.textPrimary)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
+                                    if index == model.actionIndex {
+                                        KeyCapGroup(keys: ["↩"])
+                                    } else if showsKeys, !action.keys.isEmpty {
+                                        KeyCapGroup(keys: action.keys)
+                                    }
+                                }
+                                .padding(.horizontal, House.Spacing.xs)
+                                .frame(height: House.Control.railRow)
+                                .background {
+                                    RowHighlight(isSelected: index == model.actionIndex, isHovering: hoveredAction == action)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .hoverHighlight($hoveredAction, id: action)
+                            .accessibilityAddTraits(index == model.actionIndex ? .isSelected : [])
+                            .id(index)
                         }
-                    }
-                    .padding(.horizontal, House.Spacing.xs)
-                    .frame(height: House.Control.railRow)
-                    .background {
-                        RowHighlight(isSelected: index == model.actionIndex, isHovering: hoveredAction == action)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .hoverHighlight($hoveredAction, id: action)
-                .accessibilityAddTraits(index == model.actionIndex ? .isSelected : [])
-                .id(index)
-            }
                     }
                 }
                 .frame(maxHeight: House.Control.railRow * 8 + House.Spacing.xxs * 7)

@@ -115,7 +115,9 @@ extension LLMController {
         checkpointTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: Self.checkpointIntervalNanoseconds)
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 await self?.writeCheckpoint(turnID: turnID)
             }
         }
@@ -168,7 +170,9 @@ extension LLMController {
         var selection = chatSelection
         // The visible thinking override and the global smart default
         // both land here, on the per-chat selection, before it freezes.
-        if forceSmart { selection.reasoning = .thinking }
+        if forceSmart {
+            selection.reasoning = .thinking
+        }
         // No separate vision model ships today, so an image on a text-only
         // route degrades to text-only and is labelled. When the registry gains
         // a vision model, name it here and the thread labels the fallback.

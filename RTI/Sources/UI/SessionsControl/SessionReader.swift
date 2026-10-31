@@ -1,7 +1,7 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
-import HouseDesign
 
 // MARK: - Reader
 
@@ -66,7 +66,7 @@ private func highlighted(_ text: String, _ all: [Range<String.Index>], _ current
     for range in all {
         guard let lower = AttributedString.Index(range.lowerBound, within: attributed),
               let upper = AttributedString.Index(range.upperBound, within: attributed) else { continue }
-        attributed[lower..<upper].backgroundColor = range == current
+        attributed[lower ..< upper].backgroundColor = range == current
             ? House.ColorToken.selectionFill
             : House.ColorToken.hoverFill
     }
@@ -268,8 +268,12 @@ private struct ArchivedChatThread: View {
         return VStack(alignment: .leading, spacing: House.Spacing.xs) {
             if let question, question.role == .user {
                 VStack(alignment: .leading, spacing: House.Spacing.xs) {
-                    if question.usedTranscript { toolLine("waveform", "Used the transcript") }
-                    if question.usedScreen { toolLine("camera.viewfinder", "Read the screen") }
+                    if question.usedTranscript {
+                        toolLine("waveform", "Used the transcript")
+                    }
+                    if question.usedScreen {
+                        toolLine("camera.viewfinder", "Read the screen")
+                    }
                 }
             }
             RTIMarkdown(turn.text, style: .panel)

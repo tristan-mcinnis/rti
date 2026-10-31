@@ -85,12 +85,11 @@ extension LLMController {
         let decision = wire.decision
         // Fresh first for budget, and an old image is never retransmitted on a
         // fresh-source-scope turn.
-        let sentReferences: [ReferencedDocument]
-        switch wire.choice {
-        case .none: sentReferences = []
-        case .fresh: sentReferences = freshReferences
-        case .retained: sentReferences = retainedSources
-        case .freshAndRetained: sentReferences = Self.deduped(freshReferences + retainedSources)
+        let sentReferences: [ReferencedDocument] = switch wire.choice {
+        case .none: []
+        case .fresh: freshReferences
+        case .retained: retainedSources
+        case .freshAndRetained: Self.deduped(freshReferences + retainedSources)
         }
         prepared.references = sentReferences
         // What the turn carries, by origin, for the prompt's own sentence: a
@@ -134,7 +133,7 @@ extension LLMController {
             return
         }
         let workstreamNames = (VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()).map(\.name)
-        let recentQuestions = self.recentAskQuestions(excluding: userInput)
+        let recentQuestions = recentAskQuestions(excluding: userInput)
         guard Self.shouldSearchVault(
             query: userInput,
             hasSelectedScope: MeetingContextStore.shared.workstreamScopePath != nil,
@@ -374,7 +373,9 @@ extension LLMController {
     }
 
     func attachScreenContext(_ text: String, image: Data? = nil, requestID: UUID? = nil) {
-        if let requestID, !isCurrentScreenAttachment(requestID) { return }
+        if let requestID, !isCurrentScreenAttachment(requestID) {
+            return
+        }
         screenAttachmentRequestID = nil
         pendingScreenContext = text
         pendingScreenImage = image
@@ -394,7 +395,9 @@ extension LLMController {
     }
 
     func setScreenAttachError(_ message: String, requestID: UUID? = nil) {
-        if let requestID, !isCurrentScreenAttachment(requestID) { return }
+        if let requestID, !isCurrentScreenAttachment(requestID) {
+            return
+        }
         screenAttachmentRequestID = nil
         pendingScreenContext = nil
         pendingScreenImage = nil
@@ -406,7 +409,9 @@ extension LLMController {
     }
 
     func setScreenCaptureStatus(_ message: String?, requestID: UUID? = nil) {
-        if let requestID, !isCurrentScreenAttachment(requestID) { return }
+        if let requestID, !isCurrentScreenAttachment(requestID) {
+            return
+        }
         screenCaptureStatus = message
     }
 

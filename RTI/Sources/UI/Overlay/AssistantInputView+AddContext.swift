@@ -1,8 +1,8 @@
 import AppKit
+import HouseDesign
 import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
-import HouseDesign
 
 extension AssistantInputView {
     // MARK: Add Context
@@ -136,16 +136,18 @@ extension AssistantInputView {
             // (meetings, projects, clients, the actions) and nothing else. A
             // vault-wide search belongs to `@`, which the pane's "Vault File"
             // row hands off to.
-            return contextRows(query: addContextQuery, vaultCandidates: [], includeAtRest: false)
+            contextRows(query: addContextQuery, vaultCandidates: [], includeAtRest: false)
         case .scope:
-            return Self.rankContext(scopePageRows, query: addContextQuery)
+            Self.rankContext(scopePageRows, query: addContextQuery)
         }
     }
 
     /// The `@` chooser's rows: the same space, searched with the words typed
     /// after the `@`.
     var visibleMentionRows: [ComposerContextRow] {
-        if let seededMentionRows { return seededMentionRows.map { ComposerContextRow(row: $0) } }
+        if let seededMentionRows {
+            return seededMentionRows.map { ComposerContextRow(row: $0) }
+        }
         return contextRows(
             query: currentMentionQuery ?? "",
             vaultCandidates: visibleMentionCandidates,
@@ -209,7 +211,9 @@ extension AssistantInputView {
         // The `@` chooser is a function of what is typed after the `@`: taking
         // those words out of the draft is what closes it, whichever row was
         // chosen.
-        if layer == .mention { input = Self.draftWithoutMentionQuery(input) }
+        if layer == .mention {
+            input = Self.draftWithoutMentionQuery(input)
+        }
         if let path = context.path {
             addMention(path)
             return
@@ -245,7 +249,7 @@ extension AssistantInputView {
         case .noteMode:
             isAddContextOpen = false
             toggleNoteMode()
-        case .scope(let id):
+        case let .scope(id):
             if let id, let scope = scopeItems.first(where: { $0.item.id == id }) {
                 MeetingContextStore.shared.selectWorkstream(scope.item)
             } else {
