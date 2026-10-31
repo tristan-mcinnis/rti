@@ -1,7 +1,8 @@
 name: CI
 
 # Phase 0 of PRODUCTION-GOAL.md — the safety net.
-# Two jobs run in parallel on every PR to main (and every push to main):
+# Two jobs run in parallel, each on its own hosted runner, on every PR to
+# main (and every push to main):
 #   build-test : xcodegen → build Debug → run the XCTest suite on a macOS runner.
 #   lint       : swiftformat --lint, scoped to the Swift files this change touches
 #                (boy-scout adoption — the legacy tree is not mass-reformatted).
@@ -9,7 +10,7 @@ name: CI
 on:
   push:
     branches: [main]
-    # Skip the (paid, macOS-runner) build on doc-only changes.
+    # Skip the macOS build on doc-only changes.
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -30,11 +31,11 @@ concurrency:
 jobs:
   build-test:
     name: Build & Test (Debug)
-    # Self-hosted runner on the maintainer's Mac: the XCTest suite needs macOS +
-    # Xcode, and GitHub's hosted macOS runners bill at 10x the Linux rate
-    # (~$0.08/min), which was the single largest line in the account's
-    # Actions spend. Free on own hardware.
-    runs-on: [self-hosted, macOS]
+    # GitHub-hosted macOS 26 (Xcode 26). The repo is public, so standard
+    # hosted runners cost nothing. The old single self-hosted runner (the
+    # maintainer's Mac) sat offline for 19 days and ran lint and build one
+    # after the other; hosted runners give each job its own machine.
+    runs-on: macos-26
     # house-chat-core and design-system are pinned by tag in RTI/project.yml,
     # so Xcode fetches them with the other packages and nothing else is
     # checked out. Every step runs inside rti/.
@@ -52,9 +53,8 @@ jobs:
 
       - name: Check Xcode (needs 16+ for the Swift 6 toolchain)
         # project.yml sets SWIFT_VERSION 6.0 and HouseChatCore is
-        # swift-tools-version 6.0, so Xcode 16 is the floor. The runner is a
-        # self-hosted Mac with one Xcode.app, so this checks the floor instead
-        # of switching Xcode versions.
+        # swift-tools-version 6.0, so Xcode 16 is the floor. This checks the
+        # image's default Xcode against the floor instead of switching versions.
         run: |
           xcodebuild -version
           MAJOR=$(xcodebuild -version | awk '/^Xcode/ {split($2, v, "."); print v[1]}')
@@ -106,18 +106,15 @@ jobs:
 
   lint:
     name: SwiftFormat (new files)
-    # Self-hosted runner on the maintainer's Mac: the XCTest suite needs macOS +
-    # Xcode, and GitHub's hosted macOS runners bill at 10x the Linux rate
-    # (~$0.08/min), which was the single largest line in the account's
-    # Actions spend. Free on own hardware.
-    runs-on: [self-hosted, macOS]
+    # Own hosted runner, no `needs:`: lint reports in parallel with the build.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Install SwiftFormat
-        run: brew install swiftformat
+        run: brew list swiftformat >/dev/null 2>&1 || brew install swiftformat
 
       - name: Lint newly-added Swift files
         run: |
