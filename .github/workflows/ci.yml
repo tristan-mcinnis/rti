@@ -123,24 +123,46 @@ jobs:
         run: brew list swiftformat >/dev/null 2>&1 || brew install swiftformat
 
       - name: Lint newly-added Swift files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          # Full history of main so merge-base can find the fork point.
-          git fetch --no-tags origin main
-          BASE=$(git merge-base origin/main HEAD || true)
-          if [ -z "$BASE" ]; then
-            echo "No merge-base with origin/main — nothing to lint."
-            exit 0
+          # Full history of the default branch so merge-base can find the fork point.
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          # What this change touched. A push to main diffs against the commit
+          # the branch was at before the push (github.event.before); merge-base
+          # with origin/main would be HEAD itself there, so it linted nothing.
+          # A pull request (or a push whose `before` is not in history, such as
+          # a force push) diffs against the merge base with the default branch.
+          # A push with an all-zeros `before` (a new branch) has no old tip, so
+          # it takes the merge base too, and when that is HEAD itself it falls
+          # back to the files the pushed commit changed.
+          ZERO=0000000000000000000000000000000000000000
+          if [ "$EVENT_NAME" = push ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "$ZERO" ] \
+             && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            BASE="$BEFORE"; WHY="push: github.event.before"
+          else
+            BASE=$(git merge-base "origin/$DEFAULT_BRANCH" HEAD || true)
+            WHY="merge base with origin/$DEFAULT_BRANCH"
+            if [ -z "$BASE" ] || [ "$BASE" = "$(git rev-parse HEAD)" ]; then
+              # Nothing to diff against: lint every file the pushed commit changed.
+              BASE=$(git rev-parse -q --verify HEAD^ || git hash-object -t tree /dev/null)
+              WHY="no usable base: the files HEAD changed"
+            fi
           fi
+          echo "Diffing $BASE..HEAD ($WHY). Files this change touched:"
+          git diff --find-renames --name-status "$BASE" HEAD
           # Lint only NEW files (added). The legacy tree predates SwiftFormat
           # and follows none of its conventions, so linting modified files would
-          # force a full reformat on every one-line touch — burying logic in
+          # force a full reformat on every one-line touch, burying logic in
           # formatting noise (and the goal doc forbids a mass reformat). New
           # code (the growing RTICore) is clean for free. --find-renames keeps
           # relocated legacy files (git mv) out of the "added" set.
           FILES=$(git diff --find-renames --name-only --diff-filter=A "$BASE" HEAD -- '*.swift')
           if [ -z "$FILES" ]; then
-            echo "No newly-added Swift files — nothing to lint."
+            echo "No newly-added Swift files in this change: nothing to lint."
             exit 0
           fi
           echo "Linting newly-added Swift files:"
