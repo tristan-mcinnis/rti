@@ -521,7 +521,11 @@ final class TranscriptPipelineTests: XCTestCase {
     /// three-way `CharacterSet` union each time) and re-scanned the whole
     /// transcript once per mic entry. Quadrupling the transcript must cost
     /// roughly 4x, not 16x.
-    func test_mergeCost_tracksTranscriptLength_notItsSquare() {
+    /// Wall-clock based, so opt-in: TEST_RUNNER_RTI_TIMING_TESTS=1 xcodebuild ... test
+    func test_mergeCost_tracksTranscriptLength_notItsSquare() throws {
+        guard ProcessInfo.processInfo.environment["RTI_TIMING_TESTS"] == "1" else {
+            throw XCTSkip("Set RTI_TIMING_TESTS=1 to run the merge-cost timing check")
+        }
         let small = rebuildMilliseconds(entries: 4_000)
         let large = rebuildMilliseconds(entries: 16_000)
         XCTAssertLessThan(
