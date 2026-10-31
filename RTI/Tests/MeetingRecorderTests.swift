@@ -59,4 +59,66 @@ final class MeetingRecorderTests: XCTestCase {
         XCTAssertEqual(try AVAudioFile(forReading: micURL).length, 32_000)
         recorder.close()
     }
+
+    func testDeliveryGapIsFilledSoTheLegKeepsClockTime() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MeetingRecorderTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var clock: TimeInterval = 100
+        let recorder = MeetingRecorder(now: { clock })
+        try recorder.open(in: directory)
+        let buffer = Self.buffer(frames: 1_600)
+
+        recorder.appendSystem(buffer)
+        clock += 0.1
+        recorder.appendSystem(buffer)
+        clock += 30
+        recorder.appendSystem(buffer)
+        recorder.close()
+
+        let systemURL = try XCTUnwrap(recorder.systemURL)
+        XCTAssertEqual(Double(try AVAudioFile(forReading: systemURL).length), 30.2 * 16_000, accuracy: 2)
+    }
+
+    func testDeliveryJitterUnderASecondAddsNoSilence() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MeetingRecorderTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var clock: TimeInterval = 100
+        let recorder = MeetingRecorder(now: { clock })
+        try recorder.open(in: directory)
+        let buffer = Self.buffer(frames: 1_600)
+
+        recorder.appendMic(buffer)
+        clock += 0.9
+        recorder.appendMic(buffer)
+        recorder.close()
+
+        XCTAssertEqual(try AVAudioFile(forReading: XCTUnwrap(recorder.micURL)).length, 3_200)
+    }
+
+    func testAppendAfterCloseIsIgnoredWithoutAFailure() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MeetingRecorderTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recorder = MeetingRecorder()
+        var failures: [String] = []
+        recorder.onWriteFailure = { failures.append($0) }
+        try recorder.open(in: directory)
+        recorder.appendMic(Self.buffer(frames: 320))
+        recorder.close()
+
+        recorder.appendMic(Self.buffer(frames: 320))
+
+        XCTAssertEqual(failures, [])
+        XCTAssertEqual(try AVAudioFile(forReading: XCTUnwrap(recorder.micURL)).length, 320)
+    }
+
+    private static func buffer(frames: Int) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))!
+        buffer.frameLength = AVAudioFrameCount(frames)
+        buffer.int16ChannelData![0].initialize(repeating: 1_000, count: frames)
+        return buffer
+    }
 }
