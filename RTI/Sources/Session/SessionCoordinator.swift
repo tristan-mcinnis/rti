@@ -56,7 +56,6 @@ final class SessionCoordinator {
     @ObservationIgnored private var transcriptPresentationOwner: UUID?
     @ObservationIgnored private var transcriptFinalsNeedProjection = true
     private(set) var lastError: String?
-    private var captureFailureMessage: String?
     private var transcriptionFailures: [String: (message: String, isAuth: Bool)] = [:]
     var canRetryLiveTranscription: Bool { isRunning && !transcriptionFailures.isEmpty }
     /// True when `lastError` came from a Soniox auth/billing failure
@@ -249,8 +248,12 @@ final class SessionCoordinator {
             self?.handleSystemWords(words)
         }
         audioPipeline.onSystemAudioStarted = { [weak self] offsetMs in
-            self?.systemAudioStartOffsetMs = offsetMs
-            self?.transcriptPipeline.setSystemStartOffset(ms: offsetMs)
+            guard let self else { return }
+            systemAudioStartOffsetMs = offsetMs
+            transcriptPipeline.setSystemStartOffset(ms: offsetMs)
+            // Recovery after a crash reads the offset from session.json, and
+            // the first timed checkpoint is minutes away.
+            if isRunning { archiveCurrentSession(endedAt: Date(), route: false) }
         }
         audioPipeline.onStreamRestarted = { [weak self] channel, atMs in
             self?.handleStreamRestarted(channel: channel, atMs: atMs)
@@ -258,7 +261,6 @@ final class SessionCoordinator {
         audioPipeline.onError = { [weak self] message, isAuth in
             self?.lastError = message
             self?.lastErrorIsAuth = isAuth
-            self?.captureFailureMessage = message
             if self?.isRunning == true { self?.stopSession() }
         }
         audioPipeline.onTranscriptionError = { [weak self] message, isAuth, channel in
@@ -413,7 +415,6 @@ final class SessionCoordinator {
         lastError = nil
         lastErrorIsAuth = false
         transcriptionFailures = [:]
-        captureFailureMessage = nil
         // A retire task left over from the last session must not clear this
         // one's failure.
         stopErrorRetireTask?.cancel()
@@ -641,7 +642,6 @@ final class SessionCoordinator {
         if let startedAt {
             let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt, sessionId: sessionId)
             let archiveDir = SessionFinalizer(snapshot: snapshot).archive()
-            let transcript = snapshot.transcript
             let chat = snapshot.chat
             let visualContext = snapshot.visualContext
             let notes = snapshot.notes
@@ -807,7 +807,10 @@ final class SessionCoordinator {
             modeName: ModeStore.shared.activeMode?.name,
             chatThreads: chatThreadProjection,
             unreadableChatCount: unreadableChatCount,
-            recordingError: captureFailureMessage ?? audioPipeline.recordingFailureMessage
+            // Only a write or close failure marks the files for review. A mic
+            // outage stops the session, but what was captured is intact and
+            // still goes through the automatic upgrade.
+            recordingError: audioPipeline.recordingFailureMessage
         )
     }
 

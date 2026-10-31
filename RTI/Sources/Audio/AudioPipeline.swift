@@ -34,6 +34,16 @@ private final class RecordingFailureLatch: @unchecked Sendable {
     var message: String? { lock.withLock { firstMessage } }
 }
 
+private final class LockedSTTClient: @unchecked Sendable {
+    private let lock = NSLock()
+    private var client: STTClient?
+
+    var value: STTClient? {
+        get { lock.withLock { client } }
+        set { lock.withLock { client = newValue } }
+    }
+}
+
 /// Owns the full audio capture → WAV + Soniox pipeline for both mic and
 /// system audio. Hides the dual-channel complexity behind a small interface:
 /// prepare, start, finalize, finish, abort.
@@ -114,9 +124,19 @@ final class AudioPipeline {
     private var recordingFailure = RecordingFailureLatch()
     /// The active speech-to-text client (Soniox today), built by
     /// STTProviders from the user's Settings choice. `soniox` is a historical
-    /// name; it is whichever provider is active.
-    private var soniox: STTClient?
-    private var systemSoniox: STTClient?
+    /// name; it is whichever provider is active. Capture callbacks read
+    /// both off the main thread while main swaps them, so each sits behind
+    /// a lock and a read returns a retained reference.
+    private let micClient = LockedSTTClient()
+    private let systemClient = LockedSTTClient()
+    private var soniox: STTClient? {
+        get { micClient.value }
+        set { micClient.value = newValue }
+    }
+    private var systemSoniox: STTClient? {
+        get { systemClient.value }
+        set { systemClient.value = newValue }
+    }
 
     /// The two retained capture legs. SessionArchive moves them out of temp at
     /// stop so the automatic second-pass transcript can diarize and align them.
