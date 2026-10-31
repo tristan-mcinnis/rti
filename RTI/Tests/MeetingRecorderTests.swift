@@ -114,6 +114,26 @@ final class MeetingRecorderTests: XCTestCase {
         XCTAssertEqual(try AVAudioFile(forReading: XCTUnwrap(recorder.micURL)).length, 320)
     }
 
+    func testLegStartedBeforeItsFirstBufferIsPaddedFromTheStart() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MeetingRecorderTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var clock: TimeInterval = 100
+        let recorder = MeetingRecorder(now: { clock })
+        try recorder.open(in: directory)
+
+        recorder.markSystemStarted()
+        clock += 5
+        recorder.appendSystem(Self.buffer(frames: 1_600))
+        clock += 20
+        recorder.markSystemStarted()
+        recorder.appendSystem(Self.buffer(frames: 1_600))
+        recorder.close()
+
+        let systemURL = try XCTUnwrap(recorder.systemURL)
+        XCTAssertEqual(Double(try AVAudioFile(forReading: systemURL).length), 25 * 16_000, accuracy: 2)
+    }
+
     private static func buffer(frames: Int) -> AVAudioPCMBuffer {
         let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true)!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))!

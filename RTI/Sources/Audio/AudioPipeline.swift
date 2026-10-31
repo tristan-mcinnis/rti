@@ -14,6 +14,8 @@ protocol PipelineRecording: AnyObject {
     func appendSystem(_ buffer: AVAudioPCMBuffer)
     func appendMicSilence(matching buffer: AVAudioPCMBuffer)
     func appendSystemSilence(matching buffer: AVAudioPCMBuffer)
+    func markMicStarted()
+    func markSystemStarted()
     func close()
 }
 
@@ -316,6 +318,7 @@ final class AudioPipeline {
         captureStartWall = now()
         micInputStartedAt = captureStartWall
         try audio.start()
+        recorder.markMicStarted()
         isCapturing = true
         captureGeneration += 1
         let generation = captureGeneration
@@ -515,6 +518,7 @@ final class AudioPipeline {
     }
 
     private func markSystemAudioStarted() {
+        recorder.markSystemStarted()
         systemAudioStartedAt = now()
         systemAudioOutageReported = false
         lastSystemAudioRecoveryAt = nil

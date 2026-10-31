@@ -249,8 +249,12 @@ final class SessionCoordinator {
         }
         audioPipeline.onSystemAudioStarted = { [weak self] offsetMs in
             guard let self else { return }
-            systemAudioStartOffsetMs = offsetMs
             transcriptPipeline.setSystemStartOffset(ms: offsetMs)
+            // The retained system leg is padded across outages from its first
+            // start, so a later backend fallback must not move the offset the
+            // upgrade applies to the whole file.
+            guard systemAudioStartOffsetMs == nil else { return }
+            systemAudioStartOffsetMs = offsetMs
             // Recovery after a crash reads the offset from session.json, and
             // the first timed checkpoint is minutes away.
             if isRunning { archiveCurrentSession(endedAt: Date(), route: false) }

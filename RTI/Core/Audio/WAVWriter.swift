@@ -98,6 +98,17 @@ public final class MeetingRecorder {
         }
     }
 
+    /// Anchor a leg when its capture starts rather than at its first
+    /// buffer, so a device that starts silent is padded from the start too.
+    /// Later calls (a backend fallback) keep the first anchor.
+    public func markMicStarted() {
+        if mic.anchor == nil { mic.anchor = now() }
+    }
+
+    public func markSystemStarted() {
+        if system.anchor == nil { system.anchor = now() }
+    }
+
     public func appendMic(_ buffer: AVAudioPCMBuffer) {
         append(buffer, silent: false, to: micFile, leg: &mic, name: "mic")
     }

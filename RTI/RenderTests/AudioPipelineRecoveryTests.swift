@@ -301,6 +301,8 @@ private final class CloseFailureRecorder: PipelineRecording {
     func appendSystem(_ buffer: AVAudioPCMBuffer) { writer.appendSystem(buffer) }
     func appendMicSilence(matching buffer: AVAudioPCMBuffer) { writer.appendMicSilence(matching: buffer) }
     func appendSystemSilence(matching buffer: AVAudioPCMBuffer) { writer.appendSystemSilence(matching: buffer) }
+    func markMicStarted() { writer.markMicStarted() }
+    func markSystemStarted() { writer.markSystemStarted() }
     func close() {
         writer.close()
         if failNextClose {
