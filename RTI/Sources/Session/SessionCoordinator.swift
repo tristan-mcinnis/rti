@@ -41,7 +41,7 @@ final class SessionCoordinator {
     private(set) var pausedAt: Date?
     private var pausedAccumulated: TimeInterval = 0
     /// Short status shown by the recording HUD while the offline pass runs.
-    private(set) var postProcessingStatus: String?
+    var postProcessingStatus: String?
     private(set) var liveEntries: [LiveEntry] = []
     /// Final entries can change without changing their count or identity.
     /// This final-only revision is separate from provisional display updates.
@@ -50,18 +50,18 @@ final class SessionCoordinator {
     private(set) var interimSegments: [LiveTranscriptPresentation.InterimSegment] = []
     /// One ordered snapshot owns pending and final runs, so a finalization
     /// publishes text and styling together without replacing the row identity.
-    private(set) var transcriptRows = LiveTranscriptPresentation.LiveRows()
-    private(set) var transcriptDisplayRevision = 0
-    @ObservationIgnored private var transcriptProjection = LiveTranscriptPresentation.Projection()
-    @ObservationIgnored private var transcriptPresentationOwner: UUID?
-    @ObservationIgnored private var transcriptFinalsNeedProjection = true
-    private(set) var lastError: String?
+    var transcriptRows = LiveTranscriptPresentation.LiveRows()
+    var transcriptDisplayRevision = 0
+    @ObservationIgnored var transcriptProjection = LiveTranscriptPresentation.Projection()
+    @ObservationIgnored var transcriptPresentationOwner: UUID?
+    @ObservationIgnored var transcriptFinalsNeedProjection = true
+    var lastError: String?
     private var transcriptionFailures: [String: (message: String, isAuth: Bool)] = [:]
     var canRetryLiveTranscription: Bool { isRunning && !transcriptionFailures.isEmpty }
     /// True when `lastError` came from a Soniox auth/billing failure
     /// (`SonioxFailure.isAuth`). UI uses this to gate the "Open Settings"
     /// affordance on the error banner.
-    private(set) var lastErrorIsAuth: Bool = false
+    var lastErrorIsAuth: Bool = false
     /// Whether live transcription is actually flowing (mic leg). Surfaced in
     /// the UI so the user always knows if their words are being captured.
     private(set) var transcriptionHealth: TranscriptionHealth = .idle
@@ -99,14 +99,14 @@ final class SessionCoordinator {
         }
     }
 
-    private let audioPipeline = AudioPipeline()
-    private let transcriptPipeline = TranscriptPipeline()
+    let audioPipeline = AudioPipeline()
+    let transcriptPipeline = TranscriptPipeline()
     /// Set while a start is in flight (during the async mic-permission prompt)
     /// so a second start can't kick off a duplicate permission dialog + launch.
     private var startGate = PendingStartGate()
     private var isStarting: Bool { startGate.isPending }
     private var delayedCompleteTask: Task<Void, Never>?
-    private var checkpointTask: Task<Void, Never>?
+    var checkpointTask: Task<Void, Never>?
     private var translationDefaultsObserver: NSObjectProtocol?
     private var activeSTTProviderId = STTProviders.activeId
     /// When the last session was stopped — used to reject a phantom restart
@@ -121,7 +121,7 @@ final class SessionCoordinator {
     /// morning. Internal and mutable so a test need not wait five minutes.
     static var stopErrorRetirementNs: UInt64 = 300_000_000_000
 
-    private var stopErrorRetireTask: Task<Void, Never>?
+    var stopErrorRetireTask: Task<Void, Never>?
 
 #if DEBUG
     private var isTranscriptReplayForProof = false
@@ -603,8 +603,8 @@ final class SessionCoordinator {
     /// The recording's stored chats and turns, gathered once so the
     /// synchronous archive can project them. Nothing here ends or changes the
     /// recording; it only reads ids.
-    private var chatThreadProjection: [ChatProjectionMarkdown.Thread] = []
-    private var unreadableChatCount = 0
+    private(set) var chatThreadProjection: [ChatProjectionMarkdown.Thread] = []
+    private(set) var unreadableChatCount = 0
 
     private func prepareChatThreadProjection(sessionId: String) async {
         chatThreadProjection = []
@@ -757,112 +757,6 @@ final class SessionCoordinator {
         micAudioNotice = nil
     }
 
-    /// Write the archive for the in-memory session state (shared by the
-    /// normal completeStop path, emergencyShutdown, and the periodic
-    /// crash-safety checkpoint). Returns the archive dir. Safe to call
-    /// repeatedly — SessionArchive overwrites the same folder. `route` is
-    /// false for mid-session checkpoints: routing a half-finished session
-    /// would create a premature field-notes file the final route then skips.
-    @discardableResult
-    private func archiveCurrentSession(endedAt: Date, route: Bool = true) -> URL? {
-        guard let startedAt else { return nil }
-        let snapshot = finalizerSnapshot(
-            startedAt: startedAt,
-            endedAt: endedAt,
-            sessionId: currentSessionId,
-            includeAudio: route
-        )
-        let dir = SessionFinalizer(snapshot: snapshot).archive()
-        if route {
-            exportCanonicalMeeting(
-                startedAt: startedAt,
-                transcript: snapshot.transcript,
-                chat: snapshot.chat,
-                visualContext: snapshot.visualContext,
-                notes: snapshot.notes,
-                archiveDir: dir
-            )
-        }
-        return dir
-    }
-
-    private func finalizerSnapshot(
-        startedAt: Date,
-        endedAt: Date,
-        sessionId: String?,
-        includeAudio: Bool = true
-    ) -> SessionFinalizer.Snapshot {
-        return SessionFinalizer.Snapshot(
-            startedAt: startedAt,
-            endedAt: endedAt,
-            transcript: transcriptPipeline.liveEntries,
-            chat: LLMController.shared.entries,
-            visualContext: VisualContextTrail.shared.events,
-            notes: NotesGenerationController.shared.notes,
-            sessionId: sessionId,
-            micRecordingURL: includeAudio ? audioPipeline.micRecordingURL : nil,
-            systemRecordingURL: includeAudio ? audioPipeline.systemRecordingURL : nil,
-            systemAudioStartOffsetMs: systemAudioStartOffsetMs,
-            workstreamItem: MeetingContextStore.shared.workstreamItem,
-            modeName: ModeStore.shared.activeMode?.name,
-            chatThreads: chatThreadProjection,
-            unreadableChatCount: unreadableChatCount,
-            // Only a write or close failure marks the files for review. A mic
-            // outage stops the session, but what was captured is intact and
-            // still goes through the automatic upgrade.
-            recordingError: audioPipeline.recordingFailureMessage
-        )
-    }
-
-    private func exportCanonicalMeeting(
-        startedAt: Date,
-        transcript: [LiveEntry],
-        chat: [ChatEntry],
-        visualContext: [VisualContextEvent],
-        notes: [GeneratedNote],
-        archiveDir: URL?,
-        process: Bool = true
-    ) {
-        guard let export = SessionArchive.writeCanonicalMeetingExport(
-            startedAt: startedAt,
-            transcript: transcript,
-            chat: chat,
-            visualContext: visualContext,
-            notes: notes,
-            archiveDir: archiveDir
-        ) else { return }
-        if process { SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL) }
-    }
-
-    /// Crash-safety checkpoint: while a session runs, re-write the archive
-    /// every 5 minutes so a hard crash (the one teardown path that can't
-    /// archive) loses at most the last few minutes of notes/transcript.
-    private func startCheckpointLoop() {
-        checkpointTask?.cancel()
-        checkpointTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
-                guard let self, isRunning, !Task.isCancelled else { return }
-                archiveCurrentSession(endedAt: Date(), route: false)
-            }
-        }
-    }
-
-    static func archiveWasExpected(for snapshot: SessionFinalizer.Snapshot) -> Bool {
-        !snapshot.transcript.isEmpty || !snapshot.chat.isEmpty || !snapshot.notes.isEmpty ||
-        !snapshot.visualContext.isEmpty || !snapshot.chatThreads.isEmpty || snapshot.unreadableChatCount > 0 ||
-        snapshot.micRecordingURL != nil || snapshot.systemRecordingURL != nil
-    }
-
-    func reportArchiveSaveFailure(recordingError: String? = nil) {
-        stopErrorRetireTask?.cancel()
-        stopErrorRetireTask = nil
-        postProcessingStatus = "Save failed · check retained files"
-        lastError = recordingError.map { "Recording needs review: \($0) Existing files were kept; check retained audio before processing." }
-            ?? "The session could not be fully saved. Existing files were not removed. Check the session folder and retained audio before using Upgrade transcript in Sessions."
-        lastErrorIsAuth = false
-    }
-
     private func handleSystemWords(_ words: [SonioxWord]) {
         guard currentSessionId != nil else { return }
         let entriesChanged = transcriptPipeline.process(words: words, channel: "system")
@@ -951,42 +845,6 @@ final class SessionCoordinator {
 #endif
             AutoAssistController.shared.noteActivity()
         }
-    }
-
-    /// Only a visible reader needs text layout. A token prevents a retired
-    /// view's delayed disappearance from deactivating its replacement.
-    func activateTranscriptPresentation(for owner: UUID) {
-        transcriptPresentationOwner = owner
-        // Options and names may have changed before the first visit, when no
-        // Transcript view existed to observe them.
-        refreshTranscriptPresentation()
-    }
-
-    func deactivateTranscriptPresentation(for owner: UUID) {
-        if transcriptPresentationOwner == owner { transcriptPresentationOwner = nil }
-    }
-
-    /// Copy the same ordered, committed runs the reader already projected.
-    /// Formatting is the only traversal; no layout or provisional state changes.
-    func transcriptTextForCopy() -> String {
-        LiveTranscriptPresentation.copyText(rows: transcriptProjection.committedRows)
-    }
-
-    /// Raw transcript publication continues while hidden. Finals are marked
-    /// dirty, and the next visible reader projects the latest snapshot once.
-    func refreshTranscriptPresentation(finalsChanged: Bool = true) {
-        transcriptFinalsNeedProjection = transcriptFinalsNeedProjection || finalsChanged
-        guard transcriptPresentationOwner != nil else { return }
-        if transcriptFinalsNeedProjection {
-            transcriptProjection.updateFinals(
-                liveEntries,
-                names: SpeakerNameStore.shared.names,
-                showTranslations: TranslationStore.currentConfig() != nil
-            )
-            transcriptFinalsNeedProjection = false
-        }
-        transcriptRows = transcriptProjection.updateInterims(interimSegments)
-        transcriptDisplayRevision += 1
     }
 
     /// Retire the failure notice this session left behind.
