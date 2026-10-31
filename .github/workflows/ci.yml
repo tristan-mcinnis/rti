@@ -10,19 +10,25 @@ name: CI
 on:
   push:
     branches: [main]
-    # Skip the macOS build on doc-only changes.
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+    # Skip the macOS build on doc-only changes. Later patterns win, so
+    # docs/workflows/ (flows.json is WorkflowDocTests input) still runs CI.
+    # The local pre-push hook uses the same rule.
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - '!.gitignore'
+      - '!LICENSE'
+      - 'docs/workflows/**'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - '!.gitignore'
+      - '!LICENSE'
+      - 'docs/workflows/**'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
