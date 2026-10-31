@@ -1,5 +1,4 @@
 import Foundation
-import RTICore
 
 /// Date-sorted access to a project's meetings and sessions — the recency-aware
 /// half of vault retrieval. Semantic search (`VaultSearch`) answers "what do we

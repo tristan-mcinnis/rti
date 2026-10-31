@@ -1,6 +1,5 @@
 import Foundation
 import HouseChatCore
-import RTICore
 
 /// Why a thread write was refused.
 public enum ChatThreadStoreError: Error, Equatable, LocalizedError {
@@ -883,6 +882,6 @@ public extension ChatThreadStore {
     /// the package says app-only fields go: `ConversationRecord.appPayload`,
     /// namespace `"rti"`, key `"pinned"`, value a JSON bool. It survives a
     /// round trip through either app and never becomes a shared field.
-    public static var pinnedPayloadKey: String { "pinned" }
-    public static var payloadNamespace: String { "rti" }
+    static var pinnedPayloadKey: String { "pinned" }
+    static var payloadNamespace: String { "rti" }
 }

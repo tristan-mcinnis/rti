@@ -1,5 +1,4 @@
 import Foundation
-import RTICore
 
 public enum AssistantTurnBuilder {
     public struct Input {

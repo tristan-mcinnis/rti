@@ -1,6 +1,5 @@
 import Foundation
 import HouseChatCore
-import RTICore
 
 /// Where the Chats library reads from: RTI's own durable chat store
 /// (`ChatThreadStore`) and the legacy daily turn logs beside it. Injected, so

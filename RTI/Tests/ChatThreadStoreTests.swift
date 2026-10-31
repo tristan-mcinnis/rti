@@ -485,7 +485,7 @@ final class ChatThreadStoreTests: XCTestCase {
             startedAt: Date(),
             model: ModelSelection(ModelChoice(provider: "deepseek"))
         )
-        var checkpointed = try await store.load(id: "chat-1")
+        let checkpointed = try await store.load(id: "chat-1")
         XCTAssertEqual(checkpointed.turns.count, 2, "the checkpoint makes one turn")
         XCTAssertEqual(checkpointed.turns.last?.request?.status, .streaming)
         XCTAssertEqual(checkpointed.turns.last?.text, "The number")

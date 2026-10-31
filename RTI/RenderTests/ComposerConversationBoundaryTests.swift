@@ -113,7 +113,7 @@ final class ComposerConversationBoundaryTests: RenderProofTestCase {
         XCTAssertEqual(controller.entries.first?.text, "Saved question")
     }
 
-    private final class ResumeProbe {
+    private final class ResumeProbe: @unchecked Sendable {
         var resetRequested = false
         var newerSend: Task<Void, Never>?
     }

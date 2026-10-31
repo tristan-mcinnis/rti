@@ -48,7 +48,7 @@ public extension AutoAssistCard {
     /// by exact allowlist match against this pass's retrieved records — never by
     /// substring or title matching — so an invented name, a title typed back, or
     /// a title that merely contains a real one yields a card with no citation.
-    public static func make(
+    static func make(
         kind: AutoCardKind,
         text: String,
         why: String?,
@@ -70,7 +70,7 @@ public extension AutoAssistCard {
     /// Build one card straight from a decoded wire item. Auto uses this call, so
     /// a test that decodes model JSON and calls it exercises the same decoding
     /// and citation gate the running app does.
-    public static func make(
+    static func make(
         from item: AutoCardItem,
         citations: [VaultSearch.Citation],
         timestamp: Date = Date()

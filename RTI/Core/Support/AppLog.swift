@@ -52,7 +52,7 @@ public final class AppLog {
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
     }()
-    private static let retentionDays = 14
+    private nonisolated static let retentionDays = 14
     private static let fileQueue = DispatchQueue(label: "rti.applog.file", qos: .utility)
     private static let dayStamp: DateFormatter = {
         let f = DateFormatter()
@@ -85,7 +85,7 @@ public final class AppLog {
         Self.fileQueue.async { Self.append(line, day: day) }
     }
 
-    private static func append(_ line: String, day: String) {
+    private nonisolated static func append(_ line: String, day: String) {
         let url = logsDirectory.appendingPathComponent("rti-\(day).log")
         try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
         if let handle = try? FileHandle(forWritingTo: url) {
@@ -97,7 +97,7 @@ public final class AppLog {
         }
     }
 
-    private static func pruneOldFiles() {
+    private nonisolated static func pruneOldFiles() {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: logsDirectory, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
         let cutoff = Date().addingTimeInterval(-Double(retentionDays) * 86_400)

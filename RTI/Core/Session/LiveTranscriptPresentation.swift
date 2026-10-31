@@ -274,7 +274,7 @@ public enum LiveTranscriptPresentation {
 extension LiveTranscriptPresentation {
     /// Identity follows a timed speaker run, never its pending/final state.
     /// A provider changing the run's speaker or start time is a distinct edit.
-    public struct RunID: Hashable {
+    public struct RunID: Hashable, Sendable {
         public let streamID: UUID?
         public let speakerId: String
         public let startMs: Int
@@ -283,7 +283,7 @@ extension LiveTranscriptPresentation {
         fileprivate let translated: Bool
     }
 
-    public struct Span: Equatable {
+    public struct Span: Equatable, Sendable {
         public fileprivate(set) var text: String
         public let isFinal: Bool
 
@@ -293,7 +293,7 @@ extension LiveTranscriptPresentation {
         }
     }
 
-    public struct Paragraph: Identifiable, Equatable {
+    public struct Paragraph: Identifiable, Equatable, Sendable {
         public let id: Int
         public let spans: [Span]
         public var text: String { spans.map(\.text).joined() }
@@ -352,7 +352,7 @@ extension LiveTranscriptPresentation {
     public typealias Paragraphs = SliceCollection<Paragraph>
     public typealias LiveRows = SliceCollection<LiveRow>
 
-    public struct LiveRow: Identifiable, Equatable {
+    public struct LiveRow: Identifiable, Equatable, Sendable {
         public let id: RunID
         public let revision: UInt64
         public let speakerId: String
@@ -821,3 +821,5 @@ extension LiveTranscriptPresentation {
         }
     }
 }
+
+extension LiveTranscriptPresentation.SliceCollection: Sendable where Element: Sendable {}

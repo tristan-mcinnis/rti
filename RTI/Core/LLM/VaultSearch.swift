@@ -263,13 +263,14 @@ public enum VaultSearch {
         let cores = max(1, min(candidates.count, ProcessInfo.processInfo.activeProcessorCount))
         let chunk = (candidates.count + cores - 1) / cores
         let sink = ResultSink()
+        let files = candidates
         DispatchQueue.concurrentPerform(iterations: cores) { c in
             let start = c * chunk
-            guard start < candidates.count else { return }
-            let end = min(start + chunk, candidates.count)
+            guard start < files.count else { return }
+            let end = min(start + chunk, files.count)
             var local: [Result] = []
             for i in start..<end {
-                let (url, modified) = candidates[i]
+                let (url, modified) = files[i]
                 guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
                 let relative = relativePath(of: url, under: databases, roots: roots)
                 let title = documentTitle(content: content, url: url)
@@ -458,7 +459,7 @@ public enum VaultSearch {
 private extension Character {
     /// True for CJK ideographs / kana / hangul — scripts that aren't space
     /// delimited, so each character is treated as its own token.
-    public var isCJK: Bool {
+    var isCJK: Bool {
         unicodeScalars.contains { scalar in
             (0x4E00...0x9FFF).contains(scalar.value) ||   // CJK Unified
             (0x3400...0x4DBF).contains(scalar.value) ||   // CJK Ext A

@@ -1,5 +1,4 @@
 import Foundation
-import RTICore
 
 /// Appends a line-per-turn JSONL log of every assistant turn into the vault, so
 /// past chats — and the prompts/modes that produced them — stay reviewable
@@ -10,8 +9,8 @@ import RTICore
 /// derived from RTI's configured `recordings_dir` so the vault path is never
 /// hardcoded here. Per-day files keep any single iCloud/git-synced file small.
 public enum VaultLogStore {
-    public struct TurnRecord: Codable {
-        public struct Latency: Codable {
+    public struct TurnRecord: Codable, Sendable {
+        public struct Latency: Codable, Sendable {
             public let totalMs: Int
             public let firstTokenMs: Int?
             public let toolMs: Int
@@ -66,7 +65,7 @@ public enum VaultLogStore {
         /// The evidence behind a tool line: what was asked, what came back,
         /// how long it took. App-side, in RTI's own legacy turn log; the
         /// structured thread stores the shared schema's `ToolCall` instead.
-        public struct ToolCall: Codable {
+        public struct ToolCall: Codable, Sendable {
             public let name: String
             public let arguments: String
             public let status: String

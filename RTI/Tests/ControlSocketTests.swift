@@ -456,7 +456,7 @@ final class ControlSocketTests: XCTestCase {
     /// because the tests are its only caller.
     private func send(_ request: String, to url: URL, file: StaticString = #filePath, line: UInt = #line) throws -> String {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        try XCTUnwrap(fd >= 0 ? true : nil, "socket() failed", file: file, line: line)
+        _ = try XCTUnwrap(fd >= 0 ? true : nil, "socket() failed", file: file, line: line)
         defer { close(fd) }
 
         var address = sockaddr_un()
@@ -472,7 +472,7 @@ final class ControlSocketTests: XCTestCase {
                 connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
-        try XCTUnwrap(connected == 0 ? true : nil, "connect() failed (errno \(errno))", file: file, line: line)
+        _ = try XCTUnwrap(connected == 0 ? true : nil, "connect() failed (errno \(errno))", file: file, line: line)
 
         var timeout = timeval(tv_sec: 2, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))

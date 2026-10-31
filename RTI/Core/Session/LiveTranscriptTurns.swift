@@ -9,7 +9,7 @@ extension LiveTranscriptPresentation {
     /// any one-second pause; a turn closes only on a speaker change, a note,
     /// or `turnGapMs` of silence. Its ID is its first row's, so the reading
     /// anchor holds while the turn grows.
-    public struct Turn: Identifiable, Equatable {
+    public struct Turn: Identifiable, Equatable, Sendable {
         public let rows: [LiveRow]
 
         public var id: RunID { rows[0].id }

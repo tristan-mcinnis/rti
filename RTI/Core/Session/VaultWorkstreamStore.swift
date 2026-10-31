@@ -1,5 +1,4 @@
 import Foundation
-import RTICore
 
 /// A pickable client or project from the vault.
 public struct VaultItem: Identifiable, Hashable {

@@ -22,9 +22,9 @@ enum AppPermissions {
         }
     }
 
-    static func requestMicrophone(_ completion: @escaping (Bool) -> Void) {
+    static func requestMicrophone(_ completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         AVCaptureDevice.requestAccess(for: .audio) { granted in
-            DispatchQueue.main.async { completion(granted) }
+            Task { @MainActor in completion(granted) }
         }
     }
 

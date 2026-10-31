@@ -9,7 +9,7 @@ import Foundation
 /// Paths under a root are shown to the model as `<prefix>/<rest>`, where the
 /// prefix is the root folder's name in lowercase (`work/Acme/2026/acme-launch/…`).
 public enum ProjectRoots {
-    public struct Root: Equatable {
+    public struct Root: Equatable, Sendable {
         public let prefix: String
         public let url: URL
     }

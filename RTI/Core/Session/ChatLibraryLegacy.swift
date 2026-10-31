@@ -1,5 +1,4 @@
 import Foundation
-import RTICore
 
 /// RTI's legacy daily turn logs, read honestly.
 ///
@@ -335,7 +334,7 @@ public struct ChatLibraryDatedSeed: Equatable, Sendable {
 public extension ChatLibraryDatedSeed {
     /// The whole displayed day. Nil when the day has nothing a chat could
     /// reuse, which is the honest answer for an empty or unreadable log.
-    public static func day(_ log: ChatLibraryLegacy.Log) -> ChatLibraryDatedSeed? {
+    static func day(_ log: ChatLibraryLegacy.Log) -> ChatLibraryDatedSeed? {
         guard !log.turns.isEmpty else { return nil }
         let entries = log.turns.map { Entry(turn: $0, day: log.day) }
         let count = entries.count
@@ -357,7 +356,7 @@ public extension ChatLibraryDatedSeed {
 
     /// One dated entry. Nil for a row that belongs to a saved chat or has no
     /// turn in it, so a projection is never reused as if it were legacy.
-    public static func entry(_ turn: ChatLibraryLegacy.Turn, in log: ChatLibraryLegacy.Log) -> ChatLibraryDatedSeed? {
+    static func entry(_ turn: ChatLibraryLegacy.Turn, in log: ChatLibraryLegacy.Log) -> ChatLibraryDatedSeed? {
         guard log.turns.contains(where: { $0.id == turn.id }), turn.isReadable else { return nil }
         let entry = Entry(turn: turn, day: log.day)
         let time = entry.timeText.isEmpty ? log.title : "\(log.title) · \(entry.timeText)"
@@ -380,7 +379,7 @@ public extension ChatLibraryDatedSeed {
     /// The dated entries as source material. Each keeps its own timestamp and
     /// its recorded order; the header says plainly that these are dated
     /// records, not one conversation.
-    public static func sourceText(
+    static func sourceText(
         entries: [Entry],
         heading: String,
         orientation: String
@@ -411,7 +410,7 @@ public extension ChatLibraryDatedSeed {
 }
 
 public extension ChatLibraryDatedSeed.Entry {
-    public init(turn: ChatLibraryLegacy.Turn, day: String) {
+    init(turn: ChatLibraryLegacy.Turn, day: String) {
         self.init(
             line: turn.id,
             day: day,
