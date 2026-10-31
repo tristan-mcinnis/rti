@@ -21,7 +21,6 @@ public enum OverlayAppearanceDefaults {
     public static let defaultHeight: Double = 440
     /// Slate is a dark-first system; light stays first-class.
     public static let defaultAppearanceMode = RTIAppearanceMode.dark.rawValue
-    public static let defaultAccentColor = "#0866D6" // House accent (light); see design-system/tokens.json
     public static let defaultContrast: Double = 60
     public static let defaultUIFontSize: Double = 14
     public static let defaultReduceMotion = RTIReduceMotionMode.system.rawValue

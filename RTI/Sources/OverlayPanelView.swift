@@ -23,7 +23,6 @@ struct OverlayPanelView: View {
     var isActive = true
 
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
-    @AppStorage(OverlayAppearanceDefaults.accentColorKey) private var accentColorHex: String = OverlayAppearanceDefaults.defaultAccentColor
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
     // Live tabs only show when their tasks are enabled in Prepare.
@@ -150,7 +149,7 @@ struct OverlayPanelView: View {
 
     private var themeRefreshToken: some View {
         Color.clear
-            .opacity((accentColorHex.isEmpty || contrast < 0) ? 0 : 0)
+            .opacity(contrast < 0 ? 0 : 0)
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
     }

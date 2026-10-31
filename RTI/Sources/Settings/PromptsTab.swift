@@ -17,65 +17,43 @@ struct PromptsTab: View {
 
     var body: some View {
         HSplitView {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Prompt Library")
-                        .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                        .foregroundStyle(RTIDesign.Color.textSecondary)
-                    Spacer()
-                    if store.hasAnyOverride {
-                        SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: RTIDesign.Color.textSecondary)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
+            VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                libraryHeader
+                    .padding(.horizontal, House.Spacing.sm)
+                    .padding(.top, House.Spacing.sm)
 
                 promptList
             }
             .frame(minWidth: 230, idealWidth: 250, maxWidth: 310)
             .background(RTIDesign.Color.trackBackground)
 
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 16)
-                Divider()
-                PromptEditorView(id: draft.selection, draft: draft)
-                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
-                    .background(SettingsSurfaceBackground())
-            }
+            PromptEditorView(id: draft.selection, draft: draft)
+                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                .background(SettingsSurfaceBackground())
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Prompts")
-                    .font(.system(size: House.TypeToken.Size.body, weight: .semibold))
-                Text("Edits take effect on the next call. Reset returns to the shipped default.")
-                    .font(.caption)
-                    .foregroundStyle(RTIDesign.Color.textSecondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: false)
-            }
+    /// The pane's title and caption come from the shared Settings header,
+    /// so this column carries only the library label and its one action.
+    private var libraryHeader: some View {
+        HStack(spacing: House.Spacing.xs) {
+            Text("Prompt Library")
+                .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
+                .foregroundStyle(RTIDesign.Color.textSecondary)
             Spacer()
-
-            HStack(spacing: 8) {
-                Button(role: .destructive) {
-                    showResetAllConfirm = true
-                } label: {
-                    Text("Reset All")
-                }
+            if store.hasAnyOverride {
+                SettingsStatusLabel(text: "Edited", systemImage: "pencil.circle.fill", color: RTIDesign.Color.textSecondary)
+            }
+            Button("Reset All", role: .destructive) { showResetAllConfirm = true }
+                .controlSize(.small)
                 .disabled(!store.hasAnyOverride)
-            }
-            .controlSize(.small)
-            .confirmationDialog(
-                "Reset every prompt to its shipped default? Your edits will be lost.",
-                isPresented: $showResetAllConfirm, titleVisibility: .visible
-            ) {
-                Button("Reset all prompts", role: .destructive) { store.resetAll(); draft.resetAll(read: store.text) }
-                Button("Cancel", role: .cancel) {}
-            }
+                .confirmationDialog(
+                    "Reset every prompt to its shipped default? Your edits will be lost.",
+                    isPresented: $showResetAllConfirm, titleVisibility: .visible
+                ) {
+                    Button("Reset all prompts", role: .destructive) { store.resetAll(); draft.resetAll(read: store.text) }
+                    Button("Cancel", role: .cancel) {}
+                }
         }
     }
 
@@ -173,10 +151,11 @@ private struct PromptEditorView: View {
                         SettingsStatusLabel(text: "Default", systemImage: "checkmark.circle", color: RTIDesign.Color.textSecondary)
                     }
                     Spacer()
-                    Button("Reset to Default") {
+                    Button("Reset") {
                         store.reset(id)
                         draft.replace(id, with: store.text(id))
                     }
+                    .help("Return this prompt to the shipped default.")
                     .disabled(!store.isOverridden(id))
                     Button("Revert Edits") { draft.replace(id, with: store.text(id)) }
                         .disabled(!isDirty)
@@ -184,7 +163,11 @@ private struct PromptEditorView: View {
                         .keyboardShortcut("s", modifiers: .command)
                         .disabled(!isDirty)
                 }
+                .controlSize(.small)
             }
+            // The split has no pane header above it, so the first card keeps
+            // the same inset from the top edge as the list column's header.
+            .padding(.top, House.Spacing.sm)
         }
         .onAppear { draft.prepare(id, read: store.text) }
         .onChange(of: id) { _, newID in draft.prepare(newID, read: store.text) }
