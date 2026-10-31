@@ -1311,9 +1311,3 @@ final class SessionsWindowModel {
     }
 
 }
-
-extension Array {
-    fileprivate subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
-}
