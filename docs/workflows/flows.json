@@ -370,7 +370,7 @@
           "to": "TranscriptUpgradeService",
           "label": "upgrade(session:provider:)",
           "passes": "The confirmed row's session folder is upgraded with Soniox; progress shows in the row notice.",
-          "ref": "RTI/Sources/UI/SessionsControl/SessionsWindowModel.swift · func startTranscriptUpgrade"
+          "ref": "RTI/Sources/UI/SessionsControl/SessionsWindowModel+Reader.swift · func startTranscriptUpgrade"
         },
         {
           "from": "TranscriptUpgradeService",
@@ -447,7 +447,7 @@
           "to": "LLMController",
           "label": "sendAskAnything",
           "passes": "The composer text and attachments start a turn.",
-          "ref": "RTI/Sources/LLM/LLMController.swift · func sendAskAnything"
+          "ref": "RTI/Sources/LLM/LLMController+Actions.swift · func sendAskAnything"
         },
         {
           "from": "LLMController",
@@ -468,7 +468,7 @@
           "to": "ToolLoop",
           "label": "run",
           "passes": "The loop streams the answer and runs tool calls between rounds.",
-          "ref": "RTI/Sources/LLM/LLMController.swift · ToolLoop("
+          "ref": "RTI/Sources/LLM/LLMController+Send.swift · ToolLoop("
         },
         {
           "from": "ToolLoop",
