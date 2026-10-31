@@ -69,7 +69,11 @@ final class MeetingProcessorConfigTests: XCTestCase {
             XCTAssertEqual(Set(hooks.keys), ["PreToolUse"])
             XCTAssertTrue(arguments[settings + 1].contains("python3 /Users/test/skills/_lib/guards/guard-send-gates.py"))
             let denied = try XCTUnwrap(arguments.firstIndex(of: "--disallowedTools"))
-            XCTAssertEqual(Array(arguments[(denied + 1)...].prefix(3)), ["WebFetch", "WebSearch", "Bash(curl *)"])
+            XCTAssertEqual(
+                Array(arguments[(denied + 1)...].prefix(9)),
+                ["WebFetch", "WebSearch", "Bash(curl *)",
+                 "Bash(rm *)", "Bash(rmdir *)", "Bash(mv *)", "Bash(cp *)", "Bash(sed *)", "Bash(touch *)"]
+            )
         }
     }
 

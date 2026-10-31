@@ -20,7 +20,7 @@ public enum MeetingProcessorConfig {
     /// What the `/meeting` skill needs and nothing more: read tools, mkdir
     /// under the work tree and ls, and the memory repo's add and fixed
     /// commit per lane task file, pull and push. No scripts, no
-    /// cat or cp, no bare Write or Edit: file writes come from `acceptEdits`,
+    /// cat, no bare Write or Edit: file writes come from `acceptEdits`,
     /// which covers the working directory and `--add-dir` only.
     public static func allowedTools(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [String] {
         let memory = home.appendingPathComponent("memory").path
@@ -46,8 +46,14 @@ public enum MeetingProcessorConfig {
         return "meeting processor exited with status \(status) for \(name)"
     }
 
-    /// Tools denied outright, on top of the allow list.
-    public static let disallowedTools = ["WebFetch", "WebSearch", "Bash(curl *)"]
+    /// Tools denied outright, on top of the allow list. `acceptEdits` also
+    /// auto-approves the file commands below inside the working directory
+    /// and `--add-dir`; the skill needs none of them, and an unattended run
+    /// fed third-party speech must not delete or move client files.
+    public static let disallowedTools = [
+        "WebFetch", "WebSearch", "Bash(curl *)",
+        "Bash(rm *)", "Bash(rmdir *)", "Bash(mv *)", "Bash(cp *)", "Bash(sed *)", "Bash(touch *)",
+    ]
 
     /// Inline settings for the run: only the send-guard hook, no allow rules.
     public static func guardSettings(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String {
