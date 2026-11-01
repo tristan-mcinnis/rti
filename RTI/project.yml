@@ -18,6 +18,9 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Warnings are errors for every target (project level, inherited by all).
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_ENTITLEMENTS: Sources/RTI.entitlements
     INFOPLIST_FILE: Sources/Info.plist

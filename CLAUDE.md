@@ -66,6 +66,10 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 This file also provides project-specific guidance to coding agents (Claude Code, Codex — AGENTS.md symlinks here) when working with this repository.
 
+## Build and test
+
+`make build`, `make test`; warnings are errors. `make check` compiles every target (test bundles too), `make test-render` runs the render proofs, `make install` wraps `scripts/install-local.sh`.
+
 ## Release workflow
 
 When making a change to RTI, verify it, commit the intended changes to `main`, and push `main`. For a change that should be used in the installed app, build from that committed revision and replace `/Applications/RTI.app` with that exact build.
