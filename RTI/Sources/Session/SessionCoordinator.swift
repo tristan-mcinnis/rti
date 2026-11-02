@@ -676,7 +676,7 @@ final class SessionCoordinator {
                 Task { @MainActor [weak self] in
                     if !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty {
                         do {
-                            _ = try await TranscriptUpgradeService.upgrade(
+                            _ = try await TranscriptUpgradeService.upgradeRetryingOnce(
                                 sessionDirectory: archiveDir,
                                 startedAt: startedAt,
                                 provider: AsyncTranscriptProviders.soniox

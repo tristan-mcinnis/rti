@@ -3,6 +3,16 @@ import HouseChatCore
 
 @MainActor
 public struct ToolExecutor {
+    public struct SearchLimits: Sendable {
+        public let maxCallsPerTurn: Int
+        public let timeLimit: Duration
+
+        public init(maxCallsPerTurn: Int, timeLimit: Duration) {
+            self.maxCallsPerTurn = maxCallsPerTurn
+            self.timeLimit = timeLimit
+        }
+    }
+
     public struct ExecutionResult: Equatable {
         public let toolName: String
         public let status: String?
@@ -32,8 +42,8 @@ public struct ToolExecutor {
 
     private let tools: [String: LLMToolDefinition]
     private let maxCallsPerTurn: [String: Int]
-    /// Calls allowed per turn across every search tool together; nil is no cap.
-    private let maxSearchCallsPerTurn: Int?
+    /// What a live call allows the search tools, together; nil is no limit.
+    private let searchLimits: SearchLimits?
     private var searchCalls = 0
     /// Tools that reach outside the conversation. When the turn's context
     /// policy withheld external retrieval, a call to one of these is refused
@@ -47,13 +57,13 @@ public struct ToolExecutor {
     public init(
         tools: [LLMToolDefinition],
         maxCallsPerTurn: [String: Int] = [:],
-        maxSearchCallsPerTurn: Int? = nil,
+        searchLimits: SearchLimits? = nil,
         allowsExternalRetrieval: Bool = true,
         allowsScreenTools: Bool = false
     ) {
         self.tools = Dictionary(uniqueKeysWithValues: tools.map { ($0.name, $0) })
         self.maxCallsPerTurn = maxCallsPerTurn
-        self.maxSearchCallsPerTurn = maxSearchCallsPerTurn
+        self.searchLimits = searchLimits
         self.allowsExternalRetrieval = allowsExternalRetrieval
         self.allowsScreenTools = allowsScreenTools
     }
@@ -106,9 +116,10 @@ public struct ToolExecutor {
             )
         }
 
-        if let maxSearchCallsPerTurn, ChatToolPolicy.searchToolNames.contains(tool.name) {
+        let limits = ChatToolPolicy.searchToolNames.contains(tool.name) ? searchLimits : nil
+        if let limits {
             searchCalls += 1
-            if searchCalls > maxSearchCallsPerTurn {
+            if searchCalls > limits.maxCallsPerTurn {
                 return ExecutionResult(
                     toolName: tool.name,
                     status: nil,
@@ -121,13 +132,17 @@ public struct ToolExecutor {
         }
 
         let start = Date()
-        let resultText: String
         var outcome: ToolRoundStatus = .succeeded
-        do {
-            resultText = try await tool.execute(call.function.arguments)
-        } catch {
+        let resultText: String
+        switch await Self.run(tool, call.function.arguments, timeLimit: limits?.timeLimit) {
+        case let .finished(text):
+            resultText = text
+        case let .threw(error):
             outcome = .failed
             resultText = "Tool '\(tool.name)' failed: \(error.localizedDescription)"
+        case .timedOut:
+            outcome = .failed
+            resultText = "\(tool.name) did not finish in time. Do not search again; answer the user now from the transcript, and say the search did not finish."
         }
         let elapsedMS = Int(Date().timeIntervalSince(start) * 1000)
         return ExecutionResult(
@@ -138,5 +153,34 @@ public struct ToolExecutor {
             elapsedMS: elapsedMS,
             executed: true
         )
+    }
+
+    private enum RunEnd {
+        case finished(String)
+        case threw(any Error)
+        case timedOut
+    }
+
+    /// Runs the tool, and with a limit stops waiting when it runs out. A scan
+    /// that cannot be interrupted finishes on its own and is ignored.
+    private static func run(_ tool: LLMToolDefinition, _ arguments: String, timeLimit: Duration?) async -> RunEnd {
+        func attempt() async -> RunEnd {
+            do { return .finished(try await tool.execute(arguments)) } catch { return .threw(error) }
+        }
+        guard let timeLimit else { return await attempt() }
+        return await withCheckedContinuation { continuation in
+            var resumed = false
+            func finish(_ end: RunEnd) {
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume(returning: end)
+            }
+            let work = Task { @MainActor in finish(await attempt()) }
+            Task { @MainActor in
+                try? await Task.sleep(for: timeLimit)
+                work.cancel()
+                finish(.timedOut)
+            }
+        }
     }
 }

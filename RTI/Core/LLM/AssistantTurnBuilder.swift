@@ -109,7 +109,7 @@ public enum AssistantTurnBuilder {
     }
 
     /// When the model may reach for the vault tools. A live call needs a fast
-    /// answer from the transcript, so there the user's own words must ask.
+    /// answer, so the tool policy opens them only when the user's words ask.
     private static func vaultGuidance(_ input: Input, live: Bool) -> String {
         let setting: String
         if let scope = input.workstreamScopePath {
@@ -120,7 +120,10 @@ public enum AssistantTurnBuilder {
             setting = "No project or client is selected."
         }
         if live {
-            return "\(setting) This is a live conversation, so answer from the transcript and your own knowledge by default. Use the vault tools only when the user's own words ask for past work or a document: what was decided or said before, what an earlier session found, a named project or file, or a request to find or look something up. A topic coming up is not a reason to search. Use at most two searches, then answer."
+            let tools = input.externalRetrievalAllowed
+                ? "The user asked for past work, so you may use at most two vault searches, then answer."
+                : "The vault tools are off for this turn. If the answer needs past work, say so in one line and offer to search."
+            return "\(setting) This is a live conversation, so answer now from the transcript and your own knowledge. A topic coming up is not a reason to search. \(tools)"
         }
         let reach = input.workstreamScopePath == nil ? " across the entire vault" : ""
         return "\(setting) Use the vault tools\(reach) when the question asks about prior decisions, prior research, project facts, what someone said in an earlier session, or a named document. Otherwise answer directly."

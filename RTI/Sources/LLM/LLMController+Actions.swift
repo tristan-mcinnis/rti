@@ -132,14 +132,16 @@ extension LLMController {
             )
             return
         }
-        let workstreamNames = (VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()).map(\.name)
+        // A live call answers first; the model's own capped tools do any search
+        // the user asked for. This also skips walking the project folders here.
+        let isLive = SessionCoordinator.shared.isRunning
+        let workstreamNames = isLive ? [] : (VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()).map(\.name)
         let recentQuestions = recentAskQuestions(excluding: userInput)
-        guard Self.shouldSearchVault(
+        guard !isLive, Self.shouldSearchVault(
             query: userInput,
             hasSelectedScope: MeetingContextStore.shared.workstreamScopePath != nil,
             workstreamNames: workstreamNames,
-            recentQuestions: recentQuestions,
-            isLive: SessionCoordinator.shared.isRunning
+            recentQuestions: recentQuestions
         ) else {
             performSend(
                 userInput: userInput,
@@ -219,17 +221,24 @@ extension LLMController {
         )
         Task { @MainActor in
             var vaultBlock = ""
-            let scope = Self.retrievalScope(for: window)
-            updateLocalAssistant(progressID, text: scope == nil ? "Searching the vault for the latest point…" : "Searching this project for the latest point…")
-            let retrieval = await VaultRetrieval.search(query: window, scopeRelativePath: scope, zeroResultPolicy: .latestPoint)
-            if retrieval.hasResults {
-                vaultBlock = "\n\n\(retrieval.scopeLabel) search results for the latest live question/point:\n---\n\(retrieval.formattedResults)\n---"
-            } else {
-                // Same contract as sendAskAnything: an empty search must reach
-                // the model as an explicit zero-result, never silently.
-                vaultBlock = "\n\n\(retrieval.modelContextForQuestion)"
+            var searchLine: [ChatToolLine] = []
+            var searchSources: [ChatSource] = []
+            // In a recording this is the "answer right now" button: no search first.
+            if !SessionCoordinator.shared.isRunning {
+                let scope = Self.retrievalScope(for: window)
+                updateLocalAssistant(progressID, text: scope == nil ? "Searching the vault for the latest point…" : "Searching this project for the latest point…")
+                let retrieval = await VaultRetrieval.search(query: window, scopeRelativePath: scope, zeroResultPolicy: .latestPoint)
+                if retrieval.hasResults {
+                    vaultBlock = "\n\n\(retrieval.scopeLabel) search results for the latest live question/point:\n---\n\(retrieval.formattedResults)\n---"
+                } else {
+                    // Same contract as sendAskAnything: an empty search must reach
+                    // the model as an explicit zero-result, never silently.
+                    vaultBlock = "\n\n\(retrieval.modelContextForQuestion)"
+                }
+                updateLocalAssistant(progressID, text: "Context ready (\(retrieval.elapsedMS)ms). Drafting answer…")
+                searchLine = [ToolTraceParser.searchLine(resultCount: retrieval.results.count, scoped: scope != nil)]
+                searchSources = Self.chatSources(retrieval)
             }
-            updateLocalAssistant(progressID, text: "Context ready (\(retrieval.elapsedMS)ms). Drafting answer…")
             let prompt = """
             Answer the MOST recent client question, challenge, or decision point in the live transcript.
             If the latest point is answerable from the current transcript, answer directly from that.
@@ -242,8 +251,8 @@ extension LLMController {
             performSend(
                 userInput: prompt,
                 action: "Answer latest",
-                initialTools: [ToolTraceParser.searchLine(resultCount: retrieval.results.count, scoped: scope != nil)],
-                initialSources: Self.chatSources(retrieval)
+                initialTools: searchLine,
+                initialSources: searchSources
             )
         }
     }

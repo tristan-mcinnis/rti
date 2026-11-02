@@ -114,6 +114,30 @@ enum TranscriptUpgradeService {
         )
     }
 
+    /// The automatic pass after a recording: one more try if the provider
+    /// failed, so a network wobble needs no manual step. Audio is kept either way.
+    @MainActor
+    static func upgradeRetryingOnce(
+        sessionDirectory: URL,
+        startedAt: Date,
+        provider option: AsyncTranscriptProviderOption,
+        progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
+    ) async throws -> Result {
+        try await RetryOnce.run(delay: .seconds(30), shouldRetry: { error in
+            guard case TranscriptUpgradeError.providerFailed = error else { return false }
+            RTILog.log("transcript upgrade failed, retrying once: \(error.localizedDescription)", category: .archive)
+            progress(.running("Retrying transcript…"))
+            return true
+        }, operation: {
+            try await upgrade(
+                sessionDirectory: sessionDirectory,
+                startedAt: startedAt,
+                provider: option,
+                progress: progress
+            )
+        })
+    }
+
     private static func makeProvider(_ option: AsyncTranscriptProviderOption) throws -> AsyncTranscriptProvider {
         // Soniox is the one upgrade provider. The Aliyun option was removed
         // on 2026-09-26: its NLS script no longer exists on this Mac.
@@ -202,7 +226,7 @@ private enum ScriptRunner {
         executable: String,
         arguments: [String],
         environment: [String: String],
-        timeout: TimeInterval = 3_600
+        timeout: TimeInterval = 1_800
     ) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let state = ScriptRunState()

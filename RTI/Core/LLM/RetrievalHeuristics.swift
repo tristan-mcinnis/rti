@@ -24,6 +24,14 @@ public enum RetrievalHeuristics {
         return recentQuestions.contains { compactKey($0) == compact }
     }
 
+    /// True when the user's own words ask for past work. In a live call this
+    /// is the only thing that opens the vault tools: "research", "brief" and
+    /// the client's name come up in every question, and the answer must be fast.
+    public static func asksForPastWork(_ question: String) -> Bool {
+        let pattern = #"\b(vault|previous|prior|earlier|last time|last week|history|look up|find|search|what did we|did we decide|recent meetings?)\b"#
+        return question.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     /// Vault retrieval is an intentional assist, not the default for every
     /// conversational turn. Search when a project is actively selected, the
     /// question names known vault context, or it clearly asks about past or
@@ -33,16 +41,8 @@ public enum RetrievalHeuristics {
         query: String,
         hasSelectedScope: Bool,
         workstreamNames: [String],
-        recentQuestions: [String],
-        isLive: Bool = false
+        recentQuestions: [String]
     ) -> Bool {
-        // In a live call "research", "brief" and the client's own name come up
-        // in every question, and the answer needs to be fast: only an explicit
-        // ask for past work searches first.
-        if isLive {
-            let askPattern = #"\b(vault|previous|prior|earlier|last time|history|look up|find|search)\b"#
-            return query.range(of: askPattern, options: [.regularExpression, .caseInsensitive]) != nil
-        }
         if hasSelectedScope || shouldForceVaultSearch(query: query, workstreamNames: workstreamNames, recentQuestions: recentQuestions) {
             return true
         }

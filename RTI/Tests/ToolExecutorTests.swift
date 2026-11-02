@@ -58,7 +58,7 @@ final class ToolExecutorTests: XCTestCase {
         let tools = ["search_vault", "grep_vault", "read_document"].map { name in
             LLMToolDefinition(name: name, description: name, parameters: [:], execute: { _ in "ok" }, runningStatus: nil)
         }
-        var executor = ToolExecutor(tools: tools, maxSearchCallsPerTurn: 2)
+        var executor = ToolExecutor(tools: tools, searchLimits: .init(maxCallsPerTurn: 2, timeLimit: .seconds(5)))
 
         let first = await executor.execute(call(name: "search_vault"))
         let second = await executor.execute(call(name: "grep_vault"))
@@ -71,6 +71,46 @@ final class ToolExecutorTests: XCTestCase {
         XCTAssertEqual(third.outcome, .refused)
         XCTAssertTrue(third.resultText.contains("answer the user now"))
         XCTAssertTrue(read.executed)
+    }
+
+    func testSearchPastItsTimeLimitStopsTheWaitAndTellsTheModelToAnswer() async {
+        let slow = LLMToolDefinition(
+            name: "search_vault", description: "", parameters: [:],
+            execute: { _ in
+                try await Task.sleep(for: .seconds(30))
+                return "late"
+            },
+            runningStatus: nil
+        )
+        var executor = ToolExecutor(tools: [slow], searchLimits: .init(maxCallsPerTurn: 2, timeLimit: .milliseconds(50)))
+
+        let result = await executor.execute(call(name: "search_vault"))
+
+        XCTAssertEqual(result.outcome, .failed)
+        XCTAssertTrue(result.resultText.contains("did not finish in time"))
+        XCTAssertLessThan(result.elapsedMS, 5_000)
+    }
+
+    func testRetryOnceRunsAgainOnlyWhenAllowed() async throws {
+        struct Failure: Error {}
+        var runs = 0
+        let value = try await RetryOnce.run(delay: .zero, shouldRetry: { _ in true }) {
+            runs += 1
+            if runs == 1 { throw Failure() }
+            return "ok"
+        }
+        XCTAssertEqual(value, "ok")
+        XCTAssertEqual(runs, 2)
+
+        runs = 0
+        do {
+            _ = try await RetryOnce.run(delay: .zero, shouldRetry: { _ in false }) {
+                runs += 1
+                throw Failure()
+            }
+            XCTFail("expected a throw")
+        } catch {}
+        XCTAssertEqual(runs, 1)
     }
 
     func testThrownToolErrorBecomesModelVisibleResult() async {

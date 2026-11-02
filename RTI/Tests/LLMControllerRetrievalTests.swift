@@ -32,26 +32,28 @@ final class LLMControllerRetrievalTests: XCTestCase {
             recentQuestions: []
         ))
     }
-    func testLiveCallIgnoresEverydayWordsAndSelectedProject() {
-        XCTAssertFalse(RetrievalHeuristics.shouldSearchVault(
-            query: "What type of research fits this client brief for Acme?",
-            hasSelectedScope: true,
-            workstreamNames: ["Acme"],
-            recentQuestions: [],
-            isLive: true
-        ))
+    func testEverydayWordsDoNotAskForPastWork() {
+        XCTAssertFalse(RetrievalHeuristics.asksForPastWork("What type of research fits this client brief for Acme?"))
     }
 
-    func testLiveCallSearchesWhenAskedForPastWork() {
-        for query in ["What did we find in the previous round?", "Look up the Acme quote", "search for pricing"] {
-            XCTAssertTrue(RetrievalHeuristics.shouldSearchVault(
-                query: query,
-                hasSelectedScope: false,
-                workstreamNames: [],
-                recentQuestions: [],
-                isLive: true
-            ), query)
+    func testPastWorkWordsAsk() {
+        for question in ["What did we find in the previous round?", "Look up the Acme quote", "search for pricing"] {
+            XCTAssertTrue(RetrievalHeuristics.asksForPastWork(question), question)
         }
+    }
+
+    func testLiveCallWithholdsVaultToolsUnlessAsked() {
+        let open = ChatToolPolicy(allowsExternalRetrieval: true)
+
+        let plain = open.forLiveCall(question: "Give me scoping questions")
+        XCTAssertFalse(plain.allowsTool(named: "search_vault"))
+        XCTAssertFalse(plain.allowsTool(named: "capture_screen"))
+
+        let onScreen = open.forLiveCall(question: "What is on my screen?")
+        XCTAssertFalse(onScreen.allowsTool(named: "grep_vault"))
+        XCTAssertTrue(onScreen.allowsTool(named: "capture_screen"))
+
+        XCTAssertTrue(open.forLiveCall(question: "Search for the last quote").allowsTool(named: "search_vault"))
     }
 
     func testNamesKnownWorkstreamForcesHard() {

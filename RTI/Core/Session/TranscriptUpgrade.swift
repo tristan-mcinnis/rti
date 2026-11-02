@@ -615,3 +615,20 @@ public enum TranscriptUpgradeArtifacts {
         return f
     }()
 }
+
+/// Runs an operation, and once more after `delay` when `shouldRetry` allows it.
+@MainActor
+public enum RetryOnce {
+    public static func run<T>(
+        delay: Duration,
+        shouldRetry: (any Error) -> Bool,
+        operation: () async throws -> T
+    ) async throws -> T {
+        do {
+            return try await operation()
+        } catch where shouldRetry(error) {
+            try await Task.sleep(for: delay)
+            return try await operation()
+        }
+    }
+}

@@ -156,7 +156,7 @@ enum LLMToolRegistry {
         ],
         execute: { _ in
             let scope = MeetingContextStore.shared.workstreamScopePath
-            return VaultMeetings.recentFormatted(scopeRelativePath: scope)
+            return await Task.detached { VaultMeetings.recentFormatted(scopeRelativePath: scope) }.value
         },
         runningStatus: "🗓️ Checking recent meetings…"
     )
@@ -184,7 +184,7 @@ enum LLMToolRegistry {
         ],
         execute: { argumentsJSON in
             let path = decodeField("path", from: argumentsJSON)
-            return VaultFiles.read(relativePath: path)
+            return await Task.detached { VaultFiles.read(relativePath: path) }.value
         },
         runningStatus: "📄 Reading the document…"
     )
@@ -212,7 +212,8 @@ enum LLMToolRegistry {
         ],
         execute: { argumentsJSON in
             let query = decodeField("query", from: argumentsJSON)
-            return VaultFiles.grep(query: query, scopeRelativePath: MeetingContextStore.shared.workstreamScopePath)
+            let scope = MeetingContextStore.shared.workstreamScopePath
+            return await Task.detached { VaultFiles.grep(query: query, scopeRelativePath: scope) }.value
         },
         runningStatus: "🔦 Grepping the vault…"
     )
@@ -238,8 +239,10 @@ enum LLMToolRegistry {
         ],
         execute: { argumentsJSON in
             let pattern = decodeField("pattern", from: argumentsJSON)
-            return VaultFiles.list(scopeRelativePath: MeetingContextStore.shared.workstreamScopePath,
-                                   pattern: pattern.isEmpty ? nil : pattern)
+            let scope = MeetingContextStore.shared.workstreamScopePath
+            return await Task.detached {
+                VaultFiles.list(scopeRelativePath: scope, pattern: pattern.isEmpty ? nil : pattern)
+            }.value
         },
         runningStatus: "🗂️ Listing files…"
     )
@@ -277,7 +280,9 @@ extension ToolExecutor {
         ToolExecutor(
             tools: LLMToolRegistry.all,
             maxCallsPerTurn: ["search_vault": 1],
-            maxSearchCallsPerTurn: SessionCoordinator.shared.isRunning ? 2 : nil,
+            searchLimits: SessionCoordinator.shared.isRunning
+                ? .init(maxCallsPerTurn: 2, timeLimit: .seconds(5))
+                : nil,
             allowsExternalRetrieval: allowsExternalRetrieval,
             allowsScreenTools: allowsScreenTools
         )

@@ -25,7 +25,7 @@ public struct ChatToolPolicy: Sendable, Equatable {
     ]
 
     /// The discovery tools that look for something, as opposed to reading a
-    /// document already found. A live call caps these together per turn.
+    /// document already found. A live call limits these together.
     public static let searchToolNames: Set<String> = discoveryToolNames.subtracting(["read_document"])
 
     /// The screen tools. They reach outside the conversation too, but a
@@ -94,6 +94,18 @@ public struct ChatToolPolicy: Sendable, Equatable {
         self.allowsScreenTools = allowsScreenTools
         self.rationale = rationale
         self.offersHistory = offersHistory
+    }
+
+    /// The policy for a turn during a recording: no vault tools unless the
+    /// user's own words ask for past work, so the model cannot pause to search.
+    public func forLiveCall(question: String) -> ChatToolPolicy {
+        guard allowsExternalRetrieval, !RetrievalHeuristics.asksForPastWork(question) else { return self }
+        return ChatToolPolicy(
+            allowsExternalRetrieval: false,
+            allowsScreenTools: allowsScreenTools && Self.questionRequestsScreen(question),
+            rationale: "Live call: answering from the transcript.",
+            offersHistory: offersHistory
+        )
     }
 
     /// Kept for callers that only have the boolean (the offered and executed

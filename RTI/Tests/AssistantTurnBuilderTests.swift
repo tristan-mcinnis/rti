@@ -65,6 +65,13 @@ final class AssistantTurnBuilderTests: XCTestCase {
         }
     }
 
+    func testLivePromptMatchesTheToolPolicy() {
+        let off = build(transcript: "Client: Hi.").apiMessages.last?.content ?? ""
+        let on = build(transcript: "Client: Hi.", externalRetrievalAllowed: true).apiMessages.last?.content ?? ""
+        XCTAssertTrue(off.contains("vault tools are off"))
+        XCTAssertTrue(on.contains("at most two vault searches"))
+    }
+
     func testChatWithoutATranscriptSearchesForPriorWorkOnly() {
         let latest = build().apiMessages.last?.content ?? ""
         XCTAssertTrue(latest.contains("prior decisions"))
