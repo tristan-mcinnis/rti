@@ -14,7 +14,9 @@ public enum CallType: String, CaseIterable, Identifiable, Sendable {
         case whenAsked, never
     }
 
-    public var id: String { rawValue }
+    public var id: String {
+        rawValue
+    }
 
     public var name: String {
         switch self {
@@ -36,9 +38,13 @@ public enum CallType: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// True when the user is usually observing rather than speaking.
-    public var listens: Bool { self == .research }
+    public var listens: Bool {
+        self == .research
+    }
 
-    public var toolAccess: ToolAccess { self == .personal ? .never : .whenAsked }
+    public var toolAccess: ToolAccess {
+        self == .personal ? .never : .whenAsked
+    }
 
     /// The ✦ menu, in order. The rest stay in the palette and on their hotkeys.
     public var menuActionIDs: [String] {
@@ -55,7 +61,9 @@ public enum CallType: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// The front matter line the `/meeting` skill reads from the sidecar.
-    public var sidecarField: String { "call_type: \(rawValue)" }
+    public var sidecarField: String {
+        "call_type: \(rawValue)"
+    }
 
     /// The remembered choice, or a client call when nothing usable is stored.
     public static func resolve(stored: String?) -> CallType {
