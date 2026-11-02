@@ -32,6 +32,28 @@ final class LLMControllerRetrievalTests: XCTestCase {
             recentQuestions: []
         ))
     }
+    func testLiveCallIgnoresEverydayWordsAndSelectedProject() {
+        XCTAssertFalse(RetrievalHeuristics.shouldSearchVault(
+            query: "What type of research fits this client brief for Acme?",
+            hasSelectedScope: true,
+            workstreamNames: ["Acme"],
+            recentQuestions: [],
+            isLive: true
+        ))
+    }
+
+    func testLiveCallSearchesWhenAskedForPastWork() {
+        for query in ["What did we find in the previous round?", "Look up the Acme quote", "search for pricing"] {
+            XCTAssertTrue(RetrievalHeuristics.shouldSearchVault(
+                query: query,
+                hasSelectedScope: false,
+                workstreamNames: [],
+                recentQuestions: [],
+                isLive: true
+            ), query)
+        }
+    }
+
     func testNamesKnownWorkstreamForcesHard() {
         XCTAssertTrue(RetrievalHeuristics.shouldForceVaultSearch(
             query: "what did we decide about AcmeWear Northport vs Southvale",

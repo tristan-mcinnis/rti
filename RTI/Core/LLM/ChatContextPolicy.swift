@@ -24,6 +24,10 @@ public struct ChatToolPolicy: Sendable, Equatable {
         "read_document",
     ]
 
+    /// The discovery tools that look for something, as opposed to reading a
+    /// document already found. A live call caps these together per turn.
+    public static let searchToolNames: Set<String> = discoveryToolNames.subtracting(["read_document"])
+
     /// The screen tools. They reach outside the conversation too, but a
     /// source-first turn may still use them when the user's own question asks
     /// for the screen. A document question never opens the display.

@@ -503,12 +503,13 @@ extension LLMController {
         RetrievalHeuristics.shouldForceVaultSearch(query: query, workstreamNames: workstreamNames, recentQuestions: recentQuestions)
     }
 
-    nonisolated static func shouldSearchVault(query: String, hasSelectedScope: Bool, workstreamNames: [String], recentQuestions: [String]) -> Bool {
+    nonisolated static func shouldSearchVault(query: String, hasSelectedScope: Bool, workstreamNames: [String], recentQuestions: [String], isLive: Bool) -> Bool {
         RetrievalHeuristics.shouldSearchVault(
             query: query,
             hasSelectedScope: hasSelectedScope,
             workstreamNames: workstreamNames,
-            recentQuestions: recentQuestions
+            recentQuestions: recentQuestions,
+            isLive: isLive
         )
     }
 

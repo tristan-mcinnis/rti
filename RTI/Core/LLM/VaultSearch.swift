@@ -296,18 +296,29 @@ public enum VaultSearch {
         let titleHay = title.lowercased()
         let pathHay = relativePath.lowercased()
 
+        let fileHay = (pathHay as NSString).lastPathComponent
+
         var score = 0
-        var matchedAny = false
+        var covered = 0
         for term in terms {
-            let body = occurrences(of: term, in: haystack)
-            if body > 0 { matchedAny = true }
+            let word = searchStem(term)
+            let body = occurrences(of: word, in: haystack)
+            var hit = body > 0
             score += body
             // A query term in the title or filename is a strong relevance
             // signal — weight it well above a body mention.
-            if titleHay.contains(term) { score += 25; matchedAny = true }
-            if pathHay.contains(term) { score += 8; matchedAny = true }
+            if occurrences(of: word, in: titleHay) > 0 { score += 25; hit = true }
+            if occurrences(of: word, in: fileHay) > 0 {
+                score += 8
+                hit = true
+            } else if occurrences(of: word, in: pathHay) > 0 {
+                // A folder name lifts a real match but never makes one: every
+                // file under `acme-running` would otherwise match "running".
+                score += 8
+            }
+            if hit { covered += 1 }
         }
-        guard matchedAny else { return (0, "") }
+        guard covered > 0, covered >= requiredCoverage(termCount: terms.count) else { return (0, "") }
 
         // Status files are the live state of a project — nudge them up so
         // "where are we on X" surfaces the dashboard, not an old meeting note.
@@ -356,18 +367,39 @@ public enum VaultSearch {
         flushLatin()
         flushCJK()
         // De-dup, drop a few high-frequency English stopwords that only add noise.
-        let stop: Set<String> = ["the", "and", "for", "what", "did", "we", "about", "with", "this", "that", "our"]
+        let stop: Set<String> = ["the", "and", "for", "what", "did", "we", "about", "with", "this", "that", "our", "tell", "me", "give", "have", "done", "some", "from"]
         var seen = Set<String>()
         return tokens.filter { !stop.contains($0) && seen.insert($0).inserted }
     }
 
+    /// About 60% of the query must appear, so one common word cannot pull a
+    /// document in. Capped for "Answer latest", which queries with a whole
+    /// transcript window.
+    private static func requiredCoverage(termCount: Int) -> Int {
+        min((termCount * 3 + 4) / 5, 4)
+    }
+
+    /// "consumers" should find "consumer". Matches run from the start of a
+    /// word, so the shorter form still finds the plural.
+    private static func searchStem(_ term: String) -> String {
+        term.count > 4 && term.hasSuffix("s") && !term.hasSuffix("ss") ? String(term.dropLast()) : term
+    }
+
+    /// Hits that start a word, so "mira" finds "Mira" but not "Almira". A term
+    /// of three letters or fewer must be the whole word ("ai" is not "aim").
+    /// Chinese has no word boundaries, so its bigrams match anywhere.
     private static func occurrences(of term: String, in haystack: String) -> Int {
-        guard !term.isEmpty else { return 0 }
+        guard let first = term.first else { return 0 }
+        func isWordChar(_ ch: Character) -> Bool { (ch.isLetter || ch.isNumber) && !ch.isCJK }
+        let bounded = !first.isCJK
+        let wholeWord = bounded && term.count <= 3
         var count = 0
         var idx = haystack.startIndex
         while let r = haystack.range(of: term, range: idx..<haystack.endIndex) {
-            count += 1
             idx = r.upperBound
+            if bounded, r.lowerBound > haystack.startIndex, isWordChar(haystack[haystack.index(before: r.lowerBound)]) { continue }
+            if wholeWord, r.upperBound < haystack.endIndex, isWordChar(haystack[r.upperBound]) { continue }
+            count += 1
         }
         return count
     }

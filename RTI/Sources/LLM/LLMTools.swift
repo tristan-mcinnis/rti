@@ -103,14 +103,13 @@ enum LLMToolRegistry {
         the project's research transcripts (what consumers or experts said in \
         specific groups and interviews). When a project is set for this meeting, \
         the search is automatically focused on that project first. \
-        Use this when the conversation raises a question whose answer may live \
-        in the knowledge base rather than only the live transcript: project \
+        Use this when the user asks for something that may live in the \
+        knowledge base rather than only the live transcript: project \
         status, a past decision ("what did we decide about…"), what was agreed, \
         client or stakeholder background, prior research findings, or what a \
         participant said in a research session ("what did Group 1 say about \
-        their favourite store"). If the user asks "answer that", "what do we \
-        know about that", or a client asks a factual question tied to the \
-        selected project, search first, then answer from transcript + hits. Do \
+        their favourite store"). If the user asks "what do we know about that", \
+        search first, then answer from transcript + hits. Do \
         NOT use it for questions only about what just happened in the current \
         conversation. Returns the most relevant documents with short excerpts.
         """,
@@ -278,6 +277,7 @@ extension ToolExecutor {
         ToolExecutor(
             tools: LLMToolRegistry.all,
             maxCallsPerTurn: ["search_vault": 1],
+            maxSearchCallsPerTurn: SessionCoordinator.shared.isRunning ? 2 : nil,
             allowsExternalRetrieval: allowsExternalRetrieval,
             allowsScreenTools: allowsScreenTools
         )

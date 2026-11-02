@@ -114,6 +114,69 @@ final class VaultSearchTests: XCTestCase {
         XCTAssertGreaterThan(cityEvidence, offTopicAcme)
     }
 
+    func testWordInsideAnotherWordDoesNotMatch() {
+        let score = VaultSearch.rank(
+            terms: ["mira"], title: "Regional note", relativePath: "meetings/m.md",
+            content: "The Almira store opened."
+        ).score
+        XCTAssertEqual(score, 0)
+    }
+
+    func testShortTermNeedsTheWholeWord() {
+        let score = VaultSearch.rank(
+            terms: ["ai"], title: "Note", relativePath: "meetings/m.md",
+            content: "We aim to finish soon."
+        ).score
+        XCTAssertEqual(score, 0)
+    }
+
+    func testPluralQueryFindsSingularWord() {
+        let score = VaultSearch.rank(
+            terms: ["consumers"], title: "Note", relativePath: "meetings/m.md",
+            content: "One consumer said it was fine."
+        ).score
+        XCTAssertGreaterThan(score, 0)
+    }
+
+    func testChineseTermMatchesInsideARun() {
+        let score = VaultSearch.rank(
+            terms: VaultSearch.tokenize("门店"), title: "Note", relativePath: "meetings/m.md",
+            content: "这个门店很好"
+        ).score
+        XCTAssertGreaterThan(score, 0)
+    }
+
+    func testDocumentMatchingFewQueryWordsIsDropped() {
+        let terms = VaultSearch.tokenize("Mira legend athlete running brand strategy")
+        let offTopic = VaultSearch.rank(
+            terms: terms, title: "Quote bank", relativePath: "work/Acme/2026/acme-running/quotes.md",
+            content: "Notes on running brand strategy from one group."
+        ).score
+        let onTopic = VaultSearch.rank(
+            terms: terms, title: "Positioning", relativePath: "meetings/brief.md",
+            content: "Mira is a legend athlete in running."
+        ).score
+        XCTAssertEqual(offTopic, 0)
+        XCTAssertGreaterThan(onTopic, 0)
+    }
+
+    func testProjectFolderNameRaisesAMatchButNeverMakesOne() {
+        let inNamedFolder = VaultSearch.rank(
+            terms: ["running", "pricing"], title: "Note", relativePath: "work/acme-running/n.md",
+            content: "pricing and running"
+        ).score
+        let elsewhere = VaultSearch.rank(
+            terms: ["running", "pricing"], title: "Note", relativePath: "work/other/n.md",
+            content: "pricing and running"
+        ).score
+        let folderOnly = VaultSearch.rank(
+            terms: ["running"], title: "Note", relativePath: "work/acme-running/n.md",
+            content: "nothing relevant"
+        ).score
+        XCTAssertGreaterThan(inNamedFolder, elsewhere)
+        XCTAssertEqual(folderOnly, 0)
+    }
+
     // MARK: project scoping
 
     private func result(_ path: String) -> VaultSearch.Result {

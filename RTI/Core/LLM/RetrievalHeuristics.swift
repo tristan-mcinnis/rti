@@ -33,8 +33,16 @@ public enum RetrievalHeuristics {
         query: String,
         hasSelectedScope: Bool,
         workstreamNames: [String],
-        recentQuestions: [String]
+        recentQuestions: [String],
+        isLive: Bool = false
     ) -> Bool {
+        // In a live call "research", "brief" and the client's own name come up
+        // in every question, and the answer needs to be fast: only an explicit
+        // ask for past work searches first.
+        if isLive {
+            let askPattern = #"\b(vault|previous|prior|earlier|last time|history|look up|find|search)\b"#
+            return query.range(of: askPattern, options: [.regularExpression, .caseInsensitive]) != nil
+        }
         if hasSelectedScope || shouldForceVaultSearch(query: query, workstreamNames: workstreamNames, recentQuestions: recentQuestions) {
             return true
         }

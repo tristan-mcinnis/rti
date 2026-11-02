@@ -54,6 +54,25 @@ final class ToolExecutorTests: XCTestCase {
         XCTAssertTrue(second.resultText.contains("already used search_vault this turn"))
     }
 
+    func testSearchCapCountsEverySearchToolTogetherAndSparesReading() async {
+        let tools = ["search_vault", "grep_vault", "read_document"].map { name in
+            LLMToolDefinition(name: name, description: name, parameters: [:], execute: { _ in "ok" }, runningStatus: nil)
+        }
+        var executor = ToolExecutor(tools: tools, maxSearchCallsPerTurn: 2)
+
+        let first = await executor.execute(call(name: "search_vault"))
+        let second = await executor.execute(call(name: "grep_vault"))
+        let third = await executor.execute(call(name: "grep_vault"))
+        let read = await executor.execute(call(name: "read_document"))
+
+        XCTAssertTrue(first.executed)
+        XCTAssertTrue(second.executed)
+        XCTAssertFalse(third.executed)
+        XCTAssertEqual(third.outcome, .refused)
+        XCTAssertTrue(third.resultText.contains("answer the user now"))
+        XCTAssertTrue(read.executed)
+    }
+
     func testThrownToolErrorBecomesModelVisibleResult() async {
         enum TestError: LocalizedError {
             case failed

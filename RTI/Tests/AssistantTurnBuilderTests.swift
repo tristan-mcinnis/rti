@@ -54,6 +54,24 @@ final class AssistantTurnBuilderTests: XCTestCase {
         XCTAssertTrue(latest.contains("Vault search ran for this question"))
     }
 
+    func testLiveConversationSearchesOnlyWhenAsked() {
+        for output in [
+            build(transcript: "Client: We need pricing."),
+            build(transcript: "Client: We need pricing.", scope: "projects/acme"),
+        ] {
+            let latest = output.apiMessages.last?.content ?? ""
+            XCTAssertTrue(latest.contains("A topic coming up is not a reason to search"))
+            XCTAssertFalse(latest.contains("anything not fully answered"))
+        }
+    }
+
+    func testChatWithoutATranscriptSearchesForPriorWorkOnly() {
+        let latest = build().apiMessages.last?.content ?? ""
+        XCTAssertTrue(latest.contains("prior decisions"))
+        XCTAssertFalse(latest.contains("A topic coming up"))
+        XCTAssertFalse(latest.contains("anything not fully answered"))
+    }
+
     func testQuickRecapLabelsItsShorterWindow() {
         // Quick recap reads 5 minutes; the prompt label must match the window
         // the turn actually carries, not the 15-minute default.

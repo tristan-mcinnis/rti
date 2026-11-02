@@ -32,6 +32,9 @@ public struct ToolExecutor {
 
     private let tools: [String: LLMToolDefinition]
     private let maxCallsPerTurn: [String: Int]
+    /// Calls allowed per turn across every search tool together; nil is no cap.
+    private let maxSearchCallsPerTurn: Int?
+    private var searchCalls = 0
     /// Tools that reach outside the conversation. When the turn's context
     /// policy withheld external retrieval, a call to one of these is refused
     /// even if the model asks for it: the offered list is not the only gate.
@@ -44,11 +47,13 @@ public struct ToolExecutor {
     public init(
         tools: [LLMToolDefinition],
         maxCallsPerTurn: [String: Int] = [:],
+        maxSearchCallsPerTurn: Int? = nil,
         allowsExternalRetrieval: Bool = true,
         allowsScreenTools: Bool = false
     ) {
         self.tools = Dictionary(uniqueKeysWithValues: tools.map { ($0.name, $0) })
         self.maxCallsPerTurn = maxCallsPerTurn
+        self.maxSearchCallsPerTurn = maxSearchCallsPerTurn
         self.allowsExternalRetrieval = allowsExternalRetrieval
         self.allowsScreenTools = allowsScreenTools
     }
@@ -99,6 +104,20 @@ public struct ToolExecutor {
                 elapsedMS: 0,
                 executed: false
             )
+        }
+
+        if let maxSearchCallsPerTurn, ChatToolPolicy.searchToolNames.contains(tool.name) {
+            searchCalls += 1
+            if searchCalls > maxSearchCallsPerTurn {
+                return ExecutionResult(
+                    toolName: tool.name,
+                    status: nil,
+                    outcome: .refused,
+                    resultText: "This turn's searches are used up. Do not search again; answer the user now from the tool results and the transcript.",
+                    elapsedMS: 0,
+                    executed: false
+                )
+            }
         }
 
         let start = Date()

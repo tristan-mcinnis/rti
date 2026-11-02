@@ -138,7 +138,8 @@ extension LLMController {
             query: userInput,
             hasSelectedScope: MeetingContextStore.shared.workstreamScopePath != nil,
             workstreamNames: workstreamNames,
-            recentQuestions: recentQuestions
+            recentQuestions: recentQuestions,
+            isLive: SessionCoordinator.shared.isRunning
         ) else {
             performSend(
                 userInput: userInput,
