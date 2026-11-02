@@ -99,7 +99,7 @@ Layout:
 
 ## Architecture
 
-Single-process macOS app. Coordination is distributed across `@Observable @MainActor` singletons (`SessionCoordinator`, `LLMController`, `WindowCoordinator`, `ModeStore`, etc.), wired together by `AppDelegate`. There is no single `AppState` class — each module owns its slice of state.
+Single-process macOS app. Coordination is distributed across `@Observable @MainActor` singletons (`SessionCoordinator`, `LLMController`, `WindowCoordinator`, `CallTypeStore`, etc.), wired together by `AppDelegate`. There is no single `AppState` class — each module owns its slice of state.
 
 **Live transcript state and saved chat have distinct lifecycles.** The active
 transcript (`SessionCoordinator.liveEntries`) stays session-scoped. The
