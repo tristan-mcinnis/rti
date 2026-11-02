@@ -36,8 +36,7 @@ public enum RecapDepth: String, CaseIterable {
 public enum PromptCatalogue {
     // MARK: - System
 
-    /// The RTI default system message, used when the active mode has no system
-    /// prompt of its own.
+    /// The RTI default system message, used for a chat with no recording running.
     public static var system: String {
         PromptID.systemDefault.defaultText
     }

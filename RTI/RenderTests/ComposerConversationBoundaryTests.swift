@@ -32,7 +32,7 @@ final class ComposerConversationBoundaryTests: RenderProofTestCase {
                     selection: ChatModelSelection(providerId: "fixture", reasoning: .fast)
                 ))
             },
-            modeStore: .inMemory(), turnLogger: { _ in }, ambientScreenProvider: { nil },
+            callTypeStore: .inMemory(), turnLogger: { _ in }, ambientScreenProvider: { nil },
             beforeSubmissionPersistence: beforePersistence
         )
     }

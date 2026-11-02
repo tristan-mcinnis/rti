@@ -4,7 +4,7 @@ import Foundation
 /// chat turn. The caller (LLMController) populates this from its current
 /// state; PromptBuilder assembles the ordered message list.
 public struct PromptContext {
-    /// The base system prompt (from the active mode, or the default).
+    /// The base system prompt (from the call type, or the default).
     public var baseSystemPrompt: String
     /// User-provided context for *this* meeting (client, project, status…).
     /// Ephemeral; treated as ground truth about who/what the call is about.
@@ -14,10 +14,6 @@ public struct PromptContext {
     public var meetingBrief: String?
     /// Optional glossary terms the model should know.
     public var glossaryFragment: String?
-    /// Reference text attached to the active mode.
-    public var referenceText: String?
-    /// Name of the mode providing the reference.
-    public var referenceModeName: String?
     /// OCR text from an attached screenshot.
     public var screenContext: String?
     /// Full text of any vault documents the user explicitly referenced with
@@ -36,8 +32,6 @@ public struct PromptContext {
         meetingContext: String? = nil,
         meetingBrief: String? = nil,
         glossaryFragment: String? = nil,
-        referenceText: String? = nil,
-        referenceModeName: String? = nil,
         screenContext: String? = nil,
         referencedDocuments: String? = nil,
         sourceContext: TurnSourceContext = TurnSourceContext(),
@@ -47,8 +41,6 @@ public struct PromptContext {
         self.meetingContext = meetingContext
         self.meetingBrief = meetingBrief
         self.glossaryFragment = glossaryFragment
-        self.referenceText = referenceText
-        self.referenceModeName = referenceModeName
         self.screenContext = screenContext
         self.referencedDocuments = referencedDocuments
         self.sourceContext = sourceContext
@@ -59,7 +51,6 @@ public struct PromptContext {
         meetingContext != nil
             || meetingBrief != nil
             || glossaryFragment != nil
-            || referenceText != nil
             || screenContext != nil
             || referencedDocuments != nil
     }
@@ -114,17 +105,6 @@ public enum PromptBuilder {
 
         if let glossary = context.glossaryFragment {
             msgs.append(LLMMessage(role: "system", content: glossary))
-        }
-
-        if let reference = context.referenceText, !reference.isEmpty {
-            let capped = reference.count > referenceCap
-                ? String(reference.prefix(referenceCap)) + "\n…[truncated]"
-                : reference
-            let modeName = context.referenceModeName ?? "active mode"
-            msgs.append(LLMMessage(
-                role: "system",
-                content: "Reference material attached to the active mode '\(modeName)'. Use it when relevant.\n---\n\(capped)\n---"
-            ))
         }
 
         if let screenContext = context.screenContext {

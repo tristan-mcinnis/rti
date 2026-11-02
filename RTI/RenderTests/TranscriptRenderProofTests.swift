@@ -49,7 +49,7 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: name,
             size: CGSize(width: width, height: Self.height),
-            view: OverlayPanelView(modes: ModeStore.inMemory())
+            view: OverlayPanelView(callTypes: CallTypeStore.inMemory())
                 .onAppear { NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.transcript.rawValue) }
         )
     }
@@ -390,7 +390,7 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         }
         session.seedForRenderProof(entries: entries, interim: nil, phase: .recording, startedAt: Date())
         let (hosting, appearance) = try acceptanceHost(.aqua, windowed: true)
-        hosting.rootView = AnyView(OverlayPanelView(modes: ModeStore.inMemory()))
+        hosting.rootView = AnyView(OverlayPanelView(callTypes: CallTypeStore.inMemory()))
         defer { retireAcceptanceHost(hosting) }
         settleAcceptanceHost(hosting)
         NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.transcript.rawValue)

@@ -159,8 +159,8 @@ public enum PromptSettingsDefaults {
     public static let baseHashesKey = "rti.prompts.baseHashesV1"
 }
 
-public enum ModeSettingsDefaults {
-    public static let activeIdKey = "rti.modes.activeId"
+public enum CallTypeDefaults {
+    public static let activeKey = "rti.call.type"
 }
 
 public enum ScreenPrivacyDefaults {

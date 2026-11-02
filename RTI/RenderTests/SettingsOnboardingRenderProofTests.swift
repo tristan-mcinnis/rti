@@ -29,7 +29,7 @@ final class SettingsOnboardingRenderProofTests: RenderProofTestCase {
             try renderBothAppearances(
                 name: "settings-pane-\(pane.rawValue)",
                 size: settingsSize,
-                view: SettingsView(onClose: {}, initialSection: pane, logsFixture: FixtureLogs.fixture, modeStore: ModeStore.inMemory())
+                view: SettingsView(onClose: {}, initialSection: pane, logsFixture: FixtureLogs.fixture)
             )
         }
     }
@@ -39,7 +39,7 @@ final class SettingsOnboardingRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "settings-pane-general-full",
             size: CGSize(width: House.Layout.settingsWidth, height: House.Layout.settingsHeight * 4),
-            view: SettingsView(onClose: {}, initialSection: .general, modeStore: ModeStore.inMemory())
+            view: SettingsView(onClose: {}, initialSection: .general)
         )
     }
 
@@ -48,18 +48,18 @@ final class SettingsOnboardingRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "settings-search",
             size: settingsSize,
-            view: SettingsView(onClose: {}, navigation: SettingsNavigation(pane: .general, query: "micro"), modeStore: ModeStore.inMemory())
+            view: SettingsView(onClose: {}, navigation: SettingsNavigation(pane: .general, query: "micro"))
         )
         try renderBothAppearances(
             name: "settings-search-none",
             size: settingsSize,
-            view: SettingsView(onClose: {}, navigation: SettingsNavigation(pane: .about, query: "zebra"), modeStore: ModeStore.inMemory())
+            view: SettingsView(onClose: {}, navigation: SettingsNavigation(pane: .about, query: "zebra"))
         )
     }
 
-    func testSettingsPaneKeysAreOneToSeven() {
-        XCTAssertEqual(SettingsView.SettingsTab.allCases.map(\.number), Array(1...7))
-        XCTAssertEqual(SettingsView.SettingsTab.about.number, 7)
+    func testSettingsPaneKeysAreOneToSix() {
+        XCTAssertEqual(SettingsView.SettingsTab.allCases.map(\.number), Array(1...6))
+        XCTAssertEqual(SettingsView.SettingsTab.about.number, 6)
         let hits = SettingsSearch.filter(SettingsView.SettingsTab.allCases.map(\.searchPane), query: "micro")
         XCTAssertEqual(hits.map(\.id), ["general"])
     }

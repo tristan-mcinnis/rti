@@ -87,6 +87,7 @@ struct SetupTabView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: House.Spacing.lg) {
                 prepareHeader
+                callTypeSection
                 meetingFocusSection
                 calendarMeetingSection
                 liveCallSection
@@ -548,6 +549,22 @@ struct SetupTabView: View {
             return "No client note matches “\(query)”."
         }
         return "No match for “\(query)”."
+    }
+
+    // MARK: - Call type
+
+    private var callTypeSection: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            sectionHeader("Call type", detail: "Sets how RTI answers")
+            Picker("Call type", selection: Binding(
+                get: { CallTypeStore.shared.active },
+                set: { CommandBuilder.switchCallType(to: $0, callTypes: .shared, llm: .shared) }
+            )) {
+                ForEach(CallType.allCases) { Text($0.name).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
     }
 
     // MARK: - Live call

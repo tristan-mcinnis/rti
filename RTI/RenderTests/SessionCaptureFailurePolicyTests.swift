@@ -56,7 +56,7 @@ final class SessionCaptureFailurePolicyTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "recording-transcription-recovery",
             size: WorkspaceLayout.minimumSize,
-            view: WorkspaceView(model: WorkspaceModel(), modes: .inMemory())
+            view: WorkspaceView(model: WorkspaceModel(), callTypes: .inMemory())
         )
         try renderBothAppearances(
             name: "recording-transcript-retry",

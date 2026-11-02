@@ -10,22 +10,18 @@ final class PromptBuilderTests: XCTestCase {
         ChatEntry(role: role, text: text, action: nil, contextUsed: false, screenContextUsed: false)
     }
 
-    func test_systemMessages_orderBaseGlossaryReferenceScreen() {
+    func test_systemMessages_orderBaseGlossaryScreen() {
         let ctx = PromptContext(
             baseSystemPrompt: "BASE",
             glossaryFragment: "GLOSSARY",
-            referenceText: "REF",
-            referenceModeName: "Interview",
             screenContext: "SCREEN"
         )
         let msgs = PromptBuilder.buildSystemMessages(context: ctx)
         XCTAssertTrue(msgs.allSatisfy { $0.role == "system" })
-        XCTAssertEqual(msgs.count, 4)
+        XCTAssertEqual(msgs.count, 3)
         XCTAssertEqual(msgs[0].content, "BASE")
         XCTAssertEqual(msgs[1].content, "GLOSSARY")
-        XCTAssertTrue(msgs[2].content?.contains("REF") ?? false)
-        XCTAssertTrue(msgs[2].content?.contains("Interview") ?? false)
-        XCTAssertTrue(msgs[3].content?.contains("SCREEN") ?? false)
+        XCTAssertTrue(msgs[2].content?.contains("SCREEN") ?? false)
     }
 
     func test_systemMessages_emptyContext_isEmpty() {
@@ -43,25 +39,6 @@ final class PromptBuilderTests: XCTestCase {
     func test_systemMessages_skipsBlankMeetingContext() {
         let ctx = PromptContext(baseSystemPrompt: "BASE", meetingContext: "   ")
         XCTAssertEqual(PromptBuilder.buildSystemMessages(context: ctx).count, 1)
-    }
-
-    func test_systemMessages_skipsEmptyReference() {
-        let ctx = PromptContext(baseSystemPrompt: "BASE", referenceText: "")
-        let msgs = PromptBuilder.buildSystemMessages(context: ctx)
-        XCTAssertEqual(msgs.count, 1)
-        XCTAssertEqual(msgs[0].content, "BASE")
-    }
-
-    func test_systemMessages_truncatesLongReference() throws {
-        let long = String(repeating: "a", count: 9000)
-        let ctx = PromptContext(referenceText: long, referenceModeName: "Mode")
-        let msgs = PromptBuilder.buildSystemMessages(context: ctx)
-        let ref = try XCTUnwrap(msgs.first?.content)
-        XCTAssertTrue(ref.contains("[truncated]"))
-        // Reference body capped at 8000 chars: 8000 consecutive 'a's present,
-        // 8001 are not (the original was 9000).
-        XCTAssertTrue(ref.contains(String(repeating: "a", count: 8000)))
-        XCTAssertFalse(ref.contains(String(repeating: "a", count: 8001)))
     }
 
     func test_systemMessages_referencedDocumentsComeLast() {

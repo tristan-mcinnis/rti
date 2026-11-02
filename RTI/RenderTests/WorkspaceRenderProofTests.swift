@@ -34,7 +34,7 @@ final class WorkspaceRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "workspace-two-hour-transcript-minimum",
             size: WorkspaceLayout.minimumSize,
-            view: WorkspaceView(model: model, modes: .inMemory())
+            view: WorkspaceView(model: model, callTypes: .inMemory())
                 .onAppear { NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.transcript.rawValue) }
         )
         model.select(.sessions)
@@ -59,14 +59,14 @@ final class WorkspaceRenderProofTests: RenderProofTestCase {
             try renderBothAppearances(
                 name: "workspace-\(page.rawValue.lowercased())",
                 size: WorkspaceLayout.standardSize,
-                view: WorkspaceView(model: model, modes: .inMemory())
+                view: WorkspaceView(model: model, callTypes: .inMemory())
             )
         }
         model.select(.live)
         try renderBothAppearances(
             name: "workspace-live-minimum",
             size: WorkspaceLayout.minimumSize,
-            view: WorkspaceView(model: model, modes: .inMemory())
+            view: WorkspaceView(model: model, callTypes: .inMemory())
         )
     }
 
@@ -90,7 +90,7 @@ final class WorkspaceRenderProofTests: RenderProofTestCase {
             for (name, size) in sizes {
                 try renderBothAppearances(
                     name: "workspace-depth-\(page.rawValue.lowercased())-\(name)",
-                    size: size, view: WorkspaceView(model: model, modes: .inMemory())
+                    size: size, view: WorkspaceView(model: model, callTypes: .inMemory())
                 )
             }
         }
@@ -122,7 +122,7 @@ final class WorkspaceRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "workspace-chat-reader-list-hidden",
             size: WorkspaceLayout.minimumSize,
-            view: WorkspaceView(model: model, modes: .inMemory())
+            view: WorkspaceView(model: model, callTypes: .inMemory())
         )
         model.select(.sessions)
         XCTAssertEqual(model.sessions.mode, .sessions)

@@ -27,7 +27,7 @@ final class SettingsDraftWorkflowTests: XCTestCase {
         draft.loadIfNeeded()
         draft.selectedLLMProviderId = "openai"
         draft.keyValues["soniox"] = "unsaved-fixture-key"
-        navigation.pane = .modes
+        navigation.pane = .prompts
         navigation.pane = .providers
         navigation.providerDraft.loadIfNeeded()
         XCTAssertEqual(draft.selectedLLMProviderId, "openai")
@@ -80,66 +80,6 @@ final class SettingsDraftWorkflowTests: XCTestCase {
         draft.loadIfNeeded()
         XCTAssertEqual(draft.selectedLLMProviderId, "openrouter")
         XCTAssertTrue(fixture.writes.isEmpty)
-    }
-
-    func testModeEditsSurviveNavigationAndChangingItemsUntilSaveOrRevert() throws {
-        let store = ModeStore.inMemory()
-        let draft = ModeSettingsDraft()
-        draft.prepare(store: store)
-        let originalID = try XCTUnwrap(draft.selection)
-        let originalName = draft.name
-        let otherID = try XCTUnwrap(store.modes.first { $0.id != originalID }?.id)
-        draft.name = "Unsaved fixture name"
-        draft.prompt = "Unsaved fixture instructions"
-        draft.reference = "Unsaved fixture reference"
-        draft.prepare(store: store)
-        draft.selection = otherID
-        draft.selection = originalID
-        XCTAssertEqual(draft.name, "Unsaved fixture name")
-        XCTAssertEqual(draft.prompt, "Unsaved fixture instructions")
-        XCTAssertEqual(draft.reference, "Unsaved fixture reference")
-        XCTAssertEqual(store.modes.first { $0.id == originalID }?.name, originalName)
-        draft.save()
-        XCTAssertEqual(store.modes.first { $0.id == originalID }?.name, "Unsaved fixture name")
-        draft.name = "Discard this edit"
-        draft.revert()
-        XCTAssertEqual(draft.name, "Unsaved fixture name")
-        XCTAssertFalse(draft.hasUnsavedChanges)
-    }
-
-    func testFailedModeWriteKeepsStoredModeUnchangedAndDraftDirtyUntilRetry() throws {
-        enum WriteFailure: Error { case refused }
-        var rejectsWrite = true
-        var attempts = 0
-        var persistedName: String?
-        let store = ModeStore.inMemory(writer: { modes in
-            attempts += 1
-            if rejectsWrite { throw WriteFailure.refused }
-            persistedName = modes.first { $0.id == "builtin.meeting" }?.name
-        })
-        let draft = ModeSettingsDraft()
-        draft.prepare(store: store)
-        let id = try XCTUnwrap(draft.selection)
-        let original = try XCTUnwrap(store.modes.first { $0.id == id })
-        draft.name = "Retry fixture mode"
-        draft.prompt = "Keep this unsaved fixture prompt"
-        draft.save()
-        XCTAssertEqual(attempts, 1)
-        XCTAssertNotNil(draft.saveError)
-        XCTAssertFalse(draft.saved)
-        XCTAssertTrue(draft.hasUnsavedChanges)
-        XCTAssertEqual(store.modes.first { $0.id == id }, original)
-        draft.prepare(store: store)
-        XCTAssertEqual(draft.name, "Retry fixture mode")
-        XCTAssertEqual(draft.prompt, "Keep this unsaved fixture prompt")
-        rejectsWrite = false
-        draft.save()
-        XCTAssertEqual(attempts, 2)
-        XCTAssertEqual(persistedName, "Retry fixture mode")
-        XCTAssertNil(draft.saveError)
-        XCTAssertTrue(draft.saved)
-        XCTAssertFalse(draft.hasUnsavedChanges)
-        XCTAssertEqual(store.modes.first { $0.id == id }?.name, "Retry fixture mode")
     }
 
     func testPromptDraftsStayPerItemAndExplicitRevertAndResetDiscardThem() {

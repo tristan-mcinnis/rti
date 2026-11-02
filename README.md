@@ -32,7 +32,7 @@ RTI stands for Real-Time Intelligence.
 - **Auto mode.** An optional tab surfaces next-move cards (something to say, ask, recall or flag) while the call runs.
 - **Screenshots.** One key reads the whole screen and another reads the front window. Text is read on your Mac with Apple Vision. The image is sent to your model when it takes image input. Windows you put on the privacy list are left out.
 - **Translation.** Optional live translation next to the transcript, one way or two ways.
-- **Modes.** Meeting, Interview, Coding and Custom prompt presets, with optional reference text for each.
+- **Call types.** Client call, Research, Internal or Personal, chosen before the call. The choice sets how RTI answers, which actions show and whether it may search.
 - **Sessions window.** Browse saved sessions, replay the mic and system audio together, copy or share a document, and move a session to Trash.
 - **Saved chats.** Search, pin, rename, export and delete past chats. Nothing is pruned automatically. This needs a notes folder (see [Optional integrations](#optional-integrations)).
 
@@ -89,7 +89,7 @@ macOS asks for each of these the first time a feature needs it.
 
 ## Usage
 
-Pick a mode in Settings, under Modes, then start a session with `Command+Shift+R`.
+Pick a call type in Prepare, then start a session with `Command+Shift+R`.
 Ask the assistant with `Command+Return`, or open the menu to pick another
 action. Type a note into the transcript with `Command+Option+N`. Drop an image
 on the composer, or press `Command+Shift+H` to read the whole screen.
@@ -146,7 +146,7 @@ Two optional integrations send more. See [Optional integrations](#optional-integ
 - **Sessions.** One folder per session, with owner-only permissions, in `~/Library/Application Support/RTI/sessions/<date time>/`. It holds `transcript.md`, `session.json`, and, when they exist, `chat.md`, `notes.md`, `screen-context.md` and a `frames/` folder of screenshots. It also holds `audio-mic.wav` and `audio-system.wav`, the raw audio of both legs. RTI keeps this audio until you delete the session. If you set a notes folder, sessions go there instead.
 - **API keys.** In `~/Library/Application Support/RTI/credentials.json`, a plain JSON file readable only by you. RTI does not use the Keychain.
 - **Chats.** Saved only when a notes folder is set. Without one, chats run but are not stored.
-- **Other.** Your modes and a crash log in `~/Library/Application Support/RTI/`, and the `claude` run logs in `~/Library/Logs/RTI/` if you use that integration.
+- **Other.** A crash log in `~/Library/Application Support/RTI/`, and the `claude` run logs in `~/Library/Logs/RTI/` if you use that integration.
 
 Delete a session in the Sessions window. It moves the folder to Trash.
 

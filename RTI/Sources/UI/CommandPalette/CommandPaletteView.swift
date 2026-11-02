@@ -165,7 +165,7 @@ struct CommandPaletteView: View {
         }
         if id.hasPrefix("view.") || id == "overlay.toggle" { return "Go to" }
         if id.hasPrefix("llm.") || id.hasPrefix("stt.") || id == "smart.toggle" { return "Model" }
-        if id.hasPrefix("mode.") || id == "listener.toggle" || id == "fieldwork.preset" { return "Mode" }
+        if id.hasPrefix("calltype.") || id == "listener.toggle" { return "Call type" }
         if id.hasPrefix("meeting.") { return "Meeting" }
         return "RTI"
     }

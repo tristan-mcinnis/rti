@@ -223,7 +223,8 @@ enum SessionArchive {
         chat: [ChatEntry],
         visualContext: [VisualContextEvent],
         notes: [GeneratedNote],
-        archiveDir: URL?
+        archiveDir: URL?,
+        callType: CallType
     ) -> CanonicalMeetingExport? {
         let raw = CanonicalMeetingTranscript.render(entries: transcript)
         return writeCanonicalMeetingExport(
@@ -232,7 +233,8 @@ enum SessionArchive {
             chat: chat,
             visualContext: visualContext,
             notes: notes,
-            archiveDir: archiveDir
+            archiveDir: archiveDir,
+            callType: callType
         )
     }
 
@@ -322,6 +324,7 @@ enum SessionArchive {
         visualContext: [VisualContextEvent],
         notes: [GeneratedNote],
         archiveDir: URL?,
+        callType: CallType,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0
     ) -> URL? {
@@ -335,6 +338,7 @@ enum SessionArchive {
             visualContext: visualContext,
             notes: notes,
             archiveDir: archiveDir,
+            callType: callType,
             chatThreads: chatThreads,
             unreadableChatCount: unreadableChatCount
         )
@@ -351,6 +355,7 @@ enum SessionArchive {
         visualContext: [VisualContextEvent],
         notes: [GeneratedNote],
         archiveDir: URL?,
+        callType: CallType? = nil,
         writeSidecar: Bool = true
     ) -> CanonicalMeetingExport? {
         let text = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -362,14 +367,15 @@ enum SessionArchive {
         guard writeOwnerOnly(text + "\n", to: transcriptURL) else { return nil }
 
         let sidecarURL: URL?
-        if writeSidecar {
+        if writeSidecar, let callType {
             let sidecar = renderCanonicalSidecar(
                 stem: stem,
                 startedAt: startedAt,
                 chat: chat,
                 visualContext: visualContext,
                 notes: notes,
-                archiveDir: archiveDir
+                archiveDir: archiveDir,
+                callType: callType
             )
             if sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 sidecarURL = nil
@@ -405,12 +411,14 @@ enum SessionArchive {
         visualContext: [VisualContextEvent],
         notes: [GeneratedNote],
         archiveDir: URL?,
+        callType: CallType,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0
     ) -> String {
         var lines = [
             "---",
             "source: rti-live",
+            callType.sidecarField,
             "meeting: \(yamlQuoted(stem))",
             "generated: \(ISO8601DateFormatter().string(from: Date()))",
             "---",

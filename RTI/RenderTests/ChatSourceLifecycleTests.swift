@@ -89,7 +89,7 @@ final class ChatSourceLifecycleTests: XCTestCase {
             sessionIDProvider: { nil },
             routeResolver: routeResolver ?? { _, imageCount, _ in .success(self.route(imageCount: imageCount)) },
             makeToolExecutor: nil,
-            modeStore: .inMemory(),
+            callTypeStore: .inMemory(),
             turnLogger: { _ in },
             ambientScreenProvider: Self.ambientProvider(ambientScreenRead)
         )

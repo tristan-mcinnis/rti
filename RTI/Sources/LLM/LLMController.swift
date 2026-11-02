@@ -101,19 +101,10 @@ final class LLMController {
         didSet { UserDefaults.standard.set(listenerMode, forKey: LLMSettingsDefaults.listenerModeKey) }
     }
 
-    /// Stop listener framing from leaking across sessions. `listenerMode` is a
-    /// sticky global, so a fieldwork session leaves it on and the NEXT meeting
-    /// then gets the "I'm a passive observer, I never speak" assist prompt —
-    /// wrong when the user is actually a participant (the real cause of the
-    /// "assist wasn't helpful in the meeting" complaint). At every session start
-    /// we keep listener mode ONLY when the active mode is a fieldwork/observation
-    /// mode; a normal meeting resets to participant framing.
-    func reconcileListenerModeForSessionStart() {
-        guard listenerMode else { return }
-        let name = (modeStore.activeMode?.name ?? "").lowercased()
-        let fieldwork = ["interview", "observ", "fgd", "idi", "fieldwork", "listen"]
-            .contains { name.contains($0) }
-        if !fieldwork { listenerMode = false }
+    /// Listener framing follows the call type at every session start, so a
+    /// research session cannot leave the next client call in "I never speak".
+    func applyCallTypeForSessionStart() {
+        listenerMode = callTypeStore.active.listens
     }
 
     let request: LLMRequest
@@ -150,26 +141,26 @@ final class LLMController {
     /// A test's or render proof's mode store. Nil falls back LAZILY to the
     /// shared store on first use, so a controller with an injected store never
     /// initializes the live one.
-    @ObservationIgnored private var injectedModeStore: ModeStore?
-    @ObservationIgnored private var resolvedModeStore: ModeStore?
+    @ObservationIgnored private var injectedCallTypeStore: CallTypeStore?
+    @ObservationIgnored private var resolvedCallTypeStore: CallTypeStore?
 
     /// The mode store this controller reads, resolved lazily. The shared store
     /// is touched only when no store was injected and one is actually needed.
-    var modeStore: ModeStore {
-        if let injectedModeStore { return injectedModeStore }
-        if let resolvedModeStore { return resolvedModeStore }
-        let store = ModeStore.shared
-        resolvedModeStore = store
+    var callTypeStore: CallTypeStore {
+        if let injectedCallTypeStore { return injectedCallTypeStore }
+        if let resolvedCallTypeStore { return resolvedCallTypeStore }
+        let store = CallTypeStore.shared
+        resolvedCallTypeStore = store
         return store
     }
 
     /// Render-proof/test seam: point the SHARED controller at an in-memory mode
     /// store before any view or route preview reads it. Never called in
     /// production.
-    func useInMemoryModeStore() {
-        let store = ModeStore.inMemory()
-        injectedModeStore = store
-        resolvedModeStore = store
+    func useInMemoryCallTypeStore() {
+        let store = CallTypeStore.inMemory()
+        injectedCallTypeStore = store
+        resolvedCallTypeStore = store
     }
     /// Increments whenever the live chat's identity changes. A send captures
     /// it and refuses to install a result into a chat it no longer owns.
@@ -429,7 +420,7 @@ final class LLMController {
         sessionIDProvider: (@MainActor () -> String?)? = nil,
         routeResolver: (@MainActor (ChatModelSelection, Int, Bool) -> Result<ChatRouteConfiguration, ChatRouteBlocker>)? = nil,
         makeToolExecutor: (@MainActor (Bool, Bool) -> ToolExecutor)? = nil,
-        modeStore: ModeStore? = nil,
+        callTypeStore: CallTypeStore? = nil,
         turnLogger: ((VaultLogStore.TurnRecord) -> Void)? = nil,
         ambientScreenProvider: (@MainActor () -> String?)? = nil,
         beforeSubmissionPersistence: (@Sendable () async throws -> Void)? = nil
@@ -441,7 +432,7 @@ final class LLMController {
         self.sessionIDProvider = sessionIDProvider
         self.routeResolver = routeResolver
         self.makeToolExecutor = makeToolExecutor
-        self.injectedModeStore = modeStore
+        self.injectedCallTypeStore = callTypeStore
         self.turnLogger = turnLogger
         self.ambientScreenProvider = ambientScreenProvider
         let smartDefault = UserDefaults.standard.bool(forKey: LLMSettingsDefaults.smartModeKey)

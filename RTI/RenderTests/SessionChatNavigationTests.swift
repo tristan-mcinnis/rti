@@ -151,7 +151,7 @@ final class SessionChatNavigationTests: RenderProofTestCase {
 
     func testFailedStoredChatHandoffClearsPendingSessionOrigin() async throws {
         let model = await workspace()
-        let controller = LLMController(chatStore: location.store, storeIsInjected: true, modeStore: .inMemory(), turnLogger: { _ in })
+        let controller = LLMController(chatStore: location.store, storeIsInjected: true, callTypeStore: .inMemory(), turnLogger: { _ in })
         await controller.resumeChat(id: "standalone")
         XCTAssertEqual(controller.currentConversationID, "standalone")
         let observer = NotificationCenter.default.addObserver(forName: .rtiComposerDidFinishResume, object: nil, queue: .main) { note in
@@ -207,14 +207,14 @@ final class SessionChatNavigationTests: RenderProofTestCase {
         await model.sessions.chatLibrary.loadDetail()
         try renderBothAppearances(
             name: "session-chat-linked-return", size: WorkspaceLayout.minimumSize,
-            view: WorkspaceView(model: model, modes: .inMemory())
+            view: WorkspaceView(model: model, callTypes: .inMemory())
         )
         model.prepareToResumeChat(id: "linked")
         model.conversationDidFinishResume(id: "linked", succeeded: true)
         model.select(.live)
         try renderBothAppearances(
             name: "session-chat-live-return", size: WorkspaceLayout.minimumSize,
-            view: WorkspaceView(model: model, modes: .inMemory())
+            view: WorkspaceView(model: model, callTypes: .inMemory())
         )
     }
 }

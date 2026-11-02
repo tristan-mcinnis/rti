@@ -13,7 +13,6 @@ final class SettingsNavigation {
     var pane: SettingsView.SettingsTab
     var query: String
     let providerDraft: ProviderSettingsDraft
-    let modeDraft = ModeSettingsDraft()
     let promptDraft = PromptSettingsDraft()
 
     init(pane: SettingsView.SettingsTab = .providers, query: String = "", providerDraft: ProviderSettingsDraft = ProviderSettingsDraft()) {
@@ -32,14 +31,13 @@ final class SettingsNavigation {
 struct SettingsView: View {
     @Environment(\.isWorkspaceEmbedded) private var embedded
     enum SettingsTab: String, CaseIterable, Identifiable {
-        case providers, modes, prompts, glossary, general, logs, about
+        case providers, prompts, glossary, general, logs, about
 
         var id: String { rawValue }
 
         var label: String {
             switch self {
             case .providers: "Providers"
-            case .modes: "Modes"
             case .prompts: "Prompts"
             case .glossary: "Glossary"
             case .general: "General"
@@ -51,7 +49,6 @@ struct SettingsView: View {
         var systemImage: String {
             switch self {
             case .providers: "server.rack"
-            case .modes: "square.stack.3d.up"
             case .prompts: "text.bubble"
             case .glossary: "character.book.closed"
             case .general: "gearshape"
@@ -64,7 +61,6 @@ struct SettingsView: View {
         var description: String {
             switch self {
             case .providers: "Assistant and transcription providers, and their keys."
-            case .modes: "The assistant's persona and reference text for each mode."
             case .prompts: "The instructions RTI sends to the model for each action."
             case .glossary: "Names, acronyms, and terms the model keeps as written."
             case .general: "Capture, audio, notes, Auto mode, appearance, and hotkeys."
@@ -76,7 +72,7 @@ struct SettingsView: View {
         /// The quiet hint on the left of the footer well. Keep it true.
         var footerHint: String {
             switch self {
-            case .providers, .modes: "Changes apply when you save"
+            case .providers: "Changes apply when you save"
             case .prompts, .glossary: "Applies on the next call"
             case .general: "Applies immediately"
             case .logs: "Logs stay on this Mac"
@@ -88,7 +84,6 @@ struct SettingsView: View {
         var keywords: [String] {
             switch self {
             case .providers: ["API", "keys", "DeepSeek", "OpenAI", "OpenRouter", "Soniox", "model", "transcription", "credentials"]
-            case .modes: ["persona", "system prompt", "reference", "meeting", "interview"]
             case .prompts: ["Assist", "recap", "instructions"]
             case .glossary: ["terms", "names", "acronyms", "spelling"]
             case .general: ["login", "microphone", "audio", "input", "echo", "Bluetooth", "screen", "privacy", "capture",
@@ -113,10 +108,6 @@ struct SettingsView: View {
     /// Render proofs only: invented log lines for the Logs pane, so a proof
     /// never reads the real log files.
     var logsFixture: LogsView.Fixture?
-    /// The mode store the Modes pane edits. Defaults to the shared store for
-    /// production; a render proof passes an in-memory one so it never reads or
-    /// writes the user's live modes.
-    var modeStore: ModeStore
     @State private var navigation: SettingsNavigation
     @State private var hoveredTab: SettingsTab?
     @FocusState private var searchFocused: Bool
@@ -126,11 +117,9 @@ struct SettingsView: View {
         initialSection: SettingsTab = .providers,
         navigation: SettingsNavigation? = nil,
         logsFixture: LogsView.Fixture? = nil,
-        modeStore: ModeStore = .shared
     ) {
         self.onClose = onClose
         self.logsFixture = logsFixture
-        self.modeStore = modeStore
         _navigation = State(initialValue: navigation ?? SettingsNavigation(pane: initialSection))
     }
 
@@ -200,7 +189,6 @@ struct SettingsView: View {
         Group {
             switch navigation.pane {
             case .providers: ProvidersTab(draft: navigation.providerDraft)
-            case .modes: ModesTab(modeStore: modeStore, draft: navigation.modeDraft)
             case .prompts: PromptsTab(draft: navigation.promptDraft)
             case .glossary: GlossaryTab()
             case .general: GeneralTab()

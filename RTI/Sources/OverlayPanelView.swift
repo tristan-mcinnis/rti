@@ -17,9 +17,9 @@ struct OverlayPanelView: View {
     /// Render proofs only: draw this header state instead of the session's
     /// (the proofs cannot finish a real session to reach the saved state).
     var statusOverride: OverlayShellStatus? = nil
-    /// The mode store the header reads. Production uses the shared store; a
+    /// The call type store the header reads. Production uses the shared store; a
     /// render proof passes an in-memory one so it never touches live prefs.
-    var modes: ModeStore = .shared
+    var callTypes: CallTypeStore = .shared
     var isActive = true
 
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
@@ -48,7 +48,7 @@ struct OverlayPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !embedded { OverlayShellHeader(status: status, modes: modes) }
+            if !embedded { OverlayShellHeader(status: status, callTypes: callTypes) }
             tabsRow
             if MuteBannerRule.shows(isRunning: session.isRunning, micMuted: session.micMuted) {
                 OverlayNoticeBanner(
@@ -91,7 +91,7 @@ struct OverlayPanelView: View {
             .clipped()
         }
         .overlay(alignment: .topLeading) {
-            if !embedded { OverlayHeaderChooserLayer(modes: modes) }
+            if !embedded { OverlayHeaderChooserLayer(callTypes: callTypes) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(embedded ? House.ColorToken.surfaceRaised : House.ColorToken.surface)
@@ -201,7 +201,7 @@ final class OverlayShellModel {
     enum Chooser: Equatable {
         case options
         case model
-        case mode
+        case callType
     }
 
     /// The chooser open under the title block, if any. An in-window layer,
@@ -251,9 +251,9 @@ extension SessionCoordinator.Phase {
 /// title-bar row, no divider. Its empty space drags the window.
 struct OverlayShellHeader: View {
     let status: OverlayShellStatus
-    /// The mode store the title reads. Defaults to the shared one so
+    /// The call type store the title reads. Defaults to the shared one so
     /// production is unchanged; a proof passes an in-memory store.
-    var modes: ModeStore = .shared
+    var callTypes: CallTypeStore = .shared
     var fill: Color = House.ColorToken.surface
 
     private let chrome = OverlayWindowChrome.shared
@@ -280,7 +280,7 @@ struct OverlayShellHeader: View {
 
     var body: some View {
         HStack(spacing: House.Spacing.sm) {
-            OverlayHeaderTitle(status: status, modes: modes)
+            OverlayHeaderTitle(status: status, callTypes: callTypes)
             Spacer(minLength: House.Spacing.xs)
             if chrome.isKeptOnTop {
                 QuickAIGlyphButton(
@@ -325,12 +325,12 @@ struct OverlayShellHeader: View {
     }
 }
 
-/// The meeting title and capture state stay visible. Mode and model live in
-/// one in-window options layer, alongside the existing mode/model choosers.
+/// The meeting title and capture state stay visible. Call type and model live in
+/// one in-window options layer, alongside the model and call type choosers.
 struct OverlayHeaderTitle: View {
     let status: OverlayShellStatus
-    /// The mode store, injected so a proof never reads the live one.
-    var modes: ModeStore = .shared
+    /// The call type store, injected so a proof never reads the live one.
+    var callTypes: CallTypeStore = .shared
 
     private let context = MeetingContextStore.shared
     private let shell = OverlayShellModel.shared
@@ -375,7 +375,7 @@ struct OverlayHeaderTitle: View {
             .contentShape(Rectangle())
             .accessibilityLabel("Assistant options")
             .accessibilityValue(shell.chooser == .options ? "Open" : "Closed")
-            .help("Change the mode or model")
+            .help("Change the call type or model")
         }
     }
 }
@@ -393,13 +393,13 @@ extension OverlayStatusTone {
 
 // MARK: - Header choosers
 
-/// Assistant options and model/mode choosers float under the title block on panel glass
+/// Assistant options and model and call type choosers float under the title block on panel glass
 /// (chat-surfaces.md section 3 "Floating layers"). In-window SwiftUI, so it
 /// inherits the overlay's `sharingType = .none`. A click outside or `esc`
 /// closes it.
 struct OverlayHeaderChooserLayer: View {
-    /// The mode store, injected so a proof never reads the live one.
-    var modes: ModeStore = .shared
+    /// The call type store, injected so a proof never reads the live one.
+    var callTypes: CallTypeStore = .shared
 
     private let shell = OverlayShellModel.shared
     private let chrome = OverlayWindowChrome.shared
@@ -411,7 +411,7 @@ struct OverlayHeaderChooserLayer: View {
                     .contentShape(Rectangle())
                     .onTapGesture { shell.chooser = nil }
                     .accessibilityHidden(true)
-                OverlayHeaderChooser(kind: chooser, modes: modes)
+                OverlayHeaderChooser(kind: chooser, callTypes: callTypes)
                     .frame(width: House.Layout.chatRail + House.Spacing.xxxxl)
                     .panelGlass(radius: House.Radius.lg)
                     .panelShadows()
@@ -426,8 +426,8 @@ struct OverlayHeaderChooserLayer: View {
 /// The rows of one header chooser.
 struct OverlayHeaderChooser: View {
     let kind: OverlayShellModel.Chooser
-    /// The mode store, injected so a proof never reads the live one.
-    var modes: ModeStore = .shared
+    /// The call type store, injected so a proof never reads the live one.
+    var callTypes: CallTypeStore = .shared
 
     private let shell = OverlayShellModel.shared
     private let llm = LLMController.shared
@@ -437,7 +437,7 @@ struct OverlayHeaderChooser: View {
         switch kind {
         case .options: "Assistant options"
         case .model: "Model · \(llm.chatRouteLabel)"
-        case .mode: "Mode"
+        case .callType: "Call type"
         }
     }
 
@@ -445,7 +445,7 @@ struct OverlayHeaderChooser: View {
         switch kind {
         case .options: "Assistant options"
         case .model: "Choose a model"
-        case .mode: "Choose a mode"
+        case .callType: "Choose a call type"
         }
     }
 
@@ -462,8 +462,8 @@ struct OverlayHeaderChooser: View {
                 .padding(.top, House.Spacing.xxs)
             switch kind {
             case .options:
-                row(id: "mode", title: "Mode", detail: modes.activeMode?.name, isChecked: false, dismissesChooser: false) {
-                    shell.chooser = .mode
+                row(id: "callType", title: "Call type", detail: callTypes.active.name, isChecked: false, dismissesChooser: false) {
+                    shell.chooser = .callType
                 }
                 row(id: "model", title: "Model", detail: llm.chatRouteLabel, isChecked: false, dismissesChooser: false) {
                     shell.chooser = .model
@@ -481,11 +481,11 @@ struct OverlayHeaderChooser: View {
                     isChecked: llm.chatSelection.reasoning == .thinking) {
                     llm.setChatReasoning(llm.chatSelection.reasoning == .thinking ? .fast : .thinking)
                 }
-            case .mode:
-                ForEach(modes.modes) { mode in
-                    row(id: mode.id, title: mode.name, detail: nil,
-                        isChecked: modes.activeMode?.id == mode.id) {
-                        CommandBuilder.switchMode(to: mode, modes: modes, llm: llm)
+            case .callType:
+                ForEach(CallType.allCases) { type in
+                    row(id: type.id, title: type.name, detail: nil,
+                        isChecked: callTypes.active == type) {
+                        CommandBuilder.switchCallType(to: type, callTypes: callTypes, llm: llm)
                     }
                 }
             }

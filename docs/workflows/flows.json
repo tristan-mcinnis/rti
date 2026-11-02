@@ -217,16 +217,16 @@
       "description": "Provider registry and active selection."
     },
     {
-      "id": "ModeStore",
+      "id": "CallTypeStore",
       "subsystem": "settings",
-      "file": "RTI/Sources/Modes/ModeStore.swift",
-      "description": "Modes (prompt presets) and the active mode."
+      "file": "RTI/Sources/Calls/CallTypeStore.swift",
+      "description": "The active call type (Client call, Research, Internal, Personal)."
     },
     {
-      "id": "ModesTab",
+      "id": "SetupTabView",
       "subsystem": "settings",
-      "file": "RTI/Sources/Settings/ModesTab.swift",
-      "description": "Settings pane that picks the active mode."
+      "file": "RTI/Sources/UI/Overlay/SetupTabView.swift",
+      "description": "The Prepare tab, which picks the call type."
     },
     {
       "id": "ProvidersTab",
@@ -426,7 +426,7 @@
     {
       "id": "overlay-assistant",
       "title": "Ask the assistant (⌘\\)",
-      "summary": "The overlay opens → the user asks → AssistantTurnBuilder assembles mode, sources and recent transcript → ToolLoop streams SSE from the active provider, running tools such as search_vault between rounds.",
+      "summary": "The overlay opens → the user asks → AssistantTurnBuilder assembles call type, sources and recent transcript → ToolLoop streams SSE from the active provider, running tools such as search_vault between rounds.",
       "steps": [
         {
           "from": "RTICommand",
@@ -501,29 +501,29 @@
       ]
     },
     {
-      "id": "switch-mode",
-      "title": "Switch active mode",
-      "summary": "The user picks a Mode in Settings → ModeStore updates → the next turn builds its system prompt from that mode.",
+      "id": "switch-call-type",
+      "title": "Choose the call type",
+      "summary": "The user picks a call type in Prepare → CallTypeStore updates → the next turn during a recording builds its prompt, tools and actions from that type.",
       "steps": [
         {
-          "from": "ModesTab",
-          "to": "ModeStore",
-          "label": "activeModeId = id",
-          "passes": "The Modes pane sets the active mode.",
-          "ref": "RTI/Sources/Settings/ModesTab.swift · store.activeModeId = id"
+          "from": "SetupTabView",
+          "to": "CallTypeStore",
+          "label": "active = type",
+          "passes": "Prepare sets the active call type.",
+          "ref": "RTI/Sources/UI/Overlay/SetupTabView.swift · switchCallType"
         },
         {
-          "from": "ModeStore",
+          "from": "CallTypeStore",
           "to": "LLMController",
-          "label": "activeMode on the next turn",
-          "passes": "The controller reads the active mode when it builds a turn.",
-          "ref": "RTI/Sources/LLM/LLMController.swift · modeStore"
+          "label": "active type on the next turn",
+          "passes": "The controller reads the active call type when it builds a turn.",
+          "ref": "RTI/Sources/LLM/LLMController.swift · callTypeStore"
         },
         {
           "from": "LLMController",
           "to": "AssistantTurnBuilder",
-          "label": "build with the mode",
-          "passes": "The mode's prompt and reference text enter the system messages.",
+          "label": "build with the call type",
+          "passes": "The call type's prompt enters the system messages.",
           "ref": "RTI/Core/LLM/AssistantTurnBuilder.swift · PromptBuilder.buildSystemMessages"
         }
       ]

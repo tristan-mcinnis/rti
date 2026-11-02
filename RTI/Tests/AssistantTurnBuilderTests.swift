@@ -34,8 +34,6 @@ final class AssistantTurnBuilderTests: XCTestCase {
             meetingContext: "Meeting context",
             meetingBrief: "Prep brief",
             glossaryFragment: "Glossary",
-            referenceText: "Reference",
-            referenceModeName: "Mode",
             screenContext: nil,
             images: images,
             referencedDocumentsText: referencedDocumentsText,

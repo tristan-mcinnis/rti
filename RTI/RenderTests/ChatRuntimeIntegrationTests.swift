@@ -91,7 +91,7 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         sessionBox: SessionBox = SessionBox(nil),
         routeResolver: (@MainActor (ChatModelSelection, Int, Bool) -> Result<ChatRouteConfiguration, ChatRouteBlocker>)? = nil,
         makeToolExecutor: (@MainActor (Bool, Bool) -> ToolExecutor)? = nil,
-        modeStore: ModeStore? = nil,
+        callTypeStore: CallTypeStore? = nil,
         turnLogger: ((VaultLogStore.TurnRecord) -> Void)? = nil,
         stream: @escaping LLMRequest.ToolStream
     ) -> LLMController {
@@ -103,7 +103,7 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
             sessionIDProvider: { sessionBox.id },
             routeResolver: routeResolver ?? { _, imageCount, _ in .success(Self.route(imageCount: imageCount)) },
             makeToolExecutor: makeToolExecutor,
-            modeStore: modeStore ?? .inMemory(),
+            callTypeStore: callTypeStore ?? .inMemory(),
             turnLogger: turnLogger ?? { _ in },
             ambientScreenProvider: { nil }
         )
@@ -662,34 +662,11 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         XCTAssertTrue(result.text.contains(legacyLine), "a row that does not decode is never guessed at")
     }
 
-    // MARK: - Mode store isolation
+    // MARK: - Call type isolation
 
-    func testInjectedModeStoreIsTheOneTheControllerReads() async throws {
-        let log = TurnLogCollector()
-        let custom = Mode(
-            id: "user.injected",
-            name: "Injected Mode",
-            systemPrompt: "injected",
-            isBuiltin: false,
-            createdAt: Date(),
-            referenceText: nil
-        )
-        let controller = makeController(
-            modeStore: .inMemory(modes: [custom], activeModeId: "user.injected"),
-            turnLogger: { log.append($0) },
-            stream: textStream()
-        )
-        controller.sendAssist()
-
-        let deadline = Date().addingTimeInterval(5)
-        while log.count == 0 && Date() < deadline {
-            try await Task.sleep(nanoseconds: 20_000_000)
-        }
-        XCTAssertEqual(
-            log.modes.first ?? nil,
-            "Injected Mode",
-            "the controller read the injected mode store, not the live one"
-        )
+    func testInjectedCallTypeStoreIsTheOneTheControllerReads() {
+        let controller = makeController(callTypeStore: .inMemory(.research), stream: textStream())
+        XCTAssertEqual(controller.availableQuickActions().first?.id, "probe")
     }
 
     // MARK: - Fixtures

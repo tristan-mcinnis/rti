@@ -17,7 +17,7 @@ extension EnvironmentValues {
 /// One recording header and one route bar remain visible on every page.
 struct WorkspaceView: View {
     @Bindable var model: WorkspaceModel
-    var modes: ModeStore = .shared
+    var callTypes: CallTypeStore = .shared
     private let session = SessionCoordinator.shared
     @State private var hoveredPage: WorkspaceModel.Page?
     @Environment(\.colorScheme) private var scheme
@@ -27,20 +27,20 @@ struct WorkspaceView: View {
             OverlayShellHeader(status: OverlayShellStatus(
                 phase: session.phase.livePhase,
                 processingStatus: session.postProcessingStatus
-            ), modes: modes, fill: House.ColorToken.surfaceSunken)
+            ), callTypes: callTypes, fill: House.ColorToken.surfaceSunken)
             navigation
             sessionChatContext
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
                 // position survive trips to the archive or preferences.
-                OverlayPanelView(onOpenSettings: { model.showSettings() }, modes: modes, isActive: model.isLivePageActive)
+                OverlayPanelView(onOpenSettings: { model.showSettings() }, callTypes: callTypes, isActive: model.isLivePageActive)
                     .workspacePage(isActive: model.page == .live)
                 if model.hasVisitedLibrary {
                     SessionsBrowserView(model: model.sessions)
                         .workspacePage(isActive: model.page == .sessions || model.page == .chats)
                 }
                 if model.page == .settings {
-                    SettingsView(onClose: { model.leaveSettings() }, navigation: model.settings, modeStore: modes)
+                    SettingsView(onClose: { model.leaveSettings() }, navigation: model.settings)
                 }
             }
             .environment(\.isWorkspaceEmbedded, true)
@@ -49,7 +49,7 @@ struct WorkspaceView: View {
             .slateRaisedCard(cornerRadius: House.Radius.lg)
             .padding(House.Spacing.xs)
         }
-        .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(modes: modes) }
+        .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(callTypes: callTypes) }
         .background(House.ColorToken.surface)
         .ignoresSafeArea(.container, edges: .top)
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { _ in model.select(.live) }

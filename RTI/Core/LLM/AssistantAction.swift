@@ -57,11 +57,6 @@ public struct AssistantAction: Identifiable, Sendable {
     public let hotkey: ActionHotkey?
     /// Whether this action may be bound to ⌘⏎ (and appears in the remap submenu).
     public let primaryEligible: Bool
-    /// Visibility gate by listener state: nil = always, true = listener-only,
-    /// false = speaker-only (hidden when observing).
-    public let listenerOnly: Bool?
-    /// Visibility gate by mode family; nil = all modes.
-    public let modes: Set<ModeKind>?
 
     public init(
         id: String,
@@ -70,9 +65,7 @@ public struct AssistantAction: Identifiable, Sendable {
         symbol: String,
         keywords: [String],
         hotkey: ActionHotkey? = nil,
-        primaryEligible: Bool = true,
-        listenerOnly: Bool? = nil,
-        modes: Set<ModeKind>? = nil
+        primaryEligible: Bool = true
     ) {
         self.id = id
         self.label = label
@@ -81,8 +74,6 @@ public struct AssistantAction: Identifiable, Sendable {
         self.keywords = keywords
         self.hotkey = hotkey
         self.primaryEligible = primaryEligible
-        self.listenerOnly = listenerOnly
-        self.modes = modes
     }
 }
 
@@ -107,8 +98,7 @@ public extension AssistantAction {
             id: "sayNext", label: "Say next",
             paletteTitle: "Say Next (one-line draft reply)",
             symbol: "wand.and.rays", keywords: ["respond", "reply"],
-            hotkey: ActionHotkey(key: "S", modifiers: cmdOpt),
-            listenerOnly: false
+            hotkey: ActionHotkey(key: "S", modifiers: cmdOpt)
         ),
         AssistantAction(
             id: "followups", label: "Follow-ups",
@@ -121,24 +111,21 @@ public extension AssistantAction {
             paletteTitle: "Key Tensions",
             symbol: "bolt.horizontal",
             keywords: ["tension", "disagree", "split", "observe", "listener"],
-            hotkey: ActionHotkey(key: "T", modifiers: cmdOpt),
-            listenerOnly: true, modes: [.interview, .meeting, .other]
+            hotkey: ActionHotkey(key: "T", modifiers: cmdOpt)
         ),
         AssistantAction(
             id: "probe", label: "What's unsaid / probe",
             paletteTitle: "What's Unsaid / Probe",
             symbol: "magnifyingglass",
             keywords: ["probe", "unsaid", "explore", "deepen", "listener"],
-            hotkey: ActionHotkey(key: "U", modifiers: cmdOpt),
-            listenerOnly: true, modes: [.interview, .meeting, .other]
+            hotkey: ActionHotkey(key: "U", modifiers: cmdOpt)
         ),
         AssistantAction(
             id: "themes", label: "Emerging themes",
             paletteTitle: "Emerging Themes",
             symbol: "square.stack.3d.up",
             keywords: ["theme", "pattern", "synthesis", "listener"],
-            hotkey: ActionHotkey(key: "E", modifiers: cmdOpt),
-            listenerOnly: true, modes: [.interview, .meeting, .other]
+            hotkey: ActionHotkey(key: "E", modifiers: cmdOpt)
         ),
         AssistantAction(
             id: "quickRecap", label: "Quick recap",

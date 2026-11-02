@@ -5,25 +5,13 @@ import HouseChatDocuments
 import Observation
 import RTICore
 
-// MARK: - Mode-aware quick actions
+// MARK: - Call-type quick actions
 
 extension LLMController {
-    /// The assistant actions to surface in the ✦ menu for the current mode +
-    /// listener state — projected from the single `AssistantAction.all`
-    /// catalogue (no per-surface registry). The ✦ menu runs each via
-    /// `perform(actionID:)`.
+    /// The assistant actions the ✦ menu shows for the current call type.
+    /// The ✦ menu runs each via `perform(actionID:)`.
     func availableQuickActions() -> [AssistantAction] {
-        let kind = modeStore.activeMode?.kind ?? .other
-        let listener = listenerMode
-        return AssistantAction.all.filter { action in
-            if let lo = action.listenerOnly, lo != listener {
-                return false
-            }
-            if let modes = action.modes, !modes.contains(kind) {
-                return false
-            }
-            return true
-        }
+        callTypeStore.active.menuActions
     }
 
     /// The ambient OCR trail this turn carries, or nil when nothing is

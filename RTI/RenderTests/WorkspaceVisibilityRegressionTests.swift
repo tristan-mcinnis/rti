@@ -14,7 +14,7 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
         let session = SessionCoordinator.shared
         session.seedForRenderProof(entries: RenderFixtures.speakerTurns, interim: nil, phase: .recording, startedAt: nil)
         let model = WorkspaceModel(settings: SettingsNavigation(pane: .about))
-        let host = NSHostingView(rootView: WorkspaceView(model: model, modes: .inMemory()))
+        let host = NSHostingView(rootView: WorkspaceView(model: model, callTypes: .inMemory()))
         host.frame = NSRect(origin: .zero, size: WorkspaceLayout.standardSize)
         defer {
             NotificationCenter.default.post(name: .rtiSelectTab, object: "assist")

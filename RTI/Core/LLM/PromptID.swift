@@ -16,6 +16,12 @@ public enum PromptID: String, CaseIterable, Sendable {
     case systemDefault
     case listenerSystemSuffix
 
+    // One system prompt per call type
+    case callClient
+    case callResearch
+    case callInternal
+    case callPersonal
+
     // Quick actions (speaker / listener framing)
     case assistSpeaker
     case listenerAssist
@@ -42,6 +48,7 @@ public enum PromptID: String, CaseIterable, Sendable {
 
     public enum Group: String, CaseIterable, Sendable {
         case system = "System"
+        case callTypes = "Call types"
         case quickActions = "Quick actions"
         case listener = "Listener research"
         case recap = "Recap"
@@ -51,6 +58,7 @@ public enum PromptID: String, CaseIterable, Sendable {
     public var group: Group {
         switch self {
         case .systemDefault, .listenerSystemSuffix: .system
+        case .callClient, .callResearch, .callInternal, .callPersonal: .callTypes
         case .assistSpeaker, .listenerAssist, .sayNext, .followupsSpeaker, .listenerFollowups: .quickActions
         case .keyTensions, .probe, .themes: .listener
         case .recapBrief, .recapStandard, .recapDetailed, .recapLanguageRule: .recap
@@ -63,6 +71,10 @@ public enum PromptID: String, CaseIterable, Sendable {
         switch self {
         case .systemDefault: "Default system prompt"
         case .listenerSystemSuffix: "Listener system suffix"
+        case .callClient: "Client call"
+        case .callResearch: "Research"
+        case .callInternal: "Internal"
+        case .callPersonal: "Personal"
         case .assistSpeaker: "Assist (speaker)"
         case .listenerAssist: "Assist (listener)"
         case .sayNext: "Say next"
@@ -83,7 +95,11 @@ public enum PromptID: String, CaseIterable, Sendable {
     /// One-line description of when this prompt runs.
     public var help: String {
         switch self {
-        case .systemDefault: "Base system message when the active mode has no prompt of its own."
+        case .systemDefault: "Base system message for a chat with no recording running."
+        case .callClient: "System message during a client call."
+        case .callResearch: "System message during a research session."
+        case .callInternal: "System message during a team call."
+        case .callPersonal: "System message during a personal call."
         case .listenerSystemSuffix: "Appended to the system prompt while Listener mode is on."
         case .assistSpeaker: "✦ Assist when you're a participant — what to say next."
         case .listenerAssist: "✦ Assist when observing — what was just learned (tagged)."
@@ -140,6 +156,40 @@ public enum PromptID: String, CaseIterable, Sendable {
 public enum PromptDefaults {
     public static func text(for id: PromptID) -> String {
         switch id {
+        case .callClient:
+            """
+            You are RTI assisting the user in a live client call. Keep replies to 2–3 short lines unless asked for more. Lead with what to say next.
+
+            Flag these when they matter:
+            - Commitments made without an owner or a date.
+            - Decisions implied but never stated.
+            - Scope drifting past what was agreed.
+            - Vague deliverables that will cause misalignment later.
+            - Contradictions with what was said earlier in this call.
+
+            When a pre-meeting brief is attached, hold the conversation against it and flag each "Decision to Lock" still open.
+
+            When the user asks "what should I say?", draft one tight reply in their voice, concrete over abstract. Never suggest sharing internal costs, margins or supplier names.
+            """
+        case .callResearch:
+            """
+            You are RTI assisting during a qualitative research session. The user is usually observing or moderating. Keep replies to 2–3 short lines unless asked for more.
+
+            - Suggest probes and follow-ups that are open and never leading.
+            - Stay with the discussion guide when one is attached, and say what it has not covered yet.
+            - Keep what participants said apart from your own inference. Use their exact words, in their language, when you quote them.
+            - Do not conclude from one voice. Name who said it.
+            """
+        case .callInternal:
+            """
+            You are RTI assisting in an internal team call. Keep replies to 2–3 short lines unless asked for more. Use bullets for lists.
+
+            Track decisions, owners, dates and open questions. Flag an action with no owner, and a decision nobody stated out loud. Be blunt. No client polish is needed.
+            """
+        case .callPersonal:
+            """
+            You are RTI assisting in a private personal call. Answer briefly and plainly, only when asked. Do not treat it as work: no action tracking and no business framing unless the user asks.
+            """
         case .systemDefault:
             """
             You are RTI, a real-time meeting assistant. The user is in an active conversation.

@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
 
     @MainActor private func continueLaunch() {
-        _ = ModeStore.shared
+        _ = CallTypeStore.shared
         UserDefaults.standard.register(defaults: [
             NotesSettings.enabledKey: NotesSettings.defaultEnabled,
             NotesSettings.intervalKey: NotesSettings.defaultInterval,
@@ -113,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             windows: windows,
             session: SessionCoordinator.shared,
             llm: LLMController.shared,
-            modes: ModeStore.shared
+            callTypes: CallTypeStore.shared
         )
 
         CommandRegistry.shared.replaceAll(commands)

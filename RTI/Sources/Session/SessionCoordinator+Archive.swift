@@ -52,7 +52,7 @@ extension SessionCoordinator {
             systemRecordingURL: includeAudio ? audioPipeline.systemRecordingURL : nil,
             systemAudioStartOffsetMs: systemAudioStartOffsetMs,
             workstreamItem: MeetingContextStore.shared.workstreamItem,
-            modeName: ModeStore.shared.activeMode?.name,
+            modeName: CallTypeStore.shared.active.name,
             chatThreads: chatThreadProjection,
             unreadableChatCount: unreadableChatCount,
             // Only a write or close failure marks the files for review. A mic
@@ -77,7 +77,8 @@ extension SessionCoordinator {
             chat: chat,
             visualContext: visualContext,
             notes: notes,
-            archiveDir: archiveDir
+            archiveDir: archiveDir,
+            callType: CallTypeStore.shared.active
         ) else { return }
         if process {
             SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL)

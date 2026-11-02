@@ -45,15 +45,15 @@ final class LLMControllerRetrievalTests: XCTestCase {
     func testLiveCallWithholdsVaultToolsUnlessAsked() {
         let open = ChatToolPolicy(allowsExternalRetrieval: true)
 
-        let plain = open.forLiveCall(question: "Give me scoping questions")
+        let plain = open.forLiveCall(question: "Give me scoping questions", callType: .client)
         XCTAssertFalse(plain.allowsTool(named: "search_vault"))
         XCTAssertFalse(plain.allowsTool(named: "capture_screen"))
 
-        let onScreen = open.forLiveCall(question: "What is on my screen?")
+        let onScreen = open.forLiveCall(question: "What is on my screen?", callType: .client)
         XCTAssertFalse(onScreen.allowsTool(named: "grep_vault"))
         XCTAssertTrue(onScreen.allowsTool(named: "capture_screen"))
 
-        XCTAssertTrue(open.forLiveCall(question: "Search for the last quote").allowsTool(named: "search_vault"))
+        XCTAssertTrue(open.forLiveCall(question: "Search for the last quote", callType: .client).allowsTool(named: "search_vault"))
     }
 
     func testNamesKnownWorkstreamForcesHard() {

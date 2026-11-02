@@ -68,9 +68,9 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
                 name: "shell-header-calendar\(suffix)",
                 size: CGSize(width: width, height: 2 * (House.Control.composer + House.hairline)),
                 view: VStack(spacing: 0) {
-                    OverlayShellHeader(status: OverlayShellStatus(phase: .idle), modes: .inMemory())
+                    OverlayShellHeader(status: OverlayShellStatus(phase: .idle), callTypes: .inMemory())
                     HouseDivider()
-                    OverlayShellHeader(status: OverlayShellStatus(phase: .recording), modes: .inMemory())
+                    OverlayShellHeader(status: OverlayShellStatus(phase: .recording), callTypes: .inMemory())
                     HouseDivider()
                 }
                 .background(House.ColorToken.surface)
@@ -147,10 +147,10 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         try renderPanel("shell-chooser-model", widths: [Self.standardWidth])
     }
 
-    func testModeChooser() throws {
+    func testCallTypeChooser() throws {
         seedRecording()
-        OverlayShellModel.shared.chooser = .mode
-        try renderPanel("shell-chooser-mode", widths: [Self.minimumWidth])
+        OverlayShellModel.shared.chooser = .callType
+        try renderPanel("shell-chooser-call-type", widths: [Self.minimumWidth])
     }
 
     func testKeptOnTop() throws {
@@ -246,7 +246,7 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
             try renderBothAppearances(
                 name: "\(name)\(suffix)",
                 size: CGSize(width: width, height: height),
-                view: OverlayPanelView(statusOverride: status, modes: ModeStore.inMemory())
+                view: OverlayPanelView(statusOverride: status, callTypes: CallTypeStore.inMemory())
                     .onAppear {
                         if let tab {
                             NotificationCenter.default.post(name: .rtiSelectTab, object: tab.rawValue)
@@ -279,7 +279,7 @@ private struct HeaderStatesSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(Self.states.enumerated()), id: \.offset) { _, status in
-                OverlayShellHeader(status: status, modes: .inMemory())
+                OverlayShellHeader(status: status, callTypes: .inMemory())
                 HouseDivider()
             }
             Spacer(minLength: 0)

@@ -24,7 +24,7 @@ final class SlateRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "overlay-assist",
             size: CGSize(width: 700, height: 440),
-            view: OverlayPanelView(modes: ModeStore.inMemory())
+            view: OverlayPanelView(callTypes: CallTypeStore.inMemory())
         )
     }
 
@@ -38,7 +38,7 @@ final class SlateRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "overlay-transcript",
             size: CGSize(width: 700, height: 440),
-            view: OverlayPanelView(modes: ModeStore.inMemory())
+            view: OverlayPanelView(callTypes: CallTypeStore.inMemory())
                 .onAppear { NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.transcript.rawValue) }
         )
     }
@@ -59,7 +59,7 @@ final class SlateRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "overlay-minimum-width",
             size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: 440),
-            view: OverlayPanelView(modes: ModeStore.inMemory())
+            view: OverlayPanelView(callTypes: CallTypeStore.inMemory())
         )
         XCTAssertEqual(OverlayAppearanceDefaults.widthRange.lowerBound, 600)
     }
@@ -79,7 +79,7 @@ final class SlateRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "overlay-transcript-minimum-width",
             size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: 440),
-            view: OverlayPanelView(modes: ModeStore.inMemory())
+            view: OverlayPanelView(callTypes: CallTypeStore.inMemory())
                 .onAppear { NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.transcript.rawValue) }
         )
     }
@@ -99,7 +99,7 @@ final class SlateRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "settings-general",
             size: CGSize(width: 860, height: 560),
-            view: SettingsView(onClose: {}, initialSection: .general, modeStore: ModeStore.inMemory())
+            view: SettingsView(onClose: {}, initialSection: .general)
         )
     }
 

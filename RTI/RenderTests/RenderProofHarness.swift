@@ -28,7 +28,7 @@ enum RenderProofHarness {
         // in-memory mode store, so a render proof can never initialize or
         // write the live modes.json / active-mode default through the header
         // or a route preview.
-        LLMController.shared.useInMemoryModeStore()
+        LLMController.shared.useInMemoryCallTypeStore()
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         try FixtureVault.install()
     }

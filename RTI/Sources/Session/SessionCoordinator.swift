@@ -473,7 +473,7 @@ final class SessionCoordinator {
         // session leaves listenerMode on, which then mis-frames the next meeting
         // ("I never speak") where the user is actually a participant. Reconcile
         // to the active mode at every start.
-        LLMController.shared.reconcileListenerModeForSessionStart()
+        LLMController.shared.applyCallTypeForSessionStart()
 
         // Use a conservative current-calendar suggestion as optional context.
         // A manual choice made in Meeting options always wins.
@@ -668,7 +668,8 @@ final class SessionCoordinator {
                     chat: chat,
                     visualContext: visualContext,
                     notes: notes,
-                    archiveDir: archiveDir
+                    archiveDir: archiveDir,
+                    callType: CallTypeStore.shared.active
                 )
                 phase = .upgrading
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)

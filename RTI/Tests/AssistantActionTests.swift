@@ -50,19 +50,6 @@ final class AssistantActionTests: XCTestCase {
         XCTAssertTrue(quick?.primaryEligible ?? false)
     }
 
-    func test_visibilityGates() {
-        // Listener-research actions are listener-only and mode-gated.
-        for id in ["keyTensions", "probe", "themes"] {
-            let a = AssistantAction.byID(id)
-            XCTAssertEqual(a?.listenerOnly, true, "\(id) listenerOnly")
-            XCTAssertEqual(a?.modes, [.interview, .meeting, .other], "\(id) modes")
-        }
-        // Say-next is speaker-only (hidden when observing); the rest are always-on.
-        XCTAssertEqual(AssistantAction.byID("sayNext")?.listenerOnly, false)
-        XCTAssertNil(AssistantAction.byID("assist")?.listenerOnly)
-        XCTAssertNil(AssistantAction.byID("recap")?.modes)
-    }
-
     // MARK: - Primary-action migration
 
     func test_migration_movesOnlyTheOldShippedDefaults() {

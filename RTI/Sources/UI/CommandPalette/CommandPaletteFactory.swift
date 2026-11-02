@@ -18,7 +18,7 @@ enum CommandBuilder {
         windows: WindowCoordinator,
         session: SessionCoordinator,
         llm: LLMController,
-        modes: ModeStore
+        callTypes: CallTypeStore
     ) -> [RTICommand] {
         sessionCommands(windows: windows, session: session)
             + navigationCommands(windows: windows)
@@ -28,7 +28,7 @@ enum CommandBuilder {
             + transcriptionCommands()
             + panelCommands(windows: windows, llm: llm)
             + appCommands(windows: windows)
-            + modeSwitchCommands(modes: modes, llm: llm)
+            + callTypeCommands(callTypes: callTypes, llm: llm)
     }
 
     // MARK: - Transcription provider (menu quick-switch)
@@ -319,19 +319,6 @@ enum CommandBuilder {
     ) -> [RTICommand] {
         [
             RTICommand(
-                id: "fieldwork.preset",
-                title: "Fieldwork Preset (interview + listener + ⌘⏎ Quick recap)",
-                keywords: ["fgd", "idi", "observe", "research", "preset"],
-                perform: {
-                    let modes = ModeStore.shared
-                    if let interview = modes.modes.first(where: { $0.name.localizedCaseInsensitiveContains("interview") }) {
-                        modes.activeModeId = interview.id
-                    }
-                    llm.listenerMode = true
-                    llm.primaryActionID = "quickRecap"
-                }
-            ),
-            RTICommand(
                 id: "listener.toggle",
                 title: "Listener Mode (I'm not speaking)",
                 keywords: ["passive", "observer", "listen", "moderator"],
@@ -405,32 +392,26 @@ enum CommandBuilder {
     }
 
     @MainActor
-    private static func modeSwitchCommands(
-        modes: ModeStore,
+    private static func callTypeCommands(
+        callTypes: CallTypeStore,
         llm: LLMController
     ) -> [RTICommand] {
-        modes.modes.map { mode in
+        CallType.allCases.map { type in
             RTICommand(
-                id: "mode.switch.\(mode.id)",
-                title: "Switch to: \(mode.name)",
-                keywords: ["mode", "preset"],
-                isAvailable: { modes.activeMode?.id != mode.id },
-                perform: { switchMode(to: mode, modes: modes, llm: llm) }
+                id: "calltype.\(type.rawValue)",
+                title: "Call type: \(type.name)",
+                keywords: ["mode", "call", "client", "research", "internal", "personal"],
+                isAvailable: { callTypes.active != type },
+                perform: { switchCallType(to: type, callTypes: callTypes, llm: llm) }
             )
         }
     }
 
-    /// Make `mode` active and apply its ⌘⏎ binding. Shared by the palette's
-    /// "Switch to" rows and the overlay header's mode chooser.
+    /// Make `type` active and follow it with the listener framing. Shared by
+    /// the palette, the header chooser and Prepare.
     @MainActor
-    static func switchMode(to mode: Mode, modes: ModeStore, llm: LLMController) {
-        modes.activeModeId = mode.id
-        // Per-mode ⌘⏎ binding: meeting and fieldwork both default to Quick
-        // recap, the mid-session "catch me up" turn. Coding and other keep
-        // whatever the user has bound.
-        switch mode.kind {
-        case .meeting, .interview: llm.primaryActionID = "quickRecap"
-        case .coding, .other: break
-        }
+    static func switchCallType(to type: CallType, callTypes: CallTypeStore, llm: LLMController) {
+        callTypes.active = type
+        llm.listenerMode = type.listens
     }
 }

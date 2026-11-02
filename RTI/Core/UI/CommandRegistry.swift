@@ -113,9 +113,7 @@ public final class CommandRegistry {
         self.commands.append(contentsOf: commands)
     }
 
-    /// Replace all registered commands. Used when the dynamic mode list
-    /// changes (ModeStore re-emits) and we need to rebuild "Switch to <Mode>"
-    /// rows.
+    /// Replace all registered commands.
     public func replaceAll(_ commands: [RTICommand]) {
         self.commands = commands
     }

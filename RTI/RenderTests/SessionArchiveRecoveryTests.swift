@@ -114,32 +114,40 @@ final class SessionArchiveRecoveryTests: XCTestCase {
         XCTAssertTrue(try String(contentsOf: directory.appendingPathComponent("transcript.md"), encoding: .utf8).contains(note.text))
     }
 
+    func testTheSidecarTellsMeetingTheCallType() throws {
+        let export = try XCTUnwrap(SessionArchive.writeCanonicalMeetingExport(
+            startedAt: startedAt, transcript: [entry("A line")], chat: [], visualContext: [], notes: [], archiveDir: nil, callType: .research
+        ))
+        let sidecar = try String(contentsOf: XCTUnwrap(export.sidecarURL), encoding: .utf8)
+        XCTAssertTrue(sidecar.contains("\ncall_type: research\n"))
+    }
+
     func testFailedCanonicalWritesReturnNoSuccessURL() throws {
         let earlier = try XCTUnwrap(SessionArchive.writeCanonicalMeetingExport(
-            startedAt: startedAt, transcript: [entry("Earlier export")], chat: [], visualContext: [], notes: [], archiveDir: nil
+            startedAt: startedAt, transcript: [entry("Earlier export")], chat: [], visualContext: [], notes: [], archiveDir: nil, callType: .client
         ))
         try FileManager.default.removeItem(at: earlier.transcriptURL)
         try FileManager.default.createDirectory(at: earlier.transcriptURL, withIntermediateDirectories: true)
         XCTAssertNil(SessionArchive.writeCanonicalMeetingExport(
-            startedAt: startedAt, transcript: [entry("Blocked export")], chat: [], visualContext: [], notes: [], archiveDir: nil
+            startedAt: startedAt, transcript: [entry("Blocked export")], chat: [], visualContext: [], notes: [], archiveDir: nil, callType: .client
         ))
         let sidecar = try XCTUnwrap(earlier.sidecarURL)
         try FileManager.default.removeItem(at: sidecar)
         try FileManager.default.createDirectory(at: sidecar, withIntermediateDirectories: true)
         XCTAssertNil(SessionArchive.writeCanonicalMeetingSidecar(
-            startedAt: startedAt, chat: [], visualContext: [], notes: [], archiveDir: nil
+            startedAt: startedAt, chat: [], visualContext: [], notes: [], archiveDir: nil, callType: .client
         ))
     }
 
     func testCanonicalExportReportsFailureWhenItsSidecarCannotBeSaved() throws {
         let earlier = try XCTUnwrap(SessionArchive.writeCanonicalMeetingExport(
-            startedAt: startedAt, transcript: [entry("Earlier export")], chat: [], visualContext: [], notes: [], archiveDir: nil
+            startedAt: startedAt, transcript: [entry("Earlier export")], chat: [], visualContext: [], notes: [], archiveDir: nil, callType: .client
         ))
         let sidecar = try XCTUnwrap(earlier.sidecarURL)
         try FileManager.default.removeItem(at: sidecar)
         try FileManager.default.createDirectory(at: sidecar, withIntermediateDirectories: true)
         XCTAssertNil(SessionArchive.writeCanonicalMeetingExport(
-            startedAt: startedAt, transcript: [entry("New export")], chat: [], visualContext: [], notes: [], archiveDir: nil
+            startedAt: startedAt, transcript: [entry("New export")], chat: [], visualContext: [], notes: [], archiveDir: nil, callType: .client
         ))
         XCTAssertTrue(try String(contentsOf: earlier.transcriptURL, encoding: .utf8).contains("New export"), "A partial archive failure does not delete the successfully written transcript")
     }

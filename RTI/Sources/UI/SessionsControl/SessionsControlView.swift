@@ -12,7 +12,6 @@ struct SessionsControlView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case sessions = "Sessions"
         case providers = "Providers"
-        case modes = "Modes"
         case prompts = "Prompts"
         case glossary = "Glossary"
         case general = "General"
@@ -25,7 +24,7 @@ struct SessionsControlView: View {
         var section: Section {
             switch self {
             case .sessions:                                        return .meetings
-            case .providers, .modes, .prompts, .glossary, .general:        return .preferences
+            case .providers, .prompts, .glossary, .general:        return .preferences
             case .logs:                                            return .support
             }
         }
@@ -34,7 +33,6 @@ struct SessionsControlView: View {
             switch self {
             case .sessions:       return "clock.arrow.circlepath"
             case .providers:      return "server.rack"
-            case .modes:          return "square.stack.3d.up"
             case .prompts:        return "text.bubble"
             case .glossary:       return "character.book.closed"
             case .general:        return "gearshape.fill"
@@ -137,8 +135,6 @@ struct SessionsControlView: View {
         switch selectedTab {
         case .sessions, .providers:
             ProvidersTab()
-        case .modes:
-            ModesTab()
         case .prompts:
             PromptsTab()
         case .glossary:

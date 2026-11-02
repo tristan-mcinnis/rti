@@ -25,8 +25,6 @@ public enum AssistantTurnBuilder {
         public let meetingContext: String?
         public let meetingBrief: String?
         public let glossaryFragment: String?
-        public let referenceText: String?
-        public let referenceModeName: String?
         public let screenContext: String?
         /// Every image this turn carries, from each source's own normalized
         /// bytes (tray files, retained sources, and the screen capture). Rides
@@ -53,8 +51,6 @@ public enum AssistantTurnBuilder {
             meetingContext: String?,
             meetingBrief: String?,
             glossaryFragment: String?,
-            referenceText: String?,
-            referenceModeName: String?,
             screenContext: String?,
             images: [LLMImage],
             referencedDocumentsText: String?,
@@ -77,8 +73,6 @@ public enum AssistantTurnBuilder {
             self.meetingContext = meetingContext
             self.meetingBrief = meetingBrief
             self.glossaryFragment = glossaryFragment
-            self.referenceText = referenceText
-            self.referenceModeName = referenceModeName
             self.screenContext = screenContext
             self.images = images
             self.referencedDocumentsText = referencedDocumentsText
@@ -165,8 +159,6 @@ public enum AssistantTurnBuilder {
             meetingContext: input.meetingContext,
             meetingBrief: input.listenerMode ? nil : input.meetingBrief,
             glossaryFragment: input.glossaryFragment,
-            referenceText: input.referenceText,
-            referenceModeName: input.referenceModeName,
             screenContext: input.screenContext,
             referencedDocuments: input.referencedDocumentsText,
             sourceContext: input.sourceContext,

@@ -31,7 +31,7 @@ extension LLMController {
     ) {
         guard !streaming else { return }
         let toolPolicy = SessionCoordinator.shared.isRunning && !broaderSearchEnabled
-            ? toolPolicy.forLiveCall(question: userInput)
+            ? toolPolicy.forLiveCall(question: userInput, callType: callTypeStore.active)
             : toolPolicy
         sendTask?.cancel()
         request.cancel()
@@ -103,15 +103,9 @@ extension LLMController {
         // matched nothing.
         let sourceSelection = referencedDocumentsText(referencedDocuments, question: userInput)
 
-        let activeMode = modeStore.activeMode
-        let basePrompt: String = {
-            if let prompt = activeMode?.systemPrompt,
-               !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            {
-                return prompt
-            }
-            return PromptStore.shared.text(.systemDefault)
-        }()
+        // The call type shapes a call. A chat with no recording is not a call.
+        let liveCallType = SessionCoordinator.shared.isRunning ? callTypeStore.active : nil
+        let basePrompt = PromptStore.shared.text(liveCallType?.prompt ?? .systemDefault)
 
         let turn = AssistantTurnBuilder.build(.init(
             userInput: userInput,
@@ -131,8 +125,6 @@ extension LLMController {
             meetingContext: MeetingContextStore.shared.combined,
             meetingBrief: MeetingContextStore.shared.briefContext,
             glossaryFragment: GlossaryStore.shared.systemPromptFragment,
-            referenceText: activeMode?.referenceText,
-            referenceModeName: activeMode?.name,
             screenContext: screenUsed ? screenContext : nil,
             images: runtimeImages,
             referencedDocumentsText: sourceSelection.text,
@@ -198,7 +190,7 @@ extension LLMController {
             ts: Self.iso8601.string(from: Date()),
             startedAt: Date(),
             action: action,
-            mode: activeMode?.name,
+            mode: liveCallType?.name,
             route: route,
             toolPolicy: toolPolicy,
             inSession: turnSessionID != nil,

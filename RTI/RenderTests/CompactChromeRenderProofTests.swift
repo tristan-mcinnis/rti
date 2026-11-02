@@ -25,9 +25,9 @@ final class CompactChromeRenderProofTests: RenderProofTestCase {
                 name: "compact-chrome-header-\(suffix)",
                 size: CGSize(width: width, height: House.Control.composer * 3),
                 view: VStack(spacing: 0) {
-                    OverlayShellHeader(status: .init(phase: .idle), modes: .inMemory())
-                    OverlayShellHeader(status: .init(phase: .recording), modes: .inMemory())
-                    OverlayShellHeader(status: .init(phase: .paused), modes: .inMemory())
+                    OverlayShellHeader(status: .init(phase: .idle), callTypes: .inMemory())
+                    OverlayShellHeader(status: .init(phase: .recording), callTypes: .inMemory())
+                    OverlayShellHeader(status: .init(phase: .paused), callTypes: .inMemory())
                 }
                 .background(House.ColorToken.surface)
             )
@@ -35,22 +35,22 @@ final class CompactChromeRenderProofTests: RenderProofTestCase {
     }
 
     func testExistingAssistantChoosersRenderWithTheCompactHeader() throws {
-        for chooser in [OverlayShellModel.Chooser.options, .mode, .model] {
+        for chooser in [OverlayShellModel.Chooser.options, .callType, .model] {
             OverlayShellModel.shared.chooser = chooser
             let name: String
             switch chooser {
             case .options: name = "options"
-            case .mode: name = "mode"
+            case .callType: name = "call-type"
             case .model: name = "model"
             }
             try renderBothAppearances(
                 name: "compact-chrome-chooser-\(name)",
                 size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: House.Layout.chatMinHeight),
                 view: VStack(spacing: 0) {
-                    OverlayShellHeader(status: .init(phase: .idle), modes: .inMemory())
+                    OverlayShellHeader(status: .init(phase: .idle), callTypes: .inMemory())
                     Spacer()
                 }
-                .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(modes: .inMemory()) }
+                .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(callTypes: .inMemory()) }
                 .background(House.ColorToken.surface)
             )
         }

@@ -97,9 +97,11 @@ public struct ChatToolPolicy: Sendable, Equatable {
     }
 
     /// The policy for a turn during a recording: no vault tools unless the
-    /// user's own words ask for past work, so the model cannot pause to search.
-    public func forLiveCall(question: String) -> ChatToolPolicy {
-        guard allowsExternalRetrieval, !RetrievalHeuristics.asksForPastWork(question) else { return self }
+    /// user's own words ask for past work and the call type allows it, so the
+    /// model cannot pause to search.
+    public func forLiveCall(question: String, callType: CallType) -> ChatToolPolicy {
+        guard allowsExternalRetrieval else { return self }
+        if callType.toolAccess == .whenAsked, RetrievalHeuristics.asksForPastWork(question) { return self }
         return ChatToolPolicy(
             allowsExternalRetrieval: false,
             allowsScreenTools: allowsScreenTools && Self.questionRequestsScreen(question),

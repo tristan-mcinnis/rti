@@ -75,7 +75,8 @@ final class LiveNotesTests: XCTestCase {
             chat: [],
             visualContext: [],
             notes: notes,
-            archiveDir: dir
+            archiveDir: dir,
+            callType: .client
         ))
         addTeardownBlock { try? FileManager.default.removeItem(at: sidecar) }
         let sidecarText = try String(contentsOf: sidecar, encoding: .utf8)
