@@ -1,5 +1,14 @@
 # RTI Change Log
 
+## 2026-11-03: Live transcription moves to Soniox v6
+
+- **Model.** Live transcription uses `stt-rt-v6`. Soniox removes `stt-rt-v5`
+  on 2026-12-15.
+- **Login.** The Soniox key now goes in the WebSocket `Authorization` header,
+  not the first message. Soniox refuses the old way from 2027-01-15.
+- **Output.** v6 writes prices as spoken words and keeps hyphens in codes and
+  IDs only when spoken.
+
 ## 2026-10-30: Work project folders are readable during a call
 
 - **Project root.** RTI now reads client projects at

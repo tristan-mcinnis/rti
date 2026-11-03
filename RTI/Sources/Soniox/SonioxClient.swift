@@ -273,10 +273,16 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     }
 #endif
 
-    private func openSocket() {
+    /// Soniox refuses a key sent in the first message from 2027-01-15.
+    static func upgradeRequest(url: URL, apiKey: String) -> URLRequest {
         var request = URLRequest(url: url)
         request.timeoutInterval = 15 // WebSocket connect timeout
-        let ws = WebSocket(request: request)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    private func openSocket() {
+        let ws = WebSocket(request: Self.upgradeRequest(url: url, apiKey: apiKey))
         ws.delegate = self
         lock.lock()
         socket = ws
@@ -287,7 +293,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
 
     private func sendConfig() {
         do {
-            let config = SonioxConfigMessage.default(apiKey: apiKey, translation: translationConfig, contextTerms: contextTerms)
+            let config = SonioxConfigMessage.default(translation: translationConfig, contextTerms: contextTerms)
             let data = try JSONEncoder().encode(config)
             if let string = String(data: data, encoding: .utf8) {
                 lock.lock()

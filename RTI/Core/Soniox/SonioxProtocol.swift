@@ -80,7 +80,6 @@ struct SonioxContext: Codable {
 }
 
 public struct SonioxConfigMessage: Codable {
-    let api_key: String
     let model: String
     let audio_format: String
     let sample_rate: Int
@@ -90,7 +89,7 @@ public struct SonioxConfigMessage: Codable {
     let translation: TranslationConfig?
     let context: SonioxContext?
 
-    public static func `default`(apiKey: String, translation: TranslationConfig? = nil, contextTerms: [String] = []) -> SonioxConfigMessage {
+    public static func `default`(translation: TranslationConfig? = nil, contextTerms: [String] = []) -> SonioxConfigMessage {
         // en+zh always: meetings here code-switch constantly, and the batch
         // lane has hinted both since day one. Hints bias
         // recognition, they don't force a language.
@@ -107,8 +106,7 @@ public struct SonioxConfigMessage: Codable {
             }
         }
         return SonioxConfigMessage(
-            api_key: apiKey,
-            model: "stt-rt-v5",
+            model: "stt-rt-v6",
             audio_format: "pcm_s16le",
             sample_rate: AudioFormat.sampleRateHz,
             num_channels: 1,
