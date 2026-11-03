@@ -135,7 +135,7 @@ The source of truth for keys is `RTI/Sources/UI/CommandPalette/CommandPaletteFac
 
 | To | What | When |
 |---|---|---|
-| Soniox | Live audio from your microphone and from the system audio. | During every recording. |
+| Soniox | Live audio from your microphone and from the system audio. Also the call type, project name, calendar title, participant names and any terms in the project's `soniox-terms.txt`. | During every recording, and again in the transcript upgrade. |
 | Your assistant provider (DeepSeek, OpenAI or OpenRouter) | Your prompts, about the last six minutes of transcript for each assistant turn, text chunks for live notes and Auto mode, attachments, and screenshots you add. Text read from a screenshot goes along with it. | When you use the assistant. |
 | GitHub | A request for the latest release number. It carries no content. | At each normal launch, and when you choose Check for Updates. |
 
