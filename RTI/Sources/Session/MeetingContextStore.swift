@@ -64,6 +64,20 @@ final class MeetingContextStore {
         return VaultWorkstreamStore.fileAccessRelativePath(for: item)
     }
 
+    /// What Soniox is told about this meeting. The project's unusual names come
+    /// from an optional `soniox-terms.txt` in its folder, one per line.
+    func sonioxContext(callType: String?, speakerNames: [String] = []) -> SonioxContext {
+        let termsFile = workstreamItem?.url.appendingPathComponent("soniox-terms.txt")
+        let termsText = termsFile.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+        return .forMeeting(
+            callType: callType ?? "",
+            project: workstreamName,
+            meetingTitle: calendarMeeting?.title,
+            participants: (calendarMeeting?.attendees.map(\.name) ?? []) + speakerNames,
+            terms: SonioxContext.terms(inFile: termsText)
+        )
+    }
+
     /// Add a note before recording starts. Pre-call notes remain visible in
     /// Setup → Prep note and are supplied to the assistant as meeting context.
     @discardableResult

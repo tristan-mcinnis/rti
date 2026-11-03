@@ -518,6 +518,9 @@ final class SessionCoordinator {
             guard let recordingDirectory = SessionArchive.sessionDirectory(startedAt: now) else {
                 throw AudioPipelineError.recordingArchiveUnavailable
             }
+            audioPipeline.speechContext = MeetingContextStore.shared.sonioxContext(
+                callType: CallTypeStore.shared.active.name
+            )
             try audioPipeline.prepare(recordingDirectory: recordingDirectory)
             guard SessionArchive.seedTranscriptForAutomaticUpgrade(in: recordingDirectory, startedAt: now),
                   SessionArchive.markAutomaticUpgradePending(in: recordingDirectory) else {

@@ -95,7 +95,7 @@ final class AudioPipeline {
 
     private let audio: MicrophoneCapturing
     private let hasSTTKey: () -> Bool
-    private let makeSTTClient: (TranslationConfig?, [String]) -> STTClient
+    private let makeSTTClient: (TranslationConfig?, SonioxContext?) -> STTClient
     private let makeSystemCapture: (() -> SystemAudioCapturing)?
     private let systemAudioEnabled: Bool
     private let now: () -> Date
@@ -226,8 +226,8 @@ final class AudioPipeline {
     init(
         audio: MicrophoneCapturing = AudioCaptureManager(),
         hasSTTKey: @escaping () -> Bool = { STTProviders.activeHasKey },
-        makeSTTClient: @escaping (TranslationConfig?, [String]) -> STTClient = {
-            STTProviders.makeActiveClient(translationConfig: $0, contextTerms: $1)
+        makeSTTClient: @escaping (TranslationConfig?, SonioxContext?) -> STTClient = {
+            STTProviders.makeActiveClient(translationConfig: $0, context: $1)
         },
         makeSystemCapture: (() -> SystemAudioCapturing)? = nil,
         systemAudioEnabled: Bool = true,
@@ -255,9 +255,8 @@ final class AudioPipeline {
     /// **not** start capture yet — call `start()` after this returns.
     var translationConfig: TranslationConfig?
 
-    /// Proper nouns from past meetings, sent to Soniox as `context.terms`
-    /// to bias recognition of names/brands/orgs. Set before `prepare`.
-    var contextTerms: [String] = []
+    /// What Soniox is told about this meeting. Set before `prepare`.
+    var speechContext: SonioxContext?
 
     func prepare(recordingDirectory: URL) throws {
         // Fast-fail before opening a WAV on disk: a missing/empty Soniox
@@ -283,7 +282,7 @@ final class AudioPipeline {
         recorder.onWriteFailure = onWriteFailure
         try recorder.open(in: recordingDirectory)
 
-        let client = makeSTTClient(translationConfig, contextTerms)
+        let client = makeSTTClient(translationConfig, speechContext)
         client.onWords = { [weak self] words in self?.onWords?(words) }
         client.onError = { [weak self] failure, didOpen in
             self?.reportTranscriptionFailure(failure, didOpen: didOpen, system: false)
@@ -339,7 +338,7 @@ final class AudioPipeline {
             guard let self, isCapturing else { return }
             try? await Task.sleep(nanoseconds: systemAudioStartupDelayNs)
             guard isCapturing, captureGeneration == generation else { return }
-            let sysClient = makeSTTClient(translationConfig, contextTerms)
+            let sysClient = makeSTTClient(translationConfig, speechContext)
             sysClient.onWords = { [weak self] words in self?.onSystemWords?(words) }
             sysClient.onError = { [weak self] failure, didOpen in
                 guard let self else { return }
@@ -810,7 +809,7 @@ final class AudioPipeline {
 
         // Mic leg.
         soniox?.disconnect()
-        let mic = makeSTTClient(translationConfig, contextTerms)
+        let mic = makeSTTClient(translationConfig, speechContext)
         mic.onWords = { [weak self] words in self?.onWords?(words) }
         mic.onError = { [weak self] failure, didOpen in
             self?.reportTranscriptionFailure(failure, didOpen: didOpen, system: false)
@@ -822,7 +821,7 @@ final class AudioPipeline {
         // System leg (if active).
         if systemSoniox != nil {
             systemSoniox?.disconnect()
-            let sys = makeSTTClient(translationConfig, contextTerms)
+            let sys = makeSTTClient(translationConfig, speechContext)
             sys.onWords = { [weak self] words in self?.onSystemWords?(words) }
             sys.onError = { [weak self] failure, didOpen in
                 self?.reportTranscriptionFailure(failure, didOpen: didOpen, system: true)

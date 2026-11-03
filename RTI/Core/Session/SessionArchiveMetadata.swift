@@ -26,6 +26,9 @@ public struct SessionArchiveMetadata: Codable {
     public var calendarTitle: String? = nil
     /// A known capture/write/close failure. Retained audio needs review before processing.
     public var recordingError: String? = nil
+    /// What Soniox should know about this session, for the transcript upgrade.
+    /// Nil in `session.json` files written before 2026-11-04.
+    public var speechContext: SonioxContext? = nil
 
     public init(
         sessionId: String?,
@@ -36,7 +39,8 @@ public struct SessionArchiveMetadata: Codable {
         workstream: String?,
         durationSeconds: Int?,
         calendarTitle: String? = nil,
-        recordingError: String? = nil
+        recordingError: String? = nil,
+        speechContext: SonioxContext? = nil
     ) {
         self.sessionId = sessionId
         self.systemAudioStartOffsetMs = systemAudioStartOffsetMs
@@ -47,5 +51,6 @@ public struct SessionArchiveMetadata: Codable {
         self.durationSeconds = durationSeconds
         self.calendarTitle = calendarTitle
         self.recordingError = recordingError
+        self.speechContext = speechContext
     }
 }

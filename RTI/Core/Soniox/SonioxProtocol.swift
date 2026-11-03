@@ -71,12 +71,71 @@ public struct TranslationConfig: Codable, Equatable {
     }
 }
 
-/// Soniox `context` object. Biases recognition toward known terms. We only
-/// populate `terms` (proper nouns from past meetings); `general`/`text` are
-/// available in the API but unused here.
-/// See https://soniox.com/docs/stt/concepts/context
-struct SonioxContext: Codable {
-    let terms: [String]
+/// Soniox `context` object: what the model should know about this audio. Holds
+/// the meeting's setting and participants, and the project's unusual names.
+/// See https://docs.soniox.com/stt/concepts/context
+public struct SonioxContext: Codable, Equatable, Sendable {
+    public struct GeneralEntry: Codable, Equatable, Sendable {
+        public let key: String
+        public let value: String
+    }
+
+    public let general: [GeneralEntry]
+    public let terms: [String]?
+
+    /// Soniox refuses more than 8,000 tokens, which stops the session. One
+    /// Chinese character can be a token or more, so stay well under.
+    static let maxEncodedCharacters = 4_000
+    private static let maxParticipants = 30
+    private static let maxValueCharacters = 400
+    private static let maxNameCharacters = 80
+    private static let maxTermCharacters = 60
+
+    public static func forMeeting(
+        callType: String,
+        project: String?,
+        meetingTitle: String?,
+        participants: [String],
+        terms: [String]
+    ) -> SonioxContext {
+        let names = unique(participants.filter { !$0.contains("@") }, maxCharacters: maxNameCharacters)
+            .prefix(maxParticipants)
+        let pairs: [(String, String?)] = [
+            ("Setting", callType),
+            ("Project", project),
+            ("Meeting", meetingTitle),
+            ("Participants", names.isEmpty ? nil : names.joined(separator: ", ")),
+        ]
+        let general = pairs.compactMap { key, value -> GeneralEntry? in
+            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+            return GeneralEntry(key: key, value: String(value.prefix(maxValueCharacters)))
+        }
+        var kept = unique(terms, maxCharacters: maxTermCharacters)
+        var context = SonioxContext(general: general, terms: kept.isEmpty ? nil : kept)
+        while !kept.isEmpty, context.encodedCharacterCount > maxEncodedCharacters {
+            kept.removeLast()
+            context = SonioxContext(general: general, terms: kept.isEmpty ? nil : kept)
+        }
+        return context
+    }
+
+    /// One term per line. Blank lines and `#` comments are skipped.
+    public static func terms(inFile text: String) -> [String] {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+    }
+
+    var encodedCharacterCount: Int {
+        (try? JSONEncoder().encode(self)).map { String(decoding: $0, as: UTF8.self).count } ?? 0
+    }
+
+    private static func unique(_ values: [String], maxCharacters: Int) -> [String] {
+        var seen = Set<String>()
+        return values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.count <= maxCharacters && seen.insert($0.lowercased()).inserted }
+    }
 }
 
 public struct SonioxConfigMessage: Codable {
@@ -86,10 +145,11 @@ public struct SonioxConfigMessage: Codable {
     let num_channels: Int
     let language_hints: [String]
     let enable_speaker_diarization: Bool
+    let enable_language_identification: Bool
     let translation: TranslationConfig?
     let context: SonioxContext?
 
-    public static func `default`(translation: TranslationConfig? = nil, contextTerms: [String] = []) -> SonioxConfigMessage {
+    public static func `default`(translation: TranslationConfig? = nil, context: SonioxContext? = nil) -> SonioxConfigMessage {
         // en+zh always: meetings here code-switch constantly, and the batch
         // lane has hinted both since day one. Hints bias
         // recognition, they don't force a language.
@@ -112,8 +172,9 @@ public struct SonioxConfigMessage: Codable {
             num_channels: 1,
             language_hints: Array(hints),
             enable_speaker_diarization: true,
+            enable_language_identification: true,
             translation: translation,
-            context: contextTerms.isEmpty ? nil : SonioxContext(terms: contextTerms)
+            context: context
         )
     }
 }

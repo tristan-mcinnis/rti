@@ -35,10 +35,13 @@ extension SpeakerTurn {
             // original ↔ translation boundaries (they need separate
             // visual entries).
             let sameSpeaker = word.speaker == 0 || speaker == 0 || speaker == word.speaker
+            // Language splits only matter when translation pairs the rows;
+            // otherwise a code-switched sentence stays one row.
+            let sameLanguage = word.translationStatus == "none" || last?.language == word.language
             let sameRun = last != nil
                 && sameSpeaker
                 && last?.translationStatus == word.translationStatus
-                && last?.language == word.language
+                && sameLanguage
             if sameRun {
                 groups[groups.count - 1].append(word)
                 if speaker == 0 { groupSpeakers[groupSpeakers.count - 1] = word.speaker }

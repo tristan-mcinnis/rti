@@ -82,7 +82,7 @@ enum TranscriptUpgradeService {
         provider option: AsyncTranscriptProviderOption? = nil,
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
-        let provider = try makeProvider(option ?? AsyncTranscriptProviders.active)
+        let provider = try makeProvider(option ?? AsyncTranscriptProviders.active, sessionDirectory: session.url)
         progress(.running("Using \(provider.displayName)"))
 
         let pipelineResult: TranscriptUpgradeExecutionResult
@@ -138,13 +138,19 @@ enum TranscriptUpgradeService {
         })
     }
 
-    private static func makeProvider(_ option: AsyncTranscriptProviderOption) throws -> AsyncTranscriptProvider {
+    private static func makeProvider(
+        _ option: AsyncTranscriptProviderOption,
+        sessionDirectory: URL
+    ) throws -> AsyncTranscriptProvider {
         // Soniox is the one upgrade provider. The Aliyun option was removed
         // on 2026-09-26: its NLS script no longer exists on this Mac.
         guard !(CredentialStore.soniox ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TranscriptUpgradeError.missingCredentials(AsyncTranscriptProviders.soniox.displayName)
         }
-        return SonioxScriptTranscriptProvider(apiKey: CredentialStore.soniox ?? "")
+        return SonioxScriptTranscriptProvider(
+            apiKey: CredentialStore.soniox ?? "",
+            context: speechContext(in: sessionDirectory)
+        )
     }
 
     static func audioInputs(in dir: URL) -> [TranscriptUpgradeAudioInput] {
@@ -160,6 +166,11 @@ enum TranscriptUpgradeService {
             guard rate > 0 else { return total }
             return total + Double(file.length) / rate
         }
+    }
+
+    private static func speechContext(in sessionDirectory: URL) -> SonioxContext? {
+        guard let data = try? Data(contentsOf: sessionDirectory.appendingPathComponent("session.json")) else { return nil }
+        return (try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data))?.speechContext
     }
 
     private static func mapPipelineError(_ error: Error) -> Error {
@@ -187,6 +198,7 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
     let id = "soniox_file"
     let displayName = "Soniox"
     let apiKey: String
+    let context: SonioxContext?
     /// `soniox_file_script` in `~/.config/rti/config.json`, else the default
     /// checkout location under the user's home.
     private let script = TranscriptUpgradeScripts.path(
@@ -199,9 +211,16 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
             throw TranscriptUpgradeError.missingScript(script)
         }
         let output = outputBaseURL.appendingPathExtension("soniox.txt")
+        var arguments = [script, "-f", audioURL.path, "-l", "en", "zh", "--format", "txt", "-o", output.path]
+        let contextFile = outputBaseURL.appendingPathExtension("soniox-context.json")
+        defer { try? FileManager.default.removeItem(at: contextFile) }
+        if let context {
+            try JSONEncoder().encode(context).write(to: contextFile)
+            arguments += ["--context-file", contextFile.path]
+        }
         try await ScriptRunner.run(
             executable: ExternalTools.systemPython.path,
-            arguments: [script, "-f", audioURL.path, "-l", "en", "zh", "--format", "txt", "-o", output.path],
+            arguments: arguments,
             environment: ["SONIOX_API_KEY": apiKey]
         )
         return (try? String(contentsOf: output, encoding: .utf8)) ?? ""

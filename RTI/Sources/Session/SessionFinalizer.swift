@@ -51,6 +51,10 @@ struct SessionFinalizer {
             // the Sessions window can title this session (SessionTitleResolver
             // rule 4). Read from the store here, the same way speakerNames is.
             calendarTitle: Self.calendarTitleForArchive(),
+            speechContext: MeetingContextStore.shared.sonioxContext(
+                callType: snapshot.modeName,
+                speakerNames: Array(SpeakerNameStore.shared.names.values).sorted()
+            ),
             chatThreads: snapshot.chatThreads,
             unreadableChatCount: snapshot.unreadableChatCount,
             recordingError: snapshot.recordingError

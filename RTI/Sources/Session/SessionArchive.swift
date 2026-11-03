@@ -108,6 +108,7 @@ enum SessionArchive {
         workstreamName: String? = nil,
         speakerNames: [String: String] = [:],
         calendarTitle: String? = nil,
+        speechContext: SonioxContext? = nil,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0,
         recordingError: String? = nil
@@ -205,7 +206,8 @@ enum SessionArchive {
                 workstream: workstreamName,
                 durationSeconds: Int(max(0, endedAt.timeIntervalSince(startedAt))),
                 calendarTitle: calendarTitle,
-                recordingError: recordingError
+                recordingError: recordingError,
+                speechContext: speechContext
             ),
             to: dir
         ) else { return nil }

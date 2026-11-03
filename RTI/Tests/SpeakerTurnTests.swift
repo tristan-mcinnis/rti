@@ -7,6 +7,32 @@ final class SpeakerTurnTests: XCTestCase {
         SonioxWord(text: text, startMs: start, endMs: end, speaker: speaker, confidence: confidence, isFinal: true, translationStatus: "none", language: nil, sourceLanguage: nil)
     }
 
+    private func labelled(_ text: String, language: String, translationStatus: String, start: Int) -> SonioxWord {
+        SonioxWord(
+            text: text, startMs: start, endMs: start + 100, speaker: 1, confidence: 1, isFinal: true,
+            translationStatus: translationStatus, language: language, sourceLanguage: nil
+        )
+    }
+
+    func test_codeSwitchedSentenceWithoutTranslation_staysOneRow() {
+        let turns = SpeakerTurn.collapse([
+            labelled("我们看 ", language: "zh", translationStatus: "none", start: 0),
+            labelled("brand ", language: "en", translationStatus: "none", start: 100),
+            labelled("定位", language: "zh", translationStatus: "none", start: 200),
+        ])
+
+        XCTAssertEqual(turns.map(\.text), ["我们看 brand 定位"])
+    }
+
+    func test_translatedWords_stillSplitOnLanguage() {
+        let turns = SpeakerTurn.collapse([
+            labelled("你好 ", language: "zh", translationStatus: "original", start: 0),
+            labelled("hello ", language: "en", translationStatus: "original", start: 100),
+        ])
+
+        XCTAssertEqual(turns.count, 2)
+    }
+
     func test_emptyInput_returnsEmpty() {
         XCTAssertTrue(SpeakerTurn.collapse([]).isEmpty)
     }

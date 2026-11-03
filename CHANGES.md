@@ -1,5 +1,15 @@
 # RTI Change Log
 
+## 2026-11-04: Soniox knows who and what the call is about
+
+- **Context.** Live transcription and the transcript upgrade now tell Soniox
+  the call type, project, calendar title and participant names. The upgrade also
+  gets speaker names you set during the call. RTI never sends attendee emails.
+- **Terms.** Put unusual names in an optional `soniox-terms.txt` in the project
+  folder, one per line. RTI sends them with the context.
+- **Language labels.** Live transcription now asks for language labels. A
+  code-switched sentence stays one row. Nothing shows the label yet.
+
 ## 2026-11-03: Transcript upgrade uses the file-transcriber skill's script
 
 - **Script.** The default is now

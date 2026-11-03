@@ -25,7 +25,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     private let apiKey: String
     private let url: URL
     private let translationConfig: TranslationConfig?
-    private let contextTerms: [String]
+    private let context: SonioxContext?
     private let lock = NSLock()
     private var socket: WebSocket?
     private var isConnected = false
@@ -50,11 +50,11 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     private static let maxRetries = 5
     private static let retryDelays: [TimeInterval] = [1, 2, 4, 8, 8]
 
-    init(apiKey: String, url: URL, translationConfig: TranslationConfig? = nil, contextTerms: [String] = []) {
+    init(apiKey: String, url: URL, translationConfig: TranslationConfig? = nil, context: SonioxContext? = nil) {
         self.apiKey = apiKey
         self.url = url
         self.translationConfig = translationConfig
-        self.contextTerms = contextTerms
+        self.context = context
     }
 
     func connect() {
@@ -293,7 +293,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
 
     private func sendConfig() {
         do {
-            let config = SonioxConfigMessage.default(translation: translationConfig, contextTerms: contextTerms)
+            let config = SonioxConfigMessage.default(translation: translationConfig, context: context)
             let data = try JSONEncoder().encode(config)
             if let string = String(data: data, encoding: .utf8) {
                 lock.lock()
@@ -301,7 +301,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
                 configSent = true
                 lock.unlock()
                 let hasTranslation = translationConfig != nil
-                RTILog.log("sent config (translation=\(hasTranslation), contextTerms=\(contextTerms.count))", category: .soniox)
+                RTILog.log("sent config (translation=\(hasTranslation), contextTerms=\(context?.terms?.count ?? 0))", category: .soniox)
             }
         } catch {
             RTILog.log("SonioxClient: config encode failed: \(error)", category: .soniox)
@@ -365,7 +365,7 @@ protocol STTClient: AnyObject, Sendable {
 struct STTProviderConfig: Sendable {
     let id: String
     let displayName: String
-    let makeClient: @Sendable (_ translationConfig: TranslationConfig?, _ contextTerms: [String]) -> STTClient
+    let makeClient: @Sendable (_ translationConfig: TranslationConfig?, _ context: SonioxContext?) -> STTClient
 }
 
 /// A separate provider lane for offline / post-hoc transcript upgrade. This is
@@ -399,9 +399,9 @@ struct AsyncTranscriptProviderOption: Identifiable, Sendable {
 /// only; the separate async transcript-upgrade lane is modeled below.
 enum STTProviders {
     static var soniox: STTProviderConfig {
-        STTProviderConfig(id: "soniox", displayName: "Soniox") { tc, terms in
+        STTProviderConfig(id: "soniox", displayName: "Soniox") { tc, context in
             SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL,
-                         translationConfig: tc, contextTerms: terms)
+                         translationConfig: tc, context: context)
         }
     }
 
@@ -417,8 +417,8 @@ enum STTProviders {
         return !Secrets.sonioxAPIKey.isEmpty
     }
 
-    static func makeActiveClient(translationConfig: TranslationConfig?, contextTerms: [String]) -> STTClient {
-        soniox.makeClient(translationConfig, contextTerms)
+    static func makeActiveClient(translationConfig: TranslationConfig?, context: SonioxContext?) -> STTClient {
+        soniox.makeClient(translationConfig, context)
     }
 }
 

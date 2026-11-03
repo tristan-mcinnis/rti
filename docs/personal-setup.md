@@ -72,6 +72,10 @@ Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `
 
 Legacy files you may still see: `meetings/recordings/rti-<UUID>-mic.m4a` (old builds kept audio there) and `*.meeting.json` sidecars from Meeting Sentinel. The Sessions browser still lists them as recorded meetings.
 
+## Soniox context
+
+RTI tells Soniox the call type, project, calendar title and participant names, on the live and upgrade paths. Unusual names go in an optional `soniox-terms.txt` in the picked project's folder, one per line; `#` starts a comment. RTI reads it when recording starts and at archive time. Attendee emails, prep notes, briefs and project files are never sent as context.
+
 ## Transcript upgrade
 
 The upgrade script is `~/skills/file-transcriber/scripts/transcribe-soniox.py`. RTI calls it with English and Chinese hints and uses the one Soniox key for both lanes. The script reads that key from 1Password first and uses the key RTI passes only when 1Password fails. The Aliyun option was removed on 2026-09-26.
