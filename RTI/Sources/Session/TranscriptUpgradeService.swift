@@ -191,7 +191,7 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
     /// checkout location under the user's home.
     private let script = TranscriptUpgradeScripts.path(
         configKey: "soniox_file_script",
-        default: "Documents/code/file-transcriber/skills/file-transcriber/scripts/transcribe-soniox.py"
+        default: "skills/file-transcriber/scripts/transcribe-soniox.py"
     )
 
     func transcribe(audioURL: URL, outputBaseURL: URL) async throws -> String {

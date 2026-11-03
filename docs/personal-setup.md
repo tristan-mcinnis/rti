@@ -74,7 +74,7 @@ Legacy files you may still see: `meetings/recordings/rti-<UUID>-mic.m4a` (old bu
 
 ## Transcript upgrade
 
-The upgrade script is `~/Documents/code/file-transcriber/skills/file-transcriber/scripts/transcribe-soniox.py`. RTI calls it with English and Chinese hints and uses the one Soniox key for both lanes. The Aliyun option was removed on 2026-09-26.
+The upgrade script is `~/skills/file-transcriber/scripts/transcribe-soniox.py`. RTI calls it with English and Chinese hints and uses the one Soniox key for both lanes. The script reads that key from 1Password first and uses the key RTI passes only when 1Password fails. The Aliyun option was removed on 2026-09-26.
 
 ## Installing on this Mac
 

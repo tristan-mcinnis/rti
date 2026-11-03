@@ -1,5 +1,13 @@
 # RTI Change Log
 
+## 2026-11-03: Transcript upgrade uses the file-transcriber skill's script
+
+- **Script.** The default is now
+  `~/skills/file-transcriber/scripts/transcribe-soniox.py`, so one copy needs
+  updates. `soniox_file_script` in the config file still overrides it.
+- **Key.** That script reads the Soniox key from 1Password first and uses the
+  key RTI passes only when 1Password fails.
+
 ## 2026-11-03: Live transcription moves to Soniox v6
 
 - **Model.** Live transcription uses `stt-rt-v6`. Soniox removes `stt-rt-v5`

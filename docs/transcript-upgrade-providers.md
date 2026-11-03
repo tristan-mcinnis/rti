@@ -68,7 +68,7 @@ today, so a future batch provider does not inherit the live lane's choice.
 The upgrade runs `file-transcriber`'s Soniox script (the same one the
 `transcribe` skill uses):
 
-- Soniox: `~/Documents/code/file-transcriber/skills/file-transcriber/scripts/transcribe-soniox.py`
+- Soniox: `~/skills/file-transcriber/scripts/transcribe-soniox.py`
   (override with `soniox_file_script` in `~/.config/rti/config.json`)
 
 Aliyun was removed on 2026-09-26. RTI's adapter called an Aliyun NLS script
