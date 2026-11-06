@@ -15,7 +15,7 @@ public enum MeetingProcessorConfig {
     }
 
     /// The lanes whose `tasks/<lane>.md` the skill may commit, one entry each.
-    public static let taskLanes = ["cs-web", "cs-work", "inner-chapter", "harness", "personal", "finance"]
+    public static let taskLanes = ["inner-chapter", "harness", "personal", "finance"]
 
     /// What the `/meeting` skill needs and nothing more: read tools, mkdir
     /// under the work tree and ls, and the memory repo's add and fixed

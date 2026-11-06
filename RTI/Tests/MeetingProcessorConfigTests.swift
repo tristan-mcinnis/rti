@@ -32,7 +32,7 @@ final class MeetingProcessorConfigTests: XCTestCase {
         XCTAssertEqual(Array(arguments.prefix(2)), ["--permission-mode", "acceptEdits"])
         XCTAssertTrue(arguments.contains("--allowedTools"))
         XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory push)"))
-        XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory add tasks/cs-work.md)"))
+        XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory add tasks/inner-chapter.md)"))
         XCTAssertFalse(arguments.contains("Bash(git -C /Users/test/memory add tasks.md)"))
         XCTAssertTrue(arguments.contains("Bash(git -C /Users/test/memory pull --rebase)"))
         XCTAssertEqual(Array(arguments.suffix(2)), ["--add-dir", "/Users/test/memory"])
@@ -86,7 +86,7 @@ final class MeetingProcessorConfigTests: XCTestCase {
                 "Read", "Glob", "Grep",
                 "Bash(mkdir -p /Users/test/Documents/Work/*)", "Bash(ls *)",
             ]
-            + ["cs-web", "cs-work", "inner-chapter", "harness", "personal", "finance"].flatMap { lane in
+            + ["inner-chapter", "harness", "personal", "finance"].flatMap { lane in
                 [
                     "Bash(git -C /Users/test/memory add tasks/\(lane).md)",
                     "Bash(git -C /Users/test/memory commit -m meeting-tasks -- tasks/\(lane).md)",
