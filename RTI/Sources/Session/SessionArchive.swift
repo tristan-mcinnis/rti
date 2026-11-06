@@ -328,7 +328,8 @@ enum SessionArchive {
         archiveDir: URL?,
         callType: CallType,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
-        unreadableChatCount: Int = 0
+        unreadableChatCount: Int = 0,
+        typedNotes: [LiveEntry] = []
     ) -> URL? {
         guard let transcriptsRaw = meetingTranscriptsRawDirectory() else { return nil }
         try? FileManager.default.createDirectory(at: transcriptsRaw, withIntermediateDirectories: true)
@@ -342,7 +343,8 @@ enum SessionArchive {
             archiveDir: archiveDir,
             callType: callType,
             chatThreads: chatThreads,
-            unreadableChatCount: unreadableChatCount
+            unreadableChatCount: unreadableChatCount,
+            typedNotes: typedNotes
         )
         guard !sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let url = transcriptsRaw.appendingPathComponent("\(stem)-rti.md")
@@ -415,7 +417,8 @@ enum SessionArchive {
         archiveDir: URL?,
         callType: CallType,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
-        unreadableChatCount: Int = 0
+        unreadableChatCount: Int = 0,
+        typedNotes: [LiveEntry] = []
     ) -> String {
         var lines = [
             "---",
@@ -434,6 +437,10 @@ enum SessionArchive {
         }
         lines.append("")
 
+        // Notes the user typed during the call; the canonical transcript drops them.
+        if !typedNotes.isEmpty {
+            lines += ["## My notes", ""] + typedNotes.map { "- " + $0.text.replacingOccurrences(of: "\n", with: " ") } + [""]
+        }
         if !notes.isEmpty {
             lines.append("## Generated notes")
             lines.append("")

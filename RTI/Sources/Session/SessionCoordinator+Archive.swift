@@ -8,30 +8,13 @@ extension SessionCoordinator {
     /// Write the archive for the in-memory session state (shared by the
     /// normal completeStop path, emergencyShutdown, and the periodic
     /// crash-safety checkpoint). Returns the archive dir. Safe to call
-    /// repeatedly — SessionArchive overwrites the same folder. `route` is
-    /// false for mid-session checkpoints: routing a half-finished session
-    /// would create a premature field-notes file the final route then skips.
+    /// repeatedly — SessionArchive overwrites the same folder. Audio legs and
+    /// the canonical export are left to completeStop.
     @discardableResult
-    func archiveCurrentSession(endedAt: Date, route: Bool = true) -> URL? {
+    func archiveCurrentSession(endedAt: Date) -> URL? {
         guard let startedAt else { return nil }
-        let snapshot = finalizerSnapshot(
-            startedAt: startedAt,
-            endedAt: endedAt,
-            sessionId: currentSessionId,
-            includeAudio: route
-        )
-        let dir = SessionFinalizer(snapshot: snapshot).archive()
-        if route {
-            exportCanonicalMeeting(
-                startedAt: startedAt,
-                transcript: snapshot.transcript,
-                chat: snapshot.chat,
-                visualContext: snapshot.visualContext,
-                notes: snapshot.notes,
-                archiveDir: dir
-            )
-        }
-        return dir
+        let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt, sessionId: currentSessionId, includeAudio: false)
+        return SessionFinalizer(snapshot: snapshot).archive()
     }
 
     func finalizerSnapshot(
@@ -62,29 +45,6 @@ extension SessionCoordinator {
         )
     }
 
-    private func exportCanonicalMeeting(
-        startedAt: Date,
-        transcript: [LiveEntry],
-        chat: [ChatEntry],
-        visualContext: [VisualContextEvent],
-        notes: [GeneratedNote],
-        archiveDir: URL?,
-        process: Bool = true
-    ) {
-        guard let export = SessionArchive.writeCanonicalMeetingExport(
-            startedAt: startedAt,
-            transcript: transcript,
-            chat: chat,
-            visualContext: visualContext,
-            notes: notes,
-            archiveDir: archiveDir,
-            callType: CallTypeStore.shared.active
-        ) else { return }
-        if process {
-            SessionArchive.runMeetingProcessor(transcriptURL: export.transcriptURL)
-        }
-    }
-
     /// Crash-safety checkpoint: while a session runs, re-write the archive
     /// every 5 minutes so a hard crash (the one teardown path that can't
     /// archive) loses at most the last few minutes of notes/transcript.
@@ -94,7 +54,7 @@ extension SessionCoordinator {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
                 guard let self, isRunning, !Task.isCancelled else { return }
-                archiveCurrentSession(endedAt: Date(), route: false)
+                archiveCurrentSession(endedAt: Date())
             }
         }
     }

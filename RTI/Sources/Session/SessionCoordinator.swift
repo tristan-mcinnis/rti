@@ -257,7 +257,7 @@ final class SessionCoordinator {
             systemAudioStartOffsetMs = offsetMs
             // Recovery after a crash reads the offset from session.json, and
             // the first timed checkpoint is minutes away.
-            if isRunning { archiveCurrentSession(endedAt: Date(), route: false) }
+            if isRunning { archiveCurrentSession(endedAt: Date()) }
         }
         audioPipeline.onStreamRestarted = { [weak self] channel, atMs in
             self?.handleStreamRestarted(channel: channel, atMs: atMs)
@@ -670,7 +670,8 @@ final class SessionCoordinator {
                     notes: snapshot.notes,
                     archiveDir: archiveDir,
                     callType: CallTypeStore.shared.active,
-                    chatThreads: snapshot.chatThreads
+                    chatThreads: snapshot.chatThreads,
+                    typedNotes: snapshot.transcript.filter { $0.speakerId == "note" }
                 )
                 phase = .upgrading
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
@@ -755,7 +756,7 @@ final class SessionCoordinator {
         }
         // Retain the closed audio and checkpoint transcript, but leave routing
         // to the resumable automatic upgrade on the next launch.
-        archiveCurrentSession(endedAt: endedAt ?? Date(), route: false)
+        archiveCurrentSession(endedAt: endedAt ?? Date())
 
         phase = .idle
         transcriptionHealth = .idle

@@ -76,10 +76,12 @@ final class LiveNotesTests: XCTestCase {
             visualContext: [],
             notes: notes,
             archiveDir: dir,
-            callType: .client
+            callType: .client,
+            typedNotes: [LiveEntry(speakerId: "note", text: "Ask about the\nbudget", startMs: 0, confidence: 1, translationStatus: "none", language: nil, sourceLanguage: nil)]
         ))
         addTeardownBlock { try? FileManager.default.removeItem(at: sidecar) }
         let sidecarText = try String(contentsOf: sidecar, encoding: .utf8)
+        XCTAssertTrue(sidecarText.contains("## My notes\n\n- Ask about the budget\n"))
         XCTAssertTrue(sidecarText.contains("## Generated notes"))
         XCTAssertTrue(sidecarText.contains("### 0:00 – 2:00 · Launch timing"))
     }
