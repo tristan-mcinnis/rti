@@ -19,17 +19,4 @@ extension OverlayAppearanceDefaults {
     static func applyAppAppearance() {
         NSApp.appearance = nsAppearance()
     }
-
-    static func effectiveReduceMotion() -> Bool {
-        let raw = UserDefaults.standard.string(forKey: reduceMotionKey) ?? defaultReduceMotion
-        let mode = RTIReduceMotionMode(rawValue: raw) ?? .system
-        switch mode {
-        case .system:
-            return NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        case .on:
-            return true
-        case .off:
-            return false
-        }
-    }
 }

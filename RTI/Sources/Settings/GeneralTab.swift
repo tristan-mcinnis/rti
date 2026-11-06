@@ -255,13 +255,12 @@ private struct RealTimeSection: View {
 
 // MARK: - Appearance
 
-/// Theme, text size, speaker colours, and motion. The accent and contrast
+/// Theme, text size, and speaker colours. The accent and contrast
 /// controls are gone (the accent paints no chrome), and so are the window
 /// size sliders: the RTI window keeps the frame you give it.
 private struct AppearanceSection: View {
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
-    @AppStorage(OverlayAppearanceDefaults.reduceMotionKey) private var reduceMotion: String = OverlayAppearanceDefaults.defaultReduceMotion
 
     var body: some View {
         SettingsCard("Appearance", rows: true) {
@@ -298,19 +297,10 @@ private struct AppearanceSection: View {
                     }
                 }
             }
-            SettingsRow(title: "Reduce motion") {
-                InkSegmentedControl(
-                    selection: $reduceMotion,
-                    options: RTIReduceMotionMode.allCases.map { InkSegment(value: $0.rawValue, title: $0.label) }
-                )
-                .frame(maxWidth: House.Layout.settingsRail)
-                .onChange(of: reduceMotion) { _, _ in postAppearanceChanged() }
-            }
             CardNote {
                 Button("Reset to Defaults") {
                     appearanceMode = OverlayAppearanceDefaults.defaultAppearanceMode
                     uiFontSize = OverlayAppearanceDefaults.defaultUIFontSize
-                    reduceMotion = OverlayAppearanceDefaults.defaultReduceMotion
                     UserDefaults.standard.removeObject(forKey: OverlayAppearanceDefaults.lightModeKey)
                     postAppearanceChanged()
                 }

@@ -87,7 +87,7 @@ struct SettingsView: View {
             case .prompts: ["Assist", "recap", "instructions"]
             case .glossary: ["terms", "names", "acronyms", "spelling"]
             case .general: ["login", "microphone", "audio", "input", "echo", "Bluetooth", "screen", "privacy", "capture",
-                            "notes", "auto", "appearance", "theme", "dark", "light", "text size", "font", "motion",
+                            "notes", "auto", "appearance", "theme", "dark", "light", "text size", "font",
                             "speaker colours", "hotkeys", "shortcuts", "folder", "data"]
             case .logs: ["crash", "diagnostics", "errors"]
             case .about: ["version", "updates", "diagnostics", "source"]

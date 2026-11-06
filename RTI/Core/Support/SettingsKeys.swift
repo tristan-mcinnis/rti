@@ -12,7 +12,6 @@ public enum OverlayAppearanceDefaults {
     public static let lightModeKey = "rti.overlay.lightMode"
     public static let contrastKey = "rti.overlay.contrast"
     public static let uiFontSizeKey = "rti.overlay.uiFontSize"
-    public static let reduceMotionKey = "rti.overlay.reduceMotion"
     /// When true (the default), every RTI panel sets `sharingType = .none` so it
     /// is excluded from screen capture.
     public static let invisibilityKey = "rti.invisible"
@@ -22,7 +21,6 @@ public enum OverlayAppearanceDefaults {
     public static let defaultAppearanceMode = RTIAppearanceMode.dark.rawValue
     public static let defaultContrast: Double = 60
     public static let defaultUIFontSize: Double = 14
-    public static let defaultReduceMotion = RTIReduceMotionMode.system.rawValue
     // The overlay's single-row chrome and footer remain legible at 600 pt.
     // Below that, tab names and shortcut labels compress into wrapped glyphs.
     public static let widthRange: ClosedRange<Double> = 600...800
@@ -55,22 +53,6 @@ public enum RTIAppearanceMode: String, CaseIterable, Identifiable {
         case .system: "System"
         case .light: "Light"
         case .dark: "Dark"
-        }
-    }
-}
-
-public enum RTIReduceMotionMode: String, CaseIterable, Identifiable {
-    case system
-    case on
-    case off
-
-    public var id: String { rawValue }
-
-    public var label: String {
-        switch self {
-        case .system: "System"
-        case .on: "On"
-        case .off: "Off"
         }
     }
 }
