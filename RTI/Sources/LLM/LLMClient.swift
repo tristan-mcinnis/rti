@@ -330,24 +330,8 @@ final class LLMClient: @unchecked Sendable {
         let reasoningCharacters: Int
     }
 
-    /// Drains a `streamChat` AsyncThrowingStream into a single String,
-    /// honoring task cancellation between deltas.
-    func collectStreamedResponse(
-        messages: [LLMMessage],
-        smart: Bool = false,
-        route: ChatRouteConfiguration? = nil,
-        timeoutOverride: Double? = nil
-    ) async throws -> String {
-        try await collectDetailedResponse(
-            messages: messages,
-            smart: smart,
-            route: route,
-            timeoutOverride: timeoutOverride
-        ).text
-    }
-
-    /// `collectStreamedResponse` plus the stream's finish reason and reasoning
-    /// volume, so a caller that gets no text can say why.
+    /// Drains a `streamChat` AsyncThrowingStream into its text, finish reason
+    /// and reasoning volume, so a caller that gets no text can say why.
     func collectDetailedResponse(
         messages: [LLMMessage],
         smart: Bool = false,

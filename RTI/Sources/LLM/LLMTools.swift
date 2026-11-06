@@ -36,10 +36,6 @@ enum LLMToolRegistry {
         return try? JSONSerialization.data(withJSONObject: arr, options: [])
     }
 
-    /// The tools a policy offers, for a log line or a test.
-    static func offeredNames(policy: ChatToolPolicy) -> [String] {
-        all.map(\.name).filter { policy.allowsTool(named: $0) }
-    }
 
     // MARK: - Tools
 

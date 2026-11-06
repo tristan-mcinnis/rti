@@ -535,29 +535,6 @@ final class ChatSourceLifecycleTests: XCTestCase {
         XCTAssertEqual(controller.retainedImageCount, 1, "the archive deduped the reattached pathless image")
     }
 
-    /// `resumeThread(id:)` adopts a stored thread without swapping the live
-    /// entries, so it must not leave the previous chat's source archive active.
-    /// The stored thread keeps its own sources; `resumeChat(id:)` is the path
-    /// that restores them.
-    func testAdoptingAThreadWithoutItsEntriesDropsTheActiveSources() async throws {
-        let controller = makeController(stream: textStream())
-        controller.sendAskAnything(
-            "what number is in this document and image?",
-            attachments: [document(), image(name: "photo.png", byte: 0xAA)]
-        )
-        let id = try await waitForAThread()
-        _ = try await waitForTurns(2, in: id)
-        XCTAssertFalse(controller.retainedSourceNames.isEmpty, "precondition: a source is active")
-
-        _ = try await controller.resumeThread(id: id)
-        XCTAssertTrue(controller.retainedSourceNames.isEmpty, "no stale source survives the adoption")
-        XCTAssertEqual(controller.retainedImageCount, 0)
-
-        // The stored thread and its bytes are untouched.
-        let retained = try await store.retainedAttachments(id: id)
-        XCTAssertEqual(retained.map(\.name).sorted(), ["photo.png", "report.pdf"])
-    }
-
     // MARK: - 4. Prompt, policy and receipt agree
     func testThePromptPolicyAndReceiptAgreeOnEverySourceSituation() async throws {
         let controller = makeController(stream: textStream())

@@ -314,8 +314,6 @@ extension LLMController {
                             self.appendToStreamingEntry(delta)
                         case .reasoningStarted:
                             self.reasoning = true
-                        case .reasoningEnded:
-                            self.reasoning = false
                         case let .toolStatus(status):
                             self.toolStatus = status
                         case .toolStarted:

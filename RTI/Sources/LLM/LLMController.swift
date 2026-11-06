@@ -397,10 +397,8 @@ final class LLMController {
     /// `recapDepth`, which only picks how many bullets a full Recap writes.
     static let quickRecapWindowSeconds: Double = 300
 
-    /// Per-attachment ceiling for extracted text handed to the model, and the
-    /// ceiling across all attachments in one request. The model's own budget
-    /// is applied later by the prompt builder.
-    static let attachmentCharacterBudget = 200_000
+    /// Ceiling across all attachments' extracted text in one request. The
+    /// model's own budget is applied later by the prompt builder.
     static let attachmentTotalBudgetCharacters = 400_000
 
 #if DEBUG

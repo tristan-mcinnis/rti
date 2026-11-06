@@ -160,22 +160,6 @@ extension LLMController {
         return store
     }
 
-    /// A thread that is already stored, so a resumed chat continues instead of
-    /// starting over. Throws on a damaged record, which is exactly when the
-    /// caller must not write.
-    func resumeThread(id: String) async throws -> ConversationRecord? {
-        guard let store = try chatStore(), store.contains(id: id) else { return nil }
-        let thread = try await store.load(id: id)
-        chatThread = thread
-        // Adopting a thread here does not swap the live entries, so the active
-        // source archive must not survive pointing at the chat that was just
-        // left behind. Drop it: no stale document or image can then ride a turn
-        // filed into the adopted thread. The thread and its own bytes stay on
-        // disk; `resumeChat(id:)` is the path that restores them.
-        clearRetainedSources()
-        return thread
-    }
-
     /// Resume a stored thread in the live chat.
     ///
     /// The old thread stays on disk; this one becomes the current chat, so the

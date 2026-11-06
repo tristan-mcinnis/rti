@@ -19,7 +19,6 @@ struct ToolLoop {
     enum Event {
         case contentDelta(String)
         case reasoningStarted
-        case reasoningEnded
         case toolStatus(String)
         case toolStarted(name: String, status: String)
         case toolFinished(id: String, round: Int, name: String, arguments: String, elapsedMS: Int, result: String, status: ToolRoundStatus)
