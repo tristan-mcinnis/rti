@@ -156,7 +156,8 @@ final class LLMClient: @unchecked Sendable {
            let toolsArr = try? JSONSerialization.jsonObject(with: toolsJSON) as? [[String: Any]],
            !toolsArr.isEmpty {
             bodyDict["tools"] = toolsArr
-            bodyDict["tool_choice"] = "auto"
+            // The last round may not call tools, so the model always answers (as Quick Launch does).
+            bodyDict["tool_choice"] = messages.filter { $0.tool_calls != nil }.count >= ToolLoop.maxRounds - 1 ? "none" : "auto"
         }
 
         let body = try JSONSerialization.data(withJSONObject: bodyDict, options: [])

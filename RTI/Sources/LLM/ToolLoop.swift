@@ -13,7 +13,8 @@ import RTICore
 /// 4. Loop (max 4 iterations)
 @MainActor
 struct ToolLoop {
-
+    /// Tool rounds per turn; LLMClient forbids tools in the last one.
+    nonisolated static let maxRounds = 4
     /// Events emitted during the loop. Callers observe these to update UI.
     enum Event {
         case contentDelta(String)
@@ -85,11 +86,10 @@ struct ToolLoop {
         onEvent: @escaping @Sendable (Event) -> Void
     ) async {
         var messages = conversation
-        let maxIterations = 4
         var latestAssistantText = ""
         var toolExecutor = makeToolExecutor(allowsExternalRetrieval, allowsScreenTools)
 
-        for iteration in 0..<maxIterations {
+        for iteration in 0..<Self.maxRounds {
             // A `/new` or Stop cancels the whole send task. Without this check
             // the NEXT round would start a fresh provider call and fresh tools
             // after the current stream was cancelled.
@@ -167,12 +167,8 @@ struct ToolLoop {
             // Loop back: model sees its tool results and may emit more content or more tools.
         }
 
-        // A tool-call-only assistant message has no text. Never surface a
-        // blank reply after visible tool activity when the iteration cap hits.
-        let fallback = "I reached RTI's tool limit before a final answer. Please try a narrower question."
-        // Always the limit message: an earlier round's preamble ("Searching...")
-        // is not an answer and would be shown as one.
-        onEvent(.done(fallback))
+        // Reached only if a provider ignores the last round's tool_choice "none".
+        onEvent(.done("I reached RTI's tool limit before a final answer. Please try a narrower question."))
     }
 }
 
