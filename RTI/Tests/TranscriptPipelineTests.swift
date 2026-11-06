@@ -357,6 +357,15 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(rows.map(\.translationLanguage), ["zh"])
     }
 
+    /// Soniox sends translation tokens without times. They are not echo.
+    func test_untimedMicTranslation_isKeptBesideTheSameSystemTranslation() {
+        let p = TranscriptPipeline()
+        for channel in ["system", "mic"] {
+            p.process(words: [word("我们开始吧。", speaker: 1, start: 0, end: 0, translationStatus: "translation")], channel: channel)
+        }
+        XCTAssertEqual(p.liveEntries.map(\.speakerId), ["self", "remote_1"])
+    }
+
     func test_crossChannel_repeatedCorrectionsKeepCanonicalDisplayLineage() {
         let p = TranscriptPipeline()
         p.process(words: [word("Let’s discuss", speaker: 1, start: 0, end: 100)], channel: "system")

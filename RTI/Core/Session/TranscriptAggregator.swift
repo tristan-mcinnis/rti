@@ -10,14 +10,17 @@ public final class TranscriptAggregator {
 
     public private(set) var entries: [LiveEntry] = []
 
-    /// `entries` paired with the normalised text the live merge compares them
-    /// by, positionally in step by construction: this type is the only place
-    /// either collection is appended to, trimmed or cleared. Normalising
+    /// `entries`, less the untimed translations, paired with the normalised
+    /// text the live merge compares them by: this type is the only place any
+    /// of the three lists is appended to, trimmed or cleared. Normalising
     /// belongs here rather than in the merge because the merge republishes up
     /// to eight times a second over a transcript that grows all session, and
     /// recomputing it per pass was 86% of the busy main thread in a 1h45m
     /// session (2026-09-22).
     private(set) var normalizedEntries: [NormalizedEntry] = []
+    /// Translations whose tokens carry no time (Soniox sends none), so they
+    /// sit at the stream's start and take no part in echo or dedup.
+    private(set) var untimedTranslations: [LiveEntry] = []
     public private(set) var interimText: String? = nil
     public private(set) var interimSegments: [LiveTranscriptPresentation.InterimSegment] = []
     private var lastEndMs: Int = 0
@@ -63,7 +66,7 @@ public final class TranscriptAggregator {
         if !finals.isEmpty {
             let runs = SpeakerTurn.collapse(finals)
             let newEntries = runs.map { run in
-                LiveEntry(
+                (run.translationStatus == "translation" && run.words.allSatisfy { $0.endMs == 0 }, LiveEntry(
                     speakerId: SpeakerLabelMapping.rawLabel(speaker: run.speaker, channel: channel),
                     text: run.text,
                     startMs: run.startMs + startMsOffset,
@@ -76,10 +79,11 @@ public final class TranscriptAggregator {
                     tokens: run.words.map {
                         LiveEntry.TimedToken(text: $0.text, startMs: $0.startMs + startMsOffset, endMs: $0.endMs + startMsOffset)
                     }
-                )
+                ))
             }
-            for entry in newEntries {
+            for (untimed, entry) in newEntries {
                 entries.append(entry)
+                if untimed { untimedTranslations.append(entry); continue }
                 normalizedEntries.append(NormalizedEntry(
                     entry: entry,
                     dedupText: TranscriptTextNormalization.dedup(entry.text),
@@ -93,8 +97,11 @@ public final class TranscriptAggregator {
             // runaway guard.
             if entries.count > 50_000 {
                 let dropped = entries.count - 50_000
+                let gone = Set(entries.prefix(dropped).map(\.id))
+                let untimed = untimedTranslations.prefix { gone.contains($0.id) }.count
                 entries.removeFirst(dropped)
-                normalizedEntries.removeFirst(dropped)
+                untimedTranslations.removeFirst(untimed)
+                normalizedEntries.removeFirst(dropped - untimed)
             }
             let nonZeroMax = finals.compactMap({ $0.endMs > 0 ? $0.endMs : nil }).max()
             if let m = nonZeroMax { lastEndMs = m }
@@ -132,6 +139,7 @@ public final class TranscriptAggregator {
     public func reset() {
         entries = []
         normalizedEntries = []
+        untimedTranslations = []
         interimText = nil
         interimSegments = []
         lastEndMs = 0

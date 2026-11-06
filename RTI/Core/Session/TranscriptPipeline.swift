@@ -10,34 +10,33 @@ public final class TranscriptPipeline {
     private let systemAggregator = TranscriptAggregator(channel: "system")
     private var noteEntries: [LiveEntry] = []
 
-    /// Lazily-rebuilt merge of both channels + notes, sorted by `startMs`.
-    /// Before this cache, `liveEntries` re-concatenated and re-sorted the ENTIRE
-    /// transcript on *every* read — and `SessionCoordinator.publishState` read
-    /// it on every inbound Soniox frame (tens of thousands in a 2-hour session).
-    /// That O(N log N)-per-frame cost, rising with N, was the dominant CPU sink
-    /// behind the long-session slowdown. Now the merge happens once per finals
-    /// batch (cache invalidated only when entries actually change), and reads in
-    /// between are free.
-    ///
-    /// That cache still left the merge itself rebuilding from scratch, and the
-    /// 2026-09-22 1h45m profile put the merge at 86% of the busy main thread.
-    /// Normalising each entry's text is the only allocation-heavy step in it,
-    /// and it is done once per entry by the aggregator that owns the entry
-    /// (`TranscriptAggregator.normalizedEntries`), then reused by every later
-    /// merge instead of being recomputed on each of up to eight publishes a
-    /// second.
+    /// Lazily-rebuilt merge of both channels + notes, sorted by `startMs`,
+    /// invalidated only when entries change. A rebuild redoes only the open
+    /// part of the session: everything before the settled cut is already
+    /// folded into `settled`, so a long call costs no more per final than a
+    /// short one.
     private var cachedLiveEntries: [LiveEntry]?
 
-    /// Finals and their comparison forms are stable across publishes. A mic
-    /// fragment can change when echo filtering trims it, so text is checked
-    /// before reusing its form. Pair results are bounded cache entries only;
-    /// eviction changes cost, never the dedup decision.
-    private final class ComparisonForm {
-        let id = UUID()
+    /// The dedup pass's state after folding the first `notes`, `mic` and
+    /// `system` entries, which all start before every open entry. No final
+    /// starting at or after `untilMs` can change a folded entry's echo or
+    /// coverage verdict: it is a run gap and a dedup window away. An earlier
+    /// final resets this; a changed ID shows eviction. System entries before
+    /// `skip` are too early to be echo or coverage context for an open one.
+    private struct Settled {
+        var out: [LiveEntry] = [], forms: [ComparisonForm] = []
+        var notes = 0, mic = 0, system = 0, skip = 0, untilMs = Int.min
+        var micID: UUID?, systemID: UUID?
+    }
+    private var settled = Settled()
+    /// Settle only this far behind the newest final: one leg's finals can
+    /// trail the other's.
+    private static let settleLagMs = 30_000
+
+    private struct ComparisonForm {
         let text: String
         let count: Int
         let characters: Set<Character>
-        var comparisons: [UUID: Bool] = [:]
 
         init(_ text: String) {
             self.text = text
@@ -46,40 +45,84 @@ public final class TranscriptPipeline {
         }
     }
 
-    private struct MicCoverage {
-        let sequenceText: String
-        let systemIDs: [UUID]
-        let covered: Bool
-    }
-
-    private var comparisonForms: [UUID: ComparisonForm] = [:]
-    private var micCoverage: [UUID: MicCoverage] = [:]
-
-    private func comparisonForm(for entry: NormalizedEntry) -> ComparisonForm {
-        if let cached = comparisonForms[entry.entry.id], cached.text == entry.dedupText { return cached }
-        let form = ComparisonForm(entry.dedupText)
-        comparisonForms[entry.entry.id] = form
-        return form
-    }
-
     public init() {}
 
     public var liveEntries: [LiveEntry] {
         if let cached = cachedLiveEntries { return cached }
-        let micEntries = micAggregator.normalizedEntries
-        let systemEntries = systemAggregator.normalizedEntries
-        var merged: [NormalizedEntry] = []
-        merged.reserveCapacity(noteEntries.count + micEntries.count + systemEntries.count)
         // Notes are never dedup candidates, so they carry no normalised text.
-        for note in noteEntries {
-            merged.append(NormalizedEntry(entry: note, dedupText: "", sequenceText: ""))
-        }
-        merged.append(contentsOf: withoutEcho(micEntries, system: systemEntries))
-        merged.append(contentsOf: systemEntries)
+        let notes = noteEntries.map { NormalizedEntry(entry: $0, dedupText: "", sequenceText: "") }
+        let mic = micAggregator.normalizedEntries, system = systemAggregator.normalizedEntries
+        var s = settled
+        if s.notes > notes.count || s.mic > mic.count || s.system > system.count
+            || (s.mic > 0 && mic[s.mic - 1].entry.id != s.micID)
+            || (s.system > 0 && system[s.system - 1].entry.id != s.systemID) { s = Settled() }
+        let open = Array(mic[s.mic...]), heard = system[s.skip...].sorted { $0.entry.startMs < $1.entry.startMs }
+        var merged = Array(notes[s.notes...]) + withoutEcho(open, system: heard) + system[s.system...]
         merged.sort(by: { $0.entry.startMs < $1.entry.startMs })
-        let deduped = dedupedAcrossChannels(merged)
-        cachedLiveEntries = deduped
-        return deduped
+
+        // The latest cut before `horizon` that leaves every open mic word a
+        // run gap after the folded ones, and splits notes and system by time.
+        var later = open.map { Self.earliest($0.entry) } + [.max]
+        for i in open.indices.reversed() { later[i] = min(later[i], later[i + 1]) }
+        let horizon = max(mic.last?.entry.startMs ?? 0, system.last?.entry.startMs ?? 0) - Self.settleLagMs
+        func split(_ list: ArraySlice<NormalizedEntry>, _ beforeMs: Int) -> Int? {
+            let count = list.prefix { $0.entry.startMs < beforeMs }.count
+            return list.dropFirst(count).allSatisfy { $0.entry.startMs >= beforeMs } ? count : nil
+        }
+        var micCut: (mic: Int, beforeMs: Int, untilMs: Int)?
+        var maxStart = Int.min, maxEnd = Int.min
+        for i in later.indices {
+            let beforeMs = min(later[i], horizon)
+            let untilMs = max(s.untilMs, beforeMs, maxEnd + EchoFilter.runGapMs, maxStart + Self.dedupWindowMs + 1)
+            guard untilMs <= horizon else { break }
+            if maxStart < beforeMs, later[i] >= maxEnd + EchoFilter.runGapMs { micCut = (i, beforeMs, untilMs) }
+            guard i < open.count else { break }
+            maxStart = open[i].entry.tokens.reduce(max(maxStart, open[i].entry.startMs)) { max($0, $1.startMs) }
+            maxEnd = open[i].entry.tokens.reduce(maxEnd) { max($0, $1.endMs) }
+        }
+        var cut: (mic: Int, notes: Int, system: Int, beforeMs: Int, untilMs: Int)?
+        if let c = micCut, let n = split(notes[s.notes...], c.beforeMs), let y = split(system[s.system...], c.beforeMs) {
+            cut = (c.mic, n, y, c.beforeMs, c.untilMs)
+        }
+
+        let folded = cut.map { cut in merged.prefix { $0.entry.startMs < cut.beforeMs }.count } ?? 0
+        for item in merged[..<folded] where !Self.covered(item, by: heard) { Self.fold(item, into: &s.out, &s.forms) }
+        var out = s.out, forms = s.forms
+        for item in merged[folded...] where !Self.covered(item, by: heard) { Self.fold(item, into: &out, &forms) }
+        if let cut {
+            s.notes += cut.notes
+            s.mic += cut.mic
+            s.system += cut.system
+            s.micID = s.mic > 0 ? mic[s.mic - 1].entry.id : nil
+            s.systemID = s.system > 0 ? system[s.system - 1].entry.id : nil
+            s.untilMs = cut.untilMs
+            while s.skip < system.count, system[s.skip].entry.startMs < cut.beforeMs - Self.dedupWindowMs,
+                  system[s.skip].entry.tokens.allSatisfy({ $0.startMs < cut.beforeMs - EchoFilter.windowMs }) { s.skip += 1 }
+        }
+        settled = s
+        let untimed = (micAggregator.untimedTranslations + systemAggregator.untimedTranslations)
+            .sorted { $0.startMs < $1.startMs }
+        let result = Self.slot(untimed, into: out)
+        cachedLiveEntries = result
+        return result
+    }
+
+    /// Untimed translations (`TranscriptAggregator.untimedTranslations`) sit
+    /// at their stream's start, after notes and mic entries of the same
+    /// `startMs` when they come from the system leg, and after the timed
+    /// entries of their own leg.
+    private static func slot(_ untimed: [LiveEntry], into out: [LiveEntry]) -> [LiveEntry] {
+        func key(_ e: LiveEntry) -> (Int, Int) { (e.startMs, e.speakerId == "note" ? 0 : isMicEntry(e) ? 1 : 2) }
+        var result: [LiveEntry] = [], next = 0
+        result.reserveCapacity(out.count + untimed.count)
+        for entry in out {
+            while next < untimed.count, key(untimed[next]) < key(entry) {
+                result.append(untimed[next])
+                next += 1
+            }
+            result.append(entry)
+        }
+        return result + untimed[next...]
     }
 
     // MARK: - Cross-channel echo dedup
@@ -160,96 +203,47 @@ public final class TranscriptPipeline {
     private static let dedupMinChars = 6
     private static let dedupJaccard = 0.8
 
-    private func dedupedAcrossChannels(_ entries: [NormalizedEntry]) -> [LiveEntry] {
-        guard entries.count > 1 else { return entries.map(\.entry) }
-
-        // Aggregators can evict their oldest finals at the safety bound. Drop
-        // retired metadata in batches rather than retaining it for the session.
-        if comparisonForms.count + micCoverage.count > entries.count * 2 + 1_024 {
-            let currentIDs = Set(entries.map { $0.entry.id })
-            comparisonForms = comparisonForms.filter { currentIDs.contains($0.key) }
-            micCoverage = micCoverage.filter { currentIDs.contains($0.key) }
+    /// One step of the dedup pass, in `startMs` order: `entry` joins `out`
+    /// unless it duplicates a recent one, whose slot then keeps the more
+    /// complete text.
+    private static func fold(_ merged: NormalizedEntry, into out: inout [LiveEntry], _ forms: inout [ComparisonForm]) {
+        let entry = merged.entry, form = ComparisonForm(merged.dedupText)
+        let window = out.indices.reversed().prefix { entry.startMs - out[$0].startMs <= dedupWindowMs }
+        guard isDedupCandidate(entry), let m = window.first(where: {
+            isDedupCandidate(out[$0]) && out[$0].speakerId != entry.speakerId && nearDuplicate(forms[$0], form)
+        }) else {
+            out.append(entry)
+            forms.append(form)
+            return
         }
-
-        // Direct-system entries, in `entries` order (already sorted by
-        // `startMs`), so each mic entry's ±5s echo window is a bisected slice
-        // of this list instead of a re-scan of the whole transcript. That scan
-        // was the pass's quadratic term (2026-09-22).
-        var systemPositions: [Int] = []
-        for (index, entry) in entries.enumerated() where Self.isSystemEntry(entry.entry) {
-            systemPositions.append(index)
-        }
-
-        let echoMicIndices = Set(entries.indices.filter { index in
-            micEntryIsCoveredBySystemContext(
-                entries[index],
-                systemPositions: systemPositions,
-                entries: entries
-            )
-        })
-        var out: [LiveEntry] = []
-        var outForms: [ComparisonForm] = []
-        out.reserveCapacity(entries.count)
-        outForms.reserveCapacity(entries.count)
-        for (index, merged) in entries.enumerated() {
-            let entry = merged.entry
-            if echoMicIndices.contains(index) { continue }
-            let form = comparisonForm(for: merged)
-            guard Self.isDedupCandidate(entry) else {
-                out.append(entry)
-                outForms.append(form)
-                continue
-            }
-            var matchedIndex: Int? = nil
-            var i = out.count - 1
-            while i >= 0 {
-                let prev = out[i]
-                if entry.startMs - prev.startMs > Self.dedupWindowMs { break }   // outside window (sorted asc)
-                if Self.isDedupCandidate(prev),
-                   prev.speakerId != entry.speakerId,
-                   Self.nearDuplicate(outForms[i], form) {
-                    matchedIndex = i
-                    break
-                }
-                i -= 1
-            }
-            if let m = matchedIndex {
-                // Keep the more complete transcription, in the earlier slot.
-                if entry.text.count > out[m].text.count {
-                    let kept = out[m]
-                    // The peer's token boundaries belong to another socket.
-                    // Replace the interior, retaining the canonical fragment's
-                    // exact edges so neither neighbour gains or loses spacing.
-                    let leading = kept.text.prefix(while: \.isWhitespace)
-                    let trailing = kept.text.reversed().prefix(while: \.isWhitespace).reversed()
-                    let correctedText = String(leading)
-                        + entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                        + String(trailing)
-                    // No word alignment was established for this substitution.
-                    // Leave timed tokens empty rather than inventing timestamps.
-                    out[m] = LiveEntry(
-                        speakerId: kept.speakerId,
-                        text: correctedText,
-                        startMs: kept.startMs,
-                        confidence: kept.confidence,
-                        translationStatus: kept.translationStatus,
-                        language: kept.language,
-                        sourceLanguage: kept.sourceLanguage,
-                        id: kept.id,
-                        textOrigin: .providerCorrection(continuingStreamID: kept.displayStreamID),
-                        streamID: entry.streamID
-                    )
-                    // That slot's text just changed, so its cached normal form
-                    // must follow it: later entries compare against this one.
-                    outForms[m] = form
-                }
-                // else: keep what we have, drop the duplicate.
-            } else {
-                out.append(entry)
-                outForms.append(form)
-            }
-        }
-        return out
+        // Keep the more complete transcription, in the earlier slot.
+        guard entry.text.count > out[m].text.count else { return }
+        let kept = out[m]
+        // The peer's token boundaries belong to another socket.
+        // Replace the interior, retaining the canonical fragment's
+        // exact edges so neither neighbour gains or loses spacing.
+        let leading = kept.text.prefix(while: \.isWhitespace)
+        let trailing = kept.text.reversed().prefix(while: \.isWhitespace).reversed()
+        let correctedText = String(leading)
+            + entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            + String(trailing)
+        // No word alignment was established for this substitution.
+        // Leave timed tokens empty rather than inventing timestamps.
+        out[m] = LiveEntry(
+            speakerId: kept.speakerId,
+            text: correctedText,
+            startMs: kept.startMs,
+            confidence: kept.confidence,
+            translationStatus: kept.translationStatus,
+            language: kept.language,
+            sourceLanguage: kept.sourceLanguage,
+            id: kept.id,
+            textOrigin: .providerCorrection(continuingStreamID: kept.displayStreamID),
+            streamID: entry.streamID
+        )
+        // That slot's text just changed, so its normal form must follow it:
+        // later entries compare against this one.
+        forms[m] = form
     }
 
     /// A single mic echo can span two or more Soniox final batches from the
@@ -257,66 +251,27 @@ public final class TranscriptPipeline {
     /// leaves alternating, repeated "speakers" in the transcript. Compare
     /// each mic fragment with the nearby direct-system context for one remote
     /// speaker before the existing pairwise fallback.
-    /// `systemPositions` holds every direct-system entry's index in `entries`,
-    /// in ascending `startMs`, so this compares against the ±5s window only:
-    /// scanning every entry once per mic entry was the pass's other quadratic
-    /// term.
-    private func micEntryIsCoveredBySystemContext(
-        _ merged: NormalizedEntry,
-        systemPositions: [Int],
-        entries: [NormalizedEntry]
-    ) -> Bool {
+    private static func covered(_ merged: NormalizedEntry, by system: [NormalizedEntry]) -> Bool {
         let entry = merged.entry
-        guard Self.isMicEntry(entry), Self.isDedupCandidate(entry) else { return false }
-        guard merged.sequenceText.count >= Self.dedupMinChars else { return false }
-
-        let upperMs = entry.startMs + Self.dedupWindowMs
-        var candidates: [Int] = []
-        var slot = Self.firstSystemSlot(systemPositions, entries: entries, atOrAfter: entry.startMs - Self.dedupWindowMs)
-        while slot < systemPositions.count {
-            let position = systemPositions[slot]
-            if entries[position].entry.startMs > upperMs { break }
-            if Self.isDedupCandidate(entries[position].entry) { candidates.append(position) }
-            slot += 1
+        guard isMicEntry(entry), isDedupCandidate(entry), merged.sequenceText.count >= dedupMinChars else { return false }
+        // `system` is sorted by `startMs`: bisect to the window's first entry.
+        var low = 0, high = system.count
+        while low < high {
+            let mid = (low + high) / 2
+            if system[mid].entry.startMs < entry.startMs - dedupWindowMs { low = mid + 1 } else { high = mid }
         }
-
-        // Late/out-of-order system finals change this bounded window's IDs.
-        // Reusing only an identical window preserves the original join and
-        // Unicode normalization semantics while avoiding old work per publish.
-        let systemIDs = candidates.map { entries[$0].entry.id }
-        if let cached = micCoverage[entry.id], cached.sequenceText == merged.sequenceText,
-           cached.systemIDs == systemIDs { return cached.covered }
         var systemContextBySpeaker: [String: [String]] = [:]
-        for position in candidates {
-            let candidate = entries[position].entry
+        for candidate in system[low...].lazy.map(\.entry).prefix(while: { $0.startMs <= entry.startMs + dedupWindowMs })
+        where isDedupCandidate(candidate) {
             systemContextBySpeaker[candidate.speakerId, default: []].append(candidate.text)
         }
-        let covered = systemContextBySpeaker.values.contains { fragments in
-            let context = TranscriptTextNormalization.sequence(fragments.joined(separator: " "))
-            return context.contains(merged.sequenceText)
+        return systemContextBySpeaker.values.contains { fragments in
+            TranscriptTextNormalization.sequence(fragments.joined(separator: " ")).contains(merged.sequenceText)
         }
-        micCoverage[entry.id] = MicCoverage(sequenceText: merged.sequenceText, systemIDs: systemIDs, covered: covered)
-        return covered
     }
 
-    /// Bisects `systemPositions` (ascending `startMs`) for the first slot whose
-    /// entry starts at or after `ms`.
-    private static func firstSystemSlot(
-        _ systemPositions: [Int],
-        entries: [NormalizedEntry],
-        atOrAfter ms: Int
-    ) -> Int {
-        var low = 0
-        var high = systemPositions.count
-        while low < high {
-            let mid = low + (high - low) / 2
-            if entries[systemPositions[mid]].entry.startMs < ms {
-                low = mid + 1
-            } else {
-                high = mid
-            }
-        }
-        return low
+    private static func earliest(_ entry: LiveEntry) -> Int {
+        entry.tokens.reduce(entry.startMs) { min($0, $1.startMs) }
     }
 
     private static func isDedupCandidate(_ e: LiveEntry) -> Bool {
@@ -327,28 +282,13 @@ public final class TranscriptPipeline {
         entry.speakerId == "self" || entry.speakerId.hasPrefix("room_")
     }
 
-    private static func isSystemEntry(_ entry: LiveEntry) -> Bool {
-        entry.speakerId.hasPrefix("remote_")
-    }
-
     private static func nearDuplicate(_ a: ComparisonForm, _ b: ComparisonForm) -> Bool {
-        if let cached = a.comparisons[b.id] ?? b.comparisons[a.id] { return cached }
-        let result: Bool
-        if a.count < dedupMinChars || b.count < dedupMinChars { result = false }
-        else {
-            let (short, long) = a.count <= b.count ? (a, b) : (b, a)
-            if long.text.contains(short.text) { result = true }
-            else {
-                let intersection = a.characters.reduce(0) { $0 + (b.characters.contains($1) ? 1 : 0) }
-                let union = a.characters.count + b.characters.count - intersection
-                result = union > 0 && Double(intersection) / Double(union) >= dedupJaccard
-            }
-        }
-        // A changing echo fragment gets a new form. Bound retired-form keys
-        // for dense or repeatedly corrected windows without limiting candidates.
-        if a.comparisons.count >= 64 { a.comparisons.removeAll(keepingCapacity: true) }
-        a.comparisons[b.id] = result
-        return result
+        if a.count < dedupMinChars || b.count < dedupMinChars { return false }
+        let (short, long) = a.count <= b.count ? (a, b) : (b, a)
+        if long.text.contains(short.text) { return true }
+        let intersection = a.characters.reduce(0) { $0 + (b.characters.contains($1) ? 1 : 0) }
+        let union = a.characters.count + b.characters.count - intersection
+        return union > 0 && Double(intersection) / Double(union) >= dedupJaccard
     }
 
     public var interimLine: String? {
@@ -374,14 +314,21 @@ public final class TranscriptPipeline {
     /// skipped.
     @discardableResult
     public func process(words: [SonioxWord], channel: String) -> Bool {
-        let appended: Bool
+        let aggregator: TranscriptAggregator
         switch channel {
-        case "mic": appended = micAggregator.process(words)
-        case "system": appended = systemAggregator.process(words)
-        default: appended = false
+        case "mic": aggregator = micAggregator
+        case "system": aggregator = systemAggregator
+        default: return false
         }
-        if appended { cachedLiveEntries = nil }
-        return appended
+        let before = (aggregator.entries.count, aggregator.untimedTranslations.count)
+        guard aggregator.process(words) else { return false }
+        cachedLiveEntries = nil
+        // A timed final that starts before the settled cut reopens the session.
+        let untimed = Set(aggregator.untimedTranslations.dropFirst(before.1).map(\.id))
+        if aggregator.entries.dropFirst(before.0).contains(where: { !untimed.contains($0.id) && Self.earliest($0) < settled.untilMs }) {
+            settled = Settled()
+        }
+        return true
     }
 
     /// Align the system channel's entries onto the mic timeline. `ms` is how
@@ -407,6 +354,7 @@ public final class TranscriptPipeline {
             sourceLanguage: nil
         )
         noteEntries.append(entry)
+        if noteEntries.count > 500 || offsetMs < settled.untilMs { settled = Settled() }
         if noteEntries.count > 500 { noteEntries.removeFirst(noteEntries.count - 500) }
         cachedLiveEntries = nil
         return true
@@ -417,8 +365,7 @@ public final class TranscriptPipeline {
         systemAggregator.reset()
         noteEntries = []
         echoSources = [:]
-        comparisonForms = [:]
-        micCoverage = [:]
+        settled = Settled()
         cachedLiveEntries = nil
     }
 
