@@ -87,10 +87,6 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertTrue(text.contains("GUIDE"))
     }
 
-    func test_promptContext_hasContentWhenReferencedDocumentsPresent() {
-        XCTAssertTrue(PromptContext(referencedDocuments: "doc").hasContent)
-    }
-
     func test_conversation_latestUserTurnUsesFullContent() {
         let entries = [entry("user", "first"), entry("assistant", "reply"), entry("user", "raw latest")]
         let msgs = PromptBuilder.buildConversationMessages(entries: entries, fullContent: "AUGMENTED")

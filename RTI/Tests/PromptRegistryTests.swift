@@ -58,8 +58,6 @@ final class PromptRegistryTests: XCTestCase {
         XCTAssertTrue(composed.hasPrefix("Recap the conversation so far "))
         XCTAssertTrue(composed.contains("CUSTOM_CLAUSE"))
         XCTAssertTrue(composed.contains("Reply in ENGLISH regardless"))
-        // Default resolver still yields the shipped prompt.
-        XCTAssertEqual(PromptComposer.recap(.standard), PromptCatalogue.recap(.standard))
     }
 
     func test_recapClauseIDMapsDepths() {

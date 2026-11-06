@@ -116,23 +116,11 @@ public enum VaultSearch {
 
     // MARK: - Public entry (async, off the main thread)
 
-    /// Run a vault search and format the results as the string the model sees.
-    /// Never throws — a miss or an unreachable vault returns an explanatory line
-    /// the model can act on.
-    /// `scopeRelativePath` (e.g. `projects/acme-running-retail-concept`) focuses
-    /// results on the meeting's project: in-project documents (its transcripts,
-    /// meetings, findings) are preferred, and only if nothing in the project
-    /// matches does the search broaden to the whole vault — so "what did Group
-    /// One say about their favourite store" lands on this project's transcript.
-    public static func searchFormatted(query: String, scopeRelativePath: String? = nil) async -> String {
-        await retrieve(query: query, scopeRelativePath: scopeRelativePath).formatted
-    }
-
     /// Structured form of a search: the ranked records, their citeable handles,
     /// and the material the model reads, from one pass. `citeable` prints each
     /// document's handle in the material so a citation names an exact ID instead
     /// of a document name the model types from memory. Pass `citeable: false`
-    /// (the default, and what `searchFormatted` does) for the existing format.
+    /// (the default) for the existing format.
     public static func retrieve(
         query: String,
         scopeRelativePath: String? = nil,
@@ -179,16 +167,6 @@ public enum VaultSearch {
                 cont.resume(returning: search(query: query, scopeRelativePath: scopeRelativePath))
             }
         }
-    }
-
-    /// Keep only results inside the scoped project; if none, return the
-    /// unfiltered top (broaden) and report the miss so the caller can label it.
-    public static func applyScope(_ results: [Result], scope: String?) -> (results: [Result], inScope: Bool) {
-        guard let scope, !scope.isEmpty else { return (Array(results.prefix(resultLimit)), false) }
-        let prefix = scope.hasSuffix("/") ? scope : scope + "/"
-        let hits = results.filter { $0.relativePath.hasPrefix(prefix) }
-        if !hits.isEmpty { return (Array(hits.prefix(resultLimit)), true) }
-        return (Array(results.prefix(resultLimit)), false)
     }
 
     // MARK: - Core

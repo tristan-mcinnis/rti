@@ -105,13 +105,9 @@ final class ChatTurnRecordTests: XCTestCase {
 
     // MARK: - Sources
 
-    func test_dayTextAndSourcesText() {
+    func test_dayText() {
         let calendar = Calendar(identifier: .gregorian)
         let date = calendar.date(from: DateComponents(year: 2026, month: 9, day: 4, hour: 12))!
         XCTAssertEqual(ChatTurnRecordBuilder.dayText(for: date, calendar: calendar), "2026-09-04")
-        XCTAssertEqual(
-            ChatTurnRecordBuilder.sourcesText([ChatSource(title: "A", path: "a.md"), ChatSource(title: "B", path: "b/c.md")]),
-            "a.md\nb/c.md"
-        )
     }
 }

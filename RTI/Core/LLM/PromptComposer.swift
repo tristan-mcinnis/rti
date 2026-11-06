@@ -5,7 +5,7 @@ import Foundation
 /// injected resolver.
 ///
 /// The resolver is the seam that lets the SAME composition logic serve both the
-/// pure defaults (tests, `PromptCatalogue`) and the override-aware app
+/// pure defaults (tests) and the override-aware app
 /// (`PromptStore`): pass `{ $0.defaultText }` for defaults, or
 /// `{ PromptStore.shared.text($0) }` for user-edited prompts. Composition lives
 /// here once instead of being duplicated across those two layers.

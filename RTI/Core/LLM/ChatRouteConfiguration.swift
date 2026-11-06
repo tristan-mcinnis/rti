@@ -31,8 +31,6 @@ public enum ChatImageRoute: String, Codable, Sendable, CaseIterable {
     case cloudInline
     /// Images stayed on this Mac; only OCR text reached the model.
     case textOnly
-
-    public var isCloud: Bool { self == .cloudInline }
 }
 
 /// What the user picked for one chat. Provider and model are per chat; the

@@ -864,15 +864,6 @@ public actor ChatThreadStore {
     public func removeArtifactsIfUnreferenced(_ refs: [ArtifactRef]) async throws -> [ArtifactRef] {
         try await coordinator.removeArtifactsIfUnreferenced(refs)
     }
-
-    /// Storage usage per artifact kind, for the storage line.
-    public func storageUsageByKind() async throws -> [ArtifactRef.Kind: Int] {
-        var usage: [ArtifactRef.Kind: Int] = [:]
-        for ref in try await attachments.list() {
-            usage[ref.kind, default: 0] += ref.byteCount
-        }
-        return usage
-    }
 }
 
 public extension ChatThreadStore {
@@ -883,5 +874,4 @@ public extension ChatThreadStore {
     /// namespace `"rti"`, key `"pinned"`, value a JSON bool. It survives a
     /// round trip through either app and never becomes a shared field.
     static var pinnedPayloadKey: String { "pinned" }
-    static var payloadNamespace: String { "rti" }
 }

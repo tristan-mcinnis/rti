@@ -11,9 +11,9 @@ final class PromptCatalogueTests: XCTestCase {
     // MARK: - Recap depth
 
     func test_recap_variesOnlyInBulletClause_sharedLanguageRule() {
-        let brief = PromptCatalogue.recap(.brief)
-        let standard = PromptCatalogue.recap(.standard)
-        let detailed = PromptCatalogue.recap(.detailed)
+        let brief = PromptComposer.recap(.brief)
+        let standard = PromptComposer.recap(.standard)
+        let detailed = PromptComposer.recap(.detailed)
 
         XCTAssertTrue(brief.contains("1–2 short bullets"))
         XCTAssertTrue(standard.contains("3–5 short bullets"))
@@ -38,8 +38,8 @@ final class PromptCatalogueTests: XCTestCase {
     // MARK: - Listener vs speaker framing
 
     func test_assist_switchesOnListenerState() {
-        let speaker = PromptCatalogue.assist(listener: false)
-        let listener = PromptCatalogue.assist(listener: true)
+        let speaker = PromptComposer.assist(listener: false)
+        let listener = PromptComposer.assist(listener: true)
         XCTAssertTrue(speaker.contains("suggest what I should say or ask next"))
         XCTAssertTrue(listener.contains("**[TAG]**"))
         XCTAssertTrue(listener.contains("**Matters:**"))
@@ -47,29 +47,29 @@ final class PromptCatalogueTests: XCTestCase {
     }
 
     func test_followups_switchesOnListenerState() {
-        let speaker = PromptCatalogue.followups(listener: false)
-        let listener = PromptCatalogue.followups(listener: true)
+        let speaker = PromptComposer.followups(listener: false)
+        let listener = PromptComposer.followups(listener: true)
         XCTAssertTrue(speaker.contains("List 3 thoughtful follow-up questions"))
         XCTAssertTrue(listener.contains("I'm a passive listener"))
         XCTAssertNotEqual(speaker, listener)
     }
 
     func test_sayNext_hasNoListenerVariant() {
-        XCTAssertTrue(PromptCatalogue.sayNext.contains("draft exactly one short reply"))
+        XCTAssertTrue(PromptID.sayNext.defaultText.contains("draft exactly one short reply"))
     }
 
     // MARK: - Listener research actions
 
     func test_listenerResearchPrompts() {
-        XCTAssertTrue(PromptCatalogue.keyTensions.contains("KEY TENSIONS"))
-        XCTAssertTrue(PromptCatalogue.probe.contains("LEFT UNSAID"))
-        XCTAssertTrue(PromptCatalogue.themes.contains("EMERGING THEMES"))
+        XCTAssertTrue(PromptID.keyTensions.defaultText.contains("KEY TENSIONS"))
+        XCTAssertTrue(PromptID.probe.defaultText.contains("LEFT UNSAID"))
+        XCTAssertTrue(PromptID.themes.defaultText.contains("EMERGING THEMES"))
     }
 
     // MARK: - System
 
     func test_systemPrompt_present() {
-        XCTAssertTrue(PromptCatalogue.system.contains("You are RTI, a real-time meeting assistant"))
-        XCTAssertTrue(PromptCatalogue.system.contains("## User notes"))
+        XCTAssertTrue(PromptID.systemDefault.defaultText.contains("You are RTI, a real-time meeting assistant"))
+        XCTAssertTrue(PromptID.systemDefault.defaultText.contains("## User notes"))
     }
 }

@@ -46,14 +46,6 @@ public struct PromptContext {
         self.sourceContext = sourceContext
         self.externalRetrievalAllowed = externalRetrievalAllowed
     }
-
-    public var hasContent: Bool {
-        meetingContext != nil
-            || meetingBrief != nil
-            || glossaryFragment != nil
-            || screenContext != nil
-            || referencedDocuments != nil
-    }
 }
 
 /// Builds the ordered [LLMMessage] list fed to the LLM for every chat turn.

@@ -2,7 +2,7 @@ import Foundation
 
 /// Every user-tunable prompt in RTI, as one flat registry.
 ///
-/// Prompts used to be `static let` literals scattered across `PromptCatalogue`
+/// Prompts used to be `static let` literals scattered across a prompt catalogue
 /// (on-demand actions) and the Auto-mode controller (a background JSON job),
 /// so they could neither be surfaced in Settings nor edited without a rebuild.
 /// This enum is the single source of truth for the *default* text of each one;
