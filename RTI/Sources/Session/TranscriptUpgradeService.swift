@@ -228,8 +228,8 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
 }
 
 /// Where the offline transcript-provider scripts live. One config file
-/// (`~/.config/rti/config.json`) anchors every path RTI touches; these two
-/// keys let the checkouts move without a rebuild.
+/// (`~/.config/rti/config.json`) anchors every path RTI touches; its
+/// `soniox_file_script` key lets the checkout move without a rebuild.
 private enum TranscriptUpgradeScripts {
     static func path(configKey: String, default homeRelative: String) -> String {
         if let configured = VaultPaths.configDictionary()[configKey] as? String, !configured.isEmpty {

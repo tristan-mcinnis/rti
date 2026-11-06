@@ -59,8 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             CoreAudioTapCapture.cleanupStaleDevices()
         }
 
-        // Belt-and-suspenders: delete any orphan WAV left in temp by a crash.
-        // Normal stops already delete it; the app keeps no audio.
+        // Belt-and-suspenders: delete any orphan temp WAV left by a crash.
+        // Retained WAV legs live in the session archive, not in temp.
         WAVWriter.sweepStaleRecordings()
 
         // Register the periodic tasks (live notes, Auto mode). They only fire

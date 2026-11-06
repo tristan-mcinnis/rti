@@ -11,8 +11,6 @@ import Observation
 /// - `focusRequest`: bump it to put the keys in the composer field (the
 ///   house `FocusRequest` pattern; the window posts `rtiOverlayDidBecomeKey`
 ///   and the composer bumps it too).
-/// - `paletteRequest`: bump it to open the `⌘K` action palette from outside
-///   the field (a menu item, a header button).
 /// - `lastQuestion`: the last question typed and sent, which `↑` in an empty
 ///   field puts back. Memory only, like the chat.
 @Observable @MainActor
@@ -31,11 +29,8 @@ final class OverlayInputState {
     var lastQuestion: String?
 
     private(set) var focusRequest = 0
-    private(set) var paletteRequest = 0
 
     func requestFocus() { focusRequest &+= 1 }
-
-    func requestPalette() { paletteRequest &+= 1 }
 
     private init() {}
 }

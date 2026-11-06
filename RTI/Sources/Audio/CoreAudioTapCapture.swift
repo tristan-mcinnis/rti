@@ -498,22 +498,6 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         return format
     }
 
-    // MARK: - Permission
-
-    /// Whether system-audio capture (`kTCCServiceAudioCapture`) is granted —
-    /// probed by trying to create a tap. Used by `AudioPipeline` to decide
-    /// whether the tap path is viable before committing to it.
-    static func isPermissionGranted() -> Bool {
-        let tapDesc = makeGlobalTapDescription(excludingProcessID: currentProcessAudioObjectID(), name: "RTI Permission Check")
-        var testTapID: AudioObjectID = kAudioObjectUnknown
-        let status = AudioHardwareCreateProcessTap(tapDesc, &testTapID)
-        if status == noErr, testTapID != kAudioObjectUnknown {
-            AudioHardwareDestroyProcessTap(testTapID)
-            return true
-        }
-        return false
-    }
-
     // MARK: - Stale Device Cleanup
 
     /// Remove phantom "RTI System Audio" aggregate devices left behind by a

@@ -416,7 +416,6 @@ struct AssistantInputView: View {
             if scopeItems.isEmpty { scopeItems = Self.loadScopeItems() }
             if contextMeetings.isEmpty { contextMeetings = Self.loadContextMeetings() }
         }
-        .onChange(of: inputState.paletteRequest) { _, _ in openPalette() }
     }
 
     var body: some View {

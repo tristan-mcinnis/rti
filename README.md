@@ -156,7 +156,7 @@ These features work only when their tool is on your Mac. Without it, RTI skips t
 
 | Integration | What it needs | Without it |
 |---|---|---|
-| Notes folder | A folder you choose, set as `recordings_dir` in `~/.config/rti/config.json`. RTI treats `<folder>/../..` as the notes root and copies each transcript to `<notes root>/meetings/transcripts-raw`. The assistant's keyword search reads Markdown files under the notes root. | Chats are not saved. The assistant cannot search past notes. |
+| Notes folder | A folder you choose, set as `recordings_dir` in `~/.config/rti/config.json`. RTI treats `<folder>/../..` as the notes root. After the upgrade it copies each transcript to `transcripts_dir` in the config, else to `<notes root>/meetings/transcripts-raw`. The assistant's keyword search reads Markdown files under the notes root. | Chats are not saved. The assistant cannot search past notes. |
 | Session archives | `sessions_dir` in the config file. The default is `~/Documents/Work/Inner-Chapter/meetings/sessions`. | RTI saves sessions at the default path. |
 | `/meeting` processor (`claude -p`) | `"auto_process": true` in the config file, a notes folder, the Claude Code command line tool (`claude`), and a `/meeting` skill that you wrote. | Nothing runs. It is off by default. See the warning below. |
 | Transcript upgrade (file-transcriber) | A helper script named `transcribe-soniox.py` from a tool called file-transcriber. Set its path with `soniox_file_script` in the config file. It sends the retained audio to Soniox's file API, using your Soniox key. | RTI logs the failure and keeps the live transcript and the audio. |

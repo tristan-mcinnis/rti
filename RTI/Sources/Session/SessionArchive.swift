@@ -19,6 +19,7 @@ import RTICore
 ///   screen-context.md     — timestamped active-screen OCR changes (only if any)
 ///   audio-mic.wav         — retained mic audio for automatic transcript upgrade
 ///   audio-system.wav      — retained system audio for automatic transcript upgrade
+///   session.json, speaker-names.json, frames/: metadata, names, screen frames
 enum SessionArchive {
     typealias ArchiveMetadata = SessionArchiveMetadata
 
@@ -636,7 +637,7 @@ enum SessionArchive {
     }
 
     /// One Markdown block per chat turn, shared by the local archive and the
-    /// linked-meeting record.
+    /// `-rti.md` sidecar.
     private static func chatBlock(_ entries: [ChatEntry]) -> [String] {
         var lines: [String] = []
         for entry in entries {
@@ -663,7 +664,7 @@ enum SessionArchive {
 
     /// Combined markdown for generated notes: one block per note, newest
     /// material last, separated by rules. Shared by the local archive and the
-    /// linked-meeting record.
+    /// `-rti.md` sidecar.
     private static func renderNotes(_ notes: [GeneratedNote]) -> String {
         notes.map { n in
             var head = "### \(offset(n.rangeStartMs)) – \(offset(n.rangeEndMs))"
