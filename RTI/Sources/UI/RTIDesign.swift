@@ -13,16 +13,14 @@ import RTICore
 /// The aliases below are the migration surface: existing views call
 /// `RTIDesign.Color.textSecondary` / `RTIDesign.Radius.md` and land on house
 /// tokens. The `Slate*` components underneath are the shapes the mockups
-/// actually draw — chips, key caps, tiles, cards, wells, ink toggles.
+/// actually draw — chips, tiles, cards, wells, ink toggles.
 enum RTIDesign {
     // MARK: - Color
 
     enum Color {
         static let appBackground = House.ColorToken.surface
-        static let panelBackground = House.ColorToken.surface
         static let trackBackground = House.ColorToken.surfaceSunken
         static let cardBackground = House.ColorToken.surfaceRaised
-        static let inputBackground = House.ColorToken.surfaceRaised
 
         /// Quiet grouped fill painted over any ground (settings card body).
         static let groupedFill = House.ColorToken.surfaceTint
@@ -33,7 +31,6 @@ enum RTIDesign {
         static let tileStroke = House.ColorToken.tileStroke
 
         static let border = House.ColorToken.stroke
-        static let borderLight = House.ColorToken.stroke
         static let borderStrong = House.ColorToken.strokeStrong
         static let divider = House.ColorToken.divider
         static let highlightTop = House.ColorToken.highlightTop
@@ -53,23 +50,10 @@ enum RTIDesign {
         /// Focus rings and links only. Never a chrome fill, never a tab tint.
         static let accent = House.ColorToken.accent
         static let accentText = House.ColorToken.accent
-        static let accentBg = House.ColorToken.accentSoft
 
         static let success = House.ColorToken.success
         static let warning = House.ColorToken.warning
         static let danger = House.ColorToken.danger
-
-        /// Chips no longer take an accent tint; "active" is a raised tile.
-        static let chipActiveBg = House.ColorToken.selectionFill
-        static let chipActiveText = House.ColorToken.textPrimary
-
-        // Soft tinted card for AI/assistant outputs (Q&A turns).
-        static let aiCardBackground = House.ColorToken.surfaceTint
-        static let aiCardBorder = House.ColorToken.stroke
-
-        // Toast (top-right pill) — the HUD tokens, identical in both modes.
-        static let toastBackground = House.ColorToken.hudFill
-        static let toastText = House.ColorToken.hudText
 
         // Speaker chip palette — the one allowed categorical palette (DESIGN.md).
         // Indexed by trailing digit so Speaker 1 / 2 / 3 are stable across sessions.
@@ -123,8 +107,6 @@ enum RTIDesign {
     // MARK: - Font
 
     enum Font {
-        static let pageTitle = House.TypeToken.display
-        static let sectionTitle = House.TypeToken.title
         static let heading = House.TypeToken.heading
         static let input = House.TypeToken.input
         static let body = House.TypeToken.body
@@ -147,21 +129,11 @@ enum RTIDesign {
         static let keyCap = House.Control.keyCap        // 20
         static let tile = House.Control.tile            // 26
         static let chip = House.Control.chip            // 28
-        static let heightSm = House.Control.small       // 32
         static let railRow = House.Control.railRow      // 36
-        static let heightMd = House.Control.medium      // 40
         static let footer = House.Control.footer        // 40
         static let sessionRow = House.Control.sessionRow // 44
-        static let heightLg = House.Control.xlarge      // 48
         static let composer = House.Control.composer    // 52
-        static let heightXl = House.Control.hero        // 56
-
-        static let segTrackHeight = House.Control.medium
-        static let segItemHeight = House.Control.chip
-
         static let composerHeight = House.Control.composer
-        /// Square ink send tile inside the composer.
-        static let composerSendSize = House.Control.chip
     }
 
     // MARK: - Layout
@@ -169,7 +141,6 @@ enum RTIDesign {
     enum Layout {
         static let answerMaxWidth = House.Layout.answerMaxWidth   // 620
         static let settingsRail = House.Layout.settingsRail       // 220
-        static let sessionsRail: CGFloat = 250
     }
 
     // MARK: - Density
@@ -199,8 +170,6 @@ enum RTIDesign {
 extension RTIDesign.Font {
     /// SwiftUI `lineSpacing` is the GAP between lines, not the line height, so
     /// the house line-height multiples convert to `size * (multiple - 1)`.
-    static let bodyLineSpacing: CGFloat =
-        House.TypeToken.Size.body * (House.TypeToken.LineHeight.body - 1)
     static let bodySmallLineSpacing: CGFloat =
         House.TypeToken.Size.bodySmall * (House.TypeToken.LineHeight.bodySmall - 1)
 }
@@ -208,21 +177,6 @@ extension RTIDesign.Font {
 // MARK: - Shadows
 
 extension View {
-    /// The two shadows under every floating panel.
-    func slatePanelShadow(_ scheme: ColorScheme) -> some View {
-        let dark = scheme == .dark
-        return shadow(
-            color: .black.opacity(House.Shadow.panelNear.opacity(dark: dark)),
-            radius: House.Shadow.panelNear.blur / 2,
-            y: House.Shadow.panelNear.y
-        )
-        .shadow(
-            color: .black.opacity(House.Shadow.panelFar.opacity(dark: dark)),
-            radius: House.Shadow.panelFar.blur / 2,
-            y: House.Shadow.panelFar.y
-        )
-    }
-
     /// The drop under a raised card or composer.
     func slateCardShadow(_ scheme: ColorScheme) -> some View {
         shadow(
@@ -273,39 +227,6 @@ enum SlateRenderMode {
     nonisolated(unsafe) static var flattenGlass = false
 }
 
-/// The panel ground: blur material, `panelTint`, and a 1 px top highlight.
-/// Used as the content background of the overlay and every RTI window, so all
-/// of them read as the same glass.
-struct SlateGlassBackground: View {
-    /// Rounded panels (popovers, the palette) pass a radius; a window's own
-    /// chrome supplies the corners, so it passes 0.
-    var cornerRadius: CGFloat = 0
-    var stroked = false
-
-    var body: some View {
-        ZStack {
-            if SlateRenderMode.flattenGlass {
-                RTIDesign.Color.appBackground
-            } else {
-                SlateVisualEffect()
-                RTIDesign.Color.panelTint
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(RTIDesign.Color.highlightTop)
-                .frame(height: House.hairline)
-        }
-        .overlay {
-            if stroked {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(RTIDesign.Color.border, lineWidth: House.hairline)
-            }
-        }
-    }
-}
-
 extension RTIDesign.Color {
     static let panelTint = House.ColorToken.panelTint
 }
@@ -351,76 +272,6 @@ struct SlateChip<Content: View>: View {
             RoundedRectangle(cornerRadius: RTIDesign.Radius.chip, style: .continuous)
                 .strokeBorder(stroked ? RTIDesign.Color.border : Color.clear, lineWidth: House.hairline)
         )
-    }
-}
-
-/// An outlined chip: no fill, hairline outline. Used for speaker labels and
-/// for secondary toggles that must not read as filled buttons.
-struct SlateOutlineChip<Content: View>: View {
-    var height: CGFloat = RTIDesign.Control.keyCap
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        HStack(spacing: RTIDesign.Spacing.xxs + 2) {
-            content
-        }
-        .font(RTIDesign.Font.caption)
-        .foregroundStyle(RTIDesign.Color.textSecondary)
-        .padding(.horizontal, 8)
-        .frame(height: height)
-        .overlay(
-            RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
-                .strokeBorder(RTIDesign.Color.borderStrong, lineWidth: House.hairline)
-        )
-    }
-}
-
-// MARK: - Key caps
-
-/// One outlined key cap: 20 px tall, `keyCapStroke`, no fill, SF 11 medium.
-struct SlateKeyCap: View {
-    let symbol: String
-
-    var body: some View {
-        Text(symbol)
-            .font(RTIDesign.Font.keyCap)
-            .foregroundStyle(RTIDesign.Color.textSecondary)
-            .frame(minWidth: RTIDesign.Control.keyCap, maxHeight: RTIDesign.Control.keyCap)
-            .padding(.horizontal, 3)
-            .background(
-                RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
-                    .fill(RTIDesign.Color.keyCapFill)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: RTIDesign.Radius.xs, style: .continuous)
-                    .strokeBorder(RTIDesign.Color.keyCapStroke, lineWidth: House.hairline)
-            )
-            .accessibilityHidden(true)
-    }
-}
-
-/// A labelled shortcut: "Assist ⌘ ↩". `keys` are already display glyphs.
-struct SlateKeyHint: View {
-    let label: String
-    let keys: [String]
-
-    var body: some View {
-        HStack(spacing: RTIDesign.Spacing.xxs + 2) {
-            Text(label)
-                .font(RTIDesign.Font.meta)
-                .foregroundStyle(RTIDesign.Color.textSecondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            HStack(spacing: RTIDesign.Spacing.xxs) {
-                ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
-                    SlateKeyCap(symbol: key)
-                }
-            }
-        }
-        .padding(.leading, 10)
-        .padding(.trailing, RTIDesign.Spacing.xxs)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(keys.joined())")
     }
 }
 
@@ -638,23 +489,6 @@ struct SlateToggleStyle: ToggleStyle {
 // MARK: - View Extensions
 
 extension View {
-    func rtiCardStyle() -> some View {
-        self
-            .padding(RTIDesign.Spacing.md)
-            .slateRaisedCard()
-    }
-
-    func rtiSoftTabStyle<SelectionValue: Hashable>(selection: Binding<SelectionValue>) -> some View {
-        self
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .background(
-                RoundedRectangle(cornerRadius: RTIDesign.Radius.sm, style: .continuous)
-                    .fill(RTIDesign.Color.trackBackground)
-                    .frame(height: RTIDesign.Control.segTrackHeight)
-            )
-    }
-
     /// Caps content at a comfortable reading width and centers it. Used on
     /// text-stream tabs (Q&A) and the wider Transcript tab.
     func readingWidth(_ maxWidth: CGFloat = 720) -> some View {
@@ -668,47 +502,5 @@ extension View {
     /// House answer measure: 620 pt, left aligned.
     func answerWidth() -> some View {
         frame(maxWidth: RTIDesign.Layout.answerMaxWidth, alignment: .leading)
-    }
-}
-
-// MARK: - Custom Segmented Picker
-
-/// Slate segmented control: the selected item is a raised tile, not a tint.
-struct RTISegmentedPicker<T: Hashable & CustomStringConvertible>: View {
-    @Binding var selection: T
-    let items: [T]
-    @FocusState private var focusedItem: T?
-
-    var body: some View {
-        HStack(spacing: RTIDesign.Spacing.xxs - 1) {
-            ForEach(items, id: \.self) { item in
-                Button(action: { selection = item }) {
-                    Text(item.description)
-                        .font(RTIDesign.Font.tab)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .foregroundStyle(selection == item ? RTIDesign.Color.textPrimary : RTIDesign.Color.textSecondary)
-                        .padding(.horizontal, RTIDesign.Spacing.sm)
-                        .frame(height: RTIDesign.Control.segItemHeight)
-                        .slateRaisedTile(selection == item)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: RTIDesign.Radius.sm, style: .continuous)
-                                .strokeBorder(RTIDesign.Color.accent, lineWidth: 2)
-                                .opacity(focusedItem == item ? 1 : 0)
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .focusable(true)
-                .focused($focusedItem, equals: item)
-                .focusEffectDisabled()
-            }
-        }
-        .padding(RTIDesign.Spacing.xxs)
-        .frame(height: RTIDesign.Control.segTrackHeight)
-        .background(
-            RoundedRectangle(cornerRadius: RTIDesign.Radius.row, style: .continuous)
-                .fill(RTIDesign.Color.well)
-        )
     }
 }

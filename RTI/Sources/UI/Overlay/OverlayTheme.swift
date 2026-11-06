@@ -16,31 +16,6 @@ extension Color {
     static let overlayInkSecondary = Color(nsColor: OverlayInk.nsColor(tier: .secondary))
     /// Ink at ~40 % (dark) / 50 % (light). Metadata, placeholders.
     static let overlayInkTertiary = Color(nsColor: OverlayInk.nsColor(tier: .tertiary))
-    /// Text on an ink-filled control (the composer's send tile).
-    static let overlayInkInverse = House.ColorToken.textInverse
-
-    // Grounds and hairlines.
-    static let overlayPanel = House.ColorToken.surface
-    static let overlayPanelTint = House.ColorToken.panelTint
-    static let overlayInput = House.ColorToken.surfaceRaised
-    static let overlaySunken = House.ColorToken.surfaceSunken
-    static let overlayWell = House.ColorToken.well
-    static let overlayBorder = House.ColorToken.stroke
-    static let overlayBorderStrong = House.ColorToken.strokeStrong
-    static let overlayDivider = House.ColorToken.divider
-    static let overlayHighlightTop = House.ColorToken.highlightTop
-
-    // Quiet fills.
-    static let overlayChipFill = House.ColorToken.chipFill
-    static let overlayTileFill = House.ColorToken.tileFill
-    static let overlayHoverFill = House.ColorToken.hoverFill
-    static let overlaySelectionFill = House.ColorToken.selectionFill
-
-    // Status. The only chroma the chrome is allowed.
-    static let overlaySuccess = House.ColorToken.success
-    static let overlayWarning = House.ColorToken.warning
-    static let overlayDanger = House.ColorToken.danger
-
     /// Focus rings and links only — never a chrome fill, never a tab tint.
     /// (The old user-picked accent no longer paints chrome; see DESIGN.md.)
     static let overlayAccent = House.ColorToken.accent
@@ -100,26 +75,5 @@ enum OverlayThemeSettings {
 
     static func isDark(_ appearance: NSAppearance) -> Bool {
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    }
-}
-
-extension NSColor {
-    static func rtiColor(hex: String) -> NSColor? {
-        let trimmed = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#").union(.whitespacesAndNewlines))
-        guard trimmed.count == 6, let value = Int(trimmed, radix: 16) else { return nil }
-        return NSColor(
-            red: CGFloat((value >> 16) & 0xff) / 255,
-            green: CGFloat((value >> 8) & 0xff) / 255,
-            blue: CGFloat(value & 0xff) / 255,
-            alpha: 1
-        )
-    }
-
-    var rtiHexString: String {
-        let color = usingColorSpace(.sRGB) ?? self
-        let red = Int(round(color.redComponent * 255))
-        let green = Int(round(color.greenComponent * 255))
-        let blue = Int(round(color.blueComponent * 255))
-        return String(format: "#%02X%02X%02X", red, green, blue)
     }
 }

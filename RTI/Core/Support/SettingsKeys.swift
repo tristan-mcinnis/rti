@@ -10,7 +10,6 @@ public enum OverlayAppearanceDefaults {
     /// `system`, `light`, or `dark`. Replaces the older light-mode bool.
     public static let appearanceModeKey = "rti.overlay.appearanceMode"
     public static let lightModeKey = "rti.overlay.lightMode"
-    public static let accentColorKey = "rti.overlay.accentColor"
     public static let contrastKey = "rti.overlay.contrast"
     public static let uiFontSizeKey = "rti.overlay.uiFontSize"
     public static let reduceMotionKey = "rti.overlay.reduceMotion"
