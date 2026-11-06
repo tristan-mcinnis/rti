@@ -488,7 +488,7 @@ final class SessionCoordinator {
         // Auto-attach a same-day prep brief for this meeting (if one matches),
         // so Meeting-mode Assist works against "what we said we needed from this
         // call", not just the transcript. Read fresh each start; no-op when none.
-        MeetingContextStore.shared.loadBriefForSession(meetingName: nil)
+        MeetingContextStore.shared.loadBriefForSession(meetingName: MeetingContextStore.shared.calendarMeeting?.title)
 
         // The chat projection is gathered only when a session stops, so it
         // still holds the previous recording's threads. The 5-minute
@@ -677,6 +677,7 @@ final class SessionCoordinator {
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
                 postProcessingStatus = "Improving transcript…"
                 Task { @MainActor [weak self] in
+                    var failure: String?
                     if !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty {
                         do {
                             _ = try await TranscriptUpgradeService.upgradeRetryingOnce(
@@ -693,18 +694,17 @@ final class SessionCoordinator {
                             SessionArchive.clearAutomaticUpgradePending(in: archiveDir)
                         } catch {
                             RTILog.log("automatic Soniox transcript upgrade failed; retained audio is available for retry: \(error.localizedDescription)", category: .archive)
-                            self?.postProcessingStatus = "Upgrade failed · audio retained"
+                            failure = "Transcript upgrade failed: \(error.localizedDescription) Audio is kept and RTI retries at next launch, so there is no meeting note yet."
                         }
                     } else {
-                        self?.postProcessingStatus = "Upgrade unavailable · audio retained"
+                        failure = "No audio was saved, so there is no upgraded transcript or meeting note."
                     }
                     guard let self else { return }
                     // Only resolve to `done` if this is still the session the
                     // user is looking at — a new recording may already be live.
                     if currentSessionId == sessionId, phase == .upgrading {
-                        if postProcessingStatus != "Upgrade failed · audio retained" {
-                            postProcessingStatus = "Session saved"
-                        }
+                        postProcessingStatus = failure == nil ? "Session saved" : "No meeting note · see message"
+                        if let failure { stopErrorRetireTask?.cancel(); lastError = failure; lastErrorIsAuth = false }
                         phase = .done
                         resetWorkspaceForDone()
                     }
