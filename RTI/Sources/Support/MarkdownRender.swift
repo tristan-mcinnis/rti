@@ -2,68 +2,6 @@ import AppKit
 import SwiftUI
 import HouseDesign
 
-/// Shared SwiftUI view that renders multi-line LLM markdown (headings,
-/// bullet lists, task checkboxes, inline emphasis/code/links). SwiftUI's
-/// built-in `Text(AttributedString)` only handles inline syntax, so we
-/// render line by line and hand each line's inline emphasis to
-/// `AttributedString(markdown:)`.
-struct MarkdownView: View {
-    let markdown: String
-
-    init(_ markdown: String) { self.markdown = markdown }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                renderLine(line)
-            }
-        }
-    }
-
-    private var lines: [String] {
-        markdown.components(separatedBy: "\n")
-    }
-
-    @ViewBuilder
-    private func renderLine(_ raw: String) -> some View {
-        if raw.trimmingCharacters(in: .whitespaces).isEmpty {
-            Spacer().frame(height: 4)
-        } else if let stripped = raw.mdStripPrefix("### ") {
-            inline(stripped).font(RTIDesign.Font.label)
-        } else if let stripped = raw.mdStripPrefix("## ") {
-            inline(stripped).font(RTIDesign.Font.heading).padding(.top, RTIDesign.Spacing.xxs)
-        } else if let stripped = raw.mdStripPrefix("# ") {
-            inline(stripped).font(RTIDesign.Font.heading).padding(.top, RTIDesign.Spacing.xxs)
-        } else if let stripped = raw.mdStripPrefix("- [ ] ") ?? raw.mdStripPrefix("* [ ] ") {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "square").font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.textSecondary)
-                inline(stripped).fixedSize(horizontal: false, vertical: true)
-            }
-        } else if let stripped = raw.mdStripPrefix("- [x] ") ?? raw.mdStripPrefix("* [x] ")
-            ?? raw.mdStripPrefix("- [X] ") ?? raw.mdStripPrefix("* [X] ") {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "checkmark.square.fill").font(RTIDesign.Font.caption).foregroundStyle(RTIDesign.Color.success)
-                inline(stripped).fixedSize(horizontal: false, vertical: true)
-            }
-        } else if let stripped = raw.mdStripPrefix("- ") ?? raw.mdStripPrefix("* ") {
-            HStack(alignment: .top, spacing: 6) {
-                Text("•").foregroundStyle(RTIDesign.Color.textSecondary)
-                inline(stripped).fixedSize(horizontal: false, vertical: true)
-            }
-        } else {
-            inline(raw).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func inline(_ text: String) -> Text {
-        if let attributed = try? AttributedString(markdown: text,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            return Text(attributed)
-        }
-        return Text(text)
-    }
-}
-
 private extension String {
     func mdStripPrefix(_ prefix: String) -> String? {
         guard hasPrefix(prefix) else { return nil }
