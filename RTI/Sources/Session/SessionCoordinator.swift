@@ -649,9 +649,6 @@ final class SessionCoordinator {
         if let startedAt {
             let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt, sessionId: sessionId)
             let archiveDir = SessionFinalizer(snapshot: snapshot).archive()
-            let chat = snapshot.chat
-            let visualContext = snapshot.visualContext
-            let notes = snapshot.notes
 
             if !audioFinished || snapshot.recordingError != nil {
                 phase = .done
@@ -668,11 +665,12 @@ final class SessionCoordinator {
                 // processing.
                 SessionArchive.writeCanonicalMeetingSidecar(
                     startedAt: startedAt,
-                    chat: chat,
-                    visualContext: visualContext,
-                    notes: notes,
+                    chat: snapshot.chat,
+                    visualContext: snapshot.visualContext,
+                    notes: snapshot.notes,
                     archiveDir: archiveDir,
-                    callType: CallTypeStore.shared.active
+                    callType: CallTypeStore.shared.active,
+                    chatThreads: snapshot.chatThreads
                 )
                 phase = .upgrading
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
