@@ -61,8 +61,8 @@ final class LLMClient: @unchecked Sendable {
     ///
     /// `smart=true` enables provider-side reasoning when the config
     /// reports `supportsThinking=true`; otherwise it degrades to a normal
-    /// completion. `onReasoning`, when supplied, fires on the main thread
-    /// for every reasoning_content chunk in smart mode.
+    /// completion. `onReasoning`, when supplied, fires once on the main thread,
+    /// on the first reasoning_content chunk of a stream in smart mode.
     func streamChat(
         messages: [LLMMessage],
         smart: Bool = false,
@@ -286,10 +286,8 @@ final class LLMClient: @unchecked Sendable {
                 case .content(let content):
                     onContent(content)
                 case .reasoning(let reasoning):
+                    if reasoningCharacters == 0, let onReasoning { DispatchQueue.main.async { onReasoning(reasoning) } }
                     reasoningCharacters += reasoning.count
-                    if let onReasoning {
-                        DispatchQueue.main.async { onReasoning(reasoning) }
-                    }
                 case .done:
                     break lines
                 case .streamError(let detail):
