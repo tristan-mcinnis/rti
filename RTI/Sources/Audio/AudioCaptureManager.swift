@@ -7,7 +7,6 @@ enum AudioCaptureError: Error {
     case permissionDenied
     case engineStartFailed(Error)
     case converterCreationFailed
-    case deviceSelectionFailed(OSStatus)
 }
 
 /// The capture lifecycle consumed by AudioPipeline. Tests deliver synthetic PCM

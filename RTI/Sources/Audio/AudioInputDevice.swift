@@ -105,14 +105,6 @@ enum AudioInputDeviceStore {
         availableInputDevices().filter { !isVirtual($0.id) }
     }
 
-    /// Name + UID for an arbitrary device ID, for logging which device was
-    /// actually bound.
-    static func nameAndUID(for deviceID: AudioDeviceID) -> (name: String, uid: String) {
-        let name = stringProperty(deviceID, kAudioObjectPropertyName) ?? "unknown"
-        let uid = stringProperty(deviceID, kAudioDevicePropertyDeviceUID) ?? "unknown"
-        return (name, uid)
-    }
-
     /// The device capture should actually bind to, in priority order:
     /// 1. the user's explicit pick, if it's not virtual
     /// 2. the current system default input, if it's not virtual

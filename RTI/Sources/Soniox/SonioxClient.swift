@@ -373,26 +373,8 @@ struct STTProviderConfig: Sendable {
 /// live diarization is not necessarily the best provider for a slower, more
 /// accurate async pass over the session-local retained audio legs.
 struct AsyncTranscriptProviderOption: Identifiable, Sendable {
-    struct CredentialField: Identifiable, Sendable {
-        let account: String
-        let label: String
-        let placeholder: String
-
-        var id: String { account }
-    }
-
     let id: String
     let displayName: String
-    let credentialFields: [CredentialField]
-    let summary: String
-
-    var hasKey: Bool {
-        credentialFields.allSatisfy {
-            !(CredentialStore.value(for: $0.account) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty
-        }
-    }
 }
 
 /// Registry + active-selection for real-time STT. RTI's live lane is Soniox
@@ -433,11 +415,7 @@ enum STTProviders {
 enum AsyncTranscriptProviders {
     static let soniox = AsyncTranscriptProviderOption(
         id: "soniox_file",
-        displayName: "Soniox",
-        credentialFields: [
-            .init(account: "soniox", label: "Soniox API key", placeholder: "soniox-...")
-        ],
-        summary: "Reuse Soniox for offline file transcription when you want consistency with the live lane."
+        displayName: "Soniox"
     )
 
     static let all: [AsyncTranscriptProviderOption] = [soniox]

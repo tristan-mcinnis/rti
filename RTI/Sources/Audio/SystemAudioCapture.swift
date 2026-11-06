@@ -6,7 +6,6 @@ import RTICore
 enum SystemAudioError: Error {
     case noDisplay
     case permissionDenied
-    case alreadyRunning
 }
 
 /// Runtime health for a system-audio backend. `duration` tracks delivered

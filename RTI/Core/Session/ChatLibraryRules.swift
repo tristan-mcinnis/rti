@@ -58,8 +58,6 @@ public struct ChatLibraryRow: Identifiable, Equatable, Sendable {
     /// The chat's own name and the text of every turn, for the rail search.
     /// Nothing else from a turn is kept in memory.
     public let searchText: String
-    /// True for a saved thread; false for a dated legacy log.
-    public var isLegacy: Bool { false }
 
     /// The title a chat with no name falls back to: its first question.
     public static let untitled = "Untitled chat"

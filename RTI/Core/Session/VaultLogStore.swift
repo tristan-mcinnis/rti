@@ -159,16 +159,6 @@ public enum VaultLogStore {
         }
 
         public var isClean: Bool { failures.isEmpty }
-        public var removedAnything: Bool { removedJSONLRows > 0 || removedMarkdownBlocks > 0 }
-    }
-
-    /// Remove the daily-log rows that belong to one chat thread, by exact ID.
-    /// Rows that do not parse, or that carry no thread id, are kept: an
-    /// unknown row is never assumed to belong to the thread being deleted.
-    /// Returns how many rows went.
-    @discardableResult
-    public static func removeTurns(threadID: String) -> Int {
-        removeOwnedProjections(threadID: threadID).removedJSONLRows
     }
 
     /// Remove EVERY compatibility projection this store wrote for one chat

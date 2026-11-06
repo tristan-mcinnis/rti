@@ -113,13 +113,6 @@ public enum VaultFiles {
         return text
     }
 
-    /// The raw bytes of a resolved vault document, read once at hand-over
-    /// time. The chat turns these into the durable record's original bytes; it
-    /// never reads the path again later.
-    public static func rawBytes(relativePath: String) -> Data? {
-        readBounded(relativePath: relativePath)?.bytes
-    }
-
     /// Resolve an inline `@file` mention to one readable vault document.
     /// Prefers an exact path inside the current project/client scope, then a
     /// fuzzy filename/path match within that scope, finally broadening vault-wide.
