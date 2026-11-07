@@ -3,8 +3,8 @@ import SwiftUI
 /// RTI's preferences and diagnostics window (Providers, Modes, Prompts,
 /// Glossary, General, Logs).
 ///
-/// Shim during the house-style migration: past sessions moved to their own
-/// window (`SessionsWindowController`), so this window no longer lists them.
+/// Shim during the house-style migration: past sessions moved to the
+/// workspace's Sessions page, so this window no longer lists them.
 /// `Tab.sessions` stays so existing callers compile; `WindowCoordinator`
 /// sends it to the Sessions window. The settings shell (`SettingsView` in
 /// `SettingsWindowController`) replaces this window when it lands.

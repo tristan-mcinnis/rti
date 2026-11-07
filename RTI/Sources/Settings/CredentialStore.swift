@@ -156,8 +156,6 @@ extension CredentialStore {
     static var soniox: String? { Self.get(sonioxAccount) }
 
     static func setDeepSeek(_ value: String) { set(value, for: deepseekAccount) }
-    static func setOpenAI(_ value: String) { set(value, for: openAIAccount) }
-    static func setOpenRouter(_ value: String) { set(value, for: openRouterAccount) }
     static func setSoniox(_ value: String) { set(value, for: sonioxAccount) }
 
     static func value(for account: String) -> String? {

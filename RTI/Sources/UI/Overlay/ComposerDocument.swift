@@ -33,10 +33,6 @@ struct ComposerDocument: Identifiable, Equatable {
         return nil
     }
 
-    var isReading: Bool {
-        phase == .reading
-    }
-
     func isSameSource(as url: URL) -> Bool {
         sourceURL == url.standardizedFileURL
     }

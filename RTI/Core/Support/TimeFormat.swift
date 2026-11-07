@@ -16,15 +16,6 @@ public enum TimeFormat {
         return String(format: "%d:%02d", m, s)
     }
 
-    /// `M:SS` only — compact transcript timestamp (no hour support needed
-    /// for the typical sub-hour session).
-    public static func stampMs(_ ms: Int) -> String {
-        let totalSeconds = ms / 1000
-        let m = totalSeconds / 60
-        let s = totalSeconds % 60
-        return String(format: "%d:%02d", m, s)
-    }
-
     /// `H:MM:SS` / `M:SS` variant that takes a `TimeInterval` (seconds).
     public static func elapsed(_ interval: TimeInterval) -> String {
         elapsedMs(Int(interval * 1000))

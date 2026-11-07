@@ -75,10 +75,6 @@ final class OverlayEscapeRouter {
         layers[id] = Closable(isOpen: isOpen, close: close)
     }
 
-    func unregisterLayer(_ id: String) {
-        layers[id] = nil
-    }
-
     func state(hasMarkedText: Bool) -> OverlayEscapeState {
         OverlayEscapeState(
             hasMarkedText: hasMarkedText,

@@ -555,14 +555,6 @@ public enum ChatLibraryFormat {
         return parts.joined(separator: " · ")
     }
 
-    /// The footer line without the size: what fits at the window's minimum
-    /// width, so the size is dropped whole rather than clipped.
-    public static func countsLine(chats: Int, legacyLogs: Int) -> String {
-        var parts = [chatCount(chats)]
-        if legacyLogs > 0 { parts.append(logCount(legacyLogs)) }
-        return parts.joined(separator: " · ")
-    }
-
     /// "4 chats": the last thing the footer keeps.
     public static func chatCount(_ chats: Int) -> String {
         "\(chats) chat\(chats == 1 ? "" : "s")"

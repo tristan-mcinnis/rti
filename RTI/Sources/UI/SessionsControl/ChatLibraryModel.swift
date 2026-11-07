@@ -180,16 +180,6 @@ final class ChatLibraryModel {
         ChatLibraryFormat.compactStorageLine(chats: rows.count, legacyLogs: legacyLogs.count, bytes: storageBytes)
     }
 
-    /// The footer's shorter variants, tried in order: at the window's minimum
-    /// width the size is dropped whole, never clipped mid-number.
-    var countsStorageLine: String {
-        ChatLibraryFormat.countsLine(chats: rows.count, legacyLogs: legacyLogs.count)
-    }
-
-    var chatsStorageLine: String {
-        ChatLibraryFormat.chatCount(rows.count)
-    }
-
     var deletionTitle: String {
         rows.first { $0.id == pendingDeletionID }?.title ?? "this chat"
     }

@@ -45,7 +45,6 @@ final class WindowCoordinator {
         WorkspaceModel.shared.select(.live)
         overlayController?.show()
     }
-    func hideOverlay() { overlayController?.hide() }
     func toggleOverlay() { overlayController?.toggle() }
 
     // MARK: - Sessions and Preferences

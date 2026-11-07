@@ -58,9 +58,8 @@ enum HouseChatMetrics {
     static let thinkingStill: Double = 0.55
     /// Widest an attachment chip's name draws before middle truncation.
     static let attachmentNameMax: CGFloat = 180
-    /// The `⌘K` action palette: width and tallest height.
+    /// The `⌘K` action palette's width.
     static let paletteWidth: CGFloat = 520
-    static let paletteMaxHeight: CGFloat = 460
     /// The open-chat marker on a rail row: 2 wide.
     static let openChatMarkerWidth: CGFloat = House.Spacing.xxs / 2
     /// Header leading inset that clears the traffic lights (88).

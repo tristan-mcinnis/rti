@@ -5,8 +5,6 @@ import Foundation
 // under them, so never change a value, only add.
 
 public enum OverlayAppearanceDefaults {
-    public static let widthKey = "rti.overlay.width"
-    public static let heightKey = "rti.overlay.height"
     /// `system`, `light`, or `dark`. Replaces the older light-mode bool.
     public static let appearanceModeKey = "rti.overlay.appearanceMode"
     public static let lightModeKey = "rti.overlay.lightMode"
@@ -74,7 +72,6 @@ public enum AudioSettingsDefaults {
 
 public enum TranslationDefaults {
     public static let enabledKey = "rti.translation.enabled"
-    public static let showOriginalKey = "rti.translation.showOriginal"
     public static let modeKey = "rti.translation.mode"
     public static let targetLanguageKey = "rti.translation.targetLanguage"
     public static let languageAKey = "rti.translation.languageA"
@@ -149,6 +146,5 @@ public enum ScreenPrivacyDefaults {
 }
 
 public enum UISettingsDefaults {
-    public static let sessionDetailDensityKey = "rti.sessionDetail.density"
     public static let paletteRecentsKey = "rti.palette.recents"
 }

@@ -7,7 +7,6 @@ public extension Notification.Name {
     /// never silently replaced with a new conversation.
     static let rtiResumeChat = Notification.Name("rtiResumeChat")
     static let rtiOverlayDidBecomeKey = Notification.Name("rti.overlayDidBecomeKey")
-    static let rtiOverlaySizeChanged = Notification.Name("rti.overlaySizeChanged")
     /// Posted when the light/dark setting flips so the live panel re-applies its
     /// NSAppearance immediately.
     static let rtiOverlayAppearanceChanged = Notification.Name("rti.overlayAppearanceChanged")

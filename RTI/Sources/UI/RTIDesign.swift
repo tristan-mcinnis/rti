@@ -31,7 +31,6 @@ enum RTIDesign {
         static let tileStroke = House.ColorToken.tileStroke
 
         static let border = House.ColorToken.stroke
-        static let borderStrong = House.ColorToken.strokeStrong
         static let divider = House.ColorToken.divider
         static let highlightTop = House.ColorToken.highlightTop
 
@@ -39,7 +38,6 @@ enum RTIDesign {
         static let selectionRing = House.ColorToken.selectionRing
         static let hoverFill = House.ColorToken.hoverFill
 
-        static let keyCapFill = House.ColorToken.keyCapFill
         static let keyCapStroke = House.ColorToken.keyCapStroke
 
         static let textPrimary = House.ColorToken.textPrimary
@@ -48,7 +46,6 @@ enum RTIDesign {
         static let textInverse = House.ColorToken.textInverse
 
         /// Focus rings and links only. Never a chrome fill, never a tab tint.
-        static let accent = House.ColorToken.accent
         static let accentText = House.ColorToken.accent
 
         static let success = House.ColorToken.success
@@ -107,18 +104,11 @@ enum RTIDesign {
     // MARK: - Font
 
     enum Font {
-        static let heading = House.TypeToken.heading
-        static let input = House.TypeToken.input
-        static let body = House.TypeToken.body
-        static let bodySmall = House.TypeToken.bodySmall
         static let label = House.TypeToken.label
         static let meta = House.TypeToken.meta
         static let caption = House.TypeToken.caption
         static let micro = House.TypeToken.micro
         static let section = House.TypeToken.section
-        static let keyCap = House.TypeToken.keyCap
-        static let code = House.TypeToken.code
-        static let button = House.TypeToken.label
         /// Tab tiles carry a medium label, not a semibold one.
         static let tab = SwiftUI.Font.system(size: House.TypeToken.Size.meta, weight: .medium)
     }
@@ -133,7 +123,6 @@ enum RTIDesign {
         static let footer = House.Control.footer        // 40
         static let sessionRow = House.Control.sessionRow // 44
         static let composer = House.Control.composer    // 52
-        static let composerHeight = House.Control.composer
     }
 
     // MARK: - Layout
@@ -141,27 +130,6 @@ enum RTIDesign {
     enum Layout {
         static let answerMaxWidth = House.Layout.answerMaxWidth   // 620
         static let settingsRail = House.Layout.settingsRail       // 220
-    }
-
-    // MARK: - Density
-
-    enum Density: String, CaseIterable {
-        case comfortable
-        case compact
-
-        /// Scale a comfortable-mode value down for compact mode.
-        /// Used for inter-section spacing, line spacing, and group padding.
-        func scaled(_ value: CGFloat) -> CGFloat {
-            switch self {
-            case .comfortable: return value
-            case .compact:     return value * 0.66
-            }
-        }
-
-        static var current: Density {
-            let raw = UserDefaults.standard.string(forKey: UISettingsDefaults.sessionDetailDensityKey) ?? Density.comfortable.rawValue
-            return Density(rawValue: raw) ?? .comfortable
-        }
     }
 }
 
@@ -198,7 +166,7 @@ extension View {
 
 // MARK: - Glass
 
-/// The blur material behind `panelTint` on every floating RTI surface.
+/// The blur material behind `House.ColorToken.panelTint` on every floating RTI surface.
 /// `.behindWindow` blending needs the hosting window to be non-opaque with a
 /// clear background; `OverlayWindowController` sets that up.
 struct SlateVisualEffect: NSViewRepresentable {
@@ -222,13 +190,9 @@ struct SlateVisualEffect: NSViewRepresentable {
 
 /// Offscreen render proof only: `.behindWindow` blur has no desktop to sample
 /// in a headless bitmap, so the harness flattens the material to the opaque
-/// `surface` token, which is what the blur + `panelTint` resolve to anyway.
+/// `surface` token, which is what the blur + `House.ColorToken.panelTint` resolve to anyway.
 enum SlateRenderMode {
     nonisolated(unsafe) static var flattenGlass = false
-}
-
-extension RTIDesign.Color {
-    static let panelTint = House.ColorToken.panelTint
 }
 
 // MARK: - Status dot

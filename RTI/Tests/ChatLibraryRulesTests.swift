@@ -316,7 +316,6 @@ final class ChatLibraryRulesTests: XCTestCase {
         XCTAssertEqual(ChatLibraryFormat.storageLine(chats: 2, legacyLogs: 1, bytes: 2_048), "2 saved chats · 1 dated log · 2 KB of saved copies")
         XCTAssertEqual(ChatLibraryFormat.compactStorageLine(chats: 2, legacyLogs: 1, bytes: 2_048), "2 chats · 1 log · 2 KB")
         XCTAssertNil(ChatLibraryFormat.compactStorageLine(chats: 0, legacyLogs: 0, bytes: nil))
-        XCTAssertEqual(ChatLibraryFormat.countsLine(chats: 2, legacyLogs: 1), "2 chats · 1 log")
         XCTAssertEqual(ChatLibraryFormat.chatCount(1), "1 chat")
         XCTAssertEqual(ChatLibraryFormat.shortHash(String(repeating: "f", count: 64)), "ffffffff…")
         XCTAssertEqual(ChatLibraryFormat.shortHash("abc"), "abc")
