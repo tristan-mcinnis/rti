@@ -40,7 +40,6 @@
 		12C6D297BBE9E978D3D1AB33 /* NotesTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EB324BB128B26388673304 /* NotesTabView.swift */; };
 		13E39F9698856D431959DFD3 /* OverlayPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE34CE37D12ADCE89D53F490 /* OverlayPanelView.swift */; };
 		14669031BF3A8EAC8F72AC37 /* ChatSourcePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BB9C8D1952399D98139DC8 /* ChatSourcePayload.swift */; };
-		147EF3826DEF2CBDA27C3724 /* SessionsControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36B529563B4EAE6F3281194 /* SessionsControlView.swift */; };
 		14925B1F850C0617972D8915 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 122FBF481A55A4A3854F9616 /* UpdateChecker.swift */; };
 		14D34E87E80E98AA47933142 /* WorkspaceVisibilityRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED397C88DFBC0B6294E9B359 /* WorkspaceVisibilityRegressionTests.swift */; };
 		153E00DE570EE8F05C9FE68F /* TranscriptTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E7C9491F2D37E2E827DA6C1 /* TranscriptTabView.swift */; };
@@ -107,7 +106,6 @@
 		352C363C978A6625D9310E3D /* VaultMeetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05D1FD953F4B66178A31820F /* VaultMeetings.swift */; };
 		36DC6B71CBA518C977B15163 /* SettingsKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEED93C3610754A9AD3A6D42 /* SettingsKeys.swift */; };
 		3753AB2C9C9941E92A338FC3 /* ComposerDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F7EBFA665BDA7A2DBDBCFE /* ComposerDocument.swift */; };
-		379333F978F8334E614E8455 /* SessionsControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36B529563B4EAE6F3281194 /* SessionsControlView.swift */; };
 		380C744E121498A94D360421 /* ChatLibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A36105D9AB272E7718BBB96 /* ChatLibraryModel.swift */; };
 		38306F3CE57C00244FEB5BAD /* SessionsWindowModel+Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91EE9253A7920508C63E3776 /* SessionsWindowModel+Types.swift */; };
 		38E74171F698A76A0892C1DC /* OverlaySharedChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26A3099FBEC0DA5D5A834569 /* OverlaySharedChrome.swift */; };
@@ -868,7 +866,6 @@
 		F18DF54726E610729C26EB06 /* RecordingWriterAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingWriterAcceptanceTests.swift; sourceTree = "<group>"; };
 		F2B156DB77290C5C713516FC /* ChatEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatEntryTests.swift; sourceTree = "<group>"; };
 		F3020F6B30611710C7C84C2B /* LocalVisionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalVisionServiceTests.swift; sourceTree = "<group>"; };
-		F36B529563B4EAE6F3281194 /* SessionsControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsControlView.swift; sourceTree = "<group>"; };
 		F3B589904BDE807FDAEFC6D6 /* MenuStatusTickTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuStatusTickTests.swift; sourceTree = "<group>"; };
 		F464B4F13E44855546FB2BBF /* ComposerKeyRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerKeyRouterTests.swift; sourceTree = "<group>"; };
 		F5D8774D7850217189C5A5D8 /* ChatLibraryRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLibraryRulesTests.swift; sourceTree = "<group>"; };
@@ -1548,7 +1545,6 @@
 				217E8D116341FC8CA6EF42E5 /* SessionReader.swift */,
 				3EB60702ECAA14BAA0784D78 /* SessionsBrowserChrome.swift */,
 				70BF29F58CC613A81C10A4E8 /* SessionsBrowserView.swift */,
-				F36B529563B4EAE6F3281194 /* SessionsControlView.swift */,
 				C15D0415F0485C59C585D0A5 /* SessionsRail.swift */,
 				4EDB1E6A53CD8612DB94B5CC /* SessionsWindowController.swift */,
 				67EB37D6EE498B7B7C23132D /* SessionsWindowModel.swift */,
@@ -1919,7 +1915,6 @@
 				DA55499291B200C7AC2D964D /* SessionWriterCalendarTitleTests.swift in Sources */,
 				792B16BD3CD618751D0A7FCE /* SessionsBrowserChrome.swift in Sources */,
 				56FAFAD3DFF7CAF20A7E5430 /* SessionsBrowserView.swift in Sources */,
-				147EF3826DEF2CBDA27C3724 /* SessionsControlView.swift in Sources */,
 				C13972F8062BBA00DCCF30D4 /* SessionsRail.swift in Sources */,
 				B0B9C0472D5A915457D4F08D /* SessionsWindowController.swift in Sources */,
 				401498F4A9ABFB56AC832C84 /* SessionsWindowModel+Browse.swift in Sources */,
@@ -2259,7 +2254,6 @@
 				97EE245F5A3C210526996096 /* SessionReader.swift in Sources */,
 				868EA51FF70EEAC99CA716AF /* SessionsBrowserChrome.swift in Sources */,
 				F01D99BDABFADC8172EEE691 /* SessionsBrowserView.swift in Sources */,
-				379333F978F8334E614E8455 /* SessionsControlView.swift in Sources */,
 				C908AED11707059F0716051A /* SessionsRail.swift in Sources */,
 				69BC6922D7FC506AA336AB94 /* SessionsWindowController.swift in Sources */,
 				9E62579A65F8EED1808EC2C7 /* SessionsWindowModel+Browse.swift in Sources */,
