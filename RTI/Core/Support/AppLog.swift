@@ -133,14 +133,12 @@ public final class AppLog {
 /// Severity of a log line. `.info` is the default and matches what every
 /// pre-level call site produced; the others add a tag to the rendered line.
 public enum LogLevel: Int, Comparable, Sendable {
-    case debug
     case info
     case warning
     case error
 
     public var tag: String {
         switch self {
-        case .debug: "DEBUG"
         case .info: "INFO"
         case .warning: "WARN"
         case .error: "ERROR"
@@ -161,13 +159,11 @@ public enum LogCategory: String, Sendable {
     case latency
     case launchAtLogin = "launch-at-login"
     case llm
-    case modes
     case notes
     case screenshot
     case soniox
     case systemAudio = "system-audio"
     case vault
-    case vision
 }
 
 /// `RTILog.log("…")` is the call-site form so existing NSLog locations are
