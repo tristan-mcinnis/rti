@@ -103,25 +103,7 @@ private struct PrimitivesSheet: View {
             ) {}
             HouseTitleBlock(
                 title: "Onboarding Scope Review with Northwind",
-                line: [
-                    .status("Recording · 12:41", color: House.ColorToken.danger),
-                    .button(HouseTitleButton(
-                        title: "DeepSeek V4 Flash",
-                        accessibilityLabel: "Model: DeepSeek V4 Flash",
-                        accessibilityHint: "Change the model",
-                        help: "Change model",
-                        isOpen: false,
-                        action: {}
-                    )),
-                    .button(HouseTitleButton(
-                        title: "Meeting",
-                        emphasised: true,
-                        accessibilityLabel: "Mode: Meeting",
-                        accessibilityHint: "Change the mode",
-                        help: "Change mode",
-                        action: {}
-                    )),
-                ]
+                line: [.status("Recording · 12:41", color: House.ColorToken.danger)]
             )
             Spacer(minLength: House.Spacing.xs)
             KeyHint(label: "Finish", keys: ["⌘", "⇧", "R"])
@@ -129,25 +111,9 @@ private struct PrimitivesSheet: View {
         .frame(height: House.Control.composer)
     }
 
-    /// The other two title forms: Quick AI (assistant then model) and a
-    /// source line of plain text (the Sessions reader).
+    /// The other title form: a source line of plain text (the Sessions reader).
     private var titleForms: some View {
         HStack(alignment: .top, spacing: House.Spacing.xl) {
-            HouseTitleBlock(
-                title: "Quick AI",
-                line: [
-                    .button(HouseTitleButton(
-                        title: "Researcher", emphasised: true,
-                        accessibilityLabel: "Assistant: Researcher", accessibilityHint: "Change the assistant",
-                        help: "Change assistant", action: {}
-                    )),
-                    .button(HouseTitleButton(
-                        title: "DeepSeek V4 Pro",
-                        accessibilityLabel: "Model: DeepSeek V4 Pro", accessibilityHint: "Change the model",
-                        help: "Change model", action: {}
-                    )),
-                ]
-            )
             HouseTitleBlock(
                 title: "Pricing page teardown",
                 line: [.text("Today · 15:00"), .text("16 min"), .text("Northwind app")]

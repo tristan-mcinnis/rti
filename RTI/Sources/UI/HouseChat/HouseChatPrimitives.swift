@@ -368,33 +368,12 @@ enum HouseTitleSegment {
     case status(String, color: Color)
     /// Plain `meta` `textSecondary` text: a source, a date, a project.
     case text(String)
-    /// A `meta` button: the model (opens the model chooser) or, with
-    /// `emphasised`, an assistant or mode name in `textPrimary`.
-    case button(HouseTitleButton)
-}
-
-/// A button on the title block's second line.
-struct HouseTitleButton {
-    let title: String
-    /// Full ink and never truncated: an assistant or mode name ahead of
-    /// the model. The model itself is not emphasised.
-    var emphasised = false
-    /// VoiceOver label, for example "Model: DeepSeek V4 Flash".
-    let accessibilityLabel: String
-    /// VoiceOver hint, for example "Change the model".
-    let accessibilityHint: String
-    /// Tooltip with the key, for example "Change model (⌘⇧M)".
-    let help: String
-    /// "Open" or "Closed" while its chooser can show; nil otherwise.
-    var isOpen: Bool? = nil
-    let action: () -> Void
 }
 
 /// The chat title over its second line, as the Quick AI header draws it and
 /// the AI Chat window reuses it (chat-surfaces.md sections 1 and 8). The
 /// title is `subheading`, one line, middle truncation. The second line is
-/// `meta`: a model button, an assistant or mode button, a source, or, on a
-/// live surface, a status dot and its word first.
+/// `meta`: a source, or, on a live surface, a status dot and its word first.
 struct HouseTitleBlock: View {
     let title: String
     var line: [HouseTitleSegment] = []
@@ -442,21 +421,6 @@ struct HouseTitleBlock: View {
                 .foregroundStyle(House.ColorToken.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-        case let .button(button):
-            Button(action: button.action) {
-                Text(button.title)
-                    .font(House.TypeToken.meta)
-                    .foregroundStyle(button.emphasised ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .fixedSize(horizontal: button.emphasised, vertical: false)
-            .accessibilityLabel(button.accessibilityLabel)
-            .accessibilityHint(button.accessibilityHint)
-            .accessibilityValue(button.isOpen.map { $0 ? "Open" : "Closed" } ?? "")
-            .help(button.help)
         }
     }
 }
