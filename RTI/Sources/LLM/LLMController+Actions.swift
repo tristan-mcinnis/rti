@@ -418,13 +418,6 @@ extension LLMController {
         lastErrorTurnID = nil
     }
 
-    func setScreenCaptureStatus(_ message: String?, requestID: UUID? = nil) {
-        if let requestID, !isCurrentScreenAttachment(requestID) {
-            return
-        }
-        screenCaptureStatus = message
-    }
-
     func cancel() {
         sendTask?.cancel()
         sendTask = nil

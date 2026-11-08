@@ -30,7 +30,6 @@ final class ScreenAttachmentLifecycleTests: RenderProofTestCase {
         let requestID = llm.beginScreenAttachment(status: "Reading image…")
         llm.clearPendingScreenContext()
 
-        llm.setScreenCaptureStatus("Asking the local vision model…", requestID: requestID)
         llm.attachScreenContext("Late invented OCR", requestID: requestID)
         llm.setScreenAttachError("Late invented failure", requestID: requestID)
 
@@ -44,7 +43,6 @@ final class ScreenAttachmentLifecycleTests: RenderProofTestCase {
         let oldID = llm.beginScreenAttachment(status: "Reading all screens…")
         let newID = llm.beginScreenAttachment(status: "Reading image…")
 
-        llm.setScreenCaptureStatus("Old local vision status", requestID: oldID)
         llm.setScreenAttachError("Old capture failure", requestID: oldID)
         llm.attachScreenContext("Old invented OCR", requestID: oldID)
         XCTAssertEqual(llm.screenCaptureStatus, "Reading image…")
