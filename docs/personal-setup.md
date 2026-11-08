@@ -8,7 +8,7 @@ general terms. This file records the specific wiring, with `~` paths.
 
 - Repo: `rti`. It builds `RTI.app`, bundle id `com.tristan.rti.personal`, display name RTI.
 - The bundle id kept the old "personal" suffix on purpose. macOS ties Microphone, System Audio Recording and Screen Recording grants to the bundle id and the signing identity, so a rename would reset them.
-- One launchd job lives outside this repo: `com.tristan.rti-crash-watchdog` relaunches RTI after a crash. The `com.tristan.rti-meeting-drain` job no longer exists (see Meeting processing below).
+- One launchd job lives outside this repo: `com.tristan.rti-crash-watchdog` relaunches RTI after a crash. The `com.tristan.rti-meeting-drain` drain is a vault tool that no longer runs on this Mac (see Meeting processing below).
 - General chat lives in Quick Launch's AI Chat. RTI and Quick Launch share `HouseChatCore` code, not histories, settings or keys.
 
 ## Config file
@@ -66,7 +66,7 @@ Every `.md` file carries YAML frontmatter (`title`, `type: reference`, `date`, `
 
 **3. Meeting processing** happens in the `/meeting` skill, never in the app:
 
-- The `com.tristan.rti-meeting-drain` LaunchAgent no longer exists on this Mac. Nothing scans for unprocessed `-transcript.txt` files. Post-session processing, if any, is the app's own `auto_process` setting.
+- The `rti-meeting-drain` is a vault tool. It no longer runs on this Mac: the `com.tristan.rti-meeting-drain` LaunchAgent is gone and the last Mac run was 2026-10-18. It runs on the VPS every 30 minutes by cron from vault-private. On this Mac the app's own `auto_process` setting (on) fires `/meeting` after a recording.
 - With `auto_process` on, RTI runs `/meeting` itself through `claude -p` once a session's transcript is archived. That writes the canonical meeting note in the project's `07-fieldwork/transcripts/meeting/` (or the meetings inbox, unrouted) as `YYYYMMDD-<type>-<topic>.md`, folds the `-rti.md` sidecar in as priority signal, and writes a speaker-resolved `-transcript.named.txt` sibling. The raw transcript is never edited. This Mac sets `auto_process` and `auto_process_scoped_tools` to true. Both default to false for everyone else. The run uses `--permission-mode acceptEdits` plus a fixed `--allowedTools` list; RTI never passes `--dangerously-skip-permissions`.
 - The assistant's `search_vault` tool is a local keyword scan of the notes folder. There is no search index.
 
