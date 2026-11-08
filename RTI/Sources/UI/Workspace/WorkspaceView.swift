@@ -53,7 +53,6 @@ struct WorkspaceView: View {
         .background(House.ColorToken.surface)
         .ignoresSafeArea(.container, edges: .top)
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { _ in model.select(.live) }
-        .onReceive(NotificationCenter.default.publisher(for: .rtiShowLogs)) { _ in model.showSettings(.logs) }
         .onReceive(NotificationCenter.default.publisher(for: .rtiFindInSession)) { _ in
             if model.page == .sessions { _ = model.sessions.handle(.find) }
         }

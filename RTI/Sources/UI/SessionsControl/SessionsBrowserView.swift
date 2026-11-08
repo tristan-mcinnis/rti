@@ -64,10 +64,6 @@ struct SessionsBrowserView: View {
         } message: {
             Text("“\(model.deletionTitle)” and its saved audio, transcript, notes, and chat will move to Trash. Restore the folder in Finder if needed. Separately exported meeting notes are kept.")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .rtiOpenSessionInBrowser)) { note in
-            guard let folder = note.object as? String else { return }
-            model.open(folder: folder)
-        }
         .sheet(isPresented: $model.isSpeakerEditorPresented) {
             SpeakerEditorSheet(model: model)
         }

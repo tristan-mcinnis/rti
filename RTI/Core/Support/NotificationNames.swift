@@ -10,11 +10,6 @@ public extension Notification.Name {
     /// Posted when the light/dark setting flips so the live panel re-applies its
     /// NSAppearance immediately.
     static let rtiOverlayAppearanceChanged = Notification.Name("rti.overlayAppearanceChanged")
-    static let rtiShowLogs = Notification.Name("rti.showLogs")
-    static let rtiSelectSessionsControlTab = Notification.Name("rti.selectSessionsControlTab")
-    /// Posted (object = session folder name String) to focus the Sessions
-    /// browser on a specific archived session.
-    static let rtiOpenSessionInBrowser = Notification.Name("rti.openSessionInBrowser")
     /// Posted when a session stops, so per-session UI state (e.g. an unsent
     /// draft in the composer) can reset before the next meeting.
     static let rtiSessionDidStop = Notification.Name("rti.sessionDidStop")
