@@ -168,7 +168,7 @@ enum CommandBuilder {
                 id: "view.sessions",
                 title: "Sessions",
                 keywords: ["history", "archive", "library", "previous"],
-                perform: { [weak windows] in windows?.showSessionsControl(tab: .sessions) },
+                perform: { [weak windows] in windows?.showSessions() },
                 menuSection: .navigation
             ),
             RTICommand(

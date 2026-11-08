@@ -601,7 +601,7 @@ struct SetupTabView: View {
             }
             Spacer(minLength: House.Spacing.sm)
             Button("Configure") {
-                WindowCoordinator.shared.showSessionsControl(tab: .general)
+                WindowCoordinator.shared.openSettings(pane: .general)
             }
             .buttonStyle(.borderless)
             .font(.system(size: House.TypeToken.Size.caption, weight: .medium))

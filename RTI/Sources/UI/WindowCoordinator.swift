@@ -49,15 +49,6 @@ final class WindowCoordinator {
 
     // MARK: - Sessions and Preferences
 
-    /// Compatibility callers use the same main workspace and settings shell.
-    func showSessionsControl(tab: SessionsControlView.Tab = .sessions) {
-        if tab == .sessions {
-            showSessions()
-        } else if let pane = SettingsView.SettingsTab(rawValue: tab.rawValue.lowercased()) {
-            openSettings(pane: pane)
-        }
-    }
-
     func showSessions() {
         WorkspaceModel.shared.showSession()
         overlayController?.show()

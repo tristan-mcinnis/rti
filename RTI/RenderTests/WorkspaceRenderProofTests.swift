@@ -171,7 +171,7 @@ final class WorkspaceRenderProofTests: RenderProofTestCase {
         model.select(.chats)
         WindowCoordinator.shared.showSessions()
         XCTAssertEqual(model.page, .sessions)
-        WindowCoordinator.shared.showSessionsControl(tab: .general)
+        WindowCoordinator.shared.openSettings(pane: .general)
         XCTAssertEqual(model.page, .settings)
         XCTAssertEqual(model.settings.pane, .general)
         SettingsWindowController.shared.show(pane: .logs)
