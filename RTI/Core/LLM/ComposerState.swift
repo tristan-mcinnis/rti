@@ -441,10 +441,6 @@ public struct ComposerRoutePreview: Equatable, Sendable {
 
     public var isBlocked: Bool { blockerMessage != nil }
 
-    /// What the bar prints: the chosen route, or the short reason it cannot
-    /// run. Never a route that will not run.
-    public var barLabel: String { isBlocked ? (blockerLabel ?? label) : label }
-
     /// `chosenLabel` is the controller's own `chatRouteLabel`, so the chosen
     /// line is the one the app already shows. A vision fallback, when one ever
     /// exists, prints the effective route instead.

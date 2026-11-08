@@ -38,7 +38,6 @@ final class ComposerRoutePreviewTests: XCTestCase {
             chosenLabel: "DeepSeek · deepseek-chat · Thinking"
         )
         XCTAssertEqual(preview.label, "DeepSeek · deepseek-chat · Thinking")
-        XCTAssertEqual(preview.barLabel, preview.label)
         XCTAssertEqual(preview.imageRouteLabel, "", "no image, no destination claim")
         XCTAssertFalse(preview.isBlocked)
         XCTAssertFalse(preview.usesVisionFallback)
@@ -76,12 +75,10 @@ final class ComposerRoutePreviewTests: XCTestCase {
             chosenLabel: "OpenAI · gpt-5 · Fast"
         )
         XCTAssertTrue(preview.isBlocked)
-        XCTAssertEqual(preview.barLabel, "No API key for OpenAI", "the bar stays short enough to read")
         XCTAssertTrue(preview.blockerMessage?.contains("OpenAI") == true)
         XCTAssertTrue(preview.blockerMessage?.contains("Settings") == true)
         XCTAssertTrue(preview.blockerNeedsSettings, "the error line offers the way to Settings")
         XCTAssertEqual(preview.label, "OpenAI · gpt-5 · Fast", "the chosen route is still recorded")
-        XCTAssertFalse(preview.barLabel.contains("gpt-5"), "a blocked bar never prints the route it will not run")
     }
 
     func testNoImagesMeansNoDestinationSentence() {
