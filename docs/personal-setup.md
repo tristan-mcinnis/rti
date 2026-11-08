@@ -89,7 +89,6 @@ The upgrade script is `~/skills/file-transcriber/scripts/transcribe-soniox.py`. 
 - Run the installer in an interactive shell. In an agent terminal, request a PTY (`tty: true`). A headless invocation can fail with `errSecInternalComponent` even when the same identity is valid and the login keychain is unlocked. A disposable signing probe confirmed the interactive-shell path on 2026-10-30. Keep the same identity; no keychain ACL or trust change is needed.
 - The script refuses a dirty tree, because the build compiles the working tree. It stamps the pinned `HouseChatCore` and `HouseDesign` versions and revisions (from the committed `Package.resolved`) into the bundle.
 - It will not quit RTI while a recording is running or paused. It asks the running app for its status over the control socket first.
-- `scripts/sign-install.sh` is the older route with a self-signed identity. Prefer `install-local.sh`.
 
 ## Tests on this Mac
 
