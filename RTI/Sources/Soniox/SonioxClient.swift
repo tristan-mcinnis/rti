@@ -130,18 +130,22 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     }
 
     func didReceive(event: WebSocketEvent, client: WebSocketClient) {
-        // Lifecycle events from a socket this client has already let go of
+        // Events from a socket this client has already let go of
         // (parked, or replaced by a reconnect) describe that old socket, not
         // the current one. Acting on them reset `configSent` on the live
         // socket, so its audio was dropped, and queued a reconnect that
-        // orphaned it while it kept delivering words.
+        // orphaned it while it kept delivering words. Text frames also carry
+        // application errors and transcript tokens: neither belongs to the
+        // replacement stream. The current socket may still flush finals after
+        // finalize(), until disconnect() releases it.
         switch event {
-        case .connected, .disconnected, .error, .cancelled, .peerClosed:
+        case .connected, .disconnected, .error, .cancelled, .peerClosed, .text:
             lock.lock()
             let isCurrent = socket.map { $0 === client } ?? false
             lock.unlock()
             guard isCurrent else {
-                RTILog.log("ignoring \(event) from a replaced socket", category: .soniox)
+                // Text events can contain meeting content; never log the payload.
+                RTILog.log("ignoring event from a replaced socket", category: .soniox)
                 return
             }
         default:

@@ -27,7 +27,7 @@ final class AutoAssistController {
     /// tab's unread badge so a proactive suggestion is noticeable.
     private(set) var unseenCount = 0
 
-    private let request = LLMRequest(priority: .background)
+    private let request: LLMRequest
     private var sessionId: String?
     /// Watermark: ms of the last transcript covered.
     private var lastMs = 0
@@ -48,7 +48,9 @@ final class AutoAssistController {
     /// Bumped on reset/clear so a pass still awaiting the LLM from an older
     /// session cannot write into the new one.
     private var generation = 0
-    private init() {}
+    init(request: LLMRequest = LLMRequest(priority: .background)) {
+        self.request = request
+    }
 
     /// Bind to a session and drop any prior cards.
     func reset(for sessionId: String) {
@@ -120,14 +122,18 @@ final class AutoAssistController {
     @discardableResult
     func generate(sessionId: String) async -> Int? {
         guard !isGenerating else { return nil }
+        let passGeneration = generation
         isGenerating = true
-        defer { isGenerating = false }
+        // A reset may admit a new pass while this one is suspended. Only
+        // the owning generation can release its busy state.
+        defer {
+            if passGeneration == generation { isGenerating = false }
+        }
         lastError = nil
         // All paths (debounce, scheduler, manual) update the floor so the
         // proactive trigger rate-limits against every kind of pass.
         lastPassAt = Date()
 
-        let passGeneration = generation
         let windowStartMs = lastMs
         let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
         let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
@@ -148,6 +154,7 @@ final class AutoAssistController {
         var citations: [VaultSearch.Citation] = []
         if let scope = MeetingContextStore.shared.workstreamScopePath {
             let found = await VaultSearch.retrieve(query: window, scopeRelativePath: scope, citeable: true)
+            guard passGeneration == generation else { return nil }
             // Only inject a genuine hit, not the "nothing matched" sentinel.
             if !found.isEmpty {
                 vaultMaterial = found.formatted

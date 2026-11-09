@@ -17,7 +17,7 @@ final class NotesGenerationController {
     /// time alongside its meeting-relative time.
     private(set) var sessionStartedAt: Date?
 
-    private let request = LLMRequest(priority: .background)
+    private let request: LLMRequest
     private var sessionId: String?
     /// Watermark: ms of the last transcript covered by a note. Owned here so the
     /// scheduler tick and the manual "Generate" button both advance the SAME
@@ -31,7 +31,9 @@ final class NotesGenerationController {
     /// Bumped on reset/clear so a pass still awaiting the LLM from an older
     /// session cannot write into the new one.
     private var generation = 0
-    private init() {}
+    init(request: LLMRequest = LLMRequest(priority: .background)) {
+        self.request = request
+    }
 
     /// Bind to a session and drop any prior notes.
     func reset(for sessionId: String) {
@@ -60,11 +62,15 @@ final class NotesGenerationController {
     @discardableResult
     func generate(sessionId: String) async -> Int? {
         guard !isGenerating else { return nil }
+        let passGeneration = generation
         isGenerating = true
-        defer { isGenerating = false }
+        // A reset may admit a new pass while this one is suspended. Only
+        // the owning generation can release its busy state.
+        defer {
+            if passGeneration == generation { isGenerating = false }
+        }
         lastError = nil
 
-        let passGeneration = generation
         let windowStartMs = lastNotedMs
         let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
 
@@ -83,9 +89,11 @@ final class NotesGenerationController {
                 + "or re-introduce these people/points):\n\(prior.content)\n\n"
         } ?? ""
         let prompt = PromptStore.shared.text(.liveNotes) + "\n" + priorBlock + window
-        guard let response = await request.collectAsync(
+        let response = await request.collectAsync(
             messages: [LLMMessage(role: "user", content: prompt)], smart: false
-        ), !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        )
+        guard passGeneration == generation else { return nil }
+        guard let response, !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             // There WAS transcript to summarize but the model returned nothing.
             // A real failure worth surfacing (don't leave the user guessing).
             lastError = "Couldn't generate notes just now. Will retry."
@@ -93,7 +101,6 @@ final class NotesGenerationController {
             return nil
         }
 
-        guard passGeneration == generation else { return nil }
         // Advance the watermark even if this block was empty, so we never
         // re-cover the same stretch.
         lastNotedMs = endMs

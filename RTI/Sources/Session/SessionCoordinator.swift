@@ -4,10 +4,9 @@ import Foundation
 import Observation
 import RTICore
 
-/// Owns the live recording lifecycle. Ephemeral build: a session is purely a
-/// run of live audio → transcript held in memory for the duration. Nothing is
-/// persisted — no corpus, no database, no history. When the session ends the
-/// transcript stays in memory until the next session resets it.
+/// Owns the live recording lifecycle and its in-memory transcript. Session
+/// finalization archives the transcript and retained audio; offline upgrades
+/// can outlive this live session. No RTI database or index is maintained.
 @Observable @MainActor
 final class SessionCoordinator {
     static let shared = SessionCoordinator()

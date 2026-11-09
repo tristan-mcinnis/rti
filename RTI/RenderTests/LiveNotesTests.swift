@@ -117,3 +117,132 @@ final class LiveNotesTests: XCTestCase {
         XCTAssertEqual(files.first?.displayName, "Notes")
     }
 }
+
+// Suspends provider completions explicitly; no sleeps, network, or timing races.
+private actor GenerationResponseGate {
+    private var calls: [CheckedContinuation<LLMClient.CollectedResponse, Never>] = []
+    private var waiters: [(Int, CheckedContinuation<Void, Never>)] = []
+
+    func collect() async -> LLMClient.CollectedResponse {
+        await withCheckedContinuation { continuation in
+            calls.append(continuation)
+            let ready = waiters.filter { $0.0 <= calls.count }
+            waiters.removeAll { $0.0 <= calls.count }
+            for (_, waiter) in ready { waiter.resume() }
+        }
+    }
+
+    func waitForCalls(_ count: Int) async {
+        guard calls.count < count else { return }
+        await withCheckedContinuation { waiters.append((count, $0)) }
+    }
+
+    func finish(_ index: Int, text: String) {
+        calls[index].resume(returning: LLMClient.CollectedResponse(
+            text: text, finishReason: "stop", reasoningCharacters: 0
+        ))
+    }
+}
+
+extension LiveNotesTests {
+    func testOldNotesCompletionCannotReleaseNewSessionPassOrSetItsError() async {
+        seedGenerationTranscript()
+        defer { clearGenerationTranscript() }
+        let gate = GenerationResponseGate()
+        let controller = NotesGenerationController(request: generationRequest(gate))
+        controller.reset(for: "old")
+        async let old = controller.generate(sessionId: "old")
+        await gate.waitForCalls(1)
+        controller.reset(for: "new")
+        async let current = controller.generate(sessionId: "new")
+        await gate.waitForCalls(2)
+
+        await gate.finish(0, text: "")
+        _ = await old
+        XCTAssertTrue(controller.isGenerating)
+        XCTAssertNil(controller.lastError)
+        XCTAssertTrue(controller.notes.isEmpty)
+        if controller.isGenerating {
+            let overlapping = await controller.generate(sessionId: "new")
+            XCTAssertNil(overlapping)
+        }
+
+        await gate.finish(1, text: "TITLE: Current session\n- Current note")
+        _ = await current
+        XCTAssertFalse(controller.isGenerating)
+        XCTAssertEqual(controller.notes.map(\.title), ["Current session"])
+    }
+
+    func testOldAutoCompletionCannotReleaseNewSessionPass() async {
+        seedGenerationTranscript()
+        defer { clearGenerationTranscript() }
+        let gate = GenerationResponseGate()
+        let controller = AutoAssistController(request: generationRequest(gate))
+        controller.reset(for: "old")
+        async let old = controller.generate(sessionId: "old")
+        await gate.waitForCalls(1)
+        controller.reset(for: "new")
+        async let current = controller.generate(sessionId: "new")
+        await gate.waitForCalls(2)
+
+        await gate.finish(0, text: "[]")
+        _ = await old
+        XCTAssertTrue(controller.isGenerating)
+        XCTAssertTrue(controller.cards.isEmpty)
+        if controller.isGenerating {
+            let overlapping = await controller.generate(sessionId: "new")
+            XCTAssertNil(overlapping)
+        }
+
+        await gate.finish(1, text: "[]")
+        _ = await current
+        XCTAssertFalse(controller.isGenerating)
+    }
+
+    func testClearedNotesIgnoreLateFailureAndCanRetryCurrentFailure() async {
+        seedGenerationTranscript()
+        defer { clearGenerationTranscript() }
+        let gate = GenerationResponseGate()
+        let controller = NotesGenerationController(request: generationRequest(gate))
+        controller.reset(for: "old")
+        async let old = controller.generate(sessionId: "old")
+        await gate.waitForCalls(1)
+        controller.clear()
+        await gate.finish(0, text: "")
+        _ = await old
+        XCTAssertNil(controller.lastError)
+        XCTAssertFalse(controller.isGenerating)
+
+        controller.reset(for: "new")
+        async let failed = controller.generate(sessionId: "new")
+        await gate.waitForCalls(2)
+        await gate.finish(1, text: "")
+        _ = await failed
+        XCTAssertNotNil(controller.lastError)
+        XCTAssertFalse(controller.isGenerating)
+        async let retry = controller.generate(sessionId: "new")
+        await gate.waitForCalls(3)
+        await gate.finish(2, text: "TITLE: Retry\n- Retained window")
+        _ = await retry
+        XCTAssertNil(controller.lastError)
+        XCTAssertEqual(controller.notes.map(\.title), ["Retry"])
+    }
+
+    private func generationRequest(_ gate: GenerationResponseGate) -> LLMRequest {
+        LLMRequest(collectStream: { _, _, _, _ in await gate.collect() }, priority: .foreground,
+                   admission: LLMAdmissionController())
+    }
+
+    private func seedGenerationTranscript() {
+        MeetingContextStore.shared.resetAfterSession()
+        SessionCoordinator.shared.seedForRenderProof(
+            entries: [LiveEntry(speakerId: "self", text: "Discuss the next milestone", startMs: 1000,
+                                confidence: 1, translationStatus: "none", language: nil, sourceLanguage: nil)],
+            interim: nil, phase: .idle, startedAt: nil
+        )
+    }
+
+    private func clearGenerationTranscript() {
+        SessionCoordinator.shared.seedForRenderProof(entries: [], interim: nil, phase: .idle, startedAt: nil)
+    }
+}

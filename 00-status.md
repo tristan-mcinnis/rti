@@ -67,3 +67,10 @@ Must not: Use client audio, change permissions or credentials, interrupt a real 
 - The actual two-hour writer run passed: 707,970 append calls, zero write failures, exact retained hashes/frame counts and pause silence. Final source, signature, installed bytes and process checks gate delivery. Physical-device capture, recognition accuracy, power loss and installed-app long-session rendering remain unverified.
 
 - A matched memory probe isolated historical writer RSS growth to verification-read autoreleases. A harness-only pool reduced 600-second verification-inclusive peak from 53.0 MB to 16.1 MB, with identical PCM hashes; production writer stayed unchanged.
+
+State ownership audit, 2026-11-09:
+- Three sub-agents audited capture, chat and UI/background lifecycles. The dated inventory and follow-up risks are in docs/state-machines-20261109.md; runtime source and tests remain authoritative.
+- Keep independent lifecycle owners. Reject stale asynchronous results by socket/request/session generation, including failure and cleanup paths.
+- Fixed old-socket text admission and generation-owned Notes/Auto completion; added five deterministic regressions and corrected stale persistence comments.
+- Independent review found no blocking regression. Hardware/network interleavings beyond the regression suite remain unverified.
+- Verification: make check/build passed; 786 unit tests (2 skipped) and 318 app/render tests (1 skipped), zero failures. Strict changed-file design lint, scrub and diff checks passed. Release uses the existing idle guard and stable-signing install script.

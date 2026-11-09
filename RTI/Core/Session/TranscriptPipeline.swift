@@ -2,8 +2,8 @@ import Foundation
 
 /// Per-channel live transcript aggregation and note buffering. Owns the
 /// `TranscriptAggregator`s and the note entry list; produces the combined
-/// `liveEntries` and `interimLine` that the UI observes. Ephemeral build:
-/// nothing is written to disk — the in-memory entries are the only record.
+/// `liveEntries` and `interimLine` that the UI observes. This module owns only
+/// live state; SessionCoordinator snapshots it for the session archive.
 public final class TranscriptPipeline {
 
     private let micAggregator = TranscriptAggregator(channel: "mic")

@@ -60,4 +60,46 @@ final class SonioxClientSocketEventTests: XCTestCase {
         }
         XCTAssertEqual(seen, [.reconnecting], "a closed connection must not keep reading live")
     }
+
+    func test_replacedSocketTextCannotChangeCurrentTranscriptOrHealth() async throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable)
+        let current = makeSocket()
+        let replaced = makeSocket()
+        client.adoptSocketForTesting(current)
+        defer { client.disconnect() }
+        var words: [SonioxWord] = []
+        var errors: [SonioxFailure] = []
+        client.onWords = { words += $0 }
+        client.onError = { failure, _ in errors.append(failure) }
+
+        let seen = try await statuses(of: client) {
+            client.didReceive(event: .text(Self.finalToken), client: replaced)
+            client.didReceive(event: .text(#"{"error_code":408,"error_message":"old stream timed out"}"#), client: replaced)
+            client.didReceive(event: .text(#"{"error_code":401,"error_message":"old stream rejected"}"#), client: replaced)
+        }
+
+        XCTAssertTrue(words.isEmpty, "old stream tokens must not enter the current timeline")
+        XCTAssertTrue(errors.isEmpty, "old stream errors must not fail the current stream")
+        XCTAssertEqual(seen, [], "old stream errors must not reconnect the current stream")
+    }
+
+    func test_currentSocketFinalsStillArriveWhileFinalizing() async throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable)
+        let current = makeSocket()
+        client.adoptSocketForTesting(current)
+        defer { client.disconnect() }
+        var words: [SonioxWord] = []
+        client.onWords = { words += $0 }
+
+        _ = try await statuses(of: client) {
+            client.didReceive(event: .connected([:]), client: current)
+            client.finalize()
+            client.didReceive(event: .text(Self.finalToken), client: current)
+        }
+
+        XCTAssertEqual(words.map(\.text), ["Hello"])
+        XCTAssertTrue(words.allSatisfy(\.isFinal))
+    }
+
+    private static let finalToken = #"{"tokens":[{"text":"Hello","start_ms":0,"end_ms":100,"speaker":"1","confidence":0.99,"is_final":true}]}"#
 }
