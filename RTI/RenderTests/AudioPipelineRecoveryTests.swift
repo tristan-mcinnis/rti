@@ -234,6 +234,80 @@ final class AudioPipelineRecoveryTests: XCTestCase {
                        Array(repeating: 200, count: 320) + Array(repeating: 400, count: 320))
     }
 
+    func testReplacedAndFinishedClientsCannotDeliverButCurrentFinalsCan() async throws {
+        let backend = InjectedSystemCapture()
+        let fixture = try Fixture(system: backend)
+        defer { fixture.cleanUp() }
+        let started = expectation(description: "System backend ready")
+        fixture.pipeline.onSystemAudioStarted = { _ in started.fulfill() }
+        try fixture.start()
+        await fulfillment(of: [started], timeout: 2)
+        let old = fixture.clients
+        XCTAssertEqual(old.count, 2)
+        let retiredCallbacks = old.map { ($0.onWords, $0.onStatus, $0.onError) }
+        old.forEach { $0.emitOnDisconnect = true }
+        var replacementErrors = 0
+        fixture.pipeline.onTranscriptionError = { _, _, _ in replacementErrors += 1 }
+        fixture.pipeline.reconfigureStreamingClients()
+        XCTAssertEqual(replacementErrors, 0, "Replacement retires synchronous teardown errors")
+        let current = Array(fixture.clients.suffix(2))
+        var deliveries = 0
+        var received: [String] = []
+        fixture.pipeline.onWords = { words in deliveries += 1; received += words.map(\.text) }
+        fixture.pipeline.onSystemWords = { words in deliveries += 1; received += words.map(\.text) }
+        fixture.pipeline.onTranscriptionError = { _, _, _ in deliveries += 1 }
+        fixture.pipeline.onTranscriptionHealth = { _ in deliveries += 1 }
+        fixture.pipeline.onSystemAudioHealth = { _ in deliveries += 1 }
+        fixture.pipeline.onStreamRestarted = { _, _ in deliveries += 1 }
+        for (words, status, error) in retiredCallbacks {
+            words?([testWord])
+            status?(.live)
+            error?(.auth, true)
+        }
+        XCTAssertEqual(deliveries, 0, "Retired clients cannot change transcript, health, errors or timeline")
+        fixture.pipeline.finalize()
+        current[0].onWords?([testWord])
+        current[1].onWords?([testWord])
+        XCTAssertEqual(deliveries, 2, "Current clients remain admitted during final-word flush")
+        XCTAssertEqual(received, ["Fixture word", "Fixture word"])
+        deliveries = 0
+        current.forEach { $0.emitOnDisconnect = true }
+        fixture.pipeline.finish()
+        XCTAssertEqual(deliveries, 0, "Even synchronous disconnect callbacks must be retired first")
+        for client in current {
+            client.onWords?([testWord])
+            client.onStatus?(.live)
+            client.onError?(.auth, true)
+        }
+        XCTAssertEqual(deliveries, 0, "Finished clients cannot mutate the archived session's live projection")
+    }
+
+    func testAbortedClientCannotMutateNextCapture() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        try fixture.start()
+        let old = fixture.clients[0]
+        fixture.pipeline.abort()
+        try fixture.pipeline.prepare(recordingDirectory: fixture.directory.appendingPathComponent("next"))
+        try fixture.pipeline.start()
+        var deliveries = 0
+        fixture.pipeline.onWords = { _ in deliveries += 1 }
+        fixture.pipeline.onTranscriptionHealth = { _ in deliveries += 1 }
+        fixture.pipeline.onTranscriptionError = { _, _, _ in deliveries += 1 }
+        old.onWords?([testWord])
+        old.onStatus?(.live)
+        old.onError?(.auth, true)
+        XCTAssertEqual(deliveries, 0)
+        fixture.clients[1].onWords?([testWord])
+        XCTAssertEqual(deliveries, 1)
+    }
+
+    private var testWord: SonioxWord {
+        SonioxWord(text: "Fixture word", startMs: 0, endMs: 100, speaker: 1,
+                   confidence: 1, isFinal: true, translationStatus: "none",
+                   language: nil, sourceLanguage: nil)
+    }
+
     private func pcm(value: Int16) throws -> AVAudioPCMBuffer {
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: AudioCaptureManager.targetFormat, frameCapacity: 320))
         buffer.frameLength = 320
@@ -368,7 +442,17 @@ final class InjectedSTTClient: STTClient, @unchecked Sendable {
         set { lock.withLock { status = newValue } }
     }
     func connect() { onStatus?(.connecting) }
-    func disconnect() {}
+    private var disconnectEmits = false
+    var emitOnDisconnect: Bool {
+        get { lock.withLock { disconnectEmits } }
+        set { lock.withLock { disconnectEmits = newValue } }
+    }
+    func disconnect() {
+        if emitOnDisconnect {
+            onStatus?(.failed)
+            onError?(.auth, true)
+        }
+    }
     func sendAudio(_ data: Data) {}
     func finalize() {}
 }

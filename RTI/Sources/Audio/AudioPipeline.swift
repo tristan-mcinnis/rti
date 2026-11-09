@@ -283,13 +283,9 @@ final class AudioPipeline {
         try recorder.open(in: recordingDirectory)
 
         let client = makeSTTClient(translationConfig, speechContext)
-        client.onWords = { [weak self] words in self?.onWords?(words) }
-        client.onError = { [weak self] failure, didOpen in
-            self?.reportTranscriptionFailure(failure, didOpen: didOpen, system: false)
-        }
-        client.onStatus = { [weak self] health in self?.micStatusChanged(health) }
-        client.connect()
         soniox = client
+        bindTranscriptionCallbacks(client, system: false)
+        client.connect()
 
         audio.onPCMBuffer = { [weak self] buffer in
             guard let self else { return }
@@ -339,18 +335,10 @@ final class AudioPipeline {
             try? await Task.sleep(nanoseconds: systemAudioStartupDelayNs)
             guard isCapturing, captureGeneration == generation else { return }
             let sysClient = makeSTTClient(translationConfig, speechContext)
-            sysClient.onWords = { [weak self] words in self?.onSystemWords?(words) }
-            sysClient.onError = { [weak self] failure, didOpen in
-                guard let self else { return }
-                let message = failure.userMessage(didOpen: didOpen)
-                log("system audio Soniox error — \(message)", .soniox)
-                // A transcription outage does not stop either retained leg.
-                reportTranscriptionFailure(failure, didOpen: didOpen, system: true)
-            }
-            sysClient.onStatus = { [weak self] health in self?.systemStatusChanged(health) }
-            // Deliberately NOT connected yet — see `connectSystemSTTIfNeeded`:
-            // the socket opens on the first real buffer from the backend.
             systemSoniox = sysClient
+            bindTranscriptionCallbacks(sysClient, system: true)
+            // Connect only once the backend proves it delivers PCM.
+
 
             var systemBufferCount = 0
             let onPCM: (AVAudioPCMBuffer) -> Void = { [weak self] buffer in
@@ -791,12 +779,34 @@ final class AudioPipeline {
     /// includes failures whose UI notification is still queued on MainActor.
     @discardableResult
     func finish() -> Bool {
-        soniox?.disconnect()
+        let mic = soniox
+        let system = systemSoniox
         soniox = nil
-        systemSoniox?.disconnect()
         systemSoniox = nil
+        mic?.disconnect()
+        system?.disconnect()
         recorder.close()
         return recordingFailure.message == nil
+    }
+
+    /// Every provider callback must still belong to this leg's current client.
+    /// Navigation and finalize do not retire it; replacement, finish and abort do.
+    private func bindTranscriptionCallbacks(_ client: STTClient, system: Bool) {
+        client.onWords = { [weak self, weak client] words in
+            guard let self, let client,
+                  (system ? systemSoniox : soniox) === client else { return }
+            if system { onSystemWords?(words) } else { onWords?(words) }
+        }
+        client.onError = { [weak self, weak client] failure, didOpen in
+            guard let self, let client,
+                  (system ? systemSoniox : soniox) === client else { return }
+            reportTranscriptionFailure(failure, didOpen: didOpen, system: system)
+        }
+        client.onStatus = { [weak self, weak client] health in
+            guard let self, let client,
+                  (system ? systemSoniox : soniox) === client else { return }
+            if system { systemStatusChanged(health) } else { micStatusChanged(health) }
+        }
     }
 
     /// Swap the live transcription clients to apply a new provider and/or
@@ -807,31 +817,23 @@ final class AudioPipeline {
     func reconfigureStreamingClients() {
         guard hasSTTKey() else { return }
 
-        // Mic leg.
-        soniox?.disconnect()
+        // Retire ownership before disconnect: a provider may report teardown
+        // synchronously. Publish the replacement before connect for the same reason.
+        let oldMic = soniox
+        soniox = nil
+        oldMic?.disconnect()
         let mic = makeSTTClient(translationConfig, speechContext)
-        mic.onWords = { [weak self] words in self?.onWords?(words) }
-        mic.onError = { [weak self] failure, didOpen in
-            self?.reportTranscriptionFailure(failure, didOpen: didOpen, system: false)
-        }
-        mic.onStatus = { [weak self] health in self?.micStatusChanged(health) }
-        mic.connect()
         soniox = mic
+        bindTranscriptionCallbacks(mic, system: false)
+        mic.connect()
 
-        // System leg (if active).
-        if systemSoniox != nil {
-            systemSoniox?.disconnect()
+        if let oldSystem = systemSoniox {
+            systemSoniox = nil
+            oldSystem.disconnect()
             let sys = makeSTTClient(translationConfig, speechContext)
-            sys.onWords = { [weak self] words in self?.onSystemWords?(words) }
-            sys.onError = { [weak self] failure, didOpen in
-                self?.reportTranscriptionFailure(failure, didOpen: didOpen, system: true)
-            }
-            sys.onStatus = { [weak self] health in self?.systemStatusChanged(health) }
-            // Same lazy rule as at start: only open the socket if the backend
-            // has proven it delivers audio (connectSystemSTTIfNeeded covers
-            // the not-yet case when the first buffer eventually arrives).
-            if systemSTTConnected { sys.connect() }
             systemSoniox = sys
+            bindTranscriptionCallbacks(sys, system: true)
+            if systemSTTConnected { sys.connect() }
         }
     }
 
@@ -847,10 +849,12 @@ final class AudioPipeline {
         systemAudio = nil
         systemPCMHandler = nil
         systemCaptureErrorHandler = nil
-        soniox?.disconnect()
+        let mic = soniox
+        let system = systemSoniox
         soniox = nil
-        systemSoniox?.disconnect()
         systemSoniox = nil
+        mic?.disconnect()
+        system?.disconnect()
         recorder.close()
     }
 }

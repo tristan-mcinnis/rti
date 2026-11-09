@@ -71,6 +71,14 @@ Must not: Use client audio, change permissions or credentials, interrupt a real 
 State ownership audit, 2026-11-09:
 - Three sub-agents audited capture, chat and UI/background lifecycles. The dated inventory and follow-up risks are in docs/state-machines-20261109.md; runtime source and tests remain authoritative.
 - Keep independent lifecycle owners. Reject stale asynchronous results by socket/request/session generation, including failure and cleanup paths.
-- Fixed old-socket text admission and generation-owned Notes/Auto completion; added five deterministic regressions and corrected stale persistence comments.
+- Fixed old-socket text admission and generation-owned Notes/Auto completion; added five regressions (three continuation-gated, two timed socket checks) and corrected stale persistence comments.
 - Independent review found no blocking regression. Hardware/network interleavings beyond the regression suite remain unverified.
 - Verification: make check/build passed; 786 unit tests (2 skipped) and 318 app/render tests (1 skipped), zero failures. Strict changed-file design lint, scrub and diff checks passed. Release uses the existing idle guard and stable-signing install script.
+
+Lifecycle follow-up from 6b4e91f4, 2026-11-09:
+- Three independent reviews verified prior claims, resolved Auto intent and ranked remaining risks. Evidence, preserved behavior and limits are in docs/state-machines-20261109.md.
+- Selected queued transcription delivery/client ownership because obsolete words or restart signals can contaminate the current meeting. Four new tests reproduced it before production edits (11 failed assertions).
+- Soniox stream generations fence delivery and retry adoption; one pipeline callback helper checks current client ownership. Current final-word flush and recording across navigation remain supported.
+- Corrected the audit: Auto intentionally supports grounded recall, project-first with whole-vault no-hit fallback. No product/rule-file change. The original socket tests were timed, not deterministic ordering proofs.
+- Lower-priority work remains ranked in the audit, led by screenshot retention, upgrade serialization and manual generation during stop.
+- Follow-up verification: 51 focused app tests (zero skips/failures), 786 unit tests (2 skipped, zero failures), make check/build, strict changed-file lint, scrub and diff checks passed. Five new tests; no live hardware/provider experiment. Existing publish/install guards apply.

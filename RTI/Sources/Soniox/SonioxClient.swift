@@ -18,8 +18,24 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     /// flowing?" indicator.
     var onStatus: ((TranscriptionHealth) -> Void)?
 
-    private func emitStatus(_ health: TranscriptionHealth) {
-        DispatchQueue.main.async { [weak self] in self?.onStatus?(health) }
+    private func emitStatus(_ health: TranscriptionHealth, generation: UInt64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, ownsDelivery(generation) else { return }
+            onStatus?(health)
+        }
+    }
+
+    /// Socket receipt and queued delivery are separate admission points.
+    /// Disconnect/replacement retires queued output; finalize preserves it.
+    private func ownsDelivery(_ generation: UInt64) -> Bool {
+        lock.withLock { streamGeneration == generation }
+    }
+
+    private func emitError(_ failure: SonioxFailure, didOpen: Bool, generation: UInt64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, ownsDelivery(generation) else { return }
+            onError?(failure, didOpen)
+        }
     }
 
     private let apiKey: String
@@ -28,6 +44,8 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     private let context: SonioxContext?
     private let lock = NSLock()
     private var socket: WebSocket?
+    /// Protected by lock; every new socket or terminal disconnect retires delivery.
+    private var streamGeneration: UInt64 = 0
     private var isConnected = false
     /// True once we have ever successfully connected this session — used
     /// by `onError` callbacks to distinguish handshake failures from
@@ -63,13 +81,13 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         retryCount = 0
         didOpen = false
         lock.unlock()
-        emitStatus(.connecting)
-        openSocket()
+        openSocket(announceConnecting: true)
     }
 
     func disconnect() {
         lock.lock()
         intentionalDisconnect = true
+        streamGeneration &+= 1
         retryWorkItem?.cancel()
         retryWorkItem = nil
         let ws = socket
@@ -138,10 +156,12 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         // application errors and transcript tokens: neither belongs to the
         // replacement stream. The current socket may still flush finals after
         // finalize(), until disconnect() releases it.
+        let eventGeneration: UInt64
         switch event {
         case .connected, .disconnected, .error, .cancelled, .peerClosed, .text:
             lock.lock()
             let isCurrent = socket.map { $0 === client } ?? false
+            eventGeneration = streamGeneration
             lock.unlock()
             guard isCurrent else {
                 // Text events can contain meeting content; never log the payload.
@@ -149,19 +169,20 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
                 return
             }
         default:
-            break
+            return
         }
 
         switch event {
         case .connected:
             lock.lock()
+            guard streamGeneration == eventGeneration else { lock.unlock(); return }
             isConnected = true
             didOpen = true
             retryCount = 0
             lock.unlock()
             RTILog.log("connected — sending config", category: .soniox)
-            emitStatus(.live)
-            sendConfig()
+            emitStatus(.live, generation: eventGeneration)
+            sendConfig(generation: eventGeneration)
 
         case .text(let string):
             // NB: no per-frame logging here. Logging every inbound frame (tens
@@ -170,30 +191,31 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             // tax for zero diagnostic value. Final-token receipt is still logged
             // downstream in `handleMessage`. (Payload is live transcript content
             // and must never land in the user-copyable log buffer anyway.)
-            handleMessage(string)
+            handleMessage(string, generation: eventGeneration)
 
         case .disconnected(let reason, let code):
-            handleDrop(SonioxFailure.fromTransport(reason: "disconnected code=\(code) reason=\(reason)"))
+            handleDrop(SonioxFailure.fromTransport(reason: "disconnected code=\(code) reason=\(reason)"), generation: eventGeneration)
 
         case .error(let error):
-            handleDrop(SonioxFailure.fromTransport(reason: "transport error \(String(describing: error))"))
+            handleDrop(SonioxFailure.fromTransport(reason: "transport error \(String(describing: error))"), generation: eventGeneration)
 
         case .cancelled:
-            handleDrop(SonioxFailure.fromTransport(reason: "cancelled"))
+            handleDrop(SonioxFailure.fromTransport(reason: "cancelled"), generation: eventGeneration)
 
         case .peerClosed:
             // The server closed the TCP connection without a WebSocket close
             // frame. Starscream leaves that to the delegate; ignoring it left
             // the leg reading "live" with nothing arriving.
-            handleDrop(SonioxFailure.fromTransport(reason: "peer closed"))
+            handleDrop(SonioxFailure.fromTransport(reason: "peer closed"), generation: eventGeneration)
 
         default:
             break
         }
     }
 
-    private func handleDrop(_ failure: SonioxFailure) {
+    private func handleDrop(_ failure: SonioxFailure, generation: UInt64) {
         lock.lock()
+        guard streamGeneration == generation else { lock.unlock(); return }
         isConnected = false
         configSent = false
         let blocked = intentionalDisconnect
@@ -202,17 +224,16 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         RTILog.log("dropped — \(failure)", category: .soniox)
         guard !blocked else { return }
         if failure.shouldRetry {
-            scheduleReconnect(after: failure)
+            scheduleReconnect(after: failure, generation: generation)
         } else {
-            emitStatus(.failed)
-            DispatchQueue.main.async { [weak self] in
-                self?.onError?(failure, phaseDidOpen)
-            }
+            emitStatus(.failed, generation: generation)
+            emitError(failure, didOpen: phaseDidOpen, generation: generation)
         }
     }
 
-    private func scheduleReconnect(after failure: SonioxFailure) {
+    private func scheduleReconnect(after failure: SonioxFailure, generation: UInt64) {
         lock.lock()
+        guard streamGeneration == generation else { lock.unlock(); return }
         let phaseDidOpen = didOpen
 
         // One socket teardown emits several events (e.g. a server 408 is
@@ -239,10 +260,8 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             retryWorkItem = nil
             lock.unlock()
             RTILog.log("SonioxClient: max retries reached", category: .soniox)
-            emitStatus(.failed)
-            DispatchQueue.main.async { [weak self] in
-                self?.onError?(failure, phaseDidOpen)
-            }
+            emitStatus(.failed, generation: generation)
+            emitError(failure, didOpen: phaseDidOpen, generation: generation)
             return
         }
         let delay = Self.retryDelays[min(retryCount, Self.retryDelays.count - 1)]
@@ -252,17 +271,18 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         let item = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.lock.lock()
+            guard self.streamGeneration == generation else { self.lock.unlock(); return }
             self.retryWorkItem = nil
             let blocked = self.intentionalDisconnect
             self.lock.unlock()
             guard !blocked else { return }
-            self.openSocket()
+            self.openSocket(expectedGeneration: generation)
         }
         retryWorkItem = item
         lock.unlock()
 
         RTILog.log("SonioxClient: reconnect attempt \(attempt) in \(delay)s", category: .soniox)
-        emitStatus(.reconnecting)
+        emitStatus(.reconnecting, generation: generation)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
@@ -272,8 +292,19 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     /// can be fed to `didReceive` directly. Never called by the app.
     func adoptSocketForTesting(_ ws: WebSocket) {
         lock.lock()
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        streamGeneration &+= 1
         socket = ws
         lock.unlock()
+    }
+#endif
+
+#if DEBUG
+    /// Capture the scheduled action to test replacement-before-retry without
+    /// waiting on a timer or opening a socket.
+    func pendingReconnectForTesting() -> DispatchWorkItem? {
+        lock.withLock { retryWorkItem }
     }
 #endif
 
@@ -285,22 +316,33 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         return request
     }
 
-    private func openSocket() {
+    private func openSocket(announceConnecting: Bool = false, expectedGeneration: UInt64? = nil) {
         let ws = WebSocket(request: Self.upgradeRequest(url: url, apiKey: apiKey))
         ws.delegate = self
         lock.lock()
+        if let expectedGeneration,
+           streamGeneration != expectedGeneration || intentionalDisconnect {
+            lock.unlock()
+            return
+        }
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        streamGeneration &+= 1
         socket = ws
         configSent = false
+        let generation = streamGeneration
         lock.unlock()
+        if announceConnecting { emitStatus(.connecting, generation: generation) }
         ws.connect()
     }
 
-    private func sendConfig() {
+    private func sendConfig(generation: UInt64) {
         do {
             let config = SonioxConfigMessage.default(translation: translationConfig, context: context)
             let data = try JSONEncoder().encode(config)
             if let string = String(data: data, encoding: .utf8) {
                 lock.lock()
+                guard streamGeneration == generation else { lock.unlock(); return }
                 socket?.write(string: string)
                 configSent = true
                 lock.unlock()
@@ -313,7 +355,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     }
 
 
-    private func handleMessage(_ string: String) {
+    private func handleMessage(_ string: String, generation: UInt64) {
         guard let data = string.data(using: .utf8) else { return }
         do {
             let msg = try JSONDecoder().decode(SonioxTranscriptMessage.self, from: data)
@@ -326,7 +368,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
                 // gap of no decodable audio (other party silent, or a Bluetooth
                 // mic blip) ends the whole session. Only
                 // auth / clientBug (shouldRetry == false) escalate to onError.
-                handleDrop(SonioxFailure.fromSonioxApplicationError(code: code, detail: detail))
+                handleDrop(SonioxFailure.fromSonioxApplicationError(code: code, detail: detail), generation: generation)
                 return
             }
             guard let raw = msg.tokens, !raw.isEmpty else { return }
@@ -336,7 +378,8 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
                 RTILog.log("received \(words.count) tokens (\(finalCount) final)", category: .soniox)
             }
             DispatchQueue.main.async { [weak self] in
-                self?.onWords?(words)
+                guard let self, ownsDelivery(generation) else { return }
+                onWords?(words)
             }
         } catch {
             RTILog.log("SonioxClient: decode failed: \(error)", category: .soniox)

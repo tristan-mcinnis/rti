@@ -145,7 +145,7 @@ Source snapshot: working tree inspected 2026-11-09. Static audit, not a proof th
 
 Recommendation: preserve distributed ownership and explicit local state where it is already sound. Adopt generation-owned completion as the async controller invariant. A universal state-machine framework or app-wide state object adds abstraction and broad migration risk without fixing the demonstrated races. Keep lifecycle effects beside their owner, expose small injectable dependencies, and test adversarial transitions with suspended completions.
 
-Known docs/code mismatch: the project contract describes Auto context as recent transcript with no corpus and no proactive retrieval; AutoAssistController currently performs project-scoped VaultSearch.retrieve before generating cards. This audit preserves existing behavior and flags the discrepancy for parent report.
+Correction after independent follow-up review: the project contract says no corpus/DB, not no proactive retrieval. Auto intentionally supports grounded recall through local keyword search. Request-gated live chat tool rules do not apply to Auto’s separate opt-in retrieval path. Retrieval is project-first with whole-vault fallback on no project hits, not project-only. See the follow-up evidence below.
 
 
 
@@ -168,17 +168,80 @@ Known docs/code mismatch: the project contract describes Auto context as recent 
 5. Recheck Auto enabled when an armed debounce fires; prove disable-before-fire behavior.
 6. Roll back session start metadata on preparation failure; distinguish failed update checks from successful up-to-date results.
 
-Contract mismatch left unchanged: Auto currently performs project-scoped vault retrieval before generating cards, while the supplied project contract describes transcript-only context. Resolve intended product behavior separately. The stale comments claiming no session persistence were corrected; the archive remains current behavior.
+Superseded interpretation: this audit originally called Auto retrieval a transcript-only contract mismatch. Independent review found that inference unsupported; current prompts, restored behavior and citation tests support grounded recall. The broader no-hit fallback is a separate scope/disclosure question, preserved in this lifecycle change. Stale comments claiming no session persistence were corrected; the archive remains current behavior.
 
 ## Final verification, 2026-11-09
 
 - `make check`: all targets compiled.
 - `make build`: passed with warnings treated as errors.
 - `make test`: 786 tests, two skipped, zero failures.
-- `make test-render`: 318 tests, one skipped, zero failures, including all five new regression tests.
+- `make test-render`: 318 tests, one skipped, zero failures, including all five new regression tests. The three Notes/Auto tests use explicit continuation ordering; the two original Soniox tests use timed waits, not deterministic queue ordering.
 - `scripts/scrub.sh`: `SCRUB_CLEAN`.
 - `design-lint --strict --changed .`: zero hits on touched source files.
 - `git diff --check`: passed.
 - Independent chat auditor reviewed the integrated runtime/test diff: no blocking findings.
 
 These checks validate the selected changes, not every possible hardware/network race. The test suite uses invented fixtures; no real meeting or provider request was started for this audit.
+
+
+## Independent follow-up from 6b4e91f4
+
+The previous completion report was rechecked against the clean current tree, installed commit stamp, source, test bodies and history. Three independent reviewers covered ownership, Auto intent and risk ranking. Their findings were reconciled before choosing the change.
+
+### Decision: finish transcription callback ownership
+
+A current-at-receipt socket event could queue words, health or errors, then deliver after replacement/disconnect. Separately, the audio pipeline accepted callbacks from retired clients on both legs. Those callbacks can change transcript content, failure banners and timestamp rebasing, and therefore the input to a later archive. This potential durable contamination takes priority over the simpler screenshot draft-loss defect.
+
+Keep both lifetimes explicit: a socket stream owns queued Soniox delivery; the pipeline's currently installed client owns delivery to each recording leg. Publish ownership before connect, revoke it before disconnect, and retain it through finalize until finish. Navigation does not retire these owners: recording continues when the Live page is hidden.
+
+UX: prevent old words and false health/errors in the current meeting while preserving graceful final-word flush. DX: concentrate admission in Soniox and one pipeline callback-binding helper. AX: tests name the replacement/teardown transitions and prove event ordering directly. Trade-off: queued events from a retired stream are discarded even when received before replacement; retained WAV and the offline transcript upgrade remain the recovery path. No new persisted state or product flow is added.
+
+### What the previous tests actually prove
+
+- The two prior Soniox additions reject already-replaced sockets and allow current finals during finalize. Their 0.3-second waits do not prove current-at-receipt/obsolete-at-delivery ordering.
+- The three Notes/Auto continuation tests prove reset/clear busy ownership and Notes error/retry behavior. Injected foreground requests isolate controller ownership; they do not prove background preemption, manual work during stop, network cancellation or archive completion.
+- Chat generation and terminal-store guards protect separate conversation lifetimes. Hiding the workspace is deliberately not cancellation. No blanket navigation cancellation was introduced.
+
+### Auto: corrected guidance, preserved implementation
+
+The audit's transcript-only inference was wrong. `CLAUDE.md` prohibits an RTI corpus/DB/index, while allowing local keyword retrieval. Its request-gated retrieval paragraph concerns chat tools. Opt-in Auto is a separate proactive workflow.
+
+Evidence: the default Auto prompt (`RTI/Core/LLM/PromptID.swift`, autoAssistCards) explicitly requests supported RECALL/FLAG from supplied vault material; Auto UI offers recall and asks the user to select a project; `AutoAssistCardTests` validates retrieved source handles. Original commit `75cd9eae` introduces grounded Auto. The `a62fdf79` minimal experiment removed grounding, but `540278de` restored it on August 28. The October 17 trim retained it, and `ff879f5a` subsequently improved citation handling. Recorded decision DEC-20261017-01 retains capture, recall and assist, not transcript-only Auto.
+
+Actual scope is project-first: `VaultSearch.retrieve` broadens to the whole notes folder after no project hits. It is not strict project isolation. No project selected means Auto skips this retrieval branch. Existing tests validate citation mapping, not end-to-end scope, model faithfulness or live retrieval latency.
+
+No unresolved decision blocks this lifecycle repair. A separate product choice remains if retrieval scope changes: after no project hits, return transcript/context-only cards, or search other projects with clear source/scope disclosure. The current fallback is preserved; no rule file was edited.
+
+### Remaining findings, ranked after this repair
+
+| Rank | Finding | Impact / evidence | Implementation risk and next proof |
+|---|---|---|---|
+| 1 | Pending screenshot consumed before admission/persistence | Lost pending context; confirmed direct control flow | Low-medium. Give ready attachments identity; test blocked route, failed write, replacement during save, cancel/reset and success. |
+| 2 | Concurrent upgrades share an archive and output paths | Potential durable write/processing races; multiple entry points confirmed, no runtime reproduction | High. Per-directory job ownership must define coalescing, cancellation, manual edits and downstream processing. |
+| 3 | Manual Notes/Auto can outlive ordinary stop | Late content may miss archive; scheduler owns only its own tasks, source evidence | Medium-high. Decide await versus discard for manual work; test stop/drain and exact archive snapshot before changing. |
+| 4 | Old asynchronous backend recovery after stop/start | Potential capture disruption; source evidence, hardware unverified | Medium-high. Suspended fake backend start must prove old generation cannot replace new capture. |
+| 5 | Finalize while disconnected leaves reconnect retry armed | Extra connection during stop flush; confirmed guard ordering | Low-medium. Controlled retry scheduler test, preserving current final words. |
+| 6 | Armed Auto debounce can fire after disabling | Unwanted provider work/context after opt-out; source evidence | Low. Recheck enabled at fire with deterministic debounce test; preserve manual action semantics. |
+| 7 | Failed session preparation leaves ID/time metadata | Idle and metadata disagree; source evidence | Medium. Roll back without erasing recoverable artifacts or session chat. |
+| 8 | Auto fallback scope lacks clear UI disclosure | Other-project material may appear; code/history support existing behavior | Product trade-off. Resolve strict-project versus clearly labelled fallback separately. |
+| 9 | Failed update check reports up to date | Misleading diagnostic; confirmed nil/error collapse | Low. Distinguish error from successful no-update result. |
+
+The previous receipt-only fix did not make all callback transitions safe. This repair addresses queued STT delivery and client ownership; it does not claim atomicity for every concurrent socket-internal mutation, every backend recovery or every archive transaction.
+
+### Focused regression evidence
+
+Before production edits, four new tests ran against 6b4e91f4: 16 selected tests executed and the four additions produced 11 assertion failures. Queued old words, health and errors reached their consumers; retired pipeline clients also delivered. This reproduces the selected defect under controlled scheduling.
+
+The final five additions use explicit main-queue drain ordering, saved fake-client callbacks and synthetic nonempty words. Coverage includes current-at-receipt/obsolete-at-delivery, disconnect/re-adopt on the same client, both legs replaced, synchronous disconnect notifications, current final-word flush, finished/aborted clients and the next capture. The fifth test attempts an old captured retry after adoption cancels it. It proves the combined cancellation/adoption protection, not the retry generation check in isolation.
+
+An independent reviewer checked the runtime diff and final retry addition with no blocking finding. Current lifecycle calls and callback delivery are serialized on the main actor/queue; these tests do not establish arbitrary off-main callers' atomicity. Archive protection is inferred from rejecting obsolete upstream delivery, not a new end-to-end archive-content test. Existing archive recovery tests are run alongside the focused cases.
+
+### Follow-up verification results
+
+- Red baseline: 16 selected tests, four new failing cases, 11 failed assertions before production changes.
+- Green focused suite: 51 tests, zero skipped, zero failures. Includes all five additions, LiveNotesTests, SessionArchiveRecoveryTests, SessionStopErrorTests, SessionCaptureFailurePolicyTests and WorkspaceVisibilityRegressionTests.
+- `make check` and `make build`: passed; all targets compiled with warnings-as-errors policy unchanged.
+- `make test`: 786 tests, two skipped, zero failures.
+- Strict changed-file design lint: zero hits in two touched runtime files. Source scrub: `SCRUB_CLEAN`. `git diff --check`: passed.
+- Full render suite was not repeated for this nonvisual change; the relevant capture-policy and workspace visibility proofs ran in the focused suite. Previous full-render counts above belong to 6b4e91f4 and are not presented as new verification.
+- Tests use fake provider clients, explicit queued delivery, synthetic PCM and fixture files. No real audio device, Bluetooth transition, Soniox network reconnect, live model request or real meeting archive race was exercised.

@@ -101,5 +101,80 @@ final class SonioxClientSocketEventTests: XCTestCase {
         XCTAssertTrue(words.allSatisfy(\.isFinal))
     }
 
+    func testQueuedWordsHealthAndFailureAreDiscardedWhenSocketIsReplaced() async {
+        let client = SonioxClient(apiKey: "test", url: unreachable)
+        let old = makeSocket()
+        client.adoptSocketForTesting(old)
+        defer { client.disconnect() }
+        var words: [SonioxWord] = []
+        var health: [TranscriptionHealth] = []
+        var failures: [SonioxFailure] = []
+        client.onWords = { words += $0 }
+        client.onStatus = { health.append($0) }
+        client.onError = { failure, _ in failures.append(failure) }
+        // All three events are current at receipt, but delivery is queued.
+        client.didReceive(event: .connected([:]), client: old)
+        client.didReceive(event: .text(Self.finalToken), client: old)
+        client.didReceive(event: .text(#"{"error_code":401,"error_message":"old auth failure"}"#), client: old)
+        let current = makeSocket()
+        client.adoptSocketForTesting(current)
+        await drainCallbacks()
+        XCTAssertTrue(words.isEmpty)
+        XCTAssertTrue(health.isEmpty)
+        XCTAssertTrue(failures.isEmpty)
+        client.didReceive(event: .connected([:]), client: current)
+        client.finalize()
+        client.didReceive(event: .text(Self.finalToken), client: current)
+        await drainCallbacks()
+        XCTAssertEqual(words.map(\.text), ["Hello"])
+        XCTAssertEqual(health, [.live])
+    }
+
+    func testDisconnectDiscardsAlreadyQueuedWordsAndHealth() async {
+        let client = SonioxClient(apiKey: "test", url: unreachable)
+        let socket = makeSocket()
+        client.adoptSocketForTesting(socket)
+        var deliveries = 0
+        client.onWords = { _ in deliveries += 1 }
+        client.onStatus = { _ in deliveries += 1 }
+        client.onError = { _, _ in deliveries += 1 }
+        client.didReceive(event: .text(Self.finalToken), client: socket)
+        client.didReceive(event: .peerClosed, client: socket)
+        client.disconnect()
+        // Parking/rejoining reuses the client but replaces its stream before
+        // the queued old callback can drain.
+        let rejoined = makeSocket()
+        client.adoptSocketForTesting(rejoined)
+        await drainCallbacks()
+        XCTAssertEqual(deliveries, 0)
+        client.didReceive(event: .text(Self.finalToken), client: rejoined)
+        await drainCallbacks()
+        XCTAssertEqual(deliveries, 1)
+        client.disconnect()
+    }
+
+    func testQueuedRetryCannotReplaceNewerSocket() async throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable)
+        let old = makeSocket()
+        client.adoptSocketForTesting(old)
+        defer { client.disconnect() }
+        client.didReceive(event: .peerClosed, client: old)
+        let oldRetry = try XCTUnwrap(client.pendingReconnectForTesting())
+        let current = makeSocket()
+        client.adoptSocketForTesting(current)
+        oldRetry.perform()
+        var words: [SonioxWord] = []
+        client.onWords = { words += $0 }
+        client.didReceive(event: .text(Self.finalToken), client: current)
+        await drainCallbacks()
+        XCTAssertEqual(words.map(\.text), ["Hello"], "A queued old retry cannot replace the adopted stream")
+    }
+
+    private func drainCallbacks() async {
+        let drained = expectation(description: "Earlier main-queue callbacks delivered")
+        DispatchQueue.main.async { drained.fulfill() }
+        await fulfillment(of: [drained], timeout: 2)
+    }
+
     private static let finalToken = #"{"tokens":[{"text":"Hello","start_ms":0,"end_ms":100,"speaker":"1","confidence":0.99,"is_final":true}]}"#
 }
