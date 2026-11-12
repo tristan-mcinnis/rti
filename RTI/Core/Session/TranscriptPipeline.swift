@@ -359,10 +359,20 @@ public final class TranscriptPipeline {
             sourceLanguage: nil
         )
         noteEntries.append(entry)
-        if noteEntries.count > 500 || offsetMs < settled.untilMs { settled = Settled() }
-        if noteEntries.count > 500 { noteEntries.removeFirst(noteEntries.count - 500) }
+        if offsetMs < settled.untilMs { settled = Settled() }
         cachedLiveEntries = nil
         return true
+    }
+
+    public func replaceNotes(_ notes: [SessionNote]) {
+        noteEntries = notes.map { note in
+            let text = note.kind == .note ? note.text ?? "" : "/" + note.label
+            return LiveEntry(speakerId: "note", text: text, startMs: note.offsetMs, confidence: 1,
+                             translationStatus: "none", language: nil, sourceLanguage: nil,
+                             id: UUID(uuidString: note.id) ?? UUID())
+        }
+        settled = Settled()
+        cachedLiveEntries = nil
     }
 
     public func reset() {

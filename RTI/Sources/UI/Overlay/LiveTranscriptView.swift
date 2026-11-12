@@ -303,8 +303,15 @@ private struct TranscriptRunView: View, Equatable {
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
             // Interim text the pipeline did not attribute has no label.
-            if !turn.speakerId.isEmpty { header }
-            texts
+            if isNote && turn.text.hasPrefix("/") {
+                Divider()
+                Text(String(turn.text.dropFirst()))
+                    .font(House.TypeToken.label)
+                    .accessibilityAddTraits(.isHeader)
+            } else {
+                if !turn.speakerId.isEmpty { header }
+                texts
+            }
         }
         .answerWidth()
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -114,7 +114,10 @@ enum SessionArchive {
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0,
         recordingError: String? = nil,
-        guide: GuideArchiveSnapshot? = nil
+        guide: GuideArchiveSnapshot? = nil,
+        evidence: SessionEvidence? = nil,
+        speakerPolicy: SessionSpeakerPolicy? = nil,
+        packageRevision: String? = nil
     ) -> URL? {
         let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
             .compactMap { $0 }
@@ -136,13 +139,31 @@ enum SessionArchive {
             let md = (fm("Transcript") + [body]).joined(separator: "\n")
             let transcriptURL = dir.appendingPathComponent("transcript.md")
             guard writeOwnerOnly(md, to: transcriptURL) else { return nil }
-            if guide != nil {
+            if guide != nil || evidence != nil {
                 do {
                     try preserveGuideTranscript(transcriptURL)
                 } catch {
                     RTILog.log("Could not preserve Guide transcript: \(error.localizedDescription)", level: .error, category: .archive)
                     return nil
                 }
+            }
+        }
+
+        if let evidence {
+            do {
+                try evidence.write(in: dir)
+                let segments = evidence.turns.map {
+                    TranscriptUpgradeSegment(speaker: SpeakerLabelMapping.displayLabel(forRawKey: $0.rawSpeaker) ?? $0.rawSpeaker,
+                                             startMs: $0.liveStartMs, text: $0.original)
+                }
+                let annotated = evidence.transcript(segments: segments, raw: false)
+                if !annotated.isEmpty {
+                    guard writeOwnerOnly((fm("Transcript") + ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), "", annotated]).joined(separator: "\n"),
+                                         to: dir.appendingPathComponent("transcript.md")) else { return nil }
+                }
+            } catch {
+                RTILog.log("Could not save transcript evidence: \(error.localizedDescription)", level: .error, category: .archive)
+                return nil
             }
         }
 
@@ -226,8 +247,7 @@ enum SessionArchive {
                 return nil
             }
         }
-        guard writeMetadata(
-            ArchiveMetadata(
+        var metadata = ArchiveMetadata(
                 sessionId: sessionId,
                 systemAudioStartOffsetMs: systemAudioStartOffsetMs,
                 micAudioFile: micName,
@@ -243,9 +263,20 @@ enum SessionArchive {
                 guideSourcePath: guideSourcePath,
                 rosterPath: guide?.rosterPath,
                 guideRoster: guide?.roster
-            ),
-            to: dir
-        ) else { return nil }
+            )
+        metadata.speakerPolicy = speakerPolicy
+        if let evidence {
+            metadata.schemaVersion = evidence.schemaVersion
+            if isRegularFile(dir.appendingPathComponent("soniox-live.jsonl")) {
+                metadata.liveTokenJournal = "soniox-live.jsonl"
+            }
+            metadata.evidenceFile = SessionEvidence.filename
+            metadata.noteIDs = evidence.notes.map(\.id)
+            metadata.markerSpans = evidence.spans
+            metadata.turns = evidence.turns
+            metadata.stimulusPackageRevision = packageRevision
+        }
+        guard writeMetadata(metadata, to: dir) else { return nil }
         return dir
     }
 
@@ -282,7 +313,8 @@ enum SessionArchive {
     static func refreshCanonicalMeetingTranscript(fromArchiveDir archiveDir: URL, startedAt: Date) -> URL? {
         let transcriptURL = archiveDir.appendingPathComponent("transcript.md")
         guard let markdown = try? String(contentsOf: transcriptURL, encoding: .utf8) else { return nil }
-        let raw = CanonicalMeetingTranscript.render(markdownTranscript: markdown)
+        let tracked = FileManager.default.fileExists(atPath: archiveDir.appendingPathComponent(SessionEvidence.filename).path)
+        let raw = tracked ? SessionEvidence.raw(from: markdown) : CanonicalMeetingTranscript.render(markdownTranscript: markdown)
         return writeCanonicalMeetingExport(
             startedAt: startedAt,
             rawTranscript: raw,
@@ -292,6 +324,25 @@ enum SessionArchive {
             archiveDir: archiveDir,
             writeSidecar: false
         )?.transcriptURL
+    }
+
+    static func requiredCanonicalExport(in archive: URL, startedAt: Date) throws -> URL? {
+        guard let raw = meetingTranscriptsRawDirectory() else { return nil }
+        guard let url = refreshCanonicalMeetingTranscript(fromArchiveDir: archive, startedAt: startedAt) else {
+            throw TranscriptUpgradeError.writeFailed("The upgraded transcript is saved. Could not write the raw transcript in " + raw.path)
+        }
+        if FileManager.default.fileExists(atPath: archive.appendingPathComponent(SessionEvidence.filename).path) {
+            let sidecar = raw.appendingPathComponent(canonicalMeetingStem(startedAt: startedAt) + "-rti.md")
+            if !isRegularFile(sidecar) {
+                let mode = (try? readMetadata(in: archive))?.mode
+                let type = CallType.allCases.first { $0.name == mode } ?? .client
+                guard writeCanonicalMeetingSidecar(startedAt: startedAt, chat: [], visualContext: [], notes: [],
+                                                   archiveDir: archive, callType: type) != nil else {
+                    throw TranscriptUpgradeError.writeFailed("The upgraded transcript is saved. Could not write " + sidecar.path)
+                }
+            }
+        }
+        return url
     }
 
     /// Transcripts with a `/meeting` run still alive. A second run on the
@@ -431,7 +482,7 @@ enum SessionArchive {
         return CanonicalMeetingExport(transcriptURL: transcriptURL, sidecarURL: sidecarURL)
     }
 
-    private static func meetingTranscriptsRawDirectory() -> URL? {
+    static func meetingTranscriptsRawDirectory() -> URL? {
         if let transcriptsRaw = VaultPaths.meetingTranscriptsRawDirectory() { return transcriptsRaw }
         return VaultLogStore.rtiDirectory()?
             .deletingLastPathComponent()
@@ -471,6 +522,16 @@ enum SessionArchive {
             if let group = metadata.groupID { lines.append("group_id: \(yamlQuoted(group))") }
             if let path = metadata.rosterPath { lines.append("roster_path: \(yamlQuoted(path))") }
         }
+        if let archiveDir {
+            if FileManager.default.fileExists(atPath: archiveDir.appendingPathComponent(SessionEvidence.filename).path) {
+                lines.append("transcript_evidence: " + yamlQuoted(archiveDir.appendingPathComponent(SessionEvidence.filename).path))
+                lines.append("session_metadata: " + yamlQuoted(archiveDir.appendingPathComponent("session.json").path))
+            }
+            if FileManager.default.fileExists(atPath: archiveDir.appendingPathComponent(SessionMarkerJournal.filename).path) {
+                lines.append("note_journal: " + yamlQuoted(archiveDir.appendingPathComponent(SessionMarkerJournal.filename).path))
+            }
+            lines += ResearchCodebookStore.sidecarFields(in: archiveDir)
+        }
         lines += ["---", "", "# RTI live notes — \(stem)", "", "_Canonical transcript: `\(stem)-transcript.txt`_"]
         if let archiveDir {
             lines.append("_RTI archive: `\(archiveDir.path)`_")
@@ -478,7 +539,13 @@ enum SessionArchive {
         lines.append("")
 
         // Notes the user typed during the call; the canonical transcript drops them.
-        if !typedNotes.isEmpty {
+        if let archiveDir, let journal = try? SessionMarkerJournal.read(in: archiveDir), !journal.isEmpty {
+            lines += ["## My notes and markers", ""]
+            for note in MarkerTimeline(events: journal).entries {
+                lines += ["- \(GuideExtraction.locator(note.offsetMs)) · \(note.kind.rawValue) · " + note.label.replacingOccurrences(of: "\n", with: "\n  ")]
+            }
+            lines.append("")
+        } else if !typedNotes.isEmpty {
             lines += ["## My notes", ""] + typedNotes.map { "- " + $0.text.replacingOccurrences(of: "\n", with: " ") } + [""]
         }
         if !notes.isEmpty {
@@ -669,7 +736,8 @@ enum SessionArchive {
             guard let existing = try? readMetadata(in: directory), existing.guidePath != nil else { return }
             metadata = existing
         }
-        guard metadata.guidePath != nil, let group = metadata.groupID else { throw CocoaError(.fileReadCorruptFile) }
+        guard metadata.guidePath != nil else { return }
+        guard let group = metadata.groupID else { throw CocoaError(.fileReadCorruptFile) }
         let url = directory.appendingPathComponent(GuideExtraction.fileName(for: group))
         var extraction = try JSONDecoder().decode(GuideExtraction.self, from: Data(contentsOf: url))
         guard extraction.group == group else { throw CocoaError(.fileReadCorruptFile) }

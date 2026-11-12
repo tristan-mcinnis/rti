@@ -94,6 +94,13 @@ public struct SessionEvidence: Codable, Sendable {
         let encoder = JSONEncoder()
         metadata["schemaVersion"] = schemaVersion
         metadata["evidenceFile"] = Self.filename
+        if FileManager.default.fileExists(atPath: directory.appendingPathComponent("soniox-live.jsonl").path) {
+            metadata["liveTokenJournal"] = "soniox-live.jsonl"
+        }
+        let asyncFiles = ["soniox-async-mic.json", "soniox-async-system.json"].filter {
+            FileManager.default.fileExists(atPath: directory.appendingPathComponent($0).path)
+        }
+        if !asyncFiles.isEmpty { metadata["asyncTokenFiles"] = asyncFiles }
         metadata["noteIDs"] = notes.map(\.id)
         metadata["markerSpans"] = try JSONSerialization.jsonObject(with: encoder.encode(spans))
         metadata["turns"] = try JSONSerialization.jsonObject(with: encoder.encode(turns))

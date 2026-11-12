@@ -200,7 +200,7 @@ extension AssistantInputView {
                     if argument.isEmpty {
                         inputState.mode = inputState.isNoteMode ? .chat : .liveNote
                     } else if !applyNoteModeArgument(argument) {
-                        _ = submitLiveNote(argument)
+                        guard submitLiveNote(argument) else { return .staysLocal }
                     }
                     return .ran
                 case "chat":

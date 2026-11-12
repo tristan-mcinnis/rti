@@ -120,6 +120,13 @@ enum CommandBuilder {
         session: SessionCoordinator
     ) -> [RTICommand] {
         return [
+            RTICommand(id: "stimulus.show", title: "Mark Stimulus Shown", keywords: ["material", "board", "guide", "comparison"],
+                       isAvailable: { session.isRunning && SessionMarkers.shared.pinned != nil },
+                       perform: {
+                           windows.showOverlay()
+                           NotificationCenter.default.post(name: .rtiSelectTab, object: GuideSessionController.shared.isActive ? OverlayTab.guide.rawValue : OverlayTab.setup.rawValue)
+                           SessionMarkers.shared.showsControls = true
+                       }),
             RTICommand(
                 id: "meeting.project",
                 title: "Choose Meeting Project",

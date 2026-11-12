@@ -190,6 +190,7 @@ public enum TranscriptUpgradePipeline {
 
         var segments: [TranscriptUpgradeSegment] = []
         var guideAnchorTurns: [TranscriptUpgradeSegment] = []
+        var timedTurns: [TranscriptUpgradeSegment] = []
         var sourceFiles: [String] = []
         var emptyLegs: [TranscriptUpgradeAudioInput] = []
         for input in inputs {
@@ -202,6 +203,7 @@ public enum TranscriptUpgradePipeline {
                 defaultSpeaker: input.defaultSpeaker,
                 offsetMs: input.offsetMs
             )
+            timedTurns.append(contentsOf: timed)
             if input.defaultSpeaker == "Remote speaker" {
                 guideAnchorTurns.append(contentsOf: timed)
             }
@@ -213,7 +215,8 @@ public enum TranscriptUpgradePipeline {
                 emptyLegs.append(input)
             }
         }
-        guard !segments.isEmpty else {
+        let journal = try SessionMarkerJournal.read(in: sessionDir)
+        guard !segments.isEmpty || !journal.isEmpty else {
             throw TranscriptUpgradePipelineError.emptyTranscript(providerDisplayName)
         }
         // One leg transcribed to nothing while another has speech. If the live
@@ -238,15 +241,33 @@ public enum TranscriptUpgradePipeline {
         }
 
         progress("Preserving \(notes.count) note\(notes.count == 1 ? "" : "s")")
-        let body = TranscriptUpgradeMerge.renderBody(
-            startedAt: startedAt,
-            endedAt: nil,
-            segments: segments,
-            notes: notes,
-            provider: providerDisplayName,
-            sourceFiles: sourceFiles
-        )
-        let md = (frontmatter + [body, ""]).joined(separator: "\n")
+        var evidence = try SessionEvidence.read(in: sessionDir)
+        if evidence == nil, !journal.isEmpty {
+            evidence = SessionEvidence(sessionID: journal.first?.sessionID, groupID: journal.first?.groupID,
+                                       events: journal, through: segments.map(\.startMs).max() ?? 0, turns: [])
+        }
+        let body: String
+        if var evidence {
+            evidence.reanchor(events: journal, timed: timedTurns, all: segments)
+            body = "# Transcript\n\n_Upgraded with " + providerDisplayName + "._\n\n" + evidence.transcript(segments: segments, raw: false)
+            try evidence.write(in: sessionDir)
+            try evidence.updateSessionMetadata(in: sessionDir)
+        } else {
+            body = TranscriptUpgradeMerge.renderBody(
+                startedAt: startedAt, endedAt: nil, segments: segments, notes: notes,
+                provider: providerDisplayName, sourceFiles: sourceFiles
+            )
+        }
+        var sections = frontmatter + [body]
+        if let data = try? Data(contentsOf: sessionDir.appendingPathComponent("session.json")),
+           let policy = (try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data))?.speakerPolicy,
+           policy.labelsEnabled, let expected = policy.expectedCount {
+            let clusters = Set(guideAnchorTurns.map(\.speaker).filter { $0.hasPrefix("Remote speaker ") })
+            if clusters.count > expected {
+                sections.append("\n## Speaker review\n\nExpected \(expected). The system leg produced \(clusters.count) clusters. Their identities are unverified. Review the speaker assignments before combining them.")
+            }
+        }
+        let md = (sections + [""]).joined(separator: "\n")
 
         progress("Writing upgraded transcript")
         let artifactResult = try TranscriptUpgradeArtifacts.installUpgradedTranscript(markdown: md, in: sessionDir)
@@ -417,7 +438,9 @@ public enum TranscriptUpgradeMerge {
               let secondTick = line[line.index(after: firstTick)...].firstIndex(of: "`") else { return nil }
         let stamp = String(line[line.index(after: firstTick)..<secondTick])
         guard let ms = milliseconds(from: stamp) else { return nil }
-        guard let markerRange = line.range(of: "Note:**") ?? line.range(of: "Note:") else { return nil }
+        let rest = String(line[line.index(after: secondTick)...]).trimmingCharacters(in: .whitespaces)
+        guard rest.hasPrefix("**📝 Note:**") || rest.hasPrefix("**Note:**"),
+              let markerRange = line.range(of: "Note:**") else { return nil }
         let text = line[markerRange.upperBound...]
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : TranscriptUpgradeNote(startMs: ms, text: text)

@@ -319,10 +319,12 @@ final class SessionCoordinator {
     /// offset so it renders distinctly and feeds the LLM context.
     @discardableResult
     func insertNote(_ text: String) -> Bool {
-        guard let startedAt else { return false }
-        let ok = transcriptPipeline.insertNote(text, startedAt: startedAt)
-        if ok { publishState() }
-        return ok
+        SessionMarkers.shared.type(text)
+    }
+
+    func applyJournalNotes(_ notes: [SessionNote]) {
+        transcriptPipeline.replaceNotes(notes)
+        publishState()
     }
 
     /// Cheap live levels for the Audio I/O monitor — safe to poll at meter
@@ -533,6 +535,8 @@ final class SessionCoordinator {
                 callType: CallTypeStore.shared.active.name
             )
             try audioPipeline.prepare(recordingDirectory: recordingDirectory)
+            try SessionMarkers.shared.start(sessionID: sessionId, in: recordingDirectory, group: GuidePreparation.shared.group,
+                                            research: CallTypeStore.shared.active == .research)
             guard SessionArchive.seedTranscriptForAutomaticUpgrade(in: recordingDirectory, startedAt: now),
                   SessionArchive.markAutomaticUpgradePending(in: recordingDirectory) else {
                 throw CocoaError(.fileWriteUnknown)

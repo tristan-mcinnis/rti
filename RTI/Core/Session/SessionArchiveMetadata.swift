@@ -37,6 +37,8 @@ public struct SessionArchiveMetadata: Codable {
     public var guideRoster: [GuideSeat]?
 
     public var schemaVersion: Int?
+    public var liveTokenJournal: String?
+    public var asyncTokenFiles: [String]?
     public var evidenceFile: String?
     public var noteIDs: [String]?
     public var markerSpans: [MarkerSpan]?
@@ -47,7 +49,7 @@ public struct SessionArchiveMetadata: Codable {
     private enum CodingKeys: String, CodingKey {
         case sessionId, systemAudioStartOffsetMs, micAudioFile, systemAudioFile, mode, workstream
         case durationSeconds, calendarTitle, recordingError, speechContext
-        case schemaVersion, evidenceFile, noteIDs, markerSpans, turns, stimulusPackageRevision, speakerPolicy
+        case schemaVersion, liveTokenJournal, asyncTokenFiles, evidenceFile, noteIDs, markerSpans, turns, stimulusPackageRevision, speakerPolicy
         case groupID = "group_id"
         case guidePath = "guide_path"
         case guideSourcePath = "guide_source_path"

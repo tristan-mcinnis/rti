@@ -93,6 +93,7 @@ struct SetupTabView: View {
                     VStack(alignment: .leading, spacing: House.Spacing.xs) {
                         sectionHeader("Discussion guide")
                         settingsGroup {
+                            StimulusPrepareControls(projectID: store.workstreamItem?.url.path)
                             GuidePrepareControls(project: store.workstreamItem)
                                 .id(store.workstreamItem?.id)
                         }

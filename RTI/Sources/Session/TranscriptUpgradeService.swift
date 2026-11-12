@@ -93,11 +93,38 @@ enum TranscriptUpgradeService {
         return try await performUpgrade(session: session, option: option, progress: progress)
     }
 
+    private struct PendingExport: Codable { let provider: String; let segmentCount: Int }
+    private static let exportMarker = "canonical-export.pending.json"
+
+    static func finishExport(in directory: URL, startedAt: Date, provider: String, segmentCount: Int) throws -> URL? {
+        let marker = directory.appendingPathComponent(exportMarker)
+        do {
+            let url = try SessionArchive.requiredCanonicalExport(in: directory, startedAt: startedAt)
+            if FileManager.default.fileExists(atPath: marker.path) { try FileManager.default.removeItem(at: marker) }
+            return url
+        } catch {
+            _ = SessionArchive.markAutomaticUpgradePending(in: directory)
+            let data = try JSONEncoder().encode(PendingExport(provider: provider, segmentCount: segmentCount))
+            try data.write(to: marker, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: marker.path)
+            throw error
+        }
+    }
+
     private static func performUpgrade(
         session: SessionArchive.ArchivedSession,
         option: AsyncTranscriptProviderOption?,
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
+        let pending = session.url.appendingPathComponent(exportMarker)
+        if let date = session.date, FileManager.default.fileExists(atPath: pending.path) {
+            let saved = try JSONDecoder().decode(PendingExport.self, from: Data(contentsOf: pending))
+            if let url = try finishExport(in: session.url, startedAt: date, provider: saved.provider, segmentCount: saved.segmentCount) {
+                SessionArchive.runMeetingProcessor(transcriptURL: url)
+            }
+            progress(.done("Raw transcript exported"))
+            return Result(provider: saved.provider, transcriptURL: session.transcriptURL, segmentCount: saved.segmentCount)
+        }
         let provider = try makeProvider(option ?? AsyncTranscriptProviders.active, sessionDirectory: session.url)
         progress(.running("Using \(provider.displayName)"))
 
@@ -123,7 +150,7 @@ enum TranscriptUpgradeService {
             throw TranscriptUpgradeError.writeFailed(error.localizedDescription)
         }
         if let startedAt = session.date,
-           let canonicalURL = SessionArchive.refreshCanonicalMeetingTranscript(fromArchiveDir: session.url, startedAt: startedAt) {
+           let canonicalURL = try finishExport(in: session.url, startedAt: startedAt, provider: provider.displayName, segmentCount: pipelineResult.segmentCount) {
             SessionArchive.runMeetingProcessor(transcriptURL: canonicalURL)
         }
         progress(.done("Upgraded with \(provider.displayName)"))
