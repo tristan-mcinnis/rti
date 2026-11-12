@@ -94,3 +94,9 @@ The running beta sampled 82.4–85.3 MiB RSS and 0.0% CPU over ten idle seconds.
 ### Window screenshots, 12 November 2026
 
 Installed and reopened beta `87e720b0`. Before the fix, macOS reported “could not create image from window” for the workspace. After the fix, the same window-capture command saved a 1668 × 1888 PNG of the workspace and a 1240 × 1680 PNG of the welcome window. WindowServer reported level 0, alpha 1.0 and sharing state 1 for both. The regular recorder kept its original process. All 827 unit tests and five native window regression tests passed. The older project contract still describes the previous hidden-by-default behavior.
+
+### Promotion to the regular app, 12 November 2026
+
+Installed and launched a signed Release build of `535e6b4e` as `/Applications/RTI.app`, with the regular bundle identifier and the previous version’s designated signing requirement. Original sessions and settings remain in the regular profile. The separate RTI Beta application bundle was retired. The regular app's Soniox and DeepSeek entries match the configured beta keys, and its appearance is System.
+
+Actual pointer clicks in the installed app switched to Sessions, Chats, Settings and back to Live. The app reported the expected selected segment and route after every click. The previous build put SwiftUI controls behind an AppKit title bar that intercepted clicks. The new title-bar accessory receives those clicks directly. The regular-profile unit suite and window regressions passed.
