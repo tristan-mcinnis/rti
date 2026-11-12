@@ -90,3 +90,7 @@ RTI Beta was installed and launched from a signed Release build of `bcdedc1c`. I
 The full run enumerated 827 unit tests and 362 app/render tests, with zero failures. The two opt-in workloads ran separately. A 60-second real-time test with generated PCM retained 960,000 frames per leg with verified hashes. There was no real provider or hardware capture in this test.
 
 The running beta sampled 82.4–85.3 MiB RSS and 0.0% CPU over ten idle seconds. The 90-minute raw transcript replay measured 4.0 ms p95 for ongoing final updates. Opening the complete reader cold measured 259 ms in the core projection. See the [palette and workspace memory results](docs/palette-beta-performance-20261112.md) for the measured cold filter outliers and [manual checks](RTI/VERIFY.md) for visible-display, microphone and multi-Space acceptance.
+
+### Window screenshots, 12 November 2026
+
+Installed and reopened beta `87e720b0`. Before the fix, macOS reported “could not create image from window” for the workspace. After the fix, the same window-capture command saved a 1668 × 1888 PNG of the workspace and a 1240 × 1680 PNG of the welcome window. WindowServer reported level 0, alpha 1.0 and sharing state 1 for both. The regular recorder kept its original process. All 827 unit tests and five native window regression tests passed. The older project contract still describes the previous hidden-by-default behavior.

@@ -55,7 +55,7 @@ Check result in `POC1-findings.md`.
 
 ## 4. QuickTime screen recording
 
-1. Open a fixture session with the RTI workspace visible. Check the menu-bar command **Hide RTI from Screen Capture**. A fresh profile starts unchecked.
+1. Open a fixture session with the RTI workspace visible. Open the command palette and inspect **Hide RTI from Screen Capture**. A fresh profile starts with the command unchecked.
 2. Record the display using QuickTime. The default recording should include the RTI window.
 3. Enable the command, repeat the recording and check the result for this macOS/QuickTime version. Restore the earlier choice when finished.
 
