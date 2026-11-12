@@ -81,8 +81,11 @@ final class MenuValidationTests: XCTestCase {
 
     // MARK: View
 
-    func test_tabKeysAreFixedOneToFive() {
-        XCTAssertEqual(OverlayTabShortcut.order.count, 5)
+    func test_tabKeysPreserveExistingDigitsAndExposeTheResearchTabs() {
+        XCTAssertEqual(OverlayTabShortcut.order.count, 7)
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: "guide", guideActive: true), 5)
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: "notes", guideActive: true), 6)
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: "codebook"), 7)
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "setup"), 1)
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "assist"), 2)
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "transcript"), 4)

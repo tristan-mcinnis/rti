@@ -11,14 +11,14 @@ final class AppIdentityTests: XCTestCase {
             .deletingLastPathComponent()  // RTI
     }
 
-    func test_infoPlist_namesTheAppRTI() throws {
+    func test_infoPlistUsesTheSignedProductsNameAndIdentifier() throws {
         let url = rtiDirectory.appendingPathComponent("Sources/Info.plist")
         let data = try Data(contentsOf: url)
         let plist = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
         )
-        XCTAssertEqual(plist["CFBundleName"] as? String, "RTI")
-        XCTAssertEqual(plist["CFBundleDisplayName"] as? String, "RTI")
+        XCTAssertEqual(plist["CFBundleName"] as? String, "$(PRODUCT_NAME)")
+        XCTAssertEqual(plist["CFBundleDisplayName"] as? String, "$(PRODUCT_NAME)")
         XCTAssertEqual(plist["CFBundleIdentifier"] as? String, "$(PRODUCT_BUNDLE_IDENTIFIER)")
     }
 
@@ -27,6 +27,9 @@ final class AppIdentityTests: XCTestCase {
             contentsOf: rtiDirectory.appendingPathComponent("project.yml"),
             encoding: .utf8
         )
-        XCTAssertTrue(spec.contains("PRODUCT_BUNDLE_IDENTIFIER: com.tristan.rti.personal\n"))
+        XCTAssertTrue(spec.contains("RTI_APP_NAME: RTI\n"))
+        XCTAssertTrue(spec.contains("RTI_APP_ID: com.tristan.rti.personal\n"))
+        XCTAssertTrue(spec.contains("PRODUCT_BUNDLE_IDENTIFIER: \"$(RTI_APP_ID)\""))
+        XCTAssertTrue(spec.contains("PRODUCT_NAME: \"$(RTI_APP_NAME)\""))
     }
 }
