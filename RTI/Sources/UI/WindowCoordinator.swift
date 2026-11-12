@@ -41,6 +41,10 @@ final class WindowCoordinator {
 
     // MARK: - Overlay
 
+    func showWorkspace() {
+        overlayController?.show()
+    }
+
     func showOverlay() {
         WorkspaceModel.shared.select(.live)
         overlayController?.show()

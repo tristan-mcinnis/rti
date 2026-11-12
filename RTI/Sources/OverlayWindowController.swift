@@ -118,8 +118,8 @@ private final class OverlayWindow: NSWindow {
     /// which logs "_NSDetectedLayoutRecursion". Defer to the next runloop tick.
     override func becomeKey() {
         super.becomeKey()
-        DispatchQueue.main.async {
-            if WorkspaceModel.shared.page == .live {
+        DispatchQueue.main.async { [weak self] in
+            if self?.isKeyWindow == true, self?.isMiniaturized == false, WorkspaceModel.shared.page == .live {
                 NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
             }
         }
@@ -234,7 +234,7 @@ final class OverlayWindowController {
         )
         // The title names the window to VoiceOver and Mission Control; it is
         // not drawn (the header carries the title).
-        win.title = "RTI"
+        win.title = RTIBuildProfile.displayName
         win.identifier = NSUserInterfaceItemIdentifier(RTIWindowKind.overlay.windowIdentifier)
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
@@ -329,51 +329,23 @@ final class OverlayWindowController {
 
     // MARK: - Frame
 
-    /// The autosaved frame, else the pre-autosave frame, else top-left of the
-    /// screen under the pointer. A frame under the minimum comes back at the
-    /// standard size.
     private func restoreFrame() {
-        if !window.setFrameUsingName(Self.frameAutosaveName) {
-            if let legacy = Self.loadLegacySavedFrame() {
-                window.setFrame(legacy, display: false)
-            } else {
-                positionOnActiveScreen()
-            }
+        let defaults = UserDefaults.standard
+        let saved = defaults.string(forKey: "NSWindow Frame " + Self.frameAutosaveName)
+        let legacy = defaults.dictionary(forKey: legacySavedFrameKey) as? [String: CGFloat]
+        var legacyFrame: NSRect?
+        if let legacy, let x = legacy["x"], let y = legacy["y"], let w = legacy["w"], let h = legacy["h"],
+           w > 0, h > 0 {
+            legacyFrame = NSRect(x: x, y: y, width: w, height: h)
         }
+        let screens = NSScreen.screens
+        guard let preferred = screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else { return }
+        let desired = WorkspaceFramePlacement.restore(saved, legacy: legacyFrame,
+            screenFrames: screens.map(\.visibleFrame), preferred: preferred.visibleFrame,
+            standard: window.frameRect(forContentRect: NSRect(origin: .zero, size: Self.configuredSize())).size,
+            minimum: window.frameRect(forContentRect: NSRect(origin: .zero, size: window.contentMinSize)).size)
         window.setFrameAutosaveName(Self.frameAutosaveName)
-        let content = window.contentRect(forFrameRect: window.frame).size
-        if content.width < window.contentMinSize.width || content.height < window.contentMinSize.height {
-            window.setContentSize(Self.configuredSize())
-            positionOnActiveScreen()
-        }
-    }
-
-    func positionOnActiveScreen() {
-        let screen = screenUnderMouse() ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let margin = House.Spacing.md
-        let content = Self.configuredSize()
-        let frameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: content)).size
-        let height = min(frameSize.height, visible.height - margin * 2)
-        let origin = NSPoint(
-            x: visible.minX + margin,
-            y: visible.maxY - margin - height
-        )
-        window.setFrame(NSRect(origin: origin, size: NSSize(width: frameSize.width, height: height)), display: true)
-    }
-
-    private func screenUnderMouse() -> NSScreen? {
-        let mouse = NSEvent.mouseLocation
-        return NSScreen.screens.first { $0.frame.contains(mouse) }
-    }
-
-    private static func loadLegacySavedFrame() -> NSRect? {
-        guard let dict = UserDefaults.standard.dictionary(forKey: legacySavedFrameKey) as? [String: CGFloat],
-              let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"] else { return nil }
-        let frame = NSRect(x: x, y: y, width: w, height: h)
-        // Only when it is still on some screen.
-        guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) else { return nil }
-        return frame
+        window.setFrame(desired, display: false)
     }
 
     // MARK: - Showing
@@ -391,11 +363,6 @@ final class OverlayWindowController {
         // Bring RTI forward with the keyboard, even from another app (the
         // global ⌘\ key), so typing lands in the composer, not behind it.
         RTIActivation.bringToFront(window)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            if WorkspaceModel.shared.page == .live {
-                NotificationCenter.default.post(name: .rtiOverlayDidBecomeKey, object: nil)
-            }
-        }
     }
 
     func hide() {
@@ -404,7 +371,7 @@ final class OverlayWindowController {
     }
 
     func toggle() {
-        if isVisible {
+        if isVisible, window.isOnActiveSpace {
             hide()
         } else {
             show()

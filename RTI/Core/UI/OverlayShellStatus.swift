@@ -140,7 +140,7 @@ public struct OverlayShellStatus: Equatable, Sendable {
     public static func title(calendarTitle: String?, projectName: String?, phase: OverlayLivePhase) -> String {
         if let calendarTitle = nonEmpty(calendarTitle) { return calendarTitle }
         if let projectName = nonEmpty(projectName) { return projectName }
-        return phase.isLive ? "Live session" : "RTI"
+        return phase.isLive ? "Live session" : RTIBuildProfile.displayName
     }
 
     // MARK: Private

@@ -10,6 +10,39 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
         SetupTabView.readsCalendar = false
     }
 
+    func testFrameRestoresOnLeftDisplayAndClampsAfterDisconnect() {
+        let main = NSRect(x: 0, y: 0, width: 1512, height: 949)
+        let left = NSRect(x: -3440, y: -201, width: 3440, height: 1410)
+        let descriptor = "-3385 -161 805 550 -3440 -201 3440 1410"
+        func restore(_ frames: [NSRect], on screen: NSRect, saved: String?) -> NSRect {
+            WorkspaceFramePlacement.restore(saved, legacy: nil, screenFrames: frames, preferred: screen,
+                standard: WorkspaceLayout.standardSize, minimum: WorkspaceLayout.minimumSize)
+        }
+        XCTAssertEqual(restore([main, left], on: main, saved: descriptor), NSRect(x: -3385, y: -161, width: 805, height: 550))
+        let afterDisconnect = restore([main], on: main, saved: descriptor)
+        XCTAssertTrue(main.contains(afterDisconnect))
+        XCTAssertEqual(afterDisconnect.size, NSSize(width: 805, height: 550))
+        let small = NSRect(x: -800, y: -600, width: 800, height: 600)
+        XCTAssertTrue(small.contains(restore([small], on: small, saved: nil)))
+    }
+
+    func testHeaderDoubleClickRespectsNativeAction() {
+        final class WindowSpy: NSWindow {
+            var zooms = 0
+            var minimizes = 0
+            override func performZoom(_ sender: Any?) { zooms += 1 }
+            override func performMiniaturize(_ sender: Any?) { minimizes += 1 }
+        }
+        let window = WindowSpy(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+        WindowDragArea.doubleClick(window, preference: "None")
+        XCTAssertEqual(window.zooms + window.minimizes, 0)
+        WindowDragArea.doubleClick(window, preference: "Minimize")
+        WindowDragArea.doubleClick(window, preference: "Maximize")
+        XCTAssertEqual(window.zooms, 1)
+        XCTAssertEqual(window.minimizes, 1)
+        XCTAssertFalse(window.isVisible)
+    }
+
     func testLeavingLiveSuspendsTranscriptLayoutButKeepsRecordingState() {
         let session = SessionCoordinator.shared
         session.seedForRenderProof(entries: RenderFixtures.speakerTurns, interim: nil, phase: .recording, startedAt: nil)

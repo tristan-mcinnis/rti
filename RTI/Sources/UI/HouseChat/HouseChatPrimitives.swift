@@ -434,9 +434,23 @@ struct WindowDragArea: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { DragView() }
     func updateNSView(_ view: NSView, context: Context) {}
 
+    static func doubleClick(_ window: NSWindow?, preference: String?) {
+        switch preference?.lowercased() {
+        case "none": break
+        case "minimize": window?.performMiniaturize(nil)
+        default: window?.performZoom(nil)
+        }
+    }
+
     private final class DragView: NSView {
         override func mouseDown(with event: NSEvent) {
-            window?.performDrag(with: event)
+            guard event.clickCount == 2 else {
+                window?.performDrag(with: event)
+                return
+            }
+            // The full-size content view owns this hit. Dispatch the macOS
+            // title-bar preference to the same native controls as the Window menu.
+            WindowDragArea.doubleClick(window, preference: UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick"))
         }
     }
 }
