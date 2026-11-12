@@ -83,6 +83,8 @@ final class SessionMarkersTests: XCTestCase {
             XCTAssertEqual(after.turns.first?.context.markerID, "first")
             XCTAssertEqual(after.turns.first?.upgradedStartMs, 4020)
             XCTAssertEqual(after.turns.first?.anchor, "review boundary")
+            XCTAssertEqual(after.upgradedTurns?.first?.liveTurnIDs, [source.turnID])
+            XCTAssertEqual(after.upgradedTurns?.first?.context?.markerID, "first")
             XCTAssertEqual(after.noteAnchors.last?.approximate, true)
             let text = try String(contentsOf: directory.appendingPathComponent("transcript.md"), encoding: .utf8)
             let raw = SessionEvidence.raw(from: text)
@@ -126,6 +128,20 @@ final class SessionMarkersTests: XCTestCase {
         XCTAssertEqual(after.noteAnchors.first?.approximate, true)
         let text = try String(contentsOf: directory.appendingPathComponent("transcript.md"), encoding: .utf8)
         XCTAssertTrue(SessionEvidence.raw(from: text).contains("无对白"))
+    }
+
+    func testRawExportRetainsMultilineSpeechBetweenAnnotationRecords() {
+        let md = """
+        # Transcript
+        `00:00:02` **📝 Note:** RTI context · Section: Shape A
+        `00:00:02.500` **Them:** The first line.
+        第二行。
+
+        `00:00:03` **📝 Note:** Material · Boards down
+        """
+        let output = SessionEvidence.raw(from: md)
+        XCTAssertTrue(output.contains("Them: The first line.\n第二行。"))
+        XCTAssertTrue(output.contains("# Material · Boards down"))
     }
 
     func testLegacyArchiveAndReadFailureAreDistinct() throws {

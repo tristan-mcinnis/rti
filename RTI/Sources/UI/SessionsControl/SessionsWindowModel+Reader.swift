@@ -58,6 +58,9 @@ extension SessionsWindowModel {
         var loaded = fileOrder.filter(present.contains).map {
             SessionFile(url: session.url.appendingPathComponent($0), name: String($0.dropLast(3)))
         }
+        if present.contains(SessionMarkerJournal.filename) {
+            loaded.append(SessionFile(url: session.url.appendingPathComponent(SessionMarkerJournal.filename), name: "markers and notes"))
+        }
         let framesDir = session.url.appendingPathComponent("frames", isDirectory: true)
         if let frames = try? fm.contentsOfDirectory(atPath: framesDir.path),
            frames.contains(where: { ["jpg", "jpeg", "png"].contains(($0 as NSString).pathExtension.lowercased()) })
@@ -88,6 +91,20 @@ extension SessionsWindowModel {
         if file.name == "frames" {
             fileText = ""
             document = .frames(file.url)
+            recomputeFindHits()
+            return
+        }
+        if file.name == "markers and notes" {
+            do {
+                let events = try SessionMarkerJournal.read(in: file.url.deletingLastPathComponent())
+                fileText = MarkerTimeline(events: events).entries.map {
+                    "### " + GuideExtraction.locator($0.offsetMs) + " · " + $0.kind.rawValue + "\n\n" + $0.label
+                }.joined(separator: "\n\n")
+            } catch {
+                fileText = "Could not read the note journal: " + error.localizedDescription
+            }
+            document = Self.document(for: file.name, text: fileText)
+            findIndex = 0
             recomputeFindHits()
             return
         }
@@ -124,7 +141,7 @@ extension SessionsWindowModel {
     static func document(for name: String, text: String) -> ReaderDocument {
         switch name {
         case "transcript":
-            return .transcript(SessionTranscriptReview.turns(from: text))
+            return .transcript(SessionTranscriptReview.turns(from: text).filter { !$0.isNote || !$0.text.hasPrefix("RTI context · Section: ") })
         case "chat":
             let turns = ArchivedChat.turns(fromMarkdown: text)
             return turns.isEmpty ? .markdown(SessionsWindowRules.markdownBlocks(text)) : .chat(turns)

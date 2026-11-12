@@ -43,6 +43,18 @@ public enum SessionTranscriptReview {
     public static func replacingTurns(in markdown: String, with turns: [SessionTranscriptTurn]) -> String {
         let replacement = turns.map(render).joined(separator: "\n\n")
         let lines = markdown.components(separatedBy: .newlines)
+        // The editor changes existing rows in place. A tracked transcript
+        // interleaves judgeable speech with machine annotations and authored
+        // multiline text. Keep all nonedited bytes at their original position.
+        let indices = lines.indices.filter { index in
+            guard let row = turn(from: lines[index]) else { return false }
+            return !(row.isNote && row.text.hasPrefix("RTI context · Section: "))
+        }
+        if indices.count == turns.count {
+            var output = lines
+            for (index, edited) in zip(indices, turns) { output[index] = render(edited) }
+            return output.joined(separator: "\n")
+        }
         guard let first = lines.firstIndex(where: { turn(from: $0) != nil }) else { return markdown }
 
         var last = first

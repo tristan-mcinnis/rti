@@ -93,7 +93,7 @@ extension SessionsWindowModel {
             beginSpeakerEditor()
         case .editTranscript:
             selectFile(named: "transcript")
-            transcriptTurns = SessionTranscriptReview.turns(from: rawText(of: "transcript") ?? "")
+            transcriptTurns = SessionTranscriptReview.turns(from: rawText(of: "transcript") ?? "").filter { !$0.isNote || !$0.text.hasPrefix("RTI context · Section: ") }
             isEditingTranscript = true
         case .upgradeTranscript:
             pendingUpgradeRowID = id

@@ -139,6 +139,9 @@ private struct SessionTranscriptReader: View {
                     let marks = model.findHighlights(inBlock: index)
                     let opensRun = startsRun(at: index)
                     VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                        if turn.isNote && (turn.text.hasPrefix("Section · ") || turn.text.hasPrefix("Material · ")) {
+                            Divider()
+                        }
                         if opensRun {
                             label(turn)
                         }

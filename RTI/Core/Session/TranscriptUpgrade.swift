@@ -248,7 +248,12 @@ public enum TranscriptUpgradePipeline {
         }
         let body: String
         if var evidence {
-            evidence.reanchor(events: journal, timed: timedTurns, all: segments)
+            // A restored archive can retain its last successful projection even
+            // when the journal copy is missing. Preserve recovered IDs and
+            // let any surviving original/correction records take precedence.
+            let present = Set(journal.map(\.id))
+            let recovered = evidence.notes.filter { !present.contains($0.id) }
+            evidence.reanchor(events: recovered + journal, timed: timedTurns, all: segments)
             body = "# Transcript\n\n_Upgraded with " + providerDisplayName + "._\n\n" + evidence.transcript(segments: segments, raw: false)
             try evidence.write(in: sessionDir)
             try evidence.updateSessionMetadata(in: sessionDir)
@@ -258,7 +263,7 @@ public enum TranscriptUpgradePipeline {
                 provider: providerDisplayName, sourceFiles: sourceFiles
             )
         }
-        var sections = frontmatter + [body]
+        var sections = frontmatter
         if let data = try? Data(contentsOf: sessionDir.appendingPathComponent("session.json")),
            let policy = (try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data))?.speakerPolicy,
            policy.labelsEnabled, let expected = policy.expectedCount {
@@ -267,6 +272,9 @@ public enum TranscriptUpgradePipeline {
                 sections.append("\n## Speaker review\n\nExpected \(expected). The system leg produced \(clusters.count) clusters. Their identities are unverified. Review the speaker assignments before combining them.")
             }
         }
+        // Put annotations before the speech records. The workbook accepts
+        // multiline original words right up to the next timestamped record.
+        sections.append(body)
         let md = (sections + [""]).joined(separator: "\n")
 
         progress("Writing upgraded transcript")
@@ -320,7 +328,7 @@ public enum TranscriptUpgradeMerge {
                 .trimmingCharacters(in: .whitespaces)
             let text = rest[end.upperBound...].trimmingCharacters(in: .whitespaces)
             guard !speaker.isEmpty, !text.isEmpty, !speaker.contains("Note") else { continue }
-            guard speaker.hasPrefix("Remote speaker") == remote else { continue }
+            guard (speaker.hasPrefix("Remote speaker") || speaker == "Them") == remote else { continue }
             found.append(TranscriptUpgradeSegment(speaker: speaker, startMs: ms, text: text))
         }
         return found
@@ -348,7 +356,7 @@ public enum TranscriptUpgradeMerge {
             if let parsed = timestampedSegment(fromLine: line, defaultSpeaker: defaultSpeaker, offsetMs: offsetMs) {
                 let speaker: String
                 if defaultSpeaker == "Remote speaker", parsed.speaker.hasPrefix("Speaker ") {
-                    speaker = "Remote \(parsed.speaker.lowercased())"
+                    speaker = "Remote speaker " + parsed.speaker.dropFirst("Speaker ".count)
                 } else {
                     speaker = parsed.speaker
                 }
@@ -492,11 +500,14 @@ public enum TranscriptUpgradeMerge {
         let parts = cleaned.split(separator: ":").map(String.init)
         guard parts.count == 2 || parts.count == 3 else { return nil }
         let secondsPart = parts.last ?? ""
-        let wholeSeconds = secondsPart.split(separator: ".").first.map(String.init) ?? secondsPart
+        let components = secondsPart.split(separator: ".", maxSplits: 1)
+        let wholeSeconds = String(components.first ?? "")
+        let fraction = components.count == 2 ? String(components[1].prefix(3)) : ""
+        let ms = Int(fraction.padding(toLength: 3, withPad: "0", startingAt: 0)) ?? 0
         guard let seconds = Int(wholeSeconds),
               let minutes = Int(parts[parts.count - 2]) else { return nil }
         let hours = parts.count == 3 ? (Int(parts[0]) ?? 0) : 0
-        return ((hours * 3600) + (minutes * 60) + seconds) * 1000
+        return ((hours * 3600) + (minutes * 60) + seconds) * 1000 + ms
     }
 
     private static func header(startedAt: Date, endedAt: Date?) -> String {
@@ -598,11 +609,14 @@ public enum CanonicalMeetingTranscript {
         let parts = cleaned.split(separator: ":").map(String.init)
         guard parts.count == 2 || parts.count == 3 else { return nil }
         let secondsPart = parts.last ?? ""
-        let wholeSeconds = secondsPart.split(separator: ".").first.map(String.init) ?? secondsPart
+        let components = secondsPart.split(separator: ".", maxSplits: 1)
+        let wholeSeconds = String(components.first ?? "")
+        let fraction = components.count == 2 ? String(components[1].prefix(3)) : ""
+        let ms = Int(fraction.padding(toLength: 3, withPad: "0", startingAt: 0)) ?? 0
         guard let seconds = Int(wholeSeconds),
               let minutes = Int(parts[parts.count - 2]) else { return nil }
         let hours = parts.count == 3 ? (Int(parts[0]) ?? 0) : 0
-        return ((hours * 3600) + (minutes * 60) + seconds) * 1000
+        return ((hours * 3600) + (minutes * 60) + seconds) * 1000 + ms
     }
 
     private static func offset(_ ms: Int) -> String {

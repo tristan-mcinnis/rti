@@ -36,6 +36,16 @@ public struct NoteAnchor: Codable, Equatable, Sendable {
     public let approximate: Bool
 }
 
+public struct UpgradedEvidenceTurn: Codable, Equatable, Sendable {
+    public var playbackStartMs: Int
+    public var speaker: String
+    public var text: String
+    public var liveTurnIDs: [String]
+    /// Nil when several original turns in this upgraded segment had different material or sections.
+    public var context: MarkerContext?
+    public var anchor: String
+}
+
 public struct SessionEvidence: Codable, Sendable {
     public static let filename = "transcript-evidence.json"
     public var schemaVersion = 1
@@ -45,6 +55,7 @@ public struct SessionEvidence: Codable, Sendable {
     public var spans: [MarkerSpan]
     public var turns: [SessionAnnotatedTurn]
     public var noteAnchors: [NoteAnchor] = []
+    public var upgradedTurns: [UpgradedEvidenceTurn]?
 
     public init(sessionID: String?, groupID: String?, events: [SessionNote], through ms: Int, turns: [SessionAnnotatedTurn]) {
         let timeline = MarkerTimeline(events: events)
@@ -57,27 +68,39 @@ public struct SessionEvidence: Codable, Sendable {
 
     public static func raw(from markdown: String) -> String {
         var raw: [String] = []
+        var speech: [String] = []
         var insideNote = false
+        func finishSpeech() {
+            if speech.last == "" {
+                speech.removeLast()
+            }
+            raw.append(contentsOf: speech)
+            speech = []
+        }
         for line in markdown.components(separatedBy: .newlines) {
-            if line.hasPrefix("`"), let annotation = line.range(of: "` **📝 Note:** ") {
-                raw.append("# " + line[annotation.upperBound...])
-                insideNote = true
-            } else if line.hasPrefix("### ") {
-                raw.append("# " + String(line.dropFirst(4)))
-                insideNote = true
-            } else if line.hasPrefix("> Section: ") {
-                raw.append("# " + String(line.dropFirst(2)))
-                insideNote = false
-            } else if insideNote, line.hasPrefix("> ") {
-                raw.append("# " + String(line.dropFirst(2)))
-            } else if line.hasPrefix("`") {
-                let speech = CanonicalMeetingTranscript.render(markdownTranscript: line)
-                if !speech.isEmpty {
-                    raw.append(speech)
+            if line.hasPrefix("`"), let end = line.dropFirst().firstIndex(of: "`") {
+                let body = String(line[line.index(after: end)...])
+                if body.hasPrefix(" **📝 Note:** ") {
+                    finishSpeech()
+                    raw.append("# " + body.dropFirst(" **📝 Note:** ".count))
+                    insideNote = true
+                    continue
                 }
-                insideNote = false
+                let record = CanonicalMeetingTranscript.render(markdownTranscript: line)
+                if !record.isEmpty {
+                    finishSpeech()
+                    speech = [record]
+                    insideNote = false
+                    continue
+                }
+            }
+            if !speech.isEmpty {
+                speech.append(line)
+            } else if insideNote, line.hasPrefix("> ") {
+                raw.append("# " + line.dropFirst(2))
             }
         }
+        finishSpeech()
         return raw.joined(separator: "\n")
     }
 
@@ -100,7 +123,9 @@ public struct SessionEvidence: Codable, Sendable {
         let asyncFiles = ["soniox-async-mic.json", "soniox-async-system.json"].filter {
             FileManager.default.fileExists(atPath: directory.appendingPathComponent($0).path)
         }
-        if !asyncFiles.isEmpty { metadata["asyncTokenFiles"] = asyncFiles }
+        if !asyncFiles.isEmpty {
+            metadata["asyncTokenFiles"] = asyncFiles
+        }
         metadata["noteIDs"] = notes.map(\.id)
         metadata["markerSpans"] = try JSONSerialization.jsonObject(with: encoder.encode(spans))
         metadata["turns"] = try JSONSerialization.jsonObject(with: encoder.encode(turns))
@@ -154,6 +179,19 @@ public struct SessionEvidence: Codable, Sendable {
                 turns[index].anchor = "approximate"
             }
         }
+        let anchored = Dictionary(grouping: turns.compactMap { turn in turn.upgradedStartMs.map { ($0, turn) } }, by: { $0.0 })
+        upgradedTurns = all.map { segment in
+            let candidates = (anchored[segment.startMs] ?? []).map(\.1).filter {
+                ($0.leg == "Them") == Self.isRemote(segment.speaker) && segment.text.contains($0.original)
+            }
+            let first = candidates.first?.context
+            let mixed = candidates.contains { $0.context != first }
+            let context = mixed ? nil : (first ?? timeline.context(at: segment.startMs))
+            let status = mixed ? "mixed live contexts" : candidates.isEmpty ? "approximate"
+                : candidates.contains { $0.anchor == "review boundary" } ? "review boundary" : "matched"
+            return UpgradedEvidenceTurn(playbackStartMs: segment.startMs, speaker: segment.speaker, text: segment.text,
+                                        liveTurnIDs: candidates.map(\.turnID), context: context, anchor: status)
+        }
         let times = Array(Set(timed.map(\.startMs))).sorted()
         noteAnchors = notes.map { note in
             let ordered = times.sorted { abs($0 - note.offsetMs) < abs($1 - note.offsetMs) }
@@ -178,12 +216,11 @@ public struct SessionEvidence: Codable, Sendable {
             let text = event.label.components(separatedBy: .newlines)
             let suffix = anchorByID[event.id]?.approximate == true ? " · approximate" : ""
             let time = GuideExtraction.locator(event.offsetMs)
-            lines.append(raw ? "# \(heading) · \(time)\(suffix)" : "`\(time)` **📝 Note:** \(heading)\(suffix)")
+            lines.append(raw ? "# \(heading) · \(time)\(suffix)" : "`\(time)` **📝 Note:** \(heading) · \(text.first ?? "")\(suffix)")
             if !raw, event.kind != .note {
-                lines.append("### " + (text.first ?? heading))
                 lines += text.dropFirst().map { "> " + $0 }
             } else {
-                lines += text.map { "> " + $0 }
+                lines += (raw ? text[...] : text.dropFirst()).map { "> " + $0 }
             }
         }
         for segment in segments.sorted(by: { $0.startMs < $1.startMs }) {
@@ -198,9 +235,10 @@ public struct SessionEvidence: Codable, Sendable {
             let label = context.markerLabel?.components(separatedBy: .newlines).joined(separator: " ") ?? "unmarked"
             let ids = candidates.map(\.turnID).joined(separator: ", ")
             let mixed = candidates.contains { $0.context != context }
-            let qualifier = mixed ? " · mixed live contexts, see evidence" : candidates.contains { $0.anchor == "review boundary" } ? " · review boundary" : ""
-            let annotationPrefix = raw ? "#" : "`" + GuideExtraction.locator(segment.startMs) + "` **📝 Note:**"
-            lines.append("\(annotationPrefix) Section: \(label) · shown: \(context.materialLabel)\(context.guideQuestionID.map { " · " + $0 } ?? "")\(ids.isEmpty ? "" : " · " + ids)\(qualifier)")
+            let qualifier = mixed ? " · mixed live contexts, see evidence" : candidates.contains { $0.anchor == "review boundary" } ? " · review boundary"
+                : upgradedTurns != nil && candidates.isEmpty ? " · approximate" : ""
+            let annotationPrefix = raw ? "#" : "`" + GuideExtraction.locator(segment.startMs) + "` **📝 Note:** RTI context ·"
+            lines.append("\(annotationPrefix) Section: \(mixed ? "multiple" : label) · shown: \(mixed ? "multiple original contexts" : context.materialLabel)\(context.guideQuestionID.map { " · " + $0 } ?? "")\(ids.isEmpty ? "" : " · " + ids)\(qualifier)")
             let time = GuideExtraction.locator(segment.startMs)
             lines.append(raw ? "[\(time)] \(segment.speaker): \(segment.text)"
                 : "`\(time)\(String(format: ".%03d", max(0, segment.startMs) % 1000))` **\(segment.speaker):** \(segment.text)")
