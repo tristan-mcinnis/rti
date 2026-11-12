@@ -30,20 +30,24 @@ final class VisualContextTrail {
     private(set) var lastError: String?
 
     var isEnabled: Bool {
-        VisualContextSettingsDefaults.isEnabled
+        ScreenshotPolicy.shared.effective == .automatic
     }
 
     private var sessionStartedAt: Date?
     private var captureTask: Task<Void, Never>?
     private var lastCapturedText: String?
+    private var descriptions: [UUID: Task<Void, Never>] = [:]
+    private var contextStart = 0
 
     private init() {
-        state = VisualContextSettingsDefaults.isEnabled ? .idle : .disabled
+        state = .idle
     }
 
     func start(sessionStartedAt: Date) {
-        captureTask?.cancel()
+        ScreenshotPolicy.shared.automaticStateChanged()
+        cancelWork()
         events = []
+        contextStart = 0
         lastCapturedText = nil
         lastError = nil
         self.sessionStartedAt = sessionStartedAt
@@ -57,16 +61,17 @@ final class VisualContextTrail {
     }
 
     func stopCapturing() {
-        captureTask?.cancel()
-        captureTask = nil
+        ScreenshotPolicy.shared.automaticStateChanged()
+        cancelWork()
+        sessionStartedAt = nil
         state = isEnabled ? .idle : .disabled
     }
 
     func setPaused(_ paused: Bool) {
+        ScreenshotPolicy.shared.automaticStateChanged()
         guard sessionStartedAt != nil, isEnabled else { return }
         if paused {
-            captureTask?.cancel()
-            captureTask = nil
+            cancelWork()
             state = .paused
         } else {
             state = .waiting
@@ -74,27 +79,26 @@ final class VisualContextTrail {
         }
     }
 
-    func setEnabled(_ enabled: Bool, sessionStartedAt: Date?) {
-        VisualContextSettingsDefaults.isEnabled = enabled
+    private func cancelWork() {
         captureTask?.cancel()
         captureTask = nil
-        lastError = nil
+        for task in descriptions.values { task.cancel() }
+        descriptions.removeAll()
+    }
 
-        guard enabled else {
-            state = .disabled
-            return
-        }
-        guard let sessionStartedAt else {
-            state = .idle
-            return
-        }
-        self.sessionStartedAt = sessionStartedAt
-        state = .waiting
-        scheduleCaptureLoop(captureImmediately: true)
+    func refreshPolicy() {
+        cancelWork()
+        lastError = nil
+        lastCapturedText = nil
+        contextStart = events.count
+        guard isEnabled else { state = .disabled; return }
+        guard sessionStartedAt != nil, SessionCoordinator.shared.isRunning else { state = .idle; return }
+        setPaused(SessionCoordinator.shared.isPaused)
     }
 
     func recentPromptContext() -> String? {
-        VisualContextText.promptContext(events: events)
+        guard ScreenshotPolicy.shared.allows(.automatic) else { return nil }
+        return VisualContextText.promptContext(events: Array(events.dropFirst(contextStart)))
     }
 
     /// A screen or window screenshot (`capture_screen`, ⌘⇧H, ⌘⇧J) made while a
@@ -108,7 +112,7 @@ final class VisualContextTrail {
         visionSummary: String?,
         frameFilename: String?
     ) {
-        guard sessionStartedAt != nil else { return }
+        guard sessionStartedAt != nil, ScreenshotPolicy.shared.allows(.manual) else { return }
         guard !text.isEmpty || visionSummary != nil else { return }
         events.append(VisualContextEvent(
             offsetSeconds: offsetSeconds,
@@ -122,14 +126,6 @@ final class VisualContextTrail {
     func openScreenRecordingSettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else { return }
         NSWorkspace.shared.open(url)
-    }
-
-    func retryPermissionOrOpenSettings(sessionStartedAt: Date?) {
-        if CGPreflightScreenCaptureAccess() {
-            setEnabled(true, sessionStartedAt: sessionStartedAt)
-        } else {
-            openScreenRecordingSettings()
-        }
     }
 
     private func scheduleCaptureLoop(captureImmediately: Bool) {
@@ -146,7 +142,7 @@ final class VisualContextTrail {
     }
 
     private func captureOnce() async {
-        guard isEnabled, let sessionStartedAt else { return }
+        guard let permit = try? ScreenshotPolicy.shared.permit(for: .automatic), let sessionStartedAt else { return }
         state = .capturing
         do {
             let visionConfig = LocalVisionConfiguration.from(VaultPaths.configDictionary())
@@ -157,7 +153,7 @@ final class VisualContextTrail {
             // or stopped meanwhile, that already set the state; writing
             // `.active` over it showed "Screen context on" on a paused or
             // finished session.
-            guard !Task.isCancelled else { return }
+            try ScreenshotPolicy.shared.check(permit)
             let text = VisualContextText.compact(frame.text)
             if VisualContextText.isMeaningfullyDifferent(text, from: lastCapturedText) {
                 let offset = Int(Date().timeIntervalSince(sessionStartedAt))
@@ -183,7 +179,7 @@ final class VisualContextTrail {
                 trimEventsIfNeeded()
                 lastCapturedText = text
                 if visionConfig.enabled, visionConfig.ambientDescribe, let jpeg = frame.frameJPEG {
-                    describeInBackground(jpeg: jpeg, eventID: event.id, configuration: visionConfig)
+                    describeInBackground(jpeg: jpeg, eventID: event.id, configuration: visionConfig, permit: permit)
                 }
             }
             lastError = nil
@@ -208,7 +204,9 @@ final class VisualContextTrail {
 
     private func trimEventsIfNeeded() {
         if events.count > VisualContextSettingsDefaults.maximumEventCount {
-            events.removeFirst(events.count - VisualContextSettingsDefaults.maximumEventCount)
+            let excess = events.count - VisualContextSettingsDefaults.maximumEventCount
+            events.removeFirst(excess)
+            contextStart = max(0, contextStart - excess)
         }
     }
 
@@ -218,13 +216,17 @@ final class VisualContextTrail {
     private func describeInBackground(
         jpeg: Data,
         eventID: UUID,
-        configuration: LocalVisionConfiguration
+        configuration: LocalVisionConfiguration,
+        permit: ScreenshotPolicy.Permit
     ) {
-        Task { [weak self] in
+        descriptions[eventID] = Task { [weak self] in
+            defer { self?.descriptions[eventID] = nil }
+            guard (try? ScreenshotPolicy.shared.check(permit)) != nil else { return }
             guard let summary = try? await LocalVisionService.describe(
                 imageData: jpeg,
                 configuration: configuration
             ) else { return }
+            guard (try? ScreenshotPolicy.shared.check(permit)) != nil else { return }
             self?.attachVisionSummary(summary, to: eventID)
         }
     }

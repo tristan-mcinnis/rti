@@ -12,6 +12,7 @@ import RTICore
 /// in WeChat during a meeting — or a 1Password window or notification banner
 /// merely being visible — would otherwise OCR personal content straight into
 /// the meeting record.
+@MainActor
 enum ScreenPrivacy {
 
     /// Password managers, personal chat apps, and notification banners.
@@ -36,16 +37,30 @@ enum ScreenPrivacy {
                 ?? defaultExcludedBundleIds
         }
         set {
+            guard newValue != excludedBundleIds else { return }
             UserDefaults.standard.set(newValue, forKey: ScreenPrivacyDefaults.excludedAppsKey)
+            ScreenshotPolicy.shared.changed()
         }
     }
 
     static func resetToDefaults() {
         UserDefaults.standard.removeObject(forKey: ScreenPrivacyDefaults.excludedAppsKey)
+        ScreenshotPolicy.shared.changed()
+    }
+
+    static var blockedBundleIDs: Set<String> {
+        var ids = Set(excludedBundleIds)
+        ids.insert(RTIBuildProfile.stableID)
+        ids.insert(RTIBuildProfile.betaID)
+        if RTIBuildProfile.isBeta {
+            let stable = UserDefaults.standard.persistentDomain(forName: RTIBuildProfile.stableID)
+            ids.formUnion(stable?[ScreenPrivacyDefaults.excludedAppsKey] as? [String] ?? defaultExcludedBundleIds)
+        }
+        return ids
     }
 
     static func isExcluded(bundleIdentifier: String?) -> Bool {
         guard let bundleIdentifier else { return false }
-        return excludedBundleIds.contains(bundleIdentifier)
+        return blockedBundleIDs.contains(bundleIdentifier)
     }
 }

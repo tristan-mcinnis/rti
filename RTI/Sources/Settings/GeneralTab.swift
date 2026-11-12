@@ -13,6 +13,9 @@ struct GeneralTab: View {
         SettingsPage {
             VStack(alignment: .leading, spacing: House.Spacing.xl) {
                 LaunchAtLoginSection()
+                SettingsCard("Screenshots", rows: true) {
+                    SettingsRow(title: "Capture mode", isFirst: true) { ScreenshotModePicker() }
+                }
                 CaptureAccessSection()
                 ScreenPrivacySection()
                 AudioInputSection()
@@ -107,6 +110,17 @@ private struct CaptureAccessSection: View {
     private func refreshPermissions() {
         microphonePermission = AppPermissions.microphone
         screenPermission = AppPermissions.screenRecording
+    }
+}
+
+struct ScreenshotModePicker: View {
+    private let policy = ScreenshotPolicy.shared
+
+    var body: some View {
+        Picker("Screenshots", selection: Binding(get: { policy.global }, set: { policy.setGlobal($0) })) {
+            ForEach(ScreenshotMode.allCases) { mode in Text(mode.title).tag(mode) }
+        }
+        .labelsHidden()
     }
 }
 

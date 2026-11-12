@@ -15,7 +15,10 @@ final class CallTypeStore {
     @ObservationIgnored private let defaults: UserDefaults?
 
     var active: CallType {
-        didSet { defaults?.set(active.rawValue, forKey: CallTypeDefaults.activeKey) }
+        didSet {
+            defaults?.set(active.rawValue, forKey: CallTypeDefaults.activeKey)
+            if defaults != nil, active != oldValue { ScreenshotPolicy.shared.changed() }
+        }
     }
 
     private init(active: CallType, defaults: UserDefaults?) {

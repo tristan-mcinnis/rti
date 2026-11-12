@@ -13,6 +13,7 @@ final class HotkeyNoticeModel {
     static let dismissedKey = "rti.hotkeyNotice.dismissedSignature"
 
     private(set) var failedTitles: [String] = []
+    private var actionMessage: String?
     private var dismissedSignature: String
 
     init(defaults: UserDefaults = .standard) {
@@ -28,10 +29,20 @@ final class HotkeyNoticeModel {
 
     /// The message to show, or nil when nothing failed or it was dismissed.
     var message: String? {
-        HotkeyNoticeRule.message(failedTitles: failedTitles, dismissedSignature: dismissedSignature)
+        actionMessage ?? HotkeyNoticeRule.message(failedTitles: failedTitles, dismissedSignature: dismissedSignature)
     }
 
+    func showScreenshotOff() {
+        actionMessage = "Screenshots are off."
+    }
+
+    func clearScreenshotNotice() { actionMessage = nil }
+
     func dismiss() {
+        if actionMessage != nil {
+            actionMessage = nil
+            return
+        }
         dismissedSignature = HotkeyNoticeRule.signature(failedTitles)
         defaults.set(dismissedSignature, forKey: Self.dismissedKey)
     }

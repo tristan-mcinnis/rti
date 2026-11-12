@@ -4,84 +4,52 @@ import HouseDesign
 
 // MARK: - Visual context control
 
-/// Quiet but explicit ambient-capture state. It appears only while a session
-/// is live: Littlebird's low-friction context should never become invisible
-/// surveillance. One click stops or resumes the screen trail immediately.
+/// The recording header identifies automatic capture even before its first frame.
 struct OverlayVisualContextButton: View {
-    /// Capture is running (the header's phase).
     let isLive: Bool
-
-    private let session = SessionCoordinator.shared
     private let trail = VisualContextTrail.shared
-    @State private var hovering = false
+    private let policy = ScreenshotPolicy.shared
 
     var body: some View {
         if isLive {
-            Button(action: act) {
-                SlateChip(stroked: true, emphasised: false) {
-                    Image(systemName: icon)
-                        .font(House.TypeToken.meta)
-                        .foregroundStyle(tint)
+            Menu {
+                ForEach(ScreenshotMode.allCases) { mode in
+                    Button {
+                        policy.choose(mode)
+                    } label: {
+                        if mode == policy.effective {
+                            Label(mode.title, systemImage: "checkmark")
+                        } else {
+                            Text(mode.title)
+                        }
+                    }
                 }
-                .slateRaisedTile(false, cornerRadius: House.Radius.sm, hovering: hovering)
+                if trail.state == .permissionRequired {
+                    Button("Open Screen Recording Settings") { trail.openScreenRecordingSettings() }
+                }
+            } label: {
+                SlateChip(stroked: true, emphasised: false) {
+                    Image(systemName: policy.effective == .off ? "eye.slash" : "eye")
+                    if policy.effective == .automatic {
+                        Text(trail.state == .paused ? "Paused" : "Auto")
+                    }
+                }
+                .font(House.TypeToken.meta)
             }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
             .buttonStyle(.plain)
-            .hoverHighlight($hovering)
-            .accessibilityLabel("Screen context")
-            .accessibilityValue(statusText)
-            .accessibilityHint(actionHint)
-            .help("\(statusText). \(actionHint).")
+            .accessibilityLabel("Screenshots")
+            .accessibilityValue(status)
+            .help("Screenshots: \(status). Choose a capture mode.")
         }
     }
 
-    private var icon: String {
-        switch trail.state {
-        case .disabled: "eye.slash"
-        case .permissionRequired, .failed: "exclamationmark.triangle.fill"
-        case .paused: "eye.slash.fill"
-        default: trail.events.isEmpty ? "eye" : "eye.fill"
-        }
-    }
-
-    /// Status is the only chroma a chip may carry, and it is paired with the
-    /// accessibility value + tooltip, never colour alone.
-    private var tint: Color {
-        switch trail.state {
-        case .permissionRequired, .failed, .paused: House.ColorToken.warning
-        case .disabled: Color.overlayInkTertiary
-        default: Color.overlayInkSecondary
-        }
-    }
-
-    private var statusText: String {
-        switch trail.state {
-        case .disabled: "Screen context off"
-        case .idle, .waiting: "Screen context ready"
-        case .capturing: "Reading the active screen"
-        case .active:
-            "Screen context on · \(trail.events.count) visual \(trail.events.count == 1 ? "change" : "changes") captured"
-        case .paused: "Screen context paused with the recording"
-        case .permissionRequired: "Screen Recording access required"
-        case .failed: trail.lastError ?? "Screen context unavailable"
-        }
-    }
-
-    private var actionHint: String {
-        switch trail.state {
-        case .disabled: "Turn on one-minute active-screen OCR; images are discarded"
-        case .permissionRequired: "Open Screen Recording settings"
-        case .paused: "Resumes automatically with the recording"
-        default: "Turn off screen context"
-        }
-    }
-
-    private func act() {
-        if trail.state == .permissionRequired {
-            trail.retryPermissionOrOpenSettings(sessionStartedAt: session.startedAt)
-        } else {
-            trail.setEnabled(!trail.isEnabled, sessionStartedAt: trail.isEnabled ? nil : session.startedAt)
-            if session.isPaused { trail.setPaused(true) }
-        }
+    private var status: String {
+        if trail.state == .permissionRequired { return "Screen Recording permission required" }
+        if trail.state == .failed { return trail.lastError ?? "Capture unavailable" }
+        if trail.state == .paused { return "Automatic capture paused" }
+        return policy.effective.title
     }
 }
 

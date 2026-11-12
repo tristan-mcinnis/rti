@@ -19,7 +19,11 @@ final class MeetingContextStore {
     var workstreamContext: String?
     /// The picked vault item itself — kept so the Setup tab can offer that
     /// project's discussion guides. nil when nothing is picked.
-    var workstreamItem: VaultItem?
+    var workstreamItem: VaultItem? {
+        didSet {
+            if workstreamItem?.id != oldValue?.id { ScreenshotPolicy.shared.changed() }
+        }
+    }
 
     /// Calendar meeting explicitly selected in Setup. This is read-only context
     /// for the current session; RTI never changes the source calendar event.

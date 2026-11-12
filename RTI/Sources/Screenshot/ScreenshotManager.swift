@@ -44,10 +44,30 @@ final class ScreenshotManager {
 
     private init() {}
 
+    func invalidateCapture() {
+        attachmentTask?.cancel()
+        attachmentTask = nil
+        lastCapturedRegions = []
+        HotkeyNoticeModel.shared.clearScreenshotNotice()
+        LLMController.shared.clearPendingScreenContext()
+        LLMController.shared.screenshotPolicyDidChange()
+    }
+
+    private func canCaptureManually() -> Bool {
+        guard ScreenshotPolicy.shared.allows(.manual) else {
+            HotkeyNoticeModel.shared.showScreenshotOff()
+            LLMController.shared.setScreenAttachError("Screenshots are off.")
+            QuickAIAnnouncement.post("Screenshots are off.", priority: .medium)
+            return false
+        }
+        return true
+    }
+
     /// Capture connected displays, OCR them, and attach the result (text plus
     /// the screenshot itself) to `LLMController` as pending context for the
     /// next turn.
     func captureAndAttach() {
+        guard canCaptureManually() else { return }
         attachmentTask?.cancel()
         let requestID = LLMController.shared.beginScreenAttachment(status: "Reading all screens…")
         attachmentTask = Task { [weak self] in
@@ -77,6 +97,7 @@ final class ScreenshotManager {
     /// forward — and attach its OCR text (plus a local vision description
     /// when that lane is on) as pending context for the next turn.
     func captureFocusedWindowAndAttach() {
+        guard canCaptureManually() else { return }
         attachmentTask?.cancel()
         let requestID = LLMController.shared.beginScreenAttachment(status: "Reading the frontmost window…")
         attachmentTask = Task { [weak self] in
@@ -115,12 +136,14 @@ final class ScreenshotManager {
         trigger: String = "manual.window",
         attachmentRequestID: UUID? = nil
     ) async throws -> ScreenCaptureResult {
-        try checkAttachmentRequest(attachmentRequestID)
+        let permit = try ScreenshotPolicy.shared.permit(for: .manual)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         let window = try await captureFocusedWindowWithOCR(
+            permit: permit,
             includeFrame: true,
             attachmentRequestID: attachmentRequestID
         )
-        try checkAttachmentRequest(attachmentRequestID)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         let text = window.text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !text.isEmpty || window.frameJPEG != nil else {
@@ -152,12 +175,13 @@ final class ScreenshotManager {
     /// first window that is a normal layer, not RTI's, and not on the privacy
     /// deny-list is the one the user was looking at.
     private func captureFocusedWindowWithOCR(
+        permit: ScreenshotPolicy.Permit,
         includeFrame: Bool,
         attachmentRequestID: UUID? = nil
     ) async throws -> CapturedScreenOCR {
-        try checkAttachmentRequest(attachmentRequestID)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        try checkAttachmentRequest(attachmentRequestID)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         guard let window = focusedWindow(in: content.windows) else {
             throw ScreenshotError.noFocusedWindow
         }
@@ -175,9 +199,9 @@ final class ScreenshotManager {
         config.capturesAudio = false
 
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-        try checkAttachmentRequest(attachmentRequestID)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         let ocrRegions = try await OCRService.recognizeTextRegions(in: image)
-        try checkAttachmentRequest(attachmentRequestID)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         return CapturedScreenOCR(
             label: windowLabel(window),
             isPrimary: true,
@@ -261,43 +285,6 @@ final class ScreenshotManager {
     /// image to the next turn — the drag-and-drop sibling of
     /// `captureAndAttach()`. On-device Vision OCR extracts the text; the image
     /// itself goes to the model when the provider takes image input, so the
-    /// local vision model is not called here.
-    func attachDroppedImage(_ image: NSImage) {
-        attachmentTask?.cancel()
-        let requestID = LLMController.shared.beginScreenAttachment(status: "Reading image…")
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            LLMController.shared.setScreenAttachError("Couldn't read that image.", requestID: requestID)
-            return
-        }
-        attachmentTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                try self.checkAttachmentRequest(requestID)
-                let ocr = try await OCRService.recognizeText(in: cgImage)
-                try self.checkAttachmentRequest(requestID)
-                let trimmed = self.truncate(ocr)
-                let jpeg = ScreenFrameEncoder.jpegData(from: cgImage)
-                try self.checkAttachmentRequest(requestID)
-                guard !trimmed.isEmpty || jpeg != nil else {
-                    LLMController.shared.setScreenAttachError("No readable text found in that image.", requestID: requestID)
-                    return
-                }
-                let context = trimmed.isEmpty
-                    ? "A dropped image with no machine-readable text."
-                    : "Text from a dropped image:\n\(trimmed)"
-                RTILog.log("Dropped image: OCR=\(trimmed.count) chars image=\(jpeg != nil).", category: .screenshot)
-                self.recordCaptureInSessionTrail(primaryText: trimmed, frameJPEG: jpeg, trigger: "manual.image")
-                LLMController.shared.attachScreenContext(context, image: jpeg, requestID: requestID)
-            } catch is CancellationError {
-                return
-            } catch {
-                guard LLMController.shared.isCurrentScreenAttachment(requestID), !Task.isCancelled else { return }
-                RTILog.log("Dropped-image OCR failed: \(error)", category: .screenshot)
-                LLMController.shared.setScreenAttachError("Couldn't read text from that image.", requestID: requestID)
-            }
-        }
-    }
-
     /// Capture + OCR and return the text and the screenshot itself. Throws
     /// `ScreenshotError.empty` only when OCR and the image are both empty. Used
     /// by the ⌘⇧H "Screenshot Screen" path and the LLM `capture_screen` tool.
@@ -308,16 +295,18 @@ final class ScreenshotManager {
     /// model sees the screenshot itself, so a second local description only
     /// adds latency.
     func captureAndDescribe(trigger: String = "manual", attachmentRequestID: UUID? = nil) async throws -> ScreenCaptureResult {
-        try checkAttachmentRequest(attachmentRequestID)
+        let permit = try ScreenshotPolicy.shared.permit(for: trigger == "tool" ? .automatic : .manual)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         // Always encode the primary frame: the chat sends the actual
         // screenshot when the model takes images, and the session keeps a copy
         // independently of whether the local vision lane is on.
         let screens = try await captureDisplaysWithOCR(
+            permit: permit,
             activeOnly: false,
             includeFrame: true,
             attachmentRequestID: attachmentRequestID
         )
-        try checkAttachmentRequest(attachmentRequestID)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         let nonEmpty = screens.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         let primaryJPEG = screens.first?.frameJPEG
 
@@ -340,8 +329,9 @@ final class ScreenshotManager {
         return ScreenCaptureResult(text: combined, imageJPEG: primaryJPEG)
     }
 
-    private func checkAttachmentRequest(_ requestID: UUID?) throws {
+    private func checkAttachmentRequest(_ requestID: UUID?, permit: ScreenshotPolicy.Permit? = nil) throws {
         try Task.checkCancellation()
+        if let permit { try ScreenshotPolicy.shared.check(permit) }
         if let requestID, !LLMController.shared.isCurrentScreenAttachment(requestID) {
             throw CancellationError()
         }
@@ -352,7 +342,9 @@ final class ScreenshotManager {
     /// image is released as soon as OCR (and optional JPEG encoding for the
     /// session archive) completes; only the compact JPEG travels further.
     func captureActiveDisplayFrame(includeFrame: Bool) async throws -> ActiveDisplayFrame {
-        let screens = try await captureDisplaysWithOCR(activeOnly: true, includeFrame: includeFrame)
+        let permit = try ScreenshotPolicy.shared.permit(for: .automatic)
+        let screens = try await captureDisplaysWithOCR(permit: permit, activeOnly: true, includeFrame: includeFrame)
+        try ScreenshotPolicy.shared.check(permit)
         guard let screen = screens.first else { throw ScreenshotError.noDisplay }
         let text = screen.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw ScreenshotError.empty }
@@ -360,6 +352,7 @@ final class ScreenshotManager {
     }
 
     func highlightTextOnLastCapture(_ query: String) -> String {
+        guard ScreenshotPolicy.shared.allows(.automatic) else { return "Screen tools are unavailable with the current Screenshots setting." }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return "No highlight text was provided."
@@ -386,7 +379,8 @@ final class ScreenshotManager {
               let startedAt = SessionCoordinator.shared.startedAt else { return }
         let offset = Int(Date().timeIntervalSince(startedAt))
         var frameFilename: String?
-        if let jpeg = frameJPEG {
+        let vision = LocalVisionConfiguration.from(VaultPaths.configDictionary())
+        if vision.enabled, vision.saveFrames, let jpeg = frameJPEG {
             let staging = VisualFrameStore.stagingDirectory(
                 configHome: VaultPaths.homeDirectory(),
                 startedAt: startedAt
@@ -428,13 +422,14 @@ final class ScreenshotManager {
     }
 
     private func captureDisplaysWithOCR(
+        permit: ScreenshotPolicy.Permit,
         activeOnly: Bool,
         includeFrame: Bool = false,
         attachmentRequestID: UUID? = nil
     ) async throws -> [CapturedScreenOCR] {
-        try checkAttachmentRequest(attachmentRequestID)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        try checkAttachmentRequest(attachmentRequestID)
+        try checkAttachmentRequest(attachmentRequestID, permit: permit)
         guard !content.displays.isEmpty else {
             throw ScreenshotError.noDisplay
         }
@@ -447,12 +442,13 @@ final class ScreenshotManager {
         let ownBundleIdentifier = Bundle.main.bundleIdentifier
         let excludedWindows = content.windows.filter {
             let bundleId = $0.owningApplication?.bundleIdentifier
-            return bundleId == ownBundleIdentifier || ScreenPrivacy.isExcluded(bundleIdentifier: bundleId)
+            return bundleId == ownBundleIdentifier || bundleId.map(permit.excluded.contains) == true
         }
 
         var captured: [CapturedScreenOCR] = []
         let selectedDisplays = activeOnly ? Array(displays.prefix(1)) : displays
         for (index, display) in selectedDisplays.enumerated() {
+            try checkAttachmentRequest(attachmentRequestID, permit: permit)
             let frame = appKitFrame(for: display)
             let isPrimary = frame.contains(NSEvent.mouseLocation)
             let filter = SCContentFilter(display: display, excludingWindows: excludedWindows)
@@ -467,9 +463,9 @@ final class ScreenshotManager {
             config.capturesAudio = false
 
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            try checkAttachmentRequest(attachmentRequestID)
+            try checkAttachmentRequest(attachmentRequestID, permit: permit)
             let ocrRegions = try await OCRService.recognizeTextRegions(in: image)
-            try checkAttachmentRequest(attachmentRequestID)
+            try checkAttachmentRequest(attachmentRequestID, permit: permit)
             // Only the cursor display (index 0 after sorting) keeps a frame:
             // one compact JPEG bounds memory and archive size per capture.
             let frameJPEG = (includeFrame && index == 0)
@@ -580,7 +576,18 @@ final class ScreenshotManager {
     }
 }
 
-enum ScreenshotError: Error {
+enum ScreenshotError: Error, LocalizedError {
+    case disabled
+
+    var errorDescription: String? {
+        switch self {
+        case .disabled: "Screen capture is disabled for this request."
+        case .empty: "No content on screen."
+        case .noFocusedWindow: "No eligible window."
+        case .noDisplay: "No eligible display."
+        }
+    }
+
     case noDisplay
     case noFocusedWindow
     case empty

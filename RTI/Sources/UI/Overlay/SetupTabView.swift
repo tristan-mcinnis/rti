@@ -26,13 +26,11 @@ struct SetupTabView: View {
     }
 
     private enum LiveOption: Equatable, Identifiable {
-        case visualContext
         case notes
         case autoAssist
 
         var id: String {
             switch self {
-            case .visualContext: "visualContext"
             case .notes: "notes"
             case .autoAssist: "autoAssist"
             }
@@ -40,7 +38,6 @@ struct SetupTabView: View {
 
         var title: String {
             switch self {
-            case .visualContext: "Screen context"
             case .notes: "Notes"
             case .autoAssist: "Auto"
             }
@@ -48,7 +45,6 @@ struct SetupTabView: View {
 
         var detail: String {
             switch self {
-            case .visualContext: "Read the active screen every minute; images discarded"
             case .notes: "Capture running notes as the call develops"
             case .autoAssist: "Surface suggestions during the call"
             }
@@ -56,7 +52,6 @@ struct SetupTabView: View {
 
         var icon: String {
             switch self {
-            case .visualContext: "eye"
             case .notes: "note.text"
             case .autoAssist: "sparkles"
             }
@@ -74,7 +69,6 @@ struct SetupTabView: View {
     // These also gate the live tabs (Notes / Auto), see OverlayPanelView.
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
-    @AppStorage(VisualContextSettingsDefaults.enabledKey) private var visualContextEnabled = VisualContextSettingsDefaults.defaultEnabled
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
     @State private var scopeFilter: ScopeFilter = .all
@@ -110,14 +104,7 @@ struct SetupTabView: View {
             load()
             if Self.readsCalendar { calendarStore.refresh() }
         }
-        .onChange(of: visualContextEnabled) { _, enabled in
-            let session = SessionCoordinator.shared
-            VisualContextTrail.shared.setEnabled(
-                enabled,
-                sessionStartedAt: session.isRunning ? session.startedAt : nil
-            )
-            if session.isPaused { VisualContextTrail.shared.setPaused(true) }
-        }
+
     }
 
     private var prepareHeader: some View {
@@ -579,13 +566,40 @@ struct SetupTabView: View {
 
     // MARK: - Live call
 
+    private var screenshotsRow: some View {
+        let policy = ScreenshotPolicy.shared
+        return HStack(spacing: House.Spacing.sm) {
+            Image(systemName: "eye").frame(width: House.Control.tile)
+            VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                Text("Screenshots").font(House.TypeToken.label)
+                if policy.project != nil {
+                    Text("For this project’s \(CallTypeStore.shared.active.name) calls. Effective: \(policy.effective.title).")
+                        .font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
+                }
+            }
+            Spacer()
+            if let project = policy.project {
+                Picker("Project screenshot mode", selection: Binding(
+                    get: { policy.projectOverride },
+                    set: { policy.setOverride($0, project: project, callType: CallTypeStore.shared.active) }
+                )) {
+                    Text("Use global (\(policy.global.title))").tag(ScreenshotMode?.none)
+                    ForEach(ScreenshotMode.allCases) { mode in Text(mode.title).tag(Optional(mode)) }
+                }
+                .labelsHidden()
+            } else {
+                ScreenshotModePicker()
+            }
+        }
+    }
+
     private var liveCallSection: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
             sectionHeader("Live", detail: "Capture & assist")
             settingsGroup {
                 liveTranscriptionRow
                 settingsRowDivider
-                livePanelToggle(.visualContext, $visualContextEnabled)
+                screenshotsRow
                 settingsRowDivider
                 if GuideSessionController.shared.isActive || (CallTypeStore.shared.active == .research && GuidePreparation.shared.guide != nil) {
                     HStack(spacing: House.Spacing.sm) {

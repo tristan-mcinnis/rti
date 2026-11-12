@@ -26,9 +26,25 @@ enum CommandBuilder {
             + actionCommands(llm: llm)
             + assistantProviderCommands()
             + transcriptionCommands()
+            + screenshotCommands()
             + panelCommands(windows: windows, llm: llm)
             + appCommands(windows: windows)
             + callTypeCommands(callTypes: callTypes, llm: llm)
+    }
+
+    @MainActor
+    private static func screenshotCommands() -> [RTICommand] {
+        ScreenshotMode.allCases.map { mode in
+            RTICommand(
+                id: "screenshots.\(mode.rawValue)",
+                title: mode.title,
+                keywords: ["screenshots", "capture", "screen", mode.title],
+                perform: { ScreenshotPolicy.shared.choose(mode) },
+                menuSection: .panels,
+                menuParent: "Screenshots",
+                menuStateProvider: { ScreenshotPolicy.shared.effective == mode }
+            )
+        }
     }
 
     // MARK: - Transcription provider (menu quick-switch)

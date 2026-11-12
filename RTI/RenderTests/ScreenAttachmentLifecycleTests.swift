@@ -80,22 +80,17 @@ final class ScreenAttachmentLifecycleTests: RenderProofTestCase {
         XCTAssertNil(llm.screenCaptureStatus)
     }
 
-    func testDroppedImageShowsReadingBeforeAsyncWorkStarts() throws {
+    func testDroppedImageHasIndependentDocumentProvenance() async throws {
         let bitmap = try XCTUnwrap(NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: 8, pixelsHigh: 8,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
             isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 32, bitsPerPixel: 32
         ))
-        let image = NSImage(size: NSSize(width: 8, height: 8))
-        image.addRepresentation(bitmap)
-        let llm = LLMController.shared
-        llm.attachScreenContext("Previous invented OCR")
-
-        ScreenshotManager.shared.attachDroppedImage(image)
-        XCTAssertEqual(llm.screenCaptureStatus, "Reading image…")
-        XCTAssertNil(llm.pendingScreenContext)
-        // Invalidate on the same actor before the existing task can start;
-        // its first request check exits before any OCR or local vision work.
-        llm.clearPendingScreenContext()
+        let bytes = try XCTUnwrap(bitmap.representation(using: .jpeg, properties: [:]))
+        let attachment = try await ExternalDocumentLoader.load(imageData: bytes)
+        XCTAssertEqual(attachment.kind, .image)
+        XCTAssertEqual(ChatSourcePayload(from: attachment).archiveKind, .image)
+        XCTAssertNotNil(attachment.normalizedImage)
+        XCTAssertNil(LLMController.shared.pendingScreenContext)
     }
 }

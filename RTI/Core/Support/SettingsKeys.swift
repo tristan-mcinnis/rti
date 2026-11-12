@@ -99,21 +99,9 @@ public enum AutoAssistSettings {
 }
 
 public enum VisualContextSettingsDefaults {
-    public static let enabledKey = "rti.visualContext.enabled"
-    public static let defaultEnabled = true
     public static let captureIntervalNanoseconds: UInt64 = 60 * 1_000_000_000
     public static let maximumEventCount = 240
 
-    public static var isEnabled: Bool {
-        get {
-            let defaults = UserDefaults.standard
-            guard defaults.object(forKey: enabledKey) != nil else { return defaultEnabled }
-            return defaults.bool(forKey: enabledKey)
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: enabledKey)
-        }
-    }
 }
 
 public enum LLMSettingsDefaults {

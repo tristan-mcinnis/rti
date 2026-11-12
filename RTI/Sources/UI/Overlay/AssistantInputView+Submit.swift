@@ -23,7 +23,7 @@ extension AssistantInputView {
                             return
                         }
                         documents.remove(at: index)
-                        dropFile(url)
+                        addDocument(url)
                     }
                 }
             } else if provider.canLoadObject(ofClass: NSImage.self) {
@@ -38,8 +38,19 @@ extension AssistantInputView {
                             documents[index].phase = .failed("Could not read the dropped image")
                             return
                         }
-                        documents.remove(at: index)
-                        ScreenshotManager.shared.attachDroppedImage(image)
+                        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                              let bytes = ScreenFrameEncoder.jpegData(from: cgImage) else {
+                            documents[index].phase = .failed("Could not read the dropped image")
+                            return
+                        }
+                        do {
+                            let attachment = try await ExternalDocumentLoader.load(imageData: bytes)
+                            guard let current = documents.firstIndex(where: { $0.id == pending.id }) else { return }
+                            documents[current].phase = .ready(attachment)
+                        } catch {
+                            guard let current = documents.firstIndex(where: { $0.id == pending.id }) else { return }
+                            documents[current].phase = .failed("Could not read the dropped image")
+                        }
                     }
                 }
             }
@@ -47,24 +58,9 @@ extension AssistantInputView {
         return took
     }
 
-    /// An image file is read on-device like a screen; any other file loads
-    /// as a document.
-    private func dropFile(_ url: URL) {
-        if UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true,
-           let image = NSImage(contentsOf: url)
-        {
-            ScreenshotManager.shared.attachDroppedImage(image)
-        } else {
-            addDocument(url)
-        }
-    }
-
     func handleFileImport(_ result: Result<[URL], Error>) {
         guard case let .success(urls) = result else { return }
-        // `dropFile` routes an image to the screenshot lane and everything else
-        // to the document lane, so picking a saved screenshot here behaves the
-        // same as dropping it on the composer.
-        urls.forEach(dropFile)
+        urls.forEach(addDocument)
     }
 
     /// Reads the file off the main thread; the chip says "Reading…" until

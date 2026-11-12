@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import HouseChatCore
 import HouseChatDocuments
 import RTICore
@@ -161,14 +162,28 @@ enum ExternalDocumentLoader {
             throw LoadError.failed("Could not be read")
         }
 
+        return try await attachment(from: extraction, path: url.path)
+    }
+
+    static func load(imageData: Data) async throws -> ExternalDocumentAttachment {
+        let extraction = try await DocumentExtractor().extract(data: imageData, name: "Dropped image.jpg")
+        return try await attachment(from: extraction, path: nil)
+    }
+
+    private static func attachment(from extraction: DocumentExtraction, path: String?) async throws -> ExternalDocumentAttachment {
         let document = extraction.document
-        let text = (document.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { throw LoadError.failed("No text found") }
+        var text = (document.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if let image = extraction.normalizedImage, text.isEmpty,
+           let source = CGImageSourceCreateWithData(image.data as CFData, nil),
+           let decoded = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+            text = (try? await OCRService.recognizeText(in: decoded)) ?? ""
+        }
+        guard !text.isEmpty || extraction.normalizedImage != nil else { throw LoadError.failed("No text found") }
 
         return ExternalDocumentAttachment(
             name: extraction.source.name,
             text: text,
-            path: url.path,
+            path: path,
             kind: Self.chipKind(for: document.kind),
             byteCount: extraction.originalBytes.count,
             pageCount: document.sectionUnit == .page ? document.unitCount : nil,
