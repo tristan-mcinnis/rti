@@ -8,7 +8,6 @@ struct GuideTabView: View {
 
     private let controller = GuideSessionController.shared
     @State private var showsPalette = false
-    @State private var query = ""
     @FocusState private var readerFocused: Bool
 
     var body: some View {
@@ -29,7 +28,7 @@ struct GuideTabView: View {
                 OverlayToolbarButton(icon: "chevron.right", help: "Next question (→)",
                                      disabled: !canAdvance) { controller.move(by: 1) }
                 OverlayToolbarButton(icon: "magnifyingglass", help: "Jump to question (⌘K)") {
-                    query = ""
+                    if !showsPalette { PalettePresentationTrace.begin(query: "", opening: true) }
                     showsPalette.toggle()
                 }
                 .keyboardShortcut("k", modifiers: .command)
@@ -65,7 +64,7 @@ struct GuideTabView: View {
         .overlay(alignment: .topTrailing) {
             if showsPalette {
                 CommandPaletteView(
-                    query: $query, onRun: { command in
+                    onRun: { command in
                         showsPalette = false
                         command.perform()
                     }, onClose: { showsPalette = false },

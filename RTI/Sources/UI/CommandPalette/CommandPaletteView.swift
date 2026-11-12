@@ -1,6 +1,7 @@
 // Copied from quick-launch@b9ee129 Sources/Views/OverlayView.swift (QuickActionPalette)
 import RTICore
 import SwiftUI
+import os.signpost
 import HouseDesign
 
 /// The `⌘K` action palette (design-system docs/chat-surfaces.md section 3):
@@ -15,7 +16,7 @@ import HouseDesign
 /// actions); a registry row with the same id is then not drawn twice. It
 /// registers no hotkey of its own.
 struct CommandPaletteView: View {
-    @Binding var query: String
+    @State private var query = ""
     var onRun: (RTICommand) -> Void
     /// `esc`, or `⌘K` again.
     var onClose: () -> Void = {}
@@ -45,7 +46,11 @@ struct CommandPaletteView: View {
     }
 
     private var entries: [RTICommand] {
-        Self.entries(query: query, leading: leadingCommands, registry: registry.search(query), hiding: hiddenRegistryIDs)
+        // An empty query uses registry recency. Filtering ranks the merged
+        // result once; pre-ranking every registry command here did the same
+        // fuzzy scoring again before the list could lay out.
+        let pool = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? registry.search("") : registry.commands
+        return Self.entries(query: query, leading: leadingCommands, registry: pool, hiding: hiddenRegistryIDs)
     }
 
     var body: some View {
@@ -53,7 +58,10 @@ struct CommandPaletteView: View {
         VStack(spacing: House.Spacing.xs) {
             HStack(spacing: House.Spacing.sm) {
                 ChooserSearchField(
-                    text: $query,
+                    text: Binding(get: { query }, set: {
+                        PalettePresentationTrace.begin(query: $0, opening: false)
+                        query = $0
+                    }),
                     focusToken: focusToken,
                     placeholder: "Search actions",
                     onMove: { delta in move(delta, count: rows.count) },
@@ -100,6 +108,15 @@ struct CommandPaletteView: View {
         .onChange(of: query) { _, _ in selection = 0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Actions")
+        .onDisappear { PalettePresentationTrace.dismiss() }
+        .background {
+            if PalettePresentationTrace.enabled {
+                PalettePaintMark(query: query)
+                    .frame(width: 1, height: 1)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     private func row(_ command: RTICommand, index: Int, count: Int, isSelected: Bool) -> some View {
@@ -210,5 +227,66 @@ struct CommandPaletteView: View {
             ("app.quit", "power"),
         ]
         return table.first { id.hasPrefix($0.0) }?.1 ?? "command"
+    }
+}
+
+/// Instruments points of interest. The interval ends when AppKit draws the
+/// updated palette. No query or meeting content is written to the trace.
+@MainActor
+enum PalettePresentationTrace {
+    private static let log = OSLog(subsystem: "RTI", category: .pointsOfInterest)
+    static var enabled: Bool { log.signpostsEnabled }
+    private static var pending: (query: String, id: OSSignpostID, opened: Bool)?
+
+    static func begin(query: String, opening: Bool) {
+        guard enabled else { return }
+        if let prior = pending {
+            end(prior, superseded: true)
+        }
+        let id = OSSignpostID(log: log)
+        let queued = NSApp.currentEvent?.timestamp ?? ProcessInfo.processInfo.systemUptime
+        let dispatchMS = max(0, ProcessInfo.processInfo.systemUptime - queued) * 1_000
+        if opening {
+            os_signpost(.begin, log: log, name: "PaletteOpen", signpostID: id, "input delay ms %.2f", dispatchMS)
+        } else {
+            os_signpost(.begin, log: log, name: "PaletteFilter", signpostID: id, "input delay ms %.2f", dispatchMS)
+        }
+        pending = (query, id, opening)
+    }
+
+    static func dismiss() {
+        if let current = pending { end(current, superseded: true) }
+        pending = nil
+    }
+
+    static func drew(query: String) {
+        guard let current = pending, current.query == query else { return }
+        end(current, superseded: false)
+        pending = nil
+    }
+
+    private static func end(_ value: (query: String, id: OSSignpostID, opened: Bool), superseded: Bool) {
+        if value.opened {
+            os_signpost(.end, log: log, name: "PaletteOpen", signpostID: value.id, "superseded %d", superseded ? 1 : 0)
+        } else {
+            os_signpost(.end, log: log, name: "PaletteFilter", signpostID: value.id, "superseded %d", superseded ? 1 : 0)
+        }
+    }
+}
+
+private struct PalettePaintMark: NSViewRepresentable {
+    let query: String
+    final class Mark: NSView {
+        var query = ""
+        override func draw(_ dirtyRect: NSRect) {
+            PalettePresentationTrace.drew(query: query)
+        }
+    }
+
+    func makeNSView(context: Context) -> Mark { Mark() }
+
+    func updateNSView(_ marker: Mark, context: Context) {
+        marker.query = query
+        marker.needsDisplay = true
     }
 }

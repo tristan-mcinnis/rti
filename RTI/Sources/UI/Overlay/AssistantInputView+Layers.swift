@@ -210,8 +210,8 @@ extension AssistantInputView {
     }
 
     func openPalette() {
+        PalettePresentationTrace.begin(query: "", opening: true)
         isAddContextOpen = false
-        paletteQuery = ""
         isPaletteOpen = true
     }
 
@@ -258,7 +258,6 @@ extension AssistantInputView {
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
                 CommandPaletteView(
-                    query: $paletteQuery,
                     onRun: runPaletteCommand,
                     onClose: closePalette,
                     leadingCommands: paletteLeadingCommands,

@@ -17,6 +17,12 @@ This is what you run to verify RTI by hand. Ralph automated what it could; these
 
 Also test relaunch, external-display disconnect and restoring from full screen with a fixture archive. Keep a separate trace of frame, display/Space, visibility, focus and content scroll, with no transcript text. Old sessions must still open before and after the mock call.
 
+### Palette latency and memory
+
+Run the opt-in `CommandPaletteFocusProofTests/testLongWorkspaceMemoryAndInteractions` with `TEST_RUNNER_RTI_LONG_WORKSPACE=1`. It uses three 92-minute sessions, 24 saved chats, repeated route and scroll changes, keyboard filtering and resets. The `RTI_WORKSPACE_MEMORY` records contain cycle, stage, resident MiB and physical footprint MiB. Compare warm resets and inspect any growth. The ordinary chooser regression also checks that keyboard selection can reach row 150 while only viewport rows are built.
+
+For the visible beta, attach Instruments Points of Interest to RTI Beta alone, then open Cmd+K and type a broad query followed by two narrowing keys. Read `PaletteOpen` and `PaletteFilter` in subsystem `RTI`, including the input dispatch delay in the begin event. The end is AppKit drawing the new palette. Count cold and worst observations. Ignore intervals marked superseded, and report their count. Tab to Transcript, scroll up, type in Chinese using marked text, then use Escape and verify that the draft and recording are intact. [Offscreen baseline and fixture](../docs/palette-baseline-20261112.md)
+
 ## 1. Launch
 
 ```bash

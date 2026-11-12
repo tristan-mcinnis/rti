@@ -124,9 +124,9 @@ struct ChooserList<Item, Row: View>: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: items.count > maxRows) {
-                VStack(spacing: Self.rowSpacing) {
-                    ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                        row(index, item).id(index)
+                LazyVStack(spacing: Self.rowSpacing) {
+                    ForEach(items.indices, id: \.self) { index in
+                        row(index, items[index])
                     }
                 }
             }
@@ -386,6 +386,8 @@ struct ChooserSearchField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> ChooserSearchTextField {
         let field = ChooserSearchTextField()
+        field.cell = QueryCell(textCell: "")
+        field.isAutomaticTextCompletionEnabled = false
         field.delegate = context.coordinator
         field.isBordered = false
         field.drawsBackground = false
@@ -458,6 +460,24 @@ struct ChooserSearchField: NSViewRepresentable {
                 return false
             }
         }
+    }
+
+    /// Command queries keep their own native field editor so text checking
+    /// and inline prediction cannot delay a key or affect regular text fields.
+    final class QueryCell: NSTextFieldCell {
+        private lazy var queryEditor: NSTextView = {
+            let view = NSTextView()
+            view.isFieldEditor = true
+            view.isRichText = false
+            view.enabledTextCheckingTypes = 0
+            view.isAutomaticSpellingCorrectionEnabled = false
+            view.isContinuousSpellCheckingEnabled = false
+            view.isAutomaticTextCompletionEnabled = false
+            view.inlinePredictionType = .no
+            return view
+        }()
+
+        override func fieldEditor(for controlView: NSView) -> NSTextView? { queryEditor }
     }
 
     /// `⌘K` closes the chooser (the palette, or Add Context). While the field

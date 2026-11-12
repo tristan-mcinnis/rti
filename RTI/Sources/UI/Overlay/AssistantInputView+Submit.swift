@@ -235,7 +235,6 @@ extension AssistantInputView {
         fileImporterPresented = false
         isPaletteOpen = false
         isAddContextOpen = false
-        paletteQuery = ""
         addContextQuery = ""
         dismissedChooserDraft = nil
         chooserIndex = 0

@@ -124,7 +124,7 @@ final class SlateRenderProofTests: RenderProofTestCase {
         try renderBothAppearances(
             name: "command-palette",
             size: CGSize(width: 620, height: 420),
-            view: CommandPaletteView(query: .constant(""), onRun: { _ in })
+            view: CommandPaletteView(onRun: { _ in })
                 .frame(width: 620, height: 420)
         )
     }

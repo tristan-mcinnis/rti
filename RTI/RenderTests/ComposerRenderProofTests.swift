@@ -97,7 +97,7 @@ final class ComposerRenderProofTests: RenderProofTestCase {
         XCTAssertGreaterThanOrEqual(capped, HouseComposerMetrics.lineHeight(fontSize: 13))
         let long = HouseComposerMetrics.rowHeight(fieldHeight: capped, fontSize: 13)
         let rowLimit = HouseComposerMetrics.paletteRows(availableHeight: minimumContentHeight, composerHeight: long)
-        let palette = CommandPaletteView(query: .constant(""), onRun: { _ in },
+        let palette = CommandPaletteView(onRun: { _ in },
                                          leadingCommands: RenderFixtures.commands, maxVisibleRows: rowLimit)
             .frame(width: HouseChatMetrics.paletteWidth)
         let host = NSHostingView(rootView: palette)

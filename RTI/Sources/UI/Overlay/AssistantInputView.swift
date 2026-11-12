@@ -36,7 +36,6 @@ struct AssistantInputView: View {
     @State var documents: [ComposerDocument]
     @State var focusedChipID: String?
     @State var isPaletteOpen: Bool
-    @State var paletteQuery = ""
     @State var isAddContextOpen: Bool
     @State var addContextPage: AddContextPage
     /// The Add Context pane's own search. Typing there narrows the rows and
