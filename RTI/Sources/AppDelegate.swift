@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         try? FileManager.default.removeItem(atPath: Self.cleanExitFlag)
 
 
-        // Slate is dark-first: apply the configured theme app-wide before any
+        // Apply the configured theme app-wide before any
         // window exists, so every RTI surface opens in the right appearance.
         OverlayAppearanceDefaults.applyAppAppearance()
 

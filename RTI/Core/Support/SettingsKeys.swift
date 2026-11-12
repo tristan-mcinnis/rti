@@ -19,8 +19,8 @@ public enum OverlayAppearanceDefaults {
 
     public static let defaultWidth: Double = 700
     public static let defaultHeight: Double = 440
-    /// Slate is a dark-first system; light stays first-class.
-    public static let defaultAppearanceMode = RTIAppearanceMode.dark.rawValue
+    /// A fresh profile follows macOS until the user selects a specific appearance.
+    public static let defaultAppearanceMode = RTIAppearanceMode.system.rawValue
     public static let defaultContrast: Double = 60
     public static let defaultUIFontSize: Double = 14
     // The overlay's single-row chrome and footer remain legible at 600 pt.
@@ -30,8 +30,7 @@ public enum OverlayAppearanceDefaults {
     public static let contrastRange: ClosedRange<Double> = 35...85
     public static let uiFontSizeRange: ClosedRange<Double> = 12...18
 
-    public static func effectiveAppearanceMode() -> RTIAppearanceMode {
-        let defaults = UserDefaults.standard
+    public static func effectiveAppearanceMode(in defaults: UserDefaults = .standard) -> RTIAppearanceMode {
         if let raw = defaults.string(forKey: appearanceModeKey),
            let mode = RTIAppearanceMode(rawValue: raw) {
             return mode
@@ -39,7 +38,7 @@ public enum OverlayAppearanceDefaults {
         if defaults.object(forKey: lightModeKey) != nil {
             return defaults.bool(forKey: lightModeKey) ? .light : .dark
         }
-        return RTIAppearanceMode(rawValue: defaultAppearanceMode) ?? .dark
+        return .system
     }
 }
 

@@ -1,10 +1,30 @@
 import XCTest
+import RTICore
 
 /// Pins the app's names. The display name is "RTI" (the one project name).
 /// The bundle identifier must never change: macOS keys microphone, system
 /// audio and screen-recording grants to it, so a rename resets every
 /// permission.
 final class AppIdentityTests: XCTestCase {
+    func testAppearanceFollowsSystemUnlessTheUserSelectedATheme() throws {
+        let suite = "rti.appearance.fixture." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(OverlayAppearanceDefaults.defaultAppearanceMode, "system")
+        XCTAssertEqual(OverlayAppearanceDefaults.effectiveAppearanceMode(in: defaults), .system)
+        defaults.set(false, forKey: OverlayAppearanceDefaults.lightModeKey)
+        XCTAssertEqual(OverlayAppearanceDefaults.effectiveAppearanceMode(in: defaults), .dark)
+        defaults.set(true, forKey: OverlayAppearanceDefaults.lightModeKey)
+        XCTAssertEqual(OverlayAppearanceDefaults.effectiveAppearanceMode(in: defaults), .light)
+        for mode in RTIAppearanceMode.allCases {
+            defaults.set(mode.rawValue, forKey: OverlayAppearanceDefaults.appearanceModeKey)
+            XCTAssertEqual(OverlayAppearanceDefaults.effectiveAppearanceMode(in: defaults), mode)
+        }
+        defaults.removeObject(forKey: OverlayAppearanceDefaults.lightModeKey)
+        defaults.set("obsolete", forKey: OverlayAppearanceDefaults.appearanceModeKey)
+        XCTAssertEqual(OverlayAppearanceDefaults.effectiveAppearanceMode(in: defaults), .system)
+    }
+
     private var rtiDirectory: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // Tests
