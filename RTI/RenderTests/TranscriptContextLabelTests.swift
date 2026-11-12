@@ -22,13 +22,13 @@ final class TranscriptContextLabelTests: XCTestCase {
             entry("self", "Hi both.", 2_000),
             entry("remote_1", "Hello.", 3_000),
         ])
-        XCTAssertEqual(text, "Speaker 2: Morning.\nMe: Hi both.\nSpeaker 1: Hello.")
+        XCTAssertEqual(text, "Them (unverified speaker): Morning.\nMe: Hi both.\nThem (unverified speaker): Hello.")
     }
 
     func testLiveNamesReachTheAssistant() {
         SpeakerNameStore.shared.rename("remote_1", to: "Priya Shah")
         let text = TranscriptContext.format([entry("remote_1", "Yes.", 1_000), entry("room_1", "Agreed.", 2_000)])
-        XCTAssertEqual(text, "Priya Shah: Yes.\nRoom speaker 1: Agreed.")
+        XCTAssertEqual(text, "Them / Priya Shah (confirmed): Yes.\nMe (unverified speaker): Agreed.")
     }
 
     func testNotesContextKeepsWordsWholeAcrossFinalMessagesWhileTranscriptIsHidden() async throws {
@@ -40,9 +40,9 @@ final class TranscriptContextLabelTests: XCTestCase {
         try await SplitWordTranscriptReplay.publish(in: session)
 
         let text = TranscriptContext.text(forSessionId: try XCTUnwrap(session.currentSessionId))
-        XCTAssertTrue(text.contains("Avery: The blue lantern prototype is ready."),
+        XCTAssertTrue(text.contains("Avery (confirmed)] The blue lantern prototype is ready."),
                       "A provider packet boundary must not insert a label or newline inside lantern: \(text)")
-        XCTAssertTrue(text.contains("Taylor: The battery test starts tomorrow."))
+        XCTAssertTrue(text.contains("Taylor (confirmed)] The battery test starts tomorrow."))
         XCTAssertFalse(text.contains("TRANSLATION_ONLY_MARKER"))
         XCTAssertFalse(text.contains("PENDING_ONLY_MARKER"))
         XCTAssertFalse(text.contains("remote_1:"))

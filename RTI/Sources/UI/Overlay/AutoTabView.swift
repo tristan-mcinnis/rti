@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 /// things to say, ask, recall from the project, or flag. Header, manual scan,
 /// and a scrolling list; each row is an in-the-moment suggestion.
 struct AutoTabView: View {
+    @State private var following = true
     private let controller = AutoAssistController.shared
 
     var body: some View {
@@ -45,17 +46,28 @@ struct AutoTabView: View {
                                 cardRow(card).id(card.id)
                             }
                         }
+                        .trackReaderFollowing($following)
                     }
                     .scrollContentBackground(.hidden)
                     .onChange(of: controller.cards.count) { _, _ in
                         controller.markSeen()
-                        if let last = controller.cards.last {
+                        if following, let last = controller.cards.last {
                             withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if !following {
+                            Button("Jump to latest", systemImage: "arrow.down") {
+                                following = true
+                                if let last = controller.cards.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                            }
+                            .buttonStyle(.bordered)
+                            .padding(.bottom, House.Spacing.sm)
                         }
                     }
                     .onAppear {
                         controller.markSeen()
-                        if let last = controller.cards.last {
+                        if following, let last = controller.cards.last {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }

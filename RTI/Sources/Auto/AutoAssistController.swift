@@ -105,7 +105,7 @@ final class AutoAssistController {
     /// Run a pass now if the floor since the last one has elapsed; otherwise
     /// re-arm so this content is still covered once the floor passes.
     private func fireIfDue() {
-        guard SessionCoordinator.shared.isRunning,
+        guard UserDefaults.standard.bool(forKey: AutoAssistSettings.enabledKey), SessionCoordinator.shared.isRunning,
               let sid = SessionCoordinator.shared.currentSessionId else { return }
         if let last = lastPassAt, Date().timeIntervalSince(last) < Self.minInterval {
             debounceTimer?.invalidate()

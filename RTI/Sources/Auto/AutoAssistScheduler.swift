@@ -11,8 +11,8 @@ final class AutoAssistScheduler {
     /// A single task registered with the scheduler.
     struct ScheduledTask {
         /// UserDefaults key that gates whether this task fires.
-        let enabledKey: String
-        /// An explicitly selected Research guide uses the Notes slot for the duration of its session.
+        let enabledKey: String?
+        /// A session-bound feature may run independently of a global preference.
         var sessionEnabled: @MainActor () -> Bool = { false }
         /// Called on each timer tick. Receives the last watermark
         /// (nil on first fire) and returns the new watermark (nil if
@@ -44,10 +44,18 @@ final class AutoAssistScheduler {
     /// reads the per-task enabled flags from UserDefaults on each tick so
     /// Settings changes take effect without restarting the timer.
     func start(interval: TimeInterval) {
-        timer?.invalidate()
         runGeneration += 1
         for key in watermarks.keys { watermarks[key] = 0 }
+        schedule(interval)
+    }
 
+    func updateInterval(_ interval: TimeInterval) {
+        guard let timer, timer.timeInterval != interval else { return }
+        schedule(interval)
+    }
+
+    private func schedule(_ interval: TimeInterval) {
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.fire() }
         }
@@ -80,7 +88,7 @@ final class AutoAssistScheduler {
 
     private func fire() {
         for (id, task) in tasks {
-            let enabled = UserDefaults.standard.object(forKey: task.enabledKey) as? Bool ?? false
+            let enabled = task.enabledKey.map { UserDefaults.standard.bool(forKey: $0) } ?? false
             guard enabled || task.sessionEnabled() else { continue }
             let sinceMs = watermarks[id] == 0 ? nil : watermarks[id]
             let tickGeneration = runGeneration

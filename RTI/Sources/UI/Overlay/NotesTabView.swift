@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 // MARK: - Notes
 
 struct NotesTabView: View {
+    @State private var following = true
     private let controller = NotesGenerationController.shared
 
     var body: some View {
@@ -58,17 +59,28 @@ struct NotesTabView: View {
                                 .id(note.id)
                             }
                         }
+                        .trackReaderFollowing($following)
                     }
                     .scrollContentBackground(.hidden)
                     .onChange(of: controller.notes.count) { _, _ in
-                        if let last = controller.notes.last {
+                        if following, let last = controller.notes.last {
                             withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                         }
                     }
                     // Returning to this tab re-instantiates the view at the
                     // top, so jump straight back to the newest note.
+                    .overlay(alignment: .bottom) {
+                        if !following {
+                            Button("Jump to latest", systemImage: "arrow.down") {
+                                following = true
+                                if let last = controller.notes.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                            }
+                            .buttonStyle(.bordered)
+                            .padding(.bottom, House.Spacing.sm)
+                        }
+                    }
                     .onAppear {
-                        if let last = controller.notes.last {
+                        if following, let last = controller.notes.last {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }

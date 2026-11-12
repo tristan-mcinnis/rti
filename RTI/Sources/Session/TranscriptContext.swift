@@ -34,7 +34,7 @@ enum TranscriptContext {
         } else {
             all
         }
-        return format(window, label: speakerLabeler(for: all))
+        return format(window, label: speakerLabeler(for: all), includeTimestamps: true)
     }
 
     /// Human labels for raw speaker IDs, the same ones the Transcript tab
@@ -51,8 +51,15 @@ enum TranscriptContext {
     /// One speaker id as the assistant reads it; shared with Assist's recent
     /// transcript so every prompt names speakers the same way.
     static func speakerLabel(for id: String, names: [String: String]) -> String {
-        if id == "self", names["self"] == nil { return "Me" }
-        return LiveTranscriptPresentation.label(for: id, names: names)
+        let named = names[id]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let leg = SpeakerEvidence.leg(for: id)
+        if !SessionCoordinator.shared.speakerPolicy.labelsEnabled { return leg }
+        switch SpeakerEvidence.resolve(speakerID: id, named: named?.isEmpty == false) {
+        case .legOnly: return leg
+        case .confirmed: return "\(leg) / \(named ?? leg) (confirmed)"
+        case .unverified: return "\(leg) (unverified speaker)"
+        }
+
     }
 
     /// The end-ms of the transcript window. Used by the periodic Auto-mode
@@ -71,7 +78,8 @@ enum TranscriptContext {
     static func format(
         _ entries: [LiveEntry],
         label: ((String) -> String)? = nil,
-        noteLabel: String = "[user note]"
+        noteLabel: String = "[user note]",
+        includeTimestamps: Bool = false
     ) -> String {
         let label = label ?? speakerLabeler(for: entries)
         // Provider messages can end halfway through a word. Group complete
@@ -80,14 +88,19 @@ enum TranscriptContext {
         let notes = utterances.filter { $0.speakerId == "note" }
         let inline = utterances
             .map { e in
-                e.speakerId == "note"
-                    ? "\(noteLabel): \(e.text)"
-                    : "\(label(e.speakerId)): \(e.text)"
+                let speaker = e.speakerId == "note" ? noteLabel : label(e.speakerId)
+                if includeTimestamps {
+                    return "[\(TimeFormat.elapsedMs(e.startMs)), \(speaker)] \(e.text)"
+                }
+                return "\(speaker): \(e.text)"
             }
             .joined(separator: "\n")
-        guard !notes.isEmpty else { return inline }
+        let evidenceRule = includeTimestamps && !inline.isEmpty
+            ? "Me and Them identify audio inputs. Only a confirmed mapping supports a name. An unverified voice cannot establish who said a line or how many people agreed.\n"
+            : ""
+        guard !notes.isEmpty else { return evidenceRule + inline }
         let header = "## User notes (authoritative — trust these over any transcript ambiguity)"
         let bullets = notes.map { "- \($0.text)" }.joined(separator: "\n")
-        return "\(header)\n\(bullets)\n\n\(inline)"
+        return "\(header)\n\(bullets)\n\n\(evidenceRule)\(inline)"
     }
 }

@@ -49,6 +49,14 @@ final class LiveNotesTests: XCTestCase {
         XCTAssertEqual(OverlayTab.visibleTabs(notes: false, auto: false), [.assist, .transcript])
     }
 
+    func testGuidedResearchKeepsIndependentNotesTabAndShortcuts() {
+        XCTAssertEqual(OverlayTab.visibleTabs(notes: true, auto: false, guide: true), [.assist, .transcript, .guide, .notes])
+        XCTAssertEqual(OverlayTab.visibleTabs(notes: false, auto: false, guide: true), [.assist, .transcript, .guide])
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: "guide", guideActive: true), 5)
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: "notes", guideActive: true), 6)
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: "notes"), 5)
+    }
+
     func testTheArchiveWritesNotesMdAndTheSidecarCarriesThem() throws {
         let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
         let endedAt = startedAt.addingTimeInterval(240)
