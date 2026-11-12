@@ -101,7 +101,8 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         )
     }
 
-    /// The opt-in Auto tab on beside default-on Notes, so the row shows all five.
+    /// Every tab that can show without a guide: Notes on, and Auto on (no tab
+    /// of its own; at these widths its rail folds into the one-line strip).
     func testTabsRowWithEveryTab() throws {
         enableEveryTab()
         seedRecording()
@@ -118,15 +119,35 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         try renderPanel("shell-transcript", widths: [Self.standardWidth, Self.minimumWidth], tab: .transcript)
     }
 
+    /// Auto is on by default on a client call, so the rail sits beside the
+    /// transcript. At the breakpoint, the tightest width that keeps the rail
+    /// rather than the strip, the transcript's Translate and copy controls
+    /// must still fit beside it (the breakpoint is about 750 pt, so this is
+    /// tighter than any wider window). PNG `shell-transcript-rail-<width>`.
+    func testTranscriptBesideTheRailAtTheBreakpoint() throws {
+        UserDefaults.standard.removeObject(forKey: AutoAssistSettings.enabledKey)
+        SessionCoordinator.shared.seedForRenderProof(
+            entries: RenderFixtures.speakerTurns,
+            interim: "Sure, I'll write it up after this and tag the design channel so…",
+            phase: .recording,
+            startedAt: Date().addingTimeInterval(-761)
+        )
+        let width = Double(LiveRailLayout.stripBelow)
+        XCTAssertEqual(LiveRailLayout.mode(width: width, applies: true), .rail)
+        XCTAssertGreaterThan(width, Self.standardWidth, "the standard width shows the strip, so this proof covers the rail")
+        try renderPanel("shell-transcript-rail-\(Int(width))", widths: [width], tab: .transcript)
+    }
+
     func testTranscriptEmpty() throws {
         try renderPanel("shell-transcript-empty", widths: [Self.standardWidth], tab: .transcript)
     }
 
-    func testEmptyNotesAndAutoTabs() throws {
+    /// Auto has no tab (its cards sit in the rail beside the transcript), so
+    /// the empty proof covers Notes alone.
+    func testEmptyNotesTab() throws {
         enableEveryTab()
         seedRecording(entries: [])
         try renderPanel("shell-notes-empty", widths: [Self.standardWidth, Self.minimumWidth], tab: .notes)
-        try renderPanel("shell-auto-empty", widths: [Self.standardWidth], tab: .auto)
     }
 
     func testPrepareTab() throws {
@@ -161,9 +182,11 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
 
     // MARK: - Seams
 
-    /// The ⌘1…⌘5 order in RTICore is the tab order the overlay draws.
+    /// The ⌘1…⌘7 order in RTICore is the tab order the overlay draws, plus
+    /// the kept ⌘3 slot of the deleted Auto tab, which opens Transcript.
     func testTabShortcutsMatchTheTabs() {
-        XCTAssertEqual(OverlayTab.allCases.map(\.rawValue), OverlayTabShortcut.order)
+        XCTAssertEqual(OverlayTab.allCases.map(\.rawValue), OverlayTabShortcut.order.filter { $0 != OverlayTabShortcut.liveHelpSlot })
+        XCTAssertEqual(OverlayTabShortcut.order.firstIndex(of: OverlayTabShortcut.liveHelpSlot), 2)
         XCTAssertEqual(OverlayTab.setup.shortcutLabel, "⌘1")
         XCTAssertEqual(OverlayTab.transcript.shortcutLabel, "⌘4")
         XCTAssertEqual(OverlayTab.notes.shortcutLabel, "⌘5")

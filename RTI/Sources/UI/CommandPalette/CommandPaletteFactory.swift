@@ -86,12 +86,12 @@ enum CommandBuilder {
 
     // MARK: - Tab navigation
 
-    /// Jump straight to an overlay tab. ⌘1…⌘5 pick a tab while the overlay is
+    /// Jump straight to an overlay tab. ⌘1…⌘7 pick a tab while the overlay is
     /// key (the View menu); they are local keys, never global hotkeys, and
     /// the status-item menu stays uncluttered. The palette row shows the key.
     @MainActor
     private static func tabCommands(windows: WindowCoordinator) -> [RTICommand] {
-        OverlayTab.allCases.map { tab in
+        let tabs = OverlayTab.allCases.map { tab in
             RTICommand(
                 id: "view.tab.\(tab.rawValue)",
                 title: tab == .setup ? "Go to Prepare" : "Go to \(tab.title)",
@@ -104,6 +104,27 @@ enum CommandBuilder {
                 menuTitleProvider: { "Go to \(tab.title)" }
             )
         }
+        // The deleted Auto tab's row: its cards sit in the live rail beside
+        // the transcript, so "auto" still finds them, on the kept ⌘3.
+        let slot = OverlayTabShortcut.liveHelpSlot
+        let liveHelp = RTICommand(
+            id: "view.tab.\(slot)",
+            title: "Go to Live Help",
+            subtitle: "⌘\(OverlayTabShortcut.number(forTab: slot) ?? 0)",
+            keywords: ["tab", "switch", "jump", "go", "auto", "live help", "rail", "cards", "transcript"],
+            // Offered only when live help shows; otherwise it is "Go to Transcript".
+            isAvailable: {
+                AutoAssistSettings.liveHelpApplies(for: CallTypeStore.shared.active,
+                                                   stored: UserDefaults.standard.object(forKey: AutoAssistSettings.enabledKey) as? Bool,
+                                                   guideActive: GuideSessionController.shared.isActive)
+            },
+            perform: { [weak windows] in
+                windows?.showOverlay()
+                NotificationCenter.default.post(name: .rtiSelectTab, object: slot)
+            },
+            menuTitleProvider: { "Go to Live Help" }
+        )
+        return tabs + [liveHelp]
     }
 
     /// Session-specific rows are evaluated when the palette opens. No guide text is

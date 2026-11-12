@@ -2,87 +2,159 @@ import Foundation
 import Observation
 import RTICore
 
-/// Auto mode: each scheduler tick reads the latest transcript window and, using
-/// the meeting's project context (status, brief) and the
-/// project's own vault knowledge, proactively surfaces a few high-value cards —
-/// something to say, a question to ask, a relevant fact to recall, or a flag.
-/// It is the always-on counterpart to the manual Assist panel: instead of
-/// waiting to be asked, it watches the conversation and offers help in the
-/// moment, grounded in what this project already knows.
+/// Auto mode: each scheduler tick reads the transcript since its last pass and
+/// proactively surfaces a few high-value cards — something to say, a question
+/// to ask, a relevant fact to recall, or a flag. It is the always-on
+/// counterpart to the manual Assist panel.
 ///
-/// Runs on the `AutoAssistScheduler` rail, gated by its own Settings toggle,
-/// owning its own watermark so the manual "Generate" button and the periodic
-/// tick can't double-surface. When a project is picked
+/// The call type frames each pass (`AutoAssistPrompt`): a client call steers
+/// toward the pre-meeting brief's goal; a research session works from the
+/// guide's gaps and current question and never sees the brief. Internal and
+/// personal calls get no pass. Each pass acts on the new transcript only and
+/// re-reads the three minutes before its watermark as context.
+///
+/// On by default for client and research calls; a toggle the user set wins
+/// (`AutoAssistSettings.isActive`). Pass timing is one `AutoPassState` value:
+/// debounce, floor (60 s on client and research calls; the debounce and the
+/// scheduler tick both wait for it, "Suggest now" skips it), and the busy
+/// guard that the tick and "Suggest now" share, with the watermark that only
+/// an accepted pass advances. A `LiveRailBoard` paces what the rail shows. When a project is picked
 /// for the meeting, each pass first runs a project-scoped vault search keyed on
-/// the live window so a card can cite what a participant actually said or what
+/// the new window so a card can cite what a participant actually said or what
 /// a report concluded — the "they just asked about X, here's our answer" case.
 @Observable @MainActor
 final class AutoAssistController {
     static let shared = AutoAssistController()
 
     private(set) var cards: [AutoAssistCard] = []
-    var isGenerating = false
     private(set) var lastError: String?
-    /// Cards added while the user wasn't looking at the Auto tab — drives the
-    /// tab's unread badge so a proactive suggestion is noticeable.
-    private(set) var unseenCount = 0
+    /// When the next pass may run. The one timing value; see `AutoPassState`.
+    private(set) var pass = AutoPassState()
+    /// What the live rail shows and when: each card's `new -> shown ->
+    /// pinned | dismissed | expired` state, paced by `LiveRailPacer`.
+    private(set) var rail = LiveRailBoard()
+
+    var isGenerating: Bool {
+        pass.isGenerating
+    }
 
     private let request: LLMRequest
+    private let callTypes: CallTypeStore
+    private let guide: GuideSessionController
+    private let defaults: UserDefaults
+    private let now: @MainActor () -> Date
     private var sessionId: String?
-    /// Watermark: ms of the last transcript covered.
-    private var lastMs = 0
+    /// The one timer `pass` asks for (debounce or floor).
+    private var passTimer: Timer?
+    /// The one timer `rail` asks for (pacing, hold, fade).
+    private var railTimer: Timer?
+    /// A pass started by the debounce or floor timer. Stop cancels it.
+    private var passTask: Task<Void, Never>?
+    /// Set by `stop`: the rail admits nothing more until the next session.
+    private var railStopped = false
 
-    // Proactive triggering: fire a short beat after talk settles, not just on
-    // the slow scheduler tick — so a client's question gets answered in seconds.
-    private var debounceTimer: Timer?
-    private var lastPassAt: Date?
-    /// Wait this long after the last new speech before firing, so we act on a
-    /// finished thought (a complete question) rather than a half-sentence.
-    private static let quietWindow: TimeInterval = 7
-    /// Floor between passes — bounds cost during a long monologue.
-    private static let minInterval: TimeInterval = 25
-
-    // Prompt default lives in the registry (`PromptID.autoAssistCards`),
-    // resolved through `PromptStore` so it's editable in Settings.
+    // Prompt defaults live in the registry (`PromptID.autoAssistCards` plus the
+    // call-type framing), resolved through `PromptStore` so they're editable in
+    // Settings and assembled by `AutoAssistPrompt`.
 
     /// Bumped on reset/clear so a pass still awaiting the LLM from an older
     /// session cannot write into the new one.
-    private var generation = 0
-    init(request: LLMRequest = LLMRequest(priority: .background)) {
+    private var generation: Int {
+        pass.generation
+    }
+
+    /// `callTypes`, `guide`, `defaults` and `now` default to the shared
+    /// stores and the wall clock; tests pass their own so a pass can be
+    /// driven without a live call or the user's own Auto toggle.
+    init(
+        request: LLMRequest = LLMRequest(priority: .background),
+        callTypes: CallTypeStore? = nil,
+        guide: GuideSessionController? = nil,
+        defaults: UserDefaults = .standard,
+        now: @escaping @MainActor () -> Date = { Date() }
+    ) {
         self.request = request
+        self.callTypes = callTypes ?? .shared
+        self.guide = guide ?? .shared
+        self.defaults = defaults
+        self.now = now
+    }
+
+    /// Auto runs only on call types with a framing (client and research).
+    var runsOnActiveCallType: Bool {
+        AutoAssistPrompt.framing(for: callTypes.active) != nil
+    }
+
+    /// Auto is on for this call: the stored toggle, or the call type's
+    /// default when the user never set one, and a call type that has Auto.
+    /// The tab, menu and switches use the same `AutoAssistSettings.isActive`.
+    var isActiveForCall: Bool {
+        AutoAssistSettings.isActive(for: callTypes.active, defaults: defaults) && runsOnActiveCallType
+    }
+
+    static let offCallTypeMessage = "Auto runs on client and research calls only."
+
+    private var floor: TimeInterval {
+        AutoPassState.floor(for: callTypes.active) ?? AutoPassState.floor(for: .client) ?? 60
     }
 
     /// Bind to a session and drop any prior cards.
     func reset(for sessionId: String) {
-        generation += 1
+        clearState()
         self.sessionId = sessionId
-        lastError = nil
-        isGenerating = false
-        cards = []
-        lastMs = 0
-        unseenCount = 0
-        debounceTimer?.invalidate()
-        debounceTimer = nil
-        lastPassAt = nil
     }
 
     func clear() {
-        generation += 1
+        clearState()
         sessionId = nil
-        cards = []
-        lastError = nil
-        isGenerating = false
-        lastMs = 0
-        unseenCount = 0
-        debounceTimer?.invalidate()
-        debounceTimer = nil
-        lastPassAt = nil
     }
 
-    /// Mark the surfaced cards as seen (called when the user views the Auto tab).
-    func markSeen() {
-        unseenCount = 0
+    private func clearState() {
+        passTask?.cancel()
+        passTask = nil
+        apply(pass.reduce(.reset, now: now(), floor: floor))
+        lastError = nil
+        cards = []
+        rail.reset()
+        railStopped = false
+        railTimer?.invalidate()
+        railTimer = nil
     }
+
+    /// The recording stopped. Drop any waiting or running pass (its reply is
+    /// discarded) and stop the rail from admitting more cards. The cards
+    /// already surfaced stay readable until the next session resets them.
+    func stop() {
+        passTask?.cancel()
+        passTask = nil
+        apply(pass.reduce(.stop, now: now(), floor: floor))
+        railStopped = true
+        railTimer?.invalidate()
+        railTimer = nil
+    }
+
+    func pin(_ id: UUID) {
+        rail.pin(id)
+    }
+
+    /// A dismissed card never comes back, even if a later pass repeats it.
+    func dismiss(_ id: UUID) {
+        rail.dismiss(id)
+        advanceRail()
+    }
+
+    #if DEBUG
+        /// Render proofs only: put these cards on the rail as if each pass had
+        /// returned at its time, oldest first, through the same pacer.
+        func seedRailForRenderProof(_ seeded: [(card: AutoAssistCard, at: Date)], callType: CallType) {
+            clearState()
+            for (card, at) in seeded.sorted(by: { $0.at < $1.at }) {
+                cards.append(card)
+                rail.offer([LiveRailItem(id: card.id, text: card.text, lane: card.kind == .flag ? .threads : .now, arrivedAt: at)])
+                rail.advance(now: at, callType: callType)
+            }
+        }
+    #endif
 
     // MARK: - Proactive triggering
 
@@ -93,50 +165,159 @@ final class AutoAssistController {
     /// next start), so "a session runs" is `isRunning`: finals flushed in the
     /// stop window, or a debounce armed just before Stop, otherwise ran one
     /// more paid pass after the scheduler had already stopped.
-    func noteActivity() {
-        guard UserDefaults.standard.bool(forKey: AutoAssistSettings.enabledKey),
-              SessionCoordinator.shared.isRunning else { return }
-        debounceTimer?.invalidate()
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.quietWindow, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.fireIfDue() }
+    /// `selfSpoke` is true when the newest final came from the user's own mic;
+    /// the rail holds new cards briefly while the user talks on a client call.
+    func noteActivity(selfSpoke: Bool = false) {
+        guard SessionCoordinator.shared.isRunning, isActiveForCall else { return }
+        if selfSpoke {
+            rail.noteSelfSpeech(at: now())
         }
+        apply(pass.reduce(.activity, now: now(), floor: floor))
     }
 
-    /// Run a pass now if the floor since the last one has elapsed; otherwise
-    /// re-arm so this content is still covered once the floor passes.
-    private func fireIfDue() {
-        guard UserDefaults.standard.bool(forKey: AutoAssistSettings.enabledKey), SessionCoordinator.shared.isRunning,
-              let sid = SessionCoordinator.shared.currentSessionId else { return }
-        if let last = lastPassAt, Date().timeIntervalSince(last) < Self.minInterval {
-            debounceTimer?.invalidate()
-            debounceTimer = Timer.scheduledTimer(withTimeInterval: Self.minInterval, repeats: false) { [weak self] _ in
-                MainActor.assumeIsolated { self?.fireIfDue() }
-            }
+    /// The armed timer fired: run a pass if the debounce and the floor have
+    /// passed, otherwise wait for them. If Auto was turned off or the
+    /// recording ended meanwhile, the waiting pass is dropped. Internal so a
+    /// test can fire it on its own clock.
+    func timerFired() {
+        guard SessionCoordinator.shared.isRunning, isActiveForCall else {
+            apply(pass.reduce(.cancelPending, now: now(), floor: floor))
             return
         }
-        Task { @MainActor in _ = await self.generate(sessionId: sid) }
+        apply(pass.reduce(.timerFired, now: now(), floor: floor))
+    }
+
+    /// Apply one effect from `pass`: the one timer, or a pass.
+    private func apply(_ effect: AutoPassState.Effect) {
+        switch effect {
+        case .none:
+            return
+        case .disarm:
+            passTimer?.invalidate()
+            passTimer = nil
+        case let .arm(at):
+            passTimer?.invalidate()
+            passTimer = Timer.scheduledTimer(withTimeInterval: max(0, at.timeIntervalSince(now())), repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.timerFired() }
+            }
+        case let .startPass(passGeneration):
+            passTimer?.invalidate()
+            passTimer = nil
+            guard let sid = SessionCoordinator.shared.currentSessionId else {
+                apply(pass.reduce(.passFinished(generation: passGeneration, endMs: nil), now: now(), floor: floor))
+                return
+            }
+            passTask = Task { @MainActor [weak self] in _ = await self?.run(sessionId: sid, generation: passGeneration) }
+        }
     }
 
     /// Surface cards over the transcript since the last pass. Used by both the
-    /// periodic scheduler and the manual button.
+    /// periodic scheduler and the manual button. The scheduler tick waits
+    /// for the floor like the debounce does. `explicit` is the button: the
+    /// user asked, so the pass skips the floor and the rail shows its first
+    /// card at once instead of waiting out the pacer's spacing.
     @discardableResult
-    func generate(sessionId: String) async -> Int? {
-        guard !isGenerating else { return nil }
-        let passGeneration = generation
-        isGenerating = true
-        // A reset may admit a new pass while this one is suspended. Only
-        // the owning generation can release its busy state.
-        defer {
-            if passGeneration == generation { isGenerating = false }
+    func generate(sessionId: String, explicit: Bool = false) async -> Int? {
+        let event: AutoPassState.Event = explicit ? .passRequested : .tick
+        guard case let .startPass(passGeneration) = pass.reduce(event, now: now(), floor: floor) else {
+            return nil
         }
-        lastError = nil
-        // All paths (debounce, scheduler, manual) update the floor so the
-        // proactive trigger rate-limits against every kind of pass.
-        lastPassAt = Date()
+        passTimer?.invalidate()
+        passTimer = nil
+        return await run(sessionId: sessionId, generation: passGeneration, explicit: explicit)
+    }
 
-        let windowStartMs = lastMs
+    /// One pass that `pass` has already admitted as `generating`. Every exit
+    /// reports back, so the busy state is always released by its owner.
+    private func run(sessionId: String, generation passGeneration: Int, explicit: Bool = false) async -> Int? {
+        lastError = nil
+        var endMs: Int?
+        defer {
+            apply(pass.reduce(.passFinished(generation: passGeneration, endMs: endMs), now: now(), floor: floor))
+        }
+        guard let prepared = await preparePass(sessionId: sessionId, windowStartMs: pass.watermarkMs,
+                                               generation: passGeneration)
+        else { return nil }
+
+        guard let response = await request.collectAsync(
+            messages: [LLMMessage(role: "user", content: prepared.prompt)], smart: false
+        ), !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard pass.owns(generation: passGeneration) else { return nil }
+
+        let items = JSONExtractor.decodeArrayLenient(response, key: "cards", as: AutoCardItem.self)
+        // Drop only repeats of cards the user saw or that still wait on the
+        // rail. A card that faded unseen may come back.
+        rail.fade(now: now())
+        var seen = Set<String>()
+        let fresh: [AutoAssistCard] = items.compactMap { item in
+            guard let card = AutoAssistCard.make(from: item, citations: prepared.citations),
+                  !rail.repeatsKnownItem(card.text),
+                  seen.insert(LiveRailPacer.normalized(card.text)).inserted else { return nil }
+            return card
+        }
+        cards.append(contentsOf: fresh)
+        if cards.count > 300 { cards.removeFirst(cards.count - 300) }
+        // One arrival time per pass, so the pacer keeps the model's order
+        // within a pass and puts a newer pass first.
+        let arrivedAt = now()
+        rail.offer(fresh.map {
+            LiveRailItem(id: $0.id, text: $0.text, lane: $0.kind == .flag ? .threads : .now, arrivedAt: arrivedAt)
+        })
+        advanceRail(explicit: explicit)
+        // Only advance the watermark once the LLM response has been accepted.
+        endMs = prepared.endMs
+        return prepared.endMs
+    }
+
+    /// Cards the user saw on the rail, oldest first. The next pass is told
+    /// not to repeat these; a card the pacer never showed is not on the list.
+    var surfacedCards: [AutoAssistCard] {
+        let byID = Dictionary(cards.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return rail.surfaced.compactMap { byID[$0.id] }
+    }
+
+    /// Let the pacer admit, fade and cap, then arm the one rail timer.
+    private func advanceRail(explicit: Bool = false) {
+        railTimer?.invalidate()
+        railTimer = nil
+        guard !railStopped, let next = rail.advance(now: now(), callType: callTypes.active, explicit: explicit) else { return }
+        railTimer = Timer.scheduledTimer(withTimeInterval: max(0.5, next.timeIntervalSince(now())), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.advanceRail() }
+        }
+    }
+
+    /// One pass's prompt, plus the watermark to apply once the reply is
+    /// accepted and the citations its cards may use.
+    struct Pass {
+        let prompt: String
+        let endMs: Int
+        let citations: [VaultSearch.Citation]
+    }
+
+    /// Gathers one pass's inputs from live state and builds its prompt. nil
+    /// when the call type has no Auto (with a short `lastError`, so a manual
+    /// press explains itself), when nothing new was said, or when a reset
+    /// overtook the vault search. `windowStartMs` is the watermark: the new
+    /// window is everything after it; the context window is the
+    /// `AutoAssistPrompt.contextWindowMs` up to and including it.
+    func preparePass(sessionId: String, windowStartMs: Int, generation passGeneration: Int) async -> Pass? {
+        let callType = callTypes.active
+        guard AutoAssistPrompt.framing(for: callType) != nil else {
+            lastError = Self.offCallTypeMessage
+            return nil
+        }
         let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
-        let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
+        // The minutes already covered, re-read as context only. A lower
+        // bound at or before the start means "from the start": the filter is
+        // exclusive, so 0 would drop a line spoken at 0 ms.
+        let recentContext: String? = sinceMs.map { watermark in
+            let lower = watermark - AutoAssistPrompt.contextWindowMs
+            return TranscriptContext.text(forSessionId: sessionId, sinceMs: lower > 0 ? lower : nil, untilMs: watermark,
+                                          hoistNotes: false)
+        }.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        // The evidence rule goes once, with the first transcript section.
+        let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs, hoistNotes: false,
+                                            evidenceRule: recentContext == nil)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !window.isEmpty else { return nil }
         // Compute the watermark but DO NOT apply it until the LLM call succeeds.
@@ -144,15 +325,13 @@ final class AutoAssistController {
         // rather than permanently skip it.
         let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? windowStartMs
 
-        // Grounding: who/what the meeting is about.
-        let projectContext = MeetingContextStore.shared.combined
-
         // Project-scoped retrieval: pull what the project's vault knows about
         // what's being discussed right now, so a RECALL card can be real. Only
         // when a project is picked (scope present) — keeps generic meetings cheap.
+        let meeting = MeetingContextStore.shared
         var vaultMaterial: String?
         var citations: [VaultSearch.Citation] = []
-        if let scope = MeetingContextStore.shared.workstreamScopePath {
+        if let scope = meeting.workstreamScopePath {
             let found = await VaultSearch.retrieve(query: window, scopeRelativePath: scope, citeable: true)
             guard passGeneration == generation else { return nil }
             // Only inject a genuine hit, not the "nothing matched" sentinel.
@@ -162,41 +341,23 @@ final class AutoAssistController {
             }
         }
 
-        let priorList: String = cards.isEmpty
-            ? "(none yet)"
-            : cards.suffix(30).map { "- [\($0.kind.rawValue)] \($0.text)" }.joined(separator: "\n")
-
-        var prompt = PromptStore.shared.text(.autoAssistCards) + "\n\nAlready-surfaced (do NOT repeat):\n" + priorList
-        if let projectContext, !projectContext.isEmpty {
-            prompt += "\n\nThis meeting's project context (treat as ground truth):\n---\n\(projectContext)\n---"
-        }
-        if let vaultMaterial {
-            prompt += "\n\nRelevant project vault material for what's being discussed (use for RECALL/FLAG; cite the source; do not fabricate):\n---\n\(vaultMaterial)\n---"
-            prompt += "\n\nTo cite one of those documents, set \"sourceId\" on the card to its bracketed ID exactly as shown (for example \"S1\"). Only those IDs are accepted. A card with any other value, or none, shows no citation."
-        }
-        prompt += "\n\nRecent conversation window:\n\(window)"
-
-        guard let response = await request.collectAsync(
-            messages: [LLMMessage(role: "user", content: prompt)], smart: false
-        ), !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        guard passGeneration == generation else { return nil }
-
-        let items = JSONExtractor.decodeArrayLenient(response, key: "cards", as: AutoCardItem.self)
-        let existing = Set(cards.map { Self.norm($0.text) })
-        let fresh: [AutoAssistCard] = items.compactMap { item in
-            guard let card = AutoAssistCard.make(from: item, citations: citations),
-                  !existing.contains(Self.norm(card.text)) else { return nil }
-            return card
-        }
-        cards.append(contentsOf: fresh)
-        unseenCount += fresh.count
-        if cards.count > 300 { cards.removeFirst(cards.count - 300) }
-        // Only advance the watermark once the LLM response has been accepted.
-        lastMs = endMs
-        return endMs
-    }
-
-    private static func norm(_ s: String) -> String {
-        s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentQuestion = guide.currentQuestionID.flatMap { qid in
+            guide.guide?.questions.first { $0.qid == qid }
+        }.map { [$0.en, $0.zh].filter { !$0.isEmpty }.joined(separator: " / ") }
+        let prompts = PromptStore.shared
+        guard let prompt = AutoAssistPrompt.build(
+            callType: callType,
+            brief: meeting.briefContext,
+            projectContext: meeting.combined,
+            gaps: guide.isActive ? guide.gaps : [],
+            currentQuestion: guide.isActive ? currentQuestion : nil,
+            prior: surfacedCards.suffix(30).map { "- [\($0.kind.rawValue)] \($0.text)" },
+            userNotes: TranscriptContext.userNotes(),
+            vault: vaultMaterial,
+            recentContext: recentContext,
+            newWindow: window,
+            resolve: { prompts.text($0) }
+        ) else { return nil }
+        return Pass(prompt: prompt, endMs: endMs, citations: citations)
     }
 }

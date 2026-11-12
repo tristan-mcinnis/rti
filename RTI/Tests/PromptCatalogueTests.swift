@@ -66,6 +66,15 @@ final class PromptCatalogueTests: XCTestCase {
         XCTAssertTrue(PromptID.themes.defaultText.contains("raised after a moderator question"))
     }
 
+    // MARK: - Auto framing
+
+    func test_autoFramingPrompts() {
+        XCTAssertEqual(PromptID.autoAssistClient.title, "Auto cards — client call")
+        XCTAssertEqual(PromptID.autoAssistResearch.title, "Auto cards — research")
+        XCTAssertTrue(PromptID.autoAssistClient.defaultText.hasPrefix("CALL TYPE: client call."))
+        XCTAssertTrue(PromptID.autoAssistResearch.defaultText.hasPrefix("CALL TYPE: research session."))
+    }
+
     // MARK: - System
 
     func test_systemPrompt_present() {

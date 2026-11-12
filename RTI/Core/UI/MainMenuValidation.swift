@@ -35,12 +35,23 @@ public enum RTIWindowKind: String, Sendable {
     }
 }
 
-/// The overlay tabs in their fixed order, which is also their ⌘1…⌘5 keys.
-/// The raw values are `OverlayTab`'s.
+/// The overlay tabs in their fixed order, which is also their ⌘1…⌘7 keys.
+/// The raw values are `OverlayTab`'s, plus one kept slot: `auto` (⌘3) was the
+/// Auto tab. Its cards now sit in the rail beside the transcript, so the slot
+/// stays (the later digits do not shift) and opens Transcript.
 public enum OverlayTabShortcut {
-    public static let order = ["setup", "assist", "auto", "transcript", "notes", "guide", "codebook"]
+    public static let order = ["setup", "assist", liveHelpSlot, "transcript", "notes", "guide", "codebook"]
 
-    /// The ⌘ digit for a tab, 1 to 5, or nil for an unknown tab. Fixed
+    /// The kept ⌘3 slot of the deleted Auto tab.
+    public static let liveHelpSlot = "auto"
+
+    /// The tab a slot opens: the kept Auto slot opens Transcript, where the
+    /// live rail shows the cards; every other slot opens its own tab.
+    public static func destination(forTab rawValue: String) -> String {
+        rawValue == liveHelpSlot ? "transcript" : rawValue
+    }
+
+    /// The ⌘ digit for a tab, 1 to 7, or nil for an unknown tab. Fixed
     /// whether or not an opt-in tab is showing, so the keys never shift.
     public static func number(forTab rawValue: String, guideActive: Bool = false) -> Int? {
         if guideActive, rawValue == "notes" { return 6 }
@@ -62,6 +73,10 @@ public struct MainMenuContext: Equatable, Sendable {
     public var isSessionListVisible: Bool
     /// Raw values of the overlay tabs now showing (Prepare always is).
     public var visibleTabs: Set<String>
+    /// Live help shows beside the transcript (Auto runs on this call, or a
+    /// guide is active: `AutoAssistSettings.liveHelpApplies`). Without it the
+    /// kept ⌘3 "Live Help" slot would open a plain transcript, so it rests.
+    public var liveHelpApplies: Bool
 
     public init(
         keyWindow: RTIWindowKind = .none,
@@ -71,7 +86,8 @@ public struct MainMenuContext: Equatable, Sendable {
         canToggleMute: Bool = false,
         isKeptOnTop: Bool = false,
         isSessionListVisible: Bool = false,
-        visibleTabs: Set<String> = ["setup", "assist", "transcript", "notes"]
+        visibleTabs: Set<String> = ["setup", "assist", "transcript", "notes"],
+        liveHelpApplies: Bool = false
     ) {
         self.keyWindow = keyWindow
         self.phase = phase
@@ -81,6 +97,7 @@ public struct MainMenuContext: Equatable, Sendable {
         self.isKeptOnTop = isKeptOnTop
         self.isSessionListVisible = isSessionListVisible
         self.visibleTabs = visibleTabs
+        self.liveHelpApplies = liveHelpApplies
     }
 }
 
@@ -122,7 +139,9 @@ public enum MainMenuValidation {
             return true
         case let .tab(rawValue):
             guard context.keyWindow == .overlay, OverlayTabShortcut.number(forTab: rawValue) != nil else { return false }
-            return rawValue == "setup" || context.visibleTabs.contains(rawValue)
+            if rawValue == OverlayTabShortcut.liveHelpSlot, !context.liveHelpApplies { return false }
+            let destination = OverlayTabShortcut.destination(forTab: rawValue)
+            return destination == "setup" || context.visibleTabs.contains(destination)
         case .sessionList:
             return context.keyWindow == .sessions
         case .keepOnTop:

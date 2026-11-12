@@ -44,14 +44,25 @@ final class LiveNotesTests: XCTestCase {
     }
 
     func testNotesTabShowsOnlyWhenEnabledAndSitsLast() {
-        XCTAssertEqual(OverlayTab.visibleTabs(notes: true, auto: false), [.assist, .transcript, .notes])
-        XCTAssertEqual(OverlayTab.visibleTabs(notes: true, auto: true), [.assist, .auto, .transcript, .notes])
-        XCTAssertEqual(OverlayTab.visibleTabs(notes: false, auto: false), [.assist, .transcript])
+        XCTAssertEqual(OverlayTab.visibleTabs(notes: true), [.assist, .transcript, .notes])
+        XCTAssertEqual(OverlayTab.visibleTabs(notes: false), [.assist, .transcript])
+        XCTAssertEqual(OverlayTab.visibleTabs(notes: true, codebook: true), [.assist, .transcript, .notes, .codebook])
+    }
+
+    /// Auto has no tab: its cards sit in the rail beside the transcript. Its
+    /// old ⌘3 slot stays, so no later digit shifts, and opens Transcript.
+    func testAutoHasNoTabAndItsKeptSlotOpensTranscript() {
+        XCTAssertFalse(OverlayTab.allCases.map(\.rawValue).contains("auto"))
+        XCTAssertNil(OverlayTab(rawValue: "auto"))
+        XCTAssertEqual(OverlayTab(rawValue: OverlayTabShortcut.destination(forTab: OverlayTabShortcut.liveHelpSlot)), .transcript)
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: OverlayTabShortcut.liveHelpSlot), 3)
+        XCTAssertEqual(OverlayTab.allCases.map(\.shortcutNumber), [1, 2, 4, 5, 6, 7])
+        XCTAssertEqual(OverlayTab.transcript.shortcutLabel, "⌘4")
     }
 
     func testGuidedResearchKeepsIndependentNotesTabAndShortcuts() {
-        XCTAssertEqual(OverlayTab.visibleTabs(notes: true, auto: false, guide: true), [.assist, .transcript, .guide, .notes])
-        XCTAssertEqual(OverlayTab.visibleTabs(notes: false, auto: false, guide: true), [.assist, .transcript, .guide])
+        XCTAssertEqual(OverlayTab.visibleTabs(notes: true, guide: true), [.assist, .transcript, .guide, .notes])
+        XCTAssertEqual(OverlayTab.visibleTabs(notes: false, guide: true), [.assist, .transcript, .guide])
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "guide", guideActive: true), 5)
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "notes", guideActive: true), 6)
         XCTAssertEqual(OverlayTabShortcut.number(forTab: "notes"), 5)

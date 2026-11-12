@@ -199,6 +199,14 @@ final class MeetingContextStore {
         briefContext = content
     }
 
+    #if DEBUG
+        /// Test seam: a matched brief without a briefs folder on disk.
+        func seedBriefForRenderProof(_ content: String?) {
+            briefContext = content
+            briefTitle = content == nil ? nil : "Fixture brief"
+        }
+    #endif
+
     private static let todayStamp: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"

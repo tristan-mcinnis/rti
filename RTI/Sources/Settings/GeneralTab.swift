@@ -239,7 +239,16 @@ private struct AudioInputSection: View {
 private struct RealTimeSection: View {
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled: Bool = NotesSettings.defaultEnabled
     @AppStorage(NotesSettings.intervalKey) private var notesInterval: Double = NotesSettings.defaultInterval
-    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled: Bool = AutoAssistSettings.defaultEnabled
+    // Unset means "on for client and research calls"; a stored value wins.
+    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
+    private var callTypes = CallTypeStore.shared
+
+    private var autoAssistEnabled: Binding<Bool> {
+        Binding(
+            get: { AutoAssistSettings.isActive(for: callTypes.active, stored: autoAssistStored) },
+            set: { autoAssistStored = $0 }
+        )
+    }
 
     var body: some View {
         SettingsCard("Real-Time Notes and Auto", detail: "Runs by itself while recording.", rows: true) {
@@ -256,11 +265,17 @@ private struct RealTimeSection: View {
                 }
                 .disabled(!notesEnabled)
             }
-            SettingsToggleRow(title: "Show next-move cards (Auto)", isOn: $autoAssistEnabled)
+            SettingsToggleRow(
+                title: "Show next-move cards (Auto)",
+                detail: AutoAssistSettings.runs(on: callTypes.active)
+                    ? nil : "Runs on client and research calls only",
+                isOn: autoAssistEnabled
+            )
+            .disabled(!AutoAssistSettings.runs(on: callTypes.active))
             CardNote {
                 Button("Reset to Defaults") {
                     notesEnabled = NotesSettings.defaultEnabled
-                    autoAssistEnabled = AutoAssistSettings.defaultEnabled
+                    autoAssistStored = nil
                     notesInterval = NotesSettings.defaultInterval
                 }
             }

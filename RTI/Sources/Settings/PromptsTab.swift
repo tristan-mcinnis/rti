@@ -176,8 +176,8 @@ private struct PromptEditorView: View {
         .onChange(of: id) { _, newID in draft.prepare(newID, read: store.text) }
     }
 
-    /// For recap leaves, show the fully composed prompt so the user sees what
-    /// actually ships (the leaf is only a fragment).
+    /// For recap leaves and the Auto card contract, show the composed prompt so
+    /// the user sees what actually ships (the leaf is only a fragment).
     private var assembledPreview: String? {
         let resolve: PromptComposer.Resolver = { $0 == id ? text : store.text($0) }
         switch id {
@@ -185,6 +185,8 @@ private struct PromptEditorView: View {
         case .recapStandard: return PromptComposer.recap(.standard, resolve: resolve)
         case .recapDetailed: return PromptComposer.recap(.detailed, resolve: resolve)
         case .recapLanguageRule: return PromptComposer.recap(.standard, resolve: resolve)
+        // Auto swaps its own language rule into the card contract.
+        case .autoAssistCards: return AutoAssistPrompt.base(text)
         default: return nil
         }
     }

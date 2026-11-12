@@ -105,6 +105,38 @@ final class MenuValidationTests: XCTestCase {
         XCTAssertNil(OverlayTabShortcut.number(forTab: "sessions"))
     }
 
+    func test_deletedAutoTabKeepsItsSlotAndOpensTranscript() {
+        XCTAssertEqual(OverlayTabShortcut.liveHelpSlot, "auto")
+        XCTAssertEqual(OverlayTabShortcut.number(forTab: "auto"), 3, "the old Auto key still answers")
+        XCTAssertEqual(OverlayTabShortcut.destination(forTab: "auto"), "transcript")
+        XCTAssertEqual(OverlayTabShortcut.destination(forTab: "notes"), "notes")
+        var ctx = context(.overlay)
+        ctx.visibleTabs = ["assist", "transcript"]
+        XCTAssertFalse(MainMenuValidation.isEnabled(.tab("auto"), in: ctx), "no live help: it would only repeat ⌘4")
+        XCTAssertTrue(MainMenuValidation.isEnabled(.tab("transcript"), in: ctx))
+        ctx.liveHelpApplies = true
+        XCTAssertTrue(MainMenuValidation.isEnabled(.tab("auto"), in: ctx), "acts when the rail shows beside Transcript")
+        ctx.visibleTabs = ["assist"]
+        XCTAssertFalse(MainMenuValidation.isEnabled(.tab("auto"), in: ctx), "no Transcript, nothing to open")
+        ctx.visibleTabs = ["assist", "transcript"]
+        ctx.keyWindow = .sessions
+        XCTAssertFalse(MainMenuValidation.isEnabled(.tab("auto"), in: ctx))
+    }
+
+    func test_liveHelpAppliesWhenAutoRunsOrAGuideIsActive() {
+        XCTAssertTrue(AutoAssistSettings.liveHelpApplies(for: .client, stored: nil, guideActive: false), "Auto on by default")
+        XCTAssertTrue(AutoAssistSettings.liveHelpApplies(for: .research, stored: nil, guideActive: false))
+        XCTAssertFalse(AutoAssistSettings.liveHelpApplies(for: .client, stored: false, guideActive: false), "the user's toggle wins")
+        XCTAssertTrue(AutoAssistSettings.liveHelpApplies(for: .research, stored: false, guideActive: true), "a guide brings the rail")
+        for callType in [CallType.client, .internal, .personal] {
+            XCTAssertFalse(AutoAssistSettings.liveHelpApplies(for: callType, stored: false, guideActive: true),
+                           "\(callType): the rail draws a guide on research calls only")
+        }
+        XCTAssertTrue(AutoAssistSettings.liveHelpApplies(for: .client, stored: nil, guideActive: true), "Auto still brings it")
+        XCTAssertFalse(AutoAssistSettings.liveHelpApplies(for: .internal, stored: true, guideActive: false), "Auto never runs here")
+        XCTAssertFalse(AutoAssistSettings.liveHelpApplies(for: .personal, stored: nil, guideActive: false))
+    }
+
     func test_tabItemsActOnlyOnTheOverlay_andOnlyForShowingTabs() {
         var ctx = context(.overlay)
         ctx.visibleTabs = ["assist", "transcript"]

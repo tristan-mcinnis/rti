@@ -97,8 +97,58 @@ public enum NotesSettings {
 
 public enum AutoAssistSettings {
     /// Auto mode: proactively surface project-grounded suggestion cards live.
+    /// Unset until the user flips a toggle. Never registered as a default,
+    /// so "unset" stays distinct from a stored false.
     public static let enabledKey = "rti.analysis.autoAssistEnabled"
-    public static let defaultEnabled = false
+    /// One-time flag: Auto became on by default (Band 2, 2026-11). A stored
+    /// false from the opt-in era is removed once, so the new default reaches
+    /// an existing install; a toggle set after that stays.
+    public static let defaultOnMigrationKey = "rti.analysis.autoAssistDefaultOnMigrated"
+
+    /// Run once at launch. In the opt-in era every install that had ever
+    /// shown the toggle stored false, so a stored false then is not a choice
+    /// against the new default. A stored true agrees with it and stays.
+    /// Marks the flag on every first run, so a false the user sets later
+    /// is kept.
+    public static func migrateOptInEraValue(in defaults: UserDefaults = .standard) {
+        guard !defaults.bool(forKey: defaultOnMigrationKey) else { return }
+        defaults.set(true, forKey: defaultOnMigrationKey)
+        if let stored = defaults.object(forKey: enabledKey) as? Bool, !stored {
+            defaults.removeObject(forKey: enabledKey)
+        }
+    }
+
+    /// Auto has a pass only on client and research calls. On internal and
+    /// personal calls it never runs, whatever the toggle says.
+    public static func runs(on callType: CallType) -> Bool {
+        callType == .client || callType == .research
+    }
+
+    /// With no stored toggle, Auto is on wherever it runs.
+    public static func defaultEnabled(for callType: CallType) -> Bool {
+        runs(on: callType)
+    }
+
+    /// The one predicate every surface uses (tab, menu, switches, controller).
+    /// On a call type where Auto runs, a toggle the user has set wins;
+    /// otherwise the call type decides. Off where Auto never runs.
+    public static func isActive(for callType: CallType, stored: Bool?) -> Bool {
+        runs(on: callType) && (stored ?? defaultEnabled(for: callType))
+    }
+
+    public static func isActive(for callType: CallType, defaults: UserDefaults = .standard) -> Bool {
+        isActive(for: callType, stored: defaults.object(forKey: enabledKey) as? Bool)
+    }
+
+    /// Live help (the rail beside the transcript, or its strip) shows when
+    /// Auto runs on this call, or a guide is active on a research call. The
+    /// rail draws the guide's question and gaps only on research calls, so a
+    /// guide on any other call type keeps its own tab and brings no rail.
+    /// The Live page, the kept ⌘3 "Live Help" item and its palette row all
+    /// ask this one question.
+    public static func liveHelpApplies(for callType: CallType, stored: Bool?, guideActive: Bool) -> Bool {
+        isActive(for: callType, stored: stored) || (guideActive && callType == .research)
+    }
 }
 
 public enum VisualContextSettingsDefaults {

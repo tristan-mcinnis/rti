@@ -11,7 +11,7 @@ import SwiftUI
 //
 // Keys: RTI keeps ⌘\ as its global show and hide (a Carbon hotkey, see
 // `HotkeyCoordinator`). The house key for a window's list is ⌃⌘S, the macOS
-// sidebar key, in the Sessions window too. ⌘1…⌘5 pick an overlay tab only
+// sidebar key, in the Sessions window too. ⌘1…⌘7 pick an overlay tab only
 // while the overlay is key, so the Sessions window keeps them for its rows.
 
 extension Notification.Name {
@@ -77,7 +77,7 @@ enum RTIMenuAction {
 
 /// The menu context now, from the live state.
 @MainActor
-private func currentMenuContext(visibleTabs: [OverlayTab] = []) -> MainMenuContext {
+private func currentMenuContext(visibleTabs: [OverlayTab] = [], liveHelpApplies: Bool = false) -> MainMenuContext {
     let session = SessionCoordinator.shared
     return MainMenuContext(
         keyWindow: RTIKeyWindowTracker.shared.keyWindow,
@@ -87,7 +87,8 @@ private func currentMenuContext(visibleTabs: [OverlayTab] = []) -> MainMenuConte
         canToggleMute: session.canToggleMute,
         isKeptOnTop: OverlayWindowChrome.shared.isKeptOnTop,
         isSessionListVisible: RTIKeyWindowTracker.shared.isSessionListVisible,
-        visibleTabs: Set(visibleTabs.map(\.rawValue))
+        visibleTabs: Set(visibleTabs.map(\.rawValue)),
+        liveHelpApplies: liveHelpApplies
     )
 }
 
@@ -183,17 +184,23 @@ private struct SessionMenuItems: View {
 private struct ViewMenuItems: View {
     // The opt-in tabs follow Prepare's toggles.
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
-    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
+    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
 
     var body: some View {
-        let tabs = OverlayTab.visibleTabs(notes: notesEnabled, auto: autoAssistEnabled, guide: GuideSessionController.shared.isActive, codebook: CallTypeStore.shared.active == .research)
-        let context = currentMenuContext(visibleTabs: tabs)
-        ForEach(OverlayTab.allCases) { tab in
+        let guideActive = GuideSessionController.shared.isActive
+        let tabs = OverlayTab.visibleTabs(notes: notesEnabled, guide: guideActive, codebook: CallTypeStore.shared.active == .research)
+        let liveHelp = AutoAssistSettings.liveHelpApplies(for: CallTypeStore.shared.active, stored: autoAssistStored,
+                                                          guideActive: guideActive)
+        let context = currentMenuContext(visibleTabs: tabs, liveHelpApplies: liveHelp)
+        // In ⌘ digit order, so the menu lists the tabs as the keys number
+        // them (with a guide active, Guide takes ⌘5 and Notes ⌘6).
+        ForEach(OverlayTab.allCases.sorted { $0.shortcutNumber < $1.shortcutNumber }) { tab in
             Button(tab.title) {
                 NotificationCenter.default.post(name: .rtiSelectTab, object: tab.rawValue)
             }
             .keyboardShortcut(KeyEquivalent(Character(String(tab.shortcutNumber))), modifiers: .command)
             .disabled(!MainMenuValidation.isEnabled(.tab(tab.rawValue), in: context))
+            if tab == .assist { liveHelpItem(context) }
         }
         Divider()
         Button(MainMenuValidation.title(.sessionList, in: context)) {
@@ -201,6 +208,20 @@ private struct ViewMenuItems: View {
         }
         .keyboardShortcut("s", modifiers: [.control, .command])
         .disabled(!MainMenuValidation.isEnabled(.sessionList, in: context))
+    }
+
+    /// The kept ⌘3 slot of the deleted Auto tab: it opens Transcript, where
+    /// the live rail shows Auto's cards, so the old key still finds them.
+    /// It rests when no live help shows (internal or personal calls, or Auto
+    /// off with no guide): then it would only repeat ⌘4.
+    private func liveHelpItem(_ context: MainMenuContext) -> some View {
+        let slot = OverlayTabShortcut.liveHelpSlot
+        let number = OverlayTabShortcut.number(forTab: slot) ?? 0
+        return Button("Live Help") {
+            NotificationCenter.default.post(name: .rtiSelectTab, object: slot)
+        }
+        .keyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: .command)
+        .disabled(!MainMenuValidation.isEnabled(.tab(slot), in: context))
     }
 }
 

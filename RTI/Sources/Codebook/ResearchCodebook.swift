@@ -221,3 +221,112 @@ struct ResearchCodebook: Codable, Equatable, Sendable {
         return copy
     }
 }
+
+// MARK: - Live topic map
+
+/// One codebook card as a chip on the live rail: its mention count in one
+/// session and the overall tone of those mentions.
+struct ResearchTopic: Equatable, Identifiable, Sendable {
+    let id: UUID
+    let name: String
+    let mentions: Int
+    let valence: ResearchValence
+    /// The latest mention's transcript offset, so the rail can tell which
+    /// topic moved last.
+    let latestOffsetMs: Int
+}
+
+/// The codebook's cards grouped for the live rail. People are never shown:
+/// the rail is about what was said, not who said it.
+struct ResearchTopicMap: Equatable, Sendable {
+    enum Group: String, CaseIterable, Sendable {
+        case brands, concepts, hypotheses
+
+        var title: String {
+            switch self {
+            case .brands: "Brands"
+            case .concepts: "Concepts"
+            case .hypotheses: "Hypotheses"
+            }
+        }
+
+        /// Organisations sit with brands; people are left out.
+        init?(_ type: ResearchCardType) {
+            switch type {
+            case .brand, .org: self = .brands
+            case .concept: self = .concepts
+            case .hypothesis: self = .hypotheses
+            case .person: return nil
+            }
+        }
+    }
+
+    struct Section: Equatable, Sendable {
+        let group: Group
+        let topics: [ResearchTopic]
+    }
+
+    var sections: [Section] = []
+    /// Mentioned topics left out by the cap.
+    var hidden = 0
+
+    var shown: Int {
+        sections.reduce(0) { $0 + $1.topics.count }
+    }
+
+    var total: Int {
+        shown + hidden
+    }
+
+    /// The shown topic with the latest mention.
+    var newestID: UUID? {
+        sections.flatMap(\.topics).max { $0.latestOffsetMs < $1.latestOffsetMs }?.id
+    }
+}
+
+extension ResearchCodebook {
+    static let topicLimit = 18
+
+    /// A pure read of the cards for the live rail: no LLM call, no state.
+    /// Counts only the given session's mentions (all sessions when nil) and
+    /// drops cards with none. When more than `limit` qualify, pinned cards
+    /// and the most mentioned stay. Chips keep the codebook's own card order,
+    /// so a chip never moves when its count changes.
+    func topicMap(sessionID: String? = nil, limit: Int = topicLimit) -> ResearchTopicMap {
+        struct Candidate {
+            let index: Int
+            let pinned: Bool
+            let group: ResearchTopicMap.Group
+            let topic: ResearchTopic
+        }
+        let candidates: [Candidate] = cards.enumerated().compactMap { index, card in
+            guard let group = ResearchTopicMap.Group(card.type) else { return nil }
+            let entries = card.entries.filter { sessionID == nil || $0.evidence.sessionID == sessionID }
+            guard !entries.isEmpty else { return nil }
+            let topic = ResearchTopic(id: card.id, name: card.name, mentions: entries.count,
+                                      valence: Self.overallValence(entries.map(\.valence)),
+                                      latestOffsetMs: entries.map(\.evidence.offsetMs).max() ?? 0)
+            return Candidate(index: index, pinned: card.pinned, group: group, topic: topic)
+        }
+        let kept = candidates
+            .sorted { ($0.pinned ? 0 : 1, -$0.topic.mentions, $0.index) < ($1.pinned ? 0 : 1, -$1.topic.mentions, $1.index) }
+            .prefix(max(0, limit))
+        let keptIndexes = Set(kept.map(\.index))
+        let ordered = candidates.filter { keptIndexes.contains($0.index) }
+        let sections = ResearchTopicMap.Group.allCases.compactMap { group -> ResearchTopicMap.Section? in
+            let topics = ordered.filter { $0.group == group }.map(\.topic)
+            return topics.isEmpty ? nil : ResearchTopicMap.Section(group: group, topics: topics)
+        }
+        return ResearchTopicMap(sections: sections, hidden: candidates.count - kept.count)
+    }
+
+    /// One tone for a topic: mixed when any mention is mixed or the mentions
+    /// pull both ways, otherwise the one direction they have.
+    static func overallValence(_ values: [ResearchValence]) -> ResearchValence {
+        let positive = values.contains(.positive), negative = values.contains(.negative)
+        if values.contains(.mixed) || (positive && negative) { return .mixed }
+        if positive { return .positive }
+        if negative { return .negative }
+        return .neutral
+    }
+}

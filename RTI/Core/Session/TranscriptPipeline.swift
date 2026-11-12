@@ -9,12 +9,14 @@ public final class TranscriptPipeline {
     public private(set) var liveEntries: [LiveEntry] = []
     public private(set) var readerActivity = TranscriptReaderActivity()
     private(set) var epoch = UUID()
-    private(set) var revision = 0
+    public private(set) var revision = 0
     private var recent: [LiveEntry] = []
     private var notesSnapshot: [SessionNote] = []
     private static let recentLimit = 256
 
-    func additions(since revision: Int) -> ArraySlice<LiveEntry>? {
+    /// Entries committed after `revision`, or nil when the recent window
+    /// no longer holds them all.
+    public func additions(since revision: Int) -> ArraySlice<LiveEntry>? {
         let count = self.revision - revision
         guard count >= 0, count <= recent.count else { return nil }
         return recent.suffix(count)

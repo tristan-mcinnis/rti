@@ -304,9 +304,11 @@ final class SessionCoordinator {
         )
         AutoAssistScheduler.shared.register(
             id: "autoAssist",
-            task: .init(enabledKey: AutoAssistSettings.enabledKey) { _ in
+            task: .init(enabledKey: nil, sessionEnabled: { AutoAssistController.shared.isActiveForCall }) { _ in
                 // Auto mode owns its own watermark — ignore the scheduler's sinceMs.
-                await AutoAssistController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
+                // Internal and personal calls get no pass, and no tick error.
+                guard AutoAssistController.shared.runsOnActiveCallType else { return nil }
+                return await AutoAssistController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
             }
         )
     }
@@ -709,6 +711,9 @@ final class SessionCoordinator {
         // partial audio and deliver final transcripts.
         audioPipeline.finalize()
         AutoAssistScheduler.shared.stop()
+        // The scheduler only owns its own ticks. A pass the debounce or floor
+        // started, and the rail's pacing timer, stop here.
+        AutoAssistController.shared.stop()
         checkpointTask?.cancel()
         checkpointTask = nil
         phase = .finishing
@@ -1002,6 +1007,7 @@ final class SessionCoordinator {
         publishFlushScheduled = false
         pendingEntriesChanged = false
         transcriptPipeline.reset()
+        autoActivityRevision = transcriptPipeline.revision
         usesSeededTranscript = false
         liveEntries = []
         readerActivity = TranscriptReaderActivity()
@@ -1026,6 +1032,8 @@ final class SessionCoordinator {
     private var publishFlushScheduled = false
     private var pendingEntriesChanged = false
     private var publishGeneration = 0
+    /// The pipeline revision Auto last saw, for `selfSpokeSinceLastFlush`.
+    private var autoActivityRevision = 0
     private static let publishIntervalNs: UInt64 = 120_000_000 // ~8 Hz
 
     private func publishState(entriesChanged: Bool = true) {
@@ -1067,8 +1075,20 @@ final class SessionCoordinator {
             // A fixture exercises publication, never a provider request.
             if isTranscriptReplayForProof { return }
 #endif
-            AutoAssistController.shared.noteActivity()
+            AutoAssistController.shared.noteActivity(selfSpoke: selfSpokeSinceLastFlush())
         }
+    }
+
+    /// True when any final committed since the last flush came from the
+    /// user's own mic, not only the newest row: one flush can commit a mic
+    /// final and then a system row or a note. When the pipeline's recent
+    /// window cannot answer (a note replay), the newest row decides.
+    private func selfSpokeSinceLastFlush() -> Bool {
+        defer { autoActivityRevision = transcriptPipeline.revision }
+        guard let added = transcriptPipeline.additions(since: autoActivityRevision) else {
+            return liveEntries.last?.speakerId == "self"
+        }
+        return added.contains { $0.speakerId == "self" }
     }
 
     /// Retire the failure notice this session left behind.

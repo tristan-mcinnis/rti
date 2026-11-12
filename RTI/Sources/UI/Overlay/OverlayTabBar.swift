@@ -4,10 +4,12 @@ import HouseDesign
 
 /// The tabs of the consolidated overlay. One window, one global toggle (⌘\),
 /// tabs in a row under the header, instead of a constellation of floating
-/// panels. ⌘1…⌘5 pick a tab while the overlay is key (View menu).
+/// panels. ⌘1…⌘7 pick a tab while the overlay is key (View menu). Auto has
+/// no tab: its cards sit in the live rail beside the transcript, and its old
+/// ⌘3 opens the transcript (`OverlayTabShortcut.liveHelpSlot`).
 enum OverlayTab: String, CaseIterable, Identifiable {
     // Prepare is the meeting home; the rest are live surfaces.
-    case setup, assist, auto, transcript, notes, guide, codebook
+    case setup, assist, transcript, notes, guide, codebook
     var id: String {
         rawValue
     }
@@ -16,7 +18,6 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         switch self {
         case .setup: "Setup"
         case .assist: "Assist"
-        case .auto: "Auto"
         case .transcript: "Transcript"
         case .notes: "Notes"
         case .guide: "Guide"
@@ -28,7 +29,6 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         switch self {
         case .setup: "slider.horizontal.3"
         case .assist: "sparkles"
-        case .auto: "wand.and.stars"
         case .transcript: "bubble.left.and.text.bubble.right"
         case .notes: "note.text"
         case .guide: "list.bullet.rectangle"
@@ -46,12 +46,10 @@ enum OverlayTab: String, CaseIterable, Identifiable {
     @MainActor var shortcutLabel: String { "⌘\(shortcutNumber)" }
 
     /// The live tabs showing, in order. Prepare is not listed: it is the
-    /// leading button and always there. Notes defaults on; Auto is opt-in
-    /// from Prepare.
-    static func visibleTabs(notes: Bool, auto: Bool, guide: Bool = false, codebook: Bool = false) -> [OverlayTab] {
-        var tabs: [OverlayTab] = [.assist]
-        if auto { tabs.append(.auto) }
-        tabs.append(.transcript)
+    /// leading button and always there. Notes defaults on. Auto adds no tab:
+    /// its cards show in the rail beside the transcript.
+    static func visibleTabs(notes: Bool, guide: Bool = false, codebook: Bool = false) -> [OverlayTab] {
+        var tabs: [OverlayTab] = [.assist, .transcript]
         if guide { tabs.append(.guide) }
         if notes { tabs.append(.notes) }
         if codebook { tabs.append(.codebook) }
@@ -61,15 +59,9 @@ enum OverlayTab: String, CaseIterable, Identifiable {
 
 struct OverlayTabBar: View {
     @Binding var selection: OverlayTab
-    /// Which tabs to show. Notes and Auto are toggled in Prepare, so the bar
-    /// only renders the ones currently enabled.
+    /// Which tabs to show. Notes is toggled in Prepare, so the bar only
+    /// renders the ones currently enabled.
     var tabs: [OverlayTab] = OverlayTab.allCases
-
-    /// Reading the @Observable controller here makes the bar re-render when a
-    /// proactive card arrives, lighting the Auto tab's unread badge.
-    private var autoUnseen: Int {
-        AutoAssistController.shared.unseenCount
-    }
 
     var body: some View {
         HStack(spacing: House.Spacing.xxs) {
@@ -77,7 +69,6 @@ struct OverlayTabBar: View {
                 OverlayTabButton(
                     tab: tab,
                     isSelected: selection == tab,
-                    autoUnseen: autoUnseen,
                     action: { selection = tab }
                 )
             }
@@ -89,26 +80,18 @@ struct OverlayTabBar: View {
 private struct OverlayTabButton: View {
     let tab: OverlayTab
     let isSelected: Bool
-    let autoUnseen: Int
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                HStack(spacing: HouseChatMetrics.chipGap) {
-                    Image(systemName: tab.icon)
-                        .font(House.TypeToken.bodySmall)
-                    Text(tab.title).font(RTIDesign.Font.tab).fixedSize()
-                }
-                .padding(.horizontal, House.Spacing.xs)
-                .frame(minHeight: House.Control.chip)
-                // Unread badge: Auto surfaced cards the user hasn't seen.
-                if tab == .auto, !isSelected, autoUnseen > 0 {
-                    SlateStatusDot(color: House.ColorToken.danger)
-                        .padding(House.Spacing.xxs)
-                }
+            HStack(spacing: HouseChatMetrics.chipGap) {
+                Image(systemName: tab.icon)
+                    .font(House.TypeToken.bodySmall)
+                Text(tab.title).font(RTIDesign.Font.tab).fixedSize()
             }
+            .padding(.horizontal, House.Spacing.xs)
+            .frame(minHeight: House.Control.chip)
             .foregroundStyle(isSelected
                 ? Color.overlayInk
                 : (hovering ? Color.overlayInk : House.ColorToken.textSecondary))

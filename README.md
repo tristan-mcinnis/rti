@@ -30,7 +30,7 @@ RTI stands for Real-Time Intelligence.
 - **Clear recording states.** The record control shows Recording, Paused, Saving, Improving transcript and Session saved. Pause keeps the connection warm, so resume is instant. You can start a new recording while the last transcript is still being improved.
 - **Live notes.** A Notes tab writes a short block of meeting notes every couple of minutes while the call runs. You can turn it off and set the interval in Settings.
 - **Research guide.** In Prepare, choose Research and select the Word (.docx), Markdown, or prepared JSON guide. With the local synthesis workbook skill installed, RTI reads numbered questions and shows the file, section count, and question count before you record. You can add a group ID and a seat roster. During the call, Guide files notes and original-language quotes under the guide questions. The Notes provider receives the guide wording and transcript turns used for each pass. Finish saves the group cells alongside the session transcript. [Run a mock group](RTI/VERIFY.md#guide-mode-in-a-15-minute-mock-group).
-- **Auto mode.** An optional tab surfaces next-move cards (something to say, ask, recall or flag) while the call runs.
+- **Auto mode.** Next-move cards (something to say, ask, recall or flag) appear in a rail beside the live transcript while the call runs, or in a one-line strip when the window is narrow. Auto is on by default for client and research calls and off for internal and personal calls. A toggle you set in Prepare or Settings wins.
 - **Screenshots.** One key reads the whole screen and another reads the front window. Text is read on your Mac with Apple Vision. The image is sent to your model when it takes image input. Windows you put on the privacy list are left out.
 - **Translation.** Optional live translation next to the transcript, one way or two ways.
 - **Call types.** Client call, Research, Internal or Personal, chosen before the call. The choice sets how RTI answers, which actions show and whether it may search.
@@ -112,7 +112,7 @@ on the composer, or press `Command+Shift+H` to read the whole screen.
 | ⌘ ⇧ J | Read the front window and attach the text to the next prompt |
 | ⌘ ⇧ A | Open the attachment menu |
 | ⌘ K | Command palette |
-| ⌘ 1 to 5 | Jump to a tab while the window is key: Prepare, Assist, Auto, Transcript, Notes |
+| ⌘ 1 to 7 | Jump to a tab while the window is key: Prepare, Assist, Live Help (⌘3 opens Transcript, where the Auto rail sits; it acts only when the rail shows), Transcript, Notes (⌘5), Guide (⌘6) and Codebook (⌘7) when they show. With a guide active, Guide takes ⌘5 and Notes ⌘6; the View menu lists them in the same order |
 
 The source of truth for keys is `RTI/Sources/UI/CommandPalette/CommandPaletteFactory.swift`.
 

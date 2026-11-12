@@ -55,6 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
         CrashLog.install()
         if !RTIBuildProfile.isBeta { CredentialStore.migrateLegacyIfNeeded() }
+        // Auto is on by default now; drop an opt-in-era stored false once,
+        // before any view reads the toggle.
+        AutoAssistSettings.migrateOptInEraValue()
 
         continueLaunch()
     }
@@ -64,7 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         UserDefaults.standard.register(defaults: [
             NotesSettings.enabledKey: NotesSettings.defaultEnabled,
             NotesSettings.intervalKey: NotesSettings.defaultInterval,
-            AutoAssistSettings.enabledKey: AutoAssistSettings.defaultEnabled,
         ])
 
         // Clear any phantom system-audio aggregate devices left by a prior

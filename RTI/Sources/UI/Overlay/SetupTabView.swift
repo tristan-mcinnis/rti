@@ -66,9 +66,11 @@ struct SetupTabView: View {
     private let calendarStore = CalendarMeetingStore.shared
     private let session = SessionCoordinator.shared
     private let visibleResultLimit = 8
-    // These also gate the live tabs (Notes / Auto), see OverlayPanelView.
+    // These also gate the Live page: the Notes tab and the Auto rail beside
+    // the transcript, see OverlayPanelView.
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
-    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
+    /// Unset means Auto follows the call type; a stored value wins.
+    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
     @State private var scopeFilter: ScopeFilter = .all
@@ -670,7 +672,11 @@ struct SetupTabView: View {
                 }
                 livePanelToggle(.notes, $notesEnabled)
                 settingsRowDivider
-                livePanelToggle(.autoAssist, $autoAssistEnabled)
+                livePanelToggle(.autoAssist, Binding(
+                    get: { AutoAssistSettings.isActive(for: CallTypeStore.shared.active, stored: autoAssistStored) },
+                    set: { autoAssistStored = $0 }
+                ), detail: autoAssistDetail)
+                    .disabled(!AutoAssistSettings.runs(on: CallTypeStore.shared.active))
             }
         }
     }
@@ -714,7 +720,16 @@ struct SetupTabView: View {
             .padding(.leading, House.Spacing.sm + House.Control.tile + House.Spacing.sm)
     }
 
-    private func livePanelToggle(_ option: LiveOption, _ isOn: Binding<Bool>) -> some View {
+    /// Until the user flips the switch, Auto follows the call type, and the
+    /// row says so.
+    private var autoAssistDetail: String {
+        let callType = CallTypeStore.shared.active
+        guard AutoAssistSettings.runs(on: callType) else { return "Auto does not run on this call type" }
+        guard autoAssistStored == nil else { return LiveOption.autoAssist.detail }
+        return "Auto on for this call type"
+    }
+
+    private func livePanelToggle(_ option: LiveOption, _ isOn: Binding<Bool>, detail: String? = nil) -> some View {
         Toggle(isOn: isOn) {
             HStack(spacing: House.Spacing.sm) {
                 Image(systemName: option.icon)
@@ -732,7 +747,7 @@ struct SetupTabView: View {
                                 .foregroundStyle(House.ColorToken.textTertiary)
                         }
                     }
-                    Text(option.detail)
+                    Text(detail ?? option.detail)
                         .font(House.TypeToken.meta)
                         .foregroundStyle(House.ColorToken.textTertiary)
                         .lineLimit(1)

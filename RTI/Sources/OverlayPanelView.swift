@@ -25,18 +25,84 @@ struct OverlayPanelView: View {
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
-    // Live tabs only show when their tasks are enabled in Prepare.
-    // Notes defaults on; Auto stays opt-in.
+    // Notes shows as a tab when enabled in Prepare (default on). Auto has no
+    // tab: it defaults on for client and research calls, a stored toggle
+    // wins (`AutoAssistSettings.isActive`), and its cards show in the rail.
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
-    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
+    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
     @State private var tab: OverlayTab = .assist
     @State private var hasVisitedTranscript = false
+    /// The strip's rail sheet. Owned here, not by the strip, so widening the
+    /// window or leaving the page closes it on purpose instead of tearing it
+    /// down with the strip.
+    @State private var railSheetOpen = false
 
     // Prepare is the pre-call surface, not a live tab — it's pulled out of the
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
     // row gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
-        OverlayTab.visibleTabs(notes: notesEnabled, auto: autoAssistEnabled, guide: GuideSessionController.shared.isActive, codebook: callTypes.active == .research)
+        OverlayTab.visibleTabs(notes: notesEnabled, guide: GuideSessionController.shared.isActive, codebook: callTypes.active == .research)
+    }
+
+    private var autoOn: Bool {
+        AutoAssistSettings.isActive(for: callTypes.active, stored: autoAssistStored)
+    }
+
+    /// Live help sits beside the transcript when Auto runs on this call or a
+    /// guide is active.
+    private var railApplies: Bool {
+        AutoAssistSettings.liveHelpApplies(for: callTypes.active, stored: autoAssistStored,
+                                           guideActive: GuideSessionController.shared.isActive)
+    }
+
+    /// The transcript with live help beside it (a rail) or over it (a strip
+    /// in a narrow window). The transcript keeps its place in the tree, so
+    /// its scroll and reading state survive. The rail is mounted only while
+    /// the Live page shows the Transcript tab, so it does no work hidden; a
+    /// blank of the same width holds the transcript's width meanwhile.
+    private var transcriptPage: some View {
+        GeometryReader { geometry in
+            let mode = LiveRailLayout.mode(width: geometry.size.width, applies: railApplies)
+            let showsHelp = isActive && tab == .transcript
+            VStack(alignment: .leading, spacing: 0) {
+                if mode == .strip, showsHelp {
+                    LiveRailStripHost(callType: callTypes.active, autoOn: autoOn) { railSheetOpen = true }
+                        .padding(.horizontal, House.Spacing.lg)
+                        .padding(.top, House.Spacing.xs)
+                }
+                HStack(alignment: .top, spacing: 0) {
+                    TranscriptTabView(isActive: isActive && tab == .transcript)
+                        .tabContentPadding()
+                    if mode == .rail {
+                        Group {
+                            if showsHelp {
+                                LiveAssistRailHost(callType: callTypes.active, autoOn: autoOn)
+                            } else {
+                                Color.clear
+                            }
+                        }
+                        .frame(width: LiveRailLayout.width)
+                        .overlay(alignment: .leading) {
+                            Rectangle().fill(House.ColorToken.divider).frame(width: House.hairline)
+                        }
+                    }
+                }
+            }
+            // The sheet stands in for the strip: when the strip goes (a
+            // wider window shows the rail, or the page is left), so does it.
+            .onChange(of: mode == .strip && showsHelp) { _, strip in
+                if !strip { railSheetOpen = false }
+            }
+        }
+        // Finish ends live help: a sheet left open does not outlive the call.
+        .onChange(of: session.phase.livePhase.isLive) { _, live in
+            if !live { railSheetOpen = false }
+        }
+        .sheet(isPresented: $railSheetOpen) {
+            LiveRailSheet(done: { railSheetOpen = false }) {
+                LiveAssistRailHost(callType: callTypes.active, autoOn: autoOn)
+            }
+        }
     }
 
     private var status: OverlayShellStatus {
@@ -65,8 +131,7 @@ struct OverlayPanelView: View {
                 // first visit. Hidden readers hold their last displayed rows;
                 // they catch up once on return instead of laying out each frame.
                 if hasVisitedTranscript || tab == .transcript {
-                    TranscriptTabView(isActive: isActive && tab == .transcript)
-                        .tabContentPadding()
+                    transcriptPage
                         .opacity(tab == .transcript ? 1 : 0)
                         .allowsHitTesting(tab == .transcript)
                         .disabled(tab != .transcript)
@@ -75,8 +140,6 @@ struct OverlayPanelView: View {
                 switch tab {
                 case .assist:
                     assistTab
-                case .auto:
-                    AutoTabView().tabContentPadding()
                 case .transcript:
                     EmptyView()
                 case .codebook:
@@ -127,23 +190,24 @@ struct OverlayPanelView: View {
         .background(embedded ? House.ColorToken.surface : Color.clear)
         // If the active tab gets turned off in Prepare, fall back to Assist.
         .onChange(of: visibleTabs) { _, _ in normalizeSelection() }
-        // The View menu (⌘1…⌘5) and commands switch tabs by posting a
+        // The View menu (⌘1…⌘7) and commands switch tabs by posting a
         // notification with the target tab's rawValue.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { note in
+            // The kept Auto slot (⌘3) opens Transcript, beside the rail.
             guard let raw = note.object as? String,
-                  let target = OverlayTab(rawValue: raw) else { return }
+                  let target = OverlayTab(rawValue: OverlayTabShortcut.destination(forTab: raw)) else { return }
             if target == .setup || visibleTabs.contains(target) { tab = target }
         }
         .onChange(of: session.phase) { previous, current in
             // Prepare → Live is the primary hand-off in RTI. Do not
             // interrupt someone who has deliberately navigated away
             // from Prepare after the recording is already underway.
-            if current == .recording, tab == .setup {
-                if GuideSessionController.shared.isActive && previous != .paused {
-                    tab = .guide
-                } else if previous == .idle {
-                    tab = .assist
-                }
+            if let landing = LiveLanding.tab(previous: previous, current: current, selection: tab,
+                                             autoOn: autoOn,
+                                             guideActive: GuideSessionController.shared.isActive,
+                                             callType: callTypes.active)
+            {
+                tab = landing
             }
         }
     }
@@ -189,6 +253,29 @@ struct OverlayPanelView: View {
                 .background(embedded ? House.ColorToken.surface : Color.clear)
           }
         }
+    }
+}
+
+/// Where the Live page lands when a recording starts. Prepare -> Live is the
+/// primary hand-off in RTI; someone who has already left Prepare is never
+/// moved. Resuming from pause lands only where a fresh start would.
+///
+/// Live help (the rail) applies when Auto runs, or a guide is active on a
+/// research call (`AutoAssistSettings.liveHelpApplies`), and with it the
+/// transcript is the live page. So a guided research start lands on the
+/// Transcript beside the rail, not on the Guide tab (changed in Band 2: the
+/// guide's gaps show in the rail; Guide stays a tab one ⌘ digit away). A
+/// guided start on another call type with Auto off has no rail, so it lands
+/// on the Guide tab, as before Band 2.
+enum LiveLanding {
+    static func tab(previous: SessionPhase, current: SessionPhase, selection: OverlayTab,
+                    autoOn: Bool, guideActive: Bool, callType: CallType) -> OverlayTab?
+    {
+        guard current == .recording, selection == .setup else { return nil }
+        let guideStart = guideActive && previous != .paused
+        guard previous == .idle || guideStart else { return nil }
+        if autoOn || (guideActive && callType == .research) { return .transcript }
+        return guideStart ? .guide : .assist
     }
 }
 

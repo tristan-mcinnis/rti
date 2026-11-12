@@ -43,6 +43,8 @@ public enum PromptID: String, CaseIterable, Sendable {
 
     // Live notes (free-text background controller) and Auto mode (strict JSON)
     case autoAssistCards
+    case autoAssistClient
+    case autoAssistResearch
     case liveNotes
 
     // MARK: - Grouping (for the Settings UI)
@@ -63,7 +65,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .assistSpeaker, .listenerAssist, .sayNext, .followupsSpeaker, .listenerFollowups: .quickActions
         case .keyTensions, .probe, .themes, .saidVsDone: .listener
         case .recapBrief, .recapStandard, .recapDetailed, .recapLanguageRule: .recap
-        case .autoAssistCards, .liveNotes: .background
+        case .autoAssistCards, .autoAssistClient, .autoAssistResearch, .liveNotes: .background
         }
     }
 
@@ -90,6 +92,8 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapDetailed: "Recap — detailed clause"
         case .recapLanguageRule: "Recap — language rule"
         case .autoAssistCards: "Auto-assist cards"
+        case .autoAssistClient: "Auto cards — client call"
+        case .autoAssistResearch: "Auto cards — research"
         case .liveNotes: "Live notes"
         }
     }
@@ -116,7 +120,9 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapStandard: "The clause spliced into Recap at Standard depth."
         case .recapDetailed: "The clause spliced into Recap at Detailed depth."
         case .recapLanguageRule: "Shared language/format rule appended to every Recap."
-        case .autoAssistCards: "Background: proactive SAY/ASK/RECALL/FLAG cards (strict JSON)."
+        case .autoAssistCards: "Background: proactive SAY/ASK/RECALL/FLAG cards (strict JSON). Auto's meeting-language rule replaces \"Write in English.\"."
+        case .autoAssistClient: "Background: what Auto cards steer toward on a client call."
+        case .autoAssistResearch: "Background: what Auto cards look for in a research session."
         case .liveNotes: "Background: rolling live meeting notes (TITLE + bullets)."
         }
     }
@@ -288,6 +294,34 @@ public enum PromptDefaults {
               ("listen actively"), no restating what was just said.
             - Ground RECALL/FLAG cards in the project context or vault material given;
               do not fabricate. Write in English.
+            """
+
+        case .autoAssistClient:
+            """
+            CALL TYPE: client call. The user is speaking. Help them move this call toward its goal, not only protect them.
+
+            - ASK: the next question that steers the call toward the goal in the brief, or toward the decision still open. Prefer ASK when a decision, owner, number or date is vague: "Who signs off on X, and by when?"
+            - SAY: a proactive idea the user can offer now: an opportunity the client hinted at, a way to unblock what they just raised, an option they have not considered, or a confirmation that locks a point in. Concrete, in the user's voice.
+            - FLAG: an owner or date still open, a decision implied but never stated, scope drifting past what was agreed, or a contradiction with earlier in this call or with the brief.
+            - RECALL: unchanged; only from the vault material given.
+
+            When a brief is attached, hold the call against it: favour cards that close a "Decision to Lock" or advance its goal.
+            Never suggest sharing internal costs, margins or supplier names.
+
+            Silence beats noise: no card is better than a generic one.
+            """
+        case .autoAssistResearch:
+            """
+            CALL TYPE: research session. The user is observing or moderating. Help them get depth, not agreement.
+
+            - ASK: an open follow-up the moderator can ask now. First choice: a guide question in the gaps list that was skipped or covered thinly, or the current guide question if the last answers stayed shallow. Otherwise a probe on what was just said: an example, the last time it happened, what they did instead, what they mean by a vague word.
+            - FLAG: a vague claim nobody probed, or a tension or contradiction: a hedge, a euphemism, agreement with no example, a stated value that clashes with a described action. Quote the exact original words that prompted it in "why". Do not name or count people: speaker labels are not reliable, so refer to "a quote", "this answer" or the number of quotes.
+            - RECALL: unchanged; only from the vault material given, such as what came up in an earlier session.
+            - SAY: avoid. The user is usually observing; offer a probe as ASK instead.
+
+            Never write a leading question. Do not suggest the answer, assume a feeling, or ask "don't you think…". Ask "What happened the last time…?", "Can you walk me through…?", "What do you mean by '…'?".
+
+            Silence beats noise: no card is better than a generic one.
             """
 
         case .liveNotes:

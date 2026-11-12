@@ -189,7 +189,7 @@ meeting processing and Neon indexing.
 ## I. Real meeting (the final gate)
 - [ ] Join a real call. Both sides transcribe (the Transcript tab shows your runs on the right as "You" and the call's voices on the left as "Speaker N").
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
-- [ ] The Notes tab fills in every few minutes (on by default), and the Auto tab surfaces cards (when enabled in Prepare).
+- [ ] The Notes tab fills in every few minutes (on by default), and Auto cards appear in the rail beside the Transcript (on by default for client and research calls); ⌘3 opens Transcript. A guided Research start lands on Transcript beside the rail, not on the Guide tab. On an internal or personal call (or with Auto off and no guide) ⌘3 and the palette's "Go to Live Help" rest.
 - [ ] The workspace appears with normal window sharing enabled. The opt-in exclusion has been checked in the chosen screen-sharing client (§4–§5).
 - [ ] Stop → the session folder appears under `sessions_dir` (default `~/Documents/Work/Inner-Chapter/meetings/sessions/<stamp>/`) with `transcript.md`, `audio-mic.wav` and `audio-system.wav` (the audio is kept for the transcript upgrade); mic released (orange dot clears, other apps can use the mic).
 

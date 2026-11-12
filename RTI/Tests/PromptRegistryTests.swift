@@ -37,6 +37,16 @@ final class PromptRegistryTests: XCTestCase {
         XCTAssertEqual(PromptID.liveNotes.rawValue, "liveNotes")
     }
 
+    func test_autoFramingPromptsAreEditableBackgroundPrompts() {
+        for id in [PromptID.autoAssistClient, .autoAssistResearch] {
+            XCTAssertEqual(id.group, .background)
+            XCTAssertFalse(id.isJSONContract, "\(id.rawValue) frames the shared JSON contract; it does not carry it")
+            XCTAssertEqual(PromptID(rawValue: id.rawValue), id)
+        }
+        XCTAssertEqual(PromptID.allCases.filter { $0.group == .background },
+                       [.autoAssistCards, .autoAssistClient, .autoAssistResearch, .liveNotes])
+    }
+
     // MARK: - Drift hash
 
     func test_fnv1aIsStableAndDistinct() {

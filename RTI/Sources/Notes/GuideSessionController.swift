@@ -22,6 +22,14 @@ final class GuideSessionController {
     private(set) var furthestIndex = 0
     var isFollowing: Bool { manualQuestionID == nil }
 
+    /// Passed questions that were skipped or thinly covered, newest first.
+    /// Derived from the extraction on read; it adds no stored state and lags one pass.
+    var gaps: [GuideGap] {
+        guard let guide, let extraction else { return [] }
+        return GuideGaps.find(questions: guide.questions, cells: extraction.cells,
+                              furthestIndex: furthestIndex, currentQID: currentQuestionID, rosterSize: rosterBase)
+    }
+
     var currentQuestionID: String? {
         manualQuestionID ?? markerAt(Int.max)?.guideQuestionID ?? cursor?.currentQID
     }

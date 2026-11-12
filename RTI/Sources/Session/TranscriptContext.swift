@@ -24,17 +24,35 @@ enum TranscriptContext {
     }
 
     /// Build the transcript context for the live session. Lines joined by
-    /// `\n`: `[user note]: text` for note rows, `Speaker N: text` otherwise.
-    /// Labels come from the speaker id, so "Speaker 2" means the same person
-    /// in every Auto-mode window and in the Transcript tab.
-    static func text(forSessionId _: String, sinceMs: Int? = nil) -> String {
+    /// `\n`: `[user note]: text` for note rows, `[mm:ss, label] text`
+    /// otherwise. Labels come from `speakerLabel(for:names:)`: the audio leg
+    /// (`Me`, `Them`), plus a name only when the user typed one. With live
+    /// diarization off (the default) every system-leg row is `Them`, so a
+    /// label never tells one person on the other side from another.
+    /// `untilMs` (inclusive) bounds the window's end, so Auto can re-read the
+    /// minutes before its watermark as context only. `hoistNotes` and
+    /// `evidenceRule` let a caller that renders two windows into one prompt
+    /// keep the notes header and the evidence rule out of one of them.
+    static func text(
+        forSessionId _: String,
+        sinceMs: Int? = nil,
+        untilMs: Int? = nil,
+        hoistNotes: Bool = true,
+        evidenceRule: Bool = true
+    ) -> String {
         let all = entries(sinceMs: nil)
-        let window: [LiveEntry] = if let sinceMs {
-            all.filter { $0.startMs > sinceMs }
-        } else {
-            all
+        let window = all.filter { entry in
+            (sinceMs.map { entry.startMs > $0 } ?? true) && (untilMs.map { entry.startMs <= $0 } ?? true)
         }
-        return format(window, label: speakerLabeler(for: all), includeTimestamps: true)
+        return format(window, label: speakerLabeler(for: all), includeTimestamps: true,
+                      hoistNotes: hoistNotes, evidenceRule: evidenceRule)
+    }
+
+    /// Every note the user typed in this session, oldest first.
+    static func userNotes() -> [String] {
+        LiveTranscriptPresentation.utterances(from: entries(sinceMs: nil))
+            .filter { $0.speakerId == "note" }
+            .map(\.text)
     }
 
     /// Human labels for raw speaker IDs, the same ones the Transcript tab
@@ -81,7 +99,9 @@ enum TranscriptContext {
         _ entries: [LiveEntry],
         label: ((String) -> String)? = nil,
         noteLabel: String = "[user note]",
-        includeTimestamps: Bool = false
+        includeTimestamps: Bool = false,
+        hoistNotes: Bool = true,
+        evidenceRule includeEvidenceRule: Bool = true
     ) -> String {
         let label = label ?? speakerLabeler(for: entries)
         // Provider messages can end halfway through a word. Group complete
@@ -97,10 +117,10 @@ enum TranscriptContext {
                 return "\(speaker): \(e.text)"
             }
             .joined(separator: "\n")
-        let evidenceRule = includeTimestamps && !inline.isEmpty
+        let evidenceRule = includeEvidenceRule && includeTimestamps && !inline.isEmpty
             ? "Me and Them identify audio inputs. Only a confirmed mapping supports a name. An unverified voice cannot establish who said a line or how many people agreed.\n"
             : ""
-        guard !notes.isEmpty else { return evidenceRule + inline }
+        guard hoistNotes, !notes.isEmpty else { return evidenceRule + inline }
         let header = "## User notes (authoritative — trust these over any transcript ambiguity)"
         let bullets = notes.map { "- \($0.text)" }.joined(separator: "\n")
         return "\(header)\n\(bullets)\n\n\(evidenceRule)\(inline)"
