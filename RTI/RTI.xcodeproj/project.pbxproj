@@ -39,6 +39,7 @@
 		0FD4C963E65E1D1CC0AB1368 /* ChatTurnRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D3F16C4E3FBD407E0990F6 /* ChatTurnRecordTests.swift */; };
 		10600BFF003FD514FBF258D9 /* SessionsWindowRenderProofTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AAFC9DADEA6157E1C2D643C /* SessionsWindowRenderProofTests.swift */; };
 		10AA2C2F262356A6E010E0FB /* GlobalHotkey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D2CA176E7044D6117E6E03 /* GlobalHotkey.swift */; };
+		1161BD1572E371CB30B2369A /* LiveTranscriptRealtimeReadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CF68479A31DD185B3A9BFB4 /* LiveTranscriptRealtimeReadingTests.swift */; };
 		1163B83A296FA8D1DFBFC595 /* VaultPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EBB0590D668613225D36805 /* VaultPaths.swift */; };
 		1197734E5E3237DA9C6F0398 /* MeetingContextStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F4CB08A2BD518C92FFB15F /* MeetingContextStore.swift */; };
 		11B4667F5190995FBDBC22FE /* OverlayTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 520E0F0AAE3DE613A3D0D7C7 /* OverlayTabBar.swift */; };
@@ -602,6 +603,7 @@
 		07BA5CAD60E682182E71AFB7 /* LLMWireShapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMWireShapes.swift; sourceTree = "<group>"; };
 		0A711AAA8DFC2359411036F7 /* SessionPhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPhase.swift; sourceTree = "<group>"; };
 		0C2727D25421DA6FA4A9F02F /* TurnSourceInstruction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnSourceInstruction.swift; sourceTree = "<group>"; };
+		0CF68479A31DD185B3A9BFB4 /* LiveTranscriptRealtimeReadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptRealtimeReadingTests.swift; sourceTree = "<group>"; };
 		0D1E56F74BA224DB74A09EE0 /* ControlSocketTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlSocketTests.swift; sourceTree = "<group>"; };
 		0D737387DE6F550A220FCD9C /* ChatLibraryRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLibraryRules.swift; sourceTree = "<group>"; };
 		0DA2AA377B5A698856766E62 /* ArraySafeSubscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArraySafeSubscript.swift; sourceTree = "<group>"; };
@@ -1370,6 +1372,7 @@
 				CB31C818ABEA0303246299ED /* GuideSpeakerArchiveTests.swift */,
 				E68E2F7C2CAF4B4B57821F53 /* JSONExtractorTests.swift */,
 				DAE824069FBC2ACAA2A93203 /* LiveTranscriptPresentationTests.swift */,
+				0CF68479A31DD185B3A9BFB4 /* LiveTranscriptRealtimeReadingTests.swift */,
 				AA634E64E56B6860051885A6 /* LiveTranscriptTurnTests.swift */,
 				102CC17C75BC5D2D58D69AD7 /* LLMAdmissionTests.swift */,
 				B3F0AAF8D30F11CB29B0D0CF /* LLMControllerRetrievalTests.swift */,
@@ -2189,6 +2192,7 @@
 				6E70D74ACF54669515C128A6 /* LLMControllerRetrievalTests.swift in Sources */,
 				6D75D10D5F8F759F52EB984A /* LLMErrorTests.swift in Sources */,
 				B1CFF2D4A1D47C147D9D7512 /* LiveTranscriptPresentationTests.swift in Sources */,
+				1161BD1572E371CB30B2369A /* LiveTranscriptRealtimeReadingTests.swift in Sources */,
 				5D8C45EAA65A25AB196AC885 /* LiveTranscriptTurnTests.swift in Sources */,
 				23324AF4133C7935FE22A979 /* LocalVisionServiceTests.swift in Sources */,
 				F822A444119113B8FCD05EDB /* MeetingProcessorConfigTests.swift in Sources */,

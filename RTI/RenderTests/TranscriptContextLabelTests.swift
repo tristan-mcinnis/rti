@@ -8,6 +8,7 @@ import XCTest
 final class TranscriptContextLabelTests: XCTestCase {
     override func tearDown() async throws {
         SpeakerNameStore.shared.reset()
+        SessionCoordinator.shared.speakerPolicy = SessionSpeakerPolicy()
         try await super.tearDown()
     }
 
@@ -16,7 +17,13 @@ final class TranscriptContextLabelTests: XCTestCase {
                   translationStatus: "none", language: nil, sourceLanguage: nil)
     }
 
+    func testLiveGuessesOffByDefaultGiveOnlyTheAudioLeg() {
+        let text = TranscriptContext.format([entry("remote_2", "Morning.", 1_000), entry("self", "Hi both.", 2_000)])
+        XCTAssertEqual(text, "Them: Morning.\nMe: Hi both.")
+    }
+
     func testLabelsMatchTheTranscriptTabWhoeverSpeaksFirst() {
+        SessionCoordinator.shared.speakerPolicy.liveLabelsEnabled = true
         let text = TranscriptContext.format([
             entry("remote_2", "Morning.", 1_000),
             entry("self", "Hi both.", 2_000),
@@ -26,6 +33,7 @@ final class TranscriptContextLabelTests: XCTestCase {
     }
 
     func testLiveNamesReachTheAssistant() {
+        SessionCoordinator.shared.speakerPolicy.liveLabelsEnabled = true
         SpeakerNameStore.shared.rename("remote_1", to: "Priya Shah")
         let text = TranscriptContext.format([entry("remote_1", "Yes.", 1_000), entry("room_1", "Agreed.", 2_000)])
         XCTAssertEqual(text, "Them / Priya Shah (confirmed): Yes.\nMe (unverified speaker): Agreed.")
@@ -56,6 +64,9 @@ final class TranscriptContextLabelTests: XCTestCase {
 @MainActor
 enum SplitWordTranscriptReplay {
     static func publish(in session: SessionCoordinator) async throws {
+        // The fixture names a numbered system-leg speaker, which exists only
+        // with live speaker guesses on. Callers reset the policy in tearDown.
+        session.speakerPolicy.liveLabelsEnabled = true
         // Retire any reader a preceding test owned without opening a view.
         let owner = UUID()
         session.activateTranscriptPresentation(for: owner)

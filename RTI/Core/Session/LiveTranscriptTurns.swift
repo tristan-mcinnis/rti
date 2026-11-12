@@ -20,14 +20,19 @@ extension LiveTranscriptPresentation {
         public var isSelf: Bool { rows[0].isSelf }
         public var hasPending: Bool { rows.contains(where: \.hasPending) }
 
-        /// The rows' paragraphs, each row's first flowing inline after the
-        /// previous row's last. Breaks inside a row stay where they were made.
+        /// The rows' paragraphs. A row follows a pause, so it starts a new
+        /// paragraph when the text before it ended a sentence; otherwise it
+        /// flows inline, and a thinking pause never splits a sentence.
+        /// Breaks inside a row stay where they were made.
         public var paragraphs: [[Span]] {
             var result: [[Span]] = []
             for row in rows {
                 let own = row.paragraphs.map(\.spans).filter { !$0.isEmpty }
                 guard var first = own.first else { continue }
-                if let previous = result.popLast() {
+                if let end = result.last?.last?.text.last(where: { !$0.isWhitespace }),
+                   LiveTranscriptPresentation.sentenceEnds.contains(end) {
+                    result.append(first)
+                } else if let previous = result.popLast() {
                     if needsSpace(after: previous.last?.text.last, before: first[0].text.first) {
                         first[0] = Span(text: " " + first[0].text, isFinal: first[0].isFinal)
                     }

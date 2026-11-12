@@ -38,7 +38,7 @@ extension SessionCoordinator {
                 transcriptProjection.updateFinals(liveEntries, names: names, showTranslations: translate)
             } else {
                 transcriptProjection.updateLiveFinals(transcriptPipeline, names: names, showTranslations: translate,
-                                                     labelsEnabled: speakerPolicy.labelsEnabled)
+                                                     labelsEnabled: speakerPolicy.liveLabelsEnabled)
             }
             transcriptFinalsNeedProjection = false
         }

@@ -556,7 +556,9 @@ struct SetupTabView: View {
         @Bindable var session = session
         return VStack(alignment: .leading, spacing: House.Spacing.xs) {
             sectionHeader("Speakers")
-            Toggle("Speaker labels", isOn: $session.speakerPolicy.labelsEnabled)
+            Toggle("Live speaker guesses", isOn: $session.speakerPolicy.liveLabelsEnabled)
+                .toggleStyle(.switch)
+            Toggle("Speaker labels after the call", isOn: $session.speakerPolicy.labelsEnabled)
                 .toggleStyle(.switch)
             HStack {
                 Text("Speakers in the room")
@@ -569,7 +571,7 @@ struct SetupTabView: View {
                 }
                 .fixedSize()
             }
-            Text("RTI uses the audio leg for Me or Them. A count helps review the file transcript.")
+            Text("Live rows say Me or Them from the audio leg. Live guesses add numbered speakers that often flip in groups. The file transcript after the call labels speakers; a count helps review it.")
                 .font(House.TypeToken.meta)
                 .foregroundStyle(House.ColorToken.textSecondary)
         }

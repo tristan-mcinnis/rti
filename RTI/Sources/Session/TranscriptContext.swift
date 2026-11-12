@@ -53,8 +53,10 @@ enum TranscriptContext {
     static func speakerLabel(for id: String, names: [String: String]) -> String {
         let named = names[id]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let leg = SpeakerEvidence.leg(for: id)
-        if !SessionCoordinator.shared.speakerPolicy.labelsEnabled { return leg }
-        switch SpeakerEvidence.resolve(speakerID: id, named: named?.isEmpty == false) {
+        let isNamed = named?.isEmpty == false
+        // A name the user typed is evidence; a live cluster number is not.
+        if !isNamed, !SessionCoordinator.shared.speakerPolicy.liveLabelsEnabled { return leg }
+        switch SpeakerEvidence.resolve(speakerID: id, named: isNamed) {
         case .legOnly: return leg
         case .confirmed: return "\(leg) / \(named ?? leg) (confirmed)"
         case .unverified: return "\(leg) (unverified speaker)"

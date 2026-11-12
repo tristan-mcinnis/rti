@@ -236,7 +236,16 @@ public enum LiveTranscriptPresentation {
         return result
     }
 
-    private static let sentenceEnds: Set<Character> = [".", "?", "!", "。", "？", "！"]
+    static let sentenceEnds: Set<Character> = [".", "?", "!", "。", "？", "！"]
+    /// A live paragraph closes at the first sentence end past this length.
+    /// Busy groups talk over each other with no silence between them, so
+    /// length, not only pauses, has to break the text (2026-11-12 trial).
+    static let liveSoftLimit = 80
+    /// Silence between two words that starts a new live row. A row that
+    /// follows a finished sentence opens a new paragraph.
+    static let rowPauseMs = 500
+    /// The assistant's and guide's utterances keep whole thoughts together.
+    static let utterancePauseMs = 1_000
     /// CJK sentence marks are not followed by a space.
     private static let closesWithoutSpace: Set<Character> = ["。", "？", "！"]
 
@@ -399,7 +408,7 @@ extension LiveTranscriptPresentation {
     }
 
     public static func utterances(from entries: [LiveEntry]) -> [Utterance] {
-        var grouping = UtteranceGrouping()
+        var grouping = UtteranceGrouping(pauseMs: utterancePauseMs)
         var result: [Utterance] = []
         for fragment in entries.flatMap({ LiveFragment.pieces($0) }).sorted(by: { ordered($0, before: $1) }) {
             let assignment = grouping.place(fragment)
@@ -430,7 +439,7 @@ extension LiveTranscriptPresentation {
         private var labelsEnabled = true
         private var liveEpoch: UUID?
         private var liveRevision = 0
-        private var grouping = UtteranceGrouping()
+        private var grouping = UtteranceGrouping(pauseMs: LiveTranscriptPresentation.rowPauseMs)
         private var builders: [LiveBuilder] = []
         private var translationGroups: [Int: [Int]] = [:]
         private var attachedTranslations: Set<Int> = []
@@ -786,6 +795,9 @@ extension LiveTranscriptPresentation {
             let startMs: Int
             let companion: Int?
         }
+        static func isMark(_ text: String) -> Bool {
+            !text.isEmpty && text.allSatisfy { $0.isWhitespace || $0.isPunctuation || $0.isSymbol }
+        }
         struct Assignment {
             let index: Int
             let isNew: Bool
@@ -795,6 +807,7 @@ extension LiveTranscriptPresentation {
             let index: Int
             let startMs: Int
         }
+        let pauseMs: Int
         var count = 0
         var last: [Lane: Boundary] = [:]
         var originals: [Speaker: [Original]] = [:]
@@ -822,15 +835,20 @@ extension LiveTranscriptPresentation {
             }
             let companion = fragment.isTranslation && low > 0 ? history[low - 1].index : nil
             let previous = last[lane]
-            let paused = previous?.endMs.map {
-                fragment.id.untimedOrdinal == nil && fragment.id.startMs - $0 >= 1000
-            } ?? false
+            // Soniox times a sentence mark and the space after it inside the
+            // silence, so a pause is measured between words, and a mark never
+            // opens a row of its own (2026-11-12 trial: "Balance / .").
+            let isMark = Self.isMark(fragment.text)
+            let paused = !isMark && (previous?.endMs.map {
+                fragment.id.untimedOrdinal == nil && fragment.id.startMs - $0 >= pauseMs
+            } ?? false)
             let continues = !fragment.startsUtterance && previous?.speakerId == fragment.id.speakerId
                 && fragment.id.speakerId != "note" && !fragment.id.speakerId.isEmpty
                 && previous?.companion == companion && !paused
             let index = continues ? previous!.index : count
             if !continues { count += 1 }
-            last[lane] = Boundary(index: index, speakerId: fragment.id.speakerId, endMs: fragment.endMs,
+            last[lane] = Boundary(index: index, speakerId: fragment.id.speakerId,
+                                  endMs: isMark && continues ? previous?.endMs : fragment.endMs,
                                   startMs: fragment.id.startMs, companion: companion)
             if recordOriginals, !fragment.isTranslation, fragment.id.speakerId != "note", !continues {
                 originals[speaker, default: []].append(Original(index: index, startMs: fragment.id.startMs))
@@ -941,7 +959,7 @@ extension LiveTranscriptPresentation {
             spanRanges.append((position..<end, span.isFinal))
             position = end
         }
-        return paragraphRanges(chars).compactMap { range in
+        return paragraphRanges(chars, softLimit: liveSoftLimit).compactMap { range in
             guard !range.isEmpty else { return nil }
             let styled = spanRanges.compactMap { spanRange, isFinal -> Span? in
                 let lower = max(range.lowerBound, spanRange.lowerBound)

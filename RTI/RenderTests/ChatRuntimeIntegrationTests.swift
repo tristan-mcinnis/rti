@@ -31,6 +31,7 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        SessionCoordinator.shared.speakerPolicy = SessionSpeakerPolicy()
         try? FileManager.default.removeItem(at: root)
         root = nil
         store = nil

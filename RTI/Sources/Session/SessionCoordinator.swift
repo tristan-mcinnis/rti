@@ -98,15 +98,21 @@ final class SessionCoordinator {
     /// transcript toggle.
     var speakerPolicy = SessionSpeakerPolicy() {
         didSet {
-            transcriptPipeline.systemSpeakerLabelsEnabled = speakerPolicy.labelsEnabled
-            audioPipeline.systemSpeakerLabelsEnabled = speakerPolicy.labelsEnabled
-            if isRunning, speakerPolicy.labelsEnabled != oldValue.labelsEnabled {
+            applyLiveSpeakerLabels()
+            if isRunning, speakerPolicy.liveLabelsEnabled != oldValue.liveLabelsEnabled {
                 replaceLiveClients()
             }
         }
     }
 
     private(set) var switchingLegs: Set<String> = []
+
+    /// The live system leg diarizes only when live labels are on. The
+    /// after-call file transcript reads `labelsEnabled` from the archive.
+    private func applyLiveSpeakerLabels() {
+        transcriptPipeline.systemSpeakerLabelsEnabled = speakerPolicy.liveLabelsEnabled
+        audioPipeline.systemSpeakerLabelsEnabled = speakerPolicy.liveLabelsEnabled
+    }
 
     private func replaceLiveClients() {
         switchingLegs = audioPipeline.activeStreamingLegs
@@ -271,6 +277,7 @@ final class SessionCoordinator {
     }
 
     private func commonInit() {
+        applyLiveSpeakerLabels()
         // Keep the live translation config in sync with UserDefaults without
         // letting every view push its own copy. Views mutate the defaults keys;
         // this store-derived update is the single writer to `translationConfig`.

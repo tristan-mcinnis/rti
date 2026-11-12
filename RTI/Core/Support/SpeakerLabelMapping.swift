@@ -107,12 +107,31 @@ public enum SpeakerEvidence: String, Codable, Sendable {
 }
 
 public struct SessionSpeakerPolicy: Codable, Equatable, Sendable {
+    /// Speaker clusters in the after-call file transcript, where the model
+    /// hears the whole recording.
     public var labelsEnabled: Bool
+    /// Speaker clusters in the live transcript. Off by default: real-time
+    /// diarization decides on a second or two of audio, so with several
+    /// people on one leg it flips between numbers. A wrong label misleads the
+    /// reader and the assistant more than no label (2026-11-12 trial). Live
+    /// rows then say only Me or Them, which the audio leg proves.
+    public var liveLabelsEnabled: Bool
     /// A local review hint. It never creates a speaker or verifies a name.
     public var expectedCount: Int?
 
-    public init(labelsEnabled: Bool = true, expectedCount: Int? = nil) {
+    public init(labelsEnabled: Bool = true, liveLabelsEnabled: Bool = false, expectedCount: Int? = nil) {
         self.labelsEnabled = labelsEnabled
+        self.liveLabelsEnabled = liveLabelsEnabled
         self.expectedCount = expectedCount.flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    private enum CodingKeys: String, CodingKey { case labelsEnabled, liveLabelsEnabled, expectedCount }
+
+    /// Archives written before the live switch existed carry no live field.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(labelsEnabled: try c.decodeIfPresent(Bool.self, forKey: .labelsEnabled) ?? true,
+                  liveLabelsEnabled: try c.decodeIfPresent(Bool.self, forKey: .liveLabelsEnabled) ?? false,
+                  expectedCount: try c.decodeIfPresent(Int.self, forKey: .expectedCount))
     }
 }
