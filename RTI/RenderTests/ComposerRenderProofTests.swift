@@ -142,6 +142,30 @@ final class ComposerRenderProofTests: RenderProofTestCase {
 
     // MARK: - Note mode
 
+    func testNoteModeChangesFieldColorInBothAppearances() throws {
+        // Keep the CTA, text and layout identical so a changed label cannot pass this test.
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            func pixels(_ noteMode: Bool) throws -> NSBitmapImageRep {
+                let view = HouseComposer(
+                    action: ComposerAction(kind: .addNote, label: "Add Note", keys: ["↩"]),
+                    placeholder: "", showsPlaceholder: false, isNoteMode: noteMode
+                ) { Text("Draft").frame(maxWidth: .infinity, alignment: .leading) }
+                .background(House.ColorToken.surface)
+                let png = try RenderProofHarness.render(view, size: CGSize(width: 430, height: 68), appearance: appearance)
+                return try XCTUnwrap(NSBitmapImageRep(data: png))
+            }
+            let chat = try pixels(false)
+            let note = try pixels(true)
+            var changed = 0
+            for x in stride(from: note.pixelsWide / 3, to: note.pixelsWide / 2, by: 4) {
+                for y in stride(from: note.pixelsHigh / 3, to: note.pixelsHigh * 2 / 3, by: 4) {
+                    if note.colorAt(x: x, y: y) != chat.colorAt(x: x, y: y) { changed += 1 }
+                }
+            }
+            XCTAssertGreaterThan(changed, 25, "Note mode must tint the field behind a filled draft in both appearances")
+        }
+    }
+
     func testNoteModeLive() throws {
         recording()
         OverlayInputState.shared.mode = .liveNote

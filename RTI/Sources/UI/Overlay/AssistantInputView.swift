@@ -294,6 +294,7 @@ struct AssistantInputView: View {
             isAddContextOpen: isAddContextOpen,
             isPaletteOpen: isPaletteOpen,
             isDropTargeted: isDropTargeted,
+            isNoteMode: inputState.isNoteMode,
             onFix: {
                 if session.canRetryLiveTranscription && !session.lastErrorIsAuth { session.retryLiveTranscription() }
                 else { SettingsWindowController.shared.show(pane: .providers) }

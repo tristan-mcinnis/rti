@@ -84,6 +84,7 @@ struct HouseComposer<Field: View>: View {
     var isAddContextOpen = false
     var isPaletteOpen = false
     var isDropTargeted = false
+    var isNoteMode = false
     var onFix: () -> Void = {}
     var onAddContext: () -> Void = {}
     var onAction: () -> Void = {}
@@ -190,12 +191,18 @@ struct HouseComposer<Field: View>: View {
             // drawn as a circular rounded rectangle: `Capsule`'s stroke
             // leaves a stray hairline outside its left cap. Outline only.
             .background {
-                if embedded {
-                    Self.fieldShape.fill(House.ColorToken.surfaceRaised)
-                        .houseShadow(House.Shadow.card)
+                ZStack {
+                    if embedded { Self.fieldShape.fill(House.ColorToken.surfaceRaised).houseShadow(House.Shadow.card) }
+                    if isNoteMode { Self.fieldShape.fill(House.ColorToken.warning.opacity(0.20)) }
                 }
             }
-            .overlay(Self.fieldShape.strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline))
+            .overlay {
+                Self.fieldShape.strokeBorder(
+                    isNoteMode ? House.ColorToken.warning.opacity(0.85) : House.ColorToken.stroke,
+                    lineWidth: isNoteMode ? 1.5 : House.hairline
+                )
+                .allowsHitTesting(false)
+            }
             .accessibilityElement(children: .contain)
             .accessibilityValue("\(action.label), \(action.keys.joined(separator: " "))")
 
