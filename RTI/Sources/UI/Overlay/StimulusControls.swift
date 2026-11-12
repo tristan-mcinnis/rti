@@ -3,6 +3,15 @@ import RTICore
 import SwiftUI
 import UniformTypeIdentifiers
 
+private struct GuideStimulusPlan: Decodable {
+    struct Item: Decodable {
+        let code: String
+        let section: Int
+    }
+
+    let stimulus: [Item]?
+}
+
 struct StimulusPrepareControls: View {
     @Bindable private var store = SessionMarkers.shared
     @State private var pickingManifest = false
@@ -42,6 +51,23 @@ struct StimulusPrepareControls: View {
                                 .accessibilityLabel("Move \(item.code) earlier").disabled(index == 0)
                             Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
                                 .accessibilityLabel("Move \(item.code) later").disabled(index + 1 == package.items.count)
+                        }
+                    }
+                    if let guide = GuidePreparation.shared.guide {
+                        ForEach(Set(package.items.compactMap(\.moment)).sorted(), id: \.self) { moment in
+                            let sectionID = package.guideSectionByMoment?[moment].map { "S" + String($0) }
+                            let questions = guide.sections.first { $0.id == sectionID }?.questions ?? guide.questions
+                            Picker("Moment " + moment, selection: Binding<String?>(
+                                get: { store.prepared?.guideQuestionBindings?[moment] },
+                                set: { qid in
+                                    var bindings = store.prepared?.guideQuestionBindings ?? [:]
+                                    bindings[moment] = qid
+                                    store.prepared?.guideQuestionBindings = bindings
+                                }
+                            )) {
+                                Text(sectionID.map { $0 + " · unassigned" } ?? "Unassigned").tag(String?.none)
+                                ForEach(questions, id: \.qid) { q in Text(q.qid + " · " + q.en).tag(String?.some(q.qid)) }
+                            }
                         }
                     }
                     Button(confirmed ? "Order confirmed" : "Confirm group order") {
@@ -103,6 +129,23 @@ struct StimulusPrepareControls: View {
                 reference = url
             }
         }
+        .task(id: (store.prepared?.revision ?? "") + (GuidePreparation.shared.guideURL?.path ?? "")) {
+            guard !SessionCoordinator.shared.isRunning, let revision = store.prepared?.revision,
+                  let guide = GuidePreparation.shared.guideURL, ["md", "markdown"].contains(guide.pathExtension.lowercased()),
+                  store.prepared?.guideSourcePaths?.contains(guide.standardizedFileURL.path) == true else { return }
+            do {
+                let reader = ExternalTools.stimulusPlanReader
+                let result = try await ScriptRunner.run(executable: ExternalTools.systemPython.path,
+                                                        arguments: [reader.path, "--plan-json", guide.path], environment: [:], timeout: 30)
+                let moments = try JSONDecoder().decode([GuideStimulusPlan].self, from: result).first?.stimulus ?? []
+                guard !Task.isCancelled, store.prepared?.revision == revision else { return }
+                store.prepared?.guideSectionByMoment = Dictionary(moments.map { ($0.code, $0.section) }, uniquingKeysWith: { first, _ in first })
+            } catch {
+                if !Task.isCancelled {
+                    store.lastError = "Could not read the Guide stimulus plan. Bind its moments manually."
+                }
+            }
+        }
         .onChange(of: projectID) { _, _ in
             loadTask?.cancel(); reading = false; confirmed = false; store.prepared = nil; reference = nil
         }
@@ -121,6 +164,7 @@ struct StimulusLiveControls: View {
     @Bindable private var store = SessionMarkers.shared
     @State private var correcting: String?
     @State private var seconds = ""
+    @State private var linkGuide = false
 
     var body: some View {
         if let package = store.pinned {
@@ -165,6 +209,12 @@ struct StimulusLiveControls: View {
                             seconds = String(Double(prior.offsetMs) / 1000)
                         }
                     }
+                    let linked = Set(package.items.filter { store.selection.contains($0.id) }.compactMap { item in
+                        item.moment.flatMap { package.guideQuestionBindings?[$0] }
+                    })
+                    if correcting == nil, linked.count == 1, let qid = linked.first {
+                        Toggle("Also mark " + qid, isOn: $linkGuide)
+                    }
                     if correcting != nil {
                         TextField("Audio offset (seconds)", text: $seconds)
                     }
@@ -191,8 +241,9 @@ struct StimulusLiveControls: View {
             }
             ms = Int((value * 1000).rounded())
         }
-        if store.mark(clear: clear, correcting: prior, at: ms) {
+        if store.mark(clear: clear, correcting: prior, at: ms, linkGuide: linkGuide) {
             correcting = nil
+            linkGuide = false
             seconds = ""
             store.showsControls = false
         }

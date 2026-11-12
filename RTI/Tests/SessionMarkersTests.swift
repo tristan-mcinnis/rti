@@ -102,11 +102,12 @@ final class SessionMarkersTests: XCTestCase {
         let source = slides.appendingPathComponent("one.html")
         try "shape one".write(to: source, atomically: true, encoding: .utf8)
         let json = """
-        {"source":"slides","version":"v1","slides":[{"id":"one","code":"A1","moment":"T","product":"private mapping"},
+        {"guide":"selected-guide.md","source":"slides","version":"v1","slides":[{"id":"one","code":"A1","moment":"T","product":"private mapping"},
           {"id":"missing","code":"B1","moment":"T"}]}
         """
         try json.write(to: manifest, atomically: true, encoding: .utf8)
         let first = try StimulusPackage.read(manifest: manifest)
+        XCTAssertEqual(first.guideSourcePaths, [dir.appendingPathComponent("selected-guide.md").resolvingSymlinksInPath().standardizedFileURL.path])
         XCTAssertEqual(first.items.map(\.sourceAvailable), [true, false])
         XCTAssertEqual(first.items.map(\.code), ["A1", "B1"])
         XCTAssertFalse(try String(decoding: JSONEncoder().encode(first), as: UTF8.self).contains("private mapping"))

@@ -17,6 +17,12 @@ public enum ExternalTools {
             .appendingPathComponent("skills/ic-synthesis-workbook/scripts/extract-cells.py")
     }
 
+    /// The discussion guide skill owns its Markdown stimulus plan.
+    public static var stimulusPlanReader: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("skills/ic-discussion-guide/scripts/dg-check.py")
+    }
+
     /// The Claude Code CLI, for the headless `/meeting` processor.
     public static func claude() -> URL? {
         let home = FileManager.default.homeDirectoryForCurrentUser

@@ -58,12 +58,15 @@ final class SessionMarkers {
     }
 
     @discardableResult
-    func mark(clear: Bool = false, correcting prior: SessionNote? = nil, at override: Int? = nil) -> Bool {
+    func mark(clear: Bool = false, correcting prior: SessionNote? = nil, at override: Int? = nil, linkGuide: Bool = false) -> Bool {
         guard let pinned, clear || !selection.isEmpty else { return false }
         let chosen = clear ? [] : pinned.items.filter { selection.contains($0.id) }
         let labels = chosen.map(\.code)
         let title = clear ? "Materials cleared" : labels.joined(separator: " + ")
-        var event = SessionNote(kind: prior == nil ? .stimulus : .correction, offsetMs: offset, text: title, shownCodes: labels,
+        let bindings = Set(chosen.compactMap { item in item.moment.flatMap { pinned.guideQuestionBindings?[$0] } })
+        let qid = linkGuide && bindings.count == 1 && prior == nil ? bindings.first : nil
+        let kind: SessionNote.Kind = prior != nil ? .correction : qid != nil ? .marker : .stimulus
+        var event = SessionNote(kind: kind, offsetMs: offset, text: title, guideQuestionID: qid, shownCodes: labels,
                                 revealed: chosen.contains(where: \.endsBlind), packageRevision: pinned.revision,
                                 sessionID: sessionID, groupID: group, replaces: prior?.id)
         event.shownItemIDs = chosen.map(\.id)
@@ -73,7 +76,11 @@ final class SessionMarkers {
             replacement.shownItemIDs = event.shownItemIDs
             event.replacement = replacement
         }
-        return save(event)
+        let saved = save(event)
+        if saved, let qid {
+            _ = GuideSessionController.shared.selectMarker(label: qid, atMs: event.offsetMs)
+        }
+        return saved
     }
 
     private func save(_ requested: SessionNote) -> Bool {

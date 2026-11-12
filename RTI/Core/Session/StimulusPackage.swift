@@ -19,6 +19,9 @@ public struct StimulusPackage: Codable, Equatable, Sendable {
     public var version: String
     public var items: [Item]
     public var confirmedGroup: String?
+    public var guideQuestionBindings: [String: String]?
+    public var guideSectionByMoment: [String: Int]?
+    public var guideSourcePaths: [String]?
 
     public init(revision: String, version: String, items: [Item]) {
         self.revision = revision
@@ -35,10 +38,22 @@ public struct StimulusPackage: Codable, Equatable, Sendable {
 
             struct Piece: Decodable { var id: String; var moment: String? }
             struct Sheet: Decodable { var spec: String; var moment: String? }
+            var guide: GuidePaths?
             var source: String?; var version: String?; var slides: [Slide]?
             var pieces: [Piece]?; var worksheets: [Sheet]?
         }
 
+        enum GuidePaths: Decodable {
+            case paths([String])
+            init(from decoder: Decoder) throws {
+                let value = try decoder.singleValueContainer()
+                if let one = try? value.decode(String.self) {
+                    self = .paths([one])
+                } else {
+                    self = try .paths(value.decode([String].self))
+                }
+            }
+        }
         let data = try Data(contentsOf: url)
         let spec = try JSONDecoder().decode(Manifest.self, from: data)
         let root = url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
@@ -89,7 +104,11 @@ public struct StimulusPackage: Codable, Equatable, Sendable {
         guard !items.isEmpty, Set(items.map(\.id)).count == items.count else { throw CocoaError(.fileReadCorruptFile) }
         let pairs = hashes.keys.sorted().map { [$0, hashes[$0]!] }
         let identity = try JSONSerialization.data(withJSONObject: pairs, options: .withoutEscapingSlashes)
-        return Self(revision: SHA256.hash(data: identity).hex, version: spec.version ?? "unversioned", items: items)
+        var result = Self(revision: SHA256.hash(data: identity).hex, version: spec.version ?? "unversioned", items: items)
+        if case let .paths(paths) = spec.guide {
+            result.guideSourcePaths = paths.map { root.appendingPathComponent($0).standardizedFileURL.path }
+        }
+        return result
     }
 
     public mutating func addManual(label: String, file: URL? = nil, page: Int? = nil) {
