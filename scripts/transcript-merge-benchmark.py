@@ -26,6 +26,7 @@ def run():
         "RTI/Core/Session/LiveEntry.swift",
         "RTI/Core/Session/SpeakerTurn.swift",
         "RTI/Core/Session/LiveTranscriptPresentation.swift",
+        "RTI/Core/Session/LiveTranscriptTurns.swift",
         "RTI/Core/Session/EchoFilter.swift",
         "RTI/Core/Session/CalendarMeeting.swift",
         "RTI/Core/Support/SpeakerLabelMapping.swift",

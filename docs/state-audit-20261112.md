@@ -175,3 +175,16 @@ The live encoder selects `stt-rt-v6`. The file-upgrade adapter passes each avail
 | Compile the actual `TranslationStore.swift` against the current core config. Exercise distinct and equal two-way languages using a volatile argument domain | EN/ZH gave enabled=true and an effective config. EN/EN gave enabled=true and nil. The running recorder's defaults were untouched. |
 
 For the beta, replay four distinguishable speakers on the remote leg, with a moderator on the mic and a reconnect halfway through. Compare named/unnamed evidence at each stage. Exercise real menu selection during incoming rows and actual wheel, scrollbar and keyboard navigation with a growing tall turn. Preserve a user's manual scroll through appended Notes/Auto items. Test a crash after a multiline marker and before the next checkpoint, same-second markers, a marker typed while paused, and two consecutive upgrades. Until then the field symptoms and these controlled reproductions have different evidence.
+
+## Beta implementation and replay checks
+
+The beta now commits Soniox final tokens once and replaces only the sending leg's provisional suffix. Equal words on either leg survive, including consecutive punctuation and repeated untimed text. The on-disk wire record and in-memory timed tokens preserve optional speaker and recognition confidence, original-language text, translation status, socket identity and time offset. An unnamed system cluster provides no named attribution. A new socket starts a new cluster namespace. The live projection consumes newly accepted groups and patches the affected rows and reading turns. Opening a reader after an uncached history still builds that history once.
+
+A release-optimized fixture alternated EN and ZH across mic/system, held the previous published snapshot and processed 240 interim and 240 final packets after preload. Results are process-local ingestion and reader projection, excluding SwiftUI layout, hardware and the network. Separate 90-minute runs varied with host load. The checked-in replay gave these results.
+
+| Fixture | Final p50 / p95 / max | Interim p50 / p95 / max | Cold full projection | Peak process RSS |
+|---|---|---|---|---|
+| 10 min, 5,760 tokens | 0.096 / 0.321 / 2.701 ms | 0.019 / 0.082 / 0.215 ms | 10.635 ms | 12.8 MiB |
+| 90 min, 44,160 tokens, 5,521 reading rows | 1.441 / 4.015 / 9.444 ms | 0.050 / 0.141 / 3.032 ms | 259.201 ms | 55.7 MiB |
+
+Before the incremental reader change, a comparable raw 90-minute replay spent 4.411 / 7.036 / 11.768 ms p50 / p95 / max on a final **before** forming the reading turns and peaked at 61 MiB. That narrower baseline cannot establish an end-to-end speedup ratio. The first uncached projection remains visible in the measurements. Repeat with `RTI_PROVIDER_REPLAY_MINUTES=90 python3 scripts/transcript-merge-benchmark.py --output /tmp/rti-provider-replay-90`. The result includes cold latency, steady CPU seconds, p50/p95/max times and peak RSS. The command exits unsuccessfully when steady final p95 exceeds 16 ms. [Replay source](../scripts/TranscriptMergeBenchmark.swift) · [runner](../scripts/transcript-merge-benchmark.py)

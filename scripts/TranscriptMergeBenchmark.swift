@@ -10,6 +10,15 @@ struct TranscriptMergeBenchmark {
         do {
             let arguments = CommandLine.arguments
             guard arguments.count == 2 || arguments.count == 3 else { throw Failure("expected output JSON and optional baseline JSON") }
+            if let minutes = ProcessInfo.processInfo.environment["RTI_PROVIDER_REPLAY_MINUTES"].flatMap(Int.init),
+               (1...180).contains(minutes) {
+                let sample = measureProviderProjection(minutes: minutes)
+                try write(sample, path: arguments[1])
+                guard let p95 = sample["final_p95_ms"] as? Double, p95 < 16 else {
+                    throw Failure("final update p95 exceeded 16 ms")
+                }
+                return
+            }
             if ProcessInfo.processInfo.environment["RTI_TRANSCRIPT_MERGE_PROFILE"] == "1" {
                 try write(["profile": "optimized extended steady window", "measurements": [measure(seconds: 7_200, additionalSeconds: 300)]], path: arguments[1])
                 return
@@ -82,6 +91,62 @@ struct TranscriptMergeBenchmark {
                 "steady_mean_ms": durations.reduce(0, +) / Double(durations.count),
                 "steady_p95_ms": ordered[Int((Double(ordered.count) * 0.95).rounded(.up)) - 1],
                 "steady_max_ms": ordered[ordered.count - 1]]
+    }
+
+    /// Exercise the production reader with a retained previous snapshot, mixed
+    /// language, two socket legs, and independent interim/final deliveries.
+    static func measureProviderProjection(minutes: Int) -> [String: Any] {
+        let pipeline = TranscriptPipeline()
+        var projection = LiveTranscriptPresentation.Projection()
+        func packet(_ n: Int, final: Bool) -> [SonioxWord] {
+            let parts = n.isMultiple(of: 2) ? [" The", " cup", " is", " blue."] : [" 我", "喜欢", "蓝色", "。"]
+            return parts.enumerated().map { i, text in
+                let start = n * 500 + i * 65
+                return SonioxWord(text: text, startMs: start, endMs: start + 60, speaker: n % 4 + 1,
+                                  confidence: 0.98, isFinal: final, translationStatus: "none",
+                                  language: n.isMultiple(of: 2) ? "en" : "zh", sourceLanguage: nil)
+            }
+        }
+        let initial = minutes * 120
+        for index in 0..<initial {
+            pipeline.process(words: packet(index, final: true), channel: index.isMultiple(of: 2) ? "mic" : "system")
+        }
+        let cold = DispatchTime.now().uptimeNanoseconds
+        projection.updateLiveFinals(pipeline)
+        var rows = projection.committedRows
+        var turns = projection.turns(for: rows)
+        let coldMs = Double(DispatchTime.now().uptimeNanoseconds - cold) / 1_000_000
+        var previous = pipeline.liveEntries
+        var finals: [Double] = [], interims: [Double] = []
+        let cpuStart = cpuSeconds()
+        for index in initial..<(initial + 240) {
+            let channel = index.isMultiple(of: 2) ? "mic" : "system"
+            let interimStart = DispatchTime.now().uptimeNanoseconds
+            pipeline.process(words: packet(index, final: false), channel: channel)
+            rows = projection.updateInterims(pipeline.interimSegments)
+            turns = projection.turns(for: rows)
+            precondition(!turns.isEmpty)
+            interims.append(Double(DispatchTime.now().uptimeNanoseconds - interimStart) / 1_000_000)
+            let finalStart = DispatchTime.now().uptimeNanoseconds
+            pipeline.process(words: packet(index, final: true), channel: channel)
+            projection.updateLiveFinals(pipeline)
+            rows = projection.updateInterims(pipeline.interimSegments)
+            turns = projection.turns(for: rows)
+            withExtendedLifetime(previous) {}
+            previous = pipeline.liveEntries
+            finals.append(Double(DispatchTime.now().uptimeNanoseconds - finalStart) / 1_000_000)
+        }
+        let cpu = cpuSeconds() - cpuStart
+        finals.sort()
+        interims.sort()
+        var usage = rusage()
+        getrusage(RUSAGE_SELF, &usage)
+        return ["fixture_minutes": minutes, "tokens": pipeline.liveEntries.reduce(0) { $0 + $1.tokens.count },
+                "rows": rows.count, "turns": turns.count, "updates_per_kind": finals.count,
+                "cold_ms": coldMs, "steady_cpu_seconds": cpu,
+                "final_p50_ms": finals[120], "final_p95_ms": finals[228], "final_max_ms": finals[239],
+                "interim_p50_ms": interims[120], "interim_p95_ms": interims[228], "interim_max_ms": interims[239],
+                "peak_rss_bytes": usage.ru_maxrss]
     }
 
     /// UUIDs are represented by first-appearance ordinals, so identity and
