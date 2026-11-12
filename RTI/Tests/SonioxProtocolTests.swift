@@ -2,6 +2,35 @@ import RTICore
 import XCTest
 
 final class SonioxProtocolTests: XCTestCase {
+    func testOriginalProviderJournalPreservesFinalTokensAcrossIndependentStreams() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let journal = try SonioxLiveJournal(directory: dir) { error in XCTFail(error) }
+        let response = Data(#"{"tokens":[{"text":" 我","is_final":true,"start_ms":20,"end_ms":50,"speaker":"7"},{"text":"，","is_final":true},{"text":"猜","is_final":false}]}"#.utf8)
+        let packet = try JSONDecoder().decode(SonioxTranscriptMessage.self, from: response)
+        let words = try XCTUnwrap(packet.tokens)
+        journal.append(words, leg: "system", stream: "one", baseMs: 0)
+        journal.append(words, leg: "mic", stream: "two", baseMs: 4500)
+        try journal.close()
+        let url = dir.appendingPathComponent(SonioxLiveJournal.filename)
+        let batches = try Data(contentsOf: url).split(separator: 10).map {
+            try JSONDecoder().decode(SonioxLiveJournal.Batch.self, from: Data($0))
+        }
+        XCTAssertEqual(batches.map(\.leg), ["system", "mic"])
+        XCTAssertEqual(batches.map(\.stream), ["one", "two"])
+        XCTAssertEqual(batches.map(\.baseMs), [0, 4500])
+        for batch in batches {
+            XCTAssertEqual(batch.tokens.map(\.text), [" 我", "，"])
+            XCTAssertEqual(batch.tokens.first?.providerSpeaker, "7")
+            XCTAssertNil(batch.tokens.last?.providerSpeaker)
+            XCTAssertNil(batch.tokens.last?.providerStartMs)
+            XCTAssertNil(batch.tokens.first?.providerConfidence)
+        }
+        XCTAssertThrowsError(try SonioxLiveJournal(directory: dir) { _ in })
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o600)
+    }
+
     private func defaultConfigJSON() throws -> [String: Any] {
         let data = try JSONEncoder().encode(SonioxConfigMessage.default())
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
