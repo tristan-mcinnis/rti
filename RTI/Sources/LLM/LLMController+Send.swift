@@ -357,6 +357,7 @@ extension LLMController {
                             self.clearStreamingEntry(thisEntryID)
                             self.toolStatus = nil
                         case let .done(finalText):
+                            self.flushStreamBuffer()
                             // Deltas hop to main through a different queue
                             // chain than .done, so the last few can land AFTER
                             // finalize and get dropped — the mid-sentence
@@ -373,6 +374,7 @@ extension LLMController {
                             self.finalizeAssistantTurn(streamingEntryID: thisEntryID)
                         case let .error(message, isAuth):
                             guard self.streamingEntryID == thisEntryID else { return }
+                            self.flushStreamBuffer()
                             // The partial the user could read is the answer to
                             // this failed turn; keep it in the stored row.
                             let partial = self.entries.first { $0.id == thisEntryID }?.text ?? ""
@@ -403,6 +405,7 @@ extension LLMController {
 
     private func finalizeAssistantTurn(streamingEntryID thisEntryID: UUID) {
         guard streamingEntryID == thisEntryID else { return }
+        flushStreamBuffer()
         streaming = false
         reasoning = false
         toolStatus = nil
@@ -536,13 +539,59 @@ extension LLMController {
         }
     }
 
+    /// Buffer one delta (`StreamCoalescer`); write it now if due, otherwise
+    /// arm the one timer that writes it within the interval.
     private func appendToStreamingEntry(_ delta: String) {
-        guard let id = streamingEntryID,
-              let idx = entries.firstIndex(where: { $0.id == id }) else { return }
-        entries[idx].text += delta
+        guard let id = streamingEntryID else { return }
+        if streamBufferEntryID != id {
+            // Every end of the old answer flushed it; anything left is stale.
+            discardStreamBuffer()
+            streamBufferEntryID = id
+        }
+        if let text = streamCoalescer.append(delta, now: Date()) {
+            streamFlushTimer?.invalidate()
+            streamFlushTimer = nil
+            writeStreamText(text, to: id)
+            return
+        }
+        guard streamFlushTimer == nil else { return }
+        let timer = Timer(timeInterval: streamCoalescer.interval, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.streamFlushTimer = nil
+                self.flushStreamBuffer()
+            }
+        }
+        // Common modes, so the text still lands while the user scrolls.
+        RunLoop.main.add(timer, forMode: .common)
+        streamFlushTimer = timer
+    }
+
+    /// Write every buffered delta to its answer. Called before anything reads
+    /// the answer text: finish, error, Stop and the checkpoint.
+    func flushStreamBuffer() {
+        streamFlushTimer?.invalidate()
+        streamFlushTimer = nil
+        guard let id = streamBufferEntryID else { return }
+        let text = streamCoalescer.flush(now: Date())
+        writeStreamText(text, to: id)
+    }
+
+    /// Drop the buffer: the answer it belongs to was cleared or replaced.
+    func discardStreamBuffer() {
+        streamFlushTimer?.invalidate()
+        streamFlushTimer = nil
+        streamCoalescer.reset()
+        streamBufferEntryID = nil
+    }
+
+    private func writeStreamText(_ text: String, to id: UUID) {
+        guard !text.isEmpty, let idx = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[idx].text += text
     }
 
     private func clearStreamingEntry(_ id: UUID) {
+        if streamBufferEntryID == id { discardStreamBuffer() }
         guard let idx = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[idx].text = ""
     }

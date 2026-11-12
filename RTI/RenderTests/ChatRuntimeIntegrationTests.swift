@@ -634,6 +634,79 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         XCTAssertEqual(controller.retainedImageCount, 1)
     }
 
+    // MARK: - Stream coalescing
+
+    private nonisolated static let streamDeltas = ["The ", "answer ", "is ", "forty", "-two", "."]
+
+    /// With a long interval only the first delta is written while streaming;
+    /// the finish must still leave the whole answer, once.
+    func testCoalescedStreamFinishesWithTheWholeAnswer() async throws {
+        let stream: LLMRequest.ToolStream = { _, _, _, _, onContent, _ in
+            for delta in Self.streamDeltas {
+                onContent(delta)
+            }
+            return LLMClient.StreamResult(toolCalls: [], finishReason: "stop", reasoningCharacters: 0)
+        }
+        let controller = makeController(stream: stream)
+        controller.streamCoalescer = StreamCoalescer(interval: 3600)
+        defer { controller.cancel() }
+        controller.sendAskAnything("what is the answer?")
+
+        let record = try await waitForStoredTurns(2)
+        let full = Self.streamDeltas.joined()
+        XCTAssertEqual(controller.entries.last?.text, full)
+        XCTAssertEqual(record.turns.last?.text, full)
+        XCTAssertEqual(controller.streamCoalescer.pending, "")
+        XCTAssertNil(controller.streamFlushTimer)
+    }
+
+    /// Stop while deltas wait in the buffer: the stored cancelled answer
+    /// holds every delta received, not only the ones already written.
+    func testCancelFlushesTheBufferedDeltasIntoTheStoppedAnswer() async throws {
+        let stream: LLMRequest.ToolStream = { _, _, _, _, onContent, _ in
+            for delta in Self.streamDeltas {
+                onContent(delta)
+            }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            throw CancellationError()
+        }
+        let controller = makeController(stream: stream)
+        controller.streamCoalescer = StreamCoalescer(interval: 3600)
+        controller.sendAskAnything("what is the answer?")
+
+        let full = Self.streamDeltas.joined()
+        let deadline = Date().addingTimeInterval(5)
+        func received() -> String {
+            (controller.entries.last { $0.role == "assistant" }?.text ?? "") + controller.streamCoalescer.pending
+        }
+        while received() != full, Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(received(), full, "every delta must reach the controller before Stop")
+        XCTAssertFalse(controller.streamCoalescer.pending.isEmpty, "the test needs text still in the buffer")
+
+        controller.cancel()
+
+        let summaries = try await store.summaries()
+        let id = try XCTUnwrap(summaries.first?.id)
+        let stopDeadline = Date().addingTimeInterval(5)
+        var stopped: TurnRecord?
+        while Date() < stopDeadline {
+            let record = try await store.load(id: id)
+            if record.turns.last?.request?.status == .cancelled {
+                stopped = record.turns.last
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let last = try XCTUnwrap(stopped, "the stopped answer must be filed as cancelled")
+        XCTAssertEqual(last.text, full)
+        XCTAssertEqual(controller.entries.last?.text, full, "the visible answer keeps the flushed text")
+        XCTAssertEqual(controller.streamCoalescer.pending, "")
+    }
+
     // MARK: - Repair 3: /new stops the whole multi-round send
     func testNewChatStopsTheNextToolRound() async throws {
         let toolRuns = Counter()

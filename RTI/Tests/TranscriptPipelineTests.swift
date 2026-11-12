@@ -245,7 +245,7 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertTrue(p.liveEntries.isEmpty)
     }
 
-    // MARK: - Cross-channel echo dedup
+    // MARK: - Both legs kept verbatim (no cross-leg echo removal)
 
     func testWireTokensRemainVerbatimOnBothLegsAcrossLateDelivery() throws {
         let json = #"{"tokens":[{"text":" 登","start_ms":80,"end_ms":115,"speaker":"seat-A","is_final":true},{"text":"机。","start_ms":115,"end_ms":160,"is_final":true},{"text":"!","start_ms":160,"end_ms":160,"is_final":true},{"text":"!","start_ms":160,"end_ms":160,"is_final":true}]}"#

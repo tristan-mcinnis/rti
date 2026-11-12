@@ -113,6 +113,69 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertEqual(msgs[2].images?.count, 1)
     }
 
+    // MARK: - History cap
+
+    private func longChat(exchanges: Int, answer: String = "reply") -> [ChatEntry] {
+        (0 ..< exchanges).flatMap { [entry("user", "question \($0)"), entry("assistant", "\(answer) \($0)")] }
+            + [entry("user", "raw latest")]
+    }
+
+    func test_conversation_capKeepsTheLastTwelvePriorExchangesAndTheLatestUserTurn() {
+        let msgs = PromptBuilder.buildConversationMessages(entries: longChat(exchanges: 20), fullContent: "AUGMENTED")
+        XCTAssertEqual(msgs.count, PromptBuilder.historyTurnCap * 2 + 1, "12 questions with their answers")
+        XCTAssertEqual(msgs.last?.content, "AUGMENTED")
+        XCTAssertEqual(msgs.last?.role, "user")
+        XCTAssertEqual(msgs.first?.content, "question 8", "the oldest exchanges go first")
+        XCTAssertEqual(msgs[msgs.count - 2].content, "reply 19")
+    }
+
+    func test_conversation_capDropsOldTurnsPastTheCharacterBudget() {
+        let big = String(repeating: "x", count: 10000)
+        let msgs = PromptBuilder.buildConversationMessages(entries: longChat(exchanges: 4, answer: big),
+                                                           fullContent: "AUGMENTED")
+        let prior = msgs.dropLast()
+        let characters = prior.reduce(0) { $0 + ($1.content?.count ?? 0) }
+        XCTAssertLessThanOrEqual(characters, PromptBuilder.historyCharacterCap)
+        XCTAssertEqual(prior.count, 4, "two big answers and their questions fit; a third big answer does not")
+        XCTAssertEqual(msgs.last?.content, "AUGMENTED")
+    }
+
+    func test_conversation_latestUserTurnIsKeptEvenWhenItAloneIsOverTheBudget() {
+        let huge = String(repeating: "y", count: PromptBuilder.historyCharacterCap * 2)
+        let image = LLMImage(jpegData: Data([0x01]))
+        let msgs = PromptBuilder.buildConversationMessages(entries: longChat(exchanges: 2), fullContent: huge,
+                                                           images: [image])
+        XCTAssertEqual(msgs.last?.content, huge)
+        XCTAssertEqual(msgs.last?.images?.count, 1)
+        XCTAssertEqual(msgs.count, 5, "the short prior turns still fit beside it")
+    }
+
+    func test_conversation_newestPriorExchangeIsKeptEvenWhenItIsOverTheBudget() {
+        let long = String(repeating: "z", count: PromptBuilder.historyCharacterCap + 1)
+        let msgs = PromptBuilder.buildConversationMessages(entries: longChat(exchanges: 3, answer: long),
+                                                           fullContent: "shorten that")
+        XCTAssertEqual(msgs.map(\.content), ["question 2", "\(long) 2", "shorten that"],
+                       "a follow-up keeps the answer it refers to, and the older exchanges go")
+    }
+
+    func test_conversation_cutHistoryNeverStartsWithAnAssistantMessage() {
+        let big = String(repeating: "x", count: 9000)
+        let entries = [entry("assistant", "Hi, how can I help?")]
+            + (0 ..< 4).flatMap { [entry("user", "question \($0)"), entry("assistant", "\(big) \($0)"),
+                                   entry("assistant", "more \($0)")] }
+            + [entry("user", "raw latest")]
+        let msgs = PromptBuilder.buildConversationMessages(entries: entries, fullContent: "AUGMENTED")
+        XCTAssertEqual(msgs.first?.role, "user")
+        XCTAssertEqual(msgs.first?.content, "question 2")
+        XCTAssertEqual(msgs.count, 7)
+    }
+
+    func test_conversation_shortChatIsUnchanged() {
+        let entries = longChat(exchanges: 3)
+        let msgs = PromptBuilder.buildConversationMessages(entries: entries, fullContent: "AUGMENTED")
+        XCTAssertEqual(msgs.count, entries.count)
+    }
+
     // MARK: - Wire shape
 
     func test_wireMessage_plainTextEncodesContentAsString() throws {

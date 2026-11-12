@@ -492,6 +492,8 @@ extension LLMController {
             }
         }
         request.cancel()
+        // The text already received is part of the answer the user stopped.
+        flushStreamBuffer()
         // The checkpoint write may already be inside the store. Keep its task
         // so the terminal write can wait for it instead of racing it.
         let checkpoint = stopCheckpointing()

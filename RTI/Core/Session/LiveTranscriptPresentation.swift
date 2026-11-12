@@ -57,7 +57,7 @@ public enum LiveTranscriptPresentation {
     /// speaker N". A name the user gave (`names`, keyed by raw id) wins.
     ///
     /// Numbering by first appearance (the old rule) let labels swap when the
-    /// cross-channel echo pass later dropped an early entry, and made the mic
+    /// cross-channel echo pass (since removed) dropped an early entry, and made the mic
     /// wearer "Speaker 2" whenever someone else spoke first.
     public static func label(for speakerId: String, names: [String: String] = [:]) -> String {
         if speakerId == "note" { return "Note" }

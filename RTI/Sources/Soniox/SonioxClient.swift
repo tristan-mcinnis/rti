@@ -65,6 +65,9 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     private var configSent = false
     private var retryCount = 0
     private var retryWorkItem: DispatchWorkItem?
+    /// Which packets with final tokens get a log line. One client serves one
+    /// leg, so the count is per leg. Protected by `lock`.
+    private var finalPacketLog = FinalPacketLogThrottle()
 
     private static let maxRetries = 5
     private static let retryDelays: [TimeInterval] = [1, 2, 4, 8, 8]
@@ -186,8 +189,9 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             // NB: no per-frame logging here. Logging every inbound frame (tens
             // of thousands per long session) hopped to the main actor, mutated
             // the @Observable log buffer, and called NSLog on each — a real CPU
-            // tax for zero diagnostic value. Final-token receipt is still logged
-            // downstream in `handleMessage`. (Payload is live transcript content
+            // tax for zero diagnostic value. `handleMessage` logs final-token
+            // receipt only for the first packet and then every 100th
+            // (`FinalPacketLogThrottle`). (Payload is live transcript content
             // and must never land in the user-copyable log buffer anyway.)
             handleMessage(string, generation: eventGeneration)
 
@@ -372,7 +376,13 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             guard let words = msg.tokens else { return }
             let finalCount = words.filter(\.isFinal).count
             if finalCount > 0 {
-                RTILog.log("received \(words.count) tokens (\(finalCount) final)", category: .soniox)
+                let (shouldLog, packets) = lock.withLock {
+                    (finalPacketLog.record(), finalPacketLog.count)
+                }
+                if shouldLog {
+                    RTILog.log("received \(words.count) tokens (\(finalCount) final), final packet \(packets)",
+                               category: .soniox)
+                }
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self, ownsDelivery(generation) else { return }

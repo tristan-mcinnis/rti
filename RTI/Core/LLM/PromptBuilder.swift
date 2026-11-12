@@ -130,13 +130,27 @@ public enum PromptBuilder {
         return msgs
     }
 
+    /// Prior chat sent with a turn: at most this many exchanges (one user
+    /// question and the answers to it)...
+    public static let historyTurnCap = 12
+    /// ...and at most about this many characters of their text.
+    public static let historyCharacterCap = 24000
+
     /// Build the conversation messages from the stored chat entries plus
     /// the current user turn. The latest user message includes the transcript
     /// context prepended (fullContent) while prior turns use their raw text.
+    /// Prior history is capped: the newest `historyTurnCap` exchanges that fit
+    /// in `historyCharacterCap` characters, oldest dropped first. The latest
+    /// user turn and the newest prior exchange are always sent, whatever their
+    /// size, so a follow-up such as "shorten that" still sees its answer.
+    /// After a cut the history never starts with an assistant message, which
+    /// some providers refuse.
     public static func buildConversationMessages(
         entries: [ChatEntry],
         fullContent: String,
-        images: [LLMImage] = []
+        images: [LLMImage] = [],
+        historyTurnCap: Int = PromptBuilder.historyTurnCap,
+        historyCharacterCap: Int = PromptBuilder.historyCharacterCap
     ) -> [LLMMessage] {
         var msgs: [LLMMessage] = []
         for (idx, entry) in entries.enumerated() {
@@ -151,6 +165,36 @@ public enum PromptBuilder {
                 images: isLatestUser ? images : []
             ))
         }
-        return msgs
+        let hasLatestUser = entries.last?.role == "user"
+        let latest = hasLatestUser ? msgs.popLast() : nil
+        let prior = cappedHistory(msgs, exchangeCap: historyTurnCap, characterCap: historyCharacterCap)
+        return prior + (latest.map { [$0] } ?? [])
+    }
+
+    /// The newest exchanges of `messages` within both caps. An exchange
+    /// starts at a user message; assistant messages before the first user
+    /// message form a leading exchange. The newest exchange is always kept.
+    static func cappedHistory(_ messages: [LLMMessage], exchangeCap: Int, characterCap: Int) -> [LLMMessage] {
+        var exchanges: [[LLMMessage]] = []
+        for message in messages {
+            if message.role == "user" || exchanges.isEmpty {
+                exchanges.append([message])
+            } else {
+                exchanges[exchanges.count - 1].append(message)
+            }
+        }
+        var kept: [[LLMMessage]] = []
+        var characters = 0
+        for exchange in exchanges.reversed() {
+            let size = exchange.reduce(0) { $0 + ($1.content?.count ?? 0) }
+            if !kept.isEmpty {
+                guard kept.count < exchangeCap, characters + size <= characterCap else { break }
+            }
+            characters += size
+            kept.append(exchange)
+        }
+        // Every exchange but a leading one starts at a user message, and a
+        // leading one is kept only when nothing is cut.
+        return Array(kept.reversed().joined())
     }
 }

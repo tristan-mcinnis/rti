@@ -187,11 +187,22 @@ meeting processing and Neon indexing.
 - [ ] If your Hermes vault has a pre-meeting brief, it auto-loads in the panel (picker if several).
 
 ## I. Real meeting (the final gate)
-- [ ] Join a real call. Both sides transcribe (the Transcript tab shows your runs on the right as "You" and the call's voices on the left as "Speaker N").
+- [ ] Join a real call. Both sides transcribe (the Transcript tab shows your runs on the right as "Me" and the call's voices on the left as "Them"; live labels are off by default).
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
 - [ ] The Notes tab fills in every few minutes (on by default), and Auto cards appear in the rail beside the Transcript (on by default for client and research calls); ⌘3 opens Transcript. A guided Research start lands on Transcript beside the rail, not on the Guide tab. On an internal or personal call (or with Auto off and no guide) ⌘3 and the palette's "Go to Live Help" rest.
 - [ ] The workspace appears with normal window sharing enabled. The opt-in exclusion has been checked in the chosen screen-sharing client (§4–§5).
 - [ ] Stop → the session folder appears under `sessions_dir` (default `~/Documents/Work/Inner-Chapter/meetings/sessions/<stamp>/`) with `transcript.md`, `audio-mic.wav` and `audio-system.wav` (the audio is kept for the transcript upgrade); mic released (orange dot clears, other apps can use the mic).
+
+## Live rail and mic
+
+Use a client call and a research call, each at least 5 minutes long.
+
+- [ ] Client call: the rail shows at most 1 new card per minute. Count the cards with a clock for 5 minutes.
+- [ ] Research call with a guide: skip a guide question and move to the next one. Within one guide pass (2 minutes by default), the rail shows the skipped question under the gaps.
+- [ ] Make the window narrower. Below 752 pt of panel width (720 pt chat minimum plus 32 pt), the rail becomes a one-line strip over the transcript. Make it wider again and the rail comes back.
+- [ ] Mute during a call, then Stop, then Record again. The new call starts with the mic open and no mute banner.
+- [ ] During a call, minimize the window and restore it from the Dock thumbnail. The transcript is still live and new rows keep coming.
+- [ ] With speakers and no headphones, the other party's voice can show as extra "Me" rows. RTI keeps both legs verbatim. Use headphones, Listening only, or the opt-in echo cancellation toggle.
 
 ## Guide mode in a 15-minute mock group
 

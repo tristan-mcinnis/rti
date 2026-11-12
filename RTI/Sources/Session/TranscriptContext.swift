@@ -48,6 +48,15 @@ enum TranscriptContext {
                       hoistNotes: hoistNotes, evidenceRule: evidenceRule)
     }
 
+    /// The words said after `sinceMs`, with no labels, times or rules: the
+    /// text Auto builds its vault query from (`AutoVaultQuery`). Typed notes
+    /// count as said.
+    static func spokenText(sinceMs: Int?) -> String {
+        LiveTranscriptPresentation.utterances(from: entries(sinceMs: sinceMs))
+            .map(\.text)
+            .joined(separator: "\n")
+    }
+
     /// Every note the user typed in this session, oldest first.
     static func userNotes() -> [String] {
         LiveTranscriptPresentation.utterances(from: entries(sinceMs: nil))

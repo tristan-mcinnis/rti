@@ -8,10 +8,6 @@ final class LiveTranscriptTurnTests: XCTestCase {
         }
     }
 
-    private func source(_ speakerId: String, _ script: String, at startMs: Int) -> EchoFilter.Source {
-        EchoFilter.Source(speakerId: speakerId, tokens: timed(script, at: startMs))
-    }
-
     private func entry(_ speakerId: String, _ script: String, at startMs: Int, stream: UUID = UUID()) -> LiveEntry {
         let tokens = timed(script, at: startMs)
         return LiveEntry(speakerId: speakerId, text: tokens.map(\.text).joined(), startMs: startMs, confidence: 1,
@@ -24,54 +20,6 @@ final class LiveTranscriptTurnTests: XCTestCase {
         var projection = LiveTranscriptPresentation.Projection()
         projection.updateFinals(entries)
         return LiveTranscriptPresentation.turns(projection.updateInterims(interims))
-    }
-
-    // MARK: - Echo
-
-    func test_echoRunOnMicIsDropped_evenWhenAWordIsMisheardAndBatchesDiffer() {
-        let system = [source("remote_1", "We could run the first workshop in Hang|zhou on the fourth", at: 10_000)]
-        let mic = [
-            source("room_1", "We could run the first", at: 10_150),
-            source("room_1", "work|shop in Hang|zhou on the forth", at: 11_400),
-        ]
-
-        let echo = EchoFilter.echoTokens(mic: mic, system: system)
-
-        XCTAssertEqual(echo[0], Set(0..<5))
-        XCTAssertEqual(echo[1], Set(0..<8))
-    }
-
-    func test_realSpeechSharingCommonWordsIsKept() {
-        let system = [source("remote_1", "the first workshop is fine", at: 10_000)]
-        let mic = [source("self", "I think the first option wins", at: 10_100)]
-
-        XCTAssertEqual(EchoFilter.echoTokens(mic: mic, system: system), [[]])
-    }
-
-    func test_repeatingAPhraseLaterIsNotEcho() {
-        let system = [source("remote_1", "book the fourth", at: 10_000)]
-        let mic = [source("self", "book the fourth", at: 14_000)]
-
-        XCTAssertEqual(EchoFilter.echoTokens(mic: mic, system: system), [[]])
-    }
-
-    func test_singleWordEchoIsDropped_butTheMicWearersOwnRunIsNot() {
-        let system = [source("remote_1", "Yeah.", at: 22_000)]
-        let mic = [source("self", "Fine by me.", at: 20_000), source("room_1", "Yeah.", at: 22_100)]
-
-        XCTAssertEqual(EchoFilter.echoTokens(mic: mic, system: system), [[], [0]])
-    }
-
-    func test_cjkTokensAreComparedPerCharacter() {
-        let tokens = ["我们", "在", "杭州"].enumerated().map {
-            LiveEntry.TimedToken(text: $0.element, startMs: 1_000 + $0.offset * 200, endMs: 1_150 + $0.offset * 200)
-        }
-        let echoTokens = tokens.map { LiveEntry.TimedToken(text: $0.text, startMs: $0.startMs + 120, endMs: $0.endMs + 120) }
-
-        let echo = EchoFilter.echoTokens(mic: [.init(speakerId: "room_1", tokens: echoTokens)],
-                                         system: [.init(speakerId: "remote_1", tokens: tokens)])
-
-        XCTAssertEqual(echo, [Set(0..<3)])
     }
 
     // MARK: - Pipeline

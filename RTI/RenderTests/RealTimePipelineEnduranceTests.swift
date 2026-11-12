@@ -132,7 +132,7 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
                                   lastBufferAt: now, lastAudibleBufferAt: now, lastRMSLevel: 0.1, peakRMSLevel: 0.1)
             if block % 50 == 0, !pipeline.suspended {
                 // Exercise production callback aggregation/publication once per
-                // second. Leg-specific text avoids intentional echo filtering.
+                // second. Leg-specific text keeps the two legs apart.
                 let offset = block * 20
                 clients[0].onWords?([Self.word("Synthetic English microphone segment \(block / 50). ", ms: offset, language: "en")])
                 clients[1].onWords?([Self.word("合成普通话系统声音片段\(block / 50)。", ms: offset, language: "zh")])

@@ -95,8 +95,8 @@ final class LiveTranscriptPresentationTests: XCTestCase {
 
     /// Labels come from the id, never from order of appearance: the mic
     /// wearer is "You" even when someone else spoke first, and a remote
-    /// voice keeps its number when an earlier entry drops out (the echo pass
-    /// can remove an early mic entry after later audio arrives).
+    /// voice keeps its number when an earlier entry drops out of the
+    /// window.
     func test_labelsDoNotDependOnWhoSpokeFirst() {
         let withEarlyEntry = LiveTranscriptPresentation.rows(
             from: [

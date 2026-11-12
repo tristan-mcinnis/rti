@@ -177,3 +177,69 @@ final class VaultSearchTests: XCTestCase {
         XCTAssertEqual(folderOnly, 0)
     }
 }
+
+/// A scoped search with `broaden: false` (Auto's search) never widens to the
+/// whole vault. The default still does, so `search_vault` is unchanged.
+final class VaultSearchScopeTests: XCTestCase {
+    private var tmp: URL!
+    private var previousConfigHome: String?
+
+    override func setUpWithError() throws {
+        tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rti-vault-scope-\(UUID().uuidString)", isDirectory: true)
+            .resolvingSymlinksInPath()
+        let kb = tmp.appendingPathComponent("kb", isDirectory: true)
+        try write("# Acme status\nNothing about the topic.", to: kb.appendingPathComponent("projects/acme/00-status.md"))
+        try write("# Lantern pricing\nLantern pricing packaging decision for the battery.",
+                  to: kb.appendingPathComponent("projects/other/notes.md"))
+        let home = tmp.appendingPathComponent("config", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        let config: [String: Any] = [
+            "recordings_dir": kb.appendingPathComponent("meetings/recordings").path,
+            "project_roots": [String](),
+        ]
+        try JSONSerialization.data(withJSONObject: config).write(to: home.appendingPathComponent("config.json"))
+        previousConfigHome = ProcessInfo.processInfo.environment["RTI_CONFIG_HOME"]
+        setenv("RTI_CONFIG_HOME", home.path, 1)
+    }
+
+    override func tearDownWithError() throws {
+        if let previousConfigHome {
+            setenv("RTI_CONFIG_HOME", previousConfigHome, 1)
+        } else {
+            unsetenv("RTI_CONFIG_HOME")
+        }
+        try? FileManager.default.removeItem(at: tmp)
+    }
+
+    private func write(_ text: String, to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private let query = "lantern pricing packaging battery"
+
+    func testDefaultStillBroadensToTheWholeVault() async {
+        let found = await VaultSearch.retrieve(query: query, scopeRelativePath: "projects/acme")
+        XCTAssertEqual(found.results.map(\.relativePath), ["projects/other/notes.md"])
+        XCTAssertFalse(found.scopedHit)
+    }
+
+    func testBroadenFalseNeverLeavesTheScope() async {
+        let found = await VaultSearch.retrieve(query: query, scopeRelativePath: "projects/acme", broaden: false)
+        XCTAssertTrue(found.results.isEmpty, "\(found.results.map(\.relativePath))")
+    }
+
+    func testBroadenFalseWithAMissingScopeFindsNothing() async {
+        let found = await VaultSearch.retrieve(query: query, scopeRelativePath: "projects/gone", broaden: false)
+        XCTAssertTrue(found.results.isEmpty, "a missing scope must not fall back to the vault root")
+        XCTAssertFalse(VaultSearch.search(query: query, scopeRelativePath: "projects/gone").isEmpty,
+                       "the default keeps the old root fallback")
+    }
+
+    func testBroadenFalseStillFindsInScope() async {
+        let found = await VaultSearch.retrieve(query: query, scopeRelativePath: "projects/other", broaden: false)
+        XCTAssertEqual(found.results.map(\.relativePath), ["projects/other/notes.md"])
+        XCTAssertTrue(found.scopedHit)
+    }
+}

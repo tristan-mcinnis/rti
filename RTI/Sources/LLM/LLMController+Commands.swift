@@ -135,6 +135,7 @@ extension LLMController {
     /// only to the log when the write fails: the answer is still streaming and
     /// the user is owed the text, not a dialog.
     private func writeCheckpoint(turnID: UUID) async {
+        if streamBufferEntryID == turnID { flushStreamBuffer() }
         guard streaming, streamingEntryID == turnID,
               let pending = pendingTurn, pending.id == turnID,
               let conversationID = pending.conversationID,

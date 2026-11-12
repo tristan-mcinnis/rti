@@ -188,3 +188,14 @@ A release-optimized fixture alternated EN and ZH across mic/system, held the pre
 | 90 min, 44,160 tokens, 5,521 reading rows | 1.441 / 4.015 / 9.444 ms | 0.050 / 0.141 / 3.032 ms | 259.201 ms | 55.7 MiB |
 
 Before the incremental reader change, a comparable raw 90-minute replay spent 4.411 / 7.036 / 11.768 ms p50 / p95 / max on a final **before** forming the reading turns and peaked at 61 MiB. That narrower baseline cannot establish an end-to-end speedup ratio. The first uncached projection remains visible in the measurements. Repeat with `RTI_PROVIDER_REPLAY_MINUTES=90 python3 scripts/transcript-merge-benchmark.py --output /tmp/rti-provider-replay-90`. The result includes cold latency, steady CPU seconds, p50/p95/max times and peak RSS. The command exits unsuccessfully when steady final p95 exceeds 16 ms. [Replay source](../scripts/TranscriptMergeBenchmark.swift) · [runner](../scripts/transcript-merge-benchmark.py)
+
+### Re-run on the live-rail baseline (2026-11-12, after fd042d6b)
+
+The replay ran again with live labels off, `rowPauseMs` 500 and `liveSoftLimit` 80. The same host and runner were used. Each run took about 11 s, compile included. Sentence breaks make shorter rows, so the 90-minute fixture now gives 11,040 reading rows, not 5,521.
+
+| Fixture | Final p50 / p95 / max | Interim p50 / p95 / max | Cold full projection | Peak process RSS | Steady CPU |
+|---|---|---|---|---|---|
+| 10 min, 5,760 tokens, 1,440 rows | 0.127 / 0.352 / 1.044 ms | 0.010 / 0.014 / 0.116 ms | 18.693 ms | 13.2 MiB | 0.035 s |
+| 90 min, 44,160 tokens, 11,040 rows | 1.092 / 1.639 / 3.360 ms | 0.018 / 0.065 / 0.670 ms | 57.547 ms | 43.2 MiB | 0.275 s |
+
+The 90-minute final p95 stays far under the 16 ms gate. The numbers vary with host load, so they do not prove a speedup over the table above. The default merge run still matches 89 semantic snapshots (digest prefix `b17c38dab54d`). The replay excludes SwiftUI layout. It shows no projection cost that calls for the hidden-tab revision index, but it cannot clear the view cost. Repeat with `RTI_PROVIDER_REPLAY_MINUTES=10` and `=90` and the command above.

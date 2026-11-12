@@ -22,6 +22,8 @@ import RTICore
 /// for the meeting, each pass first runs a project-scoped vault search keyed on
 /// the new window so a card can cite what a participant actually said or what
 /// a report concluded — the "they just asked about X, here's our answer" case.
+/// That search uses `AutoVaultQuery` (a few salient terms, none for a short
+/// window) and never leaves the project.
 @Observable @MainActor
 final class AutoAssistController {
     static let shared = AutoAssistController()
@@ -328,11 +330,16 @@ final class AutoAssistController {
         // Project-scoped retrieval: pull what the project's vault knows about
         // what's being discussed right now, so a RECALL card can be real. Only
         // when a project is picked (scope present) — keeps generic meetings cheap.
+        // The query is the new window's 12 most salient terms, and a window
+        // under 25 words searches nothing. The search stays in the project:
+        // it never widens to the whole vault (`search_vault` still does).
         let meeting = MeetingContextStore.shared
         var vaultMaterial: String?
         var citations: [VaultSearch.Citation] = []
-        if let scope = meeting.workstreamScopePath {
-            let found = await VaultSearch.retrieve(query: window, scopeRelativePath: scope, citeable: true)
+        if let scope = meeting.workstreamScopePath,
+           let query = AutoVaultQuery.query(from: TranscriptContext.spokenText(sinceMs: sinceMs)) {
+            let found = await VaultSearch.retrieve(query: query, scopeRelativePath: scope, citeable: true,
+                                                   broaden: false)
             guard passGeneration == generation else { return nil }
             // Only inject a genuine hit, not the "nothing matched" sentinel.
             if !found.isEmpty {

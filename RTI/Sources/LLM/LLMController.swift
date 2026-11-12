@@ -315,6 +315,15 @@ final class LLMController {
     /// death then leaves a recoverable record instead of nothing.
     var checkpointTask: Task<Void, Never>?
     static let checkpointIntervalNanoseconds: UInt64 = 10 * 1_000_000_000
+    /// Streamed deltas wait here, then reach the answer in groups, so the
+    /// view re-parses the Markdown about every 80 ms instead of per token.
+    /// Every end of a turn (finish, error, Stop) flushes it first. Internal
+    /// so a test can set a long interval.
+    @ObservationIgnored var streamCoalescer = StreamCoalescer()
+    /// The answer the buffered text belongs to.
+    @ObservationIgnored var streamBufferEntryID: UUID?
+    /// Writes a buffer that no later delta flushed.
+    @ObservationIgnored var streamFlushTimer: Timer?
 
     /// A question that could not be saved. The composer puts it back in the
     /// field so a failed send never loses what the user typed.

@@ -120,11 +120,15 @@ public enum VaultSearch {
     /// and the material the model reads, from one pass. `citeable` prints each
     /// document's handle in the material so a citation names an exact ID instead
     /// of a document name the model types from memory. Pass `citeable: false`
-    /// (the default) for the existing format.
+    /// (the default) for the existing format. `broaden` (default true) lets a
+    /// scoped search with no hit fall back to the whole notes folder, as the
+    /// `search_vault` tool does. With `broaden: false` a scoped search stays in
+    /// its scope: no fallback, and a scope that does not resolve finds nothing.
     public static func retrieve(
         query: String,
         scopeRelativePath: String? = nil,
-        citeable: Bool = false
+        citeable: Bool = false,
+        broaden: Bool = true
     ) async -> Retrieval {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -136,10 +140,10 @@ public enum VaultSearch {
             )
         }
         // Keyword scan. Scoped first; if the project has no match, broaden to
-        // the whole notes folder.
+        // the whole notes folder (unless the caller asked to stay in scope).
         var inScope = scopeRelativePath != nil
-        var results = await grep(query: trimmed, scopeRelativePath: scopeRelativePath)
-        if results.isEmpty, scopeRelativePath != nil {
+        var results = await grep(query: trimmed, scopeRelativePath: scopeRelativePath, broaden: broaden)
+        if results.isEmpty, scopeRelativePath != nil, broaden {
             inScope = false
             results = await grep(query: trimmed, scopeRelativePath: nil)
         }
@@ -161,10 +165,10 @@ public enum VaultSearch {
     }
 
     /// Async wrapper over the synchronous `search` core, off the main thread.
-    private static func grep(query: String, scopeRelativePath: String?) async -> [Result] {
+    private static func grep(query: String, scopeRelativePath: String?, broaden: Bool = true) async -> [Result] {
         await withCheckedContinuation { (cont: CheckedContinuation<[Result], Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                cont.resume(returning: search(query: query, scopeRelativePath: scopeRelativePath))
+                cont.resume(returning: search(query: query, scopeRelativePath: scopeRelativePath, broaden: broaden))
             }
         }
     }
@@ -176,7 +180,9 @@ public enum VaultSearch {
     /// matches.
     /// `scopeRelativePath` restricts the walk to a project subtree under
     /// `databases/` (e.g. `projects/foo`); nil scans the whole knowledge base.
-    public static func search(query: String, scopeRelativePath: String? = nil) -> [Result] {
+    /// A scope folder that does not exist widens to the whole knowledge base
+    /// only when `broaden` is true; with false it finds nothing.
+    public static func search(query: String, scopeRelativePath: String? = nil, broaden: Bool = true) -> [Result] {
         guard let databases = VaultWorkstreamStore.databasesDir() else { return [] }
         let terms = tokenize(query)
         guard !terms.isEmpty else { return [] }
@@ -195,7 +201,8 @@ public enum VaultSearch {
                 return ProjectRoots.resolve(scope, roots: roots).map { [($0, true)] } ?? []
             }
             let dir = databases.appendingPathComponent(scope, isDirectory: true)
-            return [((try? dir.checkResourceIsReachable()) == true ? dir : databases, false)]
+            if (try? dir.checkResourceIsReachable()) == true { return [(dir, false)] }
+            return broaden ? [(databases, false)] : []
         }()
 
         // Phase 1 — cheap walk to collect candidate files (no content reads).
@@ -313,6 +320,15 @@ public enum VaultSearch {
     /// (overlapping 2-grams), the standard way to get recall on Chinese text
     /// (`什么时候` → 什么, 么时, 时候). A lone CJK char stands as its own token.
     public static func tokenize(_ query: String) -> [String] {
+        // De-dup, drop a few high-frequency English stopwords that only add noise.
+        let stop: Set<String> = ["the", "and", "for", "what", "did", "we", "about", "with", "this", "that", "our", "tell", "me", "give", "have", "done", "some", "from"]
+        var seen = Set<String>()
+        return rawTokens(query).filter { !stop.contains($0) && seen.insert($0).inserted }
+    }
+
+    /// Every search token in order, repeats and stopwords kept: the shared
+    /// split under `tokenize` and `AutoVaultQuery`, which counts repeats.
+    static func rawTokens(_ query: String) -> [String] {
         var tokens: [String] = []
         var latin = ""
         var cjk: [Character] = []
@@ -344,10 +360,7 @@ public enum VaultSearch {
         }
         flushLatin()
         flushCJK()
-        // De-dup, drop a few high-frequency English stopwords that only add noise.
-        let stop: Set<String> = ["the", "and", "for", "what", "did", "we", "about", "with", "this", "that", "our", "tell", "me", "give", "have", "done", "some", "from"]
-        var seen = Set<String>()
-        return tokens.filter { !stop.contains($0) && seen.insert($0).inserted }
+        return tokens
     }
 
     /// About 60% of the query must appear, so one common word cannot pull a
@@ -466,7 +479,7 @@ public enum VaultSearch {
     }
 }
 
-private extension Character {
+extension Character {
     /// True for CJK ideographs / kana / hangul — scripts that aren't space
     /// delimited, so each character is treated as its own token.
     var isCJK: Bool {
