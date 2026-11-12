@@ -4,29 +4,10 @@ import Foundation
 /// raw speaker label strings (`"self"`, `"room_1"`, `"remote_1"`, …).
 public enum SpeakerLabelMapping {
 
-    /// Map a Soniox speaker index + channel to a raw label string.
-    /// - mic channel: speaker 1 (first identified voice, typically the user
-    ///   wearing the mic) → `"self"`; additional speakers → `"room_N"`. A
-    ///   missing diarization label (speaker 0) also falls back to `"self"`.
-    /// - system channel: `"remote_N"`, numbered like Soniox numbers them, so
-    ///   its first voice (speaker 1) is `remote_1`; a missing label (speaker 0)
-    ///   folds into `remote_1` as it does into `self` on the mic. System ids
-    ///   never share a mic label. (Mapping `speaker + 1` made the first remote
-    ///   voice `remote_2` and split one voice in two whenever a token came
-    ///   without a label.)
-    ///
-    /// Why the mic branch isn't hard-coded to "self": Soniox diarization fires
-    /// on the mic stream too, so in-person meetings or speakerphone calls
-    /// surface multiple speakers on the same physical input. Collapsing them
-    /// all to "self" loses that signal.
+    /// Live capture knows the audio leg. Only the system socket requests clusters.
     public static func rawLabel(speaker: Int, channel: String) -> String {
-        switch channel {
-        case "system":
-            return "remote_\(max(speaker, 1))"
-        default:
-            if speaker <= 1 { return "self" }
-            return "room_\(speaker - 1)"
-        }
+        guard channel == "system" else { return "self" }
+        return speaker > 0 ? "remote_\(speaker)" : "remote"
     }
 
     /// Map a Soniox speaker index (no channel info — file mode / mic mode)
@@ -42,6 +23,7 @@ public enum SpeakerLabelMapping {
     /// `speaker-names.json` is keyed by them.
     public static func displayLabel(forRawKey key: String) -> String? {
         if key == "self" { return "You" }
+        if key == "remote" { return "Them" }
         if let n = numericSuffix(of: key, afterPrefix: "room_") { return "Room speaker \(n)" }
         if let n = numericSuffix(of: key, afterPrefix: "remote_") { return "Remote speaker \(n)" }
         if let n = numericSuffix(of: key, afterPrefix: "them_") { return "Speaker \(n)" }
@@ -53,7 +35,8 @@ public enum SpeakerLabelMapping {
     /// Sessions browser uses it to give an archived speaker the dot colour
     /// the live transcript gave them.
     public static func rawKey(forDisplayLabel label: String) -> String? {
-        if label == "You" { return "self" }
+        if label == "You" || label == "Me" { return "self" }
+        if label == "Them" || label == "Remote speaker" { return "remote" }
         for (prefix, raw) in [("Room speaker ", "room_"), ("Remote speaker ", "remote_"), ("Speaker ", "them_")] {
             if let n = numericSuffix(of: label, afterPrefix: prefix), n >= 1 { return "\(raw)\(n)" }
         }
@@ -96,5 +79,40 @@ public enum SpeakerLabelMapping {
     private static func numericSuffix(of key: String, afterPrefix prefix: String) -> Int? {
         guard key.hasPrefix(prefix) else { return nil }
         return Int(key.dropFirst(prefix.count))
+    }
+}
+
+
+/// A leg is observed by RTI. A numbered cluster is a provider hypothesis.
+public enum SpeakerEvidence: String, Codable, Sendable {
+    case legOnly
+    case unverified
+    case confirmed
+
+    public static func leg(for speakerID: String) -> String {
+        switch speakerID {
+        case "note": return "Note"
+        case "self", "Me", "You": return "Me"
+        default: return speakerID.hasPrefix("room_") || speakerID.hasPrefix("Room speaker ") ? "Me" : "Them"
+        }
+    }
+
+    public static func resolve(speakerID: String, named: Bool) -> Self {
+        if speakerID == "remote" || speakerID == "Them" || speakerID == "Remote speaker" || speakerID == "note" {
+            return .legOnly
+        }
+        if named { return .confirmed }
+        return speakerID == "self" || speakerID == "You" || speakerID == "Me" ? .legOnly : .unverified
+    }
+}
+
+public struct SessionSpeakerPolicy: Codable, Equatable, Sendable {
+    public var labelsEnabled: Bool
+    /// A local review hint. It never creates a speaker or verifies a name.
+    public var expectedCount: Int?
+
+    public init(labelsEnabled: Bool = true, expectedCount: Int? = nil) {
+        self.labelsEnabled = labelsEnabled
+        self.expectedCount = expectedCount.flatMap { $0 > 0 ? $0 : nil }
     }
 }

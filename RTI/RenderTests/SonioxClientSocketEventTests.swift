@@ -153,6 +153,18 @@ final class SonioxClientSocketEventTests: XCTestCase {
         client.disconnect()
     }
 
+    func testFinishWhileDisconnectedRetiresScheduledRetry() throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable)
+        let socket = makeSocket()
+        client.adoptSocketForTesting(socket)
+        defer { client.disconnect() }
+        client.didReceive(event: .peerClosed, client: socket)
+        let retry = try XCTUnwrap(client.pendingReconnectForTesting())
+        client.finalize()
+        XCTAssertTrue(retry.isCancelled)
+        XCTAssertNil(client.pendingReconnectForTesting())
+    }
+
     func testQueuedRetryCannotReplaceNewerSocket() async throws {
         let client = SonioxClient(apiKey: "test", url: unreachable)
         let old = makeSocket()

@@ -239,7 +239,7 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(p.liveEntries.map(\.text), ["alpha beta gamma"])
         p.process(words: [word(" gamma", speaker: 0, start: 2_250, end: 2_600)], channel: "system")
         XCTAssertEqual(p.liveEntries.map(\.text), ["alpha beta", " gamma"])
-        XCTAssertTrue(p.liveEntries.allSatisfy { $0.speakerId.hasPrefix("remote_") })
+        XCTAssertTrue(p.liveEntries.allSatisfy { SpeakerEvidence.leg(for: $0.speakerId) == "Them" })
     }
 
     func test_outOfOrderReconnectedSystemContextRechecksOldMicWindow() {
@@ -251,7 +251,7 @@ final class TranscriptPipelineTests: XCTestCase {
         p.restartStream(channel: "system", atMs: 1_500)
         p.process(words: [word("alpha beta gamma delta", speaker: 0, start: 0, end: 400)], channel: "system")
         XCTAssertEqual(p.liveEntries.map(\.text), ["alpha beta gamma delta", "a later unrelated system contribution"])
-        XCTAssertTrue(p.liveEntries.allSatisfy { $0.speakerId.hasPrefix("remote_") })
+        XCTAssertTrue(p.liveEntries.allSatisfy { SpeakerEvidence.leg(for: $0.speakerId) == "Them" })
     }
 
     func test_echoTrimmingRechecksComparisonForSameEntryIdentity() {
@@ -265,7 +265,7 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(p.liveEntries.first?.text, "echo room contribution")
         p.restartStream(channel: "system", atMs: 0)
         p.process(words: [word("echo", speaker: 0, start: 0, end: 100)], channel: "system")
-        let remainingMic = p.liveEntries.first { $0.speakerId == "room_1" }
+        let remainingMic = p.liveEntries.first { $0.speakerId == "self" }
         XCTAssertEqual(remainingMic?.id, micID)
         XCTAssertEqual(remainingMic?.text, " room contribution")
         XCTAssertEqual(remainingMic?.startMs, 3_000)
@@ -448,6 +448,29 @@ final class TranscriptPipelineTests: XCTestCase {
         )
         XCTAssertEqual(rows.map(\.original), ["before", "after"])
         XCTAssertEqual(rows.map(\.speakerLabel), ["Sam", "Sam"])
+    }
+
+    func testMissingSystemLabelNeverInheritsAnAdjacentName() {
+        let pipeline = TranscriptPipeline()
+        pipeline.process(words: [
+            word("First.", speaker: 1, start: 100, end: 150),
+            word("Second.", speaker: 0, start: 200, end: 250),
+        ], channel: "system")
+        XCTAssertEqual(pipeline.liveEntries.map(\.speakerId), ["remote_1", "remote"])
+    }
+
+    func testIndependentRespondentsRepeatingTheSameSentenceAreRetained() {
+        let pipeline = TranscriptPipeline()
+        for speaker in 1...2 {
+            pipeline.process(words: [word("我的茶杯是蓝色的", speaker: speaker, start: speaker * 1000, end: speaker * 1000 + 500)], channel: "system")
+        }
+        XCTAssertEqual(pipeline.liveEntries.map(\.speakerId), ["remote_1", "remote_2"])
+        pipeline.restartStream(channel: "system", atMs: 4000)
+        pipeline.process(words: [word("Next group.", speaker: 1, start: 30, end: 100)], channel: "system")
+        XCTAssertEqual(pipeline.liveEntries.last?.speakerId, "remote_3")
+        pipeline.systemSpeakerLabelsEnabled = false
+        pipeline.process(words: [word("很轻。", speaker: 2, start: 230, end: 400)], channel: "system")
+        XCTAssertEqual(pipeline.liveEntries.last?.speakerId, "remote")
     }
 
     func test_restartStream_onTheSystemLeg_leavesTheMicLegAlone() {

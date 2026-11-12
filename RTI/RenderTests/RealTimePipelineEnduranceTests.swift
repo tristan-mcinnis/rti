@@ -32,7 +32,7 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
         let microphone = InjectedMicrophoneCapture()
         let system = InjectedSystemCapture()
         var clients: [InjectedSTTClient] = []
-        let pipeline = AudioPipeline(audio: microphone, hasSTTKey: { true }, makeSTTClient: { _, _ in
+        let pipeline = AudioPipeline(audio: microphone, hasSTTKey: { true }, makeSTTClient: { _, _, _ in
             let client = InjectedSTTClient()
             clients.append(client)
             return client

@@ -26,6 +26,22 @@ public final class TranscriptAggregator {
     private var lastEndMs: Int = 0
     private var zeroSeen: Set<String> = []
     private var streamID = UUID()
+    var labelsEnabled = true
+    private var largestCluster = 0
+    private var clusterOffset = 0
+
+    private func speakerKey(_ index: Int) -> String {
+        guard channel == "system", labelsEnabled, index > 0 else {
+            return SpeakerLabelMapping.rawLabel(speaker: 0, channel: channel)
+        }
+        // Provider IDs start over on each socket. A new cluster must never inherit
+        // the prior stream's confirmed name or seat merely by reusing its number.
+        let (number, overflow) = clusterOffset.addingReportingOverflow(index)
+        guard !overflow else { return "remote" }
+        largestCluster = max(largestCluster, number)
+        return SpeakerLabelMapping.rawLabel(speaker: number, channel: channel)
+    }
+
     private let channel: String
 
     /// Added to each emitted entry's `startMs` to put this channel on a
@@ -64,10 +80,10 @@ public final class TranscriptAggregator {
         let interims = words.filter { !$0.isFinal }
 
         if !finals.isEmpty {
-            let runs = SpeakerTurn.collapse(finals)
+            let runs = SpeakerTurn.collapse(finals, keepUnlabelledSeparate: channel == "system" && labelsEnabled)
             let newEntries = runs.map { run in
                 (run.translationStatus == "translation" && run.words.allSatisfy { $0.endMs == 0 }, LiveEntry(
-                    speakerId: SpeakerLabelMapping.rawLabel(speaker: run.speaker, channel: channel),
+                    speakerId: speakerKey(run.speaker),
                     text: run.text,
                     startMs: run.startMs + startMsOffset,
                     confidence: run.confidence,
@@ -113,10 +129,10 @@ public final class TranscriptAggregator {
             interimText = nil
             interimSegments = []
         } else {
-            let runs = SpeakerTurn.collapse(interims)
+            let runs = SpeakerTurn.collapse(interims, keepUnlabelledSeparate: channel == "system" && labelsEnabled)
             interimSegments = runs.map {
                 LiveTranscriptPresentation.InterimSegment(
-                    speakerId: SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: channel),
+                    speakerId: speakerKey($0.speaker),
                     text: $0.text,
                     textOrigin: .providerTokens,
                     startMs: $0.startMs + startMsOffset,
@@ -129,7 +145,7 @@ public final class TranscriptAggregator {
                 )
             }
             interimText = runs.map {
-                "\(SpeakerLabelMapping.rawLabel(speaker: $0.speaker, channel: channel)): \($0.text)"
+                "\(speakerKey($0.speaker)): \($0.text)"
             }.joined(separator: "  ")
         }
 
@@ -137,6 +153,8 @@ public final class TranscriptAggregator {
     }
 
     public func reset() {
+        largestCluster = 0
+        clusterOffset = 0
         entries = []
         normalizedEntries = []
         untimedTranslations = []
@@ -155,6 +173,7 @@ public final class TranscriptAggregator {
     /// would be dropped by the `endMs > lastEndMs` watermark and/or sort to the
     /// top of the transcript.
     public func prepareForReconnect() {
+        clusterOffset = largestCluster
         startMsOffset += lastEndMs
         lastEndMs = 0
         zeroSeen = []
@@ -170,6 +189,7 @@ public final class TranscriptAggregator {
     /// Without this, every final of the new stream was dropped until its clock
     /// passed the old stream's last `endMs`.
     public func restartStream(atMs: Int) {
+        clusterOffset = largestCluster
         startMsOffset = atMs
         lastEndMs = 0
         zeroSeen = []

@@ -95,7 +95,7 @@ final class AudioPipeline {
 
     private let audio: MicrophoneCapturing
     private let hasSTTKey: () -> Bool
-    private let makeSTTClient: (TranslationConfig?, SonioxContext?) -> STTClient
+    private let makeSTTClient: (TranslationConfig?, SonioxContext?, Bool) -> STTClient
     private let makeSystemCapture: (() -> SystemAudioCapturing)?
     private let systemAudioEnabled: Bool
     private let now: () -> Date
@@ -226,8 +226,8 @@ final class AudioPipeline {
     init(
         audio: MicrophoneCapturing = AudioCaptureManager(),
         hasSTTKey: @escaping () -> Bool = { STTProviders.activeHasKey },
-        makeSTTClient: @escaping (TranslationConfig?, SonioxContext?) -> STTClient = {
-            STTProviders.makeActiveClient(translationConfig: $0, context: $1)
+        makeSTTClient: @escaping (TranslationConfig?, SonioxContext?, Bool) -> STTClient = {
+            STTProviders.makeActiveClient(translationConfig: $0, context: $1, diarize: $2)
         },
         makeSystemCapture: (() -> SystemAudioCapturing)? = nil,
         systemAudioEnabled: Bool = true,
@@ -254,6 +254,8 @@ final class AudioPipeline {
     /// Open the durable recording legs and the mic Soniox client. Does
     /// **not** start capture yet — call `start()` after this returns.
     var translationConfig: TranslationConfig?
+    var systemSpeakerLabelsEnabled = true
+    var activeStreamingLegs: Set<String> { systemSTTConnected ? ["mic", "system"] : ["mic"] }
 
     /// What Soniox is told about this meeting. Set before `prepare`.
     var speechContext: SonioxContext?
@@ -282,7 +284,7 @@ final class AudioPipeline {
         recorder.onWriteFailure = onWriteFailure
         try recorder.open(in: recordingDirectory)
 
-        let client = makeSTTClient(translationConfig, speechContext)
+        let client = makeSTTClient(translationConfig, speechContext, false)
         soniox = client
         bindTranscriptionCallbacks(client, system: false)
         client.connect()
@@ -334,7 +336,7 @@ final class AudioPipeline {
             guard let self, isCapturing else { return }
             try? await Task.sleep(nanoseconds: systemAudioStartupDelayNs)
             guard isCapturing, captureGeneration == generation else { return }
-            let sysClient = makeSTTClient(translationConfig, speechContext)
+            let sysClient = makeSTTClient(translationConfig, speechContext, systemSpeakerLabelsEnabled)
             systemSoniox = sysClient
             bindTranscriptionCallbacks(sysClient, system: true)
             // Connect only once the backend proves it delivers PCM.
@@ -822,7 +824,7 @@ final class AudioPipeline {
         let oldMic = soniox
         soniox = nil
         oldMic?.disconnect()
-        let mic = makeSTTClient(translationConfig, speechContext)
+        let mic = makeSTTClient(translationConfig, speechContext, false)
         soniox = mic
         bindTranscriptionCallbacks(mic, system: false)
         mic.connect()
@@ -830,7 +832,7 @@ final class AudioPipeline {
         if let oldSystem = systemSoniox {
             systemSoniox = nil
             oldSystem.disconnect()
-            let sys = makeSTTClient(translationConfig, speechContext)
+            let sys = makeSTTClient(translationConfig, speechContext, systemSpeakerLabelsEnabled)
             systemSoniox = sys
             bindTranscriptionCallbacks(sys, system: true)
             if systemSTTConnected { sys.connect() }

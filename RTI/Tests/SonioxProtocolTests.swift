@@ -7,6 +7,16 @@ final class SonioxProtocolTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
+    func testMicAndAnonymousFileTurnRetainProviderTimeWithoutDiarization() throws {
+        let wire = try JSONSerialization.jsonObject(with: JSONEncoder().encode(SonioxConfigMessage.default(diarize: false))) as? [String: Any]
+        XCTAssertEqual(wire?["enable_speaker_diarization"] as? Bool, false)
+        let data = Data(#"{"tokens":[{"text":"很轻。","speaker":"2","start_ms":1250,"end_ms":1400}]}"#.utf8)
+        let anonymous = SessionSpeakerPolicy(labelsEnabled: false, expectedCount: 4)
+        XCTAssertEqual(try SonioxFileTranscript.timedText(data: data, system: true, policy: anonymous), "[0:01.250] Them: 很轻。")
+        XCTAssertEqual(try SonioxFileTranscript.timedText(data: data, system: false, policy: .init()), "[0:01.250] Me: 很轻。")
+        XCTAssertEqual(try SonioxFileTranscript.timedText(data: data, system: true, policy: .init()), "[0:01.250] Speaker 2: 很轻。")
+    }
+
     func test_defaultConfigUsesOnlyCurrentDiarizationField() throws {
         let json = try defaultConfigJSON()
 

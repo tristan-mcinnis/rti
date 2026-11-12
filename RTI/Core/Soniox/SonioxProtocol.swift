@@ -149,7 +149,7 @@ public struct SonioxConfigMessage: Codable {
     let translation: TranslationConfig?
     let context: SonioxContext?
 
-    public static func `default`(translation: TranslationConfig? = nil, context: SonioxContext? = nil) -> SonioxConfigMessage {
+    public static func `default`(translation: TranslationConfig? = nil, context: SonioxContext? = nil, diarize: Bool = true) -> SonioxConfigMessage {
         // en+zh always: meetings here code-switch constantly, and the batch
         // lane has hinted both since day one. Hints bias
         // recognition, they don't force a language.
@@ -171,7 +171,7 @@ public struct SonioxConfigMessage: Codable {
             sample_rate: AudioFormat.sampleRateHz,
             num_channels: 1,
             language_hints: Array(hints),
-            enable_speaker_diarization: true,
+            enable_speaker_diarization: diarize,
             enable_language_identification: true,
             translation: translation,
             context: context
@@ -208,5 +208,47 @@ public struct SonioxTranscriptMessage: Decodable {
                 sourceLanguage: source_language
             )
         }
+    }
+}
+
+
+/// Converts the local file adapter's token JSON into timestamped input for the
+/// existing two-leg merger. Unlabelled utterances retain their actual offsets.
+public enum SonioxFileTranscript {
+    public static func timedText(data: Data, system: Bool, policy: SessionSpeakerPolicy) throws -> String {
+        let reply = try JSONDecoder().decode(SonioxTranscriptMessage.self, from: data)
+        guard let tokens = reply.tokens else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        var lines: [String] = []
+        var text = ""
+        var label = ""
+        var startMs = 0
+        var previousEnd = 0
+        func flush() {
+            let spoken = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !spoken.isEmpty else { return }
+            let time = TimeFormat.elapsedMs(startMs) + String(format: ".%03d", max(0, startMs) % 1000)
+            lines.append("[\(time)] \(label): \(spoken)")
+        }
+        for token in tokens {
+            let word = token.toSonioxWord()
+            guard word.translationStatus != "translation", !word.text.isEmpty, word.text != "<end>" else { continue }
+            let speaker: String
+            if !system { speaker = "Me" }
+            else if !policy.labelsEnabled || word.speaker == 0 { speaker = "Them" }
+            else { speaker = "Speaker \(word.speaker)" }
+            if text.isEmpty || label != speaker || word.startMs - previousEnd > 1500 ||
+                word.startMs - startMs > 20000 || text.last.map({ "。！？.!?".contains($0) }) == true {
+                flush()
+                text = ""
+                startMs = word.startMs
+                label = speaker
+            }
+            text += word.text
+            previousEnd = max(word.startMs, word.endMs)
+        }
+        flush()
+        return lines.joined(separator: "\n")
     }
 }

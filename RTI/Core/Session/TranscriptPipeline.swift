@@ -45,6 +45,11 @@ public final class TranscriptPipeline {
         }
     }
 
+    public var systemSpeakerLabelsEnabled: Bool {
+        get { systemAggregator.labelsEnabled }
+        set { systemAggregator.labelsEnabled = newValue }
+    }
+
     public init() {}
 
     public var liveEntries: [LiveEntry] {
@@ -210,7 +215,7 @@ public final class TranscriptPipeline {
         let entry = merged.entry, form = ComparisonForm(merged.dedupText)
         let window = out.indices.reversed().prefix { entry.startMs - out[$0].startMs <= dedupWindowMs }
         guard isDedupCandidate(entry), let m = window.first(where: {
-            isDedupCandidate(out[$0]) && out[$0].speakerId != entry.speakerId && nearDuplicate(forms[$0], form)
+            isDedupCandidate(out[$0]) && isMicEntry(out[$0]) != isMicEntry(entry) && nearDuplicate(forms[$0], form)
         }) else {
             out.append(entry)
             forms.append(form)

@@ -24,7 +24,7 @@ extension SpeakerTurn {
     /// Speaker 0 means Soniox gave the token no diarization label. Such a
     /// token belongs to the turn it sits in and never starts a new speaker;
     /// a turn that opens unlabelled takes the first label it meets.
-    public static func collapse(_ words: [SonioxWord]) -> [SpeakerTurn] {
+    public static func collapse(_ words: [SonioxWord], keepUnlabelledSeparate: Bool = false) -> [SpeakerTurn] {
         guard !words.isEmpty else { return [] }
         var groups: [[SonioxWord]] = []
         var groupSpeakers: [Int] = []
@@ -34,7 +34,7 @@ extension SpeakerTurn {
             // Start a new group on speaker change OR when crossing
             // original ↔ translation boundaries (they need separate
             // visual entries).
-            let sameSpeaker = word.speaker == 0 || speaker == 0 || speaker == word.speaker
+            let sameSpeaker = speaker == word.speaker || (!keepUnlabelledSeparate && (word.speaker == 0 || speaker == 0))
             // Language splits only matter when translation pairs the rows;
             // otherwise a code-switched sentence stays one row.
             let sameLanguage = word.translationStatus == "none" || last?.language == word.language

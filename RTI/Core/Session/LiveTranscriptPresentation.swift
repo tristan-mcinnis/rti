@@ -65,6 +65,7 @@ public enum LiveTranscriptPresentation {
             return name
         }
         if speakerId == "self" { return "You" }
+        if speakerId == "remote" { return "Them" }
         if let n = numericSuffix(of: speakerId, afterPrefix: "remote_") { return "Speaker \(n)" }
         if let n = numericSuffix(of: speakerId, afterPrefix: "them_") { return "Speaker \(n)" }
         if let n = numericSuffix(of: speakerId, afterPrefix: "room_") { return "Room speaker \(n)" }
@@ -242,7 +243,7 @@ public enum LiveTranscriptPresentation {
     /// A raw speaker id followed by ": ", at the start or after the two-space
     /// separator the aggregator puts between parts.
     private static let interimMarker = try! NSRegularExpression(
-        pattern: #"(?:^|(?<=  ))(self|(?:room|remote|them)_[0-9]+): "#
+        pattern: #"(?:^|(?<=  ))(self|remote|(?:room|remote|them)_[0-9]+): "#
     )
 
     private static func numericSuffix(of key: String, afterPrefix prefix: String) -> Int? {

@@ -388,7 +388,7 @@ final class AudioPipelineRecoveryTests: XCTestCase {
 
         init(system: InjectedSystemCapture? = nil, recorder: PipelineRecording = MeetingRecorder()) throws {
             directory = FileManager.default.temporaryDirectory.appendingPathComponent("rti-pipeline-recovery-\(UUID().uuidString)")
-            pipeline = AudioPipeline(audio: audio, hasSTTKey: { true }, makeSTTClient: { [unowned self] _, _ in
+            pipeline = AudioPipeline(audio: audio, hasSTTKey: { true }, makeSTTClient: { [unowned self] _, _, _ in
                 let client = InjectedSTTClient()
                 clients.append(client)
                 return client

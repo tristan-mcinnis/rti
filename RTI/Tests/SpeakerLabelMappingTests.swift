@@ -42,7 +42,7 @@ final class SpeakerLabelMappingTests: XCTestCase {
         )
         XCTAssertEqual(
             SpeakerLabelMapping.displayLabel(forRawKey: SpeakerLabelMapping.rawLabel(speaker: 2, channel: "mic")),
-            "Room speaker 1"
+            "You"
         )
         XCTAssertEqual(
             SpeakerLabelMapping.displayLabel(forRawKey: SpeakerLabelMapping.rawLabel(speaker: 4)),
@@ -55,10 +55,17 @@ final class SpeakerLabelMappingTests: XCTestCase {
     /// as mic 0 and 1 are both `self`.
     func testSystemLegNumbersVoicesFromOne() {
         XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 1, channel: "system"), "remote_1")
-        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 0, channel: "system"), "remote_1")
+        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 0, channel: "system"), "remote")
         XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 3, channel: "system"), "remote_3")
         XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 1, channel: "mic"), "self")
-        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 2, channel: "mic"), "room_1")
+        XCTAssertEqual(SpeakerLabelMapping.rawLabel(speaker: 2, channel: "mic"), "self")
+    }
+
+    func testUnverifiedClusterCanNeverSupplyANamedClaim() {
+        XCTAssertEqual(SpeakerEvidence.resolve(speakerID: "remote_2", named: false), .unverified)
+        XCTAssertEqual(SpeakerEvidence.resolve(speakerID: "remote_2", named: true), .confirmed)
+        XCTAssertEqual(SpeakerEvidence.resolve(speakerID: "remote", named: true), .legOnly)
+        XCTAssertEqual(SpeakerEvidence.leg(for: "room_2"), "Me")
     }
 
     // MARK: displayKeyedNames

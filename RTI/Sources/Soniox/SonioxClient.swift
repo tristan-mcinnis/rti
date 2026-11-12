@@ -40,6 +40,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
 
     private let apiKey: String
     private let url: URL
+    private let diarize: Bool
     private let translationConfig: TranslationConfig?
     private let context: SonioxContext?
     private let lock = NSLock()
@@ -68,7 +69,8 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     private static let maxRetries = 5
     private static let retryDelays: [TimeInterval] = [1, 2, 4, 8, 8]
 
-    init(apiKey: String, url: URL, translationConfig: TranslationConfig? = nil, context: SonioxContext? = nil) {
+    init(apiKey: String, url: URL, translationConfig: TranslationConfig? = nil, context: SonioxContext? = nil, diarize: Bool = true) {
+        self.diarize = diarize
         self.apiKey = apiKey
         self.url = url
         self.translationConfig = translationConfig
@@ -136,14 +138,10 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     /// clean close (code=1000) during the wait window does not trigger a reconnect.
     func finalize() {
         lock.lock()
-        guard let socket = socket, isConnected else {
-            lock.unlock()
-            return
-        }
         intentionalDisconnect = true
         retryWorkItem?.cancel()
         retryWorkItem = nil
-        socket.write(string: "")
+        if isConnected { socket?.write(string: "") }
         lock.unlock()
     }
 
@@ -338,7 +336,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
 
     private func sendConfig(generation: UInt64) {
         do {
-            let config = SonioxConfigMessage.default(translation: translationConfig, context: context)
+            let config = SonioxConfigMessage.default(translation: translationConfig, context: context, diarize: diarize)
             let data = try JSONEncoder().encode(config)
             if let string = String(data: data, encoding: .utf8) {
                 lock.lock()
@@ -412,7 +410,7 @@ protocol STTClient: AnyObject, Sendable {
 struct STTProviderConfig: Sendable {
     let id: String
     let displayName: String
-    let makeClient: @Sendable (_ translationConfig: TranslationConfig?, _ context: SonioxContext?) -> STTClient
+    let makeClient: @Sendable (_ translationConfig: TranslationConfig?, _ context: SonioxContext?, _ diarize: Bool) -> STTClient
 }
 
 /// A separate provider lane for offline / post-hoc transcript upgrade. This is
@@ -428,9 +426,9 @@ struct AsyncTranscriptProviderOption: Identifiable, Sendable {
 /// only; the separate async transcript-upgrade lane is modeled below.
 enum STTProviders {
     static var soniox: STTProviderConfig {
-        STTProviderConfig(id: "soniox", displayName: "Soniox") { tc, context in
+        STTProviderConfig(id: "soniox", displayName: "Soniox") { tc, context, diarize in
             SonioxClient(apiKey: Secrets.sonioxAPIKey, url: SonioxClient.defaultURL,
-                         translationConfig: tc, context: context)
+                         translationConfig: tc, context: context, diarize: diarize)
         }
     }
 
@@ -446,8 +444,8 @@ enum STTProviders {
         return !Secrets.sonioxAPIKey.isEmpty
     }
 
-    static func makeActiveClient(translationConfig: TranslationConfig?, context: SonioxContext?) -> STTClient {
-        soniox.makeClient(translationConfig, context)
+    static func makeActiveClient(translationConfig: TranslationConfig?, context: SonioxContext?, diarize: Bool) -> STTClient {
+        soniox.makeClient(translationConfig, context, diarize)
     }
 }
 
