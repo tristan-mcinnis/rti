@@ -45,7 +45,7 @@ final class SpeakerTurnTests: XCTestCase {
         XCTAssertEqual(turns[0].text, "hi")
         XCTAssertEqual(turns[0].startMs, 0)
         XCTAssertEqual(turns[0].endMs, 100)
-        XCTAssertEqual(turns[0].confidence, 0.9, accuracy: 1e-9)
+        XCTAssertEqual(turns[0].confidence ?? -1, 0.9, accuracy: 1e-9)
     }
 
     func test_twoSameSpeakerWords_oneTurn() {
@@ -106,6 +106,6 @@ final class SpeakerTurnTests: XCTestCase {
         ]
         let turns = SpeakerTurn.collapse(words)
         XCTAssertEqual(turns.count, 1)
-        XCTAssertEqual(turns[0].confidence, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(turns[0].confidence ?? -1, 0.5, accuracy: 1e-9)
     }
 }

@@ -108,7 +108,7 @@ struct TranscriptMergeBenchmark {
                 case .providerCorrection(let stream): origin = "providerCorrection"; continuing = ordinal(stream, map: &streams)
                 }
                 return ["id": ordinal(entry.id, map: &ids), "speaker": entry.speakerId, "text": entry.text,
-                        "start": entry.startMs, "confidence": entry.confidence, "status": entry.translationStatus,
+                        "start": entry.startMs, "confidence": entry.confidence as Any, "status": entry.translationStatus,
                         "language": entry.language ?? "", "source_language": entry.sourceLanguage ?? "",
                         "origin": origin, "continuing": continuing, "stream": ordinal(entry.streamID, map: &streams),
                         "display_stream": ordinal(entry.displayStreamID, map: &streams),

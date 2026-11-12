@@ -65,8 +65,8 @@ extension LiveTranscriptPresentation {
         return result.map(Turn.init(rows:))
     }
 
-    private static func continues(_ previous: LiveRow, with row: LiveRow) -> Bool {
-        guard previous.speakerId == row.speakerId, !row.isNote, !row.speakerId.isEmpty else { return false }
+    static func continues(_ previous: LiveRow, with row: LiveRow) -> Bool {
+        guard previous.streamID == row.streamID, previous.speakerId == row.speakerId, !row.isNote, !row.speakerId.isEmpty else { return false }
         guard let start = row.startMs, let before = previous.endMs ?? previous.startMs else { return true }
         return start - before <= turnGapMs
     }

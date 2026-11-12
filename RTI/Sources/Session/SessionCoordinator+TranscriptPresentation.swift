@@ -32,14 +32,18 @@ extension SessionCoordinator {
         transcriptFinalsNeedProjection = transcriptFinalsNeedProjection || finalsChanged
         guard transcriptPresentationOwner != nil else { return }
         if transcriptFinalsNeedProjection {
-            transcriptProjection.updateFinals(
-                liveEntries,
-                names: SpeakerNameStore.shared.names,
-                showTranslations: TranslationStore.currentConfig() != nil
-            )
+            let names = SpeakerNameStore.shared.names
+            let translate = TranslationStore.currentConfig() != nil
+            if usesSeededTranscript {
+                transcriptProjection.updateFinals(liveEntries, names: names, showTranslations: translate)
+            } else {
+                transcriptProjection.updateLiveFinals(transcriptPipeline, names: names, showTranslations: translate,
+                                                     labelsEnabled: speakerPolicy.labelsEnabled)
+            }
             transcriptFinalsNeedProjection = false
         }
         transcriptRows = transcriptProjection.updateInterims(interimSegments)
+        transcriptTurns = transcriptProjection.turns(for: transcriptRows)
         transcriptDisplayRevision += 1
     }
 }

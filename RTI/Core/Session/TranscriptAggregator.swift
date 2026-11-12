@@ -1,216 +1,131 @@
 import Foundation
 
-/// Per-channel live transcript aggregation: watermark dedup, ZeroMs dedup,
-/// interim text tracking, and SpeakerTurn collapse.
-///
-/// Each channel (mic / system) gets its own instance so the dedup state
-/// stays isolated. SessionCoordinator owns two instances and feeds words
-/// from each Soniox connection into the correct one.
+/// One provider socket's token feed on one physical input. Each final token
+/// arrives once; every packet replaces the provisional suffix for this leg.
+/// TimedToken.provider is the untouched wire token. Display labels and times
+/// are separate projections so an empty speaker or unknown clock remains known.
 public final class TranscriptAggregator {
-
     public private(set) var entries: [LiveEntry] = []
-
-    /// `entries`, less the untimed translations, paired with the normalised
-    /// text the live merge compares them by: this type is the only place any
-    /// of the three lists is appended to, trimmed or cleared. Normalising
-    /// belongs here rather than in the merge because the merge republishes up
-    /// to eight times a second over a transcript that grows all session, and
-    /// recomputing it per pass was 86% of the busy main thread in a 1h45m
-    /// session (2026-09-22).
-    private(set) var normalizedEntries: [NormalizedEntry] = []
-    /// Translations whose tokens carry no time (Soniox sends none), so they
-    /// sit at the stream's start and take no part in echo or dedup.
-    private(set) var untimedTranslations: [LiveEntry] = []
-    public private(set) var interimText: String? = nil
     public private(set) var interimSegments: [LiveTranscriptPresentation.InterimSegment] = []
-    private var lastEndMs: Int = 0
-    private var zeroSeen: Set<String> = []
-    private var streamID = UUID()
+    public private(set) var streamID = UUID()
+    public var startMsOffset = 0
     var labelsEnabled = true
+    private let channel: String
+    private var nextOrdinal = 0
+    private var lastTime = 0
     private var largestCluster = 0
     private var clusterOffset = 0
+    private var labels: [String: Int] = [:]
+    private var usedNumbers: Set<Int> = []
 
-    private func speakerKey(_ index: Int) -> String {
-        guard channel == "system", labelsEnabled, index > 0 else {
-            return SpeakerLabelMapping.rawLabel(speaker: 0, channel: channel)
+    public init(channel: String) { self.channel = channel }
+
+    public var interimText: String? {
+        guard !interimSegments.isEmpty else { return nil }
+        return interimSegments.map { "\($0.speakerId): \($0.text)" }.joined(separator: "  ")
+    }
+
+    private func speakerKey(_ raw: String?) -> String {
+        guard channel == "system" else { return "self" }
+        guard labelsEnabled, let raw, !raw.isEmpty else { return "remote" }
+        if let number = labels[raw] { return "remote_\(number)" }
+        let preferred = Int(raw).flatMap { index -> Int? in
+            guard index > 0, index < Int.max - clusterOffset else { return nil }
+            let number = index + clusterOffset
+            return usedNumbers.contains(number) ? nil : number
         }
-        // Provider IDs start over on each socket. A new cluster must never inherit
-        // the prior stream's confirmed name or seat merely by reusing its number.
-        let (number, overflow) = clusterOffset.addingReportingOverflow(index)
-        guard !overflow else { return "remote" }
+        let number = preferred ?? (largestCluster + 1)
+        usedNumbers.insert(number)
+        labels[raw] = number
         largestCluster = max(largestCluster, number)
-        return SpeakerLabelMapping.rawLabel(speaker: number, channel: channel)
+        return "remote_\(number)"
     }
 
-    private let channel: String
+    /// A run is only a view over adjacent tokens from the same packet and
+    /// source. Every token retains its optional provider fields and ordinal.
+    private func rows(_ words: [SonioxWord], final: Bool) -> [LiveEntry] {
+        var rows: [LiveEntry] = []
+        var tokens: [LiveEntry.TimedToken] = []
+        var speaker = ""
+        var first: SonioxWord?
+        var ordinal = nextOrdinal
+        var anchor = lastTime
 
-    /// Added to each emitted entry's `startMs` to put this channel on a
-    /// common session timeline. Each Soniox stream counts `startMs` from its
-    /// own first audio, but the system-audio leg starts later than the mic
-    /// leg (it spins up after the CoreAudio tap / SCK is ready), so without
-    /// this its entries would sort earlier than they actually occurred when
-    /// merged with the mic channel. Set externally once the system leg
-    /// starts; raw word timestamps (dedup watermark, zero-ms detection) are
-    /// left untouched.
-    public var startMsOffset: Int = 0
+        func flush() {
+            guard let first, let start = tokens.first?.startMs else { return }
+            let scores = tokens.compactMap { $0.provider?.providerConfidence }
+            let confidence = scores.count == tokens.count ? scores.reduce(0, +) / Double(scores.count) : nil
+            rows.append(LiveEntry(speakerId: speaker, text: tokens.map(\.text).joined(),
+                                  startMs: start, confidence: confidence, translationStatus: first.translationStatus,
+                                  language: first.language, sourceLanguage: first.sourceLanguage,
+                                  textOrigin: .providerTokens, streamID: streamID, tokens: tokens))
+            tokens.removeAll(keepingCapacity: true)
+        }
 
-    public init(channel: String) {
-        self.channel = channel
+        for word in words where word.isFinal == final {
+            defer { ordinal += 1 }
+            // Retained in the packet journal, omitted only from spoken lines.
+            if word.isStreamBoundary { flush(); first = nil; continue }
+            let label = speakerKey(word.providerSpeaker)
+            if first?.providerSpeaker != word.providerSpeaker || speaker != label ||
+                first?.providerTranslationStatus != word.providerTranslationStatus ||
+                first?.language != word.language || first?.sourceLanguage != word.sourceLanguage {
+                flush()
+                first = nil
+            }
+            if first == nil { first = word; speaker = label }
+            let start = word.providerStartMs ?? anchor
+            let end = word.providerEndMs ?? start
+            tokens.append(.init(text: word.text, startMs: start + startMsOffset, endMs: end + startMsOffset,
+                                provider: word, ordinal: ordinal, leg: channel, streamOffsetMs: startMsOffset))
+            anchor = max(anchor, end)
+        }
+        flush()
+        if final {
+            lastTime = anchor
+            nextOrdinal = ordinal
+        }
+        return rows
     }
 
-    /// Callback that fires with each new batch of `SpeakerTurn`s that
-    /// were just collapsed from final words. Callers can use the raw
-    /// speaker indices for JSONL writing.
-    var onTurnsProcessed: (([SpeakerTurn]) -> Void)?
-
-    /// Returns `true` when new FINAL entries were appended to `entries` (so the
-    /// owning pipeline knows to invalidate its merged cache and republish the
-    /// live list). Interim-only frames return `false` — they update
-    /// `interimText` but leave `entries` untouched, so callers can skip the
-    /// expensive full-transcript republish on the bulk of frames.
     @discardableResult
     public func process(_ words: [SonioxWord]) -> Bool {
-        let regularFinals = words.filter { $0.isFinal && $0.endMs > lastEndMs }
-        let zeroMsFinals: [SonioxWord] = words.compactMap { word in
-            guard word.isFinal, word.endMs == 0 else { return nil }
-            let key = "\(word.speaker)|\(word.text)|\(word.startMs)"
-            return zeroSeen.insert(key).inserted ? word : nil
+        let final = receive(words)
+        entries.append(contentsOf: final)
+        return !final.isEmpty
+    }
+
+    /// The pipeline owns its merged history; its per-leg decoder only holds
+    /// provisional state and never retains a second final history.
+    func receive(_ words: [SonioxWord]) -> [LiveEntry] {
+        let final = rows(words, final: true)
+        interimSegments = rows(words, final: false).map { row in
+            .init(speakerId: row.speakerId, text: row.text, textOrigin: .providerTokens, startMs: row.startMs,
+                  translationStatus: row.translationStatus, language: row.language, streamID: streamID, tokens: row.tokens)
         }
-        let finals = regularFinals + zeroMsFinals
-        let interims = words.filter { !$0.isFinal }
+        return final
+    }
 
-        if !finals.isEmpty {
-            let runs = SpeakerTurn.collapse(finals, keepUnlabelledSeparate: channel == "system" && labelsEnabled)
-            let newEntries = runs.map { run in
-                (run.translationStatus == "translation" && run.words.allSatisfy { $0.endMs == 0 }, LiveEntry(
-                    speakerId: speakerKey(run.speaker),
-                    text: run.text,
-                    startMs: run.startMs + startMsOffset,
-                    confidence: run.confidence,
-                    translationStatus: run.translationStatus,
-                    language: run.language,
-                    sourceLanguage: run.sourceLanguage,
-                    textOrigin: .providerTokens,
-                    streamID: streamID,
-                    tokens: run.words.map {
-                        LiveEntry.TimedToken(text: $0.text, startMs: $0.startMs + startMsOffset, endMs: $0.endMs + startMsOffset)
-                    }
-                ))
-            }
-            for (untimed, entry) in newEntries {
-                entries.append(entry)
-                if untimed { untimedTranslations.append(entry); continue }
-                normalizedEntries.append(NormalizedEntry(
-                    entry: entry,
-                    dedupText: TranscriptTextNormalization.dedup(entry.text),
-                    sequenceText: TranscriptTextNormalization.sequence(entry.text)
-                ))
-            }
-            // Soft safety bound only — was 500, which silently evicted all
-            // but the last ~11 minutes of a 2-hour session (2026-06-11) and
-            // truncated the archived transcript. Long sessions are the whole
-            // point; text entries are tiny, so the bound exists purely as a
-            // runaway guard.
-            if entries.count > 50_000 {
-                let dropped = entries.count - 50_000
-                let gone = Set(entries.prefix(dropped).map(\.id))
-                let untimed = untimedTranslations.prefix { gone.contains($0.id) }.count
-                entries.removeFirst(dropped)
-                untimedTranslations.removeFirst(untimed)
-                normalizedEntries.removeFirst(dropped - untimed)
-            }
-            let nonZeroMax = finals.compactMap({ $0.endMs > 0 ? $0.endMs : nil }).max()
-            if let m = nonZeroMax { lastEndMs = m }
+    public func prepareForReconnect() { restartStream(atMs: startMsOffset + lastTime) }
 
-            onTurnsProcessed?(runs)
-        }
-
-        if interims.isEmpty {
-            interimText = nil
-            interimSegments = []
-        } else {
-            let runs = SpeakerTurn.collapse(interims, keepUnlabelledSeparate: channel == "system" && labelsEnabled)
-            interimSegments = runs.map {
-                LiveTranscriptPresentation.InterimSegment(
-                    speakerId: speakerKey($0.speaker),
-                    text: $0.text,
-                    textOrigin: .providerTokens,
-                    startMs: $0.startMs + startMsOffset,
-                    translationStatus: $0.translationStatus,
-                    language: $0.language,
-                    streamID: streamID,
-                    tokens: $0.words.map {
-                        LiveEntry.TimedToken(text: $0.text, startMs: $0.startMs + startMsOffset, endMs: $0.endMs + startMsOffset)
-                    }
-                )
-            }
-            interimText = runs.map {
-                "\(speakerKey($0.speaker)): \($0.text)"
-            }.joined(separator: "  ")
-        }
-
-        return !finals.isEmpty
+    public func restartStream(atMs: Int) {
+        startMsOffset = atMs
+        clusterOffset = largestCluster
+        labels.removeAll()
+        usedNumbers.removeAll()
+        streamID = UUID()
+        interimSegments.removeAll()
+        lastTime = 0
+        nextOrdinal = 0
     }
 
     public func reset() {
+        entries.removeAll()
         largestCluster = 0
-        clusterOffset = 0
-        entries = []
-        normalizedEntries = []
-        untimedTranslations = []
-        interimText = nil
-        interimSegments = []
-        lastEndMs = 0
-        zeroSeen = []
-        streamID = UUID()
-        startMsOffset = 0
-    }
-
-    /// Prepare for a mid-session Soniox reconnect (e.g. a translation toggle).
-    /// Keeps the accumulated `entries`, but rolls the timeline offset forward to
-    /// where we left off and resets the raw watermark — because the new stream
-    /// restarts its word timestamps at ~0. Without this, the new stream's finals
-    /// would be dropped by the `endMs > lastEndMs` watermark and/or sort to the
-    /// top of the transcript.
-    public func prepareForReconnect() {
-        clusterOffset = largestCluster
-        startMsOffset += lastEndMs
-        lastEndMs = 0
-        zeroSeen = []
-        interimText = nil
-        interimSegments = []
-        streamID = UUID()
-    }
-
-    /// A new stream opened on this channel `atMs` into the session: an
-    /// automatic reconnect after a drop, or the system leg rejoining after it
-    /// was parked while nothing played. Its word timestamps restart at 0, so
-    /// place them at the moment the stream opened and reset the raw watermark.
-    /// Without this, every final of the new stream was dropped until its clock
-    /// passed the old stream's last `endMs`.
-    public func restartStream(atMs: Int) {
-        clusterOffset = largestCluster
-        startMsOffset = atMs
-        lastEndMs = 0
-        zeroSeen = []
-        interimText = nil
-        interimSegments = []
-        streamID = UUID()
+        restartStream(atMs: 0)
     }
 }
 
-/// One transcript entry plus the two normalised forms the live merge compares
-/// it by. Built where the entry is appended, so the text is normalised once per
-/// entry instead of once per merge pass.
-struct NormalizedEntry {
-    let entry: LiveEntry
-    let dedupText: String
-    let sequenceText: String
-}
-
-/// The text forms the live merge compares on. `dedup` drops whitespace,
-/// punctuation and symbols for the near-duplicate test; `sequence` keeps only
-/// alphanumerics as single-spaced words for the echo-containment test.
 enum TranscriptTextNormalization {
     /// Whitespace, punctuation and symbols, dropped before comparison. Built
     /// once: `CharacterSet.union` computes full Unicode plane bitmaps, so

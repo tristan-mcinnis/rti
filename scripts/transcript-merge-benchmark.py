@@ -20,6 +20,9 @@ def run():
     sources = [root / value for value in [
         "RTI/Core/Session/TranscriptPipeline.swift",
         "RTI/Core/Session/TranscriptAggregator.swift",
+        "RTI/Core/Session/SessionMarkerJournal.swift",
+        "RTI/Core/Session/TranscriptionHealth.swift",
+        "RTI/Core/Support/TimeFormat.swift",
         "RTI/Core/Session/LiveEntry.swift",
         "RTI/Core/Session/SpeakerTurn.swift",
         "RTI/Core/Session/LiveTranscriptPresentation.swift",

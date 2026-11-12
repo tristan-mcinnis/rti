@@ -282,6 +282,7 @@ extension LiveTranscriptPresentation {
         fileprivate let fallbackID: UUID?
         fileprivate let untimedOrdinal: Int?
         fileprivate let translated: Bool
+        fileprivate var providerOrdinal: Int? = nil
     }
 
     public struct Span: Equatable, Sendable {
@@ -330,6 +331,13 @@ extension LiveTranscriptPresentation {
             self.insertions = insertions.enumerated().map { ($0.element.at + $0.offset, $0.element.value) }
         }
 
+        fileprivate var patchedRows: [Int: Element] { replacements }
+        fileprivate var insertedRows: [(position: Int, value: Element)] { insertions }
+
+        fileprivate var firstPatch: Int? {
+            [replacements.keys.min(), insertions.first?.position].compactMap { $0 }.min()
+        }
+
         public var startIndex: Int { 0 }
         public var endIndex: Int { prefix.count + tail.count + insertions.count }
         public func index(after i: Int) -> Int { i + 1 }
@@ -352,6 +360,7 @@ extension LiveTranscriptPresentation {
 
     public typealias Paragraphs = SliceCollection<Paragraph>
     public typealias LiveRows = SliceCollection<LiveRow>
+    public typealias LiveTurns = SliceCollection<Turn>
 
     public struct LiveRow: Identifiable, Equatable, Sendable {
         public let id: RunID
@@ -418,11 +427,16 @@ extension LiveTranscriptPresentation {
     /// Interim updates replace only affected rows over the cached collection.
     public struct Projection {
         private var sources: [UUID: LiveEntry] = [:]
+        private var labelsEnabled = true
+        private var liveEpoch: UUID?
+        private var liveRevision = 0
         private var grouping = UtteranceGrouping()
         private var builders: [LiveBuilder] = []
         private var translationGroups: [Int: [Int]] = [:]
         private var attachedTranslations: Set<Int> = []
         private var cachedRows: [LiveRow] = []
+        private var cachedTurns: [Turn] = []
+        private var turnStarts: [Int] = []
         private var rowByGroup: [Int: Int] = [:]
         private var names: [String: String] = [:]
         private var showTranslations = false
@@ -431,6 +445,32 @@ extension LiveTranscriptPresentation {
         public init() {}
         public mutating func reset() { self = Projection() }
         public var committedRows: LiveRows { LiveRows(prefix: cachedRows[...], tail: []) }
+
+        /// Normal live delivery supplies only newly committed packet groups.
+        /// Missed revisions, restarted sessions and explicit edits rebuild once.
+        public mutating func updateLiveFinals(_ pipeline: TranscriptPipeline, names: [String: String] = [:],
+                                              showTranslations: Bool = false, labelsEnabled: Bool = true) {
+            let delta = liveEpoch == pipeline.epoch ? pipeline.additions(since: liveRevision) : nil
+            let additions = delta.map(Array.init) ?? []
+            if delta == nil || self.labelsEnabled != labelsEnabled || requiresRebuild(additions) {
+                reset()
+                self.labelsEnabled = labelsEnabled
+                apply(pipeline.liveEntries, names: names, showTranslations: showTranslations, rebuild: true, keepSources: false)
+            } else {
+                apply(additions, names: names, showTranslations: showTranslations, rebuild: false, keepSources: false)
+            }
+            liveEpoch = pipeline.epoch
+            liveRevision = pipeline.revision
+        }
+
+        private func requiresRebuild(_ additions: [LiveEntry]) -> Bool {
+            additions.contains { entry in
+                let start = entry.tokens.map(\.startMs).min() ?? entry.startMs
+                return entry.translationStatus != "translation" &&
+                    (grouping.hasLaterOriginal(in: entry.displayStreamID, than: start) ||
+                     grouping.hasTranslation(in: entry.displayStreamID, atOrAfter: start))
+            }
+        }
 
         public mutating func updateFinals(
             _ entries: [LiveEntry],
@@ -449,27 +489,22 @@ extension LiveTranscriptPresentation {
                 }
             }
             extendsCache = extendsCache && matched == sources.count
-            if additions.contains(where: { entry in
-                let start = entry.tokens.map(\.startMs).min() ?? entry.startMs
-                return entry.translationStatus != "translation"
-                    && (grouping.hasLaterOriginal(in: entry.displayStreamID, than: start)
-                        || grouping.hasTranslation(in: entry.displayStreamID, atOrAfter: start))
-            }) { extendsCache = false }
+            if liveEpoch != nil || requiresRebuild(additions) { extendsCache = false }
+            if !extendsCache { reset(); additions = entries }
+            apply(additions, names: names, showTranslations: showTranslations, rebuild: !extendsCache, keepSources: true)
+        }
+
+        private mutating func apply(_ additions: [LiveEntry], names: [String: String], showTranslations: Bool,
+                                    rebuild: Bool, keepSources: Bool) {
             let settingsChanged = self.names != names || self.showTranslations != showTranslations
-            if extendsCache, additions.isEmpty, !settingsChanged { return }
+            if !rebuild, additions.isEmpty, !settingsChanged { return }
             revision &+= 1
             self.names = names
             self.showTranslations = showTranslations
-            if !extendsCache {
-                sources = [:]
-                grouping = UtteranceGrouping()
-                builders = []
-                translationGroups = [:]
-                attachedTranslations = []
-                additions = entries
-            }
             var changed: Set<Int> = []
-            for entry in additions { sources[entry.id] = entry }
+            if keepSources {
+                for entry in additions { sources[entry.id] = entry }
+            }
             for fragment in additions.flatMap({ LiveFragment.pieces($0) }).sorted(by: { ordered($0, before: $1) }) {
                 let assignment = grouping.place(fragment)
                 if assignment.isNew {
@@ -485,21 +520,102 @@ extension LiveTranscriptPresentation {
                 if let companion = assignment.companion { changed.insert(companion) }
             }
             for index in changed { builders[index].body.freeze() }
-            let previousRows = cachedRows
-            let previousIndices = rowByGroup
-            cachedRows = []
-            rowByGroup = [:]
-            let visible = builders.indices.filter {
-                !attachedTranslations.contains($0) && builders[$0].isVisible(showTranslations: showTranslations)
-            }.sorted { ordered(builders[$0].id, before: builders[$1].id) }
-            for index in visible {
-                rowByGroup[index] = cachedRows.count
-                if extendsCache, !settingsChanged, !changed.contains(index), let prior = previousIndices[index] {
-                    cachedRows.append(previousRows[prior])
+            if rebuild || settingsChanged {
+                rowByGroup.removeAll(keepingCapacity: true)
+                cachedRows.removeAll(keepingCapacity: true)
+                let visible = builders.indices.filter { isVisible($0) }.sorted { ordered(builders[$0].id, before: builders[$1].id) }
+                for group in visible {
+                    rowByGroup[group] = cachedRows.count
+                    cachedRows.append(displayRow(builders[group], group: group))
+                }
+                rebuildTurns(from: 0)
+                return
+            }
+            var firstChanged = cachedRows.count
+            // Existing groups keep a stable position. New delayed cross-leg
+            // groups use a binary insertion; typical live delivery just appends.
+            for group in changed.sorted() where isVisible(group) {
+                let row = displayRow(builders[group], group: group)
+                if let existing = rowByGroup[group] {
+                    if existing < firstChanged, boundariesUnchanged(at: existing, with: row) {
+                        let turn = containingTurn(existing)
+                        var rows = cachedTurns[turn].rows
+                        rows[existing - turnStarts[turn]] = row
+                        cachedTurns[turn] = Turn(rows: rows)
+                    } else { firstChanged = min(firstChanged, existing) }
+                    cachedRows[existing] = row
                 } else {
-                    cachedRows.append(displayRow(builders[index], group: index))
+                    var low = 0
+                    var high = cachedRows.count
+                    while low < high {
+                        let mid = low + (high - low) / 2
+                        if ordered(row.id, before: cachedRows[mid].id) { high = mid } else { low = mid + 1 }
+                    }
+                    if low < cachedRows.count {
+                        for (key, value) in rowByGroup where value >= low { rowByGroup[key] = value + 1 }
+                    }
+                    firstChanged = min(firstChanged, low)
+                    cachedRows.insert(row, at: low)
+                    rowByGroup[group] = low
                 }
             }
+            if firstChanged < cachedRows.count { rebuildTurns(from: firstChanged) }
+        }
+
+        private func boundariesUnchanged(at row: Int, with updated: LiveRow) -> Bool {
+            let old = cachedRows[row]
+            if row > 0, LiveTranscriptPresentation.continues(cachedRows[row - 1], with: old) !=
+                LiveTranscriptPresentation.continues(cachedRows[row - 1], with: updated) { return false }
+            return row + 1 == cachedRows.count || LiveTranscriptPresentation.continues(old, with: cachedRows[row + 1]) ==
+                LiveTranscriptPresentation.continues(updated, with: cachedRows[row + 1])
+        }
+
+        private func firstAffectedTurn(at row: Int) -> Int {
+            containingTurn(max(0, row - 1))
+        }
+
+        private func containingTurn(_ row: Int) -> Int {
+            var low = 0
+            var high = turnStarts.count
+            while low < high {
+                let mid = low + (high - low) / 2
+                if turnStarts[mid] <= row { low = mid + 1 } else { high = mid }
+            }
+            return max(0, low - 1)
+        }
+
+        private mutating func rebuildTurns(from firstRow: Int) {
+            let firstTurn = firstAffectedTurn(at: firstRow)
+            var index = firstTurn < turnStarts.count ? turnStarts[firstTurn] : 0
+            turnStarts.removeSubrange(firstTurn...)
+            cachedTurns.removeSubrange(firstTurn...)
+            for turn in LiveTranscriptPresentation.turns(cachedRows[index...]) {
+                cachedTurns.append(turn)
+                turnStarts.append(index)
+                index += turn.rows.count
+            }
+        }
+
+        public func turns(for rows: LiveRows) -> LiveTurns {
+            guard let patch = rows.firstPatch else { return LiveTurns(prefix: cachedTurns[...], tail: []) }
+            var replaced: [Int: Turn] = [:]
+            let inserted = rows.insertedRows
+            if inserted.isEmpty, rows.patchedRows.allSatisfy({ boundariesUnchanged(at: $0.key, with: $0.value) }) {
+                for (index, row) in rows.patchedRows {
+                    let group = containingTurn(index)
+                    var groupRows = (replaced[group] ?? cachedTurns[group]).rows
+                    groupRows[index - turnStarts[group]] = row
+                    replaced[group] = Turn(rows: groupRows)
+                }
+                return LiveTurns(base: cachedTurns, replacements: replaced, insertions: [])
+            }
+            let firstTurn = firstAffectedTurn(at: patch)
+            let firstRow = firstTurn < turnStarts.count ? turnStarts[firstTurn] : 0
+            return LiveTurns(prefix: cachedTurns[..<firstTurn], tail: LiveTranscriptPresentation.turns(rows[firstRow...]))
+        }
+
+        private func isVisible(_ group: Int) -> Bool {
+            !attachedTranslations.contains(group) && builders[group].isVisible(showTranslations: showTranslations)
         }
 
         private func samePresentationEntry(_ lhs: LiveEntry, _ rhs: LiveEntry) -> Bool {
@@ -519,7 +635,7 @@ extension LiveTranscriptPresentation {
             var liveGrouping = grouping
             var live: [Int: LiveBuilder] = [:]
             for fragment in pending {
-                let assignment = liveGrouping.place(fragment)
+                let assignment = liveGrouping.place(fragment, recordOriginals: false)
                 if var builder = live[assignment.index] {
                     builder.append(fragment)
                     live[assignment.index] = builder
@@ -563,7 +679,8 @@ extension LiveTranscriptPresentation {
                     builder.translationLanguage = builders[translated].translationLanguage ?? builder.translationLanguage
                 }
             }
-            return builder.row(names: names, revision: revision, showTranslations: showTranslations)
+            let displayNames = labelsEnabled ? names : [builder.id.speakerId: SpeakerEvidence.leg(for: builder.id.speakerId)]
+            return builder.row(names: displayNames, revision: revision, showTranslations: showTranslations)
         }
     }
 
@@ -609,7 +726,7 @@ extension LiveTranscriptPresentation {
         init(_ entry: LiveEntry, token: LiveEntry.TimedToken? = nil) {
             id = RunID(streamID: entry.displayStreamID, speakerId: entry.speakerId, startMs: token?.startMs ?? entry.startMs,
                        fallbackID: entry.speakerId == "note" || entry.textOrigin == .standalone ? entry.id : nil,
-                       untimedOrdinal: nil, translated: entry.translationStatus == "translation")
+                       untimedOrdinal: nil, translated: entry.translationStatus == "translation", providerOrdinal: token?.ordinal)
             text = token?.text ?? entry.text
             origin = entry.textOrigin
             isFinal = true
@@ -622,7 +739,7 @@ extension LiveTranscriptPresentation {
         init(_ segment: InterimSegment, ordinal: Int, token: LiveEntry.TimedToken? = nil) {
             let startMs = token?.startMs ?? segment.startMs
             id = RunID(streamID: segment.streamID, speakerId: segment.speakerId, startMs: startMs ?? Int.max,
-                       fallbackID: nil, untimedOrdinal: startMs == nil ? ordinal : nil, translated: segment.translationStatus == "translation")
+                       fallbackID: nil, untimedOrdinal: startMs == nil ? ordinal : nil, translated: segment.translationStatus == "translation", providerOrdinal: token?.ordinal)
             text = token?.text ?? segment.text
             origin = segment.textOrigin
             isFinal = false
@@ -642,6 +759,7 @@ extension LiveTranscriptPresentation {
         if lhs.streamID != rhs.streamID {
             return (lhs.streamID?.uuidString ?? "") < (rhs.streamID?.uuidString ?? "")
         }
+        if let left = lhs.providerOrdinal, let right = rhs.providerOrdinal, left != right { return left < right }
         if lhs.speakerId != rhs.speakerId { return lhs.speakerId < rhs.speakerId }
         if lhs.translated != rhs.translated { return !lhs.translated }
         return (lhs.untimedOrdinal ?? 0) < (rhs.untimedOrdinal ?? 0)
@@ -689,10 +807,10 @@ extension LiveTranscriptPresentation {
             latestTranslationStart[stream].map { $0 >= startMs } ?? false
         }
 
-        mutating func place(_ fragment: LiveFragment) -> Assignment {
+        mutating func place(_ fragment: LiveFragment, recordOriginals: Bool = true) -> Assignment {
             let lane = Lane(stream: fragment.id.streamID, translated: fragment.isTranslation)
             let speaker = Speaker(stream: fragment.id.streamID, speakerId: fragment.id.speakerId)
-            let history = originals[speaker] ?? []
+            let history = fragment.isTranslation ? originals[speaker] ?? [] : []
             var low = 0
             var high = history.count
             while low < high {
@@ -711,7 +829,7 @@ extension LiveTranscriptPresentation {
             if !continues { count += 1 }
             last[lane] = Boundary(index: index, speakerId: fragment.id.speakerId, endMs: fragment.endMs,
                                   startMs: fragment.id.startMs, companion: companion)
-            if !fragment.isTranslation, fragment.id.speakerId != "note", !continues {
+            if recordOriginals, !fragment.isTranslation, fragment.id.speakerId != "note", !continues {
                 originals[speaker, default: []].append(Original(index: index, startMs: fragment.id.startMs))
             }
             if fragment.isTranslation {

@@ -369,8 +369,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
                 handleDrop(SonioxFailure.fromSonioxApplicationError(code: code, detail: detail), generation: generation)
                 return
             }
-            guard let raw = msg.tokens, !raw.isEmpty else { return }
-            let words = raw.map { $0.toSonioxWord() }
+            guard let words = msg.tokens else { return }
             let finalCount = words.filter(\.isFinal).count
             if finalCount > 0 {
                 RTILog.log("received \(words.count) tokens (\(finalCount) final)", category: .soniox)

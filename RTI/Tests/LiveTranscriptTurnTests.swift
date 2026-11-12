@@ -76,31 +76,21 @@ final class LiveTranscriptTurnTests: XCTestCase {
 
     // MARK: - Pipeline
 
-    func test_echoMeetingFixtureHasNoMicEchoInFinalsOrInterims() {
+    func testRawFixtureKeepsBothPerLegCopiesIncludingDifferentWords() {
         let pipeline = TranscriptPipeline()
         EchoMeetingFixture.replay(into: pipeline)
-
-        XCTAssertEqual(Set(pipeline.liveEntries.map(\.speakerId)), ["remote_1", "self"])
-        XCTAssertEqual(pipeline.interimSegments.map(\.speakerId), ["remote_1"])
-    }
-
-    func test_echoMeetingFixtureReadsAsThreeTurnsWithWholeWordsAndNoRepeats() {
-        let pipeline = TranscriptPipeline()
-        EchoMeetingFixture.replay(into: pipeline)
-
+        for leg in ["mic", "system"] {
+            let expected = EchoMeetingFixture.frames.filter { $0.channel == leg }
+                .flatMap(\.words).filter(\.isFinal).map(\.text)
+            let actual = pipeline.liveEntries.flatMap(\.tokens).filter { $0.leg == leg }
+                .sorted { ($0.ordinal ?? -1) < ($1.ordinal ?? -1) }.map(\.text)
+            XCTAssertEqual(actual, expected)
+        }
         let result = turns(pipeline.liveEntries, interims: pipeline.interimSegments)
-
-        XCTAssertEqual(result.map(\.speakerLabel), ["Speaker 1", "You", "Speaker 1"])
-        XCTAssertEqual(result[0].text.trimmingCharacters(in: .whitespaces),
-                       "We could run the first workshop in Hangzhou on the fourth, then fly to Chengdu after lunch."
-                           + " That leaves one slot for the client review.")
-        XCTAssertEqual(result[1].text.trimmingCharacters(in: .whitespaces), EchoMeetingFixture.selfLine)
-        XCTAssertEqual(result[2].text.trimmingCharacters(in: .whitespaces), "Yeah. " + EchoMeetingFixture.interimLine)
-        XCTAssertTrue(result[2].hasPending)
-        let all = result.map(\.text).joined(separator: " ")
-        XCTAssertFalse(all.contains("Changdo"))
-        XCTAssertEqual(all.components(separatedBy: "Yeah.").count - 1, 1)
-        XCTAssertEqual(all.components(separatedBy: "putting the fourth").count - 1, 1)
+        let text = result.map(\.text).joined(separator: " ")
+        XCTAssertTrue(text.contains("Chengdu"))
+        XCTAssertTrue(text.contains("Changdo"))
+        XCTAssertTrue(result.contains(where: \.hasPending))
     }
 
     // MARK: - Turns
@@ -118,6 +108,39 @@ final class LiveTranscriptTurnTests: XCTestCase {
         XCTAssertEqual(result[0].text.trimmingCharacters(in: .whitespaces), "on the twelfth and then the thirteenth")
         XCTAssertEqual(result[0].startMs, 1_000)
         XCTAssertEqual(result[0].id, result[0].rows[0].id)
+    }
+
+    func testLongSessionRetainsEveryTurnAndSeparatesFinalSpeechFromNoteAndInterim() throws {
+        let pipeline = TranscriptPipeline()
+        let id = pipeline.streamID(for: "system")
+        for minute in 0...78 {
+            let ms = minute * 60_000
+            _ = pipeline.process(words: [.init(text: " Spoken \(minute).", startMs: ms, endMs: ms + 300, speaker: 1,
+                                               confidence: 0.9, isFinal: true, translationStatus: "original", language: "en", sourceLanguage: nil)], channel: "system")
+        }
+        pipeline.replaceNotes([.init(kind: .note, offsetMs: 93 * 60_000, text: "Return to the route cards")])
+        _ = pipeline.process(words: [.init(text: "译文", startMs: 94 * 60_000, endMs: 94 * 60_000 + 50, speaker: 1,
+                                           confidence: 1, isFinal: true, translationStatus: "translation", language: "zh", sourceLanguage: "en")], channel: "system")
+        _ = pipeline.process(words: [.init(text: " provisional", startMs: 97 * 60_000, endMs: 97 * 60_000 + 100, speaker: 1,
+                                           confidence: 0.8, isFinal: false, translationStatus: "original", language: "en", sourceLanguage: nil)], channel: "system")
+        XCTAssertEqual(pipeline.readerActivity.lastSpokenMs, 78 * 60_000 + 300)
+        XCTAssertEqual(pipeline.readerActivity.lastNoteMs, 93 * 60_000)
+        XCTAssertEqual(pipeline.readerActivity.caption(elapsedMs: 98 * 60_000 + 300), "Speech 20m ago · Note 5m ago")
+        let rendered = turns(pipeline.liveEntries, interims: pipeline.interimSegments)
+        XCTAssertTrue(rendered.first?.text.contains("Spoken 0.") == true)
+        XCTAssertTrue(rendered.contains { $0.text.contains("Spoken 78.") })
+        XCTAssertTrue(rendered.last?.hasPending == true); XCTAssertEqual(rendered.last?.text, " provisional")
+        pipeline.restartStream(channel: "system", atMs: 98 * 60_000)
+        XCTAssertNotEqual(pipeline.streamID(for: "system"), id); XCTAssertTrue(pipeline.interimSegments.isEmpty)
+        XCTAssertEqual(pipeline.readerActivity.lastSpokenMs, 78 * 60_000 + 300)
+    }
+
+    func testNewProviderEpochDoesNotMergeIntoSameLabelOrLoseEarlierText() {
+        let a = entry("remote_1", "original phrase", at: 1000)
+        let b = entry("remote_1", "new stream", at: 2200)
+        let result = turns([a, b])
+        XCTAssertEqual(result.count, 2); XCTAssertNotEqual(result[0].id, result[1].id)
+        XCTAssertEqual(result.map { $0.text.trimmingCharacters(in: .whitespaces) }, ["original phrase", "new stream"])
     }
 
     func test_longSilenceStartsANewTurnForTheSameSpeaker() {

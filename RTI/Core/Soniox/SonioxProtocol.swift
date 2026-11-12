@@ -1,39 +1,57 @@
 import Foundation
 
-public struct SonioxWord {
+/// Exact fields of a Soniox token. The numeric accessors exist for older
+/// rendering callers; the optional provider fields are the transcript evidence.
+public struct SonioxWord: Sendable, Equatable, Codable {
     public let text: String
-    public let startMs: Int
-    public let endMs: Int
-    public let speaker: Int
-    public let confidence: Double
-    public let isFinal: Bool
-    /// "none" | "original" | "translation"
-    public let translationStatus: String
-    /// Language code of the token (e.g. "en", "fr")
+    public let providerStartMs: Int?
+    public let providerEndMs: Int?
+    public let providerSpeaker: String?
+    public let providerConfidence: Double?
+    public let providerIsFinal: Bool?
+    public let providerTranslationStatus: String?
     public let language: String?
-    /// Original language for translated tokens
     public let sourceLanguage: String?
 
-    public init(
-        text: String,
-        startMs: Int,
-        endMs: Int,
-        speaker: Int,
-        confidence: Double,
-        isFinal: Bool,
-        translationStatus: String,
-        language: String?,
-        sourceLanguage: String?
-    ) {
+    private enum CodingKeys: String, CodingKey {
+        case text, language
+        case providerStartMs = "start_ms"
+        case providerEndMs = "end_ms"
+        case providerSpeaker = "speaker"
+        case providerConfidence = "confidence"
+        case providerIsFinal = "is_final"
+        case providerTranslationStatus = "translation_status"
+        case sourceLanguage = "source_language"
+    }
+
+    public var startMs: Int { providerStartMs ?? 0 }
+    public var endMs: Int { providerEndMs ?? 0 }
+    public var speaker: Int { providerSpeaker.flatMap(Int.init) ?? 0 }
+    public var confidence: Double? { providerConfidence }
+    public var isFinal: Bool { providerIsFinal == true }
+    public var translationStatus: String { providerTranslationStatus ?? "none" }
+    public var isStreamBoundary: Bool { text == "<end>" || text == "<fin>" }
+
+    public init(text: String, providerStartMs: Int?, providerEndMs: Int?, providerSpeaker: String?,
+                providerConfidence: Double?, providerIsFinal: Bool?, providerTranslationStatus: String?,
+                language: String?, sourceLanguage: String?) {
         self.text = text
-        self.startMs = startMs
-        self.endMs = endMs
-        self.speaker = speaker
-        self.confidence = confidence
-        self.isFinal = isFinal
-        self.translationStatus = translationStatus
+        self.providerStartMs = providerStartMs
+        self.providerEndMs = providerEndMs
+        self.providerSpeaker = providerSpeaker
+        self.providerConfidence = providerConfidence
+        self.providerIsFinal = providerIsFinal
+        self.providerTranslationStatus = providerTranslationStatus
         self.language = language
         self.sourceLanguage = sourceLanguage
+    }
+
+    public init(text: String, startMs: Int, endMs: Int, speaker: Int, confidence: Double, isFinal: Bool,
+                translationStatus: String, language: String?, sourceLanguage: String?) {
+        self.init(text: text, providerStartMs: startMs, providerEndMs: endMs,
+                  providerSpeaker: speaker == 0 ? nil : String(speaker), providerConfidence: confidence,
+                  providerIsFinal: isFinal, providerTranslationStatus: translationStatus,
+                  language: language, sourceLanguage: sourceLanguage)
     }
 }
 
@@ -180,35 +198,10 @@ public struct SonioxConfigMessage: Codable {
 }
 
 public struct SonioxTranscriptMessage: Decodable {
-    public let tokens: [RawToken]?
+    public let tokens: [SonioxWord]?
     public let error_code: Int?
     public let error_message: String?
 
-    public struct RawToken: Decodable {
-        let text: String
-        let start_ms: Int?
-        let end_ms: Int?
-        let speaker: String?
-        let confidence: Double?
-        let is_final: Bool?
-        let translation_status: String?
-        let language: String?
-        let source_language: String?
-
-        public func toSonioxWord() -> SonioxWord {
-            SonioxWord(
-                text: text,
-                startMs: start_ms ?? 0,
-                endMs: end_ms ?? 0,
-                speaker: Int(speaker ?? "0") ?? 0,
-                confidence: confidence ?? 1.0,
-                isFinal: is_final ?? false,
-                translationStatus: translation_status ?? "none",
-                language: language,
-                sourceLanguage: source_language
-            )
-        }
-    }
 }
 
 
@@ -231,22 +224,22 @@ public enum SonioxFileTranscript {
             let time = TimeFormat.elapsedMs(startMs) + String(format: ".%03d", max(0, startMs) % 1000)
             lines.append("[\(time)] \(label): \(spoken)")
         }
-        for token in tokens {
-            let word = token.toSonioxWord()
-            guard word.translationStatus != "translation", !word.text.isEmpty, word.text != "<end>" else { continue }
+        for word in tokens {
+            guard word.translationStatus != "translation", !word.text.isEmpty, !word.isStreamBoundary else { continue }
             let speaker: String
             if !system { speaker = "Me" }
-            else if !policy.labelsEnabled || word.speaker == 0 { speaker = "Them" }
-            else { speaker = "Speaker \(word.speaker)" }
-            if text.isEmpty || label != speaker || word.startMs - previousEnd > 1500 ||
-                word.startMs - startMs > 20000 || text.last.map({ "。！？.!?".contains($0) }) == true {
+            else if policy.labelsEnabled, let raw = word.providerSpeaker, !raw.isEmpty { speaker = "Speaker \(raw)" }
+            else { speaker = "Them" }
+            let time = word.providerStartMs ?? previousEnd
+            if text.isEmpty || label != speaker || time - previousEnd > 1500 ||
+                time - startMs > 20000 || text.last.map({ "。！？.!?".contains($0) }) == true {
                 flush()
                 text = ""
-                startMs = word.startMs
+                startMs = time
                 label = speaker
             }
             text += word.text
-            previousEnd = max(word.startMs, word.endMs)
+            previousEnd = max(time, word.providerEndMs ?? time)
         }
         flush()
         return lines.joined(separator: "\n")

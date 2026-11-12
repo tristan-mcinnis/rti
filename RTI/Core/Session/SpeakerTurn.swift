@@ -8,7 +8,7 @@ public struct SpeakerTurn {
     public let text: String
     public let startMs: Int
     public let endMs: Int
-    public let confidence: Double
+    public let confidence: Double?
     public let translationStatus: String
     public let language: String?
     public let sourceLanguage: String?
@@ -51,7 +51,8 @@ extension SpeakerTurn {
             }
         }
         return zip(groups, groupSpeakers).map { group, speaker in
-            let confidenceAvg = group.map(\.confidence).reduce(0, +) / Double(group.count)
+            let values = group.compactMap(\.confidence)
+            let confidenceAvg = values.count == group.count ? values.reduce(0, +) / Double(values.count) : nil
             return SpeakerTurn(
                 speaker: speaker,
                 text: group.map(\.text).joined(),
