@@ -17,13 +17,15 @@ public struct LiveEntry: Identifiable, Sendable {
         public let ordinal: Int?
         public let leg: String?
         public let streamOffsetMs: Int?
+        public let startsUtterance: Bool
 
         public init(text: String, startMs: Int, endMs: Int, provider: SonioxWord? = nil,
-                    ordinal: Int? = nil, leg: String? = nil, streamOffsetMs: Int? = nil) {
+                    ordinal: Int? = nil, leg: String? = nil, streamOffsetMs: Int? = nil, startsUtterance: Bool = false) {
             self.provider = provider
             self.ordinal = ordinal
             self.leg = leg
             self.streamOffsetMs = streamOffsetMs
+            self.startsUtterance = startsUtterance
             self.text = text
             self.startMs = startMs
             self.endMs = endMs

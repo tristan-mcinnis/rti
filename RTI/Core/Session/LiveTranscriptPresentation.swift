@@ -706,6 +706,7 @@ extension LiveTranscriptPresentation {
     private struct LiveFragment {
         let id: RunID
         let text: String
+        let startsUtterance: Bool
         let origin: LiveEntry.TextOrigin
         let isFinal: Bool
         let isTranslation: Bool
@@ -727,6 +728,7 @@ extension LiveTranscriptPresentation {
             id = RunID(streamID: entry.displayStreamID, speakerId: entry.speakerId, startMs: token?.startMs ?? entry.startMs,
                        fallbackID: entry.speakerId == "note" || entry.textOrigin == .standalone ? entry.id : nil,
                        untimedOrdinal: nil, translated: entry.translationStatus == "translation", providerOrdinal: token?.ordinal)
+            startsUtterance = token?.startsUtterance ?? false
             text = token?.text ?? entry.text
             origin = entry.textOrigin
             isFinal = true
@@ -740,6 +742,7 @@ extension LiveTranscriptPresentation {
             let startMs = token?.startMs ?? segment.startMs
             id = RunID(streamID: segment.streamID, speakerId: segment.speakerId, startMs: startMs ?? Int.max,
                        fallbackID: nil, untimedOrdinal: startMs == nil ? ordinal : nil, translated: segment.translationStatus == "translation", providerOrdinal: token?.ordinal)
+            startsUtterance = token?.startsUtterance ?? false
             text = token?.text ?? segment.text
             origin = segment.textOrigin
             isFinal = false
@@ -822,7 +825,7 @@ extension LiveTranscriptPresentation {
             let paused = previous?.endMs.map {
                 fragment.id.untimedOrdinal == nil && fragment.id.startMs - $0 >= 1000
             } ?? false
-            let continues = previous?.speakerId == fragment.id.speakerId
+            let continues = !fragment.startsUtterance && previous?.speakerId == fragment.id.speakerId
                 && fragment.id.speakerId != "note" && !fragment.id.speakerId.isEmpty
                 && previous?.companion == companion && !paused
             let index = continues ? previous!.index : count

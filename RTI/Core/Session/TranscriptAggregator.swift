@@ -13,6 +13,7 @@ public final class TranscriptAggregator {
     private let channel: String
     private var nextOrdinal = 0
     private var lastTime = 0
+    private var afterEndpoint = false
     private var largestCluster = 0
     private var clusterOffset = 0
     private var labels: [String: Int] = [:]
@@ -50,6 +51,7 @@ public final class TranscriptAggregator {
         var first: SonioxWord?
         var ordinal = nextOrdinal
         var anchor = lastTime
+        var startsUtterance = afterEndpoint
 
         func flush() {
             guard let first, let start = tokens.first?.startMs else { return }
@@ -65,7 +67,7 @@ public final class TranscriptAggregator {
         for word in words where word.isFinal == final {
             defer { ordinal += 1 }
             // Retained in the packet journal, omitted only from spoken lines.
-            if word.isStreamBoundary { flush(); first = nil; continue }
+            if word.isStreamBoundary { flush(); first = nil; startsUtterance = true; continue }
             let label = speakerKey(word.providerSpeaker)
             if first?.providerSpeaker != word.providerSpeaker || speaker != label ||
                 first?.providerTranslationStatus != word.providerTranslationStatus ||
@@ -77,13 +79,15 @@ public final class TranscriptAggregator {
             let start = word.providerStartMs ?? anchor
             let end = word.providerEndMs ?? start
             tokens.append(.init(text: word.text, startMs: start + startMsOffset, endMs: end + startMsOffset,
-                                provider: word, ordinal: ordinal, leg: channel, streamOffsetMs: startMsOffset))
+                                provider: word, ordinal: ordinal, leg: channel, streamOffsetMs: startMsOffset, startsUtterance: startsUtterance))
+            startsUtterance = false
             anchor = max(anchor, end)
         }
         flush()
         if final {
             lastTime = anchor
             nextOrdinal = ordinal
+            afterEndpoint = startsUtterance
         }
         return rows
     }
@@ -116,6 +120,7 @@ public final class TranscriptAggregator {
         streamID = UUID()
         interimSegments.removeAll()
         lastTime = 0
+        afterEndpoint = false
         nextOrdinal = 0
     }
 
