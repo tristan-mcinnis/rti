@@ -11,6 +11,12 @@ public enum ExternalTools {
     /// Apple's system Python, for tools that need only the standard library.
     public static let systemPython = URL(fileURLWithPath: "/usr/bin/python3")
 
+    /// The synthesis workbook owns Word and Markdown question parsing.
+    public static var workbookGuideParser: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("skills/ic-synthesis-workbook/scripts/extract-cells.py")
+    }
+
     /// The Claude Code CLI, for the headless `/meeting` processor.
     public static func claude() -> URL? {
         let home = FileManager.default.homeDirectoryForCurrentUser

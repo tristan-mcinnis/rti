@@ -210,11 +210,19 @@ enum SessionArchive {
         guard micRecordingURL == nil || micName != nil else { return nil }
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
         guard systemRecordingURL == nil || systemName != nil else { return nil }
+        var guidePath = guide?.guidePath
+        var guideSourcePath: String?
         if let guide {
             do {
+                if let json = guide.parsedSourceJSON {
+                    let file = dir.appendingPathComponent("dg-questions.json")
+                    try writeGuideData(json, to: file)
+                    guidePath = file.path
+                    guideSourcePath = guide.guidePath
+                }
                 try saveGuideExtraction(guide.extraction, in: dir)
             } catch {
-                RTILog.log("Could not save Guide cells: \(error.localizedDescription)", level: .error, category: .archive)
+                RTILog.log("Could not save Guide files: \(error.localizedDescription)", level: .error, category: .archive)
                 return nil
             }
         }
@@ -231,7 +239,8 @@ enum SessionArchive {
                 recordingError: recordingError,
                 speechContext: speechContext,
                 groupID: guide?.extraction.group,
-                guidePath: guide?.guidePath,
+                guidePath: guidePath,
+                guideSourcePath: guideSourcePath,
                 rosterPath: guide?.rosterPath,
                 guideRoster: guide?.roster
             ),
@@ -458,6 +467,7 @@ enum SessionArchive {
            let guidePath = metadata.guidePath {
             lines.append("archive_dir: \(yamlQuoted(archiveDir.path))")
             lines.append("guide_path: \(yamlQuoted(guidePath))")
+            if let source = metadata.guideSourcePath { lines.append("guide_source_path: \(yamlQuoted(source))") }
             if let group = metadata.groupID { lines.append("group_id: \(yamlQuoted(group))") }
             if let path = metadata.rosterPath { lines.append("roster_path: \(yamlQuoted(path))") }
         }

@@ -261,14 +261,15 @@ private enum TranscriptUpgradeScripts {
     }
 }
 
-private enum ScriptRunner {
+enum ScriptRunner {
+    @discardableResult
     static func run(
         executable: String,
         arguments: [String],
         environment: [String: String],
         timeout: TimeInterval = 1_800
-    ) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+    ) async throws -> Data {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
             let state = ScriptRunState()
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
@@ -304,16 +305,16 @@ private enum ScriptRunner {
                 process.waitUntilExit()
                 state.cancelTimeout()
                 guard state.markFinished() else { return }
+                if process.terminationStatus == 0 {
+                    continuation.resume(returning: outData)
+                    return
+                }
                 let out = String(data: outData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let err = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 // Keep both streams: Python warnings land on stderr and would
                 // otherwise mask the actual error printed on stdout.
                 let detail = [err, out].filter { !$0.isEmpty }.joined(separator: "\n")
-                if process.terminationStatus == 0 {
-                    continuation.resume()
-                } else {
-                    continuation.resume(throwing: TranscriptUpgradeError.providerFailed(detail.isEmpty ? "Transcript provider exited with \(process.terminationStatus)." : detail))
-                }
+                continuation.resume(throwing: TranscriptUpgradeError.providerFailed(detail.isEmpty ? "Process exited with \(process.terminationStatus)." : detail))
             }
         }
     }

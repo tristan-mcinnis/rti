@@ -6,6 +6,8 @@ struct GuideArchiveSnapshot {
     let guidePath: String
     let rosterPath: String?
     let roster: [GuideSeat]
+    /// Exact workbook parser output for a selected Word or Markdown guide.
+    var parsedSourceJSON: Data? = nil
 }
 
 @MainActor

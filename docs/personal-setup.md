@@ -50,6 +50,7 @@ The file also carries `auto_process_prompt`, a custom prompt for the unattended 
   title.txt             # session title (only if you renamed it)
   session.json          # metadata: mode, workstream, duration, audio file names
   speaker-names.json    # speaker names, Guide seat assignments and moderator roles
+  dg-questions.json     # parsed Word or Markdown guide for this session
   guide-cells-G1.json   # Guide calls only. Uses the entered group ID, or "unassigned"
   transcript.live.md    # Guide calls only. Original timestamped turns, retained after upgrade
   audio-mic.wav         # mic leg, kept for the transcript upgrade

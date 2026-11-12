@@ -31,6 +31,7 @@ public struct SessionArchiveMetadata: Codable {
     public var speechContext: SonioxContext? = nil
     public var groupID: String?
     public var guidePath: String?
+    public var guideSourcePath: String?
     public var rosterPath: String?
     /// The roster at recording time, for later seat edits even if its source moves.
     public var guideRoster: [GuideSeat]?
@@ -40,6 +41,7 @@ public struct SessionArchiveMetadata: Codable {
         case durationSeconds, calendarTitle, recordingError, speechContext
         case groupID = "group_id"
         case guidePath = "guide_path"
+        case guideSourcePath = "guide_source_path"
         case rosterPath = "roster_path"
         case guideRoster = "guide_roster"
     }
@@ -57,6 +59,7 @@ public struct SessionArchiveMetadata: Codable {
         speechContext: SonioxContext? = nil,
         groupID: String? = nil,
         guidePath: String? = nil,
+        guideSourcePath: String? = nil,
         rosterPath: String? = nil,
         guideRoster: [GuideSeat]? = nil
     ) {
@@ -72,6 +75,7 @@ public struct SessionArchiveMetadata: Codable {
         self.speechContext = speechContext
         self.groupID = groupID
         self.guidePath = guidePath
+        self.guideSourcePath = guideSourcePath
         self.rosterPath = rosterPath
         self.guideRoster = guideRoster
     }

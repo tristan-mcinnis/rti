@@ -75,6 +75,10 @@ final class SessionArchiveRecoveryTests: XCTestCase {
         }
         _ = try save("我选")
         let dir = try save("我选蓝色。")
+        let metadata = try JSONDecoder().decode(SessionArchiveMetadata.self, from: Data(contentsOf: dir.appendingPathComponent("session.json")))
+        XCTAssertEqual(metadata.guidePath, capture.guidePath)
+        XCTAssertNil(metadata.guideSourcePath)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("dg-questions.json").path))
         let proofURL = dir.appendingPathComponent("transcript.live.md")
         let live = try String(contentsOf: proofURL, encoding: .utf8)
         XCTAssertTrue(live.contains("`00:00:12.345` **Remote speaker 2:** 我选蓝色。"))
@@ -84,6 +88,45 @@ final class SessionArchiveRecoveryTests: XCTestCase {
         XCTAssertEqual(live, try String(contentsOf: proofURL, encoding: .utf8))
         let upgraded = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
         XCTAssertFalse(upgraded.contains("Remote speaker 2"))
+    }
+
+    func testDocumentGuideKeepsExactParserOutputAfterSourceMoves() throws {
+        let source = root.appendingPathComponent("mock-guide.md")
+        try "# Mock guide\nWhich cup?".write(to: source, atomically: true, encoding: .utf8)
+        // Extra fields and whitespace distinguish parser output from a Swift re-encode.
+        let json = Data("""
+        {
+          "title": "Mock", "parser_annotation": "keep this", "sections": [
+            {"id":"S1","title":"Cup","questions":[{"qid":"S1Q1","en":"Which cup?","zh":"选哪一个？","probes":[]}]}
+          ]
+        }
+
+        """.utf8)
+        let guide = try GuideDocument.parse(json)
+        let controller = GuideSessionController()
+        let session = "mock-source"
+        let prep = GuidePreparation.shared
+        prep.setGuide(guide, url: source, parsedSourceJSON: json)
+        prep.groupText = "G1"
+        controller.startPreparedSession(session, callType: .research, startedAt: startedAt)
+        prep.reset()
+        defer { controller.endSession(session) }
+        try FileManager.default.moveItem(at: source, to: root.appendingPathComponent("renamed.md"))
+        let captured = try XCTUnwrap(controller.snapshot(for: session))
+        let dir = try XCTUnwrap(SessionArchive.write(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(30),
+                                                    transcript: [], chat: [], guide: captured))
+        let expected = dir.appendingPathComponent("dg-questions.json")
+        let metadata = try JSONDecoder().decode(SessionArchiveMetadata.self, from: Data(contentsOf: dir.appendingPathComponent("session.json")))
+        XCTAssertEqual(metadata.guidePath, expected.path)
+        XCTAssertEqual(metadata.guideSourcePath, source.path)
+        XCTAssertEqual(try Data(contentsOf: expected), json)
+        let attributes = try FileManager.default.attributesOfItem(atPath: expected.path)
+        XCTAssertEqual(attributes[.posixPermissions] as? Int, 0o600)
+        let sidecar = try XCTUnwrap(SessionArchive.writeCanonicalMeetingSidecar(startedAt: startedAt, chat: [], visualContext: [],
+                                                                               notes: [], archiveDir: dir, callType: .research))
+        let text = try String(contentsOf: sidecar, encoding: .utf8)
+        XCTAssertTrue(text.contains("guide_path: \"\(expected.path)\""))
+        XCTAssertTrue(text.contains("guide_source_path: \"\(source.path)\""))
     }
 
     func testGuideReanchorAndSpeakerEditsUseOriginalTurnIdentity() throws {

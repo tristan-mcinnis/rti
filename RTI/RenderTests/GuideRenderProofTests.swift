@@ -66,15 +66,20 @@ final class GuideRenderProofTests: RenderProofTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let source = folder.appendingPathComponent("dg-questions.json")
         try Data(json.utf8).write(to: source)
-        let (guide, url) = try await GuideFileReader.shared.readGuide(at: root)
-        XCTAssertEqual(url.standardizedFileURL, source.standardizedFileURL)
+        let loaded = try await GuideFileReader.shared.loadGuide(at: root)
+        XCTAssertEqual(loaded.sourceURL.standardizedFileURL, source.standardizedFileURL)
 
         let prep = GuidePreparation()
-        prep.setGuide(guide, url: url)
+        try renderBothAppearances(
+            name: "guide-prepare-empty", size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: 170),
+            view: GuidePrepareControls(project: nil, preparation: prep)
+                .padding(House.Spacing.sm).background(House.ColorToken.surfaceRaised)
+        )
+        prep.setGuide(loaded.document, url: loaded.sourceURL, parsedSourceJSON: loaded.parsedSourceJSON)
         prep.groupText = " g2 "
         XCTAssertEqual(prep.group, "G2")
         try renderBothAppearances(
-            name: "guide-prepare", size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: 165),
+            name: "guide-prepare", size: CGSize(width: OverlayAppearanceDefaults.widthRange.lowerBound, height: 190),
             view: GuidePrepareControls(project: nil, preparation: prep)
                 .padding(House.Spacing.sm).background(House.ColorToken.surfaceRaised)
         )
@@ -86,7 +91,7 @@ final class GuideRenderProofTests: RenderProofTestCase {
         try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
         try Data(json.utf8).write(to: other.appendingPathComponent("dg-questions.json"))
         do {
-            _ = try await GuideFileReader.shared.readGuide(at: root)
+            _ = try await GuideFileReader.shared.loadGuide(at: root)
             XCTFail("Two guides must require an explicit choice")
         } catch GuideFileReader.ReadError.severalGuides {}
     }

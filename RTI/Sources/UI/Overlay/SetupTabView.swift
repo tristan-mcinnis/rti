@@ -91,8 +91,11 @@ struct SetupTabView: View {
                 meetingFocusSection
                 if CallTypeStore.shared.active == .research {
                     VStack(alignment: .leading, spacing: House.Spacing.xs) {
-                        sectionHeader("Guide", detail: "Optional")
-                        settingsGroup { GuidePrepareControls(project: store.workstreamItem) }
+                        sectionHeader("Discussion guide")
+                        settingsGroup {
+                            GuidePrepareControls(project: store.workstreamItem)
+                                .id(store.workstreamItem?.id)
+                        }
                     }
                 }
                 calendarMeetingSection
@@ -588,7 +591,7 @@ struct SetupTabView: View {
                         Image(systemName: "list.bullet.rectangle").frame(width: House.Control.tile)
                         VStack(alignment: .leading) {
                             Text("Guide notes").font(House.TypeToken.label)
-                            Text("Captured under each discussion question")
+                            Text("Respondent answers filed by question")
                                 .font(House.TypeToken.meta)
                                 .foregroundStyle(House.ColorToken.textSecondary)
                         }
@@ -699,9 +702,7 @@ struct SetupTabView: View {
     }
 
     private func pick(_ item: VaultItem) {
-        store.workstreamName = item.name
-        store.workstreamContext = VaultWorkstreamStore.context(for: item)
-        store.workstreamItem = item
+        store.selectWorkstream(item)
         if !query.isEmpty {
             suppressNextQueryDisclosure = true
             query = ""

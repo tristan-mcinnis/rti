@@ -90,6 +90,7 @@ final class MeetingContextStore {
     }
 
     func clearWorkstream() {
+        if workstreamItem != nil, !GuideSessionController.shared.isActive { GuidePreparation.shared.reset() }
         workstreamName = nil
         workstreamContext = nil
         workstreamItem = nil
@@ -129,6 +130,11 @@ final class MeetingContextStore {
     }
 
     func selectWorkstream(_ item: VaultItem) {
+        if workstreamItem?.id != item.id, !GuideSessionController.shared.isActive { GuidePreparation.shared.reset() }
+        applyWorkstream(item)
+    }
+
+    private func applyWorkstream(_ item: VaultItem) {
         workstreamName = item.name
         workstreamContext = VaultWorkstreamStore.context(for: item)
         workstreamItem = item
@@ -167,7 +173,8 @@ final class MeetingContextStore {
         guard workstreamName == nil else { return }
         let items = VaultWorkstreamStore.projects() + VaultWorkstreamStore.clients()
         guard let match = VaultWorkstreamStore.match(meetingName: meetingName, in: items) else { return }
-        selectWorkstream(match)
+        // Automatic calendar context at recording start must preserve a manually prepared guide.
+        applyWorkstream(match)
     }
 
     /// At session start, match a same-day prep brief to this session and load

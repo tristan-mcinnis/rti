@@ -172,6 +172,7 @@
 		543BF160ABA320EE6D42EC79 /* ProviderSettingsDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = 556A538B1921CC0121E5CC1B /* ProviderSettingsDraft.swift */; };
 		5514F57085C0CF9933C845DB /* ComposerSourcesStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7D94DD9CE8E2BFB9CAF2C8 /* ComposerSourcesStatusTests.swift */; };
 		5536BCE99CCDE1EDFF79D02F /* AudioPipelineRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A775F1C3A9C48BEF294D4E6 /* AudioPipelineRecoveryTests.swift */; };
+		5584E19A6662C18788FD28E3 /* cup-guide.docx in Resources */ = {isa = PBXBuildFile; fileRef = 1FF9A28D9CDA8633E1E43946 /* cup-guide.docx */; };
 		56A2D685AC52FBB7BCB35610 /* ComposerState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7F25B49D51A12EA8FC48017 /* ComposerState.swift */; };
 		56FAFAD3DFF7CAF20A7E5430 /* SessionsBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70BF29F58CC613A81C10A4E8 /* SessionsBrowserView.swift */; };
 		5719B398067FDBB3209E0CC6 /* CalendarMeeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0EB9E3D3960E8C07F3C0BF3 /* CalendarMeeting.swift */; };
@@ -431,6 +432,7 @@
 		D0843C73E6C39DDC5503E49F /* GlossaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B29D84DC8C16CB9AF6512C9 /* GlossaryStore.swift */; };
 		D0C3F1A6FEB34B860A83DEA4 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541406A822542146389D5B7E /* Secrets.swift */; };
 		D1E34FCEF626450FD340FEDF /* GuideSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 358BDFEADBB6974A89097958 /* GuideSessionController.swift */; };
+		D218FB9464C40F86B98D0986 /* GuideSourceImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD98379CF5059F711BD4A393 /* GuideSourceImportTests.swift */; };
 		D2335F908AADF4BC3F7C4EE8 /* MentionSuggestionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 717A3032745C495650B54AE4 /* MentionSuggestionStore.swift */; };
 		D24E5CE31089816223367C29 /* GuideCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77FC8C5FED9C5C5398F43BBB /* GuideCoreTests.swift */; };
 		D2F3ACF8CD6CEF7D268C882A /* ProcessOutputCollectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55502C3BEF5649DD3C951A14 /* ProcessOutputCollectorTests.swift */; };
@@ -595,6 +597,7 @@
 		1D3C02F3B3BCC9083618A54F /* GuideSpeakerMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideSpeakerMenu.swift; sourceTree = "<group>"; };
 		1DBF8692F44DDE407FC15202 /* ChatThreadStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThreadStoreTests.swift; sourceTree = "<group>"; };
 		1F4CA32D6916E1991FB7A08F /* SonioxFailure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxFailure.swift; sourceTree = "<group>"; };
+		1FF9A28D9CDA8633E1E43946 /* cup-guide.docx */ = {isa = PBXFileReference; path = "cup-guide.docx"; sourceTree = "<group>"; };
 		20C4C710F8B45BFBB6E71514 /* AssistantAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantAction.swift; sourceTree = "<group>"; };
 		211AF6CE3C914CB7437ED0FB /* SpeakerNameArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerNameArchive.swift; sourceTree = "<group>"; };
 		217E8D116341FC8CA6EF42E5 /* SessionReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionReader.swift; sourceTree = "<group>"; };
@@ -884,6 +887,7 @@
 		DC72C3051C6A814C024A2F5F /* ToolTraceParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolTraceParser.swift; sourceTree = "<group>"; };
 		DCE9839BBDA43C2E5038E526 /* LLMRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMRequest.swift; sourceTree = "<group>"; };
 		DD252AC03EC9589E65773554 /* RTIRenderTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RTIRenderTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DD98379CF5059F711BD4A393 /* GuideSourceImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideSourceImportTests.swift; sourceTree = "<group>"; };
 		DE1B854F49AD6FCF279AE1BA /* WorkflowDocTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowDocTests.swift; sourceTree = "<group>"; };
 		DE4A11B0F3C9BB21EC5BFE82 /* AssistantTurnBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantTurnBuilderTests.swift; sourceTree = "<group>"; };
 		DEC28BC83C424B25E884D37F /* LLMErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMErrorTests.swift; sourceTree = "<group>"; };
@@ -1003,6 +1007,7 @@
 				D2CE0767A932C4A595D92A63 /* ComposerRenderProofTests.swift */,
 				317764A6AE907D9676852C84 /* GuideLiveTimingTests.swift */,
 				A59195A655052668BFCBDF21 /* GuideRenderProofTests.swift */,
+				DD98379CF5059F711BD4A393 /* GuideSourceImportTests.swift */,
 				DB2CC53612A3755C6801D99A /* GuideWorkbookHandoffTests.swift */,
 				F8FB6C92413255E54E6F1820 /* LiveNotesTests.swift */,
 				3DFC311C69A564E17C6B79BE /* LLMRequestPriorityTests.swift */,
@@ -1572,6 +1577,7 @@
 		D09EB38E7DC2264AFFBA4F03 /* GuideFixtures */ = {
 			isa = PBXGroup;
 			children = (
+				1FF9A28D9CDA8633E1E43946 /* cup-guide.docx */,
 				B4459CF1E59B1FC78074EC0A /* dg-questions.json */,
 				92D551E332A10E2354C27C0B /* guide-cells-G1.json */,
 				C5E62DFEF7C58D75A15091F8 /* roster.csv */,
@@ -1821,6 +1827,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5584E19A6662C18788FD28E3 /* cup-guide.docx in Resources */,
 				4FC8053C4DC802FC8ABCADBA /* dg-questions.json in Resources */,
 				010A99713FC11642B6A77339 /* guide-cells-G1.json in Resources */,
 				8182E52E1A7B71F07034161E /* roster.csv in Resources */,
@@ -1928,6 +1935,7 @@
 				535268CE226B8F7FD38C9AA6 /* GuidePrompt.swift in Sources */,
 				1F7A775E8B413629F737662B /* GuideRenderProofTests.swift in Sources */,
 				9583EE669DA155B9CEE37A6B /* GuideSessionController.swift in Sources */,
+				D218FB9464C40F86B98D0986 /* GuideSourceImportTests.swift in Sources */,
 				A7A0F03AB6D673E5CEF7AFF2 /* GuideSpeakerMenu.swift in Sources */,
 				D75586D558CA9107F17F2360 /* GuideTabView.swift in Sources */,
 				08551FD87EE778637A5EBBD2 /* GuideWorkbookHandoffTests.swift in Sources */,

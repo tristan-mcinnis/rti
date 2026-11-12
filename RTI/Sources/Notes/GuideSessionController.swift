@@ -25,6 +25,7 @@ final class GuideSessionController {
     private var cursor: GuideCursor?
     private var sessionID: String?
     private var guideURL: URL?
+    private var parsedSourceJSON: Data?
     private var rosterURL: URL?
     private let request: LLMRequest
     private var passRevision = 0
@@ -53,14 +54,18 @@ final class GuideSessionController {
             prep.reset()
             return
         }
-        start(sessionID: sessionID, guide: guide, guideURL: url, group: prep.group, roster: prep.roster, rosterURL: prep.rosterURL, startedAt: startedAt)
+        start(sessionID: sessionID, guide: guide, guideURL: url, group: prep.group, roster: prep.roster,
+              rosterURL: prep.rosterURL, startedAt: startedAt, parsedSourceJSON: prep.parsedSourceJSON)
     }
 
-    func start(sessionID: String, guide: GuideDocument, guideURL: URL, group: String?, roster: [GuideSeat], rosterURL: URL?, startedAt: Date = Date()) {
+    func start(sessionID: String, guide: GuideDocument, guideURL: URL, group: String?, roster: [GuideSeat],
+               rosterURL: URL?, startedAt: Date = Date(), parsedSourceJSON: Data? = nil)
+    {
         passRevision += 1
         self.sessionID = sessionID
         self.guide = guide
         self.guideURL = guideURL
+        self.parsedSourceJSON = parsedSourceJSON
         self.startedAt = startedAt
         self.roster = roster
         self.rosterURL = rosterURL
@@ -82,6 +87,7 @@ final class GuideSessionController {
         cursor = nil
         guide = nil
         guideURL = nil
+        parsedSourceJSON = nil
         roster = []
         rosterURL = nil
         extraction = nil
@@ -146,7 +152,8 @@ final class GuideSessionController {
             let sources = GuideTranscript.sources(from: SessionCoordinator.shared.liveEntries)
             extraction.captureIncomplete = sources.contains { !consumed.contains($0.turn.id) }
         }
-        return GuideArchiveSnapshot(extraction: extraction, guidePath: guideURL.path, rosterPath: rosterURL?.path, roster: roster)
+        return GuideArchiveSnapshot(extraction: extraction, guidePath: guideURL.path, rosterPath: rosterURL?.path,
+                                    roster: roster, parsedSourceJSON: parsedSourceJSON)
     }
 
     static func sourceTurns(from entries: [LiveEntry]) -> [GuideTurn] {
