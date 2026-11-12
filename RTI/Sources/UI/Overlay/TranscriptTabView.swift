@@ -15,6 +15,7 @@ struct TranscriptTabView: View {
     @AppStorage(TranslationDefaults.languageAKey) private var languageA = "en"
     @AppStorage(TranslationDefaults.languageBKey) private var languageB = "zh"
     @State private var presentationOwner = UUID()
+    @State private var following = LiveTranscriptList.startsFollowing
     /// A rename refreshes the shared projection and copied text together.
     private let speakerNames = SpeakerNameStore.shared
 
@@ -28,14 +29,20 @@ struct TranscriptTabView: View {
             // The strip lines up with the tabs row. The captured-time clock
             // is the header's record chip; it is not repeated here.
             OverlayTabStrip {
-                HStack(spacing: House.Spacing.xs) {
-                    SlateStatusDot(color: healthColor)
-                    Text(healthLabel)
-                        .font(House.TypeToken.meta)
-                        .foregroundStyle(House.ColorToken.textSecondary)
+                VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                    HStack(spacing: House.Spacing.xs) {
+                        SlateStatusDot(color: healthColor)
+                        Text(healthLabel).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
+                        if session.isRunning {
+                            Text(following ? "Following" : "Browsing").font(House.TypeToken.meta.weight(.semibold))
+                        }
+                    }
+                    if let start = session.audioPipeline.captureStartWall ?? session.startedAt, session.isRunning {
+                        TranscriptActivityCaption(activity: session.readerActivity, start: start, active: isActive && !session.isPaused,
+                                                  stoppedAt: session.pausedAt)
+                    }
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Transcription: \(healthLabel)")
             } trailing: {
                 if session.canRetryLiveTranscription {
                     Button("Retry transcription", systemImage: "arrow.clockwise") { session.retryLiveTranscription() }
@@ -48,20 +55,27 @@ struct TranscriptTabView: View {
                     NSPasteboard.copyString(session.transcriptTextForCopy())
                 }
             }
+            if translationEnabled && translationMode == "two_way" && languageA == languageB {
+                Text("Choose two different languages to start two-way translation.")
+                    .font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
+            } else if !session.switchingLegs.isEmpty {
+                Text("Switching transcription settings…")
+                    .font(House.TypeToken.caption).foregroundStyle(House.ColorToken.textSecondary)
+            }
             if let notice = session.micAudioNotice {
                 Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
             }
             if let notice = session.systemAudioNotice {
                 Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
             }
-            LiveTranscriptList(rows: session.transcriptRows, revision: session.transcriptDisplayRevision,
-                               isActive: isActive, sessionID: session.currentSessionId)
+            LiveTranscriptList(turns: session.transcriptTurns, revision: session.transcriptDisplayRevision,
+                               isActive: isActive, sessionID: session.currentSessionId, onFollowingChanged: { following = $0 })
                 .equatable()
                 .overlay {
                     if session.transcriptRows.isEmpty {
                         overlayEmptyHints([
                             overlayRecordHint(),
-                            "What you say shows on the right, everyone else on the left",
+                            "Spoken words appear here as they arrive",
                             "Click a speaker to give them a name",
                         ])
                     }
@@ -119,10 +133,10 @@ struct TranscriptTabView: View {
                     }
                     Divider()
                     if translationMode == "two_way" {
-                        Picker("From", selection: $languageA) { languageItems }
-                        Picker("To", selection: $languageB) { languageItems }
+                        Picker("From", selection: $languageA) { languageItems(excluding: languageB) }
+                        Picker("To", selection: $languageB) { languageItems(excluding: languageA) }
                     } else {
-                        Picker("Target", selection: $targetLanguage) { languageItems }
+                        Picker("Target", selection: $targetLanguage) { languageItems() }
                     }
                 } label: {
                     Image(systemName: "chevron.down").font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
@@ -135,9 +149,9 @@ struct TranscriptTabView: View {
         }
     }
 
-    private var languageItems: some View {
+    private func languageItems(excluding otherLanguage: String? = nil) -> some View {
         ForEach(Self.languageOptions, id: \.code) { opt in
-            Text(opt.label).tag(opt.code)
+            Text(opt.label).tag(opt.code).disabled(opt.code == otherLanguage)
         }
     }
 
@@ -156,28 +170,49 @@ struct TranscriptTabView: View {
     }
 
     private var healthColor: Color {
-        if session.isPaused {
-            return RTIDesign.Color.warning
-        }
-        guard session.isRunning else { return Color.overlayInkTertiary }
-        switch session.transcriptionHealth {
-        case .live: return RTIDesign.Color.success
-        case .connecting, .reconnecting: return RTIDesign.Color.warning
-        case .failed, .idle: return RTIDesign.Color.danger
-        }
+        guard session.isRunning else { return House.ColorToken.textTertiary }
+        if session.isPaused { return House.ColorToken.warning }
+        let active = session.micMuted ? [session.systemTranscriptionHealth] : [session.transcriptionHealth, session.systemTranscriptionHealth]
+        if active.contains(.failed) { return RTIDesign.Color.danger }
+        if active.contains(.reconnecting) || active.contains(.connecting) { return House.ColorToken.warning }
+        return active.contains(.live) ? RTIDesign.Color.success : House.ColorToken.textTertiary
     }
 
     private var healthLabel: String {
-        if session.isPaused {
-            return "Paused"
-        }
+        if session.isPaused { return "Paused" }
         guard session.isRunning else { return "Idle" }
-        switch session.transcriptionHealth {
-        case .live: return "Live"
-        case .connecting: return "Connecting…"
-        case .reconnecting: return "Reconnecting…"
-        case .failed: return "Connection lost"
-        case .idle: return "Recording…"
+        func label(_ health: TranscriptionHealth, source: String) -> String {
+            switch health {
+            case .live: "\(source) connected"
+            case .connecting: "\(source) connecting"
+            case .reconnecting: "\(source) reconnecting"
+            case .failed: "\(source) unavailable"
+            case .idle: source == "Call" ? "Awaiting call audio" : "Awaiting mic"
+            }
         }
+        let mic = session.micMuted ? (session.listeningOnly ? "Listening only" : "Mic off") : label(session.transcriptionHealth, source: "Mic")
+        return mic + " · " + label(session.systemTranscriptionHealth, source: "Call")
+    }
+}
+
+/// This clock repaints the tiny age label only. It never reads the transcript list.
+private struct TranscriptActivityCaption: View {
+    let activity: TranscriptReaderActivity
+    let start: Date
+    let active: Bool
+    let stoppedAt: Date?
+
+    var body: some View {
+        if active {
+            TimelineView(.periodic(from: .now, by: 5)) { context in caption(at: context.date) }
+        } else {
+            caption(at: stoppedAt ?? .now)
+        }
+    }
+
+    private func caption(at date: Date) -> some View {
+        Text(activity.caption(elapsedMs: Int(max(0, date.timeIntervalSince(start)) * 1000)))
+            .font(House.TypeToken.meta).monospacedDigit().foregroundStyle(House.ColorToken.textSecondary)
+            .help("Times since the last finalized original speech and the last note on the recording timeline.")
     }
 }

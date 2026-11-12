@@ -36,6 +36,20 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
 
     static let interim = "remote_1: and I'll tag the design channel so they see it before"
 
+    func testLateNoteReaderWidths() throws {
+        let rows = [
+            RenderFixtures.liveEntry("remote_1", "I carry the folded map because the screen goes dark in cold weather.", 4652000),
+            RenderFixtures.liveEntry("remote_2", "我把地图放进透明袋里。", 4664000),
+            RenderFixtures.liveEntry("remote_1", "A paper map lets two people point at the same path while we discuss our next stop. We can spread it across the bench, trace the turn with our fingers, and compare two routes at the same time.", 4676000),
+            RenderFixtures.liveEntry("note", "Back to the route cards", 5580000),
+        ]
+        SessionCoordinator.shared.seedForRenderProof(entries: rows, interim: nil, phase: .recording, startedAt: Date().addingTimeInterval(-5880), streamHealth: .live, systemHealth: .live)
+        for width in [600, 700, 1000] {
+            try renderBothAppearances(name: "reader-after-\(width)", size: CGSize(width: width, height: 480),
+                view: TranscriptTabView().padding(House.Spacing.md).background(House.ColorToken.surface))
+        }
+    }
+
     private func seedLive() {
         SessionCoordinator.shared.seedForRenderProof(
             entries: Self.meeting,
@@ -219,11 +233,12 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
                 word("We agree on the design today.", 1, 6_050, final: true),
             ], channel: "mic", frame: "11-late-correction")
             let correctedRows = LiveTranscriptPresentation.rows(from: pipeline.liveEntries, showTranslations: false)
-            XCTAssertEqual(pipeline.liveEntries.count, priorEntries.count)
+            XCTAssertEqual(pipeline.liveEntries.count, priorEntries.count + 1)
             XCTAssertEqual(pipeline.liveEntries.last?.id, priorEntries.last?.id)
-            XCTAssertEqual(correctedRows.map(\.id), priorRows.map(\.id))
-            XCTAssertEqual(correctedRows[3].original, "We agree on the design today.")
-            XCTAssertNotEqual(corrected.pixels, beforeCorrection.pixels, "A final revision must refresh text even when count and last ID are unchanged")
+            XCTAssertTrue(Set(priorRows.map(\.id)).isSubset(of: Set(correctedRows.map(\.id))))
+            XCTAssertTrue(correctedRows.contains { $0.original == "We agree on the design" && $0.speakerId == "remote_4" })
+            XCTAssertTrue(correctedRows.contains { $0.original == "We agree on the design today." && $0.speakerId == "self" })
+            XCTAssertNotEqual(corrected.pixels, beforeCorrection.pixels, "A late independent leg must appear beside the original provider text")
             XCTAssertEqual(corrected.prefix, settled.prefix, "The unchanged first row moved after a delayed final")
         }
     }
@@ -409,7 +424,7 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         settleAcceptanceHost(hosting)
         let before = try await acceptanceWords(hosting, appearance: appearance, name: "acceptance-reader-before")
         let marker = try XCTUnwrap(before.filter { $0.text.contains("Review marker") }.dropFirst().first)
-        _ = try textAnchor("Jump to latest", in: before)
+        _ = try textAnchor("Jump to live", in: before)
 
         let updated = entries + [RenderFixtures.liveEntry("remote_3", "The newest arriving phrase.", 210_000)]
         session.seedForRenderProof(entries: updated, interim: nil, phase: .recording, startedAt: Date())
@@ -434,7 +449,7 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         let returned = try textAnchor(marker.text, in: after)
         XCTAssertEqual(returned.midY * Self.height, marker.boundingBox.midY * Self.height, accuracy: 4)
 
-        _ = try textAnchor("Jump to latest", in: after)
+        _ = try textAnchor("Jump to live", in: after)
         // OCR can merge the floating button with the transcript line behind
         // it, so press the control itself rather than the recognized box.
         try pressAcceptanceElement("rti-transcript-jump-latest", in: hosting)
@@ -442,7 +457,7 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         let latest = try await acceptanceWords(hosting, appearance: appearance, name: "acceptance-reader-latest")
         _ = try textAnchor("A phrase received while the reader was hidden", in: latest)
         _ = try textAnchor("Taylor", in: latest)
-        XCTAssertFalse(latest.contains { $0.text.contains("Jump to latest") })
+        XCTAssertFalse(latest.contains { $0.text.contains("Jump to live") })
     }
 
     func testPendingSpeakerNameDraftSurvivesFinalization() async throws {

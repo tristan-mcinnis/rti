@@ -13,10 +13,11 @@ import HouseDesign
 /// The Core projection shares its frozen history and replaces only its live
 /// tail. Stable row IDs and revisions let the lazy list skip unchanged runs.
 struct LiveTranscriptList: View, Equatable {
-    let rows: LiveTranscriptPresentation.LiveRows
+    let turns: LiveTranscriptPresentation.LiveTurns
     let revision: Int
     var isActive = true
     var sessionID: String?
+    var onFollowingChanged: ((Bool) -> Void)?
 
     /// Render proofs start scrolled away from the latest line to show the
     /// "Jump to latest" control; the app always starts following.
@@ -42,15 +43,17 @@ struct LiveTranscriptList: View, Equatable {
         lhs.revision == rhs.revision && lhs.isActive == rhs.isActive && lhs.sessionID == rhs.sessionID
     }
 
-    private var turns: [LiveTranscriptPresentation.Turn] { LiveTranscriptPresentation.turns(rows) }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: House.Spacing.lg) {
+                LazyVStack(alignment: .leading, spacing: House.Spacing.sm) {
                     ForEach(turns) { turn in
                         TranscriptRunView(turn: turn)
                             .equatable()
+                            .simultaneousGesture(TapGesture().onEnded {
+                                if !turn.isNote { ResearchCodebookController.shared.selectedOffset = turn.startMs }
+                            })
                             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView).minY } action: { top in
                                 if !following { reader.turnMoved(turn.id, top: top) }
                             }
@@ -74,7 +77,22 @@ struct LiveTranscriptList: View, Equatable {
                 }
             }
             .scrollPosition(id: $readingAnchor)
+            .onChange(of: following, initial: true) { _, value in onFollowingChanged?(value) }
             .accessibilityIdentifier("rti-live-transcript")
+            .focusable()
+            .onKeyPress("s") {
+                guard isActive, ResearchCodebookController.shared.location != nil, SessionCoordinator.shared.isRunning else { return .ignored }
+                Task { await ResearchCodebookController.shared.star() }
+                return .handled
+            }
+            .onChange(of: ResearchCodebookController.shared.pendingJump, initial: true) { _, offset in
+                guard isActive, let offset, let turn = turns.last(where: { ($0.startMs ?? Int.max) <= offset }) else { return }
+                following = false
+                reader.release()
+                readingAnchor = turn.id
+                proxy.scrollTo(turn.id, anchor: .center)
+                ResearchCodebookController.shared.pendingJump = nil
+            }
             .overlay(alignment: .bottom) {
                 if !following {
                     JumpToLatestButton {
@@ -94,7 +112,13 @@ struct LiveTranscriptList: View, Equatable {
                     reader.reset()
                 }
                 if !following { reader.hold(readingAnchor) }
-                if current.isActive, following { scrollToLatest(proxy) }
+                if current.isActive, let offset = ResearchCodebookController.shared.pendingJump,
+                   let turn = turns.last(where: { ($0.startMs ?? Int.max) <= offset }) {
+                    following = false
+                    readingAnchor = turn.id
+                    proxy.scrollTo(turn.id, anchor: .center)
+                    ResearchCodebookController.shared.pendingJump = nil
+                } else if current.isActive, following { scrollToLatest(proxy) }
             }
         }
     }
@@ -156,10 +180,16 @@ private final class ReadingPosition {
 
 /// Observe the existing SwiftUI scroll view through its AppKit seam. This
 /// keeps user scroll intent distinct from content growth on macOS 14 too.
+extension View {
+    func trackReaderFollowing(_ following: Binding<Bool>) -> some View {
+        background(TranscriptScrollTracking(following: following, isActive: true, reader: nil))
+    }
+}
+
 private struct TranscriptScrollTracking: NSViewRepresentable {
     @Binding var following: Bool
     let isActive: Bool
-    let reader: ReadingPosition
+    let reader: ReadingPosition?
 
     func makeNSView(context: Context) -> TranscriptScrollTrackingView {
         TranscriptScrollTrackingView()
@@ -251,7 +281,7 @@ private struct JumpToLatestButton: View {
             HStack(spacing: House.Spacing.xxs) {
                 Image(systemName: "arrow.down")
                     .font(House.TypeToken.caption.weight(.semibold))
-                Text("Jump to latest")
+                Text("Jump to live")
                     .font(House.TypeToken.meta)
             }
             .foregroundStyle(House.ColorToken.textPrimary)
@@ -264,7 +294,7 @@ private struct JumpToLatestButton: View {
         }
         .buttonStyle(.plain)
         .help("Scroll to the latest line and keep following")
-        .accessibilityLabel("Jump to latest")
+        .accessibilityLabel("Jump to live")
         .accessibilityIdentifier("rti-transcript-jump-latest")
         .background(AppKitIdentifier("rti-transcript-jump-latest"))
     }
@@ -313,7 +343,6 @@ private struct TranscriptRunView: View, Equatable {
                 texts
             }
         }
-        .answerWidth()
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -331,7 +360,6 @@ private struct TranscriptRunView: View, Equatable {
                 SpeakerNameControl(speakerId: turn.speakerId, label: turn.speakerLabel,
                                    color: SpeakerLabels.chipColor(for: turn.speakerId))
             }
-            Spacer(minLength: House.Spacing.sm)
             if let startMs = turn.startMs {
                 Text(TimeFormat.elapsedMs(startMs))
                     .font(House.TypeToken.meta)
@@ -458,13 +486,19 @@ private struct SpeakerNameControl: View {
         }
     }
 
+    private var readerLabel: String {
+        let leg = SpeakerEvidence.leg(for: speakerId)
+        if let name = names.names[speakerId], !name.isEmpty { return name + " · " + leg }
+        if label == "Them" || speakerId == "self" || speakerId == "remote" { return leg }
+        return leg + " · " + label + " (unverified)"
+    }
+
     private var nameText: some View {
-        Text(label)
+        Text(readerLabel)
             .font(House.TypeToken.label.weight(.semibold))
             .foregroundStyle(color)
             .lineLimit(1)
             .truncationMode(.tail)
-            .frame(maxWidth: House.Layout.chatRail, alignment: .leading)
             .fixedSize(horizontal: true, vertical: false)
             .contentShape(Rectangle())
     }
