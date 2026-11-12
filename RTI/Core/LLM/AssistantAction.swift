@@ -107,18 +107,23 @@ public extension AssistantAction {
             hotkey: ActionHotkey(key: "F", modifiers: cmdOpt)
         ),
         AssistantAction(
-            id: "keyTensions", label: "Key tensions",
-            paletteTitle: "Key Tensions",
+            id: "keyTensions", label: "Unprobed tension",
+            paletteTitle: "Unprobed Tension",
             symbol: "bolt.horizontal",
             keywords: ["tension", "disagree", "split", "observe", "listener"],
             hotkey: ActionHotkey(key: "T", modifiers: cmdOpt)
         ),
         AssistantAction(
-            id: "probe", label: "What's unsaid / probe",
-            paletteTitle: "What's Unsaid / Probe",
+            id: "probe", label: "Echo check",
+            paletteTitle: "Echo Check",
             symbol: "magnifyingglass",
             keywords: ["probe", "unsaid", "explore", "deepen", "listener"],
             hotkey: ActionHotkey(key: "U", modifiers: cmdOpt)
+        ),
+        AssistantAction(
+            id: "saidVsDone", label: "Said vs done",
+            paletteTitle: "Said vs Done", symbol: "arrow.left.arrow.right",
+            keywords: ["behavior", "claim", "purchase", "contradiction", "research"]
         ),
         AssistantAction(
             id: "themes", label: "Emerging themes",

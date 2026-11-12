@@ -61,9 +61,9 @@ final class PromptCatalogueTests: XCTestCase {
     // MARK: - Listener research actions
 
     func test_listenerResearchPrompts() {
-        XCTAssertTrue(PromptID.keyTensions.defaultText.contains("KEY TENSIONS"))
-        XCTAssertTrue(PromptID.probe.defaultText.contains("LEFT UNSAID"))
-        XCTAssertTrue(PromptID.themes.defaultText.contains("EMERGING THEMES"))
+        XCTAssertTrue(PromptID.keyTensions.defaultText.contains("unprobed tension"))
+        XCTAssertTrue(PromptID.probe.defaultText.contains("an echo"))
+        XCTAssertTrue(PromptID.themes.defaultText.contains("raised after a moderator question"))
     }
 
     // MARK: - System

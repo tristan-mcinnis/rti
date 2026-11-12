@@ -369,20 +369,27 @@ public enum ChatTurnRecordBuilder {
     /// A canned action as its pill draws it: the short name and the glyph
     /// from the action catalogue. Nil for a typed question or command.
     public static func cannedAction(for action: String?) -> (label: String, symbol: String)? {
-        guard let action else { return nil }
+        guard let action, let id = actionID(for: action), let entry = AssistantAction.byID(id) else { return nil }
+        return (action, entry.symbol)
+    }
+
+    public static func actionID(for action: String) -> String? {
         let ids: [String: String] = [
             "Assist": "assist",
             "Answer latest": "answerLatest",
             "Say next": "sayNext",
             "Follow-ups": "followups",
             "Key tensions": "keyTensions",
+            "Unprobed tension": "keyTensions",
+            "Said vs done": "saidVsDone",
+            "Echo check": "probe",
+            "Emerging themes": "themes",
             "Probe": "probe",
             "Themes": "themes",
             "Recap": "recap",
             "Quick recap": "quickRecap",
         ]
-        guard let id = ids[action], let entry = AssistantAction.byID(id) else { return nil }
-        return (action, entry.symbol)
+        return ids[action]
     }
 
     /// The pill's words for a canned action: its name, and for a recap its

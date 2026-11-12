@@ -130,6 +130,17 @@ public struct ChatRouteConfiguration: Sendable {
         self.selection = selection
     }
 
+    /// A deterministic transcript check gets a truthful local receipt. It has
+    /// neither a credential nor a network destination.
+    public static var localTranscriptCheck: Self {
+        let id = "local-transcript-check"
+        let provider = LLMProviderConfig(id: id, displayName: "Local transcript check",
+                                         baseURL: URL(fileURLWithPath: "/"), model: id,
+                                         supportsThinking: false, supportsVision: false, apiKey: { "" })
+        return Self(provider: provider, reasoning: .fast, imageRoute: .none, imageCount: 0,
+                    selection: ChatModelSelection(providerId: id, reasoning: .fast))
+    }
+
     /// The value the client's `smart:` parameter used to carry.
     public var smart: Bool { thinkingSent }
 

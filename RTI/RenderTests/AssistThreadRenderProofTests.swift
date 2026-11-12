@@ -46,6 +46,30 @@ final class AssistThreadRenderProofTests: RenderProofTestCase {
         }
     }
 
+    func testEnglishFirstSourceAndPronunciationAtBothWidths() throws {
+        let body = """
+        They took the subway. The reason is still unclear.
+
+        **Suggested question for the moderator** What made you choose it that day?
+
+        **Source [02:10, Them]** “我坐地铁。”
+
+        **Pinyin** Wǒ zuò dìtiě.
+
+        **Suggested question in Mandarin** 那天为什么坐地铁？
+
+        **Pinyin** Nà tiān wèishénme zuò dìtiě?
+        """
+        for streaming in [true, false] {
+            let answer = ThreadFixtures.answer(streaming ? String(body.prefix(100)) : body)
+            var model = ThreadFixtures.model(entries: [ThreadFixtures.user("Why did they choose the subway?"), answer])
+            model.streamingID = streaming ? answer.id : nil
+            try renderStates(streaming ? "thread-english-first-stream" : "thread-english-first-complete", height: 560) {
+                ProofSurface(model: model)
+            }
+        }
+    }
+
     func testAnsweredWithToolsAndSources() throws {
         // Taller, so the sixth source's "1 more" fold is in view.
         try renderStates("thread-answered-tools-sources", height: 560) {

@@ -50,7 +50,7 @@ public enum CallType: String, CaseIterable, Identifiable, Sendable {
     public var menuActionIDs: [String] {
         switch self {
         case .client: ["assist", "answerLatest", "quickRecap", "recap"]
-        case .research: ["probe", "keyTensions", "followups", "quickRecap", "recap"]
+        case .research: ["probe", "keyTensions", "saidVsDone", "themes", "followups", "quickRecap", "recap"]
         case .internal: ["quickRecap", "recap", "assist", "answerLatest"]
         case .personal: ["answerLatest", "quickRecap", "recap"]
         }

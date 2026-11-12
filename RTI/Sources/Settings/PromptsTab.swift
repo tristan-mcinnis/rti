@@ -123,6 +123,9 @@ private struct PromptEditorView: View {
                             SettingsStatusLabel(text: "The shipped default changed since you edited this.", systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
                         }
 
+                        if let action = ResearchModeration.Action(rawValue: id.rawValue) {
+                            ResearchWindowPreference(action: action)
+                        }
                         TextEditor(text: textBinding)
                             .font(.system(.callout, design: .monospaced))
                             .frame(minHeight: 280)
@@ -184,5 +187,17 @@ private struct PromptEditorView: View {
         case .recapLanguageRule: return PromptComposer.recap(.standard, resolve: resolve)
         default: return nil
         }
+    }
+}
+
+private struct ResearchWindowPreference: View {
+    @AppStorage private var minutes: Int
+
+    init(action: ResearchModeration.Action) {
+        _minutes = AppStorage(wrappedValue: 10, action.settingsKey)
+    }
+
+    var body: some View {
+        Stepper("Transcript window: \(minutes) min", value: $minutes, in: 1...1440)
     }
 }

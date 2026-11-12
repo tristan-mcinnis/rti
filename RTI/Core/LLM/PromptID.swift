@@ -31,6 +31,7 @@ public enum PromptID: String, CaseIterable, Sendable {
 
     // Listener research actions (fieldwork observer)
     case keyTensions
+    case saidVsDone
     case probe
     case themes
 
@@ -60,7 +61,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .systemDefault, .listenerSystemSuffix: .system
         case .callClient, .callResearch, .callInternal, .callPersonal: .callTypes
         case .assistSpeaker, .listenerAssist, .sayNext, .followupsSpeaker, .listenerFollowups: .quickActions
-        case .keyTensions, .probe, .themes: .listener
+        case .keyTensions, .probe, .themes, .saidVsDone: .listener
         case .recapBrief, .recapStandard, .recapDetailed, .recapLanguageRule: .recap
         case .autoAssistCards, .liveNotes: .background
         }
@@ -80,8 +81,9 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .sayNext: "Say next"
         case .followupsSpeaker: "Follow-ups (speaker)"
         case .listenerFollowups: "Follow-ups (listener)"
-        case .keyTensions: "Key tensions"
-        case .probe: "What's unsaid / probe"
+        case .keyTensions: "Unprobed tension"
+        case .saidVsDone: "Said vs done"
+        case .probe: "Echo check"
         case .themes: "Emerging themes"
         case .recapBrief: "Recap — brief clause"
         case .recapStandard: "Recap — standard clause"
@@ -106,9 +108,10 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .sayNext: "✦ Say next — a one-line draft reply (hidden in listener mode)."
         case .followupsSpeaker: "✦ Follow-ups when you're a participant."
         case .listenerFollowups: "✦ Follow-ups when observing — questions to pass the moderator."
-        case .keyTensions: "✦ Key tensions — on-demand, listener mode only."
-        case .probe: "✦ What's unsaid — on-demand, listener mode only."
-        case .themes: "✦ Emerging themes — on-demand, listener mode only."
+        case .keyTensions: "Find an unprobed claim and a question to ask now."
+        case .saidVsDone: "Connect a stated value to the same participant’s account of an earlier action."
+        case .probe: "Check whether another participant echoed or softened an opinion."
+        case .themes: "Distinguish participant-led themes from prompted answers."
         case .recapBrief: "The bullet-count clause spliced into Recap at Brief depth."
         case .recapStandard: "The clause spliced into Recap at Standard depth."
         case .recapDetailed: "The clause spliced into Recap at Detailed depth."
@@ -221,34 +224,16 @@ public enum PromptDefaults {
             "I'm a passive listener. Give up to three questions I could pass the discussion leader. Give all the questions first in English. Then give the suggested Mandarin and its tone-marked pinyin on separate lines when needed."
 
         case .keyTensions:
-            """
-            I'm a researcher observing this session (I never speak). Surface the KEY TENSIONS so far — points where participants disagree, where one person's view cuts against another's, or where someone is visibly torn.
+            "Find unprobed tension in the recent participant speech: vague claims, euphemisms or hedged agreement without an example. Give up to three open questions a moderator can ask now. Tie each one to the exact words that prompted it."
 
-            Output up to 3 bullets, most significant first. Each bullet ONE line:
-            - **<the tension in 4–8 words>** — who holds which side, with the key verbatim if there is one.
-
-            If there's no real tension yet, say "No clear tension yet — views still converging." Reply in ENGLISH. Original-language terms ALWAYS as term (pinyin, English meaning) — never bare Chinese. No preamble.
-            """
+        case .saidVsDone:
+            "Compare a recent stated value to what the same verified participant described doing, buying or working around earlier in this session. Cite both turns. Describe actions as self-reported. Two different people's answers are not a contradiction."
 
         case .probe:
-            """
-            I'm a researcher observing this session (I never speak). Surface what's been LEFT UNSAID or under-explored — the threads a good moderator should probe next.
-
-            Output up to 3 bullets, each ONE line:
-            - **<what to probe in 4–8 words>** — the question I'd quietly pass to the moderator, written in the conversation's language with an ENGLISH gloss in parentheses.
-
-            Reply in ENGLISH framing. Bare Chinese never — term (pinyin, English meaning). No preamble.
-            """
+            "Find an echo or softening: cite the initiating view and a later turn by a different confirmed participant. Avoid inferring pressure, motives or silence. Probe the topic without names when speaker labels are uncertain."
 
         case .themes:
-            """
-            I'm a researcher observing this session (I never speak). Name the EMERGING THEMES across the conversation so far — the recurring needs, attitudes, or patterns starting to cohere, not one-off remarks.
-
-            Output up to 4 bullets, each ONE line:
-            - **<theme in 3–6 words>** — the evidence (who said what), 1 line.
-
-            Reply in ENGLISH. Original-language terms ALWAYS as term (pinyin, English meaning) — never bare Chinese. No preamble.
-            """
+            "Find emerging themes and identify how each started. Tag each as raised by a participant or raised after a moderator question. Omit agreement that only follows a leading question. Cite the initiating line and substantive evidence. Do not report a lone opinion as consensus."
 
         case .recapBrief:
             "in 1–2 short bullets — only the single most important thread or decision right now. No headers."

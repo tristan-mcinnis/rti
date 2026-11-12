@@ -12,7 +12,7 @@ final class AssistantActionTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, ids.count, "ids must be unique")
         XCTAssertEqual(
             Set(ids),
-            ["assist", "answerLatest", "sayNext", "followups", "keyTensions", "probe", "themes", "recap", "quickRecap"]
+            ["assist", "answerLatest", "sayNext", "followups", "keyTensions", "probe", "themes", "saidVsDone", "recap", "quickRecap"]
         )
     }
 

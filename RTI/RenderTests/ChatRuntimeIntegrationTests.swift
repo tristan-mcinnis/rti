@@ -145,9 +145,9 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         let stream: LLMRequest.ToolStream = { messages, _, _, _, onContent, _ in
             calls.increment()
             let prompt = messages.last(where: { $0.role == "user" })?.content ?? ""
-            XCTAssertTrue(prompt.contains("Avery: The blue lantern prototype is ready."),
+            XCTAssertTrue(prompt.contains("Me / Avery (confirmed)] The blue lantern prototype is ready."),
                           "The actual Ask request must not split lantern at a provider packet boundary: \(prompt)")
-            XCTAssertTrue(prompt.contains("Taylor: The battery test starts tomorrow."))
+            XCTAssertTrue(prompt.contains("Them / Taylor (confirmed)] The battery test starts tomorrow."))
             XCTAssertFalse(prompt.contains("TRANSLATION_ONLY_MARKER"))
             XCTAssertFalse(prompt.contains("PENDING_ONLY_MARKER"))
             XCTAssertFalse(prompt.contains("remote_1:"))
@@ -164,7 +164,91 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         XCTAssertTrue(session.transcriptRows.isEmpty, "Ask must not depend on opening Transcript")
     }
 
+    func testModerationDispatchStoresOnlyTheValidatedAnswerAndExportsTheSameSource() async throws {
+        try RenderProofHarness.prepare()
+        let session = SessionCoordinator.shared
+        session.beginTranscriptReplayForProof()
+        defer { session.endTranscriptReplayForProof(); SpeakerNameStore.shared.reset() }
+        try await SplitWordTranscriptReplay.publish(in: session)
+        let sessionID = try XCTUnwrap(session.currentSessionId)
+        let source = try XCTUnwrap(GuideTranscript.sources(from: session.liveEntries).first { $0.turn.speaker == "remote_1" })
+        let proposed: [[String: Any]] = [
+            ["english": "What would you test first?", "citations": [["id": source.turn.id, "excerpt": source.turn.text]]],
+            ["english": "Invented answer", "citations": [["id": source.turn.id, "excerpt": "fabricated quotation"]]],
+        ]
+        let wire = try String(decoding: JSONSerialization.data(withJSONObject: ["items": proposed]), as: UTF8.self)
+        let stream: LLMRequest.ToolStream = { messages, tools, _, _, onContent, _ in
+            XCTAssertNil(tools)
+            XCTAssertTrue(messages.contains { ($0.content ?? "").contains("Return only JSON") })
+            XCTAssertTrue(messages.last?.content?.contains(source.turn.text) == true)
+            onContent(String(wire.prefix(wire.count / 2)))
+            onContent(String(wire.dropFirst(wire.count / 2)))
+            return LLMClient.StreamResult(toolCalls: [], finishReason: "stop", reasoningCharacters: 0)
+        }
+        let controller = makeController(sessionBox: SessionBox(sessionID), callTypeStore: .inMemory(.research), stream: stream)
+        defer { controller.cancel() }
+        controller.perform(actionID: "keyTensions")
+        _ = try await waitForStoredTurns(2)
+        let answer = try XCTUnwrap(controller.entries.last?.text)
+        XCTAssertTrue(answer.contains("What would you test first?"))
+        XCTAssertTrue(answer.contains("“" + source.turn.text + "”"))
+        XCTAssertFalse(answer.contains("fabricated quotation"))
+        XCTAssertFalse(answer.contains("Invented answer"))
+        let projection = await store.sessionChatProjection(linkedToSession: sessionID)
+        XCTAssertEqual(projection.threads.first?.turns.last?.text, answer)
+        XCTAssertTrue(ChatProjectionMarkdown.renderSection(threads: projection.threads).joined(separator: "\n").contains(answer))
+    }
+
+    func testUncertainEchoPersistsWithoutAProviderOrNameAttribution() async throws {
+        try RenderProofHarness.prepare()
+        let session = SessionCoordinator.shared
+        session.beginTranscriptReplayForProof()
+        defer { session.endTranscriptReplayForProof(); SpeakerNameStore.shared.reset() }
+        try await SplitWordTranscriptReplay.publish(in: session)
+        SpeakerNameStore.shared.reset()
+        let counter = Counter()
+        let sessionID = try XCTUnwrap(session.currentSessionId)
+        let controller = makeController(sessionBox: SessionBox(sessionID),
+                                        routeResolver: { _, _, _ in
+                                            XCTFail("The local check requested a provider")
+                                            return .success(Self.route(imageCount: 0))
+                                        }, callTypeStore: .inMemory(.research), stream: countingStream(counter))
+        defer { controller.cancel() }
+        controller.perform(actionID: "probe")
+        _ = try await waitForStoredTurns(2)
+        let answer = try XCTUnwrap(controller.entries.last?.text)
+        XCTAssertTrue(answer.hasPrefix("speaker labels too uncertain for this check"))
+        XCTAssertTrue(answer.contains(", Them]"))
+        XCTAssertFalse(answer.contains("Taylor"))
+        XCTAssertEqual(counter.count, 0)
+        let projection = await store.sessionChatProjection(linkedToSession: sessionID)
+        XCTAssertEqual(projection.threads.first?.turns.last?.text, answer)
+    }
+
     // MARK: - Defect 1 & 6: per-attachment bytes
+
+    func testScreenshotsOffExcludesFreshAndRetainedCaptureFromWireAndStorage() async throws {
+        try RenderProofHarness.prepare()
+        let policy = ScreenshotPolicy.shared
+        let original = policy.global
+        defer { policy.setGlobal(original) }
+        policy.setGlobal(.off)
+        let stream: LLMRequest.ToolStream = { messages, tools, _, _, onContent, _ in
+            XCTAssertTrue(messages.allSatisfy { $0.images?.isEmpty != false })
+            XCTAssertFalse(messages.contains { $0.content?.contains("forbidden fixture pixels") == true })
+            XCTAssertFalse(tools.map { String(decoding: $0, as: UTF8.self).contains("capture_screen") } ?? false)
+            onContent("Text-only reply.")
+            return LLMClient.StreamResult(toolCalls: [], finishReason: "stop", reasoningCharacters: 0)
+        }
+        let controller = makeController(stream: stream)
+        let captured = ChatSourcePayload(screenJPEG: Data([7, 8, 9]), ocrText: "forbidden fixture pixels")
+        controller.retainedSources = [.init(path: "old-screen", content: "forbidden fixture pixels", payload: captured)]
+        controller.attachScreenContext("forbidden fixture pixels", image: Data([1, 2, 3]))
+        controller.sendAskAnything("Give me a short answer.")
+        let record = try await waitForStoredTurns(2)
+        XCTAssertTrue(record.turns.allSatisfy { $0.attachments.isEmpty })
+        XCTAssertEqual(controller.retainedSources.count, 1)
+    }
 
     func testAttachedImagePersistsItsOwnBytesNotThePendingScreenshot() async throws {
         let original = Data([0x89, 0x50, 0x4E, 0x47, 0x11, 0x22, 0x33, 0x44])
