@@ -1,6 +1,13 @@
 import Foundation
 import RTICore
 
+struct GuideArchiveSnapshot {
+    let extraction: GuideExtraction
+    let guidePath: String
+    let rosterPath: String?
+    let roster: [GuideSeat]
+}
+
 @MainActor
 struct SessionFinalizer {
     struct Snapshot {
@@ -23,6 +30,7 @@ struct SessionFinalizer {
         /// projection, never silently dropped.
         var unreadableChatCount: Int = 0
         var recordingError: String? = nil
+        var guide: GuideArchiveSnapshot? = nil
     }
 
     let snapshot: Snapshot
@@ -46,7 +54,8 @@ struct SessionFinalizer {
             workstreamSlug: Self.workstreamSlug(for: snapshot.workstreamItem),
             mode: snapshot.modeName,
             workstreamName: snapshot.workstreamItem?.name,
-            speakerNames: SpeakerNameStore.shared.names,
+            speakerNames: SpeakerNameStore.shared.enteredNames,
+            speakerAssignments: SpeakerNameStore.shared.guideAssignments,
             // Stamp the calendar event picked in Prepare into session.json so
             // the Sessions window can title this session (SessionTitleResolver
             // rule 4). Read from the store here, the same way speakerNames is.
@@ -57,7 +66,8 @@ struct SessionFinalizer {
             ),
             chatThreads: snapshot.chatThreads,
             unreadableChatCount: snapshot.unreadableChatCount,
-            recordingError: snapshot.recordingError
+            recordingError: snapshot.recordingError,
+            guide: snapshot.guide
         )
     }
 

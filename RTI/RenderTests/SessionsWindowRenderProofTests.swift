@@ -43,6 +43,51 @@ final class SessionsWindowRenderProofTests: RenderProofTestCase {
         try await Task.sleep(for: SessionsWindowRules.contentSearchDelay * 3)
     }
 
+    func testActiveGuideCheckpointCannotAcceptArchivedSpeakerEdits() async throws {
+        let start = Date(timeIntervalSince1970: 1_750_000_000)
+        let coordinator = SessionCoordinator.shared
+        coordinator.beginTranscriptReplayForProof(startedAt: start)
+        defer { coordinator.endTranscriptReplayForProof() }
+        let id = try XCTUnwrap(coordinator.currentSessionId)
+        let guideURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Tests/GuideFixtures/dg-questions.json")
+        let guide = try GuideDocument.parse(Data(contentsOf: guideURL))
+        let snapshot = GuideArchiveSnapshot(
+            extraction: GuideExtraction(group: "G1", transcript: "transcript.live.md", guide: guide),
+            guidePath: guideURL.path, rosterPath: nil, roster: []
+        )
+        let directory = try XCTUnwrap(SessionArchive.write(
+            startedAt: start, endedAt: start.addingTimeInterval(300),
+            transcript: [RenderFixtures.liveEntry("remote_1", "A synthetic answer.", 1000)], chat: [],
+            sessionId: id, guide: snapshot
+        ))
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let mapping = directory.appendingPathComponent("speaker-names.json")
+        let before = try Data(contentsOf: mapping)
+        let model = SessionsWindowModel(dependencies: .init(contentSearch: nil, now: { Date() }))
+        await model.reload()
+        let row = try XCTUnwrap(model.rows.first { $0.sessionID == id })
+
+        // An already-open editor must also recheck the active recording on Save.
+        model.perform(.nameSpeakers, rowID: row.id)
+        XCTAssertTrue(model.isSpeakerEditorPresented)
+        model.setSpeakerName("Pending correction", for: "Remote speaker 1")
+        let active = GuideSessionController.shared
+        active.start(sessionID: id, guide: guide, guideURL: guideURL, group: "G1", roster: [], rosterURL: nil, startedAt: start)
+        defer { active.endSession(id) }
+        model.saveSpeakerNames()
+        XCTAssertTrue(model.speakerSaveError?.contains("Live → Transcript") == true)
+        XCTAssertEqual(try Data(contentsOf: mapping), before)
+        model.cancelSpeakerEditor()
+
+        model.perform(.nameSpeakers, rowID: row.id)
+        XCTAssertFalse(model.isSpeakerEditorPresented)
+        XCTAssertTrue(model.notice?.text.contains("Live → Transcript") == true)
+        active.endSession(id)
+        model.perform(.nameSpeakers, rowID: row.id)
+        XCTAssertTrue(model.isSpeakerEditorPresented)
+    }
+
     // MARK: - Titles
 
     /// Every fixture session gets a real title: title file, manual, vault

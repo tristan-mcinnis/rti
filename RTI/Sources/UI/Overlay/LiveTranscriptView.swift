@@ -415,7 +415,9 @@ private struct SpeakerNameControl: View {
                 names: names.names,
                 for: speakerId
             )
-            if choices.isEmpty {
+            let guide = GuideSessionController.shared
+            let showGuideRole = guide.isActive && speakerId.hasPrefix("remote_")
+            if choices.isEmpty && !showGuideRole {
                 Button(action: startEditing) { nameText }
                     .buttonStyle(.plain)
                     .help("Click to name this speaker")
@@ -424,7 +426,15 @@ private struct SpeakerNameControl: View {
                     ForEach(choices, id: \.self) { name in
                         Button(name) { names.rename(speakerId, to: name) }
                     }
-                    Divider()
+                    if !choices.isEmpty { Divider() }
+                    if showGuideRole {
+                        GuideSpeakerMenu(
+                            roster: guide.roster,
+                            assignment: names.guideAssignments[speakerId] ?? GuideSpeakerAssignment(),
+                            select: { names.assign($0, to: speakerId) }
+                        )
+                        Divider()
+                    }
                     Button("Type a name…", action: startEditing)
                     if names.name(for: speakerId) != nil {
                         Button("Clear name") { names.rename(speakerId, to: "") }
@@ -436,7 +446,7 @@ private struct SpeakerNameControl: View {
                 .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help("Name this speaker from the meeting's invitees")
+                .help(showGuideRole ? "Assign a guide seat, mark the moderator, or name this speaker" : "Name this speaker from the meeting's invitees")
             }
         }
     }

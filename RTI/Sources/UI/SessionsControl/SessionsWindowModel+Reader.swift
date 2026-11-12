@@ -28,7 +28,7 @@ extension SessionsWindowModel {
         guard let row = openRow else { clearReader(); return }
         let previous = selectedFile?.name
         files = Self.files(for: row.session)
-        loadSpeakerNames()
+        if !isSpeakerEditorPresented { loadSpeakerNames() }
         let keep = keepSelection ? files.first(where: { $0.name == previous }) : nil
         selectedFile = keep ?? files.first
         loadText()
@@ -40,6 +40,12 @@ extension SessionsWindowModel {
         fileText = ""
         document = .empty
         speakerNames = [:]
+        speakerLabels = []
+        speakerDraftNames = [:]
+        speakerAssignments = [:]
+        archivedGuideRoster = nil
+        speakerReadError = nil
+        speakerSaveError = nil
         recomputeFindHits()
     }
 
@@ -90,7 +96,26 @@ extension SessionsWindowModel {
         if text.hasPrefix("---"), let end = text.range(of: "\n---\n") {
             text = String(text[end.upperBound...])
         }
-        fileText = applyingSpeakerNames(to: text)
+        // A fresh diarization may number the same voices differently.
+        // Guide seat assignments belong to the original live speaker IDs.
+        let upgradedGuide = archivedGuideRoster != nil && file.name == "transcript"
+            && FileManager.default.fileExists(atPath: file.url.deletingLastPathComponent()
+                .appendingPathComponent("transcript.upgraded.md").path)
+        if archivedGuideRoster == nil {
+            fileText = applyingSpeakerNames(to: text)
+        } else if file.name == "transcript", !upgradedGuide {
+            // Substitute the header only. Spoken words stay verbatim, including
+            // mentions of another speaker's system label.
+            fileText = text.components(separatedBy: "\n").map { line in
+                guard line.hasPrefix("`"), let start = line.range(of: "` **"),
+                      let end = line.range(of: ":**", range: start.upperBound..<line.endIndex),
+                      let name = speakerNames[String(line[start.upperBound..<end.lowerBound])]
+                else { return line }
+                return String(line[..<start.upperBound]) + name + line[end.lowerBound...]
+            }.joined(separator: "\n")
+        } else {
+            fileText = text
+        }
         document = Self.document(for: file.name, text: fileText)
         findIndex = 0
         recomputeFindHits()
@@ -113,16 +138,29 @@ extension SessionsWindowModel {
     // MARK: - Speakers
 
     private func loadSpeakerNames() {
-        guard let row = openRow, row.session.isRTIArchive,
-              let data = try? Data(contentsOf: row.session.url.appendingPathComponent("speaker-names.json")),
-              let names = try? JSONDecoder().decode([String: String].self, from: data)
-        else {
-            speakerNames = [:]
-            return
+        speakerReadError = nil
+        speakerSaveError = nil
+        archivedGuideRoster = nil
+        var archive = SpeakerNameArchive()
+        if let row = openRow, row.session.isRTIArchive {
+            let dir = row.session.url
+            if let data = try? Data(contentsOf: dir.appendingPathComponent("session.json")),
+               let metadata = try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data),
+               metadata.guidePath != nil {
+                archivedGuideRoster = metadata.guideRoster ?? []
+            }
+            let file = dir.appendingPathComponent("speaker-names.json")
+            if FileManager.default.fileExists(atPath: file.path) {
+                do {
+                    archive = try JSONDecoder().decode(SpeakerNameArchive.self, from: Data(contentsOf: file))
+                } catch {
+                    speakerReadError = "Could not read the saved speaker mapping. \(error.localizedDescription)"
+                }
+            }
         }
-        // Legacy files are keyed by raw ids (`remote_1`) from live renames;
-        // current files by display labels. Normalize so both render.
-        speakerNames = SpeakerLabelMapping.displayKeyedNames(names)
+        speakerNames = archive.displayNames
+        speakerDraftNames = SpeakerLabelMapping.displayKeyedNames(archive.names)
+        speakerAssignments = archive.assignments
     }
 
     private func applyingSpeakerNames(to text: String) -> String {
@@ -134,37 +172,76 @@ extension SessionsWindowModel {
             }
     }
 
-    /// Anonymous speaker labels in the open transcript, for the editor.
-    var speakerLabels: [String] {
+    private var liveGuideSpeakerNotice: String? {
+        let coordinator = SessionCoordinator.shared
+        guard let row = openRow, row.session.isRTIArchive, GuideSessionController.shared.isActive,
+              let sessionID = coordinator.currentSessionId else { return nil }
+        let sameSession = row.sessionID.map { $0 == sessionID }
+            ?? coordinator.startedAt.flatMap { start in row.session.date.map { abs($0.timeIntervalSince(start)) < 1 } }
+            ?? false
+        return sameSession ? "Choose a speaker in Live → Transcript to change their guide role while recording. Use this editor after the session finishes." : nil
+    }
+
+    func beginSpeakerEditor() {
+        if let message = liveGuideSpeakerNotice, let row = openRow {
+            notice = (row.id, message)
+            return
+        }
+        loadSpeakerNames()
+        speakerLabels = readSpeakerLabels()
+        isSpeakerEditorPresented = true
+    }
+
+    /// Read once on opening so a name edit does not rescan a long transcript.
+    private func readSpeakerLabels() -> [String] {
         guard let row = openRow else { return [] }
-        let text = (try? String(contentsOf: row.session.transcriptURL, encoding: .utf8)) ?? ""
+        let live = row.session.url.appendingPathComponent("transcript.live.md")
+        let source = archivedGuideRoster != nil && FileManager.default.fileExists(atPath: live.path)
+            ? live : row.session.transcriptURL
+        let text = (try? String(contentsOf: source, encoding: .utf8)) ?? ""
+        if archivedGuideRoster != nil {
+            return SessionTranscriptReview.speakerLabels(from: text)
+                .filter { label in
+                    guard let raw = SpeakerLabelMapping.rawKey(forDisplayLabel: label) else { return false }
+                    return raw != "self"
+                }
+        }
         return SpeakerLabelMapping.archivedSpeakerLabels(in: text)
     }
 
     func speakerName(for label: String) -> String {
-        speakerNames[label, default: ""]
+        speakerDraftNames[label, default: ""]
     }
 
     func setSpeakerName(_ name: String, for label: String) {
-        speakerNames[label] = name
+        speakerDraftNames[label] = name
     }
 
     func saveSpeakerNames() {
-        guard let row = openRow else { return }
-        let names = speakerNames.reduce(into: [String: String]()) { result, pair in
-            let name = pair.value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !name.isEmpty {
-                result[pair.key] = name
-            }
+        guard let row = openRow, speakerReadError == nil else { return }
+        if let message = liveGuideSpeakerNotice {
+            speakerSaveError = message
+            return
         }
+        let archive = SpeakerNameArchive(names: speakerDraftNames, assignments: speakerAssignments)
         let url = row.session.url.appendingPathComponent("speaker-names.json")
-        if names.isEmpty {
-            try? FileManager.default.removeItem(at: url)
-        } else if let data = try? JSONEncoder().encode(names) {
-            try? data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        do {
+            if archivedGuideRoster != nil {
+                try SessionArchive.updateGuideSpeakers(in: row.session.url, archive: archive)
+            } else if archive.isEmpty {
+                if FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.removeItem(at: url)
+                }
+            } else {
+                let data = try JSONEncoder().encode(archive)
+                try data.write(to: url, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            }
+        } catch {
+            speakerSaveError = "Could not save the speaker mapping. \(error.localizedDescription)"
+            return
         }
-        speakerNames = names
+        loadSpeakerNames()
         isSpeakerEditorPresented = false
         loadText()
     }

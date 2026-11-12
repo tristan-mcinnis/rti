@@ -23,6 +23,7 @@ enum TranscriptUpgradeError: LocalizedError {
     case emptyTranscript(String)
     case unreadableTranscript
     case writeFailed(String)
+    case alreadyUpgrading
 
     var errorDescription: String? {
         switch self {
@@ -40,6 +41,8 @@ enum TranscriptUpgradeError: LocalizedError {
             return "Couldn't read the original transcript."
         case .writeFailed(let detail):
             return "Couldn't write the upgraded transcript: \(detail)"
+        case .alreadyUpgrading:
+            return "This session's transcript upgrade is already running."
         }
     }
 }
@@ -51,6 +54,7 @@ protocol AsyncTranscriptProvider: Sendable {
 }
 
 enum TranscriptUpgradeService {
+    @MainActor private static var upgradingGuides: Set<URL> = []
     struct Result: Sendable {
         let provider: String
         let transcriptURL: URL
@@ -77,9 +81,21 @@ enum TranscriptUpgradeService {
         )
     }
 
-    static func upgrade(
+    @MainActor static func upgrade(
         session: SessionArchive.ArchivedSession,
         provider option: AsyncTranscriptProviderOption? = nil,
+        progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
+    ) async throws -> Result {
+        let directory = session.url.standardizedFileURL
+        let guided = FileManager.default.fileExists(atPath: directory.appendingPathComponent("transcript.live.md").path)
+        if guided, !upgradingGuides.insert(directory).inserted { throw TranscriptUpgradeError.alreadyUpgrading }
+        defer { if guided { upgradingGuides.remove(directory) } }
+        return try await performUpgrade(session: session, option: option, progress: progress)
+    }
+
+    private static func performUpgrade(
+        session: SessionArchive.ArchivedSession,
+        option: AsyncTranscriptProviderOption?,
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
         let provider = try makeProvider(option ?? AsyncTranscriptProviders.active, sessionDirectory: session.url)
@@ -100,6 +116,11 @@ enum TranscriptUpgradeService {
             )
         } catch {
             throw mapPipelineError(error)
+        }
+        do {
+            try await SessionArchive.reanchorGuide(in: session.url, upgradedTurns: pipelineResult.guideAnchorTurns)
+        } catch {
+            throw TranscriptUpgradeError.writeFailed(error.localizedDescription)
         }
         if let startedAt = session.date,
            let canonicalURL = SessionArchive.refreshCanonicalMeetingTranscript(fromArchiveDir: session.url, startedAt: startedAt) {

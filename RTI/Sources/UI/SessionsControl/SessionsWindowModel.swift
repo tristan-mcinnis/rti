@@ -134,6 +134,12 @@ final class SessionsWindowModel {
     var fileText = ""
     var document: ReaderDocument = .empty
     var speakerNames: [String: String] = [:]
+    var speakerLabels: [String] = []
+    var speakerDraftNames: [String: String] = [:]
+    var speakerAssignments: [String: GuideSpeakerAssignment] = [:]
+    var archivedGuideRoster: [GuideSeat]?
+    var speakerReadError: String?
+    var speakerSaveError: String?
 
     // Editors and long jobs.
     var isEditingTranscript = false

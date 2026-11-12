@@ -41,7 +41,8 @@ extension SessionCoordinator {
             // Only a write or close failure marks the files for review. A mic
             // outage stops the session, but what was captured is intact and
             // still goes through the automatic upgrade.
-            recordingError: audioPipeline.recordingFailureMessage
+            recordingError: audioPipeline.recordingFailureMessage,
+            guide: sessionId.flatMap { GuideSessionController.shared.snapshot(for: $0) }
         )
     }
 
@@ -62,7 +63,7 @@ extension SessionCoordinator {
     static func archiveWasExpected(for snapshot: SessionFinalizer.Snapshot) -> Bool {
         !snapshot.transcript.isEmpty || !snapshot.chat.isEmpty || !snapshot.notes.isEmpty ||
             !snapshot.visualContext.isEmpty || !snapshot.chatThreads.isEmpty || snapshot.unreadableChatCount > 0 ||
-            snapshot.micRecordingURL != nil || snapshot.systemRecordingURL != nil
+            snapshot.micRecordingURL != nil || snapshot.systemRecordingURL != nil || snapshot.guide != nil
     }
 
     func reportArchiveSaveFailure(recordingError: String? = nil) {

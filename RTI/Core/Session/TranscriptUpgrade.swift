@@ -39,17 +39,21 @@ public struct TranscriptUpgradeExecutionResult: Equatable, Sendable {
     public let segmentCount: Int
     public let sourceFiles: [String]
     public let artifactResult: TranscriptUpgradeArtifacts.WriteResult
+    /// Time-coded provider turns from the system leg. Live fallbacks never verify a quote.
+    public let guideAnchorTurns: [TranscriptUpgradeSegment]
 
     public init(
         transcriptURL: URL,
         segmentCount: Int,
         sourceFiles: [String],
-        artifactResult: TranscriptUpgradeArtifacts.WriteResult
+        artifactResult: TranscriptUpgradeArtifacts.WriteResult,
+        guideAnchorTurns: [TranscriptUpgradeSegment] = []
     ) {
         self.transcriptURL = transcriptURL
         self.segmentCount = segmentCount
         self.sourceFiles = sourceFiles
         self.artifactResult = artifactResult
+        self.guideAnchorTurns = guideAnchorTurns
     }
 }
 
@@ -185,6 +189,7 @@ public enum TranscriptUpgradePipeline {
         guard !inputs.isEmpty else { throw TranscriptUpgradePipelineError.missingAudio }
 
         var segments: [TranscriptUpgradeSegment] = []
+        var guideAnchorTurns: [TranscriptUpgradeSegment] = []
         var sourceFiles: [String] = []
         var emptyLegs: [TranscriptUpgradeAudioInput] = []
         for input in inputs {
@@ -192,11 +197,17 @@ public enum TranscriptUpgradePipeline {
             progress("Transcribing \(input.url.lastPathComponent)")
             let outputBase = sessionDir.appendingPathComponent("transcript-upgrade-\(providerID)-\(input.url.deletingPathExtension().lastPathComponent)")
             let text = try await transcribe(input.url, outputBase)
-            let parsed = TranscriptUpgradeMerge.segments(
+            let timed = TranscriptUpgradeMerge.timedSegments(
                 from: text,
                 defaultSpeaker: input.defaultSpeaker,
                 offsetMs: input.offsetMs
             )
+            if input.defaultSpeaker == "Remote speaker" {
+                guideAnchorTurns.append(contentsOf: timed)
+            }
+            let parsed = timed.isEmpty ? TranscriptUpgradeMerge.untimedSegments(
+                from: text, defaultSpeaker: input.defaultSpeaker, offsetMs: input.offsetMs
+            ) : timed
             segments.append(contentsOf: parsed)
             if parsed.isEmpty, inputs.count > 1 {
                 emptyLegs.append(input)
@@ -244,7 +255,8 @@ public enum TranscriptUpgradePipeline {
             transcriptURL: originalTranscriptURL,
             segmentCount: segments.count,
             sourceFiles: sourceFiles,
-            artifactResult: artifactResult
+            artifactResult: artifactResult,
+            guideAnchorTurns: guideAnchorTurns
         )
     }
 }
@@ -303,6 +315,11 @@ public enum TranscriptUpgradeMerge {
     }
 
     public static func segments(from text: String, defaultSpeaker: String = "Speaker 1", offsetMs: Int = 0) -> [TranscriptUpgradeSegment] {
+        let timed = timedSegments(from: text, defaultSpeaker: defaultSpeaker, offsetMs: offsetMs)
+        return timed.isEmpty ? untimedSegments(from: text, defaultSpeaker: defaultSpeaker, offsetMs: offsetMs) : timed
+    }
+
+    fileprivate static func timedSegments(from text: String, defaultSpeaker: String, offsetMs: Int) -> [TranscriptUpgradeSegment] {
         var segments: [TranscriptUpgradeSegment] = []
         for rawLine in text.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -317,13 +334,36 @@ public enum TranscriptUpgradeMerge {
                 segments.append(TranscriptUpgradeSegment(speaker: speaker, startMs: parsed.startMs, text: parsed.text))
             }
         }
-        if segments.isEmpty {
-            let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !body.isEmpty {
-                segments.append(TranscriptUpgradeSegment(speaker: defaultSpeaker, startMs: offsetMs, text: body))
+        return segments
+    }
+
+    fileprivate static func untimedSegments(from text: String, defaultSpeaker: String, offsetMs: Int) -> [TranscriptUpgradeSegment] {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return body.isEmpty ? [] : [TranscriptUpgradeSegment(speaker: defaultSpeaker, startMs: offsetMs, text: body)]
+    }
+
+    /// Labels can change across diarization runs. Exact wording and a single
+    /// nearby time-coded turn on the respondent leg establish the new locator.
+    public static func guideAnchor(original: String, liveStartMs: Int, in remoteTurns: [TranscriptUpgradeSegment]) -> TranscriptUpgradeSegment? {
+        guard !original.isEmpty else { return nil }
+        var found: TranscriptUpgradeSegment?
+        for turn in remoteTurns where abs(Double(turn.startMs) - Double(liveStartMs)) <= 30_000 {
+            var remainder = turn.text[...]
+            while let span = remainder.range(of: original, options: .literal) {
+                remainder = turn.text[span.upperBound...]
+                if joinsLatinWord(original.first, turn.text[..<span.lowerBound].last) ||
+                    joinsLatinWord(original.last, remainder.first) { continue }
+                guard found == nil else { return nil }
+                found = turn
             }
         }
-        return segments
+        return found
+    }
+
+    private static func joinsLatinWord(_ lhs: Character?, _ rhs: Character?) -> Bool {
+        guard let a = lhs?.asciiValue, let b = rhs?.asciiValue else { return false }
+        func isWord(_ c: UInt8) -> Bool { (48...57).contains(c) || (65...90).contains(c) || (97...122).contains(c) }
+        return isWord(a) && isWord(b)
     }
 
     public static func renderBody(

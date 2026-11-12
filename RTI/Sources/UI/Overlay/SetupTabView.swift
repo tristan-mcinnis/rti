@@ -89,6 +89,12 @@ struct SetupTabView: View {
                 prepareHeader
                 callTypeSection
                 meetingFocusSection
+                if CallTypeStore.shared.active == .research {
+                    VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                        sectionHeader("Guide", detail: "Optional")
+                        settingsGroup { GuidePrepareControls(project: store.workstreamItem) }
+                    }
+                }
                 calendarMeetingSection
                 liveCallSection
                 noteEditor
@@ -577,7 +583,24 @@ struct SetupTabView: View {
                 settingsRowDivider
                 livePanelToggle(.visualContext, $visualContextEnabled)
                 settingsRowDivider
-                livePanelToggle(.notes, $notesEnabled)
+                if GuideSessionController.shared.isActive || (CallTypeStore.shared.active == .research && GuidePreparation.shared.guide != nil) {
+                    HStack(spacing: House.Spacing.sm) {
+                        Image(systemName: "list.bullet.rectangle").frame(width: House.Control.tile)
+                        VStack(alignment: .leading) {
+                            Text("Guide notes").font(House.TypeToken.label)
+                            Text("Captured under each discussion question")
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.textSecondary)
+                        }
+                        Spacer()
+                        Text("On").font(House.TypeToken.meta)
+                    }
+                    .padding(.horizontal, House.Spacing.sm)
+                    .padding(.vertical, House.Spacing.xxs)
+                    .frame(minHeight: House.Control.row)
+                } else {
+                    livePanelToggle(.notes, $notesEnabled)
+                }
                 settingsRowDivider
                 livePanelToggle(.autoAssist, $autoAssistEnabled)
             }

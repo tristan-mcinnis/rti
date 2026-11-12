@@ -61,6 +61,9 @@ final class NotesGenerationController {
     /// "Generate" button; both share `lastNotedMs` so neither duplicates.
     @discardableResult
     func generate(sessionId: String) async -> Int? {
+        if GuideSessionController.shared.isActive {
+            return await GuideSessionController.shared.generate(sessionId: sessionId, entries: SessionCoordinator.shared.liveEntries)
+        }
         guard !isGenerating else { return nil }
         let passGeneration = generation
         isGenerating = true

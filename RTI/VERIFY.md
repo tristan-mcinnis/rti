@@ -190,3 +190,16 @@ meeting processing and Neon indexing.
 - [ ] The Notes tab fills in every few minutes (on by default), and the Auto tab surfaces cards (when enabled in Prepare).
 - [ ] Overlay is absent from the screen share (QuickTime/Zoom — §4/§5 above).
 - [ ] Stop → the session folder appears under `sessions_dir` (default `~/Documents/Work/Inner-Chapter/meetings/sessions/<stamp>/`) with `transcript.md`, `audio-mic.wav` and `audio-system.wav` (the audio is kept for the transcript upgrade); mic released (orange dot clears, other apps can use the mic).
+
+## Guide mode in a 15-minute mock group
+
+1. In Prepare, pick Research. Choose [the cup guide](Tests/GuideFixtures/dg-questions.json) and [its three-seat roster](Tests/GuideFixtures/roster.csv), then enter G1.
+2. Start recording with three test respondents on the system-audio leg. Open Guide and check that S1Q1 is current and its must-ask box is empty.
+3. Ask which cup each person chooses. Have two vote A and one vote B. Ask one person to explain in Chinese.
+4. In Transcript, click each remote speaker label and assign P1, P2 or P3. Return to Guide and select “Write guide notes now.”
+5. Check S1Q1 for the original Chinese, the speaker, timestamp and vote base of three. Your mic question should appear only in the transcript.
+6. With Guide focused, press → then ←. Open ⌘K, jump back to S1Q1, and check that an earlier answer does not pull the highlight away.
+7. Ask S1Q2 about carrying the cup and collect two fresh replies. Check the next Notes pass moves the highlight and the Cups section shows elapsed time against six minutes.
+8. Finish immediately after a last reply. Leave cleaning untouched. In the session folder, open `guide-cells-G1.json` and check S2Q1 is “Not covered” with no quotes.
+9. After the upgrade, inspect quote locators. Exact unique matches show “verified”; a changed or ambiguous quote keeps its live words and is marked “unverified.” In Sessions, change a seat and check the saved participant updates.
+10. Run `python3 ~/skills/ic-synthesis-workbook/scripts/extract-cells.py import-rti "<session folder>" -o "<new workdir>"`, then `python3 ~/skills/ic-synthesis-workbook/scripts/extract-cells.py check "<new workdir>"`. A successful check is silent.

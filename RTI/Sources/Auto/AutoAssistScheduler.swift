@@ -12,6 +12,8 @@ final class AutoAssistScheduler {
     struct ScheduledTask {
         /// UserDefaults key that gates whether this task fires.
         let enabledKey: String
+        /// An explicitly selected Research guide uses the Notes slot for the duration of its session.
+        var sessionEnabled: @MainActor () -> Bool = { false }
         /// Called on each timer tick. Receives the last watermark
         /// (nil on first fire) and returns the new watermark (nil if
         /// no entries were processed). The scheduler stores the
@@ -79,7 +81,7 @@ final class AutoAssistScheduler {
     private func fire() {
         for (id, task) in tasks {
             let enabled = UserDefaults.standard.object(forKey: task.enabledKey) as? Bool ?? false
-            guard enabled else { continue }
+            guard enabled || task.sessionEnabled() else { continue }
             let sinceMs = watermarks[id] == 0 ? nil : watermarks[id]
             let tickGeneration = runGeneration
             let key = UUID()

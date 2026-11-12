@@ -315,7 +315,7 @@ extension AssistantInputView {
                 menuStateProvider: { llm.recapDepth == depth }
             )
         }
-        return rows
+        return rows + CommandBuilder.guideCommands()
     }
 
     func runPaletteCommand(_ command: RTICommand) {

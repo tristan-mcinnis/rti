@@ -1,36 +1,46 @@
 import Foundation
 import Observation
+import RTICore
 
-/// Session-scoped speaker rename map: raw speaker id (`self`, `room_1`,
-/// `remote_1`, ...) -> a user-given display name. Reset at the start of
-/// every new session (names don't carry across meetings). `SpeakerLabels
-/// .displayName` consults this first so a rename in the live transcript
-/// takes effect everywhere immediately; `SessionArchive` reads `names` at
-/// stop time to write `speaker-names.json` (the archived `transcript.md`
-/// keeps its speaker labels; readers apply the names from that file).
+/// One session-scoped mapping for names, guide roster seats and moderator roles.
 @Observable @MainActor
 final class SpeakerNameStore {
     static let shared = SpeakerNameStore()
 
-    private(set) var names: [String: String] = [:]
+    private(set) var enteredNames: [String: String] = [:]
+    private(set) var guideAssignments: [String: GuideSpeakerAssignment] = [:]
 
     private init() {}
 
+    var names: [String: String] {
+        var result = enteredNames
+        for (raw, assignment) in guideAssignments {
+            if let seat = assignment.seat { result[raw] = seat.label }
+        }
+        return result
+    }
+
+    var guideSpeakers: [String: GuideSpeaker] {
+        SpeakerNameArchive(names: enteredNames, assignments: guideAssignments).guideSpeakers
+    }
+
     func name(for rawLabel: String) -> String? {
-        names[rawLabel]
+        enteredNames[rawLabel]
     }
 
     func rename(_ rawLabel: String, to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            names.removeValue(forKey: rawLabel)
-        } else {
-            names[rawLabel] = trimmed
-        }
+        enteredNames[rawLabel] = trimmed.isEmpty ? nil : trimmed
+        if GuideSessionController.shared.isActive { GuideSessionController.shared.remapSpeakers() }
     }
 
-    /// Clear at the start of a new session.
+    func assign(_ assignment: GuideSpeakerAssignment, to rawLabel: String) {
+        guideAssignments[rawLabel] = assignment.isEmpty ? nil : assignment
+        GuideSessionController.shared.remapSpeakers()
+    }
+
     func reset() {
-        names = [:]
+        enteredNames = [:]
+        guideAssignments = [:]
     }
 }

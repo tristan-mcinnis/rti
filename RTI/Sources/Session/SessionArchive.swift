@@ -108,17 +108,19 @@ enum SessionArchive {
         mode: String? = nil,
         workstreamName: String? = nil,
         speakerNames: [String: String] = [:],
+        speakerAssignments: [String: GuideSpeakerAssignment] = [:],
         calendarTitle: String? = nil,
         speechContext: SonioxContext? = nil,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0,
-        recordingError: String? = nil
+        recordingError: String? = nil,
+        guide: GuideArchiveSnapshot? = nil
     ) -> URL? {
         let hasRetainedAudio = [micRecordingURL, systemRecordingURL]
             .compactMap { $0 }
             .contains { isRegularFile($0) }
         let expectsAudio = micRecordingURL != nil || systemRecordingURL != nil
-        guard !transcript.isEmpty || !chat.isEmpty || !notes.isEmpty || !visualContext.isEmpty || !chatThreads.isEmpty || unreadableChatCount > 0 || expectsAudio else { return nil }
+        guard guide != nil || !transcript.isEmpty || !chat.isEmpty || !notes.isEmpty || !visualContext.isEmpty || !chatThreads.isEmpty || unreadableChatCount > 0 || expectsAudio else { return nil }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
 
         func fm(_ kind: String) -> [String] {
@@ -127,19 +129,30 @@ enum SessionArchive {
 
         // User-authored notes are content too, even before the first spoken
         // word. Retained audio also needs a transcript target for recovery.
-        if !transcript.isEmpty || hasRetainedAudio {
-            let body = renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, selfName: speakerNames["self"])
+        if !transcript.isEmpty || hasRetainedAudio || guide != nil {
+            let body = guide == nil
+                ? renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, selfName: speakerNames["self"])
+                : renderGuideTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
             let md = (fm("Transcript") + [body]).joined(separator: "\n")
-            guard writeOwnerOnly(md, to: dir.appendingPathComponent("transcript.md")) else { return nil }
+            let transcriptURL = dir.appendingPathComponent("transcript.md")
+            guard writeOwnerOnly(md, to: transcriptURL) else { return nil }
+            if guide != nil {
+                do {
+                    try preserveGuideTranscript(transcriptURL)
+                } catch {
+                    RTILog.log("Could not preserve Guide transcript: \(error.localizedDescription)", level: .error, category: .archive)
+                    return nil
+                }
+            }
         }
 
         // Serialize keyed by display labels ("Remote speaker 1"), not raw ids
         // (`remote_1`): the post-hoc rename UI and the `/meeting` skill
         // match names against the labels transcripts actually print.
-        let displayKeyedNames = SpeakerLabelMapping.displayKeyedNames(speakerNames)
-        if !displayKeyedNames.isEmpty {
+        let speakerArchive = SpeakerNameArchive(names: speakerNames, assignments: speakerAssignments)
+        if !speakerArchive.isEmpty || guide != nil {
             do {
-                let data = try JSONEncoder().encode(displayKeyedNames)
+                let data = try JSONEncoder().encode(speakerArchive)
                 guard writeOwnerOnly(String(decoding: data, as: UTF8.self), to: dir.appendingPathComponent("speaker-names.json")) else { return nil }
             } catch {
                 RTILog.log("Could not encode speaker-names.json: \(error.localizedDescription)", level: .error, category: .archive)
@@ -197,6 +210,14 @@ enum SessionArchive {
         guard micRecordingURL == nil || micName != nil else { return nil }
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
         guard systemRecordingURL == nil || systemName != nil else { return nil }
+        if let guide {
+            do {
+                try saveGuideExtraction(guide.extraction, in: dir)
+            } catch {
+                RTILog.log("Could not save Guide cells: \(error.localizedDescription)", level: .error, category: .archive)
+                return nil
+            }
+        }
         guard writeMetadata(
             ArchiveMetadata(
                 sessionId: sessionId,
@@ -208,7 +229,11 @@ enum SessionArchive {
                 durationSeconds: Int(max(0, endedAt.timeIntervalSince(startedAt))),
                 calendarTitle: calendarTitle,
                 recordingError: recordingError,
-                speechContext: speechContext
+                speechContext: speechContext,
+                groupID: guide?.extraction.group,
+                guidePath: guide?.guidePath,
+                rosterPath: guide?.rosterPath,
+                guideRoster: guide?.roster
             ),
             to: dir
         ) else { return nil }
@@ -427,12 +452,16 @@ enum SessionArchive {
             callType.sidecarField,
             "meeting: \(yamlQuoted(stem))",
             "generated: \(ISO8601DateFormatter().string(from: Date()))",
-            "---",
-            "",
-            "# RTI live notes — \(stem)",
-            "",
-            "_Canonical transcript: `\(stem)-transcript.txt`_",
         ]
+        if let archiveDir,
+           let metadata = try? readMetadata(in: archiveDir),
+           let guidePath = metadata.guidePath {
+            lines.append("archive_dir: \(yamlQuoted(archiveDir.path))")
+            lines.append("guide_path: \(yamlQuoted(guidePath))")
+            if let group = metadata.groupID { lines.append("group_id: \(yamlQuoted(group))") }
+            if let path = metadata.rosterPath { lines.append("roster_path: \(yamlQuoted(path))") }
+        }
+        lines += ["---", "", "# RTI live notes — \(stem)", "", "_Canonical transcript: `\(stem)-transcript.txt`_"]
         if let archiveDir {
             lines.append("_RTI archive: `\(archiveDir.path)`_")
         }
@@ -569,6 +598,119 @@ enum SessionArchive {
             RTILog.log("Could not encode session.json: \(error.localizedDescription)", level: .error, category: .archive)
             return false
         }
+    }
+
+    private static func readMetadata(in directory: URL) throws -> ArchiveMetadata {
+        try JSONDecoder().decode(ArchiveMetadata.self, from: Data(contentsOf: directory.appendingPathComponent("session.json")))
+    }
+
+    private static func saveGuideExtraction(_ extraction: GuideExtraction, in directory: URL) throws {
+        let url = directory.appendingPathComponent(extraction.fileName)
+        try writeGuideJSON(extraction, to: url)
+    }
+
+    private static func writeGuideJSON(_ value: some Encodable, to url: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        try writeGuideData(encoder.encode(value), to: url)
+    }
+
+    /// Set permissions before the atomic replacement. A permission error after
+    /// a committed speaker edit would otherwise roll back only its cells.
+    private static func writeGuideData(_ data: Data, to url: URL) throws {
+        let temporary = url.deletingLastPathComponent().appendingPathComponent(".guide-write-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        try data.write(to: temporary, options: .withoutOverwriting)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
+        guard rename(temporary.path, url.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    @MainActor
+    static func updateGuideSpeakers(in directory: URL, archive: SpeakerNameArchive) throws {
+        let metadata = try readMetadata(in: directory)
+        guard let group = metadata.groupID, metadata.guidePath != nil else { throw CocoaError(.fileReadCorruptFile) }
+        let cellsURL = directory.appendingPathComponent(GuideExtraction.fileName(for: group))
+        let previous = try Data(contentsOf: cellsURL)
+        var extraction = try JSONDecoder().decode(GuideExtraction.self, from: previous)
+        guard extraction.group == group else { throw CocoaError(.fileReadCorruptFile) }
+        let count = metadata.guideRoster?.count ?? 0
+        extraction.remap(speakers: archive.guideSpeakers, rosterBase: count > 0 ? count : nil)
+        // Complete both projections on this actor before an upgrade or another editor can run.
+        try saveGuideExtraction(extraction, in: directory)
+        do {
+            try writeGuideJSON(archive, to: directory.appendingPathComponent("speaker-names.json"))
+        } catch {
+            try writeGuideData(previous, to: cellsURL)
+            throw error
+        }
+    }
+
+    @MainActor
+    static func reanchorGuide(in directory: URL, upgradedTurns: [TranscriptUpgradeSegment]) throws {
+        let proof = directory.appendingPathComponent("transcript.live.md")
+        let metadata: ArchiveMetadata
+        if FileManager.default.fileExists(atPath: proof.path) {
+            metadata = try readMetadata(in: directory)
+        } else {
+            // Earlier archives need no Guide metadata. A guided archive missing
+            // its proof must keep its live evidence pending for review.
+            guard let existing = try? readMetadata(in: directory), existing.guidePath != nil else { return }
+            metadata = existing
+        }
+        guard metadata.guidePath != nil, let group = metadata.groupID else { throw CocoaError(.fileReadCorruptFile) }
+        let url = directory.appendingPathComponent(GuideExtraction.fileName(for: group))
+        var extraction = try JSONDecoder().decode(GuideExtraction.self, from: Data(contentsOf: url))
+        guard extraction.group == group else { throw CocoaError(.fileReadCorruptFile) }
+        let live = try String(contentsOf: proof, encoding: .utf8)
+        let liveRemoteTurns = TranscriptUpgradeMerge.liveSegments(from: live, remote: true)
+        extraction.reanchor { quote in
+            guard quote.rawSpeaker.hasPrefix("remote_"),
+                  let source = TranscriptUpgradeMerge.guideAnchor(original: quote.original.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                                 liveStartMs: quote.liveStartMs, in: liveRemoteTurns),
+                  source.speaker == SpeakerLabelMapping.displayLabel(forRawKey: quote.rawSpeaker),
+                  source.startMs / 1000 == quote.liveStartMs / 1000,
+                  let match = TranscriptUpgradeMerge.guideAnchor(original: quote.original, liveStartMs: quote.liveStartMs, in: upgradedTurns)
+            else { return nil }
+            return (match.startMs, match.speaker)
+        }
+        try saveGuideExtraction(extraction, in: directory)
+    }
+
+    /// A stable copy of the live source survives replacement of transcript.md
+    /// by the upgraded transcript. Checkpoints replace the link atomically.
+    private static func preserveGuideTranscript(_ transcript: URL) throws {
+        let directory = transcript.deletingLastPathComponent()
+        let destination = directory.appendingPathComponent("transcript.live.md")
+        let temporary = directory.appendingPathComponent(".guide-transcript-\(UUID().uuidString)")
+        let manager = FileManager.default
+        do {
+            try manager.linkItem(at: transcript, to: temporary)
+        } catch {
+            // Some session folders are on filesystems without hard links.
+            try manager.copyItem(at: transcript, to: temporary)
+        }
+        defer { try? manager.removeItem(at: temporary) }
+        if manager.fileExists(atPath: destination.path) {
+            _ = try manager.replaceItemAt(destination, withItemAt: temporary)
+        } else {
+            try manager.moveItem(at: temporary, to: destination)
+        }
+    }
+
+    private static func renderGuideTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry]) -> String {
+        var rows = GuideTranscript.sources(from: entries).map { source in
+            let turn = source.turn
+            return (turn.startMs, SpeakerLabelMapping.displayLabel(forRawKey: turn.speaker) ?? turn.speaker, turn.text)
+        }
+        rows.append(contentsOf: entries.filter { $0.speakerId == "note" }.map { ($0.startMs, "📝 Note", $0.text) })
+        var lines = ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), ""]
+        for (ms, speaker, text) in rows.sorted(by: { $0.0 < $1.0 }) {
+            let stamp = GuideExtraction.locator(ms) + String(format: ".%03d", max(0, ms) % 1000)
+            lines += ["`\(stamp)` **\(speaker):** \(text)", ""]
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Rendering

@@ -1,0 +1,54 @@
+{
+  "title": "Mock group: choosing a cup",
+  "frontmatter": {
+    "title": "Mock group: choosing a cup"
+  },
+  "sections": [
+    {
+      "id": "S1",
+      "no": 1,
+      "title": "SECTION 1: Cups (6 min)",
+      "minutes": 6,
+      "questions": [
+        {
+          "qid": "S1Q1",
+          "no": 1,
+          "en": "Which cup would you choose, A or B?",
+          "zh": "你会选哪个杯子，A 还是 B？",
+          "probes": [
+            {
+              "en": "What swayed you?",
+              "zh": "是什么影响了你的选择？"
+            }
+          ],
+          "part": null,
+          "must_ask": true
+        },
+        {
+          "qid": "S1Q2",
+          "no": 2,
+          "en": "How would you carry the cup?",
+          "zh": "你会怎么带这个杯子？",
+          "probes": [],
+          "part": null
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "no": 2,
+      "title": "SECTION 2: Cleaning (4 min)",
+      "minutes": 4,
+      "questions": [
+        {
+          "qid": "S2Q1",
+          "no": 1,
+          "en": "How would you clean the cup?",
+          "zh": "你会怎么洗这个杯子？",
+          "probes": [],
+          "part": null
+        }
+      ]
+    }
+  ]
+}

@@ -182,7 +182,7 @@ private struct ViewMenuItems: View {
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistEnabled = AutoAssistSettings.defaultEnabled
 
     var body: some View {
-        let tabs = OverlayTab.visibleTabs(notes: notesEnabled, auto: autoAssistEnabled)
+        let tabs = OverlayTab.visibleTabs(notes: notesEnabled || GuideSessionController.shared.isActive, auto: autoAssistEnabled)
         let context = currentMenuContext(visibleTabs: tabs)
         ForEach(OverlayTab.allCases) { tab in
             Button(tab.title) {

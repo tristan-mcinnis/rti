@@ -234,6 +234,56 @@ final class AudioPipelineRecoveryTests: XCTestCase {
                        Array(repeating: 200, count: 320) + Array(repeating: 400, count: 320))
     }
 
+    func testGuideFinishFreezesTheGracePeriodTranscriptBeforeAwaitingTheProvider() async throws {
+        let fixture = try Fixture(system: InjectedSystemCapture())
+        defer { fixture.cleanUp() }
+        let systemReady = expectation(description: "System backend ready")
+        fixture.pipeline.onSystemAudioStarted = { _ in systemReady.fulfill() }
+        try fixture.start()
+        await fulfillment(of: [systemReady], timeout: 2)
+
+        var transcript: [LiveEntry] = []
+        fixture.pipeline.onSystemWords = { words in
+            for word in words {
+                transcript.append(RenderFixtures.liveEntry("remote_1", word.text, word.startMs))
+            }
+        }
+        let client = try XCTUnwrap(fixture.clients.last)
+        fixture.pipeline.finalize()
+        client.onWords?([testWord])
+        XCTAssertEqual(transcript.count, 1, "The final word arrived during Soniox's grace period")
+
+        let guideURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Tests/GuideFixtures/dg-questions.json")
+        let document = try GuideDocument.parse(Data(contentsOf: guideURL))
+        let admission = LLMAdmissionController()
+        let request = LLMRequest(collectStream: { _, _, _, _ in
+            let reply = """
+            {"evidence":[],"cells":[{"qid":"S1Q1","coverage":"Answered","summary":"One answer.","turns":["remote_1@0"],
+            "quotes":[{"turn":"remote_1@0","english":"Fixture word"}],"votes":[]}]}
+            """
+            return LLMClient.CollectedResponse(text: reply, finishReason: "stop", reasoningCharacters: 0)
+        }, priority: .background, admission: admission)
+        let guide = GuideSessionController(request: request)
+        guide.start(sessionID: "grace", guide: document, guideURL: guideURL, group: "G1", roster: [], rosterURL: nil)
+        let held = await admission.acquireForeground()
+        let close = Task { @MainActor in
+            await SessionCoordinator.closeCapture(fixture.pipeline, guide: guide, sessionID: "grace", transcript: { transcript })
+        }
+        for _ in 0..<1000 {
+            if guide.isGenerating { break }
+            await Task.yield()
+        }
+        XCTAssertTrue(guide.isGenerating)
+        client.onWords?([testWord])
+        XCTAssertEqual(transcript.count, 1, "A delayed packet cannot enter the archive while Guide awaits the provider")
+        await admission.releaseForeground(held)
+        let audioClosed = await close.value
+        XCTAssertTrue(audioClosed)
+        XCTAssertEqual(guide.snapshot(for: "grace")?.extraction.cells[0].quotes.map(\.original), ["Fixture word"])
+        XCTAssertEqual(guide.snapshot(for: "grace")?.extraction.captureIncomplete, false)
+    }
+
     func testReplacedAndFinishedClientsCannotDeliverButCurrentFinalsCan() async throws {
         let backend = InjectedSystemCapture()
         let fixture = try Fixture(system: backend)

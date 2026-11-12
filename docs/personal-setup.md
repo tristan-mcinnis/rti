@@ -49,7 +49,9 @@ The file also carries `auto_process_prompt`, a custom prompt for the unattended 
   notes.md              # generated live notes (only if enabled and produced)
   title.txt             # session title (only if you renamed it)
   session.json          # metadata: mode, workstream, duration, audio file names
-  speaker-names.json    # live speaker renames (only if you renamed)
+  speaker-names.json    # speaker names, Guide seat assignments and moderator roles
+  guide-cells-G1.json   # Guide calls only. Uses the entered group ID, or "unassigned"
+  transcript.live.md    # Guide calls only. Original timestamped turns, retained after upgrade
   audio-mic.wav         # mic leg, kept for the transcript upgrade
   audio-system.wav      # system-audio leg
 ```

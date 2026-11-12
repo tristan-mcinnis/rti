@@ -38,7 +38,7 @@ final class SessionCoordinator {
     /// time from the displayed elapsed duration so the timer reflects captured
     /// time, not wall-clock.
     private(set) var pausedAt: Date?
-    private var pausedAccumulated: TimeInterval = 0
+    private var completedPauses: [DateInterval] = []
     /// Short status shown by the recording HUD while the offline pass runs.
     var postProcessingStatus: String?
     private(set) var liveEntries: [LiveEntry] = []
@@ -201,7 +201,7 @@ final class SessionCoordinator {
     func registerPeriodicTasks() {
         AutoAssistScheduler.shared.register(
             id: "notes",
-            task: .init(enabledKey: NotesSettings.enabledKey) { _ in
+            task: .init(enabledKey: NotesSettings.enabledKey, sessionEnabled: { GuideSessionController.shared.isActive }) { _ in
                 // Notes own their own watermark (so the manual Generate button
                 // can't duplicate), so ignore the scheduler's sinceMs.
                 await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
@@ -378,7 +378,7 @@ final class SessionCoordinator {
 
     func resume() {
         guard phase == .paused else { return }
-        if let pausedAt { pausedAccumulated += Date().timeIntervalSince(pausedAt) }
+        if let pausedAt { completedPauses.append(DateInterval(start: pausedAt, end: max(pausedAt, Date()))) }
         pausedAt = nil
         audioPipeline.suspended = false
         VisualContextTrail.shared.setPaused(false)
@@ -398,10 +398,22 @@ final class SessionCoordinator {
     /// record control's timer so it counts real recorded time.
     func elapsed(at now: Date) -> TimeInterval {
         guard let startedAt else { return 0 }
-        let end = endedAt ?? now
-        var paused = pausedAccumulated
-        if let pausedAt { paused += end.timeIntervalSince(pausedAt) }
-        return max(0, end.timeIntervalSince(startedAt) - paused)
+        return capturedDuration(from: startedAt, through: now)
+    }
+
+    /// Historical section boundaries fall on the transcript clock. Only deduct
+    /// pauses overlapping the requested range, even when a model reply arrives later.
+    func capturedDuration(from start: Date, through now: Date) -> TimeInterval {
+        let end = min(now, endedAt ?? now)
+        return Self.capturedDuration(from: start, through: end, pauses: completedPauses, pausedAt: pausedAt)
+    }
+
+    static func capturedDuration(from start: Date, through end: Date, pauses: [DateInterval], pausedAt: Date?) -> TimeInterval {
+        var paused = pauses.reduce(0.0) { total, pause in
+            total + max(0, min(pause.end, end).timeIntervalSince(max(pause.start, start)))
+        }
+        if let pausedAt { paused += max(0, end.timeIntervalSince(max(pausedAt, start))) }
+        return max(0, end.timeIntervalSince(start) - paused)
     }
 
     func startSession(userInitiated: Bool = false) {
@@ -464,7 +476,7 @@ final class SessionCoordinator {
         endedAt = nil
         systemAudioStartOffsetMs = nil
         pausedAt = nil
-        pausedAccumulated = 0
+        completedPauses = []
         audioPipeline.suspended = false
         postProcessingStatus = nil
 
@@ -550,6 +562,7 @@ final class SessionCoordinator {
         }
 
         // Each task self-gates on its Settings toggle.
+        GuideSessionController.shared.startPreparedSession(sessionId, callType: CallTypeStore.shared.active, startedAt: audioPipeline.captureStartWall ?? now)
         AutoAssistScheduler.shared.start(interval: NotesSettings.tickInterval)
 
         publishState()
@@ -568,7 +581,7 @@ final class SessionCoordinator {
 
         // Settle any in-progress pause so the frozen duration excludes it.
         if phase == .paused, let pausedAt {
-            pausedAccumulated += Date().timeIntervalSince(pausedAt)
+            completedPauses.append(DateInterval(start: pausedAt, end: max(pausedAt, Date())))
         }
         pausedAt = nil
         audioPipeline.suspended = false
@@ -601,8 +614,13 @@ final class SessionCoordinator {
             // Stop cancelled any notes or Auto pass still running; give them a
             // moment to wind down so none writes after the archive snapshot.
             await AutoAssistScheduler.shared.drainInFlight()
-            if Task.isCancelled { return }
-            self?.completeStop(sessionId: sessionId, endedAt: endedAt)
+            guard let self, !Task.isCancelled else { return }
+            let audioFinished = await Self.closeCapture(
+                audioPipeline, guide: .shared, sessionID: sessionId,
+                transcript: { self.transcriptPipeline.liveEntries }
+            )
+            guard !Task.isCancelled else { return }
+            completeStop(sessionId: sessionId, endedAt: endedAt, audioFinished: audioFinished)
         }
     }
 
@@ -629,14 +647,23 @@ final class SessionCoordinator {
         }
     }
 
-    private func completeStop(sessionId: String, endedAt: Date) {
+    /// End the Soniox grace period once for both the archive and Guide. A slow
+    /// notes request must not extend the set of provider turns in either artifact.
+    static func closeCapture(_ audio: AudioPipeline, guide: GuideSessionController, sessionID: String,
+                             transcript: () -> [LiveEntry]) async -> Bool {
+        let closed = audio.finish()
+        if guide.isActive { await guide.finish(sessionId: sessionID, entries: transcript()) }
+        return closed
+    }
+
+    private func completeStop(sessionId: String, endedAt: Date, audioFinished: Bool) {
         guard currentSessionId == sessionId else { return }
+        defer { GuideSessionController.shared.endSession(sessionId) }
         // Clear the handle: a completed-but-non-nil task otherwise convinces
         // emergencyShutdown a stop is still pending, triggering a phantom
         // re-archive on quit long after the session ended.
         delayedCompleteTask = nil
 
-        let audioFinished = audioPipeline.finish()
         // Restore the user's original default mic now that capture has stopped.
         BluetoothMicGuard.shared.release()
         self.endedAt = endedAt

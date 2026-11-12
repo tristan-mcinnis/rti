@@ -150,6 +150,20 @@ final class TranscriptUpgradeTests: XCTestCase {
         ])
     }
 
+    func testGuideAnchorsRequireOneExactNearbyParticipantTurn() {
+        let turn = TranscriptUpgradeSegment(speaker: "Remote speaker 3", startMs: 23_000, text: "我选蓝色。")
+        func match(_ text: String, _ turns: [TranscriptUpgradeSegment]) -> TranscriptUpgradeSegment? {
+            TranscriptUpgradeMerge.guideAnchor(original: text, liveStartMs: 22_000, in: turns)
+        }
+        XCTAssertEqual(match("我选蓝色。", [turn]), turn)
+        XCTAssertNil(match("我选蓝色！", [turn]))
+        XCTAssertNil(match("我选蓝色。", [turn, turn]))
+        XCTAssertNil(match("我选蓝色。", [.init(speaker: turn.speaker, startMs: 91_000, text: turn.text)]))
+        let english = TranscriptUpgradeSegment(speaker: "Remote speaker 1", startMs: 21_000, text: "steak and toast")
+        XCTAssertNil(match("tea", [english]))
+        XCTAssertEqual(match("and", [english]), english)
+    }
+
     func testRenderCollectsNotesInTrailingSection() {
         let startedAt = Date(timeIntervalSince1970: 0)
         let body = TranscriptUpgradeMerge.renderBody(
@@ -354,6 +368,7 @@ final class TranscriptUpgradeTests: XCTestCase {
 
         XCTAssertEqual(result.segmentCount, 2)
         XCTAssertEqual(result.sourceFiles, ["audio-mic.m4a", "audio-system.m4a"])
+        XCTAssertEqual(result.guideAnchorTurns, [.init(speaker: "Remote speaker", startMs: 5_000, text: "System audio upgraded.")])
         XCTAssertEqual(transcribed.value, ["audio-mic.m4a", "audio-system.m4a"])
         XCTAssertTrue(progress.value.contains("Writing upgraded transcript"))
 
@@ -437,6 +452,7 @@ final class TranscriptUpgradeTests: XCTestCase {
         let transcript = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
         XCTAssertTrue(transcript.contains("upgraded mic"))
         XCTAssertTrue(transcript.contains("**Remote speaker 1:** live remote words"))
+        XCTAssertTrue(result.guideAnchorTurns.isEmpty)
         XCTAssertFalse(transcript.contains("live mic words"))
         XCTAssertTrue(progress.value.contains { $0.contains("kept 1 live line") })
     }

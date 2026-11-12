@@ -383,6 +383,9 @@ extension LiveTranscriptPresentation {
         public var text: String
         public let startMs: Int
         public let translationStatus: String
+        /// A peer-leg correction is safe for reading but its words have no proven speaker alignment.
+        public var includesPeerCorrection: Bool
+        public var endMs: Int
     }
 
     public static func utterances(from entries: [LiveEntry]) -> [Utterance] {
@@ -390,11 +393,17 @@ extension LiveTranscriptPresentation {
         var result: [Utterance] = []
         for fragment in entries.flatMap({ LiveFragment.pieces($0) }).sorted(by: { ordered($0, before: $1) }) {
             let assignment = grouping.place(fragment)
+            let corrected: Bool
+            if case .providerCorrection = fragment.origin { corrected = true } else { corrected = false }
+            let endMs = fragment.endMs ?? fragment.id.startMs
             if assignment.isNew {
                 result.append(Utterance(speakerId: fragment.id.speakerId, text: fragment.text,
-                                        startMs: fragment.id.startMs, translationStatus: fragment.translationStatus))
+                                        startMs: fragment.id.startMs, translationStatus: fragment.translationStatus,
+                                        includesPeerCorrection: corrected, endMs: endMs))
             } else {
                 append(fragment.text, origin: fragment.origin, to: &result[assignment.index].text)
+                if corrected { result[assignment.index].includesPeerCorrection = true }
+                result[assignment.index].endMs = max(result[assignment.index].endMs, endMs)
             }
         }
         return result.enumerated().sorted {

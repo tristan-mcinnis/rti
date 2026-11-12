@@ -12,23 +12,23 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         rawValue
     }
 
-    var title: String {
+    @MainActor var title: String {
         switch self {
         case .setup: "Prepare"
         case .assist: "Assist"
         case .auto: "Auto"
         case .transcript: "Transcript"
-        case .notes: "Notes"
+        case .notes: GuideSessionController.shared.isActive ? "Guide" : "Notes"
         }
     }
 
-    var icon: String {
+    @MainActor var icon: String {
         switch self {
         case .setup: "slider.horizontal.3"
         case .assist: "sparkles"
         case .auto: "wand.and.stars"
         case .transcript: "bubble.left.and.text.bubble.right"
-        case .notes: "note.text"
+        case .notes: GuideSessionController.shared.isActive ? "list.bullet.rectangle" : "note.text"
         }
     }
 

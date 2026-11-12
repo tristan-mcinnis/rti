@@ -79,7 +79,9 @@ struct SpeakerEditorSheet: View {
             Text("Name speakers")
                 .font(House.TypeToken.title)
                 .foregroundStyle(House.ColorToken.textPrimary)
-            Text("Names save for this session only. They replace the anonymous labels in its transcript.")
+            Text(model.archivedGuideRoster == nil
+                ? "Names save for this session only. They replace the anonymous labels in its transcript."
+                : "Assign the original live speakers. Saving updates the guide cells for this session.")
                 .font(House.TypeToken.meta)
                 .foregroundStyle(House.ColorToken.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -101,16 +103,30 @@ struct SpeakerEditorSheet: View {
                                     set: { model.setSpeakerName($0, for: label) }
                                 ))
                                 .textFieldStyle(.roundedBorder)
+                                if let roster = model.archivedGuideRoster,
+                                   let raw = SpeakerLabelMapping.rawKey(forDisplayLabel: label), raw.hasPrefix("remote_") {
+                                    GuideSpeakerMenu(
+                                        roster: roster,
+                                        assignment: model.speakerAssignments[raw] ?? GuideSpeakerAssignment(),
+                                        select: { model.speakerAssignments[raw] = $0.isEmpty ? nil : $0 }
+                                    )
+                                }
                             }
                         }
                     }
                 }
+            }
+            if let error = model.speakerReadError ?? model.speakerSaveError {
+                Text(error)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textPrimary)
             }
             HStack {
                 Spacer()
                 Button("Cancel") { model.cancelSpeakerEditor() }
                     .keyboardShortcut(.cancelAction)
                 Button("Save") { model.saveSpeakerNames() }
+                    .disabled(model.speakerReadError != nil)
                     .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
             }

@@ -84,8 +84,31 @@ enum CommandBuilder {
                 perform: { [weak windows] in
                     windows?.showOverlay()
                     NotificationCenter.default.post(name: .rtiSelectTab, object: tab.rawValue)
-                }
+                },
+                menuTitleProvider: { "Go to \(tab.title)" }
             )
+        }
+    }
+
+    /// Session-specific rows are evaluated when the palette opens. No guide text is
+    /// registered in the persistent menu or global hotkey list.
+    @MainActor
+    static func guideCommands() -> [RTICommand] {
+        let controller = GuideSessionController.shared
+        guard let guide = controller.guide else { return [] }
+        return guide.sections.flatMap { section in
+            section.questions.map { question in
+                let title = question.en.isEmpty ? question.zh : question.en
+                return RTICommand(
+                    id: "guide.question.\(question.qid)",
+                    title: "\(question.qid) · \(title)",
+                    keywords: ["guide", "jump", section.title, question.en, question.zh],
+                    perform: {
+                        controller.jump(to: question.qid)
+                        NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.notes.rawValue)
+                    }
+                )
+            }
         }
     }
 

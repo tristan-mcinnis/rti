@@ -157,6 +157,7 @@ struct CommandPaletteView: View {
     /// A quiet word for where the command belongs.
     static func group(for command: RTICommand) -> String {
         let id = command.id
+        if id.hasPrefix("guide.question.") { return "Guide" }
         if id.hasPrefix("composer.") { return "Composer" }
         if id.hasPrefix("chat.") { return "Quick action" }
         if id.hasPrefix("primary.") { return "Primary" }
@@ -191,6 +192,7 @@ struct CommandPaletteView: View {
             ("note.", "note.text"),
             ("capture.", "camera.viewfinder"),
             ("overlay.toggle", "macwindow"),
+            ("guide.question.", "list.bullet.rectangle"),
             ("view.sessions", "clock.arrow.circlepath"),
             ("view.brief", "doc.text"),
             ("view.tab", "rectangle.split.3x1"),

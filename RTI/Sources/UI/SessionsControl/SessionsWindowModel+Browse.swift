@@ -179,8 +179,8 @@ extension SessionsWindowModel {
             .flatMap { try? JSONDecoder().decode(SessionArchiveMetadata.self, from: $0) }
         let speakers = read("speaker-names.json")
             .flatMap { $0.data(using: .utf8) }
-            .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) }
-            .map { $0.values.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.sorted() } ?? []
+            .flatMap { try? JSONDecoder().decode(SpeakerNameArchive.self, from: $0) }
+            .map { $0.displayNames.values.sorted() } ?? []
         let stamp = VaultMeetingTitleMap.canonicalStamp(fromFolderName: dir.lastPathComponent)
         let bytes = names.contains("transcript.md")
             ? (try? fm.attributesOfItem(atPath: session.transcriptURL.path))?[.size] as? Int

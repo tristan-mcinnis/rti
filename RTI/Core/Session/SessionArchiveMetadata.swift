@@ -29,6 +29,20 @@ public struct SessionArchiveMetadata: Codable {
     /// What Soniox should know about this session, for the transcript upgrade.
     /// Nil in `session.json` files written before 2026-11-04.
     public var speechContext: SonioxContext? = nil
+    public var groupID: String?
+    public var guidePath: String?
+    public var rosterPath: String?
+    /// The roster at recording time, for later seat edits even if its source moves.
+    public var guideRoster: [GuideSeat]?
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionId, systemAudioStartOffsetMs, micAudioFile, systemAudioFile, mode, workstream
+        case durationSeconds, calendarTitle, recordingError, speechContext
+        case groupID = "group_id"
+        case guidePath = "guide_path"
+        case rosterPath = "roster_path"
+        case guideRoster = "guide_roster"
+    }
 
     public init(
         sessionId: String?,
@@ -40,7 +54,11 @@ public struct SessionArchiveMetadata: Codable {
         durationSeconds: Int?,
         calendarTitle: String? = nil,
         recordingError: String? = nil,
-        speechContext: SonioxContext? = nil
+        speechContext: SonioxContext? = nil,
+        groupID: String? = nil,
+        guidePath: String? = nil,
+        rosterPath: String? = nil,
+        guideRoster: [GuideSeat]? = nil
     ) {
         self.sessionId = sessionId
         self.systemAudioStartOffsetMs = systemAudioStartOffsetMs
@@ -52,5 +70,9 @@ public struct SessionArchiveMetadata: Codable {
         self.calendarTitle = calendarTitle
         self.recordingError = recordingError
         self.speechContext = speechContext
+        self.groupID = groupID
+        self.guidePath = guidePath
+        self.rosterPath = rosterPath
+        self.guideRoster = guideRoster
     }
 }

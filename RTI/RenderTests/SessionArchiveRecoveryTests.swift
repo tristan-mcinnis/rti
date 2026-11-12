@@ -65,6 +65,66 @@ final class SessionArchiveRecoveryTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: audioURL), audio)
     }
 
+    func testGuideCheckpointKeepsLatestLiveSourceAcrossUpgrade() throws {
+        let guide = try GuideDocument.parse(Data(#"{"title":"A mock guide","sections":[{"id":"S1","title":"Colours","questions":[{"qid":"S1Q1","en":"Which colour?","zh":"","probes":[]}]}]}"#.utf8))
+        let draft = GuideExtraction(group: "", transcript: "transcript.live.md", guide: guide)
+        let capture = GuideArchiveSnapshot(extraction: draft, guidePath: root.appendingPathComponent("dg-questions.json").path, rosterPath: nil, roster: [])
+        func save(_ answer: String) throws -> URL {
+            let turn = LiveEntry(speakerId: "remote_2", text: answer, startMs: 12_345, confidence: 1, translationStatus: "original", language: "zh", sourceLanguage: nil)
+            return try XCTUnwrap(SessionArchive.write(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(30), transcript: [turn], chat: [], guide: capture))
+        }
+        _ = try save("我选")
+        let dir = try save("我选蓝色。")
+        let proofURL = dir.appendingPathComponent("transcript.live.md")
+        let live = try String(contentsOf: proofURL, encoding: .utf8)
+        XCTAssertTrue(live.contains("`00:00:12.345` **Remote speaker 2:** 我选蓝色。"))
+        XCTAssertEqual(live, try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("guide-cells-unassigned.json").path))
+        _ = try TranscriptUpgradeArtifacts.installUpgradedTranscript(markdown: "# Transcript\n\n`0:13` **Remote speaker 1:** 我选蓝色。", in: dir)
+        XCTAssertEqual(live, try String(contentsOf: proofURL, encoding: .utf8))
+        let upgraded = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
+        XCTAssertFalse(upgraded.contains("Remote speaker 2"))
+    }
+
+    func testGuideReanchorAndSpeakerEditsUseOriginalTurnIdentity() throws {
+        let guide = try GuideDocument.parse(Data(#"{"title":"Mock","sections":[{"id":"S1","title":"Test","questions":[{"qid":"S1Q1","en":"Which colour?","zh":"","probes":[]}]}]}"#.utf8))
+        let entries = [
+            RenderFixtures.liveEntry("remote_1", "Blue.", 8000),
+            RenderFixtures.liveEntry("remote_2", "Blue.", 9000),
+            RenderFixtures.liveEntry("remote_1", "Red.", 14000),
+            RenderFixtures.liveEntry("remote_2", "Yellow.", 19000),
+        ]
+        let turns = GuideSessionController.sourceTurns(from: entries)
+        let ids = turns.map(\.id)
+        let cell: [String: Any] = ["qid": "S1Q1", "coverage": "Answered", "summary": "Respondents named colours.",
+                                    "turns": ids, "quotes": ids.map { ["turn": $0, "english": ""] }, "votes": []]
+        let pass = try JSONDecoder().decode(GuidePass.self, from: JSONSerialization.data(withJSONObject: ["evidence": [], "cells": [cell]]))
+        var extraction = GuideExtraction(group: "G1", transcript: "transcript.live.md", guide: guide)
+        extraction.apply(pass, turns: turns, speakers: [:], rosterBase: nil)
+        let snapshot = GuideArchiveSnapshot(extraction: extraction, guidePath: "dg-questions.json", rosterPath: nil, roster: [])
+        let dir = try XCTUnwrap(SessionArchive.write(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(30),
+                                                    transcript: entries, chat: [], guide: snapshot))
+        let file = dir.appendingPathComponent(extraction.fileName)
+        func readCell() throws -> GuideCell {
+            try XCTUnwrap(JSONDecoder().decode(GuideExtraction.self, from: Data(contentsOf: file)).cells.first)
+        }
+        let upgraded = [
+            TranscriptUpgradeSegment(speaker: "Remote speaker 7", startMs: 10000, text: "Blue."),
+            TranscriptUpgradeSegment(speaker: "Remote speaker 6", startMs: 16000, text: "Red."),
+            TranscriptUpgradeSegment(speaker: "Remote speaker 7", startMs: 20000, text: "Yellow!"),
+        ]
+        try SessionArchive.reanchorGuide(in: dir, upgradedTurns: upgraded)
+        let quotes = try readCell().quotes
+        XCTAssertEqual(quotes.map(\.verification), ["unverified", "unverified", "verified", "unverified"])
+        XCTAssertEqual(quotes[2].locator, "00:00:16")
+        let archive = SpeakerNameArchive(names: ["remote_1": "P3"], assignments: ["remote_2": .init(isModerator: true)])
+        try SessionArchive.updateGuideSpeakers(in: dir, archive: archive)
+        let remapped = try readCell().quotes
+        XCTAssertEqual(remapped.map(\.participant), ["P3", "P3"])
+        XCTAssertEqual(remapped.map(\.original), ["Blue.", "Red."])
+        XCTAssertEqual(remapped.last?.upgradedSpeaker, "Remote speaker 6")
+    }
+
     func testFailedMetadataWriteKeepsReadableCheckpoint() throws {
         let directory = try XCTUnwrap(archive(transcript: [entry("Durable earlier checkpoint")]))
         let transcriptURL = directory.appendingPathComponent("transcript.md")

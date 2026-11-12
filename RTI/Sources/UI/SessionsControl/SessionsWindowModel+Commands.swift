@@ -90,7 +90,7 @@ extension SessionsWindowModel {
         case .ask: askInRTI(row)
         case .rename: beginRename(id)
         case .nameSpeakers:
-            isSpeakerEditorPresented = true
+            beginSpeakerEditor()
         case .editTranscript:
             selectFile(named: "transcript")
             transcriptTurns = SessionTranscriptReview.turns(from: rawText(of: "transcript") ?? "")

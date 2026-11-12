@@ -1,0 +1,60 @@
+{
+  "group": "G1",
+  "transcript": "mock-group.txt",
+  "segment": "",
+  "source": "rti-live",
+  "capture_incomplete": false,
+  "cells": [
+    {
+      "qid": "S1Q1",
+      "coverage": "Answered",
+      "summary": "P1 chose A. The cup is easy to hold.",
+      "quotes": [
+        {
+          "participant": "P1",
+          "locator": "00:01:10",
+          "original": "我选 A，拿着舒服。",
+          "english": "I choose A. It is comfortable to hold.",
+          "raw_speaker": "remote_2",
+          "live_start_ms": 70050,
+          "turn_id": "r1",
+          "seat_code": "1U"
+        }
+      ],
+      "tally": "1 of 3 chose A",
+      "score": null,
+      "who": "1U",
+      "note_evidence": [
+        {
+          "summary": "P1 chose A. The cup is easy to hold.",
+          "speakers": ["remote_2"],
+          "turnIDs": ["r1"],
+          "substantial": true
+        }
+      ],
+      "vote_evidence": [{"turn": "r1", "speaker": "remote_2", "choice": "A"}]
+    },
+    {
+      "qid": "S1Q2",
+      "coverage": "Not covered",
+      "summary": "",
+      "quotes": [],
+      "tally": null,
+      "score": null,
+      "who": "",
+      "note_evidence": [],
+      "vote_evidence": []
+    },
+    {
+      "qid": "S2Q1",
+      "coverage": "Not covered",
+      "summary": "",
+      "quotes": [],
+      "tally": null,
+      "score": null,
+      "who": "",
+      "note_evidence": [],
+      "vote_evidence": []
+    }
+  ]
+}

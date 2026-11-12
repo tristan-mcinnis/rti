@@ -36,7 +36,7 @@ struct OverlayPanelView: View {
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
     // row gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
-        OverlayTab.visibleTabs(notes: notesEnabled, auto: autoAssistEnabled)
+        OverlayTab.visibleTabs(notes: notesEnabled || GuideSessionController.shared.isActive, auto: autoAssistEnabled)
     }
 
     private var status: OverlayShellStatus {
@@ -80,7 +80,11 @@ struct OverlayPanelView: View {
                 case .transcript:
                     EmptyView()
                 case .notes:
-                    NotesTabView().tabContentPadding()
+                    if let guide = GuideSessionController.shared.guide {
+                        GuideTabView(guide: guide, isActive: isActive).tabContentPadding()
+                    } else {
+                        NotesTabView().tabContentPadding()
+                    }
                 case .setup:
                     SetupTabView().tabContentPadding()
                 }
@@ -120,8 +124,7 @@ struct OverlayPanelView: View {
         .frame(height: House.Control.railRow)
         .background(embedded ? House.ColorToken.surface : Color.clear)
         // If the active tab gets turned off in Prepare, fall back to Assist.
-        .onChange(of: notesEnabled) { _, _ in normalizeSelection() }
-        .onChange(of: autoAssistEnabled) { _, _ in normalizeSelection() }
+        .onChange(of: visibleTabs) { _, _ in normalizeSelection() }
         // The View menu (⌘1…⌘5) and commands switch tabs by posting a
         // notification with the target tab's rawValue.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { note in
@@ -133,8 +136,12 @@ struct OverlayPanelView: View {
             // Prepare → Live is the primary hand-off in RTI. Do not
             // interrupt someone who has deliberately navigated away
             // from Prepare after the recording is already underway.
-            if previous == .idle, current == .recording, tab == .setup {
-                tab = .assist
+            if current == .recording, tab == .setup {
+                if GuideSessionController.shared.isActive && previous != .paused {
+                    tab = .notes
+                } else if previous == .idle {
+                    tab = .assist
+                }
             }
         }
     }

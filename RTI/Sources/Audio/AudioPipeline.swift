@@ -118,7 +118,7 @@ final class AudioPipeline {
     /// Wall-clock instant the mic leg started sending audio (≈ the mic Soniox
     /// stream's `startMs == 0`). Used to measure how much later the system
     /// leg starts so its timestamps can be aligned to the mic timeline.
-    private var captureStartWall: Date?
+    private(set) var captureStartWall: Date?
     /// A rebound device needs its own first-buffer grace period. The session
     /// clock must stay fixed for transcript timestamps.
     private var micInputStartedAt: Date?
