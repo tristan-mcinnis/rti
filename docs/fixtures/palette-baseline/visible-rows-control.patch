@@ -1,0 +1,9 @@
+--- a/RTI/Sources/UI/HouseChat/HouseFloatingChooser.swift
++++ b/RTI/Sources/UI/HouseChat/HouseFloatingChooser.swift
+@@ -126,5 +126,5 @@
+             ScrollView(.vertical, showsIndicators: items.count > maxRows) {
+                 VStack(spacing: Self.rowSpacing) {
+-                    ForEach(Array(items.enumerated()), id: \.offset) { index, item in
++                    ForEach(Array(items.prefix(maxRows).enumerated()), id: \.offset) { index, item in
+                         row(index, item).id(index)
+                     }

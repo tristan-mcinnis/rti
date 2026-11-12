@@ -1,0 +1,272 @@
+--- a/RTI/Core/Support/AppSupportPaths.swift
++++ b/RTI/Core/Support/AppSupportPaths.swift
+@@ -10,7 +10,7 @@
+     /// `createIfNeeded` is false. Nil only if Application Support itself
+     /// cannot be resolved, which never happens on a normal user account.
+     public static func rtiDirectory(createIfNeeded: Bool = true) -> URL? {
+-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
++        guard let base = Optional(FileManager.default.temporaryDirectory.appendingPathComponent("window-proof-support-" + String(ProcessInfo.processInfo.processIdentifier), isDirectory: true)) else {
+             return nil
+         }
+         let dir = base.appendingPathComponent("RTI", isDirectory: true)
+@@ -25,7 +25,7 @@
+     /// inside it, and still resolves the base through here rather than at the
+     /// call site.
+     public static func applicationSupportBase() -> URL? {
+-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
++        Optional(FileManager.default.temporaryDirectory.appendingPathComponent("window-proof-support-" + String(ProcessInfo.processInfo.processIdentifier), isDirectory: true))
+     }
+
+     /// A file directly inside the RTI config home, e.g. `credentials.json`.
+--- a/RTI/RenderTests/Fixtures/FixtureVault.swift
++++ b/RTI/RenderTests/Fixtures/FixtureVault.swift
+@@ -146,7 +146,7 @@
+         // Config: `recordings_dir` anchors the whole tree (VaultPaths).
+         let configHome = base.appendingPathComponent("config", isDirectory: true)
+         try fm.createDirectory(at: configHome, withIntermediateDirectories: true)
+-        let config = try JSONSerialization.data(withJSONObject: ["recordings_dir": recordings.path, "sessions_dir": sessionsDir.path], options: [.sortedKeys])
++        let config = try JSONSerialization.data(withJSONObject: ["recordings_dir": recordings.path, "sessions_dir": sessionsDir.path, "project_roots": [String]()], options: [.sortedKeys])
+         try config.write(to: configHome.appendingPathComponent("config.json"))
+
+         try write(
+--- a/RTI/RenderTests/RenderProofHarness.swift
++++ b/RTI/RenderTests/RenderProofHarness.swift
+@@ -18,11 +18,12 @@
+ /// a person (or an agent) reading every PNG.
+ @MainActor
+ enum RenderProofHarness {
+-    static let outputDirectory = URL(fileURLWithPath: "/tmp/rti-render-proof", isDirectory: true)
++    static let outputDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("window-proof-output-" + String(ProcessInfo.processInfo.processIdentifier), isDirectory: true)
+
+     /// Flatten the glass, create the output folder, and install the fixture
+     /// vault. Safe to call before every test.
+     static func prepare() throws {
++        try FixtureVault.install()
+         SlateRenderMode.flattenGlass = true
+         // Before any view is built: point the shared assistant controller at an
+         // in-memory mode store, so a render proof can never initialize or
+@@ -30,7 +31,6 @@
+         // or a route preview.
+         LLMController.shared.useInMemoryCallTypeStore()
+         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+-        try FixtureVault.install()
+     }
+
+     /// Render `view` at `size` in dark and light and write both PNGs.
+--- a/RTI/Sources/OverlayWindowController.swift
++++ b/RTI/Sources/OverlayWindowController.swift
+@@ -214,7 +214,12 @@
+ /// close and is never released; it is always `sharingType = .none`.
+ @MainActor
+ final class OverlayWindowController {
+-    static let frameAutosaveName = "RTI.OverlayWindow"
++    static let frameAutosaveName = "RTI.fixture.window." + UUID().uuidString
++    static var fixtureScreen: NSRect?
++    static var fixtureLegacy: [String: CGFloat]?
++    static var fixtureRequest: NSRect?
++    var fixtureWindow: NSWindow { window }
++    static func fixtureLegacyFrame() -> NSRect? { loadLegacySavedFrame() }
+
+     private let window: NSWindow
+     // Observer tokens are non-Sendable but only touched in init (set) and
+@@ -340,7 +345,9 @@
+                 positionOnActiveScreen()
+             }
+         }
++        print("WINDOW_RESTORE before_attach=\(window.frame) reported_screen=\(String(describing: window.screen?.frame))")
+         window.setFrameAutosaveName(Self.frameAutosaveName)
++        print("WINDOW_RESTORE attached=\(window.frame)")
+         let content = window.contentRect(forFrameRect: window.frame).size
+         if content.width < window.contentMinSize.width || content.height < window.contentMinSize.height {
+             window.setContentSize(Self.configuredSize())
+@@ -350,7 +357,7 @@
+
+     func positionOnActiveScreen() {
+         let screen = screenUnderMouse() ?? NSScreen.main
+-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
++        let visible = Self.fixtureScreen ?? screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+         let margin = House.Spacing.md
+         let content = Self.configuredSize()
+         let frameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: content)).size
+@@ -359,7 +366,9 @@
+             x: visible.minX + margin,
+             y: visible.maxY - margin - height
+         )
+-        window.setFrame(NSRect(origin: origin, size: NSSize(width: frameSize.width, height: height)), display: true)
++        let requested = NSRect(origin: origin, size: NSSize(width: frameSize.width, height: height))
++        Self.fixtureRequest = requested
++        window.setFrame(requested, display: true)
+     }
+
+     private func screenUnderMouse() -> NSScreen? {
+@@ -368,11 +377,11 @@
+     }
+
+     private static func loadLegacySavedFrame() -> NSRect? {
+-        guard let dict = UserDefaults.standard.dictionary(forKey: legacySavedFrameKey) as? [String: CGFloat],
++        guard let dict = fixtureLegacy,
+               let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"] else { return nil }
+         let frame = NSRect(x: x, y: y, width: w, height: h)
+         // Only when it is still on some screen.
+-        guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) else { return nil }
++        guard (fixtureScreen.map { [$0] } ?? NSScreen.screens.map(\.visibleFrame)).contains(where: { $0.intersects(frame) }) else { return nil }
+         return frame
+     }
+
+--- a/RTI/Sources/UI/HouseChat/HouseChatPrimitives.swift
++++ b/RTI/Sources/UI/HouseChat/HouseChatPrimitives.swift
+@@ -434,6 +434,8 @@
+     func makeNSView(context: Context) -> NSView { DragView() }
+     func updateNSView(_ view: NSView, context: Context) {}
+
++    static func fixtureDragView() -> NSView { DragView() }
++
+     private final class DragView: NSView {
+         override func mouseDown(with event: NSEvent) {
+             window?.performDrag(with: event)
+--- a/RTI/RenderTests/WorkspaceRenderProofTests.swift
++++ b/RTI/RenderTests/WorkspaceRenderProofTests.swift
+@@ -16,6 +16,143 @@
+         SessionCoordinator.shared.seedForRenderProof(entries: [], interim: nil, phase: .idle, startedAt: nil)
+         LLMController.shared.seedForRenderProof(entries: [])
+         try await super.tearDown()
++    }
++
++    func testHiddenWindowGeometryBaseline() throws {
++        guard ProjectRoots.roots().isEmpty else {
++            return XCTFail("The fixture must isolate external workstreams before mounting the workspace.")
++        }
++        let realScreen = try XCTUnwrap(NSScreen.main?.visibleFrame)
++        typealias Controller = OverlayWindowController
++        let nonce = Controller.frameAutosaveName
++        defer {
++            NSWindow.removeFrame(usingName: nonce)
++            Controller.fixtureScreen = nil
++            Controller.fixtureLegacy = nil
++        }
++        func pump(_ window: NSWindow) {
++            window.contentView?.layoutSubtreeIfNeeded()
++            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
++        }
++        var driver: Controller? = Controller()
++        var win: NSWindow? = try XCTUnwrap(driver?.fixtureWindow)
++        func runPlayback(_ window: NSWindow) throws {
++            XCTAssertFalse(window.isVisible)
++            XCTAssertTrue(window.styleMask.isSuperset(of: [.closable, .resizable, .miniaturizable]))
++            XCTAssertTrue(window.collectionBehavior.isSuperset(of: [.managed, .participatesInCycle, .fullScreenPrimary]))
++            XCTAssertFalse(window.collectionBehavior.contains(.canJoinAllSpaces))
++            XCTAssertFalse(window.collectionBehavior.contains(.moveToActiveSpace))
++            XCTAssertTrue(try XCTUnwrap(window.standardWindowButton(.miniaturizeButton)).isEnabled)
++            XCTAssertTrue(try XCTUnwrap(window.standardWindowButton(.zoomButton)).isEnabled)
++            XCTAssertNotNil(window.standardWindowButton(.closeButton))
++            let rect = NSRect(x: realScreen.minX+55, y: realScreen.minY+40, width: 805, height: 550)
++            window.setFrame(rect, display: false)
++            pump(window)
++            XCTAssertEqual(window.frame, rect)
++            let session = SessionCoordinator.shared
++            session.beginTranscriptReplayForProof()
++            defer { session.endTranscriptReplayForProof() }
++            var ticks = 0
++            for page in [WorkspaceModel.Page.live, .sessions, .chats, .settings, .live] {
++                WorkspaceModel.shared.select(page)
++                for _ in 0..<8 {
++                    let row = RenderFixtures.liveEntry("remote_1","Invented turn "+String(ticks),ticks*1000)
++                    session.seedForRenderProof(entries: [row], interim: "Synthetic update "+String(ticks),
++                                               phase: .recording, startedAt: session.startedAt)
++                    pump(window)
++                    XCTAssertEqual(window.frame, rect)
++                    XCTAssertFalse(window.isVisible)
++                    ticks += 1
++                }
++            }
++            window.saveFrame(usingName: nonce)
++            print("WINDOW_SAVE target=\(rect) reported_screen=\(String(describing: window.screen?.frame)) record=\(UserDefaults.standard.string(forKey: "NSWindow Frame " + nonce) ?? "none")")
++            print("WINDOW_PROOF ticks=40 routes=5 frame_delta=0 visible=false native_buttons=enabled")
++        }
++        try runPlayback(try XCTUnwrap(win))
++        let expected = try XCTUnwrap(win?.frame)
++        _ = win?.setFrameAutosaveName("")
++        win = nil
++        driver = nil
++        let restored = Controller()
++        let window = restored.fixtureWindow
++        XCTAssertFalse(window.isVisible)
++        XCTAssertEqual(window.frame.size, expected.size)
++        print("WINDOW_PROOF initial_primary_origin_delta=\(window.frame.origin.x-expected.origin.x),\(window.frame.origin.y-expected.origin.y)")
++        let relocated = window.frame
++        window.saveFrame(usingName: nonce)
++        _ = window.setFrameAutosaveName("")
++        let repeatRestore = Controller()
++        XCTAssertFalse(repeatRestore.fixtureWindow.isVisible)
++        XCTAssertEqual(repeatRestore.fixtureWindow.frame.size, relocated.size)
++        print("WINDOW_PROOF repeat_origin_delta=\(repeatRestore.fixtureWindow.frame.minX-relocated.minX),\(repeatRestore.fixtureWindow.frame.minY-relocated.minY)")
++        if let second = NSScreen.screens.first(where: { $0.visibleFrame != realScreen }) {
++            let another = NSRect(x: second.visibleFrame.minX+55, y: second.visibleFrame.minY+40, width: 805, height: 550)
++            let savedOnSecond = repeatRestore.fixtureWindow
++            savedOnSecond.setFrame(another, display: false)
++            pump(savedOnSecond)
++            savedOnSecond.saveFrame(usingName: nonce)
++            let persisted = UserDefaults.standard.string(forKey: "NSWindow Frame " + nonce) ?? "none"
++            _ = savedOnSecond.setFrameAutosaveName("")
++            let plain = NSWindow(contentRect: NSRect(origin: .zero, size: WorkspaceLayout.standardSize), styleMask: savedOnSecond.styleMask,
++                                 backing: .buffered, defer: false)
++            plain.toolbar = NSToolbar(identifier: "PlainFrameFixture")
++            plain.toolbarStyle = .unified
++            plain.contentMinSize = WorkspaceLayout.minimumSize
++            XCTAssertTrue(plain.setFrameUsingName(nonce))
++            XCTAssertFalse(plain.isVisible)
++            let originalRecord = try XCTUnwrap(UserDefaults.standard.string(forKey: "NSWindow Frame " + nonce))
++            XCTAssertEqual(persisted, originalRecord)
++            print("WINDOW_PROOF plain_second_actual=\(plain.frame)")
++            let onSecond = Controller().fixtureWindow
++            XCTAssertFalse(onSecond.isVisible)
++            XCTAssertEqual(onSecond.frame.size, another.size)
++            let originDelta = NSPoint(x: onSecond.frame.minX-another.minX, y: onSecond.frame.minY-another.minY)
++            print("WINDOW_PROOF second_target=\(another) actual=\(onSecond.frame) saved=\(persisted) origin_delta=\(originDelta) scale=\(second.backingScaleFactor)")
++        }
++        let synthetic = NSRect(x: -1440, y: -200, width: 1440, height: 900)
++        Controller.fixtureScreen = synthetic
++        restored.positionOnActiveScreen()
++        let positioned = try XCTUnwrap(Controller.fixtureRequest)
++        XCTAssertEqual(positioned.minX, synthetic.minX + House.Spacing.md)
++        XCTAssertEqual(positioned.maxY, synthetic.maxY - House.Spacing.md)
++        let slit = NSRect(x: synthetic.minX-positioned.width+1, y: synthetic.midY-150,
++                          width: positioned.width, height: positioned.height)
++        Controller.fixtureLegacy = ["x":slit.minX, "y":slit.minY, "w":slit.width, "h":slit.height]
++        XCTAssertEqual(Controller.fixtureLegacyFrame(), slit)
++        Controller.fixtureScreen = NSRect(x: 0, y: 0, width: 800, height: 600)
++        restored.positionOnActiveScreen()
++        let narrow = try XCTUnwrap(Controller.fixtureRequest)
++        XCTAssertGreaterThan(narrow.maxX, 800)
++        print("WINDOW_PROOF negative_origin_inset=16 legacy_visible_width=1 narrow_requested_maxX=\(narrow.maxX)")
++    }
++
++    func testHeaderDoubleClickDispatchInHiddenWindow() throws {
++        final class DragSpy: NSWindow {
++            var calls = [Int]()
++            var zooms = 0
++            var minimizes = 0
++            override func performDrag(with event: NSEvent) { calls.append(event.clickCount) }
++            override func zoom(_ sender: Any?) { zooms += 1 }
++            override func miniaturize(_ sender: Any?) { minimizes += 1 }
++        }
++        let spy = DragSpy(contentRect: NSRect(x: 0, y: 0, width: 280, height: 56),
++                          styleMask: [.titled, .resizable, .miniaturizable], backing: .buffered, defer: true)
++        let drag = WindowDragArea.fixtureDragView()
++        spy.contentView = drag
++        XCTAssertFalse(spy.isVisible)
++        for count in [1, 2] {
++            let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown,
++                location: NSPoint(x: 50, y: 14), modifierFlags: [], timestamp: 0,
++                windowNumber: spy.windowNumber, context: nil, eventNumber: count,
++                clickCount: count, pressure: 1))
++            drag.mouseDown(with: event)
++        }
++        XCTAssertEqual(spy.calls, [1, 2])
++        XCTAssertEqual(spy.zooms, 0)
++        XCTAssertEqual(spy.minimizes, 0)
++        XCTAssertFalse(spy.isVisible)
++        print("WINDOW_PROOF header_single_and_double_sent_to_drag=2 native_zoom_or_minimize_calls=0")
+     }
+
+     func testTwoHourTranscriptFitsTheMinimumWorkspace() throws {

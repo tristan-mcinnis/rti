@@ -1,0 +1,224 @@
+--- a/RTI/Core/Support/AppSupportPaths.swift
++++ b/RTI/Core/Support/AppSupportPaths.swift
+@@ -11,7 +11,5 @@
+     /// cannot be resolved, which never happens on a normal user account.
+     public static func rtiDirectory(createIfNeeded: Bool = true) -> URL? {
+-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+-            return nil
+-        }
++        let base = FileManager.default.temporaryDirectory.appendingPathComponent("palette-support-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+         let dir = base.appendingPathComponent("RTI", isDirectory: true)
+         if createIfNeeded {
+@@ -26,5 +24,5 @@
+     /// call site.
+     public static func applicationSupportBase() -> URL? {
+-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
++        FileManager.default.temporaryDirectory.appendingPathComponent("palette-support-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+     }
+
+--- a/RTI/RenderTests/Fixtures/FixtureVault.swift
++++ b/RTI/RenderTests/Fixtures/FixtureVault.swift
+@@ -147,5 +147,5 @@
+         let configHome = base.appendingPathComponent("config", isDirectory: true)
+         try fm.createDirectory(at: configHome, withIntermediateDirectories: true)
+-        let config = try JSONSerialization.data(withJSONObject: ["recordings_dir": recordings.path, "sessions_dir": sessionsDir.path], options: [.sortedKeys])
++        let config = try JSONSerialization.data(withJSONObject: ["recordings_dir": recordings.path, "sessions_dir": sessionsDir.path, "project_roots": [String]()], options: [.sortedKeys])
+         try config.write(to: configHome.appendingPathComponent("config.json"))
+
+--- a/RTI/RenderTests/CommandPaletteFocusProofTests.swift
++++ b/RTI/RenderTests/CommandPaletteFocusProofTests.swift
+@@ -3,4 +3,5 @@
+ import SwiftUI
+ import XCTest
++import os.signpost
+ import HouseDesign
+
+@@ -25,7 +26,9 @@
+     override func setUp() async throws {
+         try await super.setUp()
++        try FixtureVault.install()
+         try RenderProofHarness.prepare()
+         OverlayInputState.shared.mode = .chat
+         window = makeWindow()
++        try await prepareSyntheticLongSession()
+     }
+
+@@ -106,4 +109,120 @@
+         try specialKey(0x1B, keyCode: 53)
+         XCTAssertEqual(probe.closeCount, 2, "Escape must close the palette")
++    }
++
++    private var auditEntries: [LiveEntry] = []
++
++    private func prepareSyntheticLongSession() async throws {
++        let start = Date(timeIntervalSinceNow: -3900)
++        let session = SessionCoordinator.shared
++        session.beginTranscriptReplayForProof(startedAt: start)
++        for index in 0..<1301 {
++            let english = index.isMultiple(of: 3)
++            let word = SonioxWord(text: english ? "What did you hear in example \(index)?" : "我在样例中听到了两次声音。",
++                                  startMs: index * 3000, endMs: index * 3000 + 1100,
++                                  speaker: english ? 0 : 1, confidence: 0.98, isFinal: true,
++                                  translationStatus: "original", language: english ? "en" : "zh", sourceLanguage: nil)
++            session.receiveTranscriptWordsForProof([word], channel: english ? "mic" : "system")
++        }
++        try await Task.sleep(for: .milliseconds(160))
++        let entries = session.liveEntries
++        XCTAssertEqual(entries.count, 1301)
++        let llm = LLMController.shared
++        llm.callTypeStore.active = .research
++        llm.seedForRenderProof(entries: (0..<24).map { index in
++            ChatEntry(role: index.isMultiple(of: 2) ? "user" : "assistant",
++                      text: "Invented live chat message \(index).", action: nil,
++                      contextUsed: true, screenContextUsed: false)
++        })
++        let roots = try XCTUnwrap(ChatThreadStore.applicationRoots())
++        XCTAssertTrue(roots.threads.path.hasPrefix(try XCTUnwrap(FixtureVault.root).path + "/"))
++        let store = try ChatThreadStore(roots: roots)
++        for index in 0..<24 {
++            let thread = try await store.thread(id: "palette-fixture-\(index)", title: "Sample \(index)",
++                                                surface: .rtiCopilot, session: nil, appVersion: "fixture")
++            let first = try await store.appendTurn(to: thread, turn: .init(text: "Which fixture?"))
++            _ = try await store.appendTurn(to: first.conversation, turn: .init(text: "Sample \(index).", role: .assistant))
++        }
++        let registry = CommandBuilder.buildCommands(windows: .shared, session: session, llm: llm, callTypes: llm.callTypeStore)
++        CommandRegistry.shared.replaceAll(registry)
++        print("PALETTE_SETUP 1301 rows, 65 minutes, 24 saved chats, 24 live messages, \(registry.count) registered commands")
++        auditEntries = entries
++    }
++
++    func testSyntheticLongSessionLatency() throws {
++        try measurePalette(start: try XCTUnwrap(SessionCoordinator.shared.startedAt), entries: auditEntries)
++    }
++
++    private func measurePalette(start: Date, entries: [LiveEntry]) throws {
++        window.setContentSize(NSSize(width: 860, height: 660))
++        window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
++        let host = NSHostingView(rootView: WorkspaceView(model: WorkspaceModel(), callTypes: LLMController.shared.callTypeStore))
++        host.frame = window.contentView?.bounds ?? .zero
++        XCTAssertEqual(host.frame.size, NSSize(width: 860, height: 660))
++        window.contentView?.addSubview(host)
++        settle()
++        let composer = try XCTUnwrap(composerTextView())
++        window.makeFirstResponder(composer)
++        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
++
++        func findField(_ root: NSView) -> NSTextField? {
++            if let field = root as? NSTextField, field.placeholderString == "Search actions" { return field }
++            return root.subviews.lazy.compactMap(findField).first
++        }
++        for run in 1...12 {
++            let events: [(String, UInt16)] = [("k",40), ("s",1), ("e",14), ("t",17)]
++            var query = ""
++            for (index, eventInfo) in events.enumerated() {
++                let (char, code) = eventInfo
++                let event = try keyEvent(char, keyCode: code, modifiers: index == 0 ? .command : [])
++                if index != 0 { query += char }
++                let offset = entries.last!.startMs + (run * 4 + index) * 3000
++                let word = SonioxWord(text: "A new invented answer \(run) \(index).",
++                                      startMs: offset, endMs: offset + 500, speaker: 2, confidence: 0.98,
++                                      isFinal: true, translationStatus: "original", language: "en", sourceLanguage: nil)
++                SessionCoordinator.shared.receiveTranscriptWordsForProof([word], channel: "system")
++                PaletteAudit.computedQuery = nil
++                PaletteAudit.filterMS = 0
++                PaletteAudit.leadingMS = 0
++                PaletteAudit.rowCount = 0
++                PaletteAudit.renderedIDs.removeAll(keepingCapacity: true)
++                let spID = OSSignpostID(log: PaletteAudit.log)
++                let begin = PaletteAudit.now()
++                os_signpost(.begin, log: PaletteAudit.log, name: "EventToBitmap", signpostID: spID)
++                window.sendEvent(event)
++                while PaletteAudit.computedQuery != query {
++                    host.layoutSubtreeIfNeeded()
++                    if PaletteAudit.computedQuery == query { break }
++                    if PaletteAudit.now() - begin > 1500 {
++                        XCTFail("query did not reach palette: \(query), actual \(String(describing: PaletteAudit.computedQuery))")
++                        return
++                    }
++                    _ = RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.00025))
++                }
++                let bound = PaletteAudit.now()
++                host.layoutSubtreeIfNeeded()
++                host.cacheDisplay(in: host.bounds, to: bitmap)
++                let end = PaletteAudit.now()
++                os_signpost(.end, log: PaletteAudit.log, name: "EventToBitmap", signpostID: spID)
++                XCTAssertGreaterThan(PaletteAudit.matches, 0)
++                XCTAssertTrue(PaletteAudit.renderedIDs.contains(PaletteAudit.first), "ranked first row was evaluated")
++                if index == 0 {
++                    let field = try XCTUnwrap(findField(host))
++                    XCTAssertTrue(window.makeFirstResponder(field))
++                }
++                print(String(format: "PALETTE_SAMPLE %d,%@,%.3f,%.3f,%.3f,%.3f,%d,%d,%d",
++                             run, query.isEmpty ? "open" : query, end-begin, bound-begin, PaletteAudit.filterMS, PaletteAudit.leadingMS,
++                             PaletteAudit.matches, PaletteAudit.rowCount, PaletteAudit.renderedIDs.count))
++            }
++            XCTAssertTrue(try window.performKeyEquivalent(with: keyEvent("k", keyCode: 40, modifiers: .command)))
++            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
++            window.makeFirstResponder(composer)
++        }
++        settle()
++        let count = SessionCoordinator.shared.liveEntries.count
++        print("PALETTE_PUBLISH original=\(entries.count) final=\(count) revision=\(SessionCoordinator.shared.transcriptRevision)")
++        XCTAssertEqual(count, entries.count + 48)
++        SessionCoordinator.shared.endTranscriptReplayForProof()
++        assertNoOnscreenWindow("during performance measurement")
+     }
+
+--- a/RTI/Sources/UI/CommandPalette/CommandPaletteView.swift
++++ b/RTI/Sources/UI/CommandPalette/CommandPaletteView.swift
+@@ -2,4 +2,5 @@
+ import RTICore
+ import SwiftUI
++import os.signpost
+ import HouseDesign
+
+@@ -15,4 +16,16 @@
+ /// actions); a registry row with the same id is then not drawn twice. It
+ /// registers no hotkey of its own.
++@MainActor enum PaletteAudit {
++    static var computedQuery: String?
++    static var filterMS = 0.0
++    static var leadingMS = 0.0
++    static var rowCount = 0
++    static var renderedIDs = Set<String>()
++    static var matches = 0
++    static var first = ""
++    static let log = OSLog(subsystem: "rti.fixture.palette", category: .pointsOfInterest)
++    static func now() -> Double { ProcessInfo.processInfo.systemUptime * 1_000 }
++}
++
+ struct CommandPaletteView: View {
+     @Binding var query: String
+@@ -46,5 +59,13 @@
+
+     private var entries: [RTICommand] {
+-        Self.entries(query: query, leading: leadingCommands, registry: registry.search(query), hiding: hiddenRegistryIDs)
++        let start = PaletteAudit.now()
++        os_signpost(.begin, log: PaletteAudit.log, name: "Match")
++        let result = Self.entries(query: query, leading: leadingCommands, registry: registry.search(query), hiding: hiddenRegistryIDs)
++        os_signpost(.end, log: PaletteAudit.log, name: "Match")
++        PaletteAudit.filterMS += PaletteAudit.now() - start
++        PaletteAudit.computedQuery = query
++        PaletteAudit.matches = result.count
++        PaletteAudit.first = result.first?.id ?? ""
++        return result
+     }
+
+@@ -104,5 +125,7 @@
+
+     private func row(_ command: RTICommand, index: Int, count: Int, isSelected: Bool) -> some View {
+-        ChooserRow(
++        PaletteAudit.rowCount += 1
++        PaletteAudit.renderedIDs.insert(command.id)
++        return ChooserRow(
+             symbol: Self.symbol(for: command),
+             title: Self.displayTitle(for: command),
+--- a/RTI/Sources/UI/Overlay/AssistantInputView+AddContext.swift
++++ b/RTI/Sources/UI/Overlay/AssistantInputView+AddContext.swift
+@@ -269,4 +269,6 @@
+     /// screen reads, and the sticky recap depth (the old ✦ menu's items).
+     var paletteLeadingCommands: [RTICommand] {
++        let start = PaletteAudit.now()
++        defer { PaletteAudit.leadingMS += PaletteAudit.now() - start }
+         let llm = llm
+         var rows: [RTICommand] = llm.availableQuickActions().map { action in

@@ -2,6 +2,21 @@
 
 This is what you run to verify RTI by hand. Ralph automated what it could; these steps need your hands on the Mac.
 
+## Isolated beta acceptance, 12 November 2026
+
+**Planned checks for the separately identified beta.** Begin once the beta reports its own build, test project and session directory. Use invented content. The baseline, replay harness and comparison criteria are in the [beta review](../docs/beta-review-20261112.md). The Debug launch command in section 1 uses the normal app identity.
+
+| Minutes | Action | Pass condition |
+| --- | --- | --- |
+| 0–3 | Start a Research call with a fixture guide. Choose four speakers and enable speaker labels. Have four test voices on the system leg each introduce themselves. Have two repeat the same sentence. Ask a question on the mic. | Both repetitions survive. The mic shows its leg. Remote clusters retain identity provenance. Unverified turns stay anonymous in recap, Notes and Auto. Notes and Guide are both reachable. |
+| 3–5 | In Transcript, change one-way target and then switch to a valid two-way pair while speaking. Try choosing the same language on both sides. Toggle labels off. | The control shows the effective setting and any switching state. Following speech changes language as selected. Time stays monotonic across the reconnect. Equal languages are rejected or resolved visibly. Labels-off uses only Me/Them. |
+| 5–7 | Use ⌘⌥N for a multiline marker, pause, add an ordinary note, resume, and start a second marker. | The first span closes at the second marker. The regular note stays inside its span. Both markers and the multiline text survive Finish and upgrade in Sessions, the raw export, session metadata and sidecar. Check the completed upgrade after the timed exercise. |
+| 7–10 | While speech and chat update, drag the window and release. Switch tabs and open Cmd+K. Use yellow, ⌘M, Dock restore, native zoom and full screen. Open and dismiss Mission Control once. | The frame settles where released. Background updates leave its size, position, Space and minimized state alone. Each native command works once. Restore returns to the expected frame. Recording continues. Compare `NSWindow.frame` and scroll origin separately if motion recurs. |
+| 10–12 | Start with Screenshots in Manual only. Set Research to Off for the test project. Try both capture keys and a screen-tool request. Select Automatic during recording, pause, then switch Off during a pending capture. | Disabled keys explain the effective setting. Off produces zero new pixels, staged images, archive frames or outbound screen context in the test transports. The automatic indicator reflects the running sampler. The Research override survives reselecting the project. Deny-listed windows stay excluded. |
+| 12–15 | Use the prepared 65-minute replay with saved chats. Scroll up during new speech, wait for another turn, then use Jump to live. Open Cmd+K and type broad and narrow queries while transcript events continue. | Reading position holds until resumed. Measure dispatch through first presented palette frame and input through each updated frame, including cold open, automatic focus and worst observation. Open takes under 100 ms and each filter update under 16 ms. Arrow down past the first screen of results, activate and Escape. |
+
+Also test relaunch, external-display disconnect and restoring from full screen with a fixture archive. Keep a separate trace of frame, display/Space, visibility, focus and content scroll, with no transcript text. Old sessions must still open before and after the mock call.
+
 ## 1. Launch
 
 ```bash
@@ -29,8 +44,8 @@ Check result in `POC1-findings.md`.
 
 ## 3. Focus + Space tests
 
-- With overlay visible, click a Safari window — does Safari come frontmost while the overlay stays visible on top? (Expected: yes)
-- Switch Spaces with Ctrl+→ / Ctrl+← — does the overlay follow to the new Space? (Expected: yes)
+- With **Window → Keep on Top** off, bring another window forward. RTI should use normal window ordering. Repeat with Keep on Top explicitly enabled.
+- With the default macOS desktop assignment, switch Spaces and return. RTI should retain its assigned Space and window frame. Test deliberate show, minimize and restore separately from switching Spaces.
 
 ## 4. QuickTime screen-recording test (CRITICAL)
 
