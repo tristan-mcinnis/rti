@@ -216,7 +216,8 @@ private final class OverlayWindow: NSWindow {
 final class OverlayWindowController {
     static let frameAutosaveName = "RTI.OverlayWindow"
 
-    private let window: NSWindow
+    let window: NSWindow
+    private nonisolated(unsafe) var resizeObserver: NSObjectProtocol?
     // Observer tokens are non-Sendable but only touched in init (set) and
     // deinit (read for removeObserver); marking nonisolated(unsafe) lets the
     // class stay @MainActor while keeping the cleanup path compileable.
@@ -238,12 +239,17 @@ final class OverlayWindowController {
         win.identifier = NSUserInterfaceItemIdentifier(RTIWindowKind.overlay.windowIdentifier)
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
-        // An empty unified toolbar makes the title-bar row as tall as the 52
-        // header, so the traffic lights centre on the header's row; the
-        // content runs up under it (`ignoresSafeArea` in the view).
-        let toolbar = NSToolbar(identifier: "RTIOverlayWindow")
-        win.toolbar = toolbar
-        win.toolbarStyle = .unified
+        // Place interactive title-row controls in AppKit's title bar itself.
+        // A full-size content view can draw under its title bar even when the
+        // native window server treats clicks there as window management.
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.layoutAttribute = .right
+        let header = NSHostingView(rootView: WorkspaceWindowHeader(model: .shared, nativeTitlebar: true))
+        header.sizingOptions = []
+        header.identifier = NSUserInterfaceItemIdentifier("rti.workspace.title-row")
+        header.frame.size = NSSize(width: initialSize.width - HouseChatMetrics.trafficLightInset, height: House.Control.composer)
+        accessory.view = header
+        win.addTitlebarAccessoryViewController(accessory)
         // Selecting transcript or answer text must not drag the window; the
         // header carries the drag (`WindowDragArea`).
         win.isMovableByWindowBackground = false
@@ -261,7 +267,7 @@ final class OverlayWindowController {
         win.backgroundColor = House.NSColorToken.surface
         win.contentMinSize = WorkspaceLayout.minimumSize
 
-        let hosting = NSHostingView(rootView: WorkspaceView(model: .shared))
+        let hosting = NSHostingView(rootView: WorkspaceView(model: .shared, nativeTitlebar: true))
         // The window sizes the view, not the other way round: the frame is
         // the user's (autosaved), from the minimum up.
         hosting.sizingOptions = []
@@ -269,6 +275,13 @@ final class OverlayWindowController {
         win.appearance = Self.configuredAppearance()
 
         self.window = win
+
+        resizeObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: win, queue: .main) { [weak win, weak header] _ in
+            MainActor.assumeIsolated {
+                guard let win, let header else { return }
+                header.setFrameSize(NSSize(width: max(0, win.frame.width - HouseChatMetrics.trafficLightInset), height: House.Control.composer))
+            }
+        }
 
         // Settings → Appearance posts this so the window re-themes live.
         // queue: .main means it fires on the main thread; assumeIsolated
@@ -312,6 +325,7 @@ final class OverlayWindowController {
     }
 
     deinit {
+        if let o = resizeObserver { NotificationCenter.default.removeObserver(o) }
         if let o = appearanceObserver { NotificationCenter.default.removeObserver(o) }
         if let o = enterFullScreenObserver { NotificationCenter.default.removeObserver(o) }
         if let o = exitFullScreenObserver { NotificationCenter.default.removeObserver(o) }

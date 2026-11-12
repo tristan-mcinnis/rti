@@ -265,6 +265,7 @@ struct OverlayShellHeader: View {
     var callTypes: CallTypeStore = .shared
     var fill: Color = House.ColorToken.surface
     var workspace: WorkspaceModel?
+    var nativeTitlebar = false
 
     private let chrome = OverlayWindowChrome.shared
     @State private var showsCompactControls = false
@@ -279,7 +280,8 @@ struct OverlayShellHeader: View {
     }
 
     private func header(width: CGFloat) -> some View {
-        let compact = workspace != nil && width < WorkspaceLayout.standardSize.width
+        let availableWidth = width + (nativeTitlebar ? HouseChatMetrics.trafficLightInset : 0)
+        let compact = workspace != nil && availableWidth < WorkspaceLayout.standardSize.width
         let hideStandaloneKeys = width < OverlayAppearanceDefaults.defaultWidth
         return HStack(spacing: House.Spacing.xs) {
             if compact {
@@ -308,7 +310,7 @@ struct OverlayShellHeader: View {
                     .layoutPriority(-1)
             }
             if let workspace { WorkspaceRouteSegments(model: workspace) }
-            Spacer(minLength: 0)
+            Spacer(minLength: 0).background(WindowDragArea())
             if chrome.isKeptOnTop {
                 QuickAIGlyphButton(
                     symbol: "pin.fill",
@@ -340,18 +342,11 @@ struct OverlayShellHeader: View {
             }
             .fixedSize()
         }
-        .padding(.leading, chrome.isFullScreen ? House.Spacing.sm : HouseChatMetrics.trafficLightInset)
+        .padding(.leading, nativeTitlebar ? 0 : (chrome.isFullScreen ? House.Spacing.sm : HouseChatMetrics.trafficLightInset))
         .padding(.trailing, House.Spacing.lg)
         .frame(maxWidth: .infinity)
         .frame(height: House.Control.composer)
-        .background {
-            ZStack {
-                fill
-                // The title-bar row drags the window, as a normal title bar
-                // does (macOS 14 stand-in for WindowDragGesture).
-                WindowDragArea()
-            }
-        }
+        .background(fill)
         .zIndex(1)
     }
 }

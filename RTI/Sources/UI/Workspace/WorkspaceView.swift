@@ -18,14 +18,16 @@ extension EnvironmentValues {
 struct WorkspaceView: View {
     @Bindable var model: WorkspaceModel
     var callTypes: CallTypeStore = .shared
+    var nativeTitlebar = false
     private let session = SessionCoordinator.shared
 
     var body: some View {
         VStack(spacing: 0) {
-            OverlayShellHeader(status: OverlayShellStatus(
-                phase: session.phase.livePhase,
-                processingStatus: session.postProcessingStatus
-            ), callTypes: callTypes, fill: House.ColorToken.surfaceSunken, workspace: model)
+            if nativeTitlebar {
+                House.ColorToken.surfaceSunken.frame(height: House.Control.composer)
+            } else {
+                WorkspaceWindowHeader(model: model, callTypes: callTypes)
+            }
             sessionChatContext
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
@@ -150,6 +152,20 @@ struct WorkspaceView: View {
 
 }
 
+/// The same header is hosted by the native title bar in the app and by the
+/// workspace in windowless render proofs.
+struct WorkspaceWindowHeader: View {
+    var model: WorkspaceModel
+    var callTypes: CallTypeStore = .shared
+    var nativeTitlebar = false
+    private let session = SessionCoordinator.shared
+
+    var body: some View {
+        OverlayShellHeader(status: OverlayShellStatus(phase: session.phase.livePhase, processingStatus: session.postProcessingStatus),
+                           callTypes: callTypes, fill: House.ColorToken.surfaceSunken, workspace: model, nativeTitlebar: nativeTitlebar)
+    }
+}
+
 struct WorkspaceRouteSegments: View {
     @Bindable var model: WorkspaceModel
     var body: some View {
@@ -161,9 +177,13 @@ struct WorkspaceRouteSegments: View {
                         .frame(height: House.Control.chip)
                         .foregroundStyle(model.page == page ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
                         .slateRaisedTile(model.page == page, cornerRadius: House.Radius.sm)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option])
+                .accessibilityIdentifier("workspace.route." + page.rawValue)
+                .accessibilityLabel(page.rawValue)
+                .accessibilityValue(model.page == page ? "Selected" : "")
                 .accessibilityAddTraits(model.page == page ? .isSelected : [])
                 .help("\(page.rawValue) (⌥⌘\(index + 1))")
             }
