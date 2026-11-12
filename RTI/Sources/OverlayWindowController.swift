@@ -211,7 +211,7 @@ private final class OverlayWindow: NSWindow {
 /// Owns the overlay window: a normal titled window in the house window chrome
 /// (chat-surfaces.md section 7), adapted for RTI. RTI is always a regular
 /// Dock app, so there is no activation-policy switching; the window hides on
-/// close and is never released; it is always `sharingType = .none`.
+/// close and keeps the user's window-sharing preference when reopened.
 @MainActor
 final class OverlayWindowController {
     static let frameAutosaveName = "RTI.OverlayWindow"
@@ -255,10 +255,9 @@ final class OverlayWindowController {
         // list would only add a second "RTI" entry.
         win.isExcludedFromWindowsMenu = true
         win.collectionBehavior = [.managed, .participatesInCycle, .fullScreenPrimary]
-        win.sharingType = .none
+        win.configureRTITitledWindow()
         // Opaque `surface` ground, not glass: cheaper to composite during a
         // call, and the same ground as every house chat window.
-        win.isOpaque = true
         win.backgroundColor = House.NSColorToken.surface
         win.contentMinSize = WorkspaceLayout.minimumSize
 
@@ -352,11 +351,8 @@ final class OverlayWindowController {
 
     var isVisible: Bool { window.isVisible && !window.isMiniaturized && !NSApp.isHidden }
 
-    func setSharingInvisible(_ invisible: Bool) {
-        window.sharingType = invisible ? .none : .readOnly
-    }
-
     func show(initialLaunch: Bool = false) {
+        window.applyRTISharingPolicy()
         if window.isMiniaturized { window.deminiaturize(nil) }
         let workspace = WorkspaceModel.shared
         workspace.setWindowVisible(true)

@@ -215,7 +215,7 @@ final class OverlayShellModel {
 
     /// The chooser open under the title block, if any. An in-window layer,
     /// never a menu window, so it stays out of screen shares with the
-    /// overlay (`sharingType = .none`).
+    /// overlay and its window-sharing preference.
     var chooser: Chooser?
 
     @ObservationIgnored private var escapeRegistered = false
@@ -427,7 +427,7 @@ extension OverlayStatusTone {
 
 /// Assistant options and model and call type choosers float under the title block on panel glass
 /// (chat-surfaces.md section 3 "Floating layers"). In-window SwiftUI, so it
-/// inherits the overlay's `sharingType = .none`. A click outside or `esc`
+/// inherits the overlay's window-sharing preference. A click outside or `esc`
 /// closes it.
 struct OverlayHeaderChooserLayer: View {
     /// The call type store, injected so a proof never reads the live one.

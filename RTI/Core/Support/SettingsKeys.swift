@@ -10,9 +10,13 @@ public enum OverlayAppearanceDefaults {
     public static let lightModeKey = "rti.overlay.lightMode"
     public static let contrastKey = "rti.overlay.contrast"
     public static let uiFontSizeKey = "rti.overlay.uiFontSize"
-    /// When true (the default), every RTI panel sets `sharingType = .none` so it
-    /// is excluded from screen capture.
+    /// An explicit opt-in for hiding RTI's own titled windows from compatible capture clients.
     public static let invisibilityKey = "rti.invisible"
+
+    public static func hidesWindowsFromScreenCapture(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: invisibilityKey)
+    }
+
     public static let defaultWidth: Double = 700
     public static let defaultHeight: Double = 440
     /// Slate is a dark-first system; light stays first-class.

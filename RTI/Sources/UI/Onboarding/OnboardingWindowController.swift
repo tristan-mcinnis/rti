@@ -4,7 +4,7 @@ import SwiftUI
 import HouseDesign
 
 /// Owns the single window hosting `OnboardingView`. Shown on first run when
-/// setup is incomplete; a normal (capturable) window, unlike the RTI window.
+/// setup is incomplete, with the same window-sharing preference as the workspace.
 /// The title bar is transparent and its title hidden, so the welcome reads
 /// as one card.
 @MainActor
@@ -20,6 +20,7 @@ final class OnboardingWindowController {
 
     func show() {
         if let window {
+            window.applyRTISharingPolicy()
             RTIActivation.bringToFront(window)
             return
         }
@@ -31,7 +32,7 @@ final class OnboardingWindowController {
             defer: false
         )
         w.title = "Welcome to " + RTIBuildProfile.displayName
-        w.applyRTISharingPolicy()
+        w.configureRTITitledWindow()
         w.titleVisibility = .hidden
         w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false

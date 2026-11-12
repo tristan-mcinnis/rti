@@ -118,9 +118,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
             Task { @MainActor [weak self] in self?.windows.openSettings() }
         })
 
-        let invisible = UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
-        windows.setSharingInvisible(invisible)
-
         // Build the shared command registry once. Menu, hotkeys, and the
         // command palette all consume this same list.
         let commands = CommandBuilder.buildCommands(

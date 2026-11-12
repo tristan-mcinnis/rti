@@ -23,20 +23,12 @@ final class WindowCoordinator {
 
     }
 
-    func setSharingInvisible(_ invisible: Bool) {
-        overlayController?.setSharingInvisible(invisible)
-        for window in NSApp.windows where window.styleMask.contains(.titled) {
-            window.sharingType = invisible ? .none : .readOnly
-        }
-    }
-
-    /// Toggle the persisted invisibility flag and apply it to every panel.
     func toggleInvisibility() {
-        let key = OverlayAppearanceDefaults.invisibilityKey
-        let current = UserDefaults.standard.object(forKey: key) as? Bool ?? true
-        let next = !current
-        UserDefaults.standard.set(next, forKey: key)
-        setSharingInvisible(next)
+        let next = !OverlayAppearanceDefaults.hidesWindowsFromScreenCapture()
+        UserDefaults.standard.set(next, forKey: OverlayAppearanceDefaults.invisibilityKey)
+        for window in NSApp.windows where window.styleMask.contains(.titled) {
+            window.applyRTISharingPolicy()
+        }
     }
 
     // MARK: - Overlay
@@ -83,11 +75,14 @@ final class WindowCoordinator {
 }
 
 extension NSWindow {
-    /// Apply the persisted invisibility setting (default on) to a window at
-    /// creation, so Settings, Preferences, Brief and Onboarding are excluded
-    /// from screen capture like the overlay.
-    func applyRTISharingPolicy() {
-        let invisible = UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
-        sharingType = invisible ? .none : .readOnly
+    func configureRTITitledWindow(defaults: UserDefaults = .standard) {
+        level = .normal
+        isOpaque = true
+        applyRTISharingPolicy(defaults: defaults)
+    }
+
+    /// Refresh only sharing when the user toggles capture visibility or reopens a window.
+    func applyRTISharingPolicy(defaults: UserDefaults = .standard) {
+        sharingType = OverlayAppearanceDefaults.hidesWindowsFromScreenCapture(in: defaults) ? .none : .readOnly
     }
 }

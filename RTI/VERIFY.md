@@ -53,38 +53,20 @@ Check result in `POC1-findings.md`.
 - With **Window → Keep on Top** off, bring another window forward. RTI should use normal window ordering. Repeat with Keep on Top explicitly enabled.
 - With the default macOS desktop assignment, switch Spaces and return. RTI should retain its assigned Space and window frame. Test deliberate show, minimize and restore separately from switching Spaces.
 
-## 4. QuickTime screen-recording test (CRITICAL)
+## 4. QuickTime screen recording
 
-1. Launch RTI so the overlay is visible
-2. Open **QuickTime Player → File → New Screen Recording**
-3. Record your full screen for 10 seconds
-4. Stop the recording, play it back
-5. **Expected:** the RTI overlay is absent from the recording
-6. **If the overlay appears in the recording:** POC-1 has uncovered a showstopper. Do not proceed to POC-2. Note details in findings.
+1. Open a fixture session with the RTI workspace visible. Check the menu-bar command **Hide RTI from Screen Capture**. A fresh profile starts unchecked.
+2. Record the display using QuickTime. The default recording should include the RTI window.
+3. Enable the command, repeat the recording and check the result for this macOS/QuickTime version. Restore the earlier choice when finished.
 
-## 5. Zoom share-screen test (CRITICAL)
+## 5. Meeting screen share
 
-If you have a second device or Zoom account:
+Share the display to a second device or test account. With **Hide RTI from Screen Capture** unchecked, the remote viewer should see RTI. If you use the opt-in exclusion, repeat with it checked and verify the actual conferencing client.
 
-1. Launch RTI (overlay visible)
-2. Start a Zoom meeting, use "Share Screen" → share your entire screen
-3. Check what the remote viewer sees
-4. **Expected:** the remote viewer does NOT see the RTI overlay
-5. **If they do:** showstopper. Investigate before building further.
+## 6. macOS Screenshot
 
-(If you don't have a quick Zoom setup, Google Meet or Teams share-screen works the same way.)
-
-## 6. macOS built-in Screenshot test
-
-```bash
-# With RTI running and overlay visible:
-screencapture -x ~/Desktop/rti-test.png
-open ~/Desktop/rti-test.png
-```
-
-Ralph already ran this and confirmed the overlay was absent. You can re-run as a sanity check, then delete the file.
-
-Also try `⌘+Shift+5` → "Capture Entire Screen" — same expected result.
+1. With **Hide RTI from Screen Capture** unchecked, press ⌘⇧4, then Space, and click the workspace. Verify that the PNG contains the full RTI window. Repeat for the welcome window while it is open.
+2. Enable the command and repeat with the same capture tool. Close and reopen RTI. The command should still be checked. Disable it, relaunch, and verify that ordinary window screenshots work again.
 
 ## 7. Clean quit
 
@@ -94,10 +76,7 @@ Also try `⌘+Shift+5` → "Capture Entire Screen" — same expected result.
 
 ## 8. Record results
 
-Open `RTI/POC1-findings.md` and check off each row in the user-attestation table. Note any anomalies. Then decide:
-
-- **All critical checks pass** → run `/plan` for POC-2 (audio pipeline)
-- **QuickTime or Zoom check fails** → stop, investigate `sharingType` behavior, maybe try the `kSCStreamConfigurationExcludingWindowIDs` path, read NSWindow / ScreenCaptureKit docs for any additional flags
+Record the macOS version, capture client, command state and observed result for each of the three capture checks.
 
 ## Useful commands
 
@@ -193,7 +172,7 @@ meeting processing and Neon indexing.
    - `transcript.backup-<stamp>.md` preserves the prior rough transcript.
    - Inline `📝 Note:` rows from the old transcript are preserved at their
      approximate timestamps/order.
-9. Confirm the HUD is absent from a QuickTime or meeting screen share.
+9. With **Hide RTI from Screen Capture** unchecked, verify that QuickTime or a meeting screen share shows the workspace.
 
 ## G. Signing + notarization (needs your Apple Developer ID)
 - [ ] `export DEVELOPMENT_TEAM=…`, set up `notarytool` profile `rti-notary` (see RELEASE.md), then `./scripts/release.sh <version>`.
@@ -209,7 +188,7 @@ meeting processing and Neon indexing.
 - [ ] Join a real call. Both sides transcribe (the Transcript tab shows your runs on the right as "You" and the call's voices on the left as "Speaker N").
 - [ ] ⌘↵ Assist gives a useful, fast suggestion. ⌘⇧H screenshot-OCR attaches.
 - [ ] The Notes tab fills in every few minutes (on by default), and the Auto tab surfaces cards (when enabled in Prepare).
-- [ ] Overlay is absent from the screen share (QuickTime/Zoom — §4/§5 above).
+- [ ] The workspace appears with normal window sharing enabled. The opt-in exclusion has been checked in the chosen screen-sharing client (§4–§5).
 - [ ] Stop → the session folder appears under `sessions_dir` (default `~/Documents/Work/Inner-Chapter/meetings/sessions/<stamp>/`) with `transcript.md`, `audio-mic.wav` and `audio-system.wav` (the audio is kept for the transcript upgrade); mic released (orange dot clears, other apps can use the mic).
 
 ## Guide mode in a 15-minute mock group

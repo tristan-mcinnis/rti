@@ -9,7 +9,7 @@ import HouseDesign
 // chooser, the `/` command chooser, and Add Context. Each sits at the full
 // inner width on panel glass with the two panel shadows, `Spacing.xs` in from
 // the sides and one composer row up. All in-window SwiftUI: never a popover or
-// a child window, so they inherit the overlay's `sharingType = .none`.
+// a child window, so they inherit the overlay's window-sharing preference.
 //
 // Keys stay in the composer field: it routes `↑` `↓` `↩` Tab and `esc`
 // (`ComposerKeyRouter`), so the panes only draw and take clicks.

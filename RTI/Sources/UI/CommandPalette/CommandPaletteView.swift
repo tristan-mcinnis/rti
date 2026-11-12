@@ -8,7 +8,7 @@ import HouseDesign
 /// a search field with its `⌘K` cap, rows of an icon tile, a title, a quiet
 /// detail, and the command's key caps, then one line of key hints. It floats
 /// bottom right over the composer, on panel glass, in the window (never a
-/// popover), so it inherits the overlay's `sharingType = .none`.
+/// popover), so it inherits the overlay's window-sharing preference.
 ///
 /// It reads the same `CommandRegistry` the menu bar and the global hotkeys
 /// read, so there is no second list to drift. The host may put its own rows

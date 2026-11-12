@@ -397,12 +397,12 @@ enum CommandBuilder {
             ),
             RTICommand(
                 id: "invisibility.toggle",
-                title: "Hidden from Screen Capture",
+                title: "Hide RTI from Screen Capture",
                 keywords: ["sharing", "screencap", "hide", "show", "stealth"],
                 perform: { [weak windows] in windows?.toggleInvisibility() },
                 menuSection: .panels,
                 menuStateProvider: {
-                    UserDefaults.standard.object(forKey: OverlayAppearanceDefaults.invisibilityKey) as? Bool ?? true
+                    OverlayAppearanceDefaults.hidesWindowsFromScreenCapture()
                 }
             ),
         ]

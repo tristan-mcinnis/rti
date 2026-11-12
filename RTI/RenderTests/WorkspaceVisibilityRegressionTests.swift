@@ -10,6 +10,35 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
         SetupTabView.readsCalendar = false
     }
 
+    func testRegularWindowSharingAndExplicitPreferenceSurviveReopen() throws {
+        let suite = "fixture.window-sharing." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let frame = NSRect(x: 0, y: 0, width: 400, height: 300)
+        let workspace = NSWindow(contentRect: frame, styleMask: [.titled, .resizable], backing: .buffered, defer: true)
+        let onboarding = NSWindow(contentRect: frame, styleMask: [.titled, .closable], backing: .buffered, defer: true)
+        for window in [workspace, onboarding] {
+            window.configureRTITitledWindow(defaults: defaults)
+            XCTAssertEqual(window.level, .normal)
+            XCTAssertTrue(window.isOpaque)
+            XCTAssertEqual(window.sharingType, .readOnly)
+            XCTAssertFalse(window.isVisible)
+        }
+        XCTAssertNil(defaults.object(forKey: OverlayAppearanceDefaults.invisibilityKey))
+        defaults.set(true, forKey: OverlayAppearanceDefaults.invisibilityKey)
+        workspace.level = .floating
+        workspace.applyRTISharingPolicy(defaults: defaults)
+        XCTAssertEqual(workspace.sharingType, .none)
+        XCTAssertEqual(workspace.level, .floating)
+        let reopened = try XCTUnwrap(UserDefaults(suiteName: suite))
+        onboarding.configureRTITitledWindow(defaults: reopened)
+        XCTAssertEqual(onboarding.sharingType, .none)
+        reopened.set(false, forKey: OverlayAppearanceDefaults.invisibilityKey)
+        workspace.applyRTISharingPolicy(defaults: reopened)
+        XCTAssertEqual(workspace.sharingType, .readOnly)
+        XCTAssertFalse(OverlayAppearanceDefaults.hidesWindowsFromScreenCapture(in: reopened))
+    }
+
     func testFrameRestoresOnLeftDisplayAndClampsAfterDisconnect() {
         let main = NSRect(x: 0, y: 0, width: 1512, height: 949)
         let left = NSRect(x: -3440, y: -201, width: 3440, height: 1410)

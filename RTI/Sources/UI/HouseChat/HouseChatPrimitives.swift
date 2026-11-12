@@ -73,7 +73,7 @@ enum HouseChatMetrics {
 /// Panel glass: blur material, `panelTint`, hairline `stroke`, and a 1 px
 /// `highlightTop` along the top edge. The ground of every floating layer
 /// (choosers, the `⌘K` palette). In-window SwiftUI, never a child window,
-/// so it inherits the overlay's `sharingType = .none`.
+/// so it inherits the overlay's window-sharing preference.
 struct PanelGlass: ViewModifier {
     var radius: CGFloat = House.Radius.xl
     var material: NSVisualEffectView.Material = .popover
