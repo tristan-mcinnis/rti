@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Where captured screen frames live while a session is still recording, and
@@ -33,7 +34,7 @@ public enum VisualFrameStore {
     public static func frameFilename(
         offsetSeconds: Int,
         trigger: String,
-        unique: String = String(UUID().uuidString.prefix(4)).lowercased()
+        unique: String = UUID().uuidString.lowercased()
     ) -> String {
         let safeTrigger = trigger.lowercased().filter { $0.isLetter || $0.isNumber }
         let name = safeTrigger.isEmpty ? "capture" : safeTrigger
@@ -55,23 +56,17 @@ public enum VisualFrameStore {
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
-        // Two captures in the same second with the same trigger must not
-        // overwrite each other, so probe for a free name instead of trusting
-        // the random suffix.
-        var name = ""
-        for _ in 0..<8 {
-            name = frameFilename(offsetSeconds: offsetSeconds, trigger: trigger)
-            if !manager.fileExists(atPath: stagingDirectory.appendingPathComponent(name).path) { break }
-        }
-        let url = stagingDirectory.appendingPathComponent(name)
-        try data.write(to: url, options: [.atomic])
-        try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        let name = frameFilename(offsetSeconds: offsetSeconds, trigger: trigger)
+        let pending = stagingDirectory.appendingPathComponent(".pending-" + UUID().uuidString)
+        defer { try? manager.removeItem(at: pending) }
+        try data.write(to: pending, options: .withoutOverwriting)
+        try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pending.path)
+        try manager.moveItem(at: pending, to: stagingDirectory.appendingPathComponent(name))
         return name
     }
 
-    /// Move every staged `.jpg` into `<sessionDirectory>/frames/` and remove
-    /// the staging directory. Best-effort by design: a frame that fails to
-    /// move is dropped with the staging dir rather than failing the archive.
+    /// A checkpoint or Finish retries files still in staging. An existing
+    /// destination is accepted only if it already contains the same bytes.
     @discardableResult
     public static func promoteStagedFrames(
         stagingDirectory: URL,
@@ -79,28 +74,28 @@ public enum VisualFrameStore {
     ) -> Int {
         let manager = FileManager.default
         guard let entries = try? manager.contentsOfDirectory(
-            at: stagingDirectory,
-            includingPropertiesForKeys: nil
-        ), !entries.isEmpty else {
-            try? manager.removeItem(at: stagingDirectory)
-            return 0
-        }
+            at: stagingDirectory, includingPropertiesForKeys: nil
+        ) else { return 0 }
         let framesDirectory = sessionDirectory.appendingPathComponent("frames", isDirectory: true)
-        try? manager.createDirectory(
-            at: framesDirectory,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
         var moved = 0
         for entry in entries where entry.pathExtension.lowercased() == "jpg" {
             let destination = framesDirectory.appendingPathComponent(entry.lastPathComponent)
-            try? manager.removeItem(at: destination)
-            if (try? manager.moveItem(at: entry, to: destination)) != nil {
-                try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+            do {
+                try manager.createDirectory(at: framesDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                if manager.fileExists(atPath: destination.path) {
+                    guard manager.contentsEqual(atPath: entry.path, andPath: destination.path) else { continue }
+                    try manager.removeItem(at: entry)
+                } else {
+                    try manager.moveItem(at: entry, to: destination)
+                }
                 moved += 1
+            } catch {
+                continue
             }
         }
-        try? manager.removeItem(at: stagingDirectory)
+        // Remove only the directory itself when empty. A concurrent new frame,
+        // an unreadable file or a failed move keeps its bytes for the next pass.
+        _ = rmdir(stagingDirectory.path)
         return moved
     }
 }

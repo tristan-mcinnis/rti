@@ -212,11 +212,6 @@ enum SessionArchive {
             let md = (fm("Notes") + [body]).joined(separator: "\n")
             guard writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md")) else { return nil }
         }
-        if !visualContext.isEmpty {
-            let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(visualContext)]).joined(separator: "\n")
-            let md = (fm("Screen context") + [body]).joined(separator: "\n")
-            guard writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md")) else { return nil }
-        }
         // Frames staged during the session (local-vision lane) move into
         // `frames/` beside screen-context.md; gitignored, owner-only.
         let staging = VisualFrameStore.stagingDirectory(
@@ -226,6 +221,11 @@ enum SessionArchive {
         let movedFrames = VisualFrameStore.promoteStagedFrames(stagingDirectory: staging, into: dir)
         if movedFrames > 0 {
             RTILog.log("Archived \(movedFrames) screen frame(s) into \(dir.lastPathComponent)/frames.", category: .screenshot)
+        }
+        if !visualContext.isEmpty {
+            let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(visualContext, archive: dir, startedAt: startedAt)]).joined(separator: "\n")
+            let md = (fm("Screen context") + [body]).joined(separator: "\n")
+            guard writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md")) else { return nil }
         }
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
         guard micRecordingURL == nil || micName != nil else { return nil }
@@ -557,7 +557,7 @@ enum SessionArchive {
         if !visualContext.isEmpty {
             lines.append("## Screen context")
             lines.append("")
-            lines.append(renderVisualContext(visualContext))
+            lines.append(renderVisualContext(visualContext, archive: archiveDir, startedAt: startedAt))
             lines.append("")
         }
         // The same rule as chat.md: structured threads win, and the dated list
@@ -898,11 +898,15 @@ enum SessionArchive {
     /// plus a pointer to the compressed frame kept in the session's `frames/`
     /// directory. The frame files themselves stay out of git and out of the
     /// meeting-note text lane; only these references and text travel.
-    private static func renderVisualContext(_ events: [VisualContextEvent]) -> String {
-        events.map { event in
+    private static func renderVisualContext(_ events: [VisualContextEvent], archive: URL?, startedAt: Date) -> String {
+        let staging = VisualFrameStore.stagingDirectory(configHome: VaultPaths.homeDirectory(), startedAt: startedAt)
+        return events.map { event in
             var lines = ["### `\(VisualContextText.timestamp(event.offsetSeconds))`", ""]
             if let frame = event.frameFilename, !frame.isEmpty {
-                lines.append("_Frame: frames/\(frame)_")
+                let destination = archive?.appendingPathComponent("frames").appendingPathComponent(frame)
+                let ready = destination.map { FileManager.default.fileExists(atPath: $0.path) } == true
+                    && !FileManager.default.fileExists(atPath: staging.appendingPathComponent(frame).path)
+                lines.append(ready ? "_Frame: frames/\(frame)_" : "_Frame awaiting archive: \(frame)_")
                 lines.append("")
             }
             lines.append(event.text)

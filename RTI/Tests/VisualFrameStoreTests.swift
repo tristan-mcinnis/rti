@@ -51,7 +51,6 @@ final class VisualFrameStoreTests: XCTestCase {
         let staging = temporaryRoot.appendingPathComponent("staging", isDirectory: true)
         try VisualFrameStore.writeFrame(Data([0x01]), offsetSeconds: 1, trigger: "ambient", stagingDirectory: staging)
         try VisualFrameStore.writeFrame(Data([0x02]), offsetSeconds: 2, trigger: "manual", stagingDirectory: staging)
-        try Data([0x03]).write(to: staging.appendingPathComponent("notes.txt"))
 
         let sessionDirectory = temporaryRoot.appendingPathComponent("session", isDirectory: true)
         try FileManager.default.createDirectory(at: sessionDirectory, withIntermediateDirectories: true)
@@ -64,6 +63,31 @@ final class VisualFrameStoreTests: XCTestCase {
         let promoted = try FileManager.default.contentsOfDirectory(atPath: framesDirectory.path).sorted()
         XCTAssertEqual(promoted.count, 2)
         XCTAssertTrue(promoted.allSatisfy { $0.hasSuffix(".jpg") })
+    }
+
+    func testBlockedDestinationAndConflictingCheckpointKeepOriginalUntilRetry() throws {
+        let fm = FileManager.default
+        let staging = temporaryRoot.appendingPathComponent("staging")
+        let session = temporaryRoot.appendingPathComponent("session")
+        let frames = session.appendingPathComponent("frames")
+        let bytes = Data([1, 2])
+        let name = try VisualFrameStore.writeFrame(bytes, offsetSeconds: 2, trigger: "manual", stagingDirectory: staging)
+        try fm.createDirectory(at: session, withIntermediateDirectories: true)
+        try Data([0]).write(to: frames)
+        XCTAssertEqual(VisualFrameStore.promoteStagedFrames(stagingDirectory: staging, into: session), 0)
+        XCTAssertEqual(try Data(contentsOf: staging.appendingPathComponent(name)), bytes)
+        try fm.removeItem(at: frames)
+        try fm.createDirectory(at: frames, withIntermediateDirectories: true)
+        let destination = frames.appendingPathComponent(name)
+        try Data([3]).write(to: destination)
+        _ = try VisualFrameStore.writeFrame(bytes, offsetSeconds: 5, trigger: "ambient", stagingDirectory: staging)
+        XCTAssertEqual(VisualFrameStore.promoteStagedFrames(stagingDirectory: staging, into: session), 1)
+        XCTAssertEqual(try Data(contentsOf: destination), Data([3]))
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: staging.path), [name])
+        try fm.removeItem(at: destination)
+        XCTAssertEqual(VisualFrameStore.promoteStagedFrames(stagingDirectory: staging, into: session), 1)
+        XCTAssertEqual(try Data(contentsOf: destination), bytes)
+        XCTAssertFalse(fm.fileExists(atPath: staging.path))
     }
 
     func testPromoteWithNoStagingDirectoryIsQuietlyZero() {

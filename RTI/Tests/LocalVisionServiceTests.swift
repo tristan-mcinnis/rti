@@ -105,6 +105,35 @@ final class LocalVisionServiceTests: XCTestCase {
         XCTAssertTrue(configuration.ambientDescribe)
     }
 
+    func testRejectsRemoteRouteBeforeTransportSeesFrame() async {
+        VisionStubProtocol.handler = { _, _ in
+            XCTFail("The transport received a frame for a remote endpoint")
+            return (500, Data())
+        }
+        do {
+            _ = try await LocalVisionService.describe(imageData: Data([7]), configuration: .init(
+                enabled: true, endpoint: URL(string: "https://vision.example.test")!
+            ), session: stubbedSession())
+            XCTFail("Remote route accepted")
+        } catch {
+            XCTAssertEqual(error as? LocalVisionError, .nonLocalEndpoint)
+        }
+        XCTAssertNil(VisionStubProtocol.lastBody)
+    }
+
+    func testLocalRouteUsesNumericLoopbackAndDeclinesRedirects() async throws {
+        let local = try LocalVisionService.localURL(XCTUnwrap(URL(string: "http://localhost:8100")))
+        XCTAssertEqual(local.absoluteString, "http://127.0.0.1:8100/v1/vision")
+        let response = try XCTUnwrap(HTTPURLResponse(url: local, statusCode: 307, httpVersion: nil, headerFields: nil))
+        let session = stubbedSession()
+        let redirect = URLRequest(url: try XCTUnwrap(URL(string: "https://other.example.test/vision")))
+        let followed: URLRequest? = await withCheckedContinuation { continuation in
+            LocalVisionService.LocalRoute().urlSession(session, task: session.dataTask(with: local),
+                willPerformHTTPRedirection: response, newRequest: redirect) { continuation.resume(returning: $0) }
+        }
+        XCTAssertNil(followed)
+    }
+
     // MARK: - Requests
 
     func testDisabledConfigurationThrowsBeforeAnyRequest() async {
