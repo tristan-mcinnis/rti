@@ -50,7 +50,9 @@ final class SessionCoordinator {
     /// One ordered snapshot owns pending and final runs, so a finalization
     /// publishes text and styling together without replacing the row identity.
     var transcriptRows = LiveTranscriptPresentation.LiveRows()
+    var transcriptTurns = LiveTranscriptPresentation.LiveTurns()
     var transcriptDisplayRevision = 0
+    @ObservationIgnored var usesSeededTranscript = false
     @ObservationIgnored var transcriptProjection = LiveTranscriptPresentation.Projection()
     @ObservationIgnored var transcriptPresentationOwner: UUID?
     @ObservationIgnored var transcriptFinalsNeedProjection = true
@@ -64,6 +66,8 @@ final class SessionCoordinator {
     /// Whether live transcription is actually flowing (mic leg). Surfaced in
     /// the UI so the user always knows if their words are being captured.
     private(set) var transcriptionHealth: TranscriptionHealth = .idle
+    private(set) var systemTranscriptionHealth: TranscriptionHealth = .idle
+    private(set) var readerActivity = TranscriptReaderActivity()
     /// User-facing mic mute (Zoom-style). Mutes only the mic leg — system
     /// audio keeps flowing. NOT for in-person sessions, where the mic IS the
     /// room capture. Resets to unmuted on every session start so a forgotten
@@ -92,6 +96,25 @@ final class SessionCoordinator {
     /// When non-nil, Soniox will stream translation tokens alongside
     /// the regular transcript. Bound to UserDefaults and the live
     /// transcript toggle.
+    var speakerPolicy = SessionSpeakerPolicy() {
+        didSet {
+            transcriptPipeline.systemSpeakerLabelsEnabled = speakerPolicy.labelsEnabled
+            audioPipeline.systemSpeakerLabelsEnabled = speakerPolicy.labelsEnabled
+            if isRunning, speakerPolicy.labelsEnabled != oldValue.labelsEnabled {
+                replaceLiveClients()
+            }
+        }
+    }
+
+    private(set) var switchingLegs: Set<String> = []
+
+    private func replaceLiveClients() {
+        switchingLegs = audioPipeline.activeStreamingLegs
+        transcriptPipeline.prepareForReconnect()
+        audioPipeline.reconfigureStreamingClients()
+        publishState()
+    }
+
     var translationConfig: TranslationConfig? {
         didSet {
             guard translationConfig != oldValue else { return }
@@ -100,15 +123,14 @@ final class SessionCoordinator {
                 // Keep the transcript across the Soniox reconnect and continue
                 // the timeline, so toggling translation never wipes preceding
                 // entries or drops the next ones.
-                transcriptPipeline.prepareForReconnect()
-                audioPipeline.reconfigureStreamingClients()
-                publishState()
+                replaceLiveClients()
             }
         }
     }
 
     let audioPipeline = AudioPipeline()
     let transcriptPipeline = TranscriptPipeline()
+    private var rawJournal: SonioxLiveJournal?
     /// Set while a start is in flight (during the async mic-permission prompt)
     /// so a second start can't kick off a duplicate permission dialog + launch.
     private var startGate = PendingStartGate()
@@ -186,12 +208,20 @@ final class SessionCoordinator {
         phase: Phase,
         startedAt: Date?,
         lastError: String? = nil,
-        lastErrorIsAuth: Bool = false
+        lastErrorIsAuth: Bool = false,
+        streamHealth: TranscriptionHealth = .idle,
+        systemHealth: TranscriptionHealth = .idle
     ) {
-        if transcriptChanged { self.liveEntries = entries }
+        usesSeededTranscript = true
+        if transcriptChanged {
+            self.liveEntries = entries
+            readerActivity = entries.reduce(into: TranscriptReaderActivity()) { $0.record($1) }
+        }
         self.interimLine = interim
         self.interimSegments = interimSegments ?? LiveTranscriptPresentation.interimSegments(interim ?? "")
         self.phase = phase
+        self.transcriptionHealth = streamHealth
+        self.systemTranscriptionHealth = systemHealth
         self.startedAt = startedAt
         self.lastError = lastError
         self.lastErrorIsAuth = lastErrorIsAuth
@@ -209,12 +239,26 @@ final class SessionCoordinator {
     /// Called once at launch from AppDelegate. The scheduler only fires a task
     /// while a session is running and that task's toggle is on.
     func registerPeriodicTasks() {
+        AutoAssistScheduler.shared.register(id: "researchCodebook", task: .init(enabledKey: "rti.researchCodebook.enabled", sessionEnabled: {
+            ResearchCodebookController.shared.location?.session.id == SessionCoordinator.shared.currentSessionId && SessionCoordinator.shared.currentSessionId != nil
+        }) { _ in
+            guard let id = SessionCoordinator.shared.currentSessionId else { return nil }
+            return await ResearchCodebookController.shared.generate(sessionID: id, entries: SessionCoordinator.shared.liveEntries)
+        })
         AutoAssistScheduler.shared.register(
             id: "notes",
-            task: .init(enabledKey: NotesSettings.enabledKey, sessionEnabled: { GuideSessionController.shared.isActive }) { _ in
+            task: .init(enabledKey: NotesSettings.enabledKey) { _ in
                 // Notes own their own watermark (so the manual Generate button
                 // can't duplicate), so ignore the scheduler's sinceMs.
                 await NotesGenerationController.shared.generate(sessionId: SessionCoordinator.shared.currentSessionId ?? "")
+            }
+        )
+        AutoAssistScheduler.shared.register(
+            id: "guide",
+            task: .init(enabledKey: nil, sessionEnabled: { GuideSessionController.shared.isActive }) { _ in
+                let session = SessionCoordinator.shared
+                guard let id = session.currentSessionId else { return nil }
+                return await GuideSessionController.shared.generate(sessionId: id, entries: session.liveEntries)
             }
         )
         AutoAssistScheduler.shared.register(
@@ -238,6 +282,7 @@ final class SessionCoordinator {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                AutoAssistScheduler.shared.updateInterval(NotesSettings.tickInterval)
                 let nextTranslation = TranslationStore.currentConfig()
                 if self.translationConfig != nextTranslation {
                     self.translationConfig = nextTranslation
@@ -282,9 +327,12 @@ final class SessionCoordinator {
         audioPipeline.onMicNotice = { [weak self] notice in self?.micAudioNotice = notice }
         audioPipeline.onTranscriptionHealth = { [weak self] health in
             self?.transcriptionHealth = health
+            if health == .live || health == .failed { self?.switchingLegs.remove("mic") }
             if health == .live { self?.retireLiveTranscriptionFailure(channel: "mic") }
         }
         audioPipeline.onSystemAudioHealth = { [weak self] health in
+            self?.systemTranscriptionHealth = health
+            if health == .live || health == .idle || health == .failed { self?.switchingLegs.remove("system") }
             switch health {
             case .failed:
                 self?.systemAudioNotice = "Other-party audio or live transcription is unavailable. Microphone recording continues."
@@ -313,16 +361,12 @@ final class SessionCoordinator {
 
     func retryLiveTranscription() {
         guard canRetryLiveTranscription else { return }
-        transcriptPipeline.prepareForReconnect()
-        audioPipeline.reconfigureStreamingClients()
-        publishState()
+        replaceLiveClients()
     }
 
     private func handleActiveSTTProviderChanged() {
         guard isRunning else { return }
-        transcriptPipeline.prepareForReconnect()
-        audioPipeline.reconfigureStreamingClients()
-        publishState()
+        replaceLiveClients()
     }
 
     /// Insert a user-authored note into the live transcript at the current
@@ -545,6 +589,13 @@ final class SessionCoordinator {
                 callType: CallTypeStore.shared.active.name
             )
             try audioPipeline.prepare(recordingDirectory: recordingDirectory)
+            rawJournal = try SonioxLiveJournal(directory: recordingDirectory) { [weak self] message in
+                Task { @MainActor in
+                    guard let self, self.currentSessionId == sessionId else { return }
+                    self.lastError = "Could not save the original transcript stream: " + message
+                    self.lastErrorIsAuth = false
+                }
+            }
             try SessionMarkers.shared.start(sessionID: sessionId, in: recordingDirectory, group: GuidePreparation.shared.group,
                                             research: CallTypeStore.shared.active == .research)
             guard SessionArchive.seedTranscriptForAutomaticUpgrade(in: recordingDirectory, startedAt: now),
@@ -559,6 +610,7 @@ final class SessionCoordinator {
                 lastError = "Couldn't prepare recoverable meeting audio: \(error.localizedDescription)"
             }
             audioPipeline.abort()
+            closeRawJournal()
             BluetoothMicGuard.shared.release()
             return
         }
@@ -566,6 +618,7 @@ final class SessionCoordinator {
         do {
             try audioPipeline.start()
         } catch {
+            closeRawJournal()
             lastError = "Audio start failed: \(error)"
             audioPipeline.abort()
             if let directory = SessionArchive.sessionDirectory(startedAt: now) {
@@ -577,6 +630,7 @@ final class SessionCoordinator {
 
         // Each task self-gates on its Settings toggle.
         GuideSessionController.shared.startPreparedSession(sessionId, callType: CallTypeStore.shared.active, startedAt: audioPipeline.captureStartWall ?? now)
+        ResearchCodebookController.shared.start(sessionID: sessionId, at: now, callType: CallTypeStore.shared.active)
         AutoAssistScheduler.shared.start(interval: NotesSettings.tickInterval)
 
         publishState()
@@ -609,7 +663,9 @@ final class SessionCoordinator {
         checkpointTask?.cancel()
         checkpointTask = nil
         phase = .finishing
+        switchingLegs = []
         transcriptionHealth = .idle
+        systemTranscriptionHealth = .idle
         systemAudioNotice = nil
         micAudioNotice = nil
 
@@ -666,12 +722,16 @@ final class SessionCoordinator {
     static func closeCapture(_ audio: AudioPipeline, guide: GuideSessionController, sessionID: String,
                              transcript: () -> [LiveEntry]) async -> Bool {
         let closed = audio.finish()
-        if guide.isActive { await guide.finish(sessionId: sessionID, entries: transcript()) }
+        let turns = transcript()
+        async let codebookFinished: Void = ResearchCodebookController.shared.finish(sessionID: sessionID, entries: turns)
+        if guide.isActive { await guide.finish(sessionId: sessionID, entries: turns) }
+        await codebookFinished
         return closed
     }
 
     private func completeStop(sessionId: String, endedAt: Date, audioFinished: Bool) {
         guard currentSessionId == sessionId else { return }
+        closeRawJournal()
         defer { GuideSessionController.shared.endSession(sessionId) }
         // Clear the handle: a completed-but-non-nil task otherwise convinces
         // emergencyShutdown a stop is still pending, triggering a phantom
@@ -713,6 +773,7 @@ final class SessionCoordinator {
                     chatThreads: snapshot.chatThreads,
                     typedNotes: snapshot.transcript.filter { $0.speakerId == "note" }
                 )
+                speakerPolicy = SessionSpeakerPolicy()
                 phase = .upgrading
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
                 postProcessingStatus = "Improving transcript…"
@@ -796,24 +857,38 @@ final class SessionCoordinator {
         }
         // Retain the closed audio and checkpoint transcript, but leave routing
         // to the resumable automatic upgrade on the next launch.
+        closeRawJournal()
         archiveCurrentSession(endedAt: endedAt ?? Date())
 
         phase = .idle
         setListeningOnly(false)
         transcriptionHealth = .idle
+        systemTranscriptionHealth = .idle
         systemAudioNotice = nil
         micAudioNotice = nil
     }
 
+    private func closeRawJournal() {
+        do { try rawJournal?.close() } catch {
+            lastError = "Could not finish saving the original transcript stream: " + error.localizedDescription
+            lastErrorIsAuth = false
+        }
+        rawJournal = nil
+    }
+
     private func handleSystemWords(_ words: [SonioxWord]) {
-        guard currentSessionId != nil else { return }
-        let entriesChanged = transcriptPipeline.process(words: words, channel: "system")
-        publishState(entriesChanged: entriesChanged)
+        receive(words, leg: "system")
     }
 
     private func handleWords(_ words: [SonioxWord]) {
+        receive(words, leg: "mic")
+    }
+
+    private func receive(_ words: [SonioxWord], leg: String) {
         guard currentSessionId != nil else { return }
-        let entriesChanged = transcriptPipeline.process(words: words, channel: "mic")
+        rawJournal?.append(words, leg: leg, stream: transcriptPipeline.streamID(for: leg).uuidString,
+                           baseMs: transcriptPipeline.streamOffsetMs(for: leg))
+        let entriesChanged = transcriptPipeline.process(words: words, channel: leg)
         publishState(entriesChanged: entriesChanged)
     }
 
@@ -830,13 +905,16 @@ final class SessionCoordinator {
         publishFlushScheduled = false
         pendingEntriesChanged = false
         transcriptPipeline.reset()
+        usesSeededTranscript = false
         liveEntries = []
+        readerActivity = TranscriptReaderActivity()
         interimLine = nil
         interimSegments = []
         transcriptRevision += 1
         transcriptProjection.reset()
         transcriptFinalsNeedProjection = true
         transcriptRows = LiveTranscriptPresentation.LiveRows()
+        transcriptTurns = LiveTranscriptPresentation.LiveTurns()
         transcriptDisplayRevision += 1
     }
 
@@ -879,6 +957,7 @@ final class SessionCoordinator {
         if interimChanged { interimSegments = newSegments }
         if entriesChanged {
             liveEntries = transcriptPipeline.liveEntries
+            if readerActivity != transcriptPipeline.readerActivity { readerActivity = transcriptPipeline.readerActivity }
             transcriptRevision += 1
         }
         if entriesChanged || interimChanged {
