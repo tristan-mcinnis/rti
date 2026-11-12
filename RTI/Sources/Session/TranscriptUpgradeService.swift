@@ -50,11 +50,11 @@ enum TranscriptUpgradeError: LocalizedError {
 protocol AsyncTranscriptProvider: Sendable {
     var id: String { get }
     var displayName: String { get }
-    func transcribe(audioURL: URL, outputBaseURL: URL) async throws -> String
+    func transcribe(audioURL: URL, outputBaseURL: URL) async throws -> TranscriptUpgradePipeline.LegResult
 }
 
 enum TranscriptUpgradeService {
-    @MainActor private static var upgradingGuides: Set<URL> = []
+    @MainActor private static var upgradingSessions: Set<URL> = []
     struct Result: Sendable {
         let provider: String
         let transcriptURL: URL
@@ -87,9 +87,8 @@ enum TranscriptUpgradeService {
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
         let directory = session.url.standardizedFileURL
-        let guided = FileManager.default.fileExists(atPath: directory.appendingPathComponent("transcript.live.md").path)
-        if guided, !upgradingGuides.insert(directory).inserted { throw TranscriptUpgradeError.alreadyUpgrading }
-        defer { if guided { upgradingGuides.remove(directory) } }
+        guard upgradingSessions.insert(directory).inserted else { throw TranscriptUpgradeError.alreadyUpgrading }
+        defer { upgradingSessions.remove(directory) }
         return try await performUpgrade(session: session, option: option, progress: progress)
     }
 
@@ -130,15 +129,16 @@ enum TranscriptUpgradeService {
 
         let pipelineResult: TranscriptUpgradeExecutionResult
         do {
-            pipelineResult = try await TranscriptUpgradePipeline.upgrade(
+            pipelineResult = try await TranscriptUpgradePipeline.upgradeLegs(
                 sessionDir: session.url,
                 startedAt: session.date,
                 providerID: provider.id,
                 providerDisplayName: provider.displayName,
                 frontmatter: session.date.map { SessionArchive.frontmatterForUpgrade(kind: "Transcript", startedAt: $0) } ?? [],
+                readsLegacyTranscript: provider is SonioxScriptTranscriptProvider,
                 progress: { message in progress(.running(message)) },
-                transcribe: { audioURL, outputBaseURL in
-                    try await provider.transcribe(audioURL: audioURL, outputBaseURL: outputBaseURL)
+                transcribe: { input, outputBaseURL in
+                    try await provider.transcribe(audioURL: input.url, outputBaseURL: outputBaseURL)
                 }
             )
         } catch {
@@ -146,6 +146,7 @@ enum TranscriptUpgradeService {
         }
         do {
             try await SessionArchive.reanchorGuide(in: session.url, upgradedTurns: pipelineResult.guideAnchorTurns)
+            try await ResearchCodebookStore.shared.reanchor(in: session.url, upgradedTurns: pipelineResult.guideAnchorTurns)
         } catch {
             throw TranscriptUpgradeError.writeFailed(error.localizedDescription)
         }
@@ -190,15 +191,25 @@ enum TranscriptUpgradeService {
         _ option: AsyncTranscriptProviderOption,
         sessionDirectory: URL
     ) throws -> AsyncTranscriptProvider {
-        // Soniox is the one upgrade provider. The Aliyun option was removed
-        // on 2026-09-26: its NLS script no longer exists on this Mac.
-        guard !(CredentialStore.soniox ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw TranscriptUpgradeError.missingCredentials(AsyncTranscriptProviders.soniox.displayName)
+        let key = (CredentialStore.soniox ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let metadata = archiveMetadata(in: sessionDirectory)
+        let inputs = audioInputs(in: sessionDirectory)
+        let systemAudio = inputs.first { $0.defaultSpeaker == "Remote speaker" }?.url.standardizedFileURL
+        if let metadata, metadata.speakerPolicy != nil || metadata.liveTokenJournal != nil || metadata.schemaVersion != nil {
+            // Once raw responses are local and remote cleanup is complete,
+            // regenerating the views of that session needs no provider key.
+            let available = !inputs.isEmpty && inputs.allSatisfy { input in
+                let leg = input.url.standardizedFileURL == systemAudio ? "system" : "mic"
+                return FileManager.default.fileExists(atPath: sessionDirectory.appendingPathComponent("soniox-async-" + leg + ".json").path)
+                    && !FileManager.default.fileExists(atPath: sessionDirectory.appendingPathComponent(".soniox-async-" + leg + "-job.json").path)
+            }
+            guard !key.isEmpty || available else { throw TranscriptUpgradeError.missingCredentials(option.displayName) }
+            return SonioxRawTranscriptProvider(client: .init(apiKey: key), directory: sessionDirectory,
+                                               sessionID: metadata.sessionId ?? sessionDirectory.lastPathComponent,
+                                               policy: metadata.speakerPolicy ?? .init(), context: metadata.speechContext, systemAudio: systemAudio)
         }
-        return SonioxScriptTranscriptProvider(
-            apiKey: CredentialStore.soniox ?? "",
-            context: speechContext(in: sessionDirectory)
-        )
+        guard !key.isEmpty else { throw TranscriptUpgradeError.missingCredentials(option.displayName) }
+        return SonioxScriptTranscriptProvider(apiKey: key, context: metadata?.speechContext)
     }
 
     static func audioInputs(in dir: URL) -> [TranscriptUpgradeAudioInput] {
@@ -216,9 +227,9 @@ enum TranscriptUpgradeService {
         }
     }
 
-    private static func speechContext(in sessionDirectory: URL) -> SonioxContext? {
+    private static func archiveMetadata(in sessionDirectory: URL) -> SessionArchiveMetadata? {
         guard let data = try? Data(contentsOf: sessionDirectory.appendingPathComponent("session.json")) else { return nil }
-        return (try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data))?.speechContext
+        return try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data)
     }
 
     private static func mapPipelineError(_ error: Error) -> Error {
@@ -242,6 +253,24 @@ enum TranscriptUpgradeService {
 
 }
 
+private struct SonioxRawTranscriptProvider: AsyncTranscriptProvider {
+    let id = "soniox_file"
+    let displayName = "Soniox"
+    let client: SonioxAsyncFileClient
+    let directory: URL
+    let sessionID: String
+    let policy: SessionSpeakerPolicy
+    let context: SonioxContext?
+    let systemAudio: URL?
+
+    func transcribe(audioURL: URL, outputBaseURL _: URL) async throws -> TranscriptUpgradePipeline.LegResult {
+        let system = audioURL.standardizedFileURL == systemAudio
+        let data = try await client.transcript(audio: audioURL, in: directory, sessionID: sessionID,
+                                               leg: system ? .system : .mic, labels: policy.labelsEnabled, context: context)
+        return .soniox(data: data, policy: policy)
+    }
+}
+
 private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
     let id = "soniox_file"
     let displayName = "Soniox"
@@ -254,7 +283,7 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
         default: "skills/file-transcriber/scripts/transcribe-soniox.py"
     )
 
-    func transcribe(audioURL: URL, outputBaseURL: URL) async throws -> String {
+    func transcribe(audioURL: URL, outputBaseURL: URL) async throws -> TranscriptUpgradePipeline.LegResult {
         guard FileManager.default.fileExists(atPath: script) else {
             throw TranscriptUpgradeError.missingScript(script)
         }
@@ -271,7 +300,7 @@ private struct SonioxScriptTranscriptProvider: AsyncTranscriptProvider {
             arguments: arguments,
             environment: ["SONIOX_API_KEY": apiKey]
         )
-        return (try? String(contentsOf: output, encoding: .utf8)) ?? ""
+        return .legacyText(try String(contentsOf: output, encoding: .utf8))
     }
 }
 

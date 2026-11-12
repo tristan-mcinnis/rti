@@ -306,15 +306,26 @@ enum SessionArchive {
         )
     }
 
-    /// Refresh the canonical transcript from the archived `transcript.md`.
-    /// Used after the Upgrade Transcript lane replaces the rough live transcript
-    /// with an offline provider's better pass.
+    /// Native archives project the same provider-derived evidence as the
+    /// in-app transcript. Historical archives retain their Markdown adapter.
     @discardableResult
     static func refreshCanonicalMeetingTranscript(fromArchiveDir archiveDir: URL, startedAt: Date) -> URL? {
-        let transcriptURL = archiveDir.appendingPathComponent("transcript.md")
-        guard let markdown = try? String(contentsOf: transcriptURL, encoding: .utf8) else { return nil }
-        let tracked = FileManager.default.fileExists(atPath: archiveDir.appendingPathComponent(SessionEvidence.filename).path)
-        let raw = tracked ? SessionEvidence.raw(from: markdown) : CanonicalMeetingTranscript.render(markdownTranscript: markdown)
+        let raw: String
+        let native = ["soniox-async-mic.json", "soniox-async-system.json"].contains {
+            isRegularFile(archiveDir.appendingPathComponent($0))
+        }
+        if native {
+            guard let evidence = try? SessionEvidence.read(in: archiveDir), let upgraded = evidence.upgradedTurns else { return nil }
+            let turns = upgraded.map {
+                TranscriptUpgradeSegment(speaker: $0.speaker, startMs: $0.playbackStartMs, text: $0.text, source: $0.providerSource)
+            }
+            raw = evidence.transcript(segments: turns, raw: true)
+        } else {
+            let transcriptURL = archiveDir.appendingPathComponent("transcript.md")
+            guard let markdown = try? String(contentsOf: transcriptURL, encoding: .utf8) else { return nil }
+            let tracked = FileManager.default.fileExists(atPath: archiveDir.appendingPathComponent(SessionEvidence.filename).path)
+            raw = tracked ? SessionEvidence.raw(from: markdown) : CanonicalMeetingTranscript.render(markdownTranscript: markdown)
+        }
         return writeCanonicalMeetingExport(
             startedAt: startedAt,
             rawTranscript: raw,
@@ -594,8 +605,7 @@ enum SessionArchive {
     }
 
     private static func meetingProcessorLogURL(stem: String) -> URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
+        AppLog.logsDirectory
             .appendingPathComponent("meeting-process-\(stem).log")
     }
 

@@ -44,6 +44,7 @@ public struct UpgradedEvidenceTurn: Codable, Equatable, Sendable {
     /// Nil when several original turns in this upgraded segment had different material or sections.
     public var context: MarkerContext?
     public var anchor: String
+    public var providerSource: SonioxAsyncTurnSource?
 }
 
 public struct SessionEvidence: Codable, Sendable {
@@ -190,7 +191,7 @@ public struct SessionEvidence: Codable, Sendable {
             let status = mixed ? "mixed live contexts" : candidates.isEmpty ? "approximate"
                 : candidates.contains { $0.anchor == "review boundary" } ? "review boundary" : "matched"
             return UpgradedEvidenceTurn(playbackStartMs: segment.startMs, speaker: segment.speaker, text: segment.text,
-                                        liveTurnIDs: candidates.map(\.turnID), context: context, anchor: status)
+                                        liveTurnIDs: candidates.map(\.turnID), context: context, anchor: status, providerSource: segment.source)
         }
         let times = Array(Set(timed.map(\.startMs))).sorted()
         noteAnchors = notes.map { note in

@@ -41,9 +41,14 @@ final class SonioxProtocolTests: XCTestCase {
         XCTAssertEqual(wire?["enable_speaker_diarization"] as? Bool, false)
         let data = Data(#"{"tokens":[{"text":"很轻。","speaker":"2","start_ms":1250,"end_ms":1400}]}"#.utf8)
         let anonymous = SessionSpeakerPolicy(labelsEnabled: false, expectedCount: 4)
-        XCTAssertEqual(try SonioxFileTranscript.timedText(data: data, system: true, policy: anonymous), "[0:01.250] Them: 很轻。")
-        XCTAssertEqual(try SonioxFileTranscript.timedText(data: data, system: false, policy: .init()), "[0:01.250] Me: 很轻。")
-        XCTAssertEqual(try SonioxFileTranscript.timedText(data: data, system: true, policy: .init()), "[0:01.250] Speaker 2: 很轻。")
+        for (system, policy, label) in [(true, anonymous, "Them"), (false, .init(), "Me"), (true, .init(), "Remote speaker 2")] {
+            let turns = try SonioxAsyncTurns.segments(data: data, system: system, policy: policy, offsetMs: 0)
+            let turn = try XCTUnwrap(turns.first)
+            XCTAssertEqual(turn.speaker, label)
+            XCTAssertEqual(turn.text, "很轻。")
+            XCTAssertEqual(turn.startMs, 1250)
+            XCTAssertEqual(turn.source?.providerEndMs, 1400)
+        }
     }
 
     func test_defaultConfigUsesOnlyCurrentDiarizationField() throws {

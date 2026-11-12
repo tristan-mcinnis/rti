@@ -4,11 +4,13 @@ public struct TranscriptUpgradeSegment: Equatable, Sendable {
     public let speaker: String
     public let startMs: Int
     public let text: String
+    public let source: SonioxAsyncTurnSource?
 
-    public init(speaker: String, startMs: Int, text: String) {
+    public init(speaker: String, startMs: Int, text: String, source: SonioxAsyncTurnSource? = nil) {
         self.speaker = speaker
         self.startMs = startMs
         self.text = text
+        self.source = source
     }
 }
 
@@ -167,6 +169,12 @@ public enum TranscriptUpgradeAudioDiscovery {
 }
 
 public enum TranscriptUpgradePipeline {
+    public enum LegResult: Sendable {
+        case soniox(data: Data, policy: SessionSpeakerPolicy)
+        case legacyText(String)
+    }
+
+    public typealias TranscribeLeg = @Sendable (TranscriptUpgradeAudioInput, URL) async throws -> LegResult
     public typealias Transcribe = @Sendable (_ audioURL: URL, _ outputBaseURL: URL) async throws -> String
     public typealias Progress = @Sendable (_ message: String) -> Void
 
@@ -179,11 +187,27 @@ public enum TranscriptUpgradePipeline {
         progress: Progress,
         transcribe: Transcribe
     ) async throws -> TranscriptUpgradeExecutionResult {
-        let originalTranscriptURL = sessionDir.appendingPathComponent("transcript.md")
-        guard let originalTranscript = try? String(contentsOf: originalTranscriptURL, encoding: .utf8) else {
-            throw TranscriptUpgradePipelineError.unreadableTranscript
+        try await upgradeLegs(sessionDir: sessionDir, startedAt: startedAt, providerID: providerID,
+                              providerDisplayName: providerDisplayName, frontmatter: frontmatter, readsLegacyTranscript: true, progress: progress) { input, base in
+            .legacyText(try await transcribe(input.url, base))
         }
-        let notes = TranscriptUpgradeMerge.notes(from: originalTranscript)
+    }
+
+    public static func upgradeLegs(
+        sessionDir: URL, startedAt: Date?, providerID: String, providerDisplayName: String,
+        frontmatter: [String], readsLegacyTranscript: Bool = false, progress: Progress, transcribe: TranscribeLeg
+    ) async throws -> TranscriptUpgradeExecutionResult {
+        let originalTranscriptURL = sessionDir.appendingPathComponent("transcript.md")
+        let originalTranscript: String
+        if readsLegacyTranscript {
+            guard let old = try? String(contentsOf: originalTranscriptURL, encoding: .utf8) else {
+                throw TranscriptUpgradePipelineError.unreadableTranscript
+            }
+            originalTranscript = old
+        } else {
+            originalTranscript = ""
+        }
+        let notes = readsLegacyTranscript ? TranscriptUpgradeMerge.notes(from: originalTranscript) : []
 
         let inputs = TranscriptUpgradeAudioDiscovery.inputs(in: sessionDir)
         guard !inputs.isEmpty else { throw TranscriptUpgradePipelineError.missingAudio }
@@ -193,30 +217,35 @@ public enum TranscriptUpgradePipeline {
         var timedTurns: [TranscriptUpgradeSegment] = []
         var sourceFiles: [String] = []
         var emptyLegs: [TranscriptUpgradeAudioInput] = []
+        var nativeLegs: Set<URL> = []
         for input in inputs {
             sourceFiles.append(input.url.lastPathComponent)
             progress("Transcribing \(input.url.lastPathComponent)")
             let outputBase = sessionDir.appendingPathComponent("transcript-upgrade-\(providerID)-\(input.url.deletingPathExtension().lastPathComponent)")
-            let text = try await transcribe(input.url, outputBase)
-            let timed = TranscriptUpgradeMerge.timedSegments(
-                from: text,
-                defaultSpeaker: input.defaultSpeaker,
-                offsetMs: input.offsetMs
-            )
-            timedTurns.append(contentsOf: timed)
-            if input.defaultSpeaker == "Remote speaker" {
-                guideAnchorTurns.append(contentsOf: timed)
+            let parsed: [TranscriptUpgradeSegment]
+            let timed: [TranscriptUpgradeSegment]
+            switch try await transcribe(input, outputBase) {
+            case let .soniox(data, policy):
+                nativeLegs.insert(input.url)
+                parsed = try SonioxAsyncTurns.segments(data: data, system: input.defaultSpeaker == "Remote speaker",
+                                                       policy: policy, offsetMs: input.offsetMs)
+                // Display an untimed fragment approximately; only actual
+                // provider times can verify a playback/evidence locator.
+                timed = parsed.filter { $0.source?.providerStartMs != nil }
+            case let .legacyText(text):
+                timed = TranscriptUpgradeMerge.timedSegments(from: text, defaultSpeaker: input.defaultSpeaker, offsetMs: input.offsetMs)
+                parsed = timed.isEmpty ? TranscriptUpgradeMerge.untimedSegments(from: text, defaultSpeaker: input.defaultSpeaker, offsetMs: input.offsetMs) : timed
             }
-            let parsed = timed.isEmpty ? TranscriptUpgradeMerge.untimedSegments(
-                from: text, defaultSpeaker: input.defaultSpeaker, offsetMs: input.offsetMs
-            ) : timed
+            timedTurns.append(contentsOf: timed)
+            if input.defaultSpeaker == "Remote speaker" { guideAnchorTurns.append(contentsOf: timed) }
             segments.append(contentsOf: parsed)
-            if parsed.isEmpty, inputs.count > 1 {
+            if parsed.isEmpty, inputs.count > 1 || nativeLegs.contains(input.url) {
                 emptyLegs.append(input)
             }
         }
         let journal = try SessionMarkerJournal.read(in: sessionDir)
-        guard !segments.isEmpty || !journal.isEmpty else {
+        var evidence = try SessionEvidence.read(in: sessionDir)
+        guard !segments.isEmpty || !journal.isEmpty || (evidence?.notes.isEmpty == false) else {
             throw TranscriptUpgradePipelineError.emptyTranscript(providerDisplayName)
         }
         // One leg transcribed to nothing while another has speech. If the live
@@ -225,10 +254,15 @@ public enum TranscriptUpgradePipeline {
         // heard nothing there either (a silent leg), the one-sided result is
         // correct; say so.
         for leg in emptyLegs {
-            let live = TranscriptUpgradeMerge.liveSegments(
-                from: originalTranscript,
-                remote: leg.defaultSpeaker == "Remote speaker"
-            )
+            let live: [TranscriptUpgradeSegment]
+            if nativeLegs.contains(leg.url) {
+                let system = leg.defaultSpeaker == "Remote speaker"
+                live = (evidence?.turns ?? []).filter { ($0.leg == "Them") == system }.map {
+                    TranscriptUpgradeSegment(speaker: $0.leg, startMs: $0.liveStartMs, text: $0.original)
+                }
+            } else {
+                live = TranscriptUpgradeMerge.liveSegments(from: originalTranscript, remote: leg.defaultSpeaker == "Remote speaker")
+            }
             if live.isEmpty {
                 progress("Warning: \(leg.url.lastPathComponent) produced no speech; the transcript may be one-sided")
             } else {
@@ -241,9 +275,10 @@ public enum TranscriptUpgradePipeline {
         }
 
         progress("Preserving \(notes.count) note\(notes.count == 1 ? "" : "s")")
-        var evidence = try SessionEvidence.read(in: sessionDir)
-        if evidence == nil, !journal.isEmpty {
-            evidence = SessionEvidence(sessionID: journal.first?.sessionID, groupID: journal.first?.groupID,
+        if evidence == nil, !journal.isEmpty || !nativeLegs.isEmpty {
+            let data = try? Data(contentsOf: sessionDir.appendingPathComponent("session.json"))
+            let metadata = data.flatMap { try? JSONDecoder().decode(SessionArchiveMetadata.self, from: $0) }
+            evidence = SessionEvidence(sessionID: journal.first?.sessionID ?? metadata?.sessionId, groupID: journal.first?.groupID ?? metadata?.groupID,
                                        events: journal, through: segments.map(\.startMs).max() ?? 0, turns: [])
         }
         let body: String
@@ -663,7 +698,11 @@ public enum TranscriptUpgradeArtifacts {
             .appendingPathComponent(".\(destination.lastPathComponent).upgrade-\(UUID().uuidString)")
         do {
             try FileManager.default.copyItem(at: source, to: temp)
-            _ = try FileManager.default.replaceItemAt(destination, withItemAt: temp)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                _ = try FileManager.default.replaceItemAt(destination, withItemAt: temp)
+            } else {
+                try FileManager.default.moveItem(at: temp, to: destination)
+            }
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
         } catch {
             try? FileManager.default.removeItem(at: temp)

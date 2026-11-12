@@ -325,6 +325,35 @@ final class TranscriptUpgradeTests: XCTestCase {
                        "the decoder must report a broken retained leg rather than silently omit it")
     }
 
+    func testNativeUpgradeUsesExactProviderRunAndLegClockWithoutParsingItsWordsAsMarkdown() async throws {
+        let dir = try makeTemporarySessionDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try Data("invented audio".utf8).write(to: dir.appendingPathComponent("audio-system.m4a"))
+        try Data(#"{"sessionId":"fixture","systemAudioStartOffsetMs":4000}"#.utf8).write(to: dir.appendingPathComponent("session.json"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("transcript.md").path))
+        let raw = Data(#"{"tokens":[{"text":" [17:17] Speaker 9:","speaker":"desk/A","start_ms":1510,"end_ms":1820},{"text":" 买买\n买","speaker":"desk/A","start_ms":1820,"end_ms":1900},{"text":"translation only","translation_status":"translation"},{"text":"。"},{"text":"<end>"},{"text":"未定","speaker":"desk/B"}]}"#.utf8)
+        let result = try await TranscriptUpgradePipeline.upgradeLegs(sessionDir: dir, startedAt: Date(), providerID: "fixture",
+                                                                     providerDisplayName: "Soniox", frontmatter: [], progress: { _ in }) { _, _ in
+            try raw.write(to: dir.appendingPathComponent("soniox-async-system.json"))
+            return .soniox(data: raw, policy: .init())
+        }
+        XCTAssertEqual(result.segmentCount, 2)
+        let timed = try XCTUnwrap(result.guideAnchorTurns.first)
+        XCTAssertEqual(result.guideAnchorTurns.count, 1, "A missing provider start is not evidence for an anchor")
+        XCTAssertEqual(timed.startMs, 5510)
+        XCTAssertEqual(timed.speaker, "Remote speaker desk/A")
+        XCTAssertEqual(timed.text, " [17:17] Speaker 9: 买买\n买。")
+        XCTAssertEqual(timed.source?.tokenIndices, [0, 1, 3])
+        XCTAssertEqual(timed.source?.legOffsetMs, 4000)
+        XCTAssertEqual(timed.source?.providerStartMs, 1510)
+        let evidence = try XCTUnwrap(SessionEvidence.read(in: dir))
+        let exported = try XCTUnwrap(evidence.upgradedTurns)
+        XCTAssertEqual(exported.map(\.text), [timed.text, "未定"])
+        XCTAssertNil(exported.last?.providerSource?.providerStartMs)
+        XCTAssertEqual(exported.first?.providerSource?.responseFile, "soniox-async-system.json")
+        XCTAssertEqual(try Data(contentsOf: dir.appendingPathComponent("soniox-async-system.json")), raw)
+    }
+
     func testPipelineUpgradesArchivedSessionEndToEndWithFakeProvider() async throws {
         let dir = try makeTemporarySessionDir()
         defer { try? FileManager.default.removeItem(at: dir) }

@@ -65,11 +65,9 @@ today, so a future batch provider does not inherit the live lane's choice.
 
 ## Current product state
 
-The upgrade runs `file-transcriber`'s Soniox script (the same one the
-`transcribe` skill uses):
+The beta sends each retained audio leg through Soniox’s native REST API. It uploads a multipart file, starts an `stt-async-v6` transcription, polls the same job and reads its transcript response. Both legs request language identification and English and Chinese hints, with the meeting's archived Soniox context. Only the system leg can request speaker diarization, controlled by the archived speaker-label setting. [Upload](https://docs.soniox.com/api-reference/stt/files/upload_file) · [Create](https://docs.soniox.com/api-reference/stt/transcriptions/create_transcription) · [Poll](https://docs.soniox.com/api-reference/stt/transcriptions/get_transcription) · [Result](https://docs.soniox.com/api-reference/stt/transcriptions/get_transcription_transcript) · [Model list](https://docs.soniox.com/stt/models)
 
-- Soniox: `~/skills/file-transcriber/scripts/transcribe-soniox.py`
-  (override with `soniox_file_script` in `~/.config/rti/config.json`)
+RTI stores the **exact response bytes** in `soniox-async-mic.json` and `soniox-async-system.json`. Token times are relative to their own uploaded audio. Apply the session’s system-audio start offset once when joining legs. The beta groups contiguous original tokens directly and records each turn’s source filename, token indices, original speaker and leg-relative times in the structured evidence. A missing timestamp stays missing in its source locator and cannot verify a playback anchor. Markdown and the raw text export render the same structured turns. A private per-leg checkpoint records remote IDs until cleanup completes. A retry reuses the saved job or response. After the raw response is written, RTI deletes the remote transcription and then its uploaded file. Earlier recordings with no beta schema or speaker policy keep the file-transcriber path under `soniox_file_script`. [Delete transcription](https://docs.soniox.com/api-reference/stt/transcriptions/delete_transcription) · [Delete file](https://docs.soniox.com/api-reference/stt/files/delete_file)
 
 Aliyun was removed on 2026-09-26. RTI's adapter called an Aliyun NLS script
 at `~/Documents/code/archive/aliyun-stt/scripts/aliyun_filetrans.py`, which
@@ -78,9 +76,6 @@ still exists (`file-transcriber`'s `transcribe-aliyun.py`) is a different
 API: it needs a DashScope key and serves the audio from a public HTTP port on
 the VPS, which is not acceptable for private meeting audio without a
 decision. Soniox already transcribes Chinese.
-
-Native REST clients can replace the script bridge later behind the same
-`AsyncTranscriptProvider` protocol.
 
 ## Upgrade Transcript Behavior
 

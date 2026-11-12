@@ -225,6 +225,23 @@ final class SessionArchiveRecoveryTests: XCTestCase {
         XCTAssertTrue(sidecar.contains("\ncall_type: research\n"))
     }
 
+    func testNativeUpgradeExportReadsStructuredTurnsWhenTheMarkdownViewIsMissing() async throws {
+        let directory = try XCTUnwrap(SessionArchive.write(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(15),
+                                                           transcript: [entry("Earlier invented words")], chat: []))
+        try Data("invented test audio".utf8).write(to: directory.appendingPathComponent("audio-system.m4a"))
+        let result = Data(#"{"tokens":[{"text":"This is still one turn.\n[22:22] Speaker 8: Like this.","speaker":"desk-A","start_ms":125,"end_ms":912}]}"#.utf8)
+        _ = try await TranscriptUpgradePipeline.upgradeLegs(sessionDir: directory, startedAt: startedAt, providerID: "fixture",
+                                                           providerDisplayName: "Soniox", frontmatter: [], progress: { _ in }) { _, _ in
+            try result.write(to: directory.appendingPathComponent("soniox-async-system.json"))
+            return .soniox(data: result, policy: .init())
+        }
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("transcript.md"))
+        let file = try XCTUnwrap(SessionArchive.refreshCanonicalMeetingTranscript(fromArchiveDir: directory, startedAt: startedAt))
+        let text = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertTrue(text.contains("Remote speaker desk-A: This is still one turn.\n[22:22] Speaker 8: Like this."))
+        XCTAssertFalse(text.contains("Earlier invented words"))
+    }
+
     func testUpgradeExportFailureRetainsRetryMarkerAndRecoversWithoutProvider() throws {
         let directory = try XCTUnwrap(SessionArchive.write(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(5),
                                                            transcript: [entry("An invented turn.")], chat: []))
