@@ -5,7 +5,7 @@ import Foundation
 /// user notes use `speakerId == "note"`. `startMs` is an offset on the
 /// session timeline. Ephemeral build: these live in memory for the duration
 /// of a session only.
-public struct LiveEntry: Identifiable {
+public struct LiveEntry: Identifiable, Sendable {
     /// Exact provider timing, retained separately from the archive/notes batch
     /// text so another audio leg can appear between words of the same batch.
     public struct TimedToken: Equatable, Sendable {
@@ -13,7 +13,17 @@ public struct LiveEntry: Identifiable {
         public let startMs: Int
         public let endMs: Int
 
-        public init(text: String, startMs: Int, endMs: Int) {
+        public let provider: SonioxWord?
+        public let ordinal: Int?
+        public let leg: String?
+        public let streamOffsetMs: Int?
+
+        public init(text: String, startMs: Int, endMs: Int, provider: SonioxWord? = nil,
+                    ordinal: Int? = nil, leg: String? = nil, streamOffsetMs: Int? = nil) {
+            self.provider = provider
+            self.ordinal = ordinal
+            self.leg = leg
+            self.streamOffsetMs = streamOffsetMs
             self.text = text
             self.startMs = startMs
             self.endMs = endMs
@@ -49,7 +59,7 @@ public struct LiveEntry: Identifiable {
         return streamID
     }
     public let startMs: Int
-    public let confidence: Double
+    public let confidence: Double?
     /// "none" | "original" | "translation"
     public let translationStatus: String
     /// Language code (e.g. "en", "fr") — nil for pre-translation tokens
@@ -61,7 +71,7 @@ public struct LiveEntry: Identifiable {
         speakerId: String,
         text: String,
         startMs: Int,
-        confidence: Double,
+        confidence: Double?,
         translationStatus: String,
         language: String?,
         sourceLanguage: String?,

@@ -9,6 +9,21 @@ actor ResearchCodebookStore {
         let session: ResearchCodebook.Session
         let directory: URL
         let project: URL?
+        let resolvedProject: String?
+
+        init(session: ResearchCodebook.Session, directory: URL, project: URL?) {
+            self.session = session; self.directory = directory; self.project = project
+            resolvedProject = project.map(Self.canonicalPath)
+        }
+
+        static func canonicalPath(_ url: URL) -> String {
+            // Foundation cannot resolve the /var alias when the final component is missing.
+            var parent = url, missing: [String] = []
+            while parent.path != "/", !FileManager.default.fileExists(atPath: parent.path) {
+                missing.append(parent.lastPathComponent); parent.deleteLastPathComponent()
+            }
+            return missing.reversed().reduce(parent.resolvingSymlinksInPath().standardizedFileURL) { $0.appendingPathComponent($1) }.path
+        }
     }
 
     enum Change: Sendable {
@@ -16,6 +31,8 @@ actor ResearchCodebookStore {
         case pass(ResearchProposal, [ResearchQuote], endMs: Int)
         case edit(ResearchCodebook.Edit)
         case finish(incomplete: Bool)
+        case refresh
+        case upgrade([TranscriptUpgradeSegment])
     }
 
     /// Only the selected business project may gain these two output files. Personal vault
@@ -41,11 +58,13 @@ actor ResearchCodebookStore {
     nonisolated static func sidecarFields(in dir: URL) -> [String] {
         var fields: [String] = []
         for (key, file) in [("codebook_json", "codebook.json"), ("codebook_markdown", "codebook.md"), ("quote_bank", "quotes.jsonl")] where FileManager.default.fileExists(atPath: dir.appendingPathComponent(file).path) {
-            fields.append("\(key): \(file)")
+            if let escaped = try? JSONEncoder().encode(dir.appendingPathComponent(file).path) {
+                fields.append("\(key): \(String(decoding: escaped, as: UTF8.self))")
+            }
         }
         // Project links are resolved relative to the path printed in the session projection.
         if let data = try? Data(contentsOf: dir.appendingPathComponent("codebook.json")),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let path = json["projectDirectory"] as? String
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], json["projectMergePending"] as? Bool != true, let path = json["projectDirectory"] as? String
         {
             for (key, file) in [("project_codebook_json", "codebook.json"), ("project_codebook_markdown", "codebook.md")] {
                 let target = URL(fileURLWithPath: path).appendingPathComponent(file)
@@ -128,7 +147,8 @@ actor ResearchCodebookStore {
             let keys = ResearchCodebook.spellings(card.name, aliases: card.aliases)
             guard keys.isDisjoint(with: project.suppressed) else { continue }
             let id = project.redirects[card.id.uuidString] ?? card.id
-            if let i = project.cards.firstIndex(where: { $0.id == id }) {
+            let names = project.cards.indices.filter { !keys.isDisjoint(with: ResearchCodebook.spellings(project.cards[$0].name, aliases: project.cards[$0].aliases)) }
+            if let i = project.cards.firstIndex(where: { $0.id == id }) ?? (names.count == 1 ? names[0] : nil) {
                 let existing = Set(project.cards[i].entries.map(\.id))
                 project.cards[i].entries += card.entries.filter { !existing.contains($0.id) }
             } else {
@@ -138,14 +158,27 @@ actor ResearchCodebookStore {
     }
 
     func update(_ location: Location, _ change: Change) throws -> ResearchCodebook {
-        let project = location.project
-        return try lock(project ?? location.directory) {
+        do {
+            guard location.project.map(Location.canonicalPath) == location.resolvedProject else { throw CocoaError(.fileWriteNoPermission) }
+            return try update(location, change, project: location.project)
+        } catch {
+            guard location.project != nil else { throw error }
+            if case .edit = change {
+                throw error
+            }
+            return try update(location, change, project: nil)
+        }
+    }
+
+    private func update(_ location: Location, _ change: Change, project: URL?) throws -> ResearchCodebook {
+        let result = try lock(project ?? location.directory) {
             var book = try read(project ?? location.directory)
-            if let project {
+            if project != nil {
                 let local = try read(location.directory)
                 recover(local, into: &book)
-                book.projectDirectory = project.path
             }
+            book.projectDirectory = location.project?.path ?? book.projectDirectory
+            book.projectMergePending = book.projectDirectory != nil && project == nil
             if !book.sessions.contains(where: { $0.id == location.session.id }) {
                 book.sessions.append(location.session)
             }
@@ -181,6 +214,13 @@ actor ResearchCodebookStore {
                 book.sessions[index].endMs = max(book.sessions[index].endMs, endMs)
             case let .edit(edit): book.edit(edit)
             case let .finish(incomplete): book.sessions[index].incomplete = incomplete
+            case .refresh, .upgrade: break
+            }
+            let timeline = try MarkerTimeline(events: SessionMarkerJournal.read(in: location.directory))
+            for i in book.cards.indices {
+                for j in book.cards[i].entries.indices where book.cards[i].entries[j].evidence.sessionID == location.session.id {
+                    Self.refresh(&book.cards[i].entries[j].evidence, timeline: timeline, change: change)
+                }
             }
             try save(book.scoped(to: location.session.id), in: location.directory)
             if let project {
@@ -188,6 +228,58 @@ actor ResearchCodebookStore {
             }
             return book
         }
+        switch change {
+        case .refresh, .upgrade, .finish:
+            try refreshStarred(in: location.directory, change: change)
+        case .prepare, .pass, .edit: break
+        }
+        return result
+    }
+
+    private static func refresh(_ quote: inout ResearchQuote, timeline: MarkerTimeline, change: Change) {
+        let at = timeline.context(at: quote.offsetMs)
+        if !timeline.entries.isEmpty {
+            quote.markerID = at.markerID; quote.markerLabel = at.markerLabel
+            quote.questionID = at.guideQuestionID ?? quote.guideQuestionAtCapture
+            quote.showEventID = at.showEventID; quote.shownItemIDs = at.shownItemIDs; quote.shownCodes = at.shownCodes
+            quote.packageRevision = at.packageRevision; quote.revealRecorded = at.revealRecorded
+        }
+        if case let .upgrade(turns) = change {
+            let verified = quote.speaker.leg == "Them" ? TranscriptUpgradeMerge.guideAnchor(original: quote.original, liveStartMs: quote.offsetMs, in: turns) : nil
+            quote.upgradedOffsetMs = verified?.startMs
+            quote.anchorNeedsReview = verified.map { timeline.context(at: $0.startMs) != at } ?? true
+        } else if let upgraded = quote.upgradedOffsetMs {
+            quote.anchorNeedsReview = timeline.context(at: upgraded) != at
+        }
+    }
+
+    private func refreshStarred(in directory: URL, change: Change) throws {
+        let file = try safeFile("quotes.jsonl", in: directory)
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        try lock(directory) {
+            let timeline = try MarkerTimeline(events: SessionMarkerJournal.read(in: directory))
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+            var data = Data()
+            for line in try Data(contentsOf: file).split(separator: 10) {
+                var quote = try JSONDecoder().decode(ResearchQuote.self, from: Data(line))
+                Self.refresh(&quote, timeline: timeline, change: change)
+                try data.append(encoder.encode(quote)); data.append(10)
+            }
+            try save(data, as: "quotes.jsonl", in: directory)
+        }
+    }
+
+    func reanchor(in directory: URL, upgradedTurns: [TranscriptUpgradeSegment]) throws {
+        let local = try read(directory)
+        guard let session = local.sessions.first, session.folder == directory.lastPathComponent else { return }
+        var project: URL?
+        if let path = local.projectDirectory {
+            let candidate = VaultItem(id: path, name: "", url: URL(fileURLWithPath: path), isProject: true)
+            if let eligible = Self.eligibleProject(candidate), try read(eligible).sessions.contains(where: { $0.id == session.id && $0.folder == session.folder }) {
+                project = eligible
+            }
+        }
+        _ = try update(Location(session: session, directory: directory, project: project), .upgrade(upgradedTurns))
     }
 
     func existingBook(in directory: URL) throws -> ResearchCodebook {

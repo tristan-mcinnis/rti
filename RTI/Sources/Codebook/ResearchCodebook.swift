@@ -1,4 +1,5 @@
 import Foundation
+import RTICore
 
 /// The only durable quote text is copied from a settled original-language turn.
 struct ResearchQuote: Codable, Equatable, Identifiable, Sendable {
@@ -18,14 +19,18 @@ struct ResearchQuote: Codable, Equatable, Identifiable, Sendable {
     let offsetMs: Int
     let original: String
     let speaker: Attribution
-    let questionID: String?
-    let markerID: String?
-    let markerLabel: String?
+    var guideQuestionAtCapture: String?
+    var questionID: String?
+    var markerID: String?
+    var markerLabel: String?
     var showEventID: String?
     var shownItemIDs: [String]?
-    let shownCodes: [String]?
-    let packageRevision: String?
-    let revealRecorded: Bool
+    var shownCodes: [String]?
+    var packageRevision: String?
+    var revealRecorded: Bool
+    var mentionedCodes: [String]?
+    var upgradedOffsetMs: Int?
+    var anchorNeedsReview: Bool?
     var id: String {
         sessionID + "/" + turnID
     }
@@ -36,7 +41,7 @@ enum ResearchValence: String, CaseIterable, Codable, Sendable { case positive, n
 
 struct ResearchEntry: Codable, Equatable, Identifiable, Sendable {
     let point: String
-    let evidence: ResearchQuote
+    var evidence: ResearchQuote
     let valence: ResearchValence
     let inferredName: String?
     var id: String {
@@ -49,7 +54,13 @@ struct ResearchCard: Codable, Equatable, Identifiable, Sendable {
     var name: String
     var aliases: [String]
     let type: ResearchCardType
-    var seeded: Bool
+    enum Origin: String, Codable, Sendable { case seeded, emerged }
+    var origin: Origin
+    var seeded: Bool {
+        get { origin == .seeded }
+        set { origin = newValue ? .seeded : .emerged }
+    }
+
     var pinned: Bool
     var entries: [ResearchEntry]
 
@@ -93,6 +104,7 @@ struct ResearchCodebook: Codable, Equatable, Sendable {
 
     var schemaVersion = 1
     var projectDirectory: String?
+    var projectMergePending: Bool?
     var sessions: [Session] = []
     var cards: [ResearchCard] = []
     var suppressed: Set<String> = []
@@ -122,7 +134,7 @@ struct ResearchCodebook: Codable, Equatable, Sendable {
             cards[found[0]].seeded = true
         }
         if found.isEmpty {
-            cards.append(ResearchCard(id: UUID(), name: clean, aliases: [], type: type, seeded: true, pinned: false, entries: []))
+            cards.append(ResearchCard(id: UUID(), name: clean, aliases: [], type: type, origin: .seeded, pinned: false, entries: []))
         }
     }
 
@@ -153,7 +165,7 @@ struct ResearchCodebook: Codable, Equatable, Sendable {
             } else {
                 guard created < 8 else { continue }
                 index = cards.count
-                cards.append(ResearchCard(id: UUID(), name: name, aliases: [], type: item.type, seeded: false, pinned: false, entries: []))
+                cards.append(ResearchCard(id: UUID(), name: name, aliases: [], type: item.type, origin: .emerged, pinned: false, entries: []))
                 created += 1
             }
             for alias in [name] + aliases where alias != cards[index].name && !cards[index].aliases.contains(alias) {

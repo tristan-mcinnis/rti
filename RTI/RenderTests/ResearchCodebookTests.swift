@@ -54,8 +54,10 @@ final class ResearchCodebookTests: XCTestCase {
         let old = try await a.existingBook(in: one); XCTAssertTrue(old.cards.isEmpty)
         _ = try await a.update(first, .prepare(seeds: ["brand | Morning Cup（晨杯）"], hypotheses: []))
         let q1 = quote("r1"), q2 = quote("r2", session: "session2", original: "I hang it from the handle.")
-        async let g1 = a.update(first, .pass(.init(entries: [item("晨杯", "r1")], names: nil), [q1], endMs: 2500))
-        async let g2 = b.update(later, .pass(.init(entries: [item("Morning Cup", "r2")], names: nil), [q2], endMs: 2800))
+        let firstChange = ResearchCodebookStore.Change.pass(.init(entries: [item("晨杯", "r1")], names: nil), [q1], endMs: 2500)
+        let secondChange = ResearchCodebookStore.Change.pass(.init(entries: [item("Morning Cup", "r2")], names: nil), [q2], endMs: 2800)
+        async let g1 = a.update(first, firstChange)
+        async let g2 = b.update(later, secondChange)
         _ = try await (g1, g2)
         let merged = try await a.existingBook(in: project); let local = try await a.existingBook(in: two)
         XCTAssertEqual(merged.sessions.count, 2); XCTAssertEqual(merged.cards.count, 1); XCTAssertEqual(Set(merged.cards[0].entries.map(\.evidence.original)), [q1.original, q2.original]); XCTAssertEqual(local.cards[0].entries.map(\.evidence.original), [q2.original])
@@ -64,6 +66,48 @@ final class ResearchCodebookTests: XCTestCase {
         let star = try JSONDecoder().decode(ResearchQuote.self, from: Data(stars[0].utf8)); XCTAssertEqual(star, q2)
         XCTAssertEqual(ResearchCodebookStore.sidecarFields(in: two).count, 5)
         XCTAssertTrue(try String(contentsOf: project.appendingPathComponent("codebook.md"), encoding: .utf8).contains(q1.original))
+    }
+
+    func testExposureCorrectionAndUpgradePreserveCitedWordsOnBothSidesOfABoundary() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let loc = ResearchCodebookStore.Location(session: .init(id: "session1", group: "G1", startedAt: Date(), folder: folder.lastPathComponent), directory: folder, project: nil)
+        let store = ResearchCodebookStore(), q = quote("r1")
+        let first = SessionNote(id: "a", kind: .stimulus, offsetMs: 1500, shownCodes: ["A1"], packageRevision: "r")
+        let second = SessionNote(id: "b", kind: .stimulus, offsetMs: 3000, shownCodes: ["B1"], revealed: true, packageRevision: "r")
+        try SessionMarkerJournal.append(first, in: folder); try SessionMarkerJournal.append(second, in: folder)
+        _ = try await store.update(loc, .pass(.init(entries: [item("晨杯", "r1")], names: nil), [q], endMs: 2200))
+        try await store.star(q, in: folder)
+        try await store.reanchor(in: folder, upgradedTurns: [.init(speaker: "Them", startMs: 3300, text: q.original)])
+        let anchored = try await store.existingBook(in: folder)
+        let before = try XCTUnwrap(anchored.cards.first?.entries.first?.evidence)
+        XCTAssertEqual(before.offsetMs, 2000); XCTAssertEqual(before.upgradedOffsetMs, 3300); XCTAssertEqual(before.anchorNeedsReview, true)
+        XCTAssertEqual(before.shownCodes, ["A1"]); XCTAssertEqual(before.original, q.original)
+        let corrected = SessionNote(id: "replay", kind: .correction, offsetMs: 5000, revealed: true, packageRevision: "r", replaces: "b", replacement: .init(text: "B1", shownCodes: ["B1"], offsetMs: 1800))
+        try SessionMarkerJournal.append(corrected, in: folder)
+        let refreshed = try await store.update(loc, .refresh)
+        let after = try XCTUnwrap(refreshed.cards.first?.entries.first?.evidence)
+        XCTAssertEqual(after.shownCodes, ["B1"]); XCTAssertEqual(after.anchorNeedsReview, false); XCTAssertEqual(after.showEventID, "b"); XCTAssertEqual(after.original, q.original)
+        let line = try String(contentsOf: folder.appendingPathComponent("quotes.jsonl"), encoding: .utf8)
+        let star = try JSONDecoder().decode(ResearchQuote.self, from: Data(line.utf8))
+        XCTAssertEqual(star, after)
+    }
+
+    func testUnavailableProjectKeepsSessionAndRetryMergesIntoExistingAlias() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let local = root.appendingPathComponent("group"), project = root.appendingPathComponent("project")
+        try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let place = ResearchCodebookStore.Location(session: .init(id: "session1", group: "G1", startedAt: Date(), folder: "group"), directory: local, project: project)
+        let store = ResearchCodebookStore(), q = quote("r")
+        let saved = try await store.update(place, .pass(.init(entries: [item("晨杯", "r")], names: nil), [q], endMs: 2600))
+        XCTAssertEqual(saved.projectMergePending, true); XCTAssertEqual(saved.cards.first?.entries.first?.evidence.original, q.original)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        var other = ResearchCodebook(); other.seed("Morning Cup（晨杯）", type: .brand)
+        try JSONEncoder().encode(other).write(to: project.appendingPathComponent("codebook.json"))
+        let retried = try await store.update(place, .refresh)
+        XCTAssertEqual(retried.cards.count, 1); XCTAssertEqual(retried.cards[0].entries.first?.evidence.original, q.original); XCTAssertEqual(retried.projectMergePending, false)
     }
 
     func testChangedOrCorruptProjectDataIsNotOverwritten() async throws {

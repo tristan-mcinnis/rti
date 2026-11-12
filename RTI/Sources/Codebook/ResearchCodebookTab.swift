@@ -56,6 +56,9 @@ struct ResearchCodebookTab: View {
             if let error = controller.error {
                 Text(error).font(House.TypeToken.meta).textSelection(.enabled)
             }
+            if controller.book.projectMergePending == true {
+                HStack { Text("Session saved. Project merge pending.").font(House.TypeToken.meta); Button("Retry merge") { Task { await controller.retryProjectMerge() } } }
+            }
             if let notice = controller.notice {
                 Text(notice).font(House.TypeToken.meta)
             }
@@ -153,6 +156,12 @@ struct ResearchCodebookTab: View {
                 Text(entry.point).font(House.TypeToken.bodySmall)
                 Text("[\(GuideExtraction.locator(quote.offsetMs)), \(quote.speaker.label)] \(quote.original)").font(House.TypeToken.meta)
                 let context = [quote.questionID, quote.markerLabel, quote.shownCodes.map { "Shown: " + $0.joined(separator: ", ") }].compactMap(\.self)
+                if let codes = quote.mentionedCodes, !codes.isEmpty {
+                    Text("Mentioned: " + codes.joined(separator: ", ")).font(House.TypeToken.meta)
+                }
+                if quote.anchorNeedsReview == true {
+                    Text("Upgraded locator needs review").font(House.TypeToken.meta)
+                }
                 if !context.isEmpty {
                     Text(context.joined(separator: " · ")).font(House.TypeToken.meta)
                 }
