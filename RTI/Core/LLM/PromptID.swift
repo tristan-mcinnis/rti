@@ -177,7 +177,7 @@ public enum PromptDefaults {
 
             - Suggest probes and follow-ups that are open and never leading.
             - Keep what participants said apart from your own inference. Use their exact words, in their language, when you quote them.
-            - Do not conclude from one voice. Name who said it.
+            - Keep an individual view distinct from independent voices. Identify the speaker only if their identity was confirmed; otherwise cite the audio leg.
             """
         case .callInternal:
             """
@@ -204,31 +204,21 @@ public enum PromptDefaults {
             "The user is a PASSIVE LISTENER in this meeting — observing, not speaking. Never draft lines for them to say; frame help as observations, flags, and questions they could pass to whoever is leading."
 
         case .assistSpeaker:
-            "Based on the recent conversation, suggest what I should say or ask next (the suggested line itself should be in the conversation's language). Be concise — max 3 short lines of framing in ENGLISH."
+            "Based on the recent conversation, suggest what I should say or ask next. Give the English takeaway first. If I need Mandarin to speak, add the suggested line and its tone-marked pinyin in separate paragraphs."
 
         case .listenerAssist:
             """
-            I'm a researcher passively observing this session. Surface what I just LEARNED — not what to say (I never speak). Glanceable in 5 seconds, not a paragraph.
-
-            Flag the single most significant thing in the recent conversation. Output EXACTLY two lines with a BLANK LINE between them (so they render as separate lines, not one run-on):
-
-            **[TAG]** <one line: what was said or revealed; include the key verbatim with its speaker if there is one>
-
-            **Matters:** <one line: why this is significant for the research objective>
-
-            TAG is one of: FINDING (a clear insight or need), TENSION (views split within the group), CONTRADICTION (someone contradicts themselves or earlier consensus), NEW THREAD (an unexpected topic worth attention), MISSED (the discussion moved past something important without probing it).
-
-            Reply in ENGLISH. Original-language terms ALWAYS as term (pinyin, English meaning) — e.g. 得体 (détǐ, appropriate) — never bare Chinese. Max ~25 words per line. Keep the blank line between the two lines. No preamble, nothing else.
+            Flag one significant moment the observer learned from the recent conversation. Start with **[TAG]** and one short English observation. Then give **Matters:** in one short English sentence. Use FINDING, TENSION, CONTRADICTION, NEW THREAD or MISSED. Put cited original words and useful pronunciation below both English lines.
             """
 
         case .sayNext:
-            "Given the conversation so far, draft exactly one short reply I could say next, in the language the conversation is being held in. One line, natural, in my voice. No preamble."
+            "Given the conversation so far, draft exactly one short reply in my voice. Give the English line first, then a speakable Mandarin version and its tone-marked pinyin in separate paragraphs if needed."
 
         case .followupsSpeaker:
-            "List 3 thoughtful follow-up questions I could ask the other person right now, written in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
+            "List 3 thoughtful follow-up questions I could ask the other person right now. Give all the questions first in English. Put any useful Mandarin and its tone-marked pinyin below the English."
 
         case .listenerFollowups:
-            "I'm a passive listener. List 3 sharp questions the discussion leader could ask right now to deepen the conversation — questions I could quietly pass along, each in the conversation's language with an ENGLISH gloss in parentheses. Bullet points, one line each."
+            "I'm a passive listener. Give up to three questions I could pass the discussion leader. Give all the questions first in English. Then give the suggested Mandarin and its tone-marked pinyin on separate lines when needed."
 
         case .keyTensions:
             """
@@ -270,7 +260,7 @@ public enum PromptDefaults {
             "in 8–12 bullets grouped under short bold topic headers: cover each distinct topic raised, who said what, decisions, points of disagreement, and open threads. Thorough but still skimmable."
 
         case .recapLanguageRule:
-            "Reply in ENGLISH regardless of the conversation's language. When you keep an original-language term, ALWAYS write it as term (pinyin/romanization, English meaning) — e.g. 健身穿搭 (jiànshēn chuāndā, workout outfits) — never bare Chinese the reader might not parse."
+            "Lead with the English takeaways. After the English, cite useful original words separately and put tone-marked Mandarin pinyin on its own line. Follow the user's explicit answer language or format."
 
         case .autoAssistCards:
             """

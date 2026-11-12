@@ -12,12 +12,15 @@ final class AssistantTurnBuilderTests: XCTestCase {
         images: [LLMImage] = [],
         referencedDocumentsText: String? = nil,
         sourceContext: TurnSourceContext? = nil,
-        externalRetrievalAllowed: Bool = false
+        externalRetrievalAllowed: Bool = false,
+        live: Bool = false,
+        question: String = "What should I say?",
+        history: [ChatEntry] = []
     ) -> AssistantTurnBuilder.Output {
         let sources = sourceContext
             ?? TurnSourceContext(freshCount: referencedDocumentsText == nil ? 0 : 1)
         return AssistantTurnBuilder.build(.init(
-            userInput: "What should I say?",
+            userInput: question,
             action: action,
             transcript: transcript,
             fullTranscript: false,
@@ -37,8 +40,26 @@ final class AssistantTurnBuilderTests: XCTestCase {
             screenContext: nil,
             images: images,
             referencedDocumentsText: referencedDocumentsText,
-            existingEntries: []
+            existingEntries: history,
+            liveReply: live
         ))
+    }
+
+    func testLiveReplyLanguageUsesEnglishBeforeSourceAndHonorsTheUser() {
+        let original = "我坐地铁。"
+        for question in ["What happened?", "为什么？", "Earlier你说什么？", "Answer in Chinese.", "English only.", "Give just the Mandarin and pinyin."] {
+            let result = build(transcript: original, live: true, question: question)
+            XCTAssertTrue(result.promptContext.baseSystemPrompt.contains("ALL English takeaways first"))
+            XCTAssertTrue(result.promptContext.baseSystemPrompt.contains("takes precedence"))
+            XCTAssertTrue(result.promptContext.baseSystemPrompt.contains("tone marks"))
+            XCTAssertTrue(result.apiMessages.last?.content?.contains(question) == true)
+            XCTAssertTrue(result.apiMessages.last?.content?.contains(original) == true)
+        }
+        let history = [ChatEntry(role: "user", text: "Always answer in Chinese", action: "Ask", contextUsed: false, screenContextUsed: false)]
+        XCTAssertTrue(build(live: true, history: history).promptContext.baseSystemPrompt.contains("preference in this chat is Chinese"))
+        let temporary = [ChatEntry(role: "user", text: "Answer in Chinese", action: "Ask", contextUsed: false, screenContextUsed: false)]
+        XCTAssertFalse(build(live: true, history: temporary).promptContext.baseSystemPrompt.contains("preference in this chat"))
+        XCTAssertFalse(build(live: false, history: history).promptContext.baseSystemPrompt.contains("Live reply language"))
     }
 
     func testBuildsTranscriptBackedUserMessageWithScopeInstruction() {

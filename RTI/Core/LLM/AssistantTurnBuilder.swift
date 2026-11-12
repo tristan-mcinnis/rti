@@ -32,6 +32,7 @@ public enum AssistantTurnBuilder {
         public let images: [LLMImage]
         public let referencedDocumentsText: String?
         public let existingEntries: [ChatEntry]
+        public let liveReply: Bool
 
         public init(
             userInput: String,
@@ -54,7 +55,8 @@ public enum AssistantTurnBuilder {
             screenContext: String?,
             images: [LLMImage],
             referencedDocumentsText: String?,
-            existingEntries: [ChatEntry]
+            existingEntries: [ChatEntry],
+            liveReply: Bool = false
         ) {
             self.userInput = userInput
             self.action = action
@@ -77,6 +79,7 @@ public enum AssistantTurnBuilder {
             self.images = images
             self.referencedDocumentsText = referencedDocumentsText
             self.existingEntries = existingEntries
+            self.liveReply = liveReply
         }
     }
 
@@ -151,9 +154,12 @@ public enum AssistantTurnBuilder {
         fullContent += "\n\nFormat for the RTI overlay: answer directly and keep paragraphs short. Never use markdown tables unless the user explicitly asks for a table; when they do ask for a table, use a real markdown table with short cells and 2-4 columns. For ordinary comparisons, prefer compact headings + bullets. When answering about @mentioned files, use readable file names; avoid full paths unless the path itself matters."
 
         let base = input.baseSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        let effectivePrompt = input.listenerMode
+        var effectivePrompt = input.listenerMode
             ? base + "\n\n" + input.listenerSystemSuffix
             : base
+        if input.liveReply {
+            effectivePrompt += "\n\n" + LiveReplyLanguage.instructions(history: input.existingEntries)
+        }
         let promptContext = PromptContext(
             baseSystemPrompt: effectivePrompt,
             meetingContext: input.meetingContext,
