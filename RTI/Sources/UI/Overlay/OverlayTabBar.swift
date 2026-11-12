@@ -7,18 +7,20 @@ import HouseDesign
 /// panels. ⌘1…⌘5 pick a tab while the overlay is key (View menu).
 enum OverlayTab: String, CaseIterable, Identifiable {
     // Prepare is the meeting home; the rest are live surfaces.
-    case setup, assist, auto, transcript, notes
+    case setup, assist, auto, transcript, notes, guide, codebook
     var id: String {
         rawValue
     }
 
     @MainActor var title: String {
         switch self {
-        case .setup: "Prepare"
+        case .setup: "Setup"
         case .assist: "Assist"
         case .auto: "Auto"
         case .transcript: "Transcript"
-        case .notes: GuideSessionController.shared.isActive ? "Guide" : "Notes"
+        case .notes: "Notes"
+        case .guide: "Guide"
+        case .codebook: "Codebook"
         }
     }
 
@@ -28,27 +30,31 @@ enum OverlayTab: String, CaseIterable, Identifiable {
         case .assist: "sparkles"
         case .auto: "wand.and.stars"
         case .transcript: "bubble.left.and.text.bubble.right"
-        case .notes: GuideSessionController.shared.isActive ? "list.bullet.rectangle" : "note.text"
+        case .notes: "note.text"
+        case .guide: "list.bullet.rectangle"
+        case .codebook: "books.vertical"
         }
     }
 
     /// The tab's ⌘ digit (⌘1 Prepare … ⌘5 Notes), fixed whether or not an
     /// opt-in tab is showing. Local to the overlay (View menu), never global.
-    var shortcutNumber: Int {
-        OverlayTabShortcut.number(forTab: rawValue) ?? 0
+    @MainActor var shortcutNumber: Int {
+        OverlayTabShortcut.number(forTab: rawValue, guideActive: GuideSessionController.shared.isActive) ?? 0
     }
 
     /// "⌘2", for help text and palette rows.
-    var shortcutLabel: String { "⌘\(shortcutNumber)" }
+    @MainActor var shortcutLabel: String { "⌘\(shortcutNumber)" }
 
     /// The live tabs showing, in order. Prepare is not listed: it is the
     /// leading button and always there. Notes defaults on; Auto is opt-in
     /// from Prepare.
-    static func visibleTabs(notes: Bool, auto: Bool) -> [OverlayTab] {
+    static func visibleTabs(notes: Bool, auto: Bool, guide: Bool = false, codebook: Bool = false) -> [OverlayTab] {
         var tabs: [OverlayTab] = [.assist]
         if auto { tabs.append(.auto) }
         tabs.append(.transcript)
+        if guide { tabs.append(.guide) }
         if notes { tabs.append(.notes) }
+        if codebook { tabs.append(.codebook) }
         return tabs
     }
 }
@@ -93,16 +99,10 @@ private struct OverlayTabButton: View {
                 HStack(spacing: HouseChatMetrics.chipGap) {
                     Image(systemName: tab.icon)
                         .font(House.TypeToken.bodySmall)
-                    // Selection is a raised tile that names itself; the rest
-                    // stay icon-only in secondary ink. No accent anywhere.
-                    if isSelected {
-                        Text(tab.title)
-                            .font(RTIDesign.Font.tab)
-                            .fixedSize()
-                    }
+                    Text(tab.title).font(RTIDesign.Font.tab).fixedSize()
                 }
-                .padding(.horizontal, isSelected ? House.Spacing.sm : 0)
-                .frame(minWidth: isSelected ? 0 : House.Control.compact, minHeight: House.Control.chip)
+                .padding(.horizontal, House.Spacing.xs)
+                .frame(minHeight: House.Control.chip)
                 // Unread badge: Auto surfaced cards the user hasn't seen.
                 if tab == .auto, !isSelected, autoUnseen > 0 {
                     SlateStatusDot(color: House.ColorToken.danger)
@@ -111,7 +111,7 @@ private struct OverlayTabButton: View {
             }
             .foregroundStyle(isSelected
                 ? Color.overlayInk
-                : (hovering ? Color.overlayInkSecondary : Color.overlayInkTertiary))
+                : (hovering ? Color.overlayInk : House.ColorToken.textSecondary))
             .slateRaisedTile(isSelected, hovering: hovering)
             .contentShape(Rectangle())
         }
@@ -141,12 +141,13 @@ struct OverlaySetupButton: View {
                 selection = .setup
             }
         } label: {
-            Image(systemName: OverlayTab.setup.icon)
-                .font(House.TypeToken.body)
+            Label("Setup", systemImage: OverlayTab.setup.icon)
+                .font(RTIDesign.Font.tab)
+                .padding(.horizontal, House.Spacing.xs)
                 .foregroundStyle(selection == .setup
                     ? Color.overlayInk
-                    : (hovering ? Color.overlayInkSecondary : Color.overlayInkTertiary))
-                .frame(width: House.Control.compact, height: House.Control.chip)
+                    : (hovering ? Color.overlayInk : House.ColorToken.textSecondary))
+                .frame(height: House.Control.chip)
                 .slateRaisedTile(selection == .setup, hovering: hovering)
                 .contentShape(Rectangle())
         }

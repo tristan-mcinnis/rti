@@ -68,6 +68,15 @@ final class SessionCoordinator {
     /// audio keeps flowing. NOT for in-person sessions, where the mic IS the
     /// room capture. Resets to unmuted on every session start so a forgotten
     /// mute can't silently eat the next meeting.
+    private(set) var listeningOnly = false
+
+    func setListeningOnly(_ enabled: Bool) {
+        listeningOnly = enabled
+        micMuted = enabled
+    }
+
+    func toggleUserMute() { setListeningOnly(!micMuted) }
+
     var micMuted = false {
         didSet {
             audioPipeline.micMuted = micMuted
@@ -161,6 +170,7 @@ final class SessionCoordinator {
         startedAt = nil
         endedAt = nil
         phase = .idle
+        setListeningOnly(false)
         resetTranscriptState()
     }
 
@@ -570,7 +580,7 @@ final class SessionCoordinator {
         AutoAssistScheduler.shared.start(interval: NotesSettings.tickInterval)
 
         publishState()
-        micMuted = false
+        micMuted = listeningOnly
         phase = .recording
         VisualContextTrail.shared.start(sessionStartedAt: now)
         startCheckpointLoop()
@@ -789,6 +799,7 @@ final class SessionCoordinator {
         archiveCurrentSession(endedAt: endedAt ?? Date())
 
         phase = .idle
+        setListeningOnly(false)
         transcriptionHealth = .idle
         systemAudioNotice = nil
         micAudioNotice = nil

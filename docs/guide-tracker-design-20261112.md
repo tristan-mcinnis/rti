@@ -1,6 +1,6 @@
 # Guide tracker and recording header
 
-**Design for approval · 12 November 2026 · RTI `67c44ec8`**
+**Design and beta proof · 12 November 2026 · baseline RTI `67c44ec8`**
 
 The muted Research fixture starts its Guide body 167 points below the window top at both widths. The four offscreen renders use the current workspace and an invented bilingual guide. [Default, light](guide-tracker-before-20261112/guide-tracker-before-default-light.png) · [Minimum, light](guide-tracker-before-20261112/guide-tracker-before-narrow-light.png) · [Default, dark](guide-tracker-before-20261112/guide-tracker-before-default-dark.png) · [Minimum, dark](guide-tracker-before-20261112/guide-tracker-before-narrow-dark.png)
 
@@ -15,3 +15,6 @@ The muted Research fixture starts its Guide body 167 points below the window top
 **Header.** Share the title row with labelled Live, Sessions, Chats and Settings segments. Group timer, pause/resume and Finish. In Prepare or after deliberate muting, “Listening only” sits beside the timer. An unexpected mute retains the warning and recovery action. Preserve the existing eye and folder help/accessibility labels, updating them for screenshot mode and project. Row two labels Setup, Assist, Auto, Transcript, Guide and ordinary Notes as available. Preserve shortcuts. At minimum width, shorten the title first and group secondary settings in a menu if needed.
 
 **Check after approval.** Target a 52-point title row, 28-point tab row and 8-point inset, bringing the Guide body to about y=88. Repeat at 860 × 660 and 720 × 520 with the same fixture. Test keyboard/VoiceOver reachability and hit areas, follow/override, loop labels, skipped questions, revisits, and refiling after marker edits and upgrades. Update the House workspace spec, which still specifies separate navigation.
+
+
+**Beta proof.** The Guide body starts at y=88 points in both appearances at both widths, a 79-point reduction. In the minimum-width window, the meeting, microphone and project are in the leading menu. Pause, the timer and Finish fit on screen. The synthetic fixture uses Manual to demonstrate a selected question. [Default, light](guide-tracker-after-20261112/guide-tracker-after-default-light.png) · [Minimum, light](guide-tracker-after-20261112/guide-tracker-after-narrow-light.png) · [Default, dark](guide-tracker-after-20261112/guide-tracker-after-default-dark.png) · [Minimum, dark](guide-tracker-after-20261112/guide-tracker-after-narrow-dark.png)

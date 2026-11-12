@@ -173,7 +173,7 @@ enum CommandBuilder {
                 id: "mic.mute.toggle",
                 title: "Mute / Unmute My Mic",
                 keywords: ["microphone", "mute", "silence", "input"],
-                perform: { session.micMuted.toggle() },
+                perform: { session.toggleUserMute() },
                 menuSection: .session,
                 menuStateProvider: { session.micMuted }
             ),

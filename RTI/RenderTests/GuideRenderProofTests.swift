@@ -16,6 +16,36 @@ final class GuideRenderProofTests: RenderProofTestCase {
     ]}
     """
 
+    func testGuideTrackerInWorkspaceAtBothWidths() throws {
+        SetupTabView.readsCalendar = false
+        let guide = try GuideDocument.parse(Data(json.utf8))
+        let start = Date().addingTimeInterval(-480)
+        let session = SessionCoordinator.shared
+        session.beginTranscriptReplayForProof(startedAt: start)
+        session.setListeningOnly(true)
+        MeetingContextStore.shared.workstreamName = "Everyday storage routines"
+        let id = try XCTUnwrap(session.currentSessionId)
+        let controller = GuideSessionController.shared
+        controller.start(sessionID: id, guide: guide, guideURL: URL(fileURLWithPath: "/fixture/storage-guide.json"),
+                         group: "G1", roster: [], rosterURL: nil, startedAt: start)
+        defer {
+            controller.endSession(id)
+            MeetingContextStore.shared.workstreamName = nil
+            session.endTranscriptReplayForProof()
+        }
+        let pass = try JSONDecoder().decode(GuidePass.self, from: Data(#"{"evidence":[],"cells":[{"qid":"S1Q1","coverage":"Answered","summary":"One person keeps a key in a side pocket.","turns":["t1"],"quotes":[{"turn":"t1","english":"I put it in the side pocket every day."}],"votes":[]}]}"#.utf8))
+        controller.fileEvidence(pass, from: [GuideTurn(id: "t1", speaker: "remote_1", startMs: 18000, text: "我每天都放在侧袋里。")])
+        controller.select("S1Q2", at: start.addingTimeInterval(240))
+        let model = WorkspaceModel()
+        for (label, size) in [("default", WorkspaceLayout.standardSize), ("narrow", WorkspaceLayout.minimumSize)] {
+            try renderBothAppearances(name: "guide-tracker-after-" + label, size: size,
+                view: WorkspaceView(model: model, callTypes: .inMemory(.research)).task {
+                    await Task.yield()
+                    NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.guide.rawValue)
+                })
+        }
+    }
+
     func testGuideInBothAppearances() throws {
         let guide = try GuideDocument.parse(Data(json.utf8))
         let pass = try JSONDecoder().decode(GuidePass.self, from: Data("""

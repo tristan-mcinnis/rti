@@ -4,6 +4,7 @@ import XCTest
 final class OverlayNoticeTests: XCTestCase {
     func testMuteBannerOnlyWhileRecordingAndMuted() {
         XCTAssertTrue(MuteBannerRule.shows(isRunning: true, micMuted: true))
+        XCTAssertFalse(MuteBannerRule.shows(isRunning: true, micMuted: true, listeningOnly: true))
         XCTAssertFalse(MuteBannerRule.shows(isRunning: true, micMuted: false))
         XCTAssertFalse(MuteBannerRule.shows(isRunning: false, micMuted: true))
     }

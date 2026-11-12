@@ -82,11 +82,13 @@ struct SetupTabView: View {
             VStack(alignment: .leading, spacing: House.Spacing.lg) {
                 prepareHeader
                 callTypeSection
+                speakerSection.disabled(session.phase == .finishing)
                 meetingFocusSection
                 if CallTypeStore.shared.active == .research {
                     VStack(alignment: .leading, spacing: House.Spacing.xs) {
                         sectionHeader("Discussion guide")
                         settingsGroup {
+                            ResearchCodebookPreparation()
                             StimulusPrepareControls(projectID: store.workstreamItem?.url.path)
                             GuidePrepareControls(project: store.workstreamItem)
                                 .id(store.workstreamItem?.id)
@@ -550,6 +552,29 @@ struct SetupTabView: View {
 
     // MARK: - Call type
 
+    private var speakerSection: some View {
+        @Bindable var session = session
+        return VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            sectionHeader("Speakers")
+            Toggle("Speaker labels", isOn: $session.speakerPolicy.labelsEnabled)
+                .toggleStyle(.switch)
+            HStack {
+                Text("Speakers in the room")
+                Stepper(session.speakerPolicy.expectedCount.map(String.init) ?? "Unknown") {
+                    let count = session.speakerPolicy.expectedCount ?? 0
+                    if count < Int.max { session.speakerPolicy.expectedCount = count + 1 }
+                } onDecrement: {
+                    let count = session.speakerPolicy.expectedCount ?? 0
+                    session.speakerPolicy.expectedCount = count > 1 ? count - 1 : nil
+                }
+                .fixedSize()
+            }
+            Text("RTI uses the audio leg for Me or Them. A count helps review the file transcript.")
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textSecondary)
+        }
+    }
+
     private var callTypeSection: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
             sectionHeader("Call type", detail: "Sets how RTI answers")
@@ -598,6 +623,12 @@ struct SetupTabView: View {
             sectionHeader("Live", detail: "Capture & assist")
             settingsGroup {
                 liveTranscriptionRow
+                Toggle("Listening only", isOn: Binding(get: { SessionCoordinator.shared.listeningOnly },
+                                                        set: { SessionCoordinator.shared.setListeningOnly($0) }))
+                    .toggleStyle(.switch)
+                    .padding(.horizontal, House.Spacing.sm)
+                    .frame(minHeight: House.Control.row)
+                    .help("Record call audio with your microphone muted.")
                 settingsRowDivider
                 screenshotsRow
                 settingsRowDivider
@@ -616,9 +647,9 @@ struct SetupTabView: View {
                     .padding(.horizontal, House.Spacing.sm)
                     .padding(.vertical, House.Spacing.xxs)
                     .frame(minHeight: House.Control.row)
-                } else {
-                    livePanelToggle(.notes, $notesEnabled)
+                    settingsRowDivider
                 }
+                livePanelToggle(.notes, $notesEnabled)
                 settingsRowDivider
                 livePanelToggle(.autoAssist, $autoAssistEnabled)
             }

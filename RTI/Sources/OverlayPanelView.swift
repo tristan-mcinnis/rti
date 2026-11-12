@@ -36,7 +36,7 @@ struct OverlayPanelView: View {
     // equal-weight row into a leading icon button (OverlaySetupButton) so the
     // row gives its weight to the live surfaces.
     private var visibleTabs: [OverlayTab] {
-        OverlayTab.visibleTabs(notes: notesEnabled || GuideSessionController.shared.isActive, auto: autoAssistEnabled)
+        OverlayTab.visibleTabs(notes: notesEnabled, auto: autoAssistEnabled, guide: GuideSessionController.shared.isActive, codebook: callTypes.active == .research)
     }
 
     private var status: OverlayShellStatus {
@@ -50,11 +50,11 @@ struct OverlayPanelView: View {
         VStack(spacing: 0) {
             if !embedded { OverlayShellHeader(status: status, callTypes: callTypes) }
             tabsRow
-            if MuteBannerRule.shows(isRunning: session.isRunning, micMuted: session.micMuted) {
+            if MuteBannerRule.shows(isRunning: session.isRunning, micMuted: session.micMuted, listeningOnly: session.listeningOnly) {
                 OverlayNoticeBanner(
                     text: "Your mic is muted. Your side is not being recorded.",
                     actionTitle: "Unmute",
-                    action: { session.micMuted = false }
+                    action: { session.setListeningOnly(false) }
                 )
             }
             if let message = hotkeyNotice.message {
@@ -79,11 +79,13 @@ struct OverlayPanelView: View {
                     AutoTabView().tabContentPadding()
                 case .transcript:
                     EmptyView()
+                case .codebook:
+                    ResearchCodebookTab()
                 case .notes:
+                    NotesTabView().tabContentPadding()
+                case .guide:
                     if let guide = GuideSessionController.shared.guide {
                         GuideTabView(guide: guide, isActive: isActive).tabContentPadding()
-                    } else {
-                        NotesTabView().tabContentPadding()
                     }
                 case .setup:
                     SetupTabView().tabContentPadding()
@@ -121,7 +123,7 @@ struct OverlayPanelView: View {
             OverlayTabBar(selection: $tab, tabs: visibleTabs)
         }
         .padding(.horizontal, House.Spacing.sm)
-        .frame(height: House.Control.railRow)
+        .frame(height: House.Control.chip)
         .background(embedded ? House.ColorToken.surface : Color.clear)
         // If the active tab gets turned off in Prepare, fall back to Assist.
         .onChange(of: visibleTabs) { _, _ in normalizeSelection() }
@@ -138,7 +140,7 @@ struct OverlayPanelView: View {
             // from Prepare after the recording is already underway.
             if current == .recording, tab == .setup {
                 if GuideSessionController.shared.isActive && previous != .paused {
-                    tab = .notes
+                    tab = .guide
                 } else if previous == .idle {
                     tab = .assist
                 }
@@ -262,33 +264,51 @@ struct OverlayShellHeader: View {
     /// production is unchanged; a proof passes an in-memory store.
     var callTypes: CallTypeStore = .shared
     var fill: Color = House.ColorToken.surface
+    var workspace: WorkspaceModel?
 
     private let chrome = OverlayWindowChrome.shared
-    @State private var width: CGFloat = 0
+    @State private var showsCompactControls = false
 
-    /// Below the overlay's standard width the record chip drops its key caps
-    /// (the key stays in its help text), so the title keeps room at 600.
-    private var isCompact: Bool {
-        width > 0 && width < OverlayAppearanceDefaults.defaultWidth
-    }
-
-    /// The record chip's key caps. While capture runs, the clock takes their
-    /// place, so the model line keeps its room; ⌘⇧R stays in the chip's help
-    /// and the Session menu.
-    private var showsRecordKeys: Bool {
-        !isCompact && !status.recordChip.showsClock
-    }
-
-    /// At the minimum width a live chip is the registered recording chip
-    /// alone: the `danger` mark and the clock. "Finish" moves to its help.
-    private var showsRecordTitle: Bool {
-        !(isCompact && status.recordChip.showsClock)
-    }
+    private var sessionIsListeningOnly: Bool { SessionCoordinator.shared.listeningOnly && SessionCoordinator.shared.micMuted }
 
     var body: some View {
-        HStack(spacing: House.Spacing.sm) {
-            OverlayHeaderTitle(status: status, callTypes: callTypes)
-            Spacer(minLength: House.Spacing.xs)
+        GeometryReader { geometry in
+            header(width: geometry.size.width)
+        }
+        .frame(height: House.Control.composer)
+    }
+
+    private func header(width: CGFloat) -> some View {
+        let compact = workspace != nil && width < WorkspaceLayout.standardSize.width
+        let hideStandaloneKeys = width < OverlayAppearanceDefaults.defaultWidth
+        return HStack(spacing: House.Spacing.xs) {
+            if compact {
+                Button { showsCompactControls.toggle() } label: {
+                    Image(systemName: "ellipsis.circle").font(House.TypeToken.body)
+                        .frame(width: House.Control.chip, height: House.Control.chip)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Meeting, microphone and project")
+                .help("Meeting title, microphone, project and assistant options")
+                .popover(isPresented: $showsCompactControls) {
+                    VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                        Text(OverlayShellStatus.title(calendarTitle: MeetingContextStore.shared.calendarMeeting?.title,
+                             projectName: MeetingContextStore.shared.workstreamName, phase: status.phase))
+                            .font(House.TypeToken.label).lineLimit(2)
+                        HStack { OverlayMicControl(); OverlayProjectPicker(allowsName: true) }
+                        Button("Assistant options") {
+                            showsCompactControls = false
+                            OverlayShellModel.shared.toggle(.options)
+                        }
+                    }
+                    .padding(House.Spacing.sm)
+                }
+            } else {
+                OverlayHeaderTitle(status: status, callTypes: callTypes)
+                    .layoutPriority(-1)
+            }
+            if let workspace { WorkspaceRouteSegments(model: workspace) }
+            Spacer(minLength: 0)
             if chrome.isKeptOnTop {
                 QuickAIGlyphButton(
                     symbol: "pin.fill",
@@ -301,13 +321,22 @@ struct OverlayShellHeader: View {
                 }
             }
             HStack(spacing: House.Spacing.xs) {
-                OverlayMicControl()
+                if !compact { OverlayMicControl() }
                 OverlayVisualContextButton(isLive: status.phase.isLive)
                 // While capture runs the state line needs the room; the
                 // project's name stays in the chip's tooltip.
-                OverlayProjectPicker(allowsName: !isCompact && !status.phase.isLive)
-                OverlayRecordButton(status: status, showsTitle: showsRecordTitle, showsKeys: showsRecordKeys)
+                if !compact { OverlayProjectPicker(allowsName: !hideStandaloneKeys && !status.phase.isLive) }
+                if status.phase.isLive && sessionIsListeningOnly {
+                    Text("Listening only")
+                        .font(House.TypeToken.caption)
+                        .padding(.horizontal, House.Spacing.xs)
+                        .frame(height: House.Control.chip)
+                        .background(House.ColorToken.chipFill, in: Capsule())
+                        .accessibilityLabel("Listening only. Microphone muted intentionally.")
+                }
                 OverlaySessionAuxButton(phase: status.phase)
+                OverlayRecordButton(status: status, showsTitle: workspace != nil || !(hideStandaloneKeys && status.recordChip.showsClock),
+                                    showsKeys: workspace == nil && !hideStandaloneKeys && !status.recordChip.showsClock)
             }
             .fixedSize()
         }
@@ -321,11 +350,6 @@ struct OverlayShellHeader: View {
                 // The title-bar row drags the window, as a normal title bar
                 // does (macOS 14 stand-in for WindowDragGesture).
                 WindowDragArea()
-                GeometryReader { proxy in
-                    Color.clear
-                        .onAppear { width = proxy.size.width }
-                        .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
-                }
             }
         }
         .zIndex(1)
@@ -354,6 +378,7 @@ struct OverlayHeaderTitle: View {
         HStack(spacing: House.Spacing.xs) {
             VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                 Text(title)
+                    .help(title)
                     .font(HouseChatType.subheading)
                     .foregroundStyle(House.ColorToken.textPrimary)
                     .lineLimit(1)

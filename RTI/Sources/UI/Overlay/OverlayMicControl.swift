@@ -39,7 +39,7 @@ struct OverlayMicControl: View {
 
     private var muteButton: some View {
         Button {
-            session.micMuted.toggle()
+            session.toggleUserMute()
         } label: {
             ZStack(alignment: .bottom) {
                 Image(systemName: session.micMuted ? "mic.slash.fill" : "mic.fill")
@@ -110,7 +110,7 @@ struct OverlayMicControl: View {
             }
             Divider()
             Button {
-                session.micMuted.toggle()
+                session.toggleUserMute()
             } label: {
                 if session.micMuted {
                     Label("Muted (system audio still recording)", systemImage: "checkmark")

@@ -19,16 +19,13 @@ struct WorkspaceView: View {
     @Bindable var model: WorkspaceModel
     var callTypes: CallTypeStore = .shared
     private let session = SessionCoordinator.shared
-    @State private var hoveredPage: WorkspaceModel.Page?
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(spacing: 0) {
             OverlayShellHeader(status: OverlayShellStatus(
                 phase: session.phase.livePhase,
                 processingStatus: session.postProcessingStatus
-            ), callTypes: callTypes, fill: House.ColorToken.surfaceSunken)
-            navigation
+            ), callTypes: callTypes, fill: House.ColorToken.surfaceSunken, workspace: model)
             sessionChatContext
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
@@ -150,47 +147,34 @@ struct WorkspaceView: View {
         }
     }
 
-    private var navigation: some View {
-        HStack(spacing: House.Spacing.xxs) {
+
+}
+
+struct WorkspaceRouteSegments: View {
+    @Bindable var model: WorkspaceModel
+    var body: some View {
+        HStack(spacing: 0) {
             ForEach(Array(WorkspaceModel.Page.allCases.enumerated()), id: \.element.id) { index, page in
                 Button { model.select(page) } label: {
-                    Label(page.rawValue, systemImage: page.symbol)
-                        .font(House.TypeToken.label)
-                        .foregroundStyle(model.page == page ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
-                        .padding(.horizontal, House.Spacing.sm)
+                    Text(page.rawValue).font(House.TypeToken.meta).lineLimit(1)
+                        .padding(.horizontal, House.Spacing.xs)
                         .frame(height: House.Control.chip)
-                        .background {
-                            RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
-                                .fill(model.page == page ? House.ColorToken.surfaceRaised : (hoveredPage == page ? House.ColorToken.hoverFill : Color.clear))
-                                .overlay {
-                                    if model.page == page {
-                                        RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
-                                            .strokeBorder(House.ColorToken.selectionRing, lineWidth: House.hairline)
-                                    }
-                                }
-                                .slateSelectionShadow(scheme, active: model.page == page)
-                        }
+                        .foregroundStyle(model.page == page ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
+                        .slateRaisedTile(model.page == page, cornerRadius: House.Radius.sm)
                 }
                 .buttonStyle(.plain)
-                .onHover { hoveredPage = $0 ? page : nil }
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option])
                 .accessibilityAddTraits(model.page == page ? .isSelected : [])
                 .help("\(page.rawValue) (⌥⌘\(index + 1))")
             }
-            Spacer(minLength: 0)
             if model.page == .sessions || model.page == .chats {
-                QuickAIGlyphButton(
-                    symbol: "sidebar.left", font: HouseChatType.glyphSmall,
-                    color: House.ColorToken.textSecondary,
-                    label: model.sessions.isRailVisible ? "Hide library list" : "Show library list",
-                    help: "Show or hide the library list (⌃⌘S)",
-                    accessibilityValue: model.sessions.isRailVisible ? "Open" : "Closed"
-                ) { model.sessions.toggleRail() }
+                QuickAIGlyphButton(symbol: "sidebar.left", font: HouseChatType.glyphSmall,
+                    color: House.ColorToken.textSecondary, label: model.sessions.isRailVisible ? "Hide library list" : "Show library list",
+                    help: "Show or hide the library list (⌃⌘S)") { model.sessions.toggleRail() }
             }
         }
-        .padding(.horizontal, House.Spacing.sm)
-        .frame(height: House.Control.row)
-        .background(House.ColorToken.surfaceSunken)
+        .background(House.ColorToken.surface, in: RoundedRectangle(cornerRadius: House.Radius.sm))
+        .fixedSize()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workspace navigation")
     }

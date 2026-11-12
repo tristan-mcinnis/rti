@@ -38,12 +38,14 @@ public enum RTIWindowKind: String, Sendable {
 /// The overlay tabs in their fixed order, which is also their ⌘1…⌘5 keys.
 /// The raw values are `OverlayTab`'s.
 public enum OverlayTabShortcut {
-    public static let order = ["setup", "assist", "auto", "transcript", "notes"]
+    public static let order = ["setup", "assist", "auto", "transcript", "notes", "guide", "codebook"]
 
     /// The ⌘ digit for a tab, 1 to 5, or nil for an unknown tab. Fixed
     /// whether or not an opt-in tab is showing, so the keys never shift.
-    public static func number(forTab rawValue: String) -> Int? {
-        order.firstIndex(of: rawValue).map { $0 + 1 }
+    public static func number(forTab rawValue: String, guideActive: Bool = false) -> Int? {
+        if guideActive, rawValue == "notes" { return 6 }
+        if guideActive, rawValue == "guide" { return 5 }
+        return order.firstIndex(of: rawValue).map { $0 + 1 }
     }
 }
 
