@@ -157,6 +157,37 @@ final class GuideCoreTests: XCTestCase {
         XCTAssertEqual(model.routing { _ in nil }.cells.first?.summary, model.cells.first?.summary)
     }
 
+    func testTrackerOrdersAllEvidenceAndCanUndoModeratorCorrection() throws {
+        let ids = Array(1...6).map(String.init)
+        let first = try pass([cell(turns: ids, quotes: ids.reversed().map { $0 }, votes: [])])
+        var result = try GuideExtraction(group: "G2", transcript: "fixture.md", guide: guide())
+        let turns = ids.enumerated().map { index, id in turn(id, "remote_2", index * 1000, "杯子 \(id)") }
+        result.apply(first, turns: turns, speakers: speakers, rosterBase: nil)
+        XCTAssertEqual(result.cells[0].orderedQuotes.map(\.turnID), ids)
+        XCTAssertEqual(result.cells[0].quotes.count, 4)
+        result.remap(speakers: ["remote_2": GuideSpeaker(participant: "Moderator", isModerator: true)], rosterBase: nil)
+        XCTAssertTrue(result.cells[0].orderedQuotes.isEmpty)
+        result = try JSONDecoder().decode(GuideExtraction.self, from: JSONEncoder().encode(result))
+        result.remap(speakers: speakers, rosterBase: nil)
+        XCTAssertEqual(result.cells[0].orderedQuotes.map(\.original), turns.map(\.text))
+        result.reanchor { ($0.liveStartMs + 900, "Remote speaker 3") }
+        result.refile(speakers: speakers, rosterBase: nil) { $0 >= 2500 ? "S1Q2" : "S1Q1" }
+        XCTAssertEqual(result.cells[0].orderedQuotes.map(\.turnID), ["1", "2"])
+        XCTAssertEqual(result.cells[1].orderedQuotes.map(\.turnID), ["3", "4", "5", "6"])
+        XCTAssertEqual(result.cells[1].orderedQuotes.first?.speakerLabel, "P1")
+    }
+
+    func testLoopHeadersAndUncoveredStatuses() throws {
+        let data = Data(#"{"title":"Food","sections":[{"id":"S1","title":"Shopping","questions":[{"qid":"S1Q1","part":"Drink one","en":"[Choice] Which?","zh":"选哪一种？","probes":[]},{"qid":"S1Q2","part":"Drink two","en":"[Choice] Which?","zh":"选哪一种？","probes":[]}]}]}"#.utf8)
+        let guide = try GuideDocument.parse(data)
+        XCTAssertEqual(guide.header(for: guide.questions[1], in: guide.sections[0]), "Drink two · Choice")
+        XCTAssertNil(guide.resolveMarker("[Choice] Which?"))
+        XCTAssertEqual(guide.resolveMarker("S1", answered: ["S1Q1"]), "S1Q2")
+        let dataSet = GuideExtraction(group: "", transcript: "", guide: guide)
+        XCTAssertEqual(dataSet.cells[0].displayCoverage(passed: true), "Skipped")
+        XCTAssertEqual(dataSet.cells[1].displayCoverage(passed: false), "Pending")
+    }
+
     func testBoundedQuotesAndDeniedOverrideEvidence() throws {
         var extraction = try GuideExtraction(group: "G2", transcript: "mock-group.txt", guide: guide())
         let ids = ["1", "2", "3", "4", "5", "6"]

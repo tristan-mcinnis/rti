@@ -15,6 +15,11 @@ struct GuideTabView: View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
             OverlayTabStrip {
                 overlayTabStripTitle(guide.title)
+                Button(controller.isFollowing ? "Following" : "Manual") { controller.followLive() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityHint(controller.isFollowing ? "Tracking the live question" : "Return to the live question")
+                StimulusLiveControls()
                 if controller.isGenerating {
                     ProgressView().controlSize(.mini)
                 }
@@ -32,7 +37,7 @@ struct GuideTabView: View {
                                      disabled: controller.isGenerating || !SessionCoordinator.shared.isRunning)
                 {
                     if let sessionID = SessionCoordinator.shared.currentSessionId {
-                        Task { _ = await NotesGenerationController.shared.generate(sessionId: sessionID) }
+                        Task { _ = await controller.generate(sessionId: sessionID, entries: SessionCoordinator.shared.liveEntries) }
                     }
                 }
             }
@@ -41,7 +46,8 @@ struct GuideTabView: View {
             }
             GuideReadingView(
                 guide: guide, currentID: controller.currentQuestionID, cells: controller.extraction?.cells ?? [],
-                elapsed: { controller.elapsed(in: $0, at: $1) }, jump: { controller.jump(to: $0) }
+                elapsed: { controller.elapsed(in: $0, at: $1) }, jump: { controller.jump(to: $0) },
+                furthestIndex: controller.furthestIndex, visit: { controller.visitNumber(for: $0, at: $1) }
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -83,113 +89,178 @@ struct GuideTabView: View {
     }
 }
 
-/// The ordered guide and its captured evidence; timers update only their own labels.
+/// The position and clock stay visible while the moderator browses other questions.
 struct GuideReadingView: View {
     let guide: GuideDocument
     let currentID: String?
     let cells: [GuideCell]
     let elapsed: (String, Date) -> TimeInterval
     let jump: (String) -> Void
+    var furthestIndex = 0
+    var visit: (String, Int) -> Int = { _, _ in 1 }
+    @State private var expandedSections: Set<String> = []
+    @State private var expandedQuestions: Set<String> = []
 
     var body: some View {
-        let byQuestion = Dictionary(uniqueKeysWithValues: cells.map { ($0.qid, $0) })
-        ScrollViewReader { scroll in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: House.Spacing.xs) {
-                    ForEach(guide.sections, id: \.id) { section in
-                        HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
-                            Text(section.title)
-                                .font(House.TypeToken.heading)
-                                .foregroundStyle(House.ColorToken.textPrimary)
-                            Spacer(minLength: House.Spacing.xs)
-                            if let planned = section.minutes {
-                                TimelineView(.periodic(from: .now, by: 1)) { clock in
-                                    let seconds = max(0, Int(elapsed(section.id, clock.date)))
-                                    Text(String(format: "%d:%02d / %d min", seconds / 60, seconds % 60, planned))
-                                        .font(House.TypeToken.meta).monospacedDigit()
-                                        .foregroundStyle(House.ColorToken.textSecondary)
-                                        .accessibilityLabel("\(seconds / 60) minutes elapsed of \(planned) planned")
+        let questions = guide.questions
+        let position = questions.firstIndex { $0.qid == currentID } ?? 0
+        let reached = min(questions.count, max(position, furthestIndex) + 1)
+        let order = Dictionary(uniqueKeysWithValues: questions.enumerated().map { ($0.element.qid, $0.offset) })
+        let byID = Dictionary(uniqueKeysWithValues: cells.map { ($0.qid, $0) })
+        let currentSection = guide.sections.first { $0.questions.contains { $0.qid == currentID } }
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            if let section = currentSection {
+                tracker(section, reached: reached, total: questions.count, cells: byID)
+            }
+            ScrollViewReader { scroll in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: House.Spacing.xs) {
+                        ForEach(guide.sections, id: \.id) { section in
+                            let expanded = expandedSections.contains(section.id)
+                            Button {
+                                if expanded { expandedSections.remove(section.id) } else { expandedSections.insert(section.id) }
+                            } label: {
+                                HStack(spacing: House.Spacing.xs) {
+                                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                                    Text(section.title).lineLimit(1)
+                                    Spacer()
+                                    let states = section.questions.map { question in
+                                        status(byID[question.qid], passed: (order[question.qid] ?? 0) < reached - 1)
+                                    }
+                                    ForEach(["Answered", "Lightly covered", "Skipped", "Pending"], id: \.self) { state in
+                                        let count = states.filter { $0 == state }.count
+                                        if count > 0 {
+                                            HStack(spacing: House.Spacing.xxs) {
+                                                SlateStatusDot(color: state == "Answered" ? House.ColorToken.success
+                                                    : state == "Lightly covered" ? House.ColorToken.warning : House.ColorToken.textTertiary)
+                                                Text(String(count)).monospacedDigit()
+                                            }
+                                            .help("\(count) \(state.lowercased())")
+                                            .accessibilityLabel("\(count) \(state.lowercased())")
+                                        }
+                                    }
+                                }
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(House.ColorToken.textSecondary)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+                            ForEach(section.questions, id: \.qid) { question in
+                                let index = order[question.qid] ?? 0
+                                if expanded || (position...position + 2).contains(index) {
+                                    questionCard(question, section: section, cell: byID[question.qid],
+                                                 passed: index < reached - 1, current: question.qid == currentID)
+                                        .id(question.qid)
                                 }
                             }
                         }
-                        .padding(.top, House.Spacing.xs)
-                        ForEach(section.questions, id: \.qid) { question in
-                            questionRow(question, cell: byQuestion[question.qid]).id(question.qid)
-                        }
                     }
+                    .padding(.vertical, House.Spacing.xxs)
                 }
-            }
-            .onChange(of: currentID, initial: true) { _, id in
-                if let id {
-                    scroll.scrollTo(id, anchor: .center)
+                .onChange(of: currentID) { _, id in
+                    if let id { scroll.scrollTo(id, anchor: .top) }
                 }
             }
         }
     }
 
-    private func questionRow(_ question: GuideDocument.Question, cell: GuideCell?) -> some View {
-        let active = question.qid == currentID
-        let answered = cell?.coverage == "Answered"
+    private func tracker(_ section: GuideDocument.Section, reached: Int, total: Int, cells: [String: GuideCell]) -> some View {
+        let ordinal = (section.questions.firstIndex { $0.qid == currentID } ?? 0) + 1
+        let mustAsk = section.questions.filter(\.mustAsk)
         return VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            Button { jump(question.qid) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
-                    if question.mustAsk {
-                        Image(systemName: answered ? "checkmark.square" : "square")
-                            .accessibilityLabel(answered ? "Must ask, answered" : "Must ask, outstanding")
+            HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
+                Text(section.title).font(House.TypeToken.heading).lineLimit(1)
+                Spacer(minLength: House.Spacing.xs)
+                TimelineView(.periodic(from: .now, by: 1)) { clock in
+                    let seconds = max(0, Int(elapsed(section.id, clock.date)))
+                    let time = String(format: "%d:%02d", seconds / 60, seconds % 60)
+                    if let plan = section.minutes {
+                        let over = seconds > plan * 60
+                        HStack(spacing: House.Spacing.xxs) {
+                            if over { SlateStatusDot(color: House.ColorToken.danger) }
+                            Text("\(time) / \(plan) min\(over ? " · over" : "")").font(House.TypeToken.meta).monospacedDigit()
+                        }.accessibilityElement(children: .combine)
+                    } else {
+                        Text("\(time) elapsed").font(House.TypeToken.meta).monospacedDigit()
                     }
-                    VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-                        HStack(spacing: House.Spacing.xs) {
-                            Text(question.qid).font(House.TypeToken.code)
-                            if active {
-                                Text("Current").font(House.TypeToken.label)
-                            }
-                            if let cell, cell.coverage != "Not covered" {
-                                Text(cell.coverage).font(House.TypeToken.meta)
-                            }
-                        }
-                        .foregroundStyle(House.ColorToken.textSecondary)
-                        if !question.en.isEmpty {
-                            Text(question.en).font(House.TypeToken.label)
-                        }
-                        if !question.zh.isEmpty {
-                            Text(question.zh).font(House.TypeToken.bodySmall)
-                        }
-                    }
-                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Set as current question")
-            .accessibilityAddTraits(active ? .isSelected : [])
-            if active {
+            Text("Question \(ordinal) of \(section.questions.count) · \(reached) of \(total) reached")
+                .font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
+            ProgressView(value: Double(reached), total: Double(max(1, total)))
+                .accessibilityLabel("Overall guide progress")
+            if !mustAsk.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: House.Spacing.xs) {
+                        Text("Must ask").font(House.TypeToken.meta)
+                        ForEach(mustAsk, id: \.qid) { q in
+                            let covered = cells[q.qid]?.coverage == "Answered"
+                            Button { jump(q.qid) } label: {
+                                HStack(spacing: House.Spacing.xxs) {
+                                    Image(systemName: covered ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(covered ? House.ColorToken.success : House.ColorToken.textTertiary)
+                                    Text(q.qid)
+                                }
+                                .font(House.TypeToken.meta)
+                                .padding(.horizontal, House.Spacing.xs)
+                                .background(House.ColorToken.chipFill, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(q.qid), \(covered ? "covered" : "still to ask")")
+                        }
+                    }
+                }.scrollIndicators(.hidden)
+            }
+        }
+        .padding(.bottom, House.Spacing.xs)
+    }
+
+    private func status(_ cell: GuideCell?, passed: Bool) -> String {
+        cell?.displayCoverage(passed: passed) ?? (passed ? "Skipped" : "Pending")
+    }
+
+    private func questionCard(_ question: GuideDocument.Question, section: GuideDocument.Section, cell: GuideCell?,
+                              passed: Bool, current: Bool) -> some View {
+        let expanded = expandedQuestions.contains(question.qid)
+        let quotes = cell?.orderedQuotes ?? []
+        return VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            HStack(spacing: House.Spacing.xs) {
+                Button { jump(question.qid) } label: {
+                    HStack {
+                        Text(question.qid).font(House.TypeToken.code)
+                        Text(guide.header(for: question, in: section)).font(House.TypeToken.label)
+                        Spacer()
+                        Text(status(cell, passed: passed)).font(House.TypeToken.meta)
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                .accessibilityHint("Select this question manually")
+                Button {
+                    if expanded { expandedQuestions.remove(question.qid) } else { expandedQuestions.insert(question.qid) }
+                } label: { Image(systemName: expanded ? "chevron.down" : "chevron.right") }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(expanded ? "Show compact question" : "Expand question and evidence")
+            }
+            if !question.en.isEmpty { Text(question.en).font(current ? House.TypeToken.heading : House.TypeToken.bodySmall).lineLimit(current || expanded ? nil : 1) }
+            if (current || expanded) && !question.zh.isEmpty { Text(question.zh).font(House.TypeToken.bodySmall) }
+            if current || expanded {
                 ForEach(question.probes.indices, id: \.self) { index in
                     let probe = question.probes[index]
                     Text([probe.en, probe.zh].filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(House.TypeToken.meta)
-                        .foregroundStyle(House.ColorToken.textSecondary)
+                        .font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
                 }
-            }
-            if let cell, cell.coverage != "Not covered" {
-                if !cell.summary.isEmpty {
-                    Text(cell.summary).font(House.TypeToken.bodySmall)
+                ForEach(expanded ? quotes : Array(quotes.suffix(3)), id: \.turnID) { quote in
+                    let visitNumber = visit(question.qid, quote.offsetMs)
+                    let revisit = visitNumber > 1 ? " · Visit " + String(visitNumber) : ""
+                    Text("\(quote.locator) · \(quote.speakerLabel)\(revisit)  \(quote.original)")
+                        .font(House.TypeToken.bodySmall).textSelection(.enabled)
                 }
-                ForEach(cell.quotes.indices, id: \.self) { index in
-                    let quote = cell.quotes[index]
-                    Text("\(quote.locator) · \(quote.participant)  \(quote.original)")
-                        .font(House.TypeToken.bodySmall)
-                        .foregroundStyle(House.ColorToken.textSecondary)
-                        .textSelection(.enabled)
-                }
-                if let tally = cell.tally {
-                    Text(tally).font(House.TypeToken.label)
-                }
+                if expanded, let cell, !cell.summary.isEmpty { Text(cell.summary).font(House.TypeToken.bodySmall) }
+                if let tally = cell?.tally { Text(tally).font(House.TypeToken.meta) }
             }
         }
-        .foregroundStyle(House.ColorToken.textPrimary)
-        .padding(House.Spacing.xs)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .slateRaisedTile(active)
+        .padding(current ? House.Spacing.sm : House.Spacing.xs)
+        .slateRaisedTile(current)
+        .accessibilityAddTraits(current ? .isSelected : [])
     }
 }

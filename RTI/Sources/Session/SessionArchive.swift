@@ -744,7 +744,7 @@ enum SessionArchive {
         let live = try String(contentsOf: proof, encoding: .utf8)
         let liveRemoteTurns = TranscriptUpgradeMerge.liveSegments(from: live, remote: true)
         extraction.reanchor { quote in
-            guard quote.rawSpeaker.hasPrefix("remote_"),
+            guard quote.rawSpeaker == "remote" || quote.rawSpeaker.hasPrefix("remote_"),
                   let source = TranscriptUpgradeMerge.guideAnchor(original: quote.original.trimmingCharacters(in: .whitespacesAndNewlines),
                                                                  liveStartMs: quote.liveStartMs, in: liveRemoteTurns),
                   source.speaker == SpeakerLabelMapping.displayLabel(forRawKey: quote.rawSpeaker),
@@ -752,6 +752,21 @@ enum SessionArchive {
                   let match = TranscriptUpgradeMerge.guideAnchor(original: quote.original, liveStartMs: quote.liveStartMs, in: upgradedTurns)
             else { return nil }
             return (match.startMs, match.speaker)
+        }
+        let timeline = try MarkerTimeline(events: SessionMarkerJournal.read(in: directory))
+        if extraction.positions != nil || timeline.entries.contains(where: { $0.kind == .marker && $0.guideQuestionID != nil }) {
+            let file = directory.appendingPathComponent("speaker-names.json")
+            let archive = FileManager.default.fileExists(atPath: file.path)
+                ? try JSONDecoder().decode(SpeakerNameArchive.self, from: Data(contentsOf: file)) : SpeakerNameArchive()
+            let positions = extraction.positions ?? []
+            let rosterCount = metadata.guideRoster?.count ?? 0
+            extraction.refile(speakers: archive.guideSpeakers, rosterBase: rosterCount > 0 ? rosterCount : nil) { ms in
+                let marker = timeline.context(at: ms)
+                let last = positions.last { $0.ms <= ms }
+                if let last, last.manual, last.ms >= (marker.startMs ?? 0) { return last.qid }
+                if let linked = marker.guideQuestionID { return linked }
+                return last.flatMap { $0.manual || $0.ms > 0 ? $0.qid : nil }
+            }
         }
         try saveGuideExtraction(extraction, in: directory)
     }

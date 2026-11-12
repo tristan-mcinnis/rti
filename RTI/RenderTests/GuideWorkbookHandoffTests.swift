@@ -100,5 +100,15 @@ final class GuideWorkbookHandoffTests: RenderProofTestCase {
         XCTAssertEqual(anchored.cells[0].quotes.first?.locator, "00:00:05")
         XCTAssertEqual(anchored.cells[1].quotes.first?.verification, "unverified")
         XCTAssertEqual(anchored.cells[1].quotes.first?.original, "In the side pocket.")
+
+        // The upgrade moves the exact first quote from 4 s to 5 s, across
+        // a guide marker at 4.5 s. The second quote keeps its live anchor.
+        _ = try SessionMarkerJournal.append(SessionNote(kind: .marker, offsetMs: 4500, text: "/S1Q2", guideQuestionID: "S1Q2"), in: archive)
+        _ = try SessionMarkerJournal.append(SessionNote(kind: .marker, offsetMs: 9000, text: "/S2Q1", guideQuestionID: "S2Q1"), in: archive)
+        try SessionArchive.reanchorGuide(in: archive, upgradedTurns: upgrade.guideAnchorTurns)
+        let refiled = try JSONDecoder().decode(GuideExtraction.self, from: Data(contentsOf: archive.appendingPathComponent("guide-cells-G1.json")))
+        XCTAssertTrue(refiled.cells[0].orderedQuotes.isEmpty)
+        XCTAssertEqual(refiled.cells[1].orderedQuotes.map(\.original), ["我选 A。"])
+        XCTAssertEqual(refiled.cells.last?.orderedQuotes.map(\.original), ["In the side pocket."])
     }
 }

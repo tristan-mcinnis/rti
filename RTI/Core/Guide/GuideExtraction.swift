@@ -8,12 +8,21 @@ public struct GuideQuote: Codable, Equatable, Sendable {
     public let rawSpeaker: String
     public let liveStartMs: Int
     public let turnID: String
+    public fileprivate(set) var anchorMs: Int?
+    public var offsetMs: Int { anchorMs ?? liveStartMs }
+
+    public var speakerLabel: String {
+        if let seatCode, !seatCode.isEmpty { return participant }
+        if participant == rawSpeaker || participant == SpeakerLabelMapping.displayLabel(forRawKey: rawSpeaker) { return "Them" }
+        return participant
+    }
     public fileprivate(set) var seatCode: String?
     public fileprivate(set) var verification: String?
     public fileprivate(set) var upgradedSpeaker: String?
 
     enum CodingKeys: String, CodingKey {
         case participant, locator, original, english, verification
+        case anchorMs = "anchor_ms"
         case rawSpeaker = "raw_speaker"
         case liveStartMs = "live_start_ms"
         case turnID = "turn_id"
@@ -40,6 +49,18 @@ public struct GuideCell: Codable, Equatable, Sendable {
     public fileprivate(set) var coverage = "Not covered"
     public fileprivate(set) var summary = ""
     public fileprivate(set) var quotes: [GuideQuote] = []
+    private var furtherQuotes: [GuideQuote]?
+    public var orderedQuotes: [GuideQuote] { quotes + (furtherQuotes ?? []) }
+
+    fileprivate mutating func setQuotes(_ values: [GuideQuote]) {
+        let ordered = values.sorted { ($0.offsetMs, $0.turnID) < ($1.offsetMs, $1.turnID) }
+        quotes = Array(ordered.prefix(4))
+        furtherQuotes = ordered.count > 4 ? Array(ordered.dropFirst(4)) : nil
+    }
+
+    public func displayCoverage(passed: Bool) -> String {
+        coverage == "Not covered" ? (passed ? "Skipped" : "Pending") : coverage
+    }
     public fileprivate(set) var tally: String?
     public let score: Double?
     public fileprivate(set) var who = ""
@@ -48,6 +69,10 @@ public struct GuideCell: Codable, Equatable, Sendable {
     // and recompute a vote after two speaker IDs are assigned to one seat.
     fileprivate var notes: [NoteEvidence] = []
     fileprivate var votes: [VoteEvidence] = []
+    // Preserve withdrawn evidence so correcting a mistaken moderator assignment is reversible.
+    fileprivate var withheldQuotes: [GuideQuote]?
+    fileprivate var withheldNotes: [NoteEvidence]?
+    fileprivate var withheldVotes: [VoteEvidence]?
 
     fileprivate init(qid: String) {
         self.qid = qid
@@ -56,6 +81,10 @@ public struct GuideCell: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case qid, coverage, summary, quotes, tally, score, who
+        case furtherQuotes = "further_quotes"
+        case withheldQuotes = "withheld_quotes"
+        case withheldNotes = "withheld_notes"
+        case withheldVotes = "withheld_votes"
         case notes = "note_evidence"
         case votes = "vote_evidence"
     }
@@ -66,6 +95,10 @@ public struct GuideCell: Codable, Equatable, Sendable {
         try c.encode(coverage, forKey: .coverage)
         try c.encode(summary, forKey: .summary)
         try c.encode(quotes, forKey: .quotes)
+        try c.encodeIfPresent(furtherQuotes, forKey: .furtherQuotes)
+        try c.encodeIfPresent(withheldQuotes, forKey: .withheldQuotes)
+        try c.encodeIfPresent(withheldNotes, forKey: .withheldNotes)
+        try c.encodeIfPresent(withheldVotes, forKey: .withheldVotes)
         try c.encode(tally, forKey: .tally)
         try c.encode(score, forKey: .score)
         try c.encode(who, forKey: .who)
@@ -82,8 +115,22 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
     public private(set) var cells: [GuideCell]
     public var captureIncomplete = false
 
+    public struct Position: Codable, Equatable, Sendable {
+        public let qid: String
+        public let ms: Int
+        public let manual: Bool
+        public init(qid: String, ms: Int, manual: Bool) {
+            self.qid = qid
+            self.ms = ms
+            self.manual = manual
+        }
+    }
+
+    public var positions: [Position]?
+
+
     enum CodingKeys: String, CodingKey {
-        case group, transcript, segment, source, cells
+        case group, transcript, segment, source, cells, positions
         case captureIncomplete = "capture_incomplete"
     }
 
@@ -116,7 +163,7 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
 
     private static func respondent(_ raw: String, _ speakers: [String: GuideSpeaker]) -> GuideSpeaker? {
         // Only positively identified system-leg turns can supply participant evidence.
-        guard raw.hasPrefix("remote_"), let label = SpeakerLabelMapping.displayLabel(forRawKey: raw) else { return nil }
+        guard raw == "remote" || raw.hasPrefix("remote_"), let label = SpeakerLabelMapping.displayLabel(forRawKey: raw) else { return nil }
         let speaker = speakers[raw] ?? GuideSpeaker(participant: label)
         return speaker.isModerator ? nil : speaker
     }
@@ -142,13 +189,15 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
                 cell.notes.append(NoteEvidence(summary: summary, speakers: supported.map(\.speaker), turnIDs: proposed.turns,
                                                substantial: proposed.coverage == "Answered"))
             }
-            for quote in proposed.quotes where cell.quotes.count < 4 {
+            var allQuotes = cell.orderedQuotes
+            for quote in proposed.quotes {
                 guard cited.contains(quote.turn), let original = turn(quote.turn), let speaker = Self.respondent(original.speaker, speakers),
-                      !cell.quotes.contains(where: { $0.turnID == original.id }) else { continue }
-                cell.quotes.append(GuideQuote(participant: speaker.participant, locator: Self.locator(original.startMs),
+                      !allQuotes.contains(where: { $0.turnID == original.id }) else { continue }
+                allQuotes.append(GuideQuote(participant: speaker.participant, locator: Self.locator(original.startMs),
                                               original: original.text, english: quote.english, rawSpeaker: original.speaker,
                                               liveStartMs: original.startMs, turnID: original.id, seatCode: speaker.seatCode))
             }
+            cell.setQuotes(allQuotes)
             for vote in proposed.votes {
                 let choice = vote.choice.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard cited.contains(vote.turn), let source = turn(vote.turn), !choice.isEmpty,
@@ -239,15 +288,27 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
     public mutating func remap(speakers: [String: GuideSpeaker], rosterBase: Int?) {
         for index in cells.indices {
             var cell = cells[index]
-            cell.notes.removeAll { note in note.speakers.contains { Self.respondent($0, speakers) == nil } }
-            cell.votes.removeAll { Self.respondent($0.speaker, speakers) == nil }
-            cell.quotes = cell.quotes.compactMap { quote in
-                guard let speaker = Self.respondent(quote.rawSpeaker, speakers) else { return nil }
+            let notes = cell.notes + (cell.withheldNotes ?? [])
+            let votes = cell.votes + (cell.withheldVotes ?? [])
+            let quotes = cell.orderedQuotes + (cell.withheldQuotes ?? [])
+            cell.notes = notes.filter { note in note.speakers.allSatisfy { Self.respondent($0, speakers) != nil } }
+            let hiddenNotes = notes.filter { note in note.speakers.contains { Self.respondent($0, speakers) == nil } }
+            cell.withheldNotes = hiddenNotes.isEmpty ? nil : hiddenNotes
+            cell.votes = votes.filter { Self.respondent($0.speaker, speakers) != nil }
+            let hiddenVotes = votes.filter { Self.respondent($0.speaker, speakers) == nil }
+            cell.withheldVotes = hiddenVotes.isEmpty ? nil : hiddenVotes
+            var hiddenQuotes: [GuideQuote] = []
+            cell.setQuotes(quotes.compactMap { quote in
+                guard let speaker = Self.respondent(quote.rawSpeaker, speakers) else {
+                    hiddenQuotes.append(quote)
+                    return nil
+                }
                 var updated = quote
                 updated.participant = speaker.participant
                 updated.seatCode = speaker.seatCode
                 return updated
-            }
+            })
+            cell.withheldQuotes = hiddenQuotes.isEmpty ? nil : hiddenQuotes
             let hasEvidence = !cell.notes.isEmpty || !cell.quotes.isEmpty || !cell.votes.isEmpty
             if hasEvidence {
                 cell.coverage = !cell.quotes.isEmpty && cell.notes.contains(where: \.substantial) ? "Answered" : "Lightly covered"
@@ -265,15 +326,53 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
     }
 
     public mutating func reanchor(_ match: (GuideQuote) -> (startMs: Int, speaker: String)?) {
-        for cell in cells.indices {
-            for index in cells[cell].quotes.indices {
-                var quote = cells[cell].quotes[index]
+        for index in cells.indices {
+            func anchored(_ original: GuideQuote) -> GuideQuote {
+                var quote = original
                 let anchor = match(quote)
-                quote.locator = Self.locator(anchor?.startMs ?? quote.liveStartMs)
+                quote.anchorMs = anchor?.startMs
+                quote.locator = Self.locator(quote.offsetMs)
                 quote.verification = anchor == nil ? "unverified" : "verified"
                 quote.upgradedSpeaker = anchor?.speaker
-                cells[cell].quotes[index] = quote
+                return quote
             }
+            cells[index].setQuotes(cells[index].orderedQuotes.map(anchored))
+            cells[index].withheldQuotes = cells[index].withheldQuotes?.map(anchored)
         }
+    }
+
+    /// Reconcile evidence by turn identity. A summary spanning two new
+    /// questions cannot support either one, but both verbatims remain available.
+    public mutating func refile(speakers: [String: GuideSpeaker], rosterBase: Int?,
+                                questionAt: (Int) -> String?) {
+        let indexes = Dictionary(uniqueKeysWithValues: cells.enumerated().map { ($1.qid, $0) })
+        let byTurn = Dictionary(cells.flatMap { $0.orderedQuotes + ($0.withheldQuotes ?? []) }.map { ($0.turnID, $0.offsetMs) },
+                                uniquingKeysWith: { first, _ in first })
+        func destination(_ turn: String, source: Int) -> Int {
+            let timestamp = byTurn[turn] ?? turn.split(separator: "@").last?.split(separator: "#").first.flatMap { Int($0) }
+            return timestamp.flatMap(questionAt).flatMap { indexes[$0] } ?? source
+        }
+        let previous = cells
+        var quotes = Array(repeating: [GuideQuote](), count: cells.count)
+        var seen = Set<String>()
+        for index in cells.indices {
+            cells[index].notes = []
+            cells[index].votes = []
+            cells[index].withheldQuotes = nil
+            cells[index].withheldNotes = nil
+            cells[index].withheldVotes = nil
+        }
+        for (source, cell) in previous.enumerated() {
+            for quote in cell.orderedQuotes + (cell.withheldQuotes ?? []) where seen.insert(quote.turnID).inserted {
+                quotes[destination(quote.turnID, source: source)].append(quote)
+            }
+            for note in cell.notes + (cell.withheldNotes ?? []) {
+                let targets = Set(note.turnIDs.map { destination($0, source: source) })
+                if targets.count == 1, let target = targets.first { cells[target].notes.append(note) }
+            }
+            for vote in cell.votes + (cell.withheldVotes ?? []) { cells[destination(vote.turn, source: source)].votes.append(vote) }
+        }
+        for index in cells.indices { cells[index].setQuotes(quotes[index]) }
+        remap(speakers: speakers, rosterBase: rosterBase)
     }
 }

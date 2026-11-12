@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class GuideLiveTimingTests: RenderProofTestCase {
-    func testLaterQuestionBeginsAtFreshEvidenceAndKeepsPreviousManualAssignment() async throws {
+    func testFollowingTracksFreshEvidenceWhileManualKeepsItsFilingPosition() async throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Tests/GuideFixtures/dg-questions.json")
         let guide = try GuideDocument.parse(Data(contentsOf: url))
@@ -27,11 +27,30 @@ final class GuideLiveTimingTests: RenderProofTestCase {
         controller.select("S1Q2", at: start.addingTimeInterval(10))
         await controller.finish(sessionId: "clock-fixture", entries: entries, at: start.addingTimeInterval(30))
 
-        XCTAssertEqual(controller.currentQuestionID, "S2Q1")
-        XCTAssertEqual(controller.elapsed(in: "S1", at: start.addingTimeInterval(30)), 17)
-        XCTAssertEqual(controller.elapsed(in: "S2", at: start.addingTimeInterval(30)), 13)
-        XCTAssertEqual(controller.extraction?.cells.last?.quotes.map(\.original), ["I would change the lid."])
-        XCTAssertEqual(controller.extraction?.cells.first { $0.qid == "S1Q2" }?.quotes.map(\.original), ["It fits in my pocket."])
+        XCTAssertEqual(controller.currentQuestionID, "S1Q2")
+        XCTAssertEqual(controller.questionID(atTranscriptMs: 21000), "S1Q2")
+        XCTAssertEqual(controller.elapsed(in: "S1", at: start.addingTimeInterval(30)), 30)
+        XCTAssertTrue(controller.extraction?.cells.last?.quotes.isEmpty == true)
+        XCTAssertEqual(controller.extraction?.cells.first { $0.qid == "S1Q2" }?.quotes.map(\.original),
+                       ["It fits in my pocket.", "I would change the lid."])
+    }
+
+    func testReturningToFollowingRecoversLiveQuestion() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Tests/GuideFixtures/dg-questions.json")
+        let guide = try GuideDocument.parse(Data(contentsOf: url))
+        let controller = GuideSessionController()
+        let start = Date()
+        controller.start(sessionID: "review", guide: guide, guideURL: url, group: nil, roster: [], rosterURL: nil, startedAt: start)
+        XCTAssertTrue(controller.isFollowing)
+        controller.select("S1Q2", at: start.addingTimeInterval(1))
+        XCTAssertFalse(controller.isFollowing)
+        controller.followLive(at: start.addingTimeInterval(2))
+        XCTAssertTrue(controller.isFollowing)
+        XCTAssertEqual(controller.currentQuestionID, "S1Q1")
+        XCTAssertEqual(controller.questionID(atTranscriptMs: 1500), "S1Q2")
+        XCTAssertEqual(controller.questionID(atTranscriptMs: 2100), "S1Q1")
+        XCTAssertEqual(controller.furthestIndex, 1)
     }
 
     func testSingleFinalTurnAfterSilenceAndLateReplyAcrossSessions() async throws {

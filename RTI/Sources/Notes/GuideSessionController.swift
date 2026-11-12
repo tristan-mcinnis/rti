@@ -18,8 +18,56 @@ final class GuideSessionController {
         sessionID != nil
     }
 
+    private(set) var manualQuestionID: String?
+    private(set) var furthestIndex = 0
+    var isFollowing: Bool { manualQuestionID == nil }
+
     var currentQuestionID: String? {
-        cursor?.currentQID
+        manualQuestionID ?? markerAt(Int.max)?.guideQuestionID ?? cursor?.currentQID
+    }
+
+    func resolveMarker(label: String) -> String? {
+        let answered = Set(extraction?.cells.filter { $0.coverage == "Answered" }.map(\.qid) ?? [])
+        return guide?.resolveMarker(label, answered: answered)
+    }
+
+    @discardableResult
+    func selectMarker(label: String, atMs ms: Int) -> String? {
+        guard !sealed, let qid = markerAt(ms)?.guideQuestionID ?? resolveMarker(label: label) else { return nil }
+        cursor?.select(qid, atMs: ms)
+        updateProgress(qid)
+        return qid
+    }
+
+    private func markerAt(_ ms: Int) -> MarkerContext? {
+        guard let sessionID, SessionMarkers.shared.sessionID == sessionID else { return nil }
+        return SessionMarkers.shared.context(at: ms)
+    }
+
+    func questionID(atTranscriptMs ms: Int) -> String? {
+        guard guide != nil else { return nil }
+        return lockedQuestion(at: ms) ?? selections.last(where: { $0.transcriptMs <= ms })?.qid
+    }
+
+    func markersDidChange() {
+        guard let sessionID, SessionMarkers.shared.sessionID == sessionID, var updated = extraction else { return }
+        let boundaries = SessionMarkers.shared.timeline.entries.filter { $0.kind == .marker }
+        guard boundaries != markerBoundaries else { return }
+        markerBoundaries = boundaries
+        if let linked = markerAt(Int.max)?.guideQuestionID { updateProgress(linked) }
+        updated.refile(speakers: SpeakerNameStore.shared.guideSpeakers, rosterBase: rosterBase, questionAt: lockedQuestion(at:))
+        extraction = updated
+    }
+
+    private func updateProgress(_ qid: String) {
+        if let index = guide?.questions.firstIndex(where: { $0.qid == qid }) { furthestIndex = max(furthestIndex, index) }
+    }
+
+    func followLive(at date: Date = Date()) {
+        guard !sealed, manualQuestionID != nil, let target = markerAt(Int.max)?.guideQuestionID ?? cursor?.currentQID else { return }
+        manualQuestionID = nil
+        let ms = max(0, Int(date.timeIntervalSince(startedAt) * 1000))
+        appendSelection(target, atMs: ms, manual: false)
     }
 
     private var cursor: GuideCursor?
@@ -38,11 +86,11 @@ final class GuideSessionController {
     private struct Selection {
         let qid: String
         let transcriptMs: Int
-        let elapsed: TimeInterval
         let manual: Bool
     }
 
     private var selections: [Selection] = []
+    private var markerBoundaries: [SessionNote] = []
 
     init(request: LLMRequest = LLMRequest(priority: .background)) {
         self.request = request
@@ -67,12 +115,15 @@ final class GuideSessionController {
         self.guideURL = guideURL
         self.parsedSourceJSON = parsedSourceJSON
         self.startedAt = startedAt
+        manualQuestionID = nil
+        furthestIndex = 0
+        markerBoundaries = []
         self.roster = roster
         self.rosterURL = rosterURL
         let cursor = GuideCursor(guide: guide)
         self.cursor = cursor
         extraction = GuideExtraction(group: group ?? "", transcript: "transcript.live.md", guide: guide)
-        selections = [Selection(qid: cursor.currentQID, transcriptMs: 0, elapsed: 0, manual: false)]
+        selections = [Selection(qid: cursor.currentQID, transcriptMs: 0, manual: false)]
         consumed.removeAll()
         sealed = false
         isGenerating = false
@@ -92,6 +143,9 @@ final class GuideSessionController {
         rosterURL = nil
         extraction = nil
         selections = []
+        manualQuestionID = nil
+        furthestIndex = 0
+        markerBoundaries = []
         consumed.removeAll()
         isGenerating = false
         lastError = nil
@@ -114,8 +168,15 @@ final class GuideSessionController {
     func select(_ qid: String, at date: Date) {
         guard !sealed, guide?.questions.contains(where: { $0.qid == qid }) == true else { return }
         let timeline = max(0, Int((date.timeIntervalSince(startedAt) * 1000).rounded()))
-        cursor?.select(qid, atMs: timeline)
-        selections.append(Selection(qid: qid, transcriptMs: timeline, elapsed: capturedElapsed(at: date), manual: true))
+        cursor?.resetEvidence(atMs: timeline)
+        manualQuestionID = qid
+        appendSelection(qid, atMs: timeline, manual: true)
+    }
+
+    private func appendSelection(_ qid: String, atMs ms: Int, manual: Bool) {
+        let index = selections.firstIndex { $0.transcriptMs > ms } ?? selections.endIndex
+        selections.insert(Selection(qid: qid, transcriptMs: ms, manual: manual), at: index)
+        updateProgress(qid)
     }
 
     private func capturedElapsed(at date: Date) -> TimeInterval {
@@ -126,14 +187,33 @@ final class GuideSessionController {
         return max(0, date.timeIntervalSince(startedAt))
     }
 
+    private var boundaryOffsets: [Int] {
+        Set(selections.map(\.transcriptMs) + markerBoundaries.map(\.offsetMs)).sorted()
+    }
+
+    func visitNumber(for qid: String, at ms: Int) -> Int {
+        var visits = 0
+        var previous: String?
+        for offset in boundaryOffsets where offset <= ms {
+            let current = questionID(atTranscriptMs: offset)
+            if current == qid && previous != qid { visits += 1 }
+            previous = current
+        }
+        return max(1, visits)
+    }
+
     func elapsed(in sectionID: String, at date: Date) -> TimeInterval {
         guard let section = guide?.sections.first(where: { $0.id == sectionID }) else { return 0 }
         let qids = Set(section.questions.map(\.qid))
         let end = capturedElapsed(at: date)
+        let offsets = boundaryOffsets
         var total: TimeInterval = 0
-        for (index, selection) in selections.enumerated() where qids.contains(selection.qid) {
-            let next = selections.dropFirst(index + 1).first?.elapsed ?? end
-            total += max(0, min(end, next) - selection.elapsed)
+        for (index, offset) in offsets.enumerated() {
+            guard let qid = questionID(atTranscriptMs: offset), qids.contains(qid) else { continue }
+            let begin = capturedElapsed(at: startedAt.addingTimeInterval(Double(offset) / 1000))
+            let next = index + 1 < offsets.count
+                ? capturedElapsed(at: startedAt.addingTimeInterval(Double(offsets[index + 1]) / 1000)) : end
+            total += max(0, min(end, next) - begin)
         }
         return total
     }
@@ -148,6 +228,7 @@ final class GuideSessionController {
 
     func snapshot(for id: String) -> GuideArchiveSnapshot? {
         guard sessionID == id, let guideURL, var extraction else { return nil }
+        extraction.positions = selections.map { GuideExtraction.Position(qid: $0.qid, ms: $0.transcriptMs, manual: $0.manual) }
         if !sealed {
             let sources = GuideTranscript.sources(from: SessionCoordinator.shared.liveEntries)
             extraction.captureIncomplete = sources.contains { !consumed.contains($0.turn.id) }
@@ -235,13 +316,21 @@ final class GuideSessionController {
             let evidence = context.filter { $0.attributable && evidenceIDs.contains($0.turn.id) }.map(\.turn)
             if self.cursor?.suggest(suggestion, evidence: evidence, revision: cursor.revision) == true {
                 let first = self.cursor?.acceptedFromMs ?? latest
-                let boundary = startedAt.addingTimeInterval(Double(first) / 1000)
-                selections.append(Selection(qid: suggestion, transcriptMs: first, elapsed: capturedElapsed(at: boundary), manual: false))
+                updateProgress(suggestion)
+                if isFollowing { appendSelection(suggestion, atMs: first, manual: false) }
             }
         } else {
             self.cursor?.suggest(cursor.currentQID, evidence: [], revision: cursor.revision)
         }
-        let eligible = newTurns.filter(\.attributable).map(\.turn)
+        fileEvidence(pass, from: newTurns.filter(\.attributable).map(\.turn))
+        consumed.formUnion(newTurns.map(\.turn.id))
+        lastError = nil
+        return newTurns.last?.turn.startMs
+    }
+
+    /// A live pass and an offline fixture use the same timestamp routing and quote checks.
+    func fileEvidence(_ pass: GuidePass, from eligible: [GuideTurn]) {
+        guard sessionID != nil else { return }
         let allowedQuestions = Dictionary(uniqueKeysWithValues: eligible.compactMap { turn in
             lockedQuestion(at: turn.startMs).map { (turn.id, $0) }
         })
@@ -249,13 +338,14 @@ final class GuideSessionController {
         extraction?.apply(routed, turns: eligible, speakers: SpeakerNameStore.shared.guideSpeakers, rosterBase: rosterBase) { qid, turn in
             allowedQuestions[turn].map { $0 == qid } ?? true
         }
-        consumed.formUnion(newTurns.map(\.turn.id))
-        lastError = nil
-        return newTurns.last?.turn.startMs
     }
 
     private func lockedQuestion(at ms: Int) -> String? {
-        guard let selected = selections.last(where: { $0.transcriptMs <= ms }), selected.manual else { return nil }
-        return selected.qid
+        let position = selections.last { $0.transcriptMs <= ms }
+        let marker = markerAt(ms)
+        if let position, position.manual, position.transcriptMs >= (marker?.startMs ?? 0) { return position.qid }
+        if let link = marker?.guideQuestionID { return link }
+        guard let position, position.manual || position.transcriptMs > 0 else { return nil }
+        return position.qid
     }
 }

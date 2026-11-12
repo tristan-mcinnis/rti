@@ -13,13 +13,15 @@ public struct GuideDocument: Codable, Equatable, Sendable {
         public let zh: String
         public let probes: [Probe]
         public let part: String?
+        public let loop: String?
+        public let topic: String?
         private let mustAskFlag: Bool?
         public var mustAsk: Bool {
             mustAskFlag ?? false
         }
 
         private enum CodingKeys: String, CodingKey {
-            case qid, en, zh, probes, part
+            case qid, en, zh, probes, part, loop, topic
             case mustAskFlag = "must_ask"
         }
     }
@@ -33,9 +35,33 @@ public struct GuideDocument: Codable, Equatable, Sendable {
 
     public let title: String
     public let sections: [Section]
+    public let hypotheses: [String]?
 
     public var questions: [Question] {
         sections.flatMap(\.questions)
+    }
+
+    /// Prefer a supplied loop/part heading. Workbook exports also preserve
+    /// topic names in square brackets at the beginning of a question.
+    public func header(for question: Question, in section: Section) -> String {
+        let bracketTopic: String? = {
+            let wording = question.en.isEmpty ? question.zh : question.en
+            guard wording.first == "[", let end = wording.firstIndex(of: "]") else { return nil }
+            return String(wording[wording.index(after: wording.startIndex)..<end])
+        }()
+        let context = [question.loop, question.part].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        let topic = [question.topic, bracketTopic].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        return [context ?? section.title, topic].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    public func resolveMarker(_ label: String, answered: Set<String> = []) -> String? {
+        let raw = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+        if let exact = questions.first(where: { $0.qid.caseInsensitiveCompare(raw) == .orderedSame }) { return exact.qid }
+        let matching = questions.filter { [$0.en, $0.zh].contains { !$0.isEmpty && $0.caseInsensitiveCompare(raw) == .orderedSame } }
+        if matching.count == 1 { return matching[0].qid }
+        let section = sections.first { $0.id.caseInsensitiveCompare(raw) == .orderedSame || $0.title.caseInsensitiveCompare(raw) == .orderedSame }
+        return section?.questions.first(where: { !answered.contains($0.qid) })?.qid ?? section?.questions.first?.qid
     }
 
     public static func parse(_ data: Data) throws -> Self {
@@ -93,6 +119,10 @@ public struct GuideCursor: Sendable {
     public mutating func select(_ qid: String, atMs: Int) {
         guard ids.contains(qid) else { return }
         currentQID = qid
+        resetEvidence(atMs: atMs)
+    }
+
+    public mutating func resetEvidence(atMs: Int) {
         revision += 1
         afterMs = atMs
         acceptedFromMs = nil
