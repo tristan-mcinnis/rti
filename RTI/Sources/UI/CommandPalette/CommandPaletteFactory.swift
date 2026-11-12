@@ -121,7 +121,7 @@ enum CommandBuilder {
                     keywords: ["guide", "jump", section.title, question.en, question.zh],
                     perform: {
                         controller.jump(to: question.qid)
-                        NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.notes.rawValue)
+                        NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.guide.rawValue)
                     }
                 )
             }
@@ -143,6 +143,13 @@ enum CommandBuilder {
                            NotificationCenter.default.post(name: .rtiSelectTab, object: GuideSessionController.shared.isActive ? OverlayTab.guide.rawValue : OverlayTab.setup.rawValue)
                            SessionMarkers.shared.showsControls = true
                        }),
+            RTICommand(
+                id: "research.starQuote", title: "Star transcript line", subtitle: "⌘⌥8",
+                keywords: ["star", "quote", "bank"],
+                isAvailable: { session.isRunning && ResearchCodebookController.shared.location != nil },
+                perform: { Task { await ResearchCodebookController.shared.star() } },
+                hotkeyKeyCode: UInt32(kVK_ANSI_8), hotkeyModifiers: UInt32(cmdKey | optionKey), hotkeySessionScoped: true
+            ),
             RTICommand(
                 id: "meeting.project",
                 title: "Choose Meeting Project",

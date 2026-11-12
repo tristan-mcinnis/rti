@@ -270,6 +270,14 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(LiveTranscriptPresentation.utterances(from: p.liveEntries).map(\.text), ["我 喜欢 喜欢"])
     }
 
+    func testProviderEndpointSeparatesEvidenceWithoutAddingSpokenText() {
+        let p = TranscriptPipeline()
+        p.process(words: [word("First.", speaker: 1, start: 0, end: 100),
+                          word("<end>", speaker: 1, start: 100, end: 100)], channel: "system")
+        p.process(words: [word("Second.", speaker: 1, start: 105, end: 200)], channel: "system")
+        XCTAssertEqual(LiveTranscriptPresentation.utterances(from: p.liveEntries).map(\.text), ["First.", "Second."])
+    }
+
     func testTranslationAndOriginalAtIdenticalTimeStayOnTheirOwnLane() {
         let p = TranscriptPipeline()
         p.process(words: [word("杯子", speaker: 1, start: 200, end: 500, translationStatus: "original", language: "zh"),
@@ -415,34 +423,27 @@ final class TranscriptPipelineTests: XCTestCase {
     /// pipeline caches the merged list and only rebuilds when entries changed;
     /// and nothing is read while the transcript is being built, because a read
     /// per append would itself be the quadratic cost.
-    private func rebuildMilliseconds(entries: Int) -> Double {
-        let p = TranscriptPipeline()
-        var ms = 0
-        for index in 0..<entries {
-            p.process(
-                words: [word(distinctText(index), speaker: 0, start: ms, end: ms + 900)],
-                channel: index.isMultiple(of: 2) ? "mic" : "system"
-            )
-            ms += 1000
+    private func updateMilliseconds(entries: Int) -> Double {
+        let pipeline = TranscriptPipeline()
+        var projection = LiveTranscriptPresentation.Projection()
+        for i in 0..<entries {
+            pipeline.process(words: [word(distinctText(i), speaker: i % 4 + 1, start: i * 1000, end: i * 1000 + 600)],
+                             channel: i.isMultiple(of: 2) ? "mic" : "system")
         }
-        XCTAssertEqual(
-            p.liveEntries.count,
-            entries,
-            "every fixture entry is a distinct line, so none may dedupe away"
-        )
-
-        var fastest = Double.greatestFiniteMagnitude
-        for _ in 0..<3 {
-            ms += 1000
-            p.process(
-                words: [word(distinctText(entries), speaker: 0, start: ms, end: ms + 900)],
-                channel: "mic"
-            )
-            let started = DispatchTime.now().uptimeNanoseconds
-            _ = p.liveEntries
-            fastest = min(fastest, Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+        projection.updateLiveFinals(pipeline)
+        var observed = pipeline.liveEntries
+        let start = DispatchTime.now().uptimeNanoseconds
+        for i in entries..<(entries + 64) {
+            pipeline.process(words: [word(" Cup.", speaker: i % 4 + 1, start: i * 1000, end: i * 1000 + 600)],
+                             channel: i.isMultiple(of: 2) ? "mic" : "system")
+            projection.updateLiveFinals(pipeline)
+            let rows = projection.updateInterims([])
+            XCTAssertFalse(projection.turns(for: rows).isEmpty)
+            withExtendedLifetime(observed) {}
+            observed = pipeline.liveEntries
         }
-        return fastest
+        XCTAssertEqual(observed.count, entries + 64)
+        return Double(DispatchTime.now().uptimeNanoseconds - start) / 64_000_000
     }
 
     /// Regression guard for 2026-09-22. In a 1h45m session the cross-channel
@@ -456,8 +457,8 @@ final class TranscriptPipelineTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["RTI_TIMING_TESTS"] == "1" else {
             throw XCTSkip("Set RTI_TIMING_TESTS=1 to run the merge-cost timing check")
         }
-        let small = rebuildMilliseconds(entries: 4_000)
-        let large = rebuildMilliseconds(entries: 16_000)
+        let small = updateMilliseconds(entries: 4_000)
+        let large = updateMilliseconds(entries: 16_000)
         XCTAssertLessThan(
             large,
             1_000,
