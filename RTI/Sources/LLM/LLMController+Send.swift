@@ -11,6 +11,7 @@ extension LLMController {
         action: String,
         fullTranscript: Bool = false,
         transcriptSeconds: Double? = nil,
+        moderation: ResearchModeration? = nil,
         forceSmart: Bool = false,
         referencedDocuments: [ReferencedDocument] = [],
         retrievalContext: String? = nil,
@@ -30,6 +31,11 @@ extension LLMController {
         retrievalStatus: VaultRetrieval.Status? = nil
     ) {
         guard !streaming else { return }
+        let access = ScreenshotPolicy.shared
+        let acceptsScreens = moderation == nil && access.allows(.manual)
+        let referencedDocuments = acceptsScreens ? referencedDocuments : referencedDocuments.filter { $0.payload?.archiveKind != .screenshot }
+        let sourcePayloads = acceptsScreens ? sourcePayloads : sourcePayloads.filter { $0.archiveKind != .screenshot }
+        let attachments = acceptsScreens ? attachments : attachments.filter { $0.kind != .screen }
         let toolPolicy = SessionCoordinator.shared.isRunning && !broaderSearchEnabled
             ? toolPolicy.forLiveCall(question: userInput, callType: callTypeStore.active)
             : toolPolicy
@@ -45,10 +51,9 @@ extension LLMController {
         let parentTurnID = regenerationParentTurnID
         regenerationParentTurnID = nil
 
-        let transcript = recentTranscriptText(fullWindow: fullTranscript, maxSeconds: transcriptSeconds)
-        let manualScreenContext = pendingScreenContext
-        let pendingImageData = pendingScreenImage
-        clearPendingScreenContext()
+        let transcript = moderation?.transcript ?? recentTranscriptText(fullWindow: fullTranscript, maxSeconds: transcriptSeconds)
+        let manualScreenContext = acceptsScreens ? pendingScreenContext : nil
+        let pendingImageData = acceptsScreens ? pendingScreenImage : nil
 
         let manualScreenRead = !(manualScreenContext?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         // A screenshot is sent when its IMAGE was captured, even with no OCR
@@ -72,16 +77,18 @@ extension LLMController {
         // switching provider behind the user's back. An image the chosen model
         // cannot read is not a failure: the route records that it stays on
         // this Mac and is labelled, so the turn is never silently downgraded.
+        let localAnswer = moderation?.localAnswer
         let route: ChatRouteConfiguration
-        switch resolveTurnRoute(
-            imageCount: imageCount,
-            forceSmart: forceSmart
-        ) {
-        case let .success(resolved):
-            route = resolved
-        case let .failure(blocker):
-            postLocalTurn(userInput: userInput, action: action, output: blocker.message)
-            return
+        if localAnswer != nil {
+            route = .localTranscriptCheck
+        } else {
+            switch resolveTurnRoute(imageCount: imageCount, forceSmart: forceSmart) {
+            case let .success(resolved):
+                route = resolved
+            case let .failure(blocker):
+                postLocalTurn(userInput: userInput, action: action, output: blocker.message)
+                return
+            }
         }
         let effectiveSmart = route.smart
         // The route decides whether the pictures themselves go to the provider.
@@ -91,7 +98,7 @@ extension LLMController {
                 return LLMImage(jpegData: data, mimeType: payload.normalizedImageMimeType ?? "image/jpeg")
             }
             : []
-        let ambientScreenContext = ambientScreenRead()
+        let ambientScreenContext = acceptsScreens ? ambientScreenRead() : nil
         let screenContext = [ambientScreenContext, manualScreenContext]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -105,7 +112,8 @@ extension LLMController {
 
         // The call type shapes a call. A chat with no recording is not a call.
         let liveCallType = SessionCoordinator.shared.isRunning ? callTypeStore.active : nil
-        let basePrompt = PromptStore.shared.text(liveCallType?.prompt ?? .systemDefault)
+        let selectedPrompt = PromptStore.shared.text(liveCallType?.prompt ?? .systemDefault)
+        let basePrompt = moderation.map { selectedPrompt + "\n\n" + $0.responseContract } ?? selectedPrompt
 
         let turn = AssistantTurnBuilder.build(.init(
             userInput: userInput,
@@ -115,20 +123,21 @@ extension LLMController {
             transcriptWindowMinutes: Int((transcriptSeconds ?? Self.contextWindowSeconds) / 60),
             workstreamScopePath: MeetingContextStore.shared.workstreamScopePath,
             hasWorkstreamName: MeetingContextStore.shared.workstreamName != nil,
-            priorSuggestions: priorSuggestions(action: action),
+            priorSuggestions: moderation == nil ? priorSuggestions(action: action) : "",
             sourceContext: sourceContext,
             externalRetrievalAllowed: toolPolicy.allowsExternalRetrieval,
             retrievalContext: retrievalContext,
             baseSystemPrompt: basePrompt,
             listenerSystemSuffix: PromptStore.shared.text(.listenerSystemSuffix),
             listenerMode: listenerMode,
-            meetingContext: MeetingContextStore.shared.combined,
-            meetingBrief: MeetingContextStore.shared.briefContext,
-            glossaryFragment: GlossaryStore.shared.systemPromptFragment,
+            meetingContext: moderation == nil ? MeetingContextStore.shared.combined : nil,
+            meetingBrief: moderation == nil ? MeetingContextStore.shared.briefContext : nil,
+            glossaryFragment: moderation == nil ? GlossaryStore.shared.systemPromptFragment : nil,
             screenContext: screenUsed ? screenContext : nil,
             images: runtimeImages,
             referencedDocumentsText: sourceSelection.text,
-            existingEntries: entries
+            existingEntries: moderation == nil ? entries : [],
+            liveReply: liveCallType != nil && moderation == nil
         ))
 
         // Turn records for the thread: what went with the question, and what
@@ -221,17 +230,22 @@ extension LLMController {
         streaming = true
         reasoning = false
         let thisEntryID = assistantEntry.id
+        let usesScreenMaterial = screenUsed || screenAttached || referencedDocuments.contains { $0.payload?.archiveKind == .screenshot }
+        let canUseScreenTool = moderation == nil && access.allows(.automatic) && toolPolicy.allowsTool(named: "capture_screen")
+        screenPolicyTurnID = usesScreenMaterial || canUseScreenTool ? thisEntryID : nil
+        let screenGeneration = screenPolicyTurnID == nil ? nil : access.generation
 
-        let toolsJSON = LLMToolRegistry.wireFormatData(policy: toolPolicy)
-        let requestSnapshot = Self.requestSnapshot(
+        let toolsJSON = moderation == nil ? LLMToolRegistry.wireFormatData(policy: toolPolicy) : nil
+        let requestSnapshot = localAnswer == nil ? Self.requestSnapshot(
             route: route,
             messages: apiMessages,
             toolPolicy: toolPolicy,
             decision: decision
-        )
+        ) : nil
 
         sendTask = Task { [weak self] in
             guard let self else { return }
+            if let screenGeneration, access.generation != screenGeneration { screenshotPolicyDidChange(); return }
             // Persist what was submitted — the question, the attachment bytes
             // and the extracted text — BEFORE the provider is called. A
             // failure keeps the draft, drops the half-made turn, and never
@@ -251,7 +265,8 @@ extension LLMController {
                 parentTurnID: parentTurnID,
                 conversation: targetThread,
                 sessionID: turnSessionID,
-                generation: capturedGeneration
+                generation: capturedGeneration,
+                screenGeneration: screenGeneration
             )
             // A replaced or cancelled send owns none of the current UI state,
             // even if an old storage operation completed without cancellation.
@@ -285,9 +300,18 @@ extension LLMController {
             case .noStore:
                 clearDatedSources(consumedDatedSources)
             }
+            if let screenGeneration, access.generation != screenGeneration { screenshotPolicyDidChange(); return }
+            if screenAttached, pendingScreenContext == manualScreenContext, pendingScreenImage == pendingImageData {
+                clearPendingScreenContext()
+            }
             // The question is on disk; from here the partial answer is
             // checkpointed periodically so process death leaves a record with
             // the status it was actually in.
+            if let localAnswer, let index = entries.firstIndex(where: { $0.id == thisEntryID }) {
+                entries[index].text = localAnswer
+                finalizeAssistantTurn(streamingEntryID: thisEntryID)
+                return
+            }
             startCheckpointing(turnID: thisEntryID)
             let loop = makeToolExecutor.map { ToolLoop(request: request, makeToolExecutor: $0) }
                 ?? ToolLoop(request: request)
@@ -311,7 +335,7 @@ extension LLMController {
                                 self.reasoning = false
                             }
                             self.markFirstTokenIfNeeded()
-                            self.appendToStreamingEntry(delta)
+                            if moderation == nil { self.appendToStreamingEntry(delta) }
                         case .reasoningStarted:
                             self.reasoning = true
                         case let .toolStatus(status):
@@ -339,11 +363,12 @@ extension LLMController {
                             // truncation bug. .done carries the complete
                             // buffered text; reconcile against it so event
                             // ordering can't lose the tail.
-                            if self.streamingEntryID == thisEntryID,
-                               let idx = self.entries.firstIndex(where: { $0.id == thisEntryID }),
-                               finalText.count > self.entries[idx].text.count
-                            {
-                                self.entries[idx].text = finalText
+                            if let idx = self.entries.firstIndex(where: { $0.id == thisEntryID }) {
+                                if let moderation {
+                                    self.entries[idx].text = moderation.render(finalText)
+                                } else if finalText.count > self.entries[idx].text.count {
+                                    self.entries[idx].text = finalText
+                                }
                             }
                             self.finalizeAssistantTurn(streamingEntryID: thisEntryID)
                         case let .error(message, isAuth):
@@ -864,7 +889,8 @@ extension LLMController {
         return TranscriptContext.format(
             windowed,
             label: { TranscriptContext.speakerLabel(for: $0, names: names) },
-            noteLabel: "[my note]"
+            noteLabel: "[my note]",
+            includeTimestamps: SessionCoordinator.shared.isRunning
         )
     }
 }

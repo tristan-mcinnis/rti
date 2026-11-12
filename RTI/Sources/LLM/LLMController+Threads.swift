@@ -358,7 +358,8 @@ extension LLMController {
         parentTurnID: String?,
         conversation: ConversationRecord?,
         sessionID: String?,
-        generation: Int
+        generation: Int,
+        screenGeneration: Int? = nil
     ) async -> PersistOutcome {
         guard generation == self.generation, !Task.isCancelled else { return .aborted }
         let store: ChatThreadStore
@@ -411,6 +412,15 @@ extension LLMController {
                 thread = created
             }
             guard generation == self.generation, !Task.isCancelled else { return .aborted }
+            if let screenGeneration, ScreenshotPolicy.shared.generation != screenGeneration {
+                return .failed("Screen access changed before the question was saved.")
+            }
+            let permitsSubmission: (@Sendable () async -> Bool)?
+            if let screenGeneration {
+                permitsSubmission = { @MainActor in ScreenshotPolicy.shared.generation == screenGeneration }
+            } else {
+                permitsSubmission = nil
+            }
             let commit = try await store.appendTurn(
                 to: thread,
                 turn: ChatThreadStore.SubmittedTurn(
@@ -431,7 +441,8 @@ extension LLMController {
                     sessionLinks: turnLinks,
                     attachments: submitted,
                     requestSnapshot: requestSnapshot
-                )
+                ),
+                permitsSubmission: permitsSubmission
             )
             // A `/new` between the append and here must not reinstate the old
             // thread as the live one.

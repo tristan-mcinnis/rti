@@ -15,6 +15,10 @@ extension LLMController {
     /// place mapping an action to its send function — the ✦ menu, command
     /// palette, global hotkeys, and ⌘⏎ all route through here.
     func perform(actionID: String) {
+        if let research = ResearchModeration.Action(rawValue: actionID) {
+            sendModeration(research)
+            return
+        }
         switch actionID {
         case "assist": sendAssist()
         case "answerLatest": sendAnswerLatest()
@@ -22,25 +26,42 @@ extension LLMController {
         case "recap": sendRecap()
         case "sayNext": sendSaySomething()
         case "followups": sendFollowupQuestions()
-        case "keyTensions": sendKeyTensions()
-        case "probe": sendProbe()
-        case "themes": sendThemes()
         default: break
         }
     }
 
-    /// Listener research actions — surface tensions / what's unsaid / themes for
-    /// a fieldwork observer instead of "what should I say".
-    func sendKeyTensions() {
-        performSend(userInput: PromptStore.shared.text(.keyTensions), action: "Key tensions")
-    }
-
-    func sendProbe() {
-        performSend(userInput: PromptStore.shared.text(.probe), action: "Probe")
-    }
-
-    func sendThemes() {
-        performSend(userInput: PromptStore.shared.text(.themes), action: "Themes")
+    private func sendModeration(_ action: ResearchModeration.Action) {
+        guard !streaming else { return }
+        let session = SessionCoordinator.shared
+        guard session.isRunning, let sessionID = session.currentSessionId else {
+            lastError = "Start a recording to use a live moderation action."
+            return
+        }
+        let guide = GuideSessionController.shared
+        let configured = UserDefaults.standard.object(forKey: action.settingsKey) as? Int
+        let minutes = max(1, configured ?? 10)
+        let nowMs = session.startedAt.map { max(0, Int(Date().timeIntervalSince($0) * 1000)) } ?? 0
+        let sources = GuideTranscript.sources(from: session.liveEntries)
+        let end = max(nowMs, sources.last?.endMs ?? 0)
+        let cutoff = max(0, end - min(minutes, Int.max / 60_000) * 60_000)
+        let turns: [ResearchModeration.Turn] = sources.compactMap { source in
+            let turn = source.turn
+            if action != .saidVsDone && turn.startMs < cutoff { return nil }
+            let quote = ResearchCodebookController.evidence(source, sessionID: sessionID, group: nil)
+            let speaker = quote.speaker
+            let verified = speaker.confidence == SpeakerEvidence.confirmed.rawValue
+            return .init(id: quote.turnID, startMs: quote.offsetMs, text: quote.original, moderator: speaker.moderator,
+                         label: verified ? speaker.leg + "/" + speaker.label : speaker.leg,
+                         person: verified ? (speaker.seat ?? speaker.label) : nil,
+                         guideQuestion: quote.questionID, marker: quote.markerID, shown: quote.shownCodes)
+        }
+        let snapshot = ResearchModeration(action: action, minutes: minutes, endMs: end, turns: turns,
+                                         roster: Dictionary(guide.roster.map { ($0.code, $0.label) }, uniquingKeysWith: { first, _ in first }),
+                                         guideTitles: Dictionary(uniqueKeysWithValues: (guide.guide?.questions ?? []).map { ($0.qid, $0.en.isEmpty ? $0.zh : $0.en) }),
+                                         guideOn: guide.isActive)
+        performSend(userInput: PromptStore.shared.text(action.promptID), action: action.title,
+                    transcriptSeconds: Double(minutes) * 60, moderation: snapshot,
+                    toolPolicy: ChatToolPolicy(allowsExternalRetrieval: false, allowsScreenTools: false))
     }
 
     func sendAskAnything(_ input: String, attachments: [ExternalDocumentAttachment] = []) {
@@ -74,6 +95,7 @@ extension LLMController {
         // archive when nothing new came. The receipt, the tool policy, the
         // composer preview and the prompt all read this value, so none of them
         // can describe a source set the request did not send.
+        let retainedSources = eligibleRetainedSources
         let wire = ChatWireSources.compose(
             question: userInput,
             freshSourceCount: freshReferences.count,
@@ -329,7 +351,10 @@ extension LLMController {
         let action = userEntry.action ?? "Ask"
         // A local turn is not a model turn; never replay its command as one.
         guard !Self.localActionNames.contains(action) else { return }
-        if action == "Ask" {
+        if let id = ChatTurnRecordBuilder.actionID(for: action),
+           let research = ResearchModeration.Action(rawValue: id) {
+            sendModeration(research)
+        } else if action == "Ask" {
             // Re-run the deterministic vault search rather than replay through
             // bare performSend, which skipped retrieval entirely and answered
             // from the transcript/priors alone.

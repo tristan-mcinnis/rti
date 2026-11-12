@@ -39,7 +39,18 @@ final class LLMController {
     var reasoning = false
     var lastError: String?
     var lastErrorIsAuth: Bool = false
+    @ObservationIgnored var screenPolicyTurnID: UUID?
     var pendingScreenContext: String?
+
+    func screenshotPolicyDidChange() {
+        guard let id = screenPolicyTurnID, pendingTurn?.id == id, streaming else { return }
+        let draft = pendingTurn?.userInput
+        cancel()
+        screenPolicyTurnID = nil
+        pendingDraftRestore = draft
+        lastError = "Screen access changed. Review the sources and send again."
+    }
+
     /// The screenshot behind `pendingScreenContext`, when the capture produced
     /// one. Sent to the model as an image only when the active provider
     /// accepts images; otherwise the OCR text carries the turn.
@@ -192,8 +203,12 @@ final class LLMController {
     /// How many images the retained archive would send on a turn that chooses
     /// it, so the composer's preview route counts exactly the images the turn
     /// will.
+    var eligibleRetainedSources: [ReferencedDocument] {
+        ScreenshotPolicy.shared.allows(.manual) ? retainedSources : retainedSources.filter { $0.payload?.archiveKind != .screenshot }
+    }
+
     var retainedImageCount: Int {
-        retainedSources.compactMap(\.payload).filter { $0.normalizedImage?.isEmpty == false }.count
+        eligibleRetainedSources.compactMap(\.payload).filter { $0.normalizedImage?.isEmpty == false }.count
     }
 
     /// The one identity a source is deduplicated by on the wire, so the
@@ -236,7 +251,7 @@ final class LLMController {
     ) -> Int {
         let (wire, freshIDs) = previewWire(question: question, freshSourceIDs: freshSourceIDs)
         let freshImages = Set(freshImageIDs).intersection(freshIDs)
-        let retainedImageIDs = retainedSources.compactMap { ref -> String? in
+        let retainedImageIDs = eligibleRetainedSources.compactMap { ref -> String? in
             guard ref.payload?.normalizedImage?.isEmpty == false else { return nil }
             return Self.sourceID(ref)
         }
@@ -254,7 +269,7 @@ final class LLMController {
             // promise the model two images and send one.
             referenceImages = freshImages.count + retainedImageIDs.filter { !freshIDs.contains($0) }.count
         }
-        return referenceImages + screenImageCount
+        return referenceImages + (ScreenshotPolicy.shared.allows(.manual) ? screenImageCount : 0)
     }
 
     /// The durable thread for this chat, under the vault's

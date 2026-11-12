@@ -60,7 +60,7 @@ extension LLMController {
     /// The chat's retained sources, by display name, for the composer's own
     /// footnote. Never a path: the composer names sources the way the chips do.
     var retainedSourceNames: [String] {
-        retainedSources.map { source in
+        eligibleRetainedSources.map { source in
             let name = source.document?.name ?? (source.path as NSString).lastPathComponent
             return name.isEmpty ? (source.path as NSString).lastPathComponent : name
         }
@@ -92,7 +92,7 @@ extension LLMController {
         let wire = ChatWireSources.compose(
             question: question,
             freshSourceCount: freshIDs.count,
-            retainedSourceCount: retainedSources.count,
+            retainedSourceCount: eligibleRetainedSources.count,
             historyTurnCount: entries.filter { $0.role == "user" }.count,
             historyHasSources: entries.contains { $0.role == "user" && !$0.attachments.isEmpty },
             broaderToggleOn: broaderSearchEnabled

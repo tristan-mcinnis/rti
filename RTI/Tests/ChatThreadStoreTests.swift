@@ -50,6 +50,28 @@ final class ChatThreadStoreTests: XCTestCase {
         )
     }
 
+    func testRevokedSubmissionRollsBackItsTurnAndNewAssets() async throws {
+        actor Permission {
+            var checks = 0
+            func allows() -> Bool {
+                checks += 1
+                return checks == 1
+            }
+        }
+        let permission = Permission()
+        let store = try store()
+        let conversation = try await store.thread(id: "private", title: "Test", surface: .rtiCopilot, session: nil, appVersion: "test")
+        do {
+            _ = try await store.appendTurn(to: conversation, turn: submittedTurn(text: "Private input"),
+                                           permitsSubmission: { await permission.allows() })
+            XCTFail("A revoked source was committed")
+        } catch is CancellationError {}
+        let saved = try await store.load(id: conversation.id)
+        let refs = try await store.artifacts()
+        XCTAssertTrue(saved.turns.isEmpty)
+        XCTAssertTrue(refs.isEmpty)
+    }
+
     func testATurnCommitsItsRecordsAndItsBytesTogether() async throws {
         let store = try store()
         let conversation = try await store.thread(

@@ -12,6 +12,10 @@ enum LLMToolRegistry {
         [captureScreen, highlightScreenText, searchVault, recentMeetings, readDocument, grepVault, listFiles]
     }
 
+    static var available: [LLMToolDefinition] {
+        ScreenshotPolicy.shared.allows(.automatic) ? all : all.filter { !ChatToolPolicy.screenToolNames.contains($0.name) }
+    }
+
     static func tool(named name: String) -> LLMToolDefinition? {
         all.first { $0.name == name }
     }
@@ -21,7 +25,7 @@ enum LLMToolRegistry {
     /// `[[String: Any]]` so it can cross actor boundaries (Any is not
     /// Sendable). Returns nil when no tools are registered.
     static func wireFormatData(policy: ChatToolPolicy? = nil) -> Data? {
-        let offered = policy.map { policy in all.filter { policy.allowsTool(named: $0.name) } } ?? all
+        let offered = policy.map { policy in available.filter { policy.allowsTool(named: $0.name) } } ?? available
         let arr: [[String: Any]] = offered.map { tool in
             [
                 "type": "function",
@@ -274,7 +278,7 @@ extension ToolExecutor {
         // (observed: 5), each a full query. Allow one, then make it answer from
         // what it already got.
         ToolExecutor(
-            tools: LLMToolRegistry.all,
+            tools: LLMToolRegistry.available,
             maxCallsPerTurn: ["search_vault": 1],
             searchLimits: SessionCoordinator.shared.isRunning
                 ? .init(maxCallsPerTurn: 2, timeLimit: .seconds(5))

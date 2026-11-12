@@ -410,16 +410,18 @@ public actor ChatThreadStore {
     @discardableResult
     public func appendTurn(
         to conversation: ConversationRecord,
-        turn: SubmittedTurn
+        turn: SubmittedTurn,
+        permitsSubmission: (@Sendable () async -> Bool)? = nil
     ) async throws -> TurnCommit {
         try await withThreadGate(conversation.id) { [self] in
-            try await appendTurnLocked(to: conversation, turn: turn)
+            try await appendTurnLocked(to: conversation, turn: turn, permitsSubmission: permitsSubmission)
         }
     }
 
     private func appendTurnLocked(
         to conversation: ConversationRecord,
-        turn: SubmittedTurn
+        turn: SubmittedTurn,
+        permitsSubmission: (@Sendable () async -> Bool)?
     ) async throws -> TurnCommit {
         var record = conversation
         // A deleted thread is not silently recreated by an answer that was
@@ -518,6 +520,7 @@ public actor ChatThreadStore {
             throw ChatThreadStoreError.threadDeleted(id: record.id)
         }
 
+        let before = record
         let stored = TurnRecord(
             id: turn.id ?? UUID().uuidString,
             role: turn.role,
@@ -543,11 +546,17 @@ public actor ChatThreadStore {
         }
         record.updatedAt = Date()
 
-        return try await coordinator.commit(
-            conversation: record,
-            turnIndex: turnIndex,
-            artifacts: pending
-        )
+        try Task.checkCancellation()
+        if let permitsSubmission, !(await permitsSubmission()) { throw CancellationError() }
+        let committed = try await coordinator.commit(conversation: record, turnIndex: turnIndex, artifacts: pending)
+        if let permitsSubmission, !(await permitsSubmission()) {
+            // Capture policy can change during the package's atomic file commit.
+            // Roll back only this pending turn under the same per-thread gate.
+            _ = try await conversations.save(before)
+            _ = try await coordinator.removeArtifactsIfUnreferenced(committed.createdArtifacts)
+            throw CancellationError()
+        }
+        return committed
     }
 
     /// Total bytes this store owns, for the storage-usage line.
