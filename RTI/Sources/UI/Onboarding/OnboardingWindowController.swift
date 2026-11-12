@@ -1,4 +1,5 @@
 import AppKit
+import RTICore
 import SwiftUI
 import HouseDesign
 
@@ -29,7 +30,7 @@ final class OnboardingWindowController {
             backing: .buffered,
             defer: false
         )
-        w.title = "Welcome to RTI"
+        w.title = "Welcome to " + RTIBuildProfile.displayName
         w.applyRTISharingPolicy()
         w.titleVisibility = .hidden
         w.titlebarAppearsTransparent = true

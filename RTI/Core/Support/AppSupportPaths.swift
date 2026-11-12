@@ -10,10 +10,10 @@ public enum AppSupportPaths {
     /// `createIfNeeded` is false. Nil only if Application Support itself
     /// cannot be resolved, which never happens on a normal user account.
     public static func rtiDirectory(createIfNeeded: Bool = true) -> URL? {
-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        guard let base = applicationSupportBase() else {
             return nil
         }
-        let dir = base.appendingPathComponent("RTI", isDirectory: true)
+        let dir = base.appendingPathComponent(RTIBuildProfile.displayName, isDirectory: true)
         if createIfNeeded {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
@@ -25,7 +25,10 @@ public enum AppSupportPaths {
     /// inside it, and still resolves the base through here rather than at the
     /// call site.
     public static func applicationSupportBase() -> URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        if ProcessInfo.processInfo.processName == "xctest" || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return FileManager.default.temporaryDirectory.appendingPathComponent("rti-test-support-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
     }
 
     /// A file directly inside the RTI config home, e.g. `credentials.json`.

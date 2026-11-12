@@ -94,6 +94,13 @@ targets:
   RTI:
     type: application
     platform: macOS
+    settings:
+      base:
+        RTI_APP_NAME: RTI
+        RTI_APP_ID: com.tristan.rti.personal
+        PRODUCT_NAME: "$(RTI_APP_NAME)"
+        PRODUCT_MODULE_NAME: RTI
+        PRODUCT_BUNDLE_IDENTIFIER: "$(RTI_APP_ID)"
     sources:
       - path: Sources
         excludes:

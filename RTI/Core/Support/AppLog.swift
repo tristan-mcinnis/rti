@@ -41,6 +41,7 @@ public final class AppLog {
     /// longer erases the evidence.
     public nonisolated static let logsDirectory: URL = {
         let environment = ProcessInfo.processInfo.environment
+        if RTIBuildProfile.isBeta { return RTIBuildProfile.betaHome.appendingPathComponent("Logs", isDirectory: true) }
         if let path = environment["RTI_LOG_DIRECTORY"], path.hasPrefix("/") {
             return URL(fileURLWithPath: path, isDirectory: true)
         }

@@ -22,6 +22,7 @@ public struct RecordedMeeting: Equatable {
 /// whole tree — change the vault location by editing that one file.
 public enum VaultPaths {
     public static func homeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        if RTIBuildProfile.isBeta { return RTIBuildProfile.betaHome.appendingPathComponent("Config", isDirectory: true) }
         if let override = environment["RTI_CONFIG_HOME"], !override.isEmpty {
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)
         }
@@ -34,11 +35,12 @@ public enum VaultPaths {
     }
 
     public static func configDictionary(configURL: URL = configURL()) -> [String: Any] {
-        guard let data = try? Data(contentsOf: configURL),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return [:]
+        let data = try? Data(contentsOf: configURL)
+        let config = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        if RTIBuildProfile.isBeta {
+            return config.merging(RTIBuildProfile.betaStorageConfig(at: RTIBuildProfile.betaHome)) { _, isolated in isolated }
         }
-        return obj
+        return config
     }
 
     public static func recordingsDirectory(configURL: URL = configURL()) -> URL? {
@@ -83,6 +85,7 @@ public enum VaultPaths {
         if let configured = config["sessions_dir"] as? String, !configured.isEmpty {
             return URL(fileURLWithPath: (configured as NSString).expandingTildeInPath, isDirectory: true)
         }
+        if RTIBuildProfile.isBeta { return RTIBuildProfile.betaHome.appendingPathComponent("Sessions", isDirectory: true) }
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/Work/Inner-Chapter/meetings/sessions", isDirectory: true)
     }

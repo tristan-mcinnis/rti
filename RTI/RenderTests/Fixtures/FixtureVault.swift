@@ -146,7 +146,7 @@ enum FixtureVault {
         // Config: `recordings_dir` anchors the whole tree (VaultPaths).
         let configHome = base.appendingPathComponent("config", isDirectory: true)
         try fm.createDirectory(at: configHome, withIntermediateDirectories: true)
-        let config = try JSONSerialization.data(withJSONObject: ["recordings_dir": recordings.path, "sessions_dir": sessionsDir.path], options: [.sortedKeys])
+        let config = try JSONSerialization.data(withJSONObject: ["recordings_dir": recordings.path, "sessions_dir": sessionsDir.path, "project_roots": [String]()], options: [.sortedKeys])
         try config.write(to: configHome.appendingPathComponent("config.json"))
 
         try write(

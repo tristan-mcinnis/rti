@@ -14,6 +14,7 @@ public enum WAVWriter {
 
     /// Delete orphan WAV files left in temp by an earlier build or a crash.
     public static func sweepStaleRecordings() {
+        guard !RTIBuildProfile.isBeta else { return }
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: recordingsDir, includingPropertiesForKeys: nil
         ) else { return }

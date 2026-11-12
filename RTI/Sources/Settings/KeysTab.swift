@@ -1,3 +1,4 @@
+import RTICore
 import SwiftUI
 import HouseDesign
 
@@ -109,7 +110,7 @@ struct ProvidersTab: View {
         HStack(spacing: 8) {
             Image(systemName: "lock.doc")
                 .foregroundStyle(RTIDesign.Color.textSecondary)
-            Text("~/Library/Application Support/RTI/credentials.json")
+            Text("~/Library/Application Support/\(RTIBuildProfile.displayName)/credentials.json")
                 .font(.system(size: House.TypeToken.Size.caption, design: .monospaced))
                 .foregroundStyle(RTIDesign.Color.textSecondary)
                 .textSelection(.enabled)

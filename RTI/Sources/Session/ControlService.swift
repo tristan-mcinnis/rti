@@ -29,18 +29,19 @@ final class ControlService {
         guard !started else { return }
         started = true
 
-        let socket = ControlPaths.socketURL(configHome: VaultPaths.homeDirectory())
+        let socket = ControlPaths.socketURL(configHome: VaultPaths.homeDirectory(),
+                                            environment: RTIBuildProfile.isBeta ? [:] : ProcessInfo.processInfo.environment)
         if server.start(at: socket) {
             RTILog.log("control socket listening at \(socket.path)")
         }
-        writeManifest(socketPath: socket.path)
+        if !RTIBuildProfile.isBeta { writeManifest(socketPath: socket.path) }
         publish()
     }
 
     func stop() {
         guard started else { return }
         server.stop()
-        if let base = AppSupportPaths.applicationSupportBase() {
+        if !RTIBuildProfile.isBeta, let base = AppSupportPaths.applicationSupportBase() {
             ControlManifest.remove(at: ControlPaths.manifestURL(applicationSupport: base))
         }
         started = false

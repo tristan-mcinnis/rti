@@ -48,6 +48,7 @@ private struct LaunchAtLoginSection: View {
                     }
                 }
             ))
+            .disabled(RTIBuildProfile.isBeta)
             if let launchError {
                 CardNote { CardText(launchError, tone: House.ColorToken.danger) }
             }

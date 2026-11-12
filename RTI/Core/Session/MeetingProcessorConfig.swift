@@ -6,7 +6,7 @@ public enum MeetingProcessorConfig {
     /// The run is opt-in: `auto_process` must be `true` in the config file.
     /// Absent or any other value means off.
     public static func isEnabled(config: [String: Any]) -> Bool {
-        (config["auto_process"] as? Bool) ?? false
+        !RTIBuildProfile.isBeta && ((config["auto_process"] as? Bool) ?? false)
     }
 
     /// Where the run starts: the work tree the `/meeting` skill files into.

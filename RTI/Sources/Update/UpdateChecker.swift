@@ -51,6 +51,13 @@ enum UpdateChecker {
     /// presents the download or reports that the running build is up to date.
     @MainActor
     static func checkAndReport() {
+        if RTIBuildProfile.isBeta {
+            let alert = NSAlert()
+            alert.messageText = "Local RTI Beta"
+            alert.informativeText = "This build is updated from the local beta branch."
+            alert.runModal()
+            return
+        }
         Task { @MainActor in
             if let info = await checkForUpdate() {
                 presentUpdateAvailable(info)
@@ -66,6 +73,7 @@ enum UpdateChecker {
     /// Quiet launch check: only interrupts if a newer build exists.
     @MainActor
     static func checkInBackground() {
+        guard !RTIBuildProfile.isBeta else { return }
         Task { @MainActor in
             if let info = await checkForUpdate() { presentUpdateAvailable(info) }
         }

@@ -317,7 +317,7 @@ struct OnboardingView: View {
         CredentialStore.setValue(k, for: LLMProviders.activeOption.keychainAccount)
         guard CredentialStore.soniox == s,
               CredentialStore.value(for: LLMProviders.activeOption.keychainAccount) == k else {
-            saveError = "Could not save the keys. Check that ~/Library/Application Support/RTI can be written."
+            saveError = "Could not save the keys. Check that ~/Library/Application Support/\(RTIBuildProfile.displayName) can be written."
             return
         }
         saveError = nil

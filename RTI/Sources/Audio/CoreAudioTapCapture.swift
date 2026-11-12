@@ -154,7 +154,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
                 RTILog.log("per-app capture: '\(selectedApp)' has no audio processes — falling back to all apps", category: .audio)
                 tapDesc = Self.makeGlobalTapDescription(
                     excludingProcessID: Self.currentProcessAudioObjectID(),
-                    name: "RTI System Audio Tap"
+                    name: RTIBuildProfile.displayName + " System Audio Tap"
                 )
             } else {
                 tappedProcessObjects = Set(objects)
@@ -168,7 +168,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
             tappedProcessObjects = []
             tapDesc = Self.makeGlobalTapDescription(
                 excludingProcessID: Self.currentProcessAudioObjectID(),
-                name: "RTI System Audio Tap"
+                name: RTIBuildProfile.displayName + " System Audio Tap"
             )
         }
 
@@ -182,7 +182,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         // The tap list must contain UID strings, never CATapDescription
         // objects (passing objects crashes CoreAudio).
         let tapUIDString = tapDesc.uuid.uuidString
-        let aggUID = "com.tristan.rti.system-audio-tap-\(UUID().uuidString)"
+        let aggUID = "\(RTIBuildProfile.isBeta ? RTIBuildProfile.betaID : "com.tristan.rti").system-audio-tap-\(UUID().uuidString)"
         let aggDesc = Self.makeAggregateDeviceDescription(tapUID: tapUIDString, aggregateUID: aggUID)
 
         status = AudioHardwareCreateAggregateDevice(aggDesc as CFDictionary, &aggregateDeviceID)
@@ -207,7 +207,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
 
     static func makeAggregateDeviceDescription(tapUID: String, aggregateUID: String) -> NSDictionary {
         [
-            kAudioAggregateDeviceNameKey: "RTI System Audio",
+            kAudioAggregateDeviceNameKey: RTIBuildProfile.displayName + " System Audio",
             kAudioAggregateDeviceUIDKey: aggregateUID,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceTapListKey: [
@@ -524,7 +524,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
                 mElement: kAudioObjectPropertyElementMain
             )
             guard AudioObjectGetPropertyData(deviceID, &nameAddr, 0, nil, &nameSize, &name) == noErr, let name else { continue }
-            if (name.takeRetainedValue() as String) == "RTI System Audio" {
+            if (name.takeRetainedValue() as String) == RTIBuildProfile.displayName + " System Audio" {
                 RTILog.log("cleaning up stale aggregate device \(deviceID)", category: .audio)
                 AudioHardwareDestroyAggregateDevice(deviceID)
             }

@@ -23,7 +23,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
     var isRunningProvider: (() -> Bool)?
 
     /// ⌘\ is RTI's global show and hide.
-    private static let idleToolTip = "RTI. Click for the menu. ⌘\\ shows or hides RTI."
+    private static let idleToolTip = RTIBuildProfile.isBeta ? "RTI Beta. Click for the menu." : "RTI. Click for the menu. ⌘\\ shows or hides RTI."
 
     /// Build the small, stable menu from the shared command registry. The full
     /// registry remains available to the command palette and global hotkeys.
@@ -52,7 +52,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
 
         // Quit item remains native rather than going through the registry.
         menu.addItem(NSMenuItem.separator())
-        let quitItem = NSMenuItem(title: "Quit RTI", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit " + RTIBuildProfile.displayName, action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -74,7 +74,7 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         let button = statusItem?.button
         button?.image = Self.statusImage(running: running)
         button?.toolTip = running
-            ? "RTI is recording"
+            ? RTIBuildProfile.displayName + " is recording"
             : Self.idleToolTip
 
         let session = SessionCoordinator.shared
@@ -83,12 +83,12 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         if MenuStatusTick.showsElapsed(phase) {
             button?.imagePosition = .imageLeading
             button?.attributedTitle = NSAttributedString(
-                string: " " + TimeFormat.elapsed(session.elapsed(at: Date())),
+                string: (RTIBuildProfile.isBeta ? " Beta " : " ") + TimeFormat.elapsed(session.elapsed(at: Date())),
                 attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: House.TypeToken.Size.meta, weight: .regular)]
             )
         } else {
-            button?.attributedTitle = NSAttributedString(string: "")
-            button?.imagePosition = .imageOnly
+            button?.attributedTitle = NSAttributedString(string: RTIBuildProfile.isBeta ? " Beta" : "")
+            button?.imagePosition = RTIBuildProfile.isBeta ? .imageLeading : .imageOnly
         }
     }
 

@@ -4,7 +4,7 @@ import RTICore
 
 enum LaunchAtLogin {
     static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
+        !RTIBuildProfile.isBeta && SMAppService.mainApp.status == .enabled
     }
 
     /// Returns nil on success, or an error message on failure. SMAppService
@@ -12,6 +12,7 @@ enum LaunchAtLogin {
     /// human-readable error if registration fails (e.g., ad-hoc signed apps).
     @discardableResult
     static func setEnabled(_ enabled: Bool) -> String? {
+        guard !RTIBuildProfile.isBeta else { return "Open RTI Beta when you want to test it." }
         do {
             if enabled {
                 try SMAppService.mainApp.register()

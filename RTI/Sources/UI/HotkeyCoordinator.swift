@@ -1,3 +1,4 @@
+import AppKit
 import Carbon.HIToolbox
 import RTICore
 
@@ -12,6 +13,7 @@ import RTICore
 /// day silently breaks Command-Return in every other app.
 @MainActor
 final class HotkeyCoordinator {
+    private var localMonitor: Any?
     private var alwaysOn: GlobalHotkey?
     private var sessionScoped: GlobalHotkey?
     private var sessionCommands: [RTICommand] = []
@@ -23,6 +25,26 @@ final class HotkeyCoordinator {
     /// Register always-on hotkeys now; remember session-scoped ones for
     /// `setSessionActive(true)`. Commands without `hotkeyKeyCode` are skipped.
     func registerAll(commands: [RTICommand]) {
+        if RTIBuildProfile.isBeta {
+            if let localMonitor { NSEvent.removeMonitor(localMonitor) }
+            localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                let key = UInt32(event.keyCode)
+                let flags = event.modifierFlags
+                guard !event.isARepeat else { return event }
+                let handled = MainActor.assumeIsolated {
+                    guard NSApp.isActive, NSApp.keyWindow != nil else { return false }
+                    let modifiers = Self.carbonModifiers(flags)
+                    guard let command = commands.first(where: {
+                        $0.hotkeyKeyCode == key && $0.hotkeyModifiers.map { $0 | UInt32(controlKey) } == modifiers
+                            && (!$0.hotkeySessionScoped || self?.sessionHotkeysActive == true) && $0.isAvailable()
+                    }) else { return false }
+                    command.perform()
+                    return true
+                }
+                return handled ? nil : event
+            }
+            return
+        }
         let hk = GlobalHotkey()
         sessionCommands = []
         failedShortcutTitles = []
@@ -44,11 +66,21 @@ final class HotkeyCoordinator {
     func setSessionActive(_ active: Bool) {
         guard active != sessionHotkeysActive else { return }
         sessionHotkeysActive = active
+        guard !RTIBuildProfile.isBeta else { return }
         if active {
             armSessionHotkeys()
         } else {
             sessionScoped?.unregisterAll()
         }
+    }
+
+    private static func carbonModifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
+        var result = 0
+        if flags.contains(.command) { result |= cmdKey }
+        if flags.contains(.control) { result |= controlKey }
+        if flags.contains(.option) { result |= optionKey }
+        if flags.contains(.shift) { result |= shiftKey }
+        return UInt32(result)
     }
 
     private func armSessionHotkeys() {

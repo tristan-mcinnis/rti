@@ -72,14 +72,20 @@ public struct RTICommand: Identifiable {
         hotkeySessionScoped: Bool = false
     ) {
         self.id = id
-        self.title = title
-        self.subtitle = subtitle
+        // Beta commands stay local; Control distinguishes them from the regular
+        // recorder's Carbon shortcuts (which can fire even when Beta is frontmost).
+        let localChord = RTIBuildProfile.isBeta && hotkeyKeyCode != nil
+        func label(_ text: String) -> String {
+            localChord ? text.replacingOccurrences(of: "⌘", with: "⌃⌘") : text
+        }
+        self.title = label(title)
+        self.subtitle = subtitle.map(label)
         self.keywords = keywords
         self.isAvailable = isAvailable
         self.perform = perform
         self.menuSection = menuSection
         self.menuParent = menuParent
-        self.menuTitleProvider = menuTitleProvider
+        self.menuTitleProvider = menuTitleProvider.map { provider in { label(provider()) } }
         self.menuStateProvider = menuStateProvider
         self.hotkeyKeyCode = hotkeyKeyCode
         self.hotkeyModifiers = hotkeyModifiers

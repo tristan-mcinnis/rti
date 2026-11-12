@@ -2,6 +2,37 @@ import XCTest
 import RTICore
 
 final class VaultPathsTests: XCTestCase {
+    func testBetaStorageKeepsAllWritableRootsInItsOwnProfile() throws {
+        let fm = FileManager.default
+        let profile = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: profile) }
+        try RTIBuildProfile.prepareBetaStorage(at: profile)
+        let config = RTIBuildProfile.betaStorageConfig(at: profile)
+        for key in ["sessions_dir", "recordings_dir", "knowledge_base_dir", "transcripts_dir"] {
+            let path = try XCTUnwrap(config[key] as? String)
+            XCTAssertTrue(path.hasPrefix(profile.path + "/") && fm.fileExists(atPath: path))
+        }
+        XCTAssertEqual(config["project_roots"] as? [String], [profile.appendingPathComponent("Projects").path])
+        XCTAssertEqual(config["auto_process"] as? Bool, false)
+        try RTIBuildProfile.prepareBetaStorage(at: profile)
+    }
+
+    func testBetaRejectsLinksOutsideItsProfileBeforeRecovery() throws {
+        let fm = FileManager.default
+        let temporary = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: temporary) }
+        let profile = temporary.appendingPathComponent("Beta")
+        let stable = temporary.appendingPathComponent("Stable")
+        try fm.createDirectory(at: stable, withIntermediateDirectories: true)
+        try RTIBuildProfile.prepareBetaStorage(at: profile)
+        try fm.createSymbolicLink(at: profile.appendingPathComponent("Sessions/linked-session"), withDestinationURL: stable)
+        XCTAssertThrowsError(try RTIBuildProfile.prepareBetaStorage(at: profile))
+        let link = temporary.appendingPathComponent("Linked Beta")
+        try fm.createSymbolicLink(at: link, withDestinationURL: stable)
+        XCTAssertThrowsError(try RTIBuildProfile.prepareBetaStorage(at: link))
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: stable.path), [])
+    }
+
     func testConfigURLHonorsHomeOverride() {
         let env = ["RTI_CONFIG_HOME": "/tmp/rti-config-test"]
 

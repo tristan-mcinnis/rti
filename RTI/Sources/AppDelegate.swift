@@ -17,18 +17,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     /// Marker the crash watchdog reads: present = last exit was a clean quit
     /// (don't relaunch); absent while not running = crash (relaunch).
-    private static let cleanExitFlag = NSString(string: "~/.local/state/rti/clean-exit").expandingTildeInPath
+    private static let cleanExitFlag = RTIBuildProfile.isBeta
+        ? RTIBuildProfile.betaHome.appendingPathComponent("clean-exit").path
+        : NSString(string: "~/.local/state/rti/clean-exit").expandingTildeInPath
     /// Read at launch before the marker is cleared; drives the crash notice.
     private var previousExitWasClean = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard ensureSingleInstance() else { return }
+        if RTIBuildProfile.isBeta {
+            do {
+                try RTIBuildProfile.prepareBetaStorage(at: RTIBuildProfile.betaHome)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "RTI Beta could not open its private workspace"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+                NSApp.terminate(nil)
+                return
+            }
+        }
+        isPrimaryInstance = true
         // Running again — clear the clean-exit marker so the watchdog knows a
         // disappearance from here on is a crash, not a quit.
         previousExitWasClean = FileManager.default.fileExists(atPath: Self.cleanExitFlag)
         try? FileManager.default.removeItem(atPath: Self.cleanExitFlag)
 
-        guard ensureSingleInstance() else { return }
-        isPrimaryInstance = true
 
         // Slate is dark-first: apply the configured theme app-wide before any
         // window exists, so every RTI surface opens in the right appearance.
@@ -40,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         }
 
         CrashLog.install()
-        CredentialStore.migrateLegacyIfNeeded()
+        if !RTIBuildProfile.isBeta { CredentialStore.migrateLegacyIfNeeded() }
 
         continueLaunch()
     }
@@ -145,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         registerNotificationObservers()
 
         let needsOnboarding = !LLMProviders.activeHasKey || !STTProviders.activeHasKey
-        if CrashNoticeDecision.shouldShow(previousExitWasClean: previousExitWasClean, onboardingNeeded: needsOnboarding) {
+        if !RTIBuildProfile.isBeta, CrashNoticeDecision.shouldShow(previousExitWasClean: previousExitWasClean, onboardingNeeded: needsOnboarding) {
             CrashNotice.present()
         }
         if needsOnboarding {
@@ -244,7 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
-            windows.showOverlay()
+            windows.showWorkspace()
         }
         return true
     }
