@@ -190,7 +190,7 @@ struct TranscriptTabView: View {
             case .idle: source == "Call" ? "Awaiting call audio" : "Awaiting mic"
             }
         }
-        let mic = session.micMuted ? (session.listeningOnly ? "Listening only" : "Mic off") : label(session.transcriptionHealth, source: "Mic")
+        let mic = session.micMuted ? (session.isListeningOnly ? "Listening only" : "Mic off") : label(session.transcriptionHealth, source: "Mic")
         return mic + " · " + label(session.systemTranscriptionHealth, source: "Call")
     }
 }

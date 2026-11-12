@@ -2,8 +2,9 @@ import Foundation
 
 /// Pure rules for the overlay's non-fatal notice banners.
 public enum MuteBannerRule {
-    /// The mute banner shows only while a recording is live.
-    public static func shows(isRunning: Bool, micMuted: Bool, listeningOnly: Bool = false) -> Bool { isRunning && micMuted && !listeningOnly }
+    /// The mute banner shows only for an in-call mute while a recording is
+    /// live. The Listening-only preset is a choice, not a warning: no banner.
+    public static func shows(isRunning: Bool, mic: MicControl) -> Bool { isRunning && mic.bannerVisible }
 }
 
 /// Which shortcut-failure message to show, given the failed titles and the

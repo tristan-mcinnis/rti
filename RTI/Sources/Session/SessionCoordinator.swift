@@ -68,24 +68,38 @@ final class SessionCoordinator {
     private(set) var transcriptionHealth: TranscriptionHealth = .idle
     private(set) var systemTranscriptionHealth: TranscriptionHealth = .idle
     private(set) var readerActivity = TranscriptReaderActivity()
-    /// User-facing mic mute (Zoom-style). Mutes only the mic leg — system
-    /// audio keeps flowing. NOT for in-person sessions, where the mic IS the
-    /// room capture. Resets to unmuted on every session start so a forgotten
-    /// mute can't silently eat the next meeting.
-    private(set) var listeningOnly = false
-
-    func setListeningOnly(_ enabled: Bool) {
-        listeningOnly = enabled
-        micMuted = enabled
+    /// The mic state, one value (`MicControl`). The "Listening only" preset
+    /// is picked in Prepare before a call and applies to that one call. An
+    /// in-call mute (Zoom-style) mutes only the mic leg; system audio keeps
+    /// flowing. It is NOT for in-person sessions, where the mic IS the room
+    /// capture. Every stop resets the mode to open and the preset to
+    /// speaking, so neither a forgotten mute nor the preset can silently eat
+    /// the next meeting.
+    private(set) var mic = MicControl() {
+        didSet {
+            audioPipeline.micMuted = mic.micMuted
+            if mic.micMuted != oldValue.micMuted {
+                RTILog.log("mic mute = \(mic.micMuted)", category: .audio)
+            }
+        }
     }
 
-    func toggleUserMute() { setListeningOnly(!micMuted) }
+    var micMuted: Bool { mic.micMuted }
+    var isListeningOnly: Bool { mic.isListeningOnly }
+    var listeningOnlyPreset: Bool { mic.preset == .listeningOnly }
 
-    var micMuted = false {
-        didSet {
-            audioPipeline.micMuted = micMuted
-            RTILog.log("mic mute = \(micMuted)", category: .audio)
-        }
+    /// Picks the preset for the next call. Ignored while a call is live.
+    func setListeningOnlyPreset(_ enabled: Bool) {
+        mic.reduce(.setPreset(enabled ? .listeningOnly : .speaking))
+    }
+
+    func toggleUserMute() { mic.reduce(.toggleMute) }
+
+    /// The mute controls act only while a call is live.
+    var canToggleMute: Bool { mic.canToggleMute }
+
+    func unmuteMic() {
+        if mic.micMuted { mic.reduce(.toggleMute) }
     }
 
     /// Non-fatal notice when the system-audio (other-party) leg drops while
@@ -115,9 +129,10 @@ final class SessionCoordinator {
     }
 
     private func replaceLiveClients() {
-        switchingLegs = audioPipeline.activeStreamingLegs
         transcriptPipeline.prepareForReconnect()
-        audioPipeline.reconfigureStreamingClients()
+        // Only legs that really open a new stream wait for a `.live`; without
+        // a key nothing reconnects, so nothing may show "switching".
+        switchingLegs = audioPipeline.reconfigureStreamingClients()
         publishState()
     }
 
@@ -171,6 +186,7 @@ final class SessionCoordinator {
         self.startedAt = startedAt
         endedAt = nil
         phase = .recording
+        mic.reduce(.sessionStarted)
         lastError = nil
         lastErrorIsAuth = false
         SpeakerNameStore.shared.reset()
@@ -191,6 +207,25 @@ final class SessionCoordinator {
         handleStreamRestarted(channel: channel, atMs: atMs)
     }
 
+    /// Runs the `.upgrading` -> `.done` path of a stopped session with a stub
+    /// upgrade, against `llm`. `endUpgradePhaseForProof` puts the shared
+    /// coordinator back.
+    @discardableResult
+    func runUpgradePhaseForProof(
+        sessionId: String,
+        llm: LLMController,
+        upgrade: @escaping @MainActor () async -> String?
+    ) -> Task<Void, Never> {
+        currentSessionId = sessionId
+        return runUpgradePhase(sessionId: sessionId, llm: llm, upgrade: upgrade)
+    }
+
+    func endUpgradePhaseForProof() {
+        currentSessionId = nil
+        phase = .idle
+        postProcessingStatus = nil
+    }
+
     func endTranscriptReplayForProof() {
         precondition(isTranscriptReplayForProof)
         isTranscriptReplayForProof = false
@@ -198,7 +233,7 @@ final class SessionCoordinator {
         startedAt = nil
         endedAt = nil
         phase = .idle
-        setListeningOnly(false)
+        mic.reduce(.sessionStopped)
         resetTranscriptState()
     }
 
@@ -310,6 +345,9 @@ final class SessionCoordinator {
         }
         audioPipeline.onSystemAudioStarted = { [weak self] offsetMs in
             guard let self else { return }
+            // Places the system stream only until its socket goes `.live`;
+            // after that the `.live` re-base owns the live base, and a later
+            // backend start (SCK fallback) updates the recording offset only.
             transcriptPipeline.setSystemStartOffset(ms: offsetMs)
             // The retained system leg is padded across outages from its first
             // start, so a later backend fallback must not move the offset the
@@ -418,6 +456,7 @@ final class SessionCoordinator {
             stopSession()
         case .idle, .done, .upgrading:
             // A second press while the mic prompt is open cancels the start.
+            // No call went live, so the Listening-only preset stays.
             if startGate.cancel() { return }
             startSession(userInitiated: true)
         case .finishing:
@@ -623,7 +662,9 @@ final class SessionCoordinator {
         }
 
         do {
-            try audioPipeline.start()
+            // The mic mode holds before the first buffer, so a listening-only
+            // call never records or sends the user's voice.
+            try audioPipeline.start(micMuted: mic.reduced(.sessionStarted).micMuted)
         } catch {
             closeRawJournal()
             lastError = "Audio start failed: \(error)"
@@ -641,14 +682,15 @@ final class SessionCoordinator {
         AutoAssistScheduler.shared.start(interval: NotesSettings.tickInterval)
 
         publishState()
-        micMuted = listeningOnly
+        mic.reduce(.sessionStarted)
         phase = .recording
         VisualContextTrail.shared.start(sessionStartedAt: now)
         startCheckpointLoop()
     }
 
     func stopSession() {
-        // Stop while the mic prompt is open: cancel the pending start.
+        // Stop while the mic prompt is open: cancel the pending start. No
+        // call went live, so the Listening-only preset stays.
         if startGate.cancel() { return }
         guard isRunning, let sessionId = currentSessionId else { return }
         lastStopAt = Date()
@@ -670,6 +712,9 @@ final class SessionCoordinator {
         checkpointTask?.cancel()
         checkpointTask = nil
         phase = .finishing
+        // The call is no longer live: the Prepare switch takes input again.
+        // completeStop still resets the one-call preset.
+        mic.reduce(.sessionFinishing)
         switchingLegs = []
         transcriptionHealth = .idle
         systemTranscriptionHealth = .idle
@@ -738,6 +783,8 @@ final class SessionCoordinator {
 
     private func completeStop(sessionId: String, endedAt: Date, audioFinished: Bool) {
         guard currentSessionId == sessionId else { return }
+        // The call is over: an in-call mute and the one-call preset both end here.
+        mic.reduce(.sessionStopped)
         closeRawJournal()
         defer { GuideSessionController.shared.endSession(sessionId) }
         // Clear the handle: a completed-but-non-nil task otherwise convinces
@@ -781,40 +828,28 @@ final class SessionCoordinator {
                     typedNotes: snapshot.transcript.filter { $0.speakerId == "note" }
                 )
                 speakerPolicy = SessionSpeakerPolicy()
-                phase = .upgrading
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
-                postProcessingStatus = "Improving transcript…"
-                Task { @MainActor [weak self] in
-                    var failure: String?
-                    if !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty {
-                        do {
-                            _ = try await TranscriptUpgradeService.upgradeRetryingOnce(
-                                sessionDirectory: archiveDir,
-                                startedAt: startedAt,
-                                provider: AsyncTranscriptProviders.soniox
-                            ) { progress in
-                                Task { @MainActor in
-                                    let coordinator = SessionCoordinator.shared
-                                    guard coordinator.currentSessionId == sessionId else { return }
-                                    coordinator.postProcessingStatus = progress.message
-                                }
-                            }
-                            SessionArchive.clearAutomaticUpgradePending(in: archiveDir)
-                        } catch {
-                            RTILog.log("automatic Soniox transcript upgrade failed; retained audio is available for retry: \(error.localizedDescription)", category: .archive)
-                            failure = "Transcript upgrade failed: \(error.localizedDescription) Audio is kept and RTI retries at next launch, so there is no meeting note yet."
-                        }
-                    } else {
-                        failure = "No audio was saved, so there is no upgraded transcript or meeting note."
+                runUpgradePhase(sessionId: sessionId, llm: LLMController.shared) {
+                    guard !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty else {
+                        return "No audio was saved, so there is no upgraded transcript or meeting note."
                     }
-                    guard let self else { return }
-                    // Only resolve to `done` if this is still the session the
-                    // user is looking at — a new recording may already be live.
-                    if currentSessionId == sessionId, phase == .upgrading {
-                        postProcessingStatus = failure == nil ? "Session saved" : "No meeting note · see message"
-                        if let failure { stopErrorRetireTask?.cancel(); lastError = failure; lastErrorIsAuth = false }
-                        phase = .done
-                        resetWorkspaceForDone()
+                    do {
+                        _ = try await TranscriptUpgradeService.upgradeRetryingOnce(
+                            sessionDirectory: archiveDir,
+                            startedAt: startedAt,
+                            provider: AsyncTranscriptProviders.soniox
+                        ) { progress in
+                            Task { @MainActor in
+                                let coordinator = SessionCoordinator.shared
+                                guard coordinator.currentSessionId == sessionId else { return }
+                                coordinator.postProcessingStatus = progress.message
+                            }
+                        }
+                        SessionArchive.clearAutomaticUpgradePending(in: archiveDir)
+                        return nil
+                    } catch {
+                        RTILog.log("automatic Soniox transcript upgrade failed; retained audio is available for retry: \(error.localizedDescription)", category: .archive)
+                        return "Transcript upgrade failed: \(error.localizedDescription) Audio is kept and RTI retries at next launch, so there is no meeting note yet."
                     }
                 }
             } else {
@@ -834,6 +869,37 @@ final class SessionCoordinator {
         publishState()
     }
 
+    /// Moves the stopped session to `.upgrading`, runs `upgrade` (it returns
+    /// the failure line, or nil), then resolves to `.done`. The chat is marked
+    /// as Stop left it; the end of the upgrade clears it only when it is still
+    /// that chat, idle and untouched.
+    @discardableResult
+    func runUpgradePhase(
+        sessionId: String,
+        llm: LLMController,
+        upgrade: @escaping @MainActor () async -> String?
+    ) -> Task<Void, Never> {
+        phase = .upgrading
+        // The chat as Stop left it. The upgrade takes a while; if the user
+        // chats meanwhile, or an answer is still coming, its end must not wipe
+        // that chat.
+        let chatMark = UpgradeChatMark(llm)
+        postProcessingStatus = "Improving transcript…"
+        return Task { @MainActor [weak self] in
+            let failure = await upgrade()
+            guard let self else { return }
+            // Only resolve to `done` if this is still the session the
+            // user is looking at — a new recording may already be live.
+            guard currentSessionId == sessionId, phase == .upgrading else { return }
+            postProcessingStatus = failure == nil ? "Session saved" : "No meeting note · see message"
+            if let failure { stopErrorRetireTask?.cancel(); lastError = failure; lastErrorIsAuth = false }
+            phase = .done
+            if Self.shouldClearChatAfterUpgrade(mark: chatMark, llm: llm) {
+                llm.clear()
+            }
+        }
+    }
+
     /// When a session reaches `done`, reset the interactive Assist chat back to
     /// its "ready" state. The meeting's substance is already saved (transcript
     /// on disk; the transcript tab stays reviewable until the next recording).
@@ -841,6 +907,30 @@ final class SessionCoordinator {
     /// "why is the old chat still there after Done?" confusion.
     private func resetWorkspaceForDone() {
         LLMController.shared.clear()
+    }
+
+    /// The chat when the transcript upgrade began: which chat, its length,
+    /// its newest entry, and whether a turn was still running.
+    struct UpgradeChatMark: Equatable {
+        let generation: Int
+        let entryCount: Int
+        let lastEntryID: UUID?
+        let busy: Bool
+
+        @MainActor init(_ llm: LLMController) {
+            generation = llm.generation
+            entryCount = llm.entries.count
+            lastEntryID = llm.entries.last?.id
+            busy = llm.streaming
+        }
+    }
+
+    /// The upgrade finished. Clear the chat for the next call only when the
+    /// user has not touched it since Stop: no turn was running at Stop or is
+    /// running now, no turn was added or regenerated, and no other chat was
+    /// opened. Otherwise the chat stays on screen.
+    static func shouldClearChatAfterUpgrade(mark: UpgradeChatMark, llm: LLMController) -> Bool {
+        !mark.busy && UpgradeChatMark(llm) == mark
     }
 
     /// Synchronous teardown invoked from applicationWillTerminate.
@@ -868,7 +958,7 @@ final class SessionCoordinator {
         archiveCurrentSession(endedAt: endedAt ?? Date())
 
         phase = .idle
-        setListeningOnly(false)
+        mic.reduce(.sessionStopped)
         transcriptionHealth = .idle
         systemTranscriptionHealth = .idle
         systemAudioNotice = nil

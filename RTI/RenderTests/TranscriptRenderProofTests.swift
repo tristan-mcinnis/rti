@@ -157,7 +157,11 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         for (suffix, appearanceName) in [("dark", NSAppearance.Name.darkAqua), ("light", NSAppearance.Name.aqua)] {
             let pipeline = TranscriptPipeline()
             let session = SessionCoordinator.shared
-            let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
+            // The toolbar caption says "Speech Nm ago" against the wall clock.
+            // Start 10.5 minutes back so every frame of this iteration (last
+            // spoken word at most ~10 s in) reads "10m ago" and the compared
+            // prefix cannot change when a real minute ticks over mid-run.
+            let startedAt = Date().addingTimeInterval(-630)
             session.seedForRenderProof(entries: [], interim: nil, phase: .recording, startedAt: startedAt)
             let appearance = try XCTUnwrap(NSAppearance(named: appearanceName))
             UserDefaults.standard.set(

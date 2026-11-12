@@ -40,7 +40,7 @@ extension LLMController {
             userInfo: resumingChatID.map { ["resumingChatID": $0] }
         )
         pendingDraftRestore = nil
-        cancel()
+        cancel(restoringDraft: false)
         clearPendingScreenContext()
         entries = []
         progressStatus = [:]
@@ -201,7 +201,7 @@ extension LLMController {
             // preserve the draft if the saved record cannot be opened.
             NotificationCenter.default.post(name: .rtiComposerWillSwitchConversation, object: self)
             guard resumeRequestID == requestID, !Task.isCancelled else { return }
-            cancel()
+            cancel(restoringDraft: false)
             guard resumeRequestID == requestID, !Task.isCancelled else { return }
             // A turn a process death left mid-answer becomes a cancelled turn
             // before anything is shown, so the chat tells the truth.

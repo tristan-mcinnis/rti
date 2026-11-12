@@ -1,5 +1,6 @@
 import SwiftUI
 import HouseDesign
+import RTICore
 
 /// Zoom-style mic control in the overlay top bar: click the mic to mute /
 /// unmute the mic leg, click the chevron for the input-device picker.
@@ -61,13 +62,18 @@ struct OverlayMicControl: View {
             .frame(width: House.Control.keyCap + House.Spacing.xxs, height: House.Control.chip)
         }
         .buttonStyle(.plain)
+        // Mute acts on a live call only; outside one the button would do nothing.
+        .disabled(!session.canToggleMute)
         .accessibilityLabel(session.micMuted ? "Unmute microphone" : "Mute microphone")
-        .accessibilityHint(session.micMuted
-            ? "Your mic isn't being captured; system audio still is."
-            : "Mute your mic. System audio keeps recording. Do not mute an in-person session: the mic records the room.")
-        .help(session.micMuted
-            ? "Mic muted. Your mic is not recorded; system audio still is. Click to unmute."
-            : "Mute your mic. System audio keeps recording. Do not mute an in-person session: the mic records the room.")
+        .accessibilityHint(muteHelp(muted: "Your mic isn't being captured; system audio still is."))
+        .help(muteHelp(muted: "Mic muted. Your mic is not recorded; system audio still is. Click to unmute."))
+    }
+
+    private func muteHelp(muted: String) -> String {
+        guard session.canToggleMute else { return MicControl.muteUnavailableHelp }
+        return session.micMuted
+            ? muted
+            : "Mute your mic. System audio keeps recording. Do not mute an in-person session: the mic records the room."
     }
 
     private var deviceMenu: some View {
@@ -117,6 +123,10 @@ struct OverlayMicControl: View {
                 } else {
                     Label("Mute my mic", systemImage: "mic.slash")
                 }
+            }
+            .disabled(!session.canToggleMute)
+            if !session.canToggleMute {
+                Text(MicControl.muteUnavailableHelp)
             }
         } label: {
             Image(systemName: "chevron.down")

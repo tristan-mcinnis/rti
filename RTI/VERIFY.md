@@ -126,6 +126,8 @@ This is the definitive both-sides-recorded test. Open the **Audio I/O Monitor**
 - [ ] On start: dot goes yellow "Connecting…" → green "Live".
 - [ ] Kill wifi ~10s: → orange "Reconnecting…". Restore: → green "Live".
 - [ ] If the other-party (system-audio) leg drops, the amber "other-party audio stopped" notice appears and the session keeps running.
+- [ ] Kill wifi until the mic leg shows "Live transcription stopped after repeated connection failures" (about 25 s). Restore wifi and do not click Retry: within about 45 s the dot goes back to green "Live" and new lines appear. A rejected key (401) never retries on its own.
+- [ ] Minimize the window while recording, then restore it by clicking its thumbnail in the Dock (not the app icon). The transcript keeps advancing; it does not freeze on the last line before the minimize.
 
 ## D. Security (after any session)
 - [ ] `ls -le ~/Library/Application\ Support/RTI/sessions/*/` → files `-rw-------`, dir `drwx------`.

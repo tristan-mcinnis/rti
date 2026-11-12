@@ -37,8 +37,8 @@ final class ComposerConversationBoundaryTests: RenderProofTestCase {
         )
     }
 
-    private func host(_ controller: LLMController, queued: Bool = false) -> NSHostingView<AnyView> {
-        var seed = ComposerRenderSeed(draft: "Previous draft", isQueued: queued, mentionCandidates: [])
+    private func host(_ controller: LLMController, queued: Bool = false, draft: String = "Previous draft") -> NSHostingView<AnyView> {
+        var seed = ComposerRenderSeed(draft: draft, isQueued: queued, mentionCandidates: [])
         seed.mentionPaths = [queued ? "projects/northwind/onboarding-brief.md" : "projects/old-context-sentinel.md"]
         if !queued {
             seed.documents = [ComposerDocument(name: "old-upload-sentinel.pdf", phase: .failed("Fixture unreadable"))]
@@ -250,7 +250,9 @@ final class ComposerConversationBoundaryTests: RenderProofTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try ChatThreadStore(roots: .init(assets: root.appendingPathComponent("assets"), threads: root.appendingPathComponent("threads")))
         let controller = controller(store: store, beforePersistence: { throw StorageFixtureFailure.unavailable })
-        let host = host(controller)
+        // Submit empties the field before the send, so the failure finds it
+        // empty. A typed draft is never overwritten (next test).
+        let host = host(controller, draft: "")
         controller.sendAskAnything("Restored failed question")
         let send = try XCTUnwrap(controller.activeSendForProof)
         await send.value
@@ -259,6 +261,21 @@ final class ComposerConversationBoundaryTests: RenderProofTestCase {
         XCTAssertTrue(after.contains("restored failed question"))
         XCTAssertTrue(after.contains("old-context-sentinel"))
         XCTAssertTrue(after.contains("old-upload-sentinel"))
+    }
+
+    func testReturnedDraftNeverOverwritesQueuedFollowUp() throws {
+        // A vault search runs, the user queues a follow-up, then presses Stop:
+        // cancel() hands back the searched question. The follow-up stays.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rti-composer-restore-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ChatThreadStore(roots: .init(assets: root.appendingPathComponent("assets"), threads: root.appendingPathComponent("threads")))
+        let controller = controller(store: store)
+        let host = host(controller, queued: true, draft: "Queued budget follow-up")
+        controller.pendingDraftRestore = "Searched vault question"
+        let after = try text(in: host, proof: "restore-keeps-queued")
+        XCTAssertTrue(after.contains("queued budget follow-up"), "The queued follow-up stays in the field")
+        XCTAssertFalse(after.contains("searched vault question"), "The returned draft does not overwrite it")
+        XCTAssertNil(controller.pendingDraftRestore, "The returned draft is consumed, not left to land later")
     }
 
     func testNewConversationDisarmsQueuedFollowUpBeforeCancellingStream() async throws {

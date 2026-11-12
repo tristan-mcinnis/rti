@@ -50,11 +50,11 @@ struct OverlayPanelView: View {
         VStack(spacing: 0) {
             if !embedded { OverlayShellHeader(status: status, callTypes: callTypes) }
             tabsRow
-            if MuteBannerRule.shows(isRunning: session.isRunning, micMuted: session.micMuted, listeningOnly: session.listeningOnly) {
+            if MuteBannerRule.shows(isRunning: session.isRunning, mic: session.mic) {
                 OverlayNoticeBanner(
                     text: "Your mic is muted. Your side is not being recorded.",
                     actionTitle: "Unmute",
-                    action: { session.setListeningOnly(false) }
+                    action: { session.unmuteMic() }
                 )
             }
             if let message = hotkeyNotice.message {
@@ -270,7 +270,7 @@ struct OverlayShellHeader: View {
     private let chrome = OverlayWindowChrome.shared
     @State private var showsCompactControls = false
 
-    private var sessionIsListeningOnly: Bool { SessionCoordinator.shared.listeningOnly && SessionCoordinator.shared.micMuted }
+    private var sessionIsListeningOnly: Bool { SessionCoordinator.shared.isListeningOnly }
 
     var body: some View {
         GeometryReader { geometry in

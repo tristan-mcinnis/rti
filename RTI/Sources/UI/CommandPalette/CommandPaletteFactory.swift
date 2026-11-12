@@ -180,6 +180,9 @@ enum CommandBuilder {
                 id: "mic.mute.toggle",
                 title: "Mute / Unmute My Mic",
                 keywords: ["microphone", "mute", "silence", "input"],
+                // Mute works during a call only. For an observed session,
+                // turn on Listening only in Prepare.
+                isAvailable: { session.canToggleMute },
                 perform: { session.toggleUserMute() },
                 menuSection: .session,
                 menuStateProvider: { session.micMuted }

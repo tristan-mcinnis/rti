@@ -20,7 +20,7 @@ public enum VaultRetrieval {
         }
     }
 
-    public enum ZeroResultPolicy: Equatable {
+    public enum ZeroResultPolicy: Equatable, Sendable {
         case soft
         case hard
         case latestPoint

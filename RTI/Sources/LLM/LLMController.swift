@@ -35,7 +35,16 @@ final class LLMController {
     static let shared = LLMController()
 
     var entries: [ChatEntry] = []
-    var streaming = false
+    var streaming = false {
+        didSet {
+            // The busy notice speaks of the running turn. Once no turn runs,
+            // it would read as stale, so it goes with the turn.
+            if oldValue, !streaming, lastError == Self.busySendMessage {
+                lastError = nil
+            }
+        }
+    }
+
     var reasoning = false
     var lastError: String?
     var lastErrorIsAuth: Bool = false
@@ -124,6 +133,24 @@ final class LLMController {
     /// cancels this, so a `/new` during a multi-round turn stops the next
     /// round's provider call and tools too, not just the current stream.
     var sendTask: Task<Void, Never>?
+    /// The local vault search ahead of an Ask or Answer latest. `cancel()`
+    /// cancels it, so a Stop or `/new` during the search sends nothing.
+    @ObservationIgnored var localSearchTask: Task<Void, Never>?
+    /// The progress entry that search is drawing. `cancel()` removes it, so
+    /// "Searching the vault…" never outlives a Stop.
+    @ObservationIgnored var localSearchProgressID: UUID?
+    /// The question that search is for, when the user typed one. A Stop
+    /// during the search puts it back in the composer, as it was never sent.
+    @ObservationIgnored var localSearchDraft: String?
+    /// The vault search the Ask and Answer latest actions run before they send.
+    /// A seam: a test swaps in a slow stub. The app uses `VaultRetrieval`.
+    @ObservationIgnored var localSearch: @MainActor (
+        _ query: String,
+        _ scopeRelativePath: String?,
+        _ zeroResultPolicy: VaultRetrieval.ZeroResultPolicy
+    ) async -> VaultRetrieval.Response = { query, scope, policy in
+        await VaultRetrieval.search(query: query, scopeRelativePath: scope, zeroResultPolicy: policy)
+    }
 #if DEBUG
     /// Captures the exact in-flight send so a storage-race proof can await it.
     var activeSendForProof: Task<Void, Never>? { sendTask }

@@ -3,10 +3,13 @@ import XCTest
 
 final class OverlayNoticeTests: XCTestCase {
     func testMuteBannerOnlyWhileRecordingAndMuted() {
-        XCTAssertTrue(MuteBannerRule.shows(isRunning: true, micMuted: true))
-        XCTAssertFalse(MuteBannerRule.shows(isRunning: true, micMuted: true, listeningOnly: true))
-        XCTAssertFalse(MuteBannerRule.shows(isRunning: true, micMuted: false))
-        XCTAssertFalse(MuteBannerRule.shows(isRunning: false, micMuted: true))
+        let live = MicControl().reduced(.sessionStarted)
+        let muted = live.reduced(.toggleMute)
+        let listening = MicControl().reduced(.setPreset(.listeningOnly)).reduced(.sessionStarted)
+        XCTAssertTrue(MuteBannerRule.shows(isRunning: true, mic: muted))
+        XCTAssertFalse(MuteBannerRule.shows(isRunning: true, mic: listening))
+        XCTAssertFalse(MuteBannerRule.shows(isRunning: true, mic: live))
+        XCTAssertFalse(MuteBannerRule.shows(isRunning: false, mic: muted))
     }
 
     func testHotkeyNoticeRule() {

@@ -21,8 +21,8 @@ final class GuideRenderProofTests: RenderProofTestCase {
         let guide = try GuideDocument.parse(Data(json.utf8))
         let start = Date().addingTimeInterval(-480)
         let session = SessionCoordinator.shared
+        session.setListeningOnlyPreset(true)
         session.beginTranscriptReplayForProof(startedAt: start)
-        session.setListeningOnly(true)
         MeetingContextStore.shared.workstreamName = "Everyday storage routines"
         let id = try XCTUnwrap(session.currentSessionId)
         let controller = GuideSessionController.shared

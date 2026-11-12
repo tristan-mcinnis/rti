@@ -67,16 +67,19 @@ final class AudioPipeline {
     /// System-audio-leg health — used to surface a non-fatal "other party
     /// audio lost" notice without stopping the (mic-driven) session.
     var onSystemAudioHealth: ((TranscriptionHealth) -> Void)?
-    /// Fires when a leg ("mic" / "system") opens a stream after its first one,
-    /// with how many milliseconds into the capture it opened. Each socket is a
-    /// new Soniox stream whose word timestamps restart at 0: an automatic
+    /// Fires when a leg opens a stream, with how many milliseconds into the
+    /// capture it opened: the mic after its first stream, the system leg on
+    /// every stream (its first socket opens only at the first system buffer).
+    /// Each socket is a new Soniox stream whose word timestamps restart at 0:
+    /// the first system stream, an automatic
     /// reconnect, the system leg rejoining after a park, or a mid-session
     /// client swap. The transcript re-bases that leg on this instant.
     var onStreamRestarted: ((_ channel: String, _ atMs: Int) -> Void)?
-    /// Streams opened per leg this session; the first one defines the leg's
+    /// Mic streams opened this session; the first one defines the mic
     /// timeline, every later one is a restart.
-    private var micStreamsOpened = 0
-    private var systemStreamsOpened = 0
+    /// Automatic mic reconnects since the mic last reached `.live`. Each one
+    /// doubles the pause before the next (`micAutoReconnectDelay`).
+    private var micAutoReconnectAttempts = 0
 
     /// Mute the user's mic leg (system-audio capture is unaffected). True
     /// mute — buffers are dropped inside the capture manager before they
@@ -222,6 +225,15 @@ final class AudioPipeline {
     /// call. Let the mic leg settle first; missing the first few seconds of
     /// other-party audio is better than destabilizing the meeting app.
     private let systemAudioStartupDelayNs: UInt64
+    /// How long a mic leg whose client spent its retry budget waits before
+    /// the first fresh reconnect. Auth and client-bug failures never schedule one.
+    private let micAutoReconnectDelayNs: UInt64
+    /// The pause doubles per spent budget up to this many times the base
+    /// (45 s → 6 min), so a long outage does not flap the error banner.
+    static let micAutoReconnectMaxBackoffFactor: UInt64 = 8
+    /// The pending automatic mic reconnect. Cancelled by `.live`, a
+    /// manual client swap, a new session, finalize and abort.
+    private var micAutoReconnectTask: Task<Void, Never>?
 
     init(
         audio: MicrophoneCapturing = AudioCaptureManager(),
@@ -232,6 +244,7 @@ final class AudioPipeline {
         makeSystemCapture: (() -> SystemAudioCapturing)? = nil,
         systemAudioEnabled: Bool = true,
         systemAudioStartupDelayNs: UInt64 = 8_000_000_000,
+        micAutoReconnectDelayNs: UInt64 = 45_000_000_000,
         now: @escaping () -> Date = Date.init,
         log: @escaping (String, LogCategory) -> Void = { RTILog.log($0, category: $1) },
         recorder: PipelineRecording = MeetingRecorder()
@@ -242,6 +255,7 @@ final class AudioPipeline {
         self.makeSystemCapture = makeSystemCapture
         self.systemAudioEnabled = systemAudioEnabled
         self.systemAudioStartupDelayNs = systemAudioStartupDelayNs
+        self.micAutoReconnectDelayNs = micAutoReconnectDelayNs
         self.now = now
         self.log = log
         self.recorder = recorder
@@ -255,7 +269,6 @@ final class AudioPipeline {
     /// **not** start capture yet — call `start()` after this returns.
     var translationConfig: TranslationConfig?
     var systemSpeakerLabelsEnabled = true
-    var activeStreamingLegs: Set<String> { systemSTTConnected ? ["mic", "system"] : ["mic"] }
 
     /// What Soniox is told about this meeting. Set before `prepare`.
     var speechContext: SonioxContext?
@@ -268,8 +281,8 @@ final class AudioPipeline {
             throw AudioPipelineError.missingSTTKey
         }
 
-        micStreamsOpened = 0
-        systemStreamsOpened = 0
+        cancelMicAutoReconnect()
+        micAutoReconnectAttempts = 0
         let failure = RecordingFailureLatch()
         recordingFailure = failure
         let onWriteFailure: @Sendable (String) -> Void = { [weak self, failure] message in
@@ -295,10 +308,12 @@ final class AudioPipeline {
             guard let int16 = buffer.int16ChannelData else { return }
             let frameLength = Int(buffer.frameLength)
             let byteCount = frameLength * MemoryLayout<Int16>.size
-            if suspended {
+            if suspended || audio.micMuted {
                 // Paused: don't keep the audio (no WAV append) and don't
                 // transcribe it. Preserve matching silence in the durable leg
                 // so offline timestamps stay aligned with notes after resume.
+                // Muted: the capture already sends zeros; silence here too,
+                // so no mic sample can pass a mute.
                 recorder.appendMicSilence(matching: buffer)
                 soniox?.sendAudio(Data(count: byteCount))
                 return
@@ -310,8 +325,10 @@ final class AudioPipeline {
     }
 
     /// Start mic capture immediately; system audio starts asynchronously
-    /// (non-fatal if it fails).
-    func start() throws {
+    /// (non-fatal if it fails). `micMuted` applies before capture opens, so a
+    /// muted (listening-only) call never records or sends a mic sample.
+    func start(micMuted: Bool) throws {
+        self.micMuted = micMuted
         captureStartWall = now()
         micInputStartedAt = captureStartWall
         try audio.start()
@@ -432,22 +449,26 @@ final class AudioPipeline {
         }
     }
 
-    /// A client reports `.live` once per socket it opens, so a second `.live`
-    /// on a leg is a new stream (see `onStreamRestarted`).
+    /// Every mic `.live` re-bases the live transcript, the first one too: a
+    /// client drops audio until its config frame is sent, so stream time 0 is
+    /// this `.live`. The first socket can open long after capture started
+    /// (retries spent with the network down, then an automatic reconnect).
     private func micStatusChanged(_ health: TranscriptionHealth) {
         if health == .live {
-            micStreamsOpened += 1
-            if micStreamsOpened > 1 { onStreamRestarted?("mic", captureElapsedMs()) }
+            cancelMicAutoReconnect()
+            micAutoReconnectAttempts = 0
+            onStreamRestarted?("mic", captureElapsedMs())
         }
         onTranscriptionHealth?(health)
     }
 
+    /// Every system `.live` re-bases the live transcript, the first one too:
+    /// the socket opens only at the first system buffer, which can arrive long
+    /// after the backend started. `systemAudioStartOffsetMs` (the WAV and
+    /// upgrade offset) is a separate value and does not move here.
     private func systemStatusChanged(_ health: TranscriptionHealth) {
         systemTranscriptionHealth = health
-        if health == .live {
-            systemStreamsOpened += 1
-            if systemStreamsOpened > 1 { onStreamRestarted?("system", captureElapsedMs()) }
-        }
+        if health == .live { onStreamRestarted?("system", captureElapsedMs()) }
         onSystemAudioHealth?(systemAudioOutageReported ? .failed : health)
     }
 
@@ -461,6 +482,52 @@ final class AudioPipeline {
             ? "Live transcription stopped after repeated connection failures. \(captureState)"
             : failure.userMessage(didOpen: didOpen)
         onTranscriptionError?((system ? "System audio: " : "") + message, failure.isAuth, system ? "system" : "mic")
+        // A spent retry budget leaves the mic client dead until someone acts.
+        // Self-heal with one fresh client after a pause; the pause doubles per
+        // spent budget until the mic is live again. Never for auth or a client
+        // bug: those fail the same way again (a 401 loop).
+        if !system, failure.shouldRetry { scheduleMicAutoReconnect() }
+    }
+
+    private func scheduleMicAutoReconnect() {
+        guard isCapturing else { return }
+        cancelMicAutoReconnect()
+        let generation = captureGeneration
+        let delay = Self.micAutoReconnectDelay(baseNs: micAutoReconnectDelayNs, attempt: micAutoReconnectAttempts)
+        micAutoReconnectAttempts += 1
+        micAutoReconnectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: delay)
+            guard let self, !Task.isCancelled, isCapturing, captureGeneration == generation else { return }
+            micAutoReconnectTask = nil
+            log("mic transcription retries spent — automatic reconnect", .soniox)
+            reconnectMic()
+        }
+    }
+
+    /// Pause before automatic mic reconnect `attempt` (0-based): the base,
+    /// doubled per earlier attempt, capped at `micAutoReconnectMaxBackoffFactor`.
+    static func micAutoReconnectDelay(baseNs: UInt64, attempt: Int) -> UInt64 {
+        let factor = min(UInt64(1) << UInt64(min(max(attempt, 0), 3)), micAutoReconnectMaxBackoffFactor)
+        return baseNs * factor
+    }
+
+    private func cancelMicAutoReconnect() {
+        micAutoReconnectTask?.cancel()
+        micAutoReconnectTask = nil
+    }
+
+    /// Replace only the mic client. The system client, its stream base and
+    /// the system offset are untouched; the new mic stream re-bases itself
+    /// on its `.live` (`micStatusChanged`).
+    func reconnectMic() {
+        guard isCapturing, hasSTTKey() else { return }
+        let oldMic = soniox
+        soniox = nil
+        oldMic?.disconnect()
+        let mic = makeSTTClient(translationConfig, speechContext, false)
+        soniox = mic
+        bindTranscriptionCallbacks(mic, system: false)
+        mic.connect()
     }
 
     private func captureElapsedMs() -> Int {
@@ -764,6 +831,7 @@ final class AudioPipeline {
     /// after the 1.5 s finalize window to disconnect and close the WAV.
     func finalize() {
         isCapturing = false
+        cancelMicAutoReconnect()
         stopMicWatchdog()
         stopSystemAudioWatchdog()
         stopSystemIdleMonitor()
@@ -816,8 +884,15 @@ final class AudioPipeline {
     /// losing the WAV file. Old clients are disconnected; new ones are created
     /// with the current `translationConfig` and immediately receive incoming
     /// PCM buffers via the existing `onPCMBuffer` closures.
-    func reconfigureStreamingClients() {
-        guard hasSTTKey() else { return }
+    ///
+    /// Returns the legs that now open a new stream: empty without a key (no
+    /// client changes), else the mic and, when its socket was linked, the
+    /// system leg. The caller shows "switching" only for these.
+    func reconfigureStreamingClients() -> Set<String> {
+        cancelMicAutoReconnect()
+        micAutoReconnectAttempts = 0
+        guard hasSTTKey() else { return [] }
+        var restarted: Set<String> = []
 
         // Retire ownership before disconnect: a provider may report teardown
         // synchronously. Publish the replacement before connect for the same reason.
@@ -828,6 +903,7 @@ final class AudioPipeline {
         soniox = mic
         bindTranscriptionCallbacks(mic, system: false)
         mic.connect()
+        restarted.insert("mic")
 
         if let oldSystem = systemSoniox {
             systemSoniox = nil
@@ -835,13 +911,18 @@ final class AudioPipeline {
             let sys = makeSTTClient(translationConfig, speechContext, systemSpeakerLabelsEnabled)
             systemSoniox = sys
             bindTranscriptionCallbacks(sys, system: true)
-            if systemSTTConnected { sys.connect() }
+            if systemSTTConnected {
+                sys.connect()
+                restarted.insert("system")
+            }
         }
+        return restarted
     }
 
     /// Immediate teardown for failures and app termination.
     func abort() {
         isCapturing = false
+        cancelMicAutoReconnect()
         stopMicWatchdog()
         stopSystemAudioWatchdog()
         stopSystemIdleMonitor()

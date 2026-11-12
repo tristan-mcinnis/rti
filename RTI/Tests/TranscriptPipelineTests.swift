@@ -215,6 +215,23 @@ final class TranscriptPipelineTests: XCTestCase {
         XCTAssertEqual(p.liveEntries.map(\.text), ["mic", "sys"])
     }
 
+    /// The SCK fallback starts a new system backend after the socket already
+    /// went `.live`. Its start offset must not move the live stream's base.
+    func test_systemBackendStartAfterLive_keepsTheLiveRebase() {
+        let p = TranscriptPipeline()
+        p.setSystemStartOffset(ms: 0)
+        p.restartStream(channel: "system", atMs: 10_000)
+        p.process(words: [word("before fallback", speaker: 0, start: 100, end: 200)], channel: "system")
+        p.setSystemStartOffset(ms: 25_000)
+        XCTAssertEqual(p.streamOffsetMs(for: "system"), 10_000, "The .live re-base owns the live base")
+        p.process(words: [word("after fallback", speaker: 0, start: 1_000, end: 1_100)], channel: "system")
+        XCTAssertEqual(p.liveEntries.map(\.startMs), [10_100, 11_000])
+
+        p.reset()
+        p.setSystemStartOffset(ms: 4_000)
+        XCTAssertEqual(p.streamOffsetMs(for: "system"), 4_000, "A new session places its stream again")
+    }
+
     func test_insertNote_addsNoteEntry() {
         let p = TranscriptPipeline()
         XCTAssertTrue(p.insertNote("  remember this  ", startedAt: Date()))

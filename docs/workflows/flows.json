@@ -286,7 +286,7 @@
           "to": "AudioCaptureManager",
           "label": "start tap",
           "passes": "AVAudioEngine input tap delivers 16 kHz mono PCM buffers.",
-          "ref": "RTI/Sources/Audio/AudioPipeline.swift · func start()"
+          "ref": "RTI/Sources/Audio/AudioPipeline.swift · func start(micMuted:"
         },
         {
           "from": "AudioPipeline",

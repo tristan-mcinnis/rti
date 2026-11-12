@@ -620,13 +620,30 @@ struct SetupTabView: View {
         }
     }
 
+    /// Before a call the switch shows the one-call preset. During a call it
+    /// shows whether this call is listening only; turning it off unmutes, and
+    /// the preset cannot be turned on mid-call (use the mic button to mute).
+    private static var listeningOnlyToggleIsOn: Bool {
+        let session = SessionCoordinator.shared
+        return session.mic.isLive ? session.isListeningOnly : session.listeningOnlyPreset
+    }
+
+    private static func setListeningOnlyToggle(_ enabled: Bool) {
+        let session = SessionCoordinator.shared
+        if session.mic.isLive {
+            if !enabled, session.isListeningOnly { session.unmuteMic() }
+        } else {
+            session.setListeningOnlyPreset(enabled)
+        }
+    }
+
     private var liveCallSection: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
             sectionHeader("Live", detail: "Capture & assist")
             settingsGroup {
                 liveTranscriptionRow
-                Toggle("Listening only", isOn: Binding(get: { SessionCoordinator.shared.listeningOnly },
-                                                        set: { SessionCoordinator.shared.setListeningOnly($0) }))
+                Toggle("Listening only", isOn: Binding(get: { Self.listeningOnlyToggleIsOn },
+                                                        set: { Self.setListeningOnlyToggle($0) }))
                     .toggleStyle(.switch)
                     .padding(.horizontal, House.Spacing.sm)
                     .frame(minHeight: House.Control.row)

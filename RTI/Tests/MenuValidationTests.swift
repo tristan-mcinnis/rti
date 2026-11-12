@@ -79,6 +79,17 @@ final class MenuValidationTests: XCTestCase {
         XCTAssertTrue(MainMenuValidation.isChecked(.muteMicrophone, in: ctx))
     }
 
+    func test_muteActsOnlyDuringALiveCall() {
+        // Idle: the item is disabled, so it is never a silent no-op.
+        XCTAssertFalse(MainMenuValidation.isEnabled(.muteMicrophone, in: context(.overlay, phase: .idle)))
+        XCTAssertFalse(MainMenuValidation.isEnabled(.muteMicrophone, in: context(.none, phase: .finishing)))
+        var ctx = context(.none, phase: .recording)
+        ctx.canToggleMute = true
+        XCTAssertTrue(MainMenuValidation.isEnabled(.muteMicrophone, in: ctx))
+        ctx.canToggleMute = false
+        XCTAssertFalse(MainMenuValidation.isEnabled(.muteMicrophone, in: ctx))
+    }
+
     // MARK: View
 
     func test_tabKeysPreserveExistingDigitsAndExposeTheResearchTabs() {

@@ -30,7 +30,7 @@ extension LLMController {
         decision: ContextDecision? = nil,
         retrievalStatus: VaultRetrieval.Status? = nil
     ) {
-        guard !streaming else { return }
+        guard !streaming else { return refuseBusySend() }
         let access = ScreenshotPolicy.shared
         let acceptsScreens = moderation == nil && access.allows(.manual)
         let referencedDocuments = acceptsScreens ? referencedDocuments : referencedDocuments.filter { $0.payload?.archiveKind != .screenshot }
@@ -739,6 +739,16 @@ extension LLMController {
         progressStatus[assistant.id] = text
         return assistant.id
     }
+
+    /// Another turn is still running, so this send did not start. Say so
+    /// where the chat shows errors, instead of dropping it silently.
+    func refuseBusySend() {
+        lastError = Self.busySendMessage
+        lastErrorIsAuth = false
+        lastErrorTurnID = nil
+    }
+
+    static let busySendMessage = "Still working on the last request. Wait for it to finish, or press Stop, then send again."
 
     func removeLocalProgress(_ assistantID: UUID) {
         guard let idx = entries.firstIndex(where: { $0.id == assistantID }) else {

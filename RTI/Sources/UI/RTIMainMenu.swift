@@ -68,7 +68,8 @@ final class RTIKeyWindowTracker {
 @MainActor
 enum RTIMenuAction {
     static func run(_ id: String) {
-        guard let command = CommandRegistry.shared.commands.first(where: { $0.id == id }) else { return }
+        guard let command = CommandRegistry.shared.commands.first(where: { $0.id == id }),
+              command.isAvailable() else { return }
         command.perform()
         CommandRegistry.shared.recordExecution(id)
     }
@@ -83,6 +84,7 @@ private func currentMenuContext(visibleTabs: [OverlayTab] = []) -> MainMenuConte
         phase: session.phase.livePhase,
         isNoteMode: OverlayInputState.shared.isNoteMode,
         isMicMuted: session.micMuted,
+        canToggleMute: session.canToggleMute,
         isKeptOnTop: OverlayWindowChrome.shared.isKeptOnTop,
         isSessionListVisible: RTIKeyWindowTracker.shared.isSessionListVisible,
         visibleTabs: Set(visibleTabs.map(\.rawValue))
@@ -165,6 +167,8 @@ private struct SessionMenuItems: View {
                 set: { _ in RTIMenuAction.run("mic.mute.toggle") }
             )
         )
+        .disabled(!MainMenuValidation.isEnabled(.muteMicrophone, in: context))
+        .help(MainMenuValidation.isEnabled(.muteMicrophone, in: context) ? "" : MicControl.muteUnavailableHelp)
         Button(MainMenuValidation.title(.readScreen, in: context)) { RTIMenuAction.run("capture.screen") }
             .keyboardShortcut("h", modifiers: [.command, .shift])
         Button(MainMenuValidation.title(.readWindow, in: context)) { RTIMenuAction.run("capture.window") }

@@ -35,7 +35,7 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         XCTAssertFalse(fixture.pipeline.finish())
 
         try fixture.pipeline.prepare(recordingDirectory: fixture.directory.appendingPathComponent("next-session"))
-        try fixture.pipeline.start()
+        try fixture.pipeline.start(micMuted: false)
         fixture.audio.emit(try pcm(value: 222))
         fixture.pipeline.finalize()
         XCTAssertTrue(fixture.pipeline.finish())
@@ -69,7 +69,7 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         fixture.date = fixture.date.addingTimeInterval(12)
         // Exhausted retries require a new stream, as when the user applies
         // changed provider settings. Drive that production path too.
-        fixture.pipeline.reconfigureStreamingClients()
+        XCTAssertEqual(fixture.pipeline.reconfigureStreamingClients(), ["mic"])
         XCTAssertEqual(fixture.clients.count, 2)
         fixture.clients[1].onStatus?(.live)
         fixture.audio.emit(try pcm(value: 3_000))
@@ -81,7 +81,7 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         XCTAssertTrue(providerErrors[0].contains("Audio is still recording"))
         XCTAssertFalse(providerErrors[0].contains("reconnecting"))
         XCTAssertEqual(health, [.connecting, .live, .reconnecting, .failed, .connecting, .live])
-        XCTAssertEqual(restarts, [12_000])
+        XCTAssertEqual(restarts, [0, 12_000], "Every mic .live re-bases, the first one too")
         XCTAssertEqual(try samples(fixture.pipeline.micRecordingURL),
                        Array(repeating: 1_000, count: 320) + Array(repeating: 2_000, count: 320) + Array(repeating: 3_000, count: 320))
     }
@@ -95,7 +95,7 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         fixture.pipeline.suspended = true
         fixture.clients[0].onError?(.transient(reason: "injected while paused"), true)
         fixture.audio.emit(try pcm(value: 1_234))
-        fixture.pipeline.reconfigureStreamingClients()
+        XCTAssertEqual(fixture.pipeline.reconfigureStreamingClients(), ["mic"])
         XCTAssertTrue(fixture.pipeline.suspended, "Retry must not resume a paused recording")
         fixture.audio.emit(try pcm(value: 5_678))
         fixture.pipeline.finalize()
@@ -298,7 +298,7 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         old.forEach { $0.emitOnDisconnect = true }
         var replacementErrors = 0
         fixture.pipeline.onTranscriptionError = { _, _, _ in replacementErrors += 1 }
-        fixture.pipeline.reconfigureStreamingClients()
+        XCTAssertEqual(fixture.pipeline.reconfigureStreamingClients(), ["mic"], "No system PCM, so no system socket to restart")
         XCTAssertEqual(replacementErrors, 0, "Replacement retires synchronous teardown errors")
         let current = Array(fixture.clients.suffix(2))
         var deliveries = 0
@@ -332,6 +332,132 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         XCTAssertEqual(deliveries, 0, "Finished clients cannot mutate the archived session's live projection")
     }
 
+    func testSpentMicRetriesReconnectOncePerBudgetAfterThePause() async throws {
+        let fixture = try Fixture(micAutoReconnectDelayNs: 50_000_000)
+        defer { fixture.cleanUp() }
+        var restarts: [String] = []
+        fixture.pipeline.onStreamRestarted = { channel, _ in restarts.append(channel) }
+        try fixture.start()
+        fixture.clients[0].onStatus?(.live)
+        fixture.clients[0].onError?(.transient(reason: "injected offline"), true)
+        XCTAssertEqual(fixture.clients.count, 1, "The reconnect waits for the pause")
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(fixture.clients.count, 2, "One fresh mic client after the pause")
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(fixture.clients.count, 2, "Exactly one reconnect per spent budget")
+        fixture.clients[1].onStatus?(.live)
+        XCTAssertEqual(restarts, ["mic", "mic"], "The new mic stream re-bases only the mic leg")
+    }
+
+    func testMicAutoReconnectPauseDoublesUpToTheCap() {
+        let base: UInt64 = 45_000_000_000
+        let delays = (0 ..< 6).map { AudioPipeline.micAutoReconnectDelay(baseNs: base, attempt: $0) }
+        XCTAssertEqual(delays, [base, base * 2, base * 4, base * 8, base * 8, base * 8],
+                       "A long outage backs off to 6 min instead of flapping every 45 s")
+    }
+
+    func testMicThatNeverOpenedRebasesOnTheAutoReconnectLive() async throws {
+        let fixture = try Fixture(micAutoReconnectDelayNs: 50_000_000)
+        defer { fixture.cleanUp() }
+        let transcript = TranscriptPipeline()
+        fixture.pipeline.onStreamRestarted = { transcript.restartStream(channel: $0, atMs: $1) }
+        fixture.pipeline.onWords = { _ = transcript.process(words: $0, channel: "mic") }
+        try fixture.start()
+        // The first client spends its retries with the network down and
+        // never reports `.live`.
+        fixture.clients[0].onError?(.transient(reason: "injected offline"), true)
+        fixture.date = fixture.date.addingTimeInterval(76)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(fixture.clients.count, 2, "The automatic reconnect opened a fresh mic client")
+        fixture.clients[1].onStatus?(.live)
+        fixture.clients[1].onWords?([testWord])
+        let word = try XCTUnwrap(transcript.liveEntries.first)
+        XCTAssertGreaterThanOrEqual(word.startMs, 76_000, "Stream time 0 is the reconnect's .live, not capture start")
+    }
+
+    func testAuthClientBugAndStopNeverAutoReconnectTheMic() async throws {
+        for failure in [SonioxFailure.auth, .clientBug("injected 400")] {
+            let fixture = try Fixture(micAutoReconnectDelayNs: 50_000_000)
+            defer { fixture.cleanUp() }
+            try fixture.start()
+            fixture.clients[0].onError?(failure, true)
+            try await Task.sleep(nanoseconds: 300_000_000)
+            XCTAssertEqual(fixture.clients.count, 1, "\(failure) must never auto-retry")
+        }
+        let stopped = try Fixture(micAutoReconnectDelayNs: 50_000_000)
+        defer { stopped.cleanUp() }
+        try stopped.start()
+        stopped.clients[0].onError?(.transient(reason: "injected offline"), true)
+        stopped.pipeline.finalize()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(stopped.clients.count, 1, "Stop cancels the pending reconnect")
+
+        let healed = try Fixture(micAutoReconnectDelayNs: 50_000_000)
+        defer { healed.cleanUp() }
+        try healed.start()
+        healed.clients[0].onError?(.transient(reason: "injected offline"), true)
+        healed.clients[0].onStatus?(.live)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(healed.clients.count, 1, ".live cancels the pending reconnect")
+    }
+
+    func testFirstSystemStreamRebasesOnItsOwnLiveAndKeepsTheRecordingOffset() async throws {
+        let backend = InjectedSystemCapture()
+        let fixture = try Fixture(system: backend)
+        defer { fixture.cleanUp() }
+        let transcript = TranscriptPipeline()
+        var recordingOffsets: [Int] = []
+        let started = expectation(description: "System backend started")
+        let connecting = expectation(description: "First system buffer opens the socket")
+        fixture.pipeline.onSystemAudioStarted = { offset in
+            recordingOffsets.append(offset)
+            transcript.setSystemStartOffset(ms: offset)
+            started.fulfill()
+        }
+        fixture.pipeline.onStreamRestarted = { transcript.restartStream(channel: $0, atMs: $1) }
+        fixture.pipeline.onSystemWords = { transcript.process(words: $0, channel: "system") }
+        fixture.pipeline.onSystemAudioHealth = { if $0 == .connecting { connecting.fulfill() } }
+        try fixture.start()
+        await fulfillment(of: [started], timeout: 2)
+        fixture.date = fixture.date.addingTimeInterval(10)
+        backend.onPCMBuffer?(try pcm(value: 7))
+        await fulfillment(of: [connecting], timeout: 2)
+        let system = try XCTUnwrap(fixture.clients.last)
+        system.onStatus?(.live)
+        system.onWords?([testWord])
+        let word = try XCTUnwrap(transcript.liveEntries.first)
+        XCTAssertGreaterThanOrEqual(word.startMs, 10_000, "Stream time 0 is the socket's .live, not the backend start")
+        XCTAssertEqual(recordingOffsets, [0], "The WAV and upgrade offset does not move")
+    }
+
+    /// A listening-only call is muted before capture opens: the first buffer,
+    /// delivered while `start()` runs, and every later one reach neither the
+    /// WAV nor the transcription socket as speech.
+    func testListeningOnlyStartNeverDeliversAMicSample() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        fixture.audio.bufferOnStart = try pcm(value: 4_000)
+        try fixture.start(micMuted: true)
+        fixture.audio.emit(try pcm(value: 5_000))
+        fixture.pipeline.finalize()
+        XCTAssertTrue(fixture.pipeline.finish())
+
+        let sent = try XCTUnwrap(fixture.clients.first).sentAudio
+        XCTAssertEqual(sent.count, 2, "The stream keeps its cadence with silence")
+        XCTAssertTrue(sent.allSatisfy { $0.allSatisfy { $0 == 0 } }, "No mic sample reaches transcription")
+        XCTAssertEqual(try samples(fixture.pipeline.micRecordingURL), Array(repeating: 0, count: 640),
+                       "No mic sample reaches the WAV")
+    }
+
+    func testReconfigureWithoutAKeyRestartsNoLeg() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        try fixture.start()
+        fixture.hasKey = false
+        XCTAssertEqual(fixture.pipeline.reconfigureStreamingClients(), [], "Nothing reconnects, so nothing shows switching")
+        XCTAssertEqual(fixture.clients.count, 1)
+    }
+
     func testAbortedClientCannotMutateNextCapture() throws {
         let fixture = try Fixture()
         defer { fixture.cleanUp() }
@@ -339,7 +465,7 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         let old = fixture.clients[0]
         fixture.pipeline.abort()
         try fixture.pipeline.prepare(recordingDirectory: fixture.directory.appendingPathComponent("next"))
-        try fixture.pipeline.start()
+        try fixture.pipeline.start(micMuted: false)
         var deliveries = 0
         fixture.pipeline.onWords = { _ in deliveries += 1 }
         fixture.pipeline.onTranscriptionHealth = { _ in deliveries += 1 }
@@ -384,22 +510,25 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         let audio = InjectedMicrophoneCapture()
         var clients: [InjectedSTTClient] = []
         var date = Date(timeIntervalSinceReferenceDate: 1_000)
+        var hasKey = true
         var pipeline: AudioPipeline!
 
-        init(system: InjectedSystemCapture? = nil, recorder: PipelineRecording = MeetingRecorder()) throws {
+        init(system: InjectedSystemCapture? = nil, recorder: PipelineRecording = MeetingRecorder(),
+             micAutoReconnectDelayNs: UInt64 = 45_000_000_000) throws {
             directory = FileManager.default.temporaryDirectory.appendingPathComponent("rti-pipeline-recovery-\(UUID().uuidString)")
-            pipeline = AudioPipeline(audio: audio, hasSTTKey: { true }, makeSTTClient: { [unowned self] _, _, _ in
+            pipeline = AudioPipeline(audio: audio, hasSTTKey: { [unowned self] in hasKey }, makeSTTClient: { [unowned self] _, _, _ in
                 let client = InjectedSTTClient()
                 clients.append(client)
                 return client
             }, makeSystemCapture: system.map { backend in { backend } },
                systemAudioEnabled: system != nil, systemAudioStartupDelayNs: 0,
+               micAutoReconnectDelayNs: micAutoReconnectDelayNs,
                now: { [unowned self] in date }, log: { _, _ in }, recorder: recorder)
         }
 
-        func start() throws {
+        func start(micMuted: Bool = false) throws {
             try pipeline.prepare(recordingDirectory: directory)
-            try pipeline.start()
+            try pipeline.start(micMuted: micMuted)
         }
 
         func cleanUp() {
@@ -462,7 +591,16 @@ final class InjectedMicrophoneCapture: MicrophoneCapturing, @unchecked Sendable 
         set { lock.withLock { age = newValue } }
     }
     var stopCount: Int { lock.withLock { stops } }
-    func start() throws {}
+    /// Delivered from inside `start()`, as a real tap can deliver its first
+    /// buffer before `start()` returns.
+    var bufferOnStart: AVAudioPCMBuffer? {
+        get { lock.withLock { startBuffer } }
+        set { lock.withLock { startBuffer = newValue } }
+    }
+    private var startBuffer: AVAudioPCMBuffer?
+    func start() throws {
+        if let buffer = bufferOnStart { emit(buffer) }
+    }
     func stop() { lock.withLock { stops += 1 } }
     func restart() throws { onRestarted?() }
     func secondsSinceLastBuffer() -> TimeInterval? { lastBufferAge }
@@ -503,7 +641,9 @@ final class InjectedSTTClient: STTClient, @unchecked Sendable {
             onError?(.auth, true)
         }
     }
-    func sendAudio(_ data: Data) {}
+    private var sent: [Data] = []
+    var sentAudio: [Data] { lock.withLock { sent } }
+    func sendAudio(_ data: Data) { lock.withLock { sent.append(data) } }
     func finalize() {}
 }
 

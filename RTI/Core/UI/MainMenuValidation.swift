@@ -55,6 +55,8 @@ public struct MainMenuContext: Equatable, Sendable {
     public var phase: OverlayLivePhase
     public var isNoteMode: Bool
     public var isMicMuted: Bool
+    /// The mic mute acts: true only during a live call (`MicControl.canToggleMute`).
+    public var canToggleMute: Bool
     public var isKeptOnTop: Bool
     /// The Sessions window's list is showing.
     public var isSessionListVisible: Bool
@@ -66,6 +68,7 @@ public struct MainMenuContext: Equatable, Sendable {
         phase: OverlayLivePhase = .idle,
         isNoteMode: Bool = false,
         isMicMuted: Bool = false,
+        canToggleMute: Bool = false,
         isKeptOnTop: Bool = false,
         isSessionListVisible: Bool = false,
         visibleTabs: Set<String> = ["setup", "assist", "transcript", "notes"]
@@ -74,6 +77,7 @@ public struct MainMenuContext: Equatable, Sendable {
         self.phase = phase
         self.isNoteMode = isNoteMode
         self.isMicMuted = isMicMuted
+        self.canToggleMute = canToggleMute
         self.isKeptOnTop = isKeptOnTop
         self.isSessionListVisible = isSessionListVisible
         self.visibleTabs = visibleTabs
@@ -110,7 +114,11 @@ public enum MainMenuValidation {
             return context.phase != .finishing
         case .pause:
             return context.phase.isLive
-        case .addNote, .muteMicrophone, .readScreen, .readWindow, .chooseProject:
+        case .muteMicrophone:
+            // Outside a live call mute would do nothing; the pre-call
+            // choice is Listening only in Prepare.
+            return context.canToggleMute
+        case .addNote, .readScreen, .readWindow, .chooseProject:
             return true
         case let .tab(rawValue):
             guard context.keyWindow == .overlay, OverlayTabShortcut.number(forTab: rawValue) != nil else { return false }

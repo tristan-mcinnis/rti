@@ -71,7 +71,7 @@ final class RealTimePipelineEnduranceTests: XCTestCase {
         }
         let recordingDirectory = directory.appendingPathComponent("retained-audio", isDirectory: true)
         try pipeline.prepare(recordingDirectory: recordingDirectory)
-        try pipeline.start()
+        try pipeline.start(micMuted: false)
         await fulfillment(of: [ready], timeout: 5)
         guard clients.count == 2 else { XCTFail("Both injected transcription clients must exist"); return }
         clients[0].onStatus?(.live)

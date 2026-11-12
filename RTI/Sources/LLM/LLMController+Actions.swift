@@ -77,7 +77,7 @@ extension LLMController {
             lastErrorTurnID = nil
             return
         }
-        guard !streaming else { return }
+        guard !streaming else { return refuseBusySend() }
         // A dated legacy log handed over from the library rides this turn as
         // an exact recorded source, ahead of anything new the user attached.
         // It is consumed ONLY on a successful commit (see performSend), so a
@@ -184,14 +184,19 @@ extension LLMController {
             action: "Ask",
             text: "Searching the vault…"
         )
-        Task { @MainActor in
+        // The chat this search belongs to. A Stop or `/new` while it runs
+        // means its answer must not be sent into whatever chat is open then.
+        let searchGeneration = generation
+        localSearchProgressID = progressID
+        localSearchDraft = userInput
+        localSearchTask?.cancel()
+        localSearchTask = Task { @MainActor in
             let scope = Self.retrievalScope(for: userInput)
             let forceHard = Self.shouldForceVaultSearch(query: userInput, workstreamNames: workstreamNames, recentQuestions: recentQuestions)
-            let retrieval = await VaultRetrieval.search(
-                query: userInput,
-                scopeRelativePath: scope,
-                zeroResultPolicy: forceHard ? .hard : .soft
-            )
+            let retrieval = await localSearch(userInput, scope, forceHard ? .hard : .soft)
+            guard localSearchStillOwns(progressID, generation: searchGeneration) else { return }
+            localSearchProgressID = nil
+            localSearchDraft = nil
             self.retrievalDiagnostic = Self.statusDiagnostic(retrieval.status)
             let sources = retrieval.sourcePaths
             let scopeLabel = scope == nil ? "vault-wide" : "project-scoped"
@@ -228,7 +233,7 @@ extension LLMController {
     }
 
     func sendAnswerLatest() {
-        guard !streaming else { return }
+        guard !streaming else { return refuseBusySend() }
         let window = recentTranscriptText(maxSeconds: 180)
         guard !window.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             lastError = "No live transcript yet."
@@ -241,7 +246,12 @@ extension LLMController {
             action: "Answer latest",
             text: "Reading the latest transcript point…"
         )
-        Task { @MainActor in
+        let searchGeneration = generation
+        localSearchProgressID = progressID
+        // Answer latest has no typed question to give back on Stop.
+        localSearchDraft = nil
+        localSearchTask?.cancel()
+        localSearchTask = Task { @MainActor in
             var vaultBlock = ""
             var searchLine: [ChatToolLine] = []
             var searchSources: [ChatSource] = []
@@ -249,7 +259,8 @@ extension LLMController {
             if !SessionCoordinator.shared.isRunning {
                 let scope = Self.retrievalScope(for: window)
                 updateLocalAssistant(progressID, text: scope == nil ? "Searching the vault for the latest point…" : "Searching this project for the latest point…")
-                let retrieval = await VaultRetrieval.search(query: window, scopeRelativePath: scope, zeroResultPolicy: .latestPoint)
+                let retrieval = await localSearch(window, scope, .latestPoint)
+                guard localSearchStillOwns(progressID, generation: searchGeneration) else { return }
                 if retrieval.hasResults {
                     vaultBlock = "\n\n\(retrieval.scopeLabel) search results for the latest live question/point:\n---\n\(retrieval.formattedResults)\n---"
                 } else {
@@ -269,6 +280,9 @@ extension LLMController {
             Do not narrate the search process. Do not say "let me search" or "I found". Return only the final answer.
             \(vaultBlock)
             """
+            guard localSearchStillOwns(progressID, generation: searchGeneration) else { return }
+            localSearchProgressID = nil
+            localSearchDraft = nil
             removeLocalProgress(progressID)
             performSend(
                 userInput: prompt,
@@ -443,9 +457,40 @@ extension LLMController {
         lastErrorTurnID = nil
     }
 
+    /// True while a local search's answer may still be sent: the chat is the
+    /// one it started in, nothing cancelled it, and its progress entry is
+    /// still open. A Stop, `/new` or a later search fails at least one.
+    func localSearchStillOwns(_ progressID: UUID, generation searchGeneration: Int) -> Bool {
+        generation == searchGeneration && !Task.isCancelled && progressStatus[progressID] != nil
+    }
+
+    /// The user's Stop or Esc. An Ask still searching the vault hands its
+    /// unsent question back to the composer.
     func cancel() {
+        cancel(restoringDraft: true)
+    }
+
+    /// Ends the running turn. Only a user Stop restores an unsent search
+    /// question; a conversation reset (`/new`, the upgrade-end clear, a
+    /// resumed thread) cancels without putting the old question back.
+    func cancel(restoringDraft: Bool) {
         sendTask?.cancel()
         sendTask = nil
+        localSearchTask?.cancel()
+        localSearchTask = nil
+        let searchDraft = localSearchDraft
+        localSearchDraft = nil
+        if let progressID = localSearchProgressID {
+            localSearchProgressID = nil
+            // The question was never sent, so it leaves the thread with its
+            // placeholder and goes back to the composer, not into the void.
+            if progressStatus[progressID] != nil {
+                removeLocalProgress(progressID)
+                if restoringDraft, let searchDraft, !searchDraft.isEmpty {
+                    pendingDraftRestore = searchDraft
+                }
+            }
+        }
         request.cancel()
         // The checkpoint write may already be inside the store. Keep its task
         // so the terminal write can wait for it instead of racing it.

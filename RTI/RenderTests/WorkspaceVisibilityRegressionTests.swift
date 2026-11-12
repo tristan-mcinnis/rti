@@ -184,6 +184,29 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
         assertPresentation(active: true, session: session)
     }
 
+    /// A Dock-thumbnail or Window-menu restore reaches RTI only as AppKit's
+    /// own notification. The flag must follow it, or the transcript freezes.
+    func testDeminiaturizeNotificationMarksTheWindowVisible() {
+        _ = NSApplication.shared
+        let controller = OverlayWindowController()
+        let window = controller.window
+        let model = WorkspaceModel.shared
+        let wasVisible = model.isWindowVisible
+        defer {
+            window.orderOut(nil)
+            model.setWindowVisible(wasVisible)
+        }
+        window.animationBehavior = .none
+        window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
+        window.orderBack(nil)
+        model.setWindowVisible(false)
+        NotificationCenter.default.post(name: NSWindow.didDeminiaturizeNotification, object: window)
+        XCTAssertTrue(model.isWindowVisible)
+        model.setWindowVisible(false)
+        NotificationCenter.default.post(name: NSWindow.didDeminiaturizeNotification, object: NSWindow())
+        XCTAssertFalse(model.isWindowVisible, "Another window's restore must not touch the flag")
+    }
+
     func testLibraryVisibilityFollowsWindowAcrossCloseAndReopen() {
         let model = WorkspaceModel()
         model.select(.sessions)

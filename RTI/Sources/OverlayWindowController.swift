@@ -192,16 +192,6 @@ private final class OverlayWindow: NSWindow {
         super.close()
     }
 
-    override func miniaturize(_ sender: Any?) {
-        WorkspaceModel.shared.setWindowVisible(false)
-        super.miniaturize(sender)
-    }
-
-    override func deminiaturize(_ sender: Any?) {
-        WorkspaceModel.shared.setWindowVisible(true)
-        super.deminiaturize(sender)
-    }
-
     private static func isPlainEscape(_ event: NSEvent) -> Bool {
         event.keyCode == UInt16(kVK_Escape)
             && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
@@ -224,6 +214,8 @@ final class OverlayWindowController {
     private nonisolated(unsafe) var appearanceObserver: NSObjectProtocol?
     private nonisolated(unsafe) var enterFullScreenObserver: NSObjectProtocol?
     private nonisolated(unsafe) var exitFullScreenObserver: NSObjectProtocol?
+    // Same contract as the tokens above: set in init, read only in deinit.
+    private nonisolated(unsafe) var visibilityObservers: [NSObjectProtocol] = []
 
     init(onOpenSettings: @Sendable @escaping () -> Void = {}) {
         let initialSize = Self.configuredSize()
@@ -310,6 +302,18 @@ final class OverlayWindowController {
         ) { _ in
             MainActor.assumeIsolated { OverlayWindowChrome.shared.isFullScreen = false }
         }
+        // The workspace's visible flag follows AppKit's own window events, so
+        // every restore path counts: the Dock thumbnail, the Window menu, a
+        // click. Occlusion is not mapped: a covered window keeps updating.
+        for name in [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
+                     NSWindow.didBecomeKeyNotification] {
+            visibilityObservers.append(NotificationCenter.default.addObserver(forName: name, object: win, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    WorkspaceModel.shared.setWindowVisible(self.isVisible)
+                }
+            })
+        }
         OverlayWindowChrome.shared.onKeepOnTopChange = { [weak win] onTop in
             win?.level = onTop ? .floating : .normal
         }
@@ -329,6 +333,7 @@ final class OverlayWindowController {
         if let o = appearanceObserver { NotificationCenter.default.removeObserver(o) }
         if let o = enterFullScreenObserver { NotificationCenter.default.removeObserver(o) }
         if let o = exitFullScreenObserver { NotificationCenter.default.removeObserver(o) }
+        visibilityObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     /// The NSAppearance the window should use, per the Settings theme mode.

@@ -433,10 +433,13 @@ struct AssistantInputView: View {
             // A question that could not be saved, or a prompt handed over from
             // the Chats library, comes back to the field: a failed send never
             // loses what was typed, and a hand-over is editable before it is
-            // sent. Nothing is submitted here.
+            // sent. Nothing is submitted here. A draft already in the field,
+            // such as a follow-up queued during a search the user then
+            // stopped, is never overwritten: the returned draft is dropped.
             guard let restored, !restored.isEmpty else { return }
-            input = restored
             llm.clearPendingDraftRestore()
+            guard let text = ComposerDraftRestore.fieldText(current: input, restored: restored) else { return }
+            input = text
             focusField()
         }
         .onChange(of: llm.streaming) { _, streaming in

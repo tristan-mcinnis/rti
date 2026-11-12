@@ -77,7 +77,18 @@ public final class TranscriptPipeline {
         return !finals.isEmpty
     }
 
-    public func setSystemStartOffset(ms: Int) { system.startMsOffset = ms }
+    /// Set once the system socket reported `.live`; that re-base then owns the
+    /// live system timeline.
+    private var systemStreamWentLive = false
+
+    /// The system backend's start offset. It places the system stream only
+    /// until the socket goes `.live`. A later backend start (the
+    /// ScreenCaptureKit fallback) must not move a live stream's base: words
+    /// already counted from the `.live` re-base would jump.
+    public func setSystemStartOffset(ms: Int) {
+        guard !systemStreamWentLive else { return }
+        system.startMsOffset = ms
+    }
 
     @discardableResult
     public func insertNote(_ text: String, startedAt: Date) -> Bool {
@@ -118,6 +129,7 @@ public final class TranscriptPipeline {
     public func reset() {
         mic.reset()
         system.reset()
+        systemStreamWentLive = false
         liveEntries = []
         readerActivity = .init()
         recent = []
@@ -134,7 +146,9 @@ public final class TranscriptPipeline {
     public func restartStream(channel: String, atMs: Int) {
         switch channel {
         case "mic": mic.restartStream(atMs: atMs)
-        case "system": system.restartStream(atMs: atMs)
+        case "system":
+            system.restartStream(atMs: atMs)
+            systemStreamWentLive = true
         default: break
         }
     }
