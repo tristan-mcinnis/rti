@@ -1,0 +1,10 @@
+{"id":"m1","kind":"marker","offsetMs":1000,"leg":"local","text":"/First look","guideQuestionID":"S1Q1","shownCodes":["A1"]}
+{"id":"m2","kind":"marker","offsetMs":2000,"leg":"local","text":"/Comparison","shownCodes":["A1","B1"]}
+{"id":"n1","kind":"note","offsetMs":2500,"leg":"local","text":"Allow a pause."}
+{"id":"m3","kind":"marker","offsetMs":3000,"leg":"local","text":"/Recall details","guideQuestionID":"S1Q2"}
+{"id":"m4","kind":"marker","offsetMs":4000,"leg":"local","text":"/Boards down","shownCodes":[]}
+{"id":"m5","kind":"marker","offsetMs":5000,"leg":"local","text":"/One board again","shownCodes":["B1"]}
+{"id":"m6","kind":"marker","offsetMs":6000,"leg":"local","text":"/Reveal","shownCodes":["R1"]}
+{"id":"m7","kind":"marker","offsetMs":7000,"leg":"local","text":"/First board again","shownCodes":["A1"]}
+{"id":"fix1","kind":"correction","offsetMs":8000,"leg":"local","replaces":"m5","replacement":{"text":"/One board again","shownCodes":["A1"]}}
+{"id":"fix1","kind":"correction","offsetMs":8000,"leg":"local","replaces":"m5","replacement":{"text":"/One board again","shownCodes":["A1"]}}

@@ -1,0 +1,10 @@
+[
+  {"turnID":"t0","liveStartMs":500,"upgradedStartMs":500,"rawSpeaker":"remote_1","original":"还没看清。"},
+  {"turnID":"t1","liveStartMs":1000,"upgradedStartMs":1000,"rawSpeaker":"remote_2","original":"It folds."},
+  {"turnID":"t2","liveStartMs":2600,"upgradedStartMs":2650,"rawSpeaker":"remote_1","original":"这两个角不一样。"},
+  {"turnID":"t3","liveStartMs":3990,"upgradedStartMs":4020,"rawSpeaker":"remote_2","original":"The round edge."},
+  {"turnID":"t4","liveStartMs":4000,"rawSpeaker":"remote_1","original":"只有白墙。"},
+  {"turnID":"t5","liveStartMs":5500,"upgradedStartMs":5510,"rawSpeaker":"remote_2","original":"I remember B1.","discussedCodes":["B1"]},
+  {"turnID":"t6","liveStartMs":6200,"upgradedStartMs":6200,"rawSpeaker":"remote_1","original":"原来是同一家。"},
+  {"turnID":"t7","liveStartMs":7100,"upgradedStartMs":7100,"rawSpeaker":"remote_2","original":"It feels different this time."}
+]

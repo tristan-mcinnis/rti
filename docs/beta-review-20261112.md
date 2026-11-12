@@ -4,6 +4,9 @@
 
 | Review item | What to decide |
 | --- | --- |
+| [Stimulus identity and exposure](research-stimulus-design-20261112.md) | Keep the planned guide moment, moderator-confirmed material shown, and material a participant discusses distinct. Preserve both timestamps across an upgrade. |
+| [Live answer language](live-answer-language-20261112.md) | In English Assist replies, lead with the English finding. Put exact Chinese evidence and tone-marked pinyin on separate lines. |
+| [State-machine coverage](state-coverage-20261112.md) | Prioritize recoverable data loss and false completion. The source index names each owner, transition and remaining proof. |
 | [Window stability](window-stability-20261112.md) | Keep the workspace frame and Space stable through live updates. Exercise native drag, zoom, minimize, restore and full-screen transitions before adopting the compact header. |
 | [Transcript and state audit](state-audit-20261112.md) | Keep the audio leg as a fact, retain unverified speaker labels as such, preserve original turns across stream changes, and resolve conflicting settings explicitly. |
 | [Inline notes and Screenshots](capture-audit-20261112.md) | Accept a typed note only after it is journaled. Anchor marker spans to recorded audio time. Apply the effective screenshot policy at capture, archive and outbound dispatch. |

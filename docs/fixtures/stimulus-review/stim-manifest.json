@@ -1,0 +1,19 @@
+{
+  "guide": "guide.md",
+  "source": "slides",
+  "language": "zh",
+  "medium": "screen",
+  "version": "v1-fixture",
+  "blind": true,
+  "brand_words": ["示例盒", "Private Birch Label"],
+  "categories": {"G": "Private fixture category"},
+  "products": [
+    {"code": "G1", "name": "Private Birch Label"},
+    {"code": "G2", "name": "Private Ash Label"}
+  ],
+  "slides": [
+    {"id": "folded-fixture", "moment": "T", "type": "concept-slide", "code": "A1", "product": "G1", "shot": "none"},
+    {"id": "rounded-fixture", "moment": "T", "type": "concept-slide", "code": "B1", "product": "G2", "shot": "none"},
+    {"id": "reveal-fixture", "moment": "T", "type": "concept-slide", "code": "R1", "ends_blind": true, "shot": "none"}
+  ]
+}

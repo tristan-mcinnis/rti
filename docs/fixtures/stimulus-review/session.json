@@ -1,0 +1,8 @@
+{
+  "sessionId": "fixture-session",
+  "groupID": "G1",
+  "stimulusPackage": {
+    "version": "v1-fixture",
+    "sha256": "b18dd06b36cde4ac0f6b5408e73c62655bb08983d4fef43dc430eefab27b263b"
+  }
+}

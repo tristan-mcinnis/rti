@@ -1,0 +1,13 @@
+{
+  "title": "Practice group · Storage shapes",
+  "sections": [{
+    "id": "S1",
+    "title": "Two storage boards",
+    "minutes": 5,
+    "questions": [
+      {"qid": "S1Q1", "en": "What do you notice?", "zh": "你注意到了什么？", "part": "First impression",
+       "must_ask": true, "probes": [{"en": "Which detail caught your eye?", "zh": "哪个细节最吸引你？"}]},
+      {"qid": "S1Q2", "en": "Which detail will you remember?", "zh": "你会记得哪个细节？", "part": "Comparison", "probes": []}
+    ]
+  }]
+}
