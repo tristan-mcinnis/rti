@@ -82,3 +82,11 @@ Lifecycle follow-up from 6b4e91f4, 2026-11-09:
 - Corrected the audit: Auto intentionally supports grounded recall, project-first with whole-vault no-hit fallback. No product/rule-file change. The original socket tests were timed, not deterministic ordering proofs.
 - Lower-priority work remains ranked in the audit, led by screenshot retention, upgrade serialization and manual generation during stop.
 - Follow-up verification: 51 focused app tests (zero skips/failures), 786 unit tests (2 skipped, zero failures), make check/build, strict changed-file lint, scrub and diff checks passed. Five new tests; no live hardware/provider experiment. Existing publish/install guards apply.
+
+## Side-by-side beta, 2026-11-12
+
+RTI Beta was installed and launched from a signed Release build of `bcdedc1c`. Its separate bundle ID, private control socket and visible workspace were verified. The installed recorder kept its PID and executable fingerprint. The beta practice project contains an invented discussion guide, codebook seeds and coded boards.
+
+The full run enumerated 827 unit tests and 362 app/render tests, with zero failures. The two opt-in workloads ran separately. A 60-second real-time test with generated PCM retained 960,000 frames per leg with verified hashes. There was no real provider or hardware capture in this test.
+
+The running beta sampled 82.4–85.3 MiB RSS and 0.0% CPU over ten idle seconds. The 90-minute raw transcript replay measured 4.0 ms p95 for ongoing final updates. Opening the complete reader cold measured 259 ms in the core projection. See the [palette and workspace memory results](docs/palette-beta-performance-20261112.md) for the measured cold filter outliers and [manual checks](RTI/VERIFY.md) for visible-display, microphone and multi-Space acceptance.

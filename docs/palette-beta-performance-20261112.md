@@ -45,3 +45,11 @@ The shared lazy chooser also covers Add Context, @, slash, scope and the Guide p
 ## Reproduction
 
 Baseline timings use the original probe. To reproduce the beta timings, follow its checkout and build directions with revision `9fbccf4d` and apply only the beta instrumentation patch to that disposable checkout. The opt-in memory test and normal viewport/navigation regression are already in that commit. Unit and render fixtures use invented content. The release app also emits the native draw signposts for a directly observed window. [Baseline directions](palette-baseline-20261112.md) · [Beta timing patch](fixtures/palette-baseline/beta-instrument.patch) · [VERIFY](../RTI/VERIFY.md)
+
+## Signed beta on the Mac
+
+The installed Release bundle at revision `bcdedc1c` launched alongside the reference recorder. LaunchServices identified a separate process and two visible windows (the 860 × 660 workspace and first-run setup). A peer-PID check verified that the beta answered on its own status socket. The original recorder retained its process ID and executable digest.
+
+Six `ps` samples taken two seconds apart on the verified beta executable returned 84.66, 82.41, 85.31, 85.31, 85.31 and 82.48 MiB RSS. Each sample reported 0.0% CPU. This measures an idle beta after launch; the long-session table above measures a hostless workspace under load.
+
+The optional real-time audio proof fed separate synthesized 16 kHz tracks through the capture pipeline for 60.00 seconds. It closed both WAVs cleanly, verified all 960,000 sample frames per leg against the input hashes, and recorded zero provider or fatal errors. Capture consumed 1.31 process CPU seconds. Callback time was at most 1 ms at p95, 4 ms at p99 and 37.49 ms for the slowest callback. Eleven input blocks were scheduled late. The independent main-actor probe recorded a 5.08 ms maximum delay. These are fixture results with synthetic PCM and a local provider double. Real microphone, live network recognition, Mission Control behavior and physical display timing remain hands-on beta checks.

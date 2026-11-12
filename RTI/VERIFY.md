@@ -4,7 +4,7 @@ This is what you run to verify RTI by hand. Ralph automated what it could; these
 
 ## Isolated beta acceptance, 12 November 2026
 
-**Planned checks for the separately identified beta.** Begin once the beta reports its own build, test project and session directory. Use invented content. The baseline, replay harness and comparison criteria are in the [beta review](../docs/beta-review-20261112.md). The Debug launch command in section 1 uses the normal app identity.
+**Planned checks for the separately identified beta.** Begin once the beta reports its own build, test project and session directory. Use invented content. The baseline, replay harness and comparison criteria are in the [beta review](../docs/beta-review-20261112.md). The Debug launch command in section 1 uses the normal app identity. While running both, use the beta window’s controls or its local shortcuts: add Control to recorder chords (e.g. ⌃⌘⌥N for note mode, ⌃⌘⇧H / ⌃⌘⇧J for screen / window). Cmd+K stays local. The practice project appears under Prepare → Research. Its beta resources and credentials are separate from RTI.
 
 | Minutes | Action | Pass condition |
 | --- | --- | --- |
