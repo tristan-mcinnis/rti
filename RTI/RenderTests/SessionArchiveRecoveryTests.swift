@@ -225,6 +225,21 @@ final class SessionArchiveRecoveryTests: XCTestCase {
         XCTAssertTrue(sidecar.contains("\ncall_type: research\n"))
     }
 
+    func testUpgradeExportFailureRetainsRetryMarkerAndRecoversWithoutProvider() throws {
+        let directory = try XCTUnwrap(SessionArchive.write(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(5),
+                                                           transcript: [entry("An invented turn.")], chat: []))
+        let raw = try XCTUnwrap(SessionArchive.refreshCanonicalMeetingTranscript(fromArchiveDir: directory, startedAt: startedAt))
+        try FileManager.default.removeItem(at: raw)
+        try FileManager.default.createDirectory(at: raw, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try TranscriptUpgradeService.finishExport(in: directory, startedAt: startedAt, provider: "Fixture", segmentCount: 1))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("canonical-export.pending.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("automatic-upgrade.pending").path))
+        try FileManager.default.removeItem(at: raw)
+        XCTAssertEqual(try TranscriptUpgradeService.finishExport(in: directory, startedAt: startedAt, provider: "Fixture", segmentCount: 1), raw)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("canonical-export.pending.json").path))
+        XCTAssertTrue(try String(contentsOf: raw, encoding: .utf8).contains("An invented turn."))
+    }
+
     func testFailedCanonicalWritesReturnNoSuccessURL() throws {
         let earlier = try XCTUnwrap(SessionArchive.writeCanonicalMeetingExport(
             startedAt: startedAt, transcript: [entry("Earlier export")], chat: [], visualContext: [], notes: [], archiveDir: nil, callType: .client

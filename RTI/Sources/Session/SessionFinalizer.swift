@@ -42,6 +42,9 @@ struct SessionFinalizer {
             guard let directory = SessionArchive.sessionDirectory(startedAt: snapshot.startedAt),
                   SessionArchive.clearAutomaticUpgradePending(in: directory) else { return nil }
         }
+        let markers = SessionMarkers.shared
+        let liveSession = snapshot.sessionId != nil && snapshot.sessionId == markers.sessionID
+        let evidence = liveSession ? makeEvidence(markers) : nil
         return SessionArchive.write(
             startedAt: snapshot.startedAt,
             endedAt: snapshot.endedAt,
@@ -69,8 +72,35 @@ struct SessionFinalizer {
             chatThreads: snapshot.chatThreads,
             unreadableChatCount: snapshot.unreadableChatCount,
             recordingError: snapshot.recordingError,
-            guide: snapshot.guide
+            guide: snapshot.guide,
+            evidence: evidence,
+            speakerPolicy: liveSession ? SessionCoordinator.shared.speakerPolicy : nil,
+            packageRevision: liveSession ? markers.pinned?.revision : nil
         )
+    }
+
+    private func makeEvidence(_ markers: SessionMarkers) -> SessionEvidence {
+        let names = SpeakerNameStore.shared
+        let guide = GuideSessionController.shared
+        let codes = markers.pinned?.items.map(\.code) ?? []
+        let turns = GuideTranscript.sources(from: snapshot.transcript).map { source in
+            let t = source.turn
+            var context = markers.context(at: t.startMs)
+            context.guideQuestionID = guide.questionID(atTranscriptMs: t.startMs) ?? context.guideQuestionID
+            let named = names.enteredNames[t.speaker] != nil || names.guideAssignments[t.speaker]?.isEmpty == false
+            var turn = SessionAnnotatedTurn(turnID: t.id, rawSpeaker: t.speaker, leg: SpeakerEvidence.leg(for: t.speaker),
+                                            speakerConfidence: SpeakerEvidence.resolve(speakerID: t.speaker, named: named && source.attributable).rawValue,
+                                            original: t.text, liveStartMs: t.startMs, endMs: source.endMs, context: context)
+            let discussed = codes.filter { code in
+                let escaped = NSRegularExpression.escapedPattern(for: code)
+                return t.text.range(of: "(?<![A-Za-z0-9])" + escaped + "(?![A-Za-z0-9])", options: [.regularExpression, .caseInsensitive]) != nil
+            }
+            if !discussed.isEmpty { turn.discussedCodes = discussed }
+            return turn
+        }
+        return SessionEvidence(sessionID: snapshot.sessionId, groupID: snapshot.guide?.extraction.group,
+                               events: markers.timeline.entries,
+                               through: Int(max(0, snapshot.endedAt.timeIntervalSince(snapshot.startedAt)) * 1000), turns: turns)
     }
 
     /// The title of the calendar event picked in Prepare, trimmed, or nil
