@@ -36,7 +36,7 @@ struct GuideTabView: View {
                                      disabled: controller.isGenerating || !SessionCoordinator.shared.isRunning)
                 {
                     if let sessionID = SessionCoordinator.shared.currentSessionId {
-                        Task { _ = await controller.generate(sessionId: sessionID, entries: SessionCoordinator.shared.liveEntries) }
+                        Task { _ = await controller.generateLive(sessionId: sessionID, explicit: true) }
                     }
                 }
             }

@@ -107,11 +107,124 @@ public enum VaultSearch {
     /// compiler can't prove it.
     private final class ResultSink: @unchecked Sendable {
         private let lock = NSLock()
-        private var items: [Result] = []
-        public func add(_ batch: [Result]) {
+        private var items: [Hit] = []
+        func add(_ batch: [Hit]) {
             lock.lock(); items.append(contentsOf: batch); lock.unlock()
         }
-        public func drain() -> [Result] { items }
+        func drain() -> [Hit] { items }
+    }
+
+    /// One scored file before its excerpt is read.
+    private struct Hit {
+        let result: Result
+        let url: URL
+    }
+
+    /// How hard one search may work. `search_vault` (`.tool`) runs at the
+    /// user's request on every core with no limit. Auto's background search
+    /// (`.auto`) must never compete with a call on an 8 GB M1 (2026-11-13
+    /// audit: one unscoped Auto scan took 92 s and 437 CPU-seconds): it runs
+    /// at `.utility` on two workers and stops after 300 ms with what it has.
+    /// The walk may use only the first half of the limit (`walkShare`), so a
+    /// large folder of decks and images still leaves time to read; each
+    /// worker reads at least `minimumReadsPerWorker` files even past the
+    /// limit, so a cold cache always warms. Cancellation stops both at once.
+    public struct Budget: Sendable, Equatable {
+        public let qos: DispatchQoS.QoSClass
+        /// nil means one worker per active core.
+        public let workers: Int?
+        /// nil means no limit.
+        public let timeLimit: TimeInterval?
+
+        public init(qos: DispatchQoS.QoSClass, workers: Int?, timeLimit: TimeInterval?) {
+            self.qos = qos
+            self.workers = workers
+            self.timeLimit = timeLimit
+        }
+
+        public static let tool = Budget(qos: .userInitiated, workers: nil, timeLimit: nil)
+        public static let auto = Budget(qos: .utility, workers: 2, timeLimit: 0.3)
+
+        /// Share of `timeLimit` the walk may use; the rest is kept for reading.
+        static let walkShare = 0.5
+        /// Files each worker reads before the time limit can stop it.
+        static let minimumReadsPerWorker = 8
+    }
+
+    /// The documents one session has read, keyed by path and checked against
+    /// the file's modification date and size, so a repeat search reads and
+    /// lowercases only what changed. In memory only, dropped with the
+    /// session: it is not an index and is never written to disk. It keeps
+    /// one copy of each file (the lowercased text that scoring reads; the
+    /// excerpt is read again from disk for the few results), and stops
+    /// adding files past `byteLimit` (16 MB by default), so a large project
+    /// folder cannot grow it without bound on an 8 GB Mac.
+    /// `@unchecked Sendable` because `lock` guards `documents`.
+    public final class DocumentCache: @unchecked Sendable {
+        struct Document {
+            let modified: Date
+            let size: Int
+            let title: String
+            let lowered: String
+        }
+
+        public static let defaultByteLimit = 16 * 1024 * 1024
+        private let byteLimit: Int
+        private let lock = NSLock()
+        private var documents: [String: Document] = [:]
+        private var readCount = 0
+        private var storedBytes = 0
+
+        public init(byteLimit: Int = DocumentCache.defaultByteLimit) {
+            self.byteLimit = byteLimit
+        }
+
+        /// Files read from disk so far, for tests.
+        public var reads: Int {
+            lock.withLock { readCount }
+        }
+
+        /// Bytes of text held, for tests.
+        public var bytes: Int {
+            lock.withLock { storedBytes }
+        }
+
+        func document(at url: URL, modified: Date, size: Int) -> Document? {
+            let key = url.path
+            if let hit = lock.withLock({ documents[key] }), hit.modified == modified, hit.size == size { return hit }
+            guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+            let document = Document(modified: modified, size: size, title: VaultSearch.documentTitle(content: content, url: url),
+                                    lowered: content.lowercased())
+            let cost = document.lowered.utf8.count
+            lock.withLock {
+                readCount += 1
+                let previous = documents[key]?.lowered.utf8.count ?? 0
+                if storedBytes - previous + cost <= byteLimit {
+                    documents[key] = document
+                    storedBytes += cost - previous
+                } else if previous > 0 {
+                    // Changed and now too big to keep: drop the stale copy.
+                    documents[key] = nil
+                    storedBytes -= previous
+                }
+            }
+            return document
+        }
+    }
+
+    /// Set once to stop a running scan: the caller's task was cancelled.
+    /// `@unchecked Sendable` because `lock` guards `stopped`.
+    private final class StopFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stopped = false
+
+        var isStopped: Bool {
+            lock.withLock { stopped }
+        }
+
+        func stop() {
+            lock.withLock { stopped = true }
+        }
     }
 
     // MARK: - Public entry (async, off the main thread)
@@ -128,7 +241,9 @@ public enum VaultSearch {
         query: String,
         scopeRelativePath: String? = nil,
         citeable: Bool = false,
-        broaden: Bool = true
+        broaden: Bool = true,
+        budget: Budget = .tool,
+        cache: DocumentCache? = nil
     ) async -> Retrieval {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -142,10 +257,11 @@ public enum VaultSearch {
         // Keyword scan. Scoped first; if the project has no match, broaden to
         // the whole notes folder (unless the caller asked to stay in scope).
         var inScope = scopeRelativePath != nil
-        var results = await grep(query: trimmed, scopeRelativePath: scopeRelativePath, broaden: broaden)
+        var results = await grep(query: trimmed, scopeRelativePath: scopeRelativePath, broaden: broaden,
+                                 budget: budget, cache: cache)
         if results.isEmpty, scopeRelativePath != nil, broaden {
             inScope = false
-            results = await grep(query: trimmed, scopeRelativePath: nil)
+            results = await grep(query: trimmed, scopeRelativePath: nil, budget: budget, cache: cache)
         }
         let scopedHit = inScope && !results.isEmpty
         return Retrieval(
@@ -164,12 +280,20 @@ public enum VaultSearch {
         }
     }
 
-    /// Async wrapper over the synchronous `search` core, off the main thread.
-    private static func grep(query: String, scopeRelativePath: String?, broaden: Bool = true) async -> [Result] {
-        await withCheckedContinuation { (cont: CheckedContinuation<[Result], Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                cont.resume(returning: search(query: query, scopeRelativePath: scopeRelativePath, broaden: broaden))
+    /// Async wrapper over the synchronous `search` core, off the main thread
+    /// at the budget's QoS. Cancelling the calling task stops the scan.
+    private static func grep(query: String, scopeRelativePath: String?, broaden: Bool = true,
+                             budget: Budget, cache: DocumentCache?) async -> [Result] {
+        let flag = StopFlag()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<[Result], Never>) in
+                DispatchQueue.global(qos: budget.qos).async {
+                    cont.resume(returning: search(query: query, scopeRelativePath: scopeRelativePath, broaden: broaden,
+                                                  budget: budget, cache: cache, isCancelled: { flag.isStopped }))
+                }
             }
+        } onCancel: {
+            flag.stop()
         }
     }
 
@@ -181,8 +305,24 @@ public enum VaultSearch {
     /// `scopeRelativePath` restricts the walk to a project subtree under
     /// `databases/` (e.g. `projects/foo`); nil scans the whole knowledge base.
     /// A scope folder that does not exist widens to the whole knowledge base
-    /// only when `broaden` is true; with false it finds nothing.
-    public static func search(query: String, scopeRelativePath: String? = nil, broaden: Bool = true) -> [Result] {
+    /// only when `broaden` is true; with false it finds nothing. `now` is the
+    /// budget's clock, replaced only by tests.
+    public static func search(
+        query: String,
+        scopeRelativePath: String? = nil,
+        broaden: Bool = true,
+        budget: Budget = .tool,
+        cache: DocumentCache? = nil,
+        isCancelled: @escaping @Sendable () -> Bool = { false },
+        now: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
+    ) -> [Result] {
+        let start = now()
+        let deadline = budget.timeLimit.map { start + UInt64($0 * 1_000_000_000) }
+        let walkDeadline = budget.timeLimit.map { start + UInt64($0 * Budget.walkShare * 1_000_000_000) }
+        @Sendable func past(_ limit: UInt64?) -> Bool {
+            limit.map { now() >= $0 } ?? false
+        }
+        let walkShouldStop: () -> Bool = { isCancelled() || past(walkDeadline) }
         guard let databases = VaultWorkstreamStore.databasesDir() else { return [] }
         let terms = tokenize(query)
         guard !terms.isEmpty else { return [] }
@@ -210,18 +350,21 @@ public enum VaultSearch {
         // parallel below rather than inline here.
         let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
         var candidates: [(url: URL, modified: Date)] = []
+        var sizes: [Int] = []
         func consider(_ url: URL) -> Bool {
             guard let vals = try? url.resourceValues(forKeys: Set(keys)),
                   vals.isRegularFile == true,
                   (vals.fileSize ?? 0) <= maxFileBytes else { return true }
             candidates.append((url, vals.contentModificationDate ?? .distantPast))
+            sizes.append(vals.fileSize ?? 0)
             return candidates.count < maxFilesScanned
         }
         walk: while !walkRoots.isEmpty {
             let walk = walkRoots.removeFirst()
             if walk.isProjectRoot {
                 var more = true
-                ProjectRoots.walkFiles(under: walk.url, extraSkips: skipDirComponents, keys: keys) { url in
+                ProjectRoots.walkFiles(under: walk.url, extraSkips: skipDirComponents, keys: keys,
+                                       shouldStop: walkShouldStop) { url in
                     more = consider(url)
                     return more
                 }
@@ -232,6 +375,9 @@ public enum VaultSearch {
                 at: walk.url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]
             ) else { continue }
             for case let url as URL in enumerator {
+                // Every enumerated item, not only the markdown, so a folder of
+                // decks and images cannot outrun the budget.
+                if walkShouldStop() { break walk }
                 if skipDirComponents.contains(url.lastPathComponent) {
                     enumerator.skipDescendants()
                     continue
@@ -241,43 +387,77 @@ public enum VaultSearch {
             }
         }
         guard !candidates.isEmpty else { return [] }
+        // Newest first, so a search stopped by its budget has read the
+        // freshest notes.
+        let order = candidates.indices.sorted { candidates[$0].modified > candidates[$1].modified }
 
-        // Phase 2 — read + score in parallel across all cores. Each core works
-        // a contiguous slice into a local array, then merges once under a lock;
-        // no per-file contention. Drops a ~5s sequential scan to sub-second.
-        let cores = max(1, min(candidates.count, ProcessInfo.processInfo.activeProcessorCount))
-        let chunk = (candidates.count + cores - 1) / cores
+        // Phase 2 — read + score in parallel. Each worker takes every n-th
+        // file into a local array, then merges once under a lock; no per-file
+        // contention. A budget caps the workers and stops them at its time
+        // limit, keeping what was scored so far. A cache skips files read
+        // earlier in the session and unchanged since.
+        let available = budget.workers.map { min($0, ProcessInfo.processInfo.activeProcessorCount) }
+            ?? ProcessInfo.processInfo.activeProcessorCount
+        let workers = max(1, min(candidates.count, available))
         let sink = ResultSink()
-        let files = candidates
-        DispatchQueue.concurrentPerform(iterations: cores) { c in
-            let start = c * chunk
-            guard start < files.count else { return }
-            let end = min(start + chunk, files.count)
-            var local: [Result] = []
-            for i in start..<end {
+        let files = order.map { candidates[$0] }
+        let fileSizes = order.map { sizes[$0] }
+        DispatchQueue.concurrentPerform(iterations: workers) { worker in
+            var local: [Hit] = []
+            var readHere = 0
+            for i in stride(from: worker, to: files.count, by: workers) {
+                if isCancelled() { break }
+                if readHere >= Budget.minimumReadsPerWorker, past(deadline) { break }
+                readHere += 1
                 let (url, modified) = files[i]
-                guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                let title: String
+                let lowered: String
+                if let cache {
+                    guard let document = cache.document(at: url, modified: modified, size: fileSizes[i]) else { continue }
+                    (title, lowered) = (document.title, document.lowered)
+                } else {
+                    guard let read = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                    (title, lowered) = (documentTitle(content: read, url: url), read.lowercased())
+                }
                 let relative = relativePath(of: url, under: databases, roots: roots)
-                let title = documentTitle(content: content, url: url)
-                let (score, excerpt) = rank(terms: terms, title: title, relativePath: relative, content: content)
+                let score = score(terms: terms, title: title, relativePath: relative, lowered: lowered)
                 guard score > 0 else { continue }
-                local.append(Result(title: title, relativePath: relative, modified: modified, excerpt: excerpt, score: score))
+                local.append(Hit(result: Result(title: title, relativePath: relative, modified: modified,
+                                                excerpt: "", score: score), url: url))
             }
             sink.add(local)
         }
 
-        // Highest score first; break ties by recency (fresher wins).
-        return Array(
-            sink.drain().sorted {
-                $0.score != $1.score ? $0.score > $1.score : $0.modified > $1.modified
-            }.prefix(resultLimit)
-        )
+        // Highest score first; break ties by recency (fresher wins). Only the
+        // results read their excerpt, from disk, in the original case.
+        let top = sink.drain().sorted {
+            $0.result.score != $1.result.score ? $0.result.score > $1.result.score : $0.result.modified > $1.result.modified
+        }.prefix(resultLimit)
+        return top.map { hit in
+            let result = hit.result
+            guard !isCancelled(), let content = try? String(contentsOf: hit.url, encoding: .utf8) else { return result }
+            return Result(title: result.title, relativePath: result.relativePath, modified: result.modified,
+                          excerpt: bestExcerpt(terms: terms, content: content), score: result.score)
+        }
     }
 
     /// Pure scorer for one document. Returns its score and the best excerpt.
     /// Exposed (internal) so it can be unit-tested without the filesystem.
     public static func rank(terms: [String], title: String, relativePath: String, content: String) -> (score: Int, excerpt: String) {
-        let haystack = content.lowercased()
+        rank(terms: terms, title: title, relativePath: relativePath, content: content, lowered: content.lowercased())
+    }
+
+    /// `rank` with the lowercased content supplied, so a cached document is
+    /// not lowercased again on every search.
+    static func rank(terms: [String], title: String, relativePath: String, content: String,
+                     lowered haystack: String) -> (score: Int, excerpt: String) {
+        let score = score(terms: terms, title: title, relativePath: relativePath, lowered: haystack)
+        return score > 0 ? (score, bestExcerpt(terms: terms, content: content)) : (0, "")
+    }
+
+    /// The score alone, from the lowercased text: what the scan needs for
+    /// every file. Zero means no match.
+    static func score(terms: [String], title: String, relativePath: String, lowered haystack: String) -> Int {
         let titleHay = title.lowercased()
         let pathHay = relativePath.lowercased()
 
@@ -303,14 +483,13 @@ public enum VaultSearch {
             }
             if hit { covered += 1 }
         }
-        guard covered > 0, covered >= requiredCoverage(termCount: terms.count) else { return (0, "") }
+        guard covered > 0, covered >= requiredCoverage(termCount: terms.count) else { return 0 }
 
         // Status files are the live state of a project — nudge them up so
         // "where are we on X" surfaces the dashboard, not an old meeting note.
         if pathHay.hasSuffix("00-status.md") { score += 6 }
         if pathHay.contains("/projects/") { score += 2 }
-
-        return (score, bestExcerpt(terms: terms, content: content))
+        return score
     }
 
     // MARK: - Helpers
@@ -421,7 +600,7 @@ public enum VaultSearch {
 
     /// Frontmatter `title:` if present, else the first `# heading`, else the
     /// de-slugged filename.
-    private static func documentTitle(content: String, url: URL) -> String {
+    fileprivate static func documentTitle(content: String, url: URL) -> String {
         let lines = content.components(separatedBy: .newlines)
         if lines.first == "---" {
             for line in lines.dropFirst() {

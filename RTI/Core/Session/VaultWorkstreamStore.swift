@@ -1,7 +1,7 @@
 import Foundation
 
 /// A pickable client or project from the vault.
-public struct VaultItem: Identifiable, Hashable {
+public struct VaultItem: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let url: URL

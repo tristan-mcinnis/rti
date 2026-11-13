@@ -71,13 +71,23 @@ final class NotesGenerationController {
         }
         lastError = nil
 
-        let windowStartMs = lastNotedMs
-        let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
+        var windowStartMs = lastNotedMs
+        var sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
 
         // Nothing new spoken since the last note → skip quietly (no error).
-        let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
+        var window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !window.isEmpty else { return nil }
+        // A backlog (a failed pass, or Notes turned on mid-call) keeps only
+        // its newest part, so one prompt never carries an hour of talk.
+        if let capped = Self.backlogStart(window: window, sinceMs: sinceMs,
+                                          sessionElapsedMs: SessionCoordinator.shared.startedAt.map { Int(Date().timeIntervalSince($0) * 1000) }) {
+            windowStartMs = capped
+            sinceMs = capped
+            window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            RTILog.log("notes: backlog capped to the newest \(Self.backlogCharacters) characters", category: .notes)
+        }
         let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? windowStartMs
         RTILog.log("notes: generating from \(window.count) chars (since \(windowStartMs)ms)", category: .notes)
 
@@ -116,6 +126,21 @@ final class NotesGenerationController {
             content: parsed.bullets
         ))
         return endMs
+    }
+
+    /// The most transcript text one backlog pass sends (2026-11-13 M1 audit).
+    static let backlogCharacters = 6_000
+
+    /// Where a backlog window starts, or nil when the window is not a
+    /// backlog. A backlog is longer than `backlogCharacters` and covers more
+    /// than two scheduler intervals: a failed pass kept its watermark, or
+    /// Notes was turned on late. Normal windows are never cut.
+    static func backlogStart(window: String, sinceMs: Int?, sessionElapsedMs: Int?,
+                             interval: TimeInterval = NotesSettings.tickInterval) -> Int? {
+        guard window.count > backlogCharacters else { return nil }
+        let coveredMs = (sessionElapsedMs ?? Int.max) - (sinceMs ?? 0)
+        guard coveredMs > Int(interval * 2000) else { return nil }
+        return TranscriptContext.newestWindowStart(sinceMs: sinceMs, keepCharacters: backlogCharacters)
     }
 
     /// Split the model output into its `TITLE:` line and the bullet body.

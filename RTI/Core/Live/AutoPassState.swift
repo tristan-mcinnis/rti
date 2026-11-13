@@ -11,8 +11,9 @@ import Foundation
 /// "Suggest now" enter `generating` through the same busy guard.
 ///
 /// A pass that fails keeps the watermark, so its window is read again. A
-/// stop or reset bumps the generation, so a result from an older pass is
-/// dropped.
+/// pass skipped before any request (a thin research window) also gives
+/// back its floor: the next settled talk checks again at once. A stop or
+/// reset bumps the generation, so a result from an older pass is dropped.
 /// The value holds no timer: each event returns the one effect the owner
 /// must apply.
 public struct AutoPassState: Equatable, Sendable {
@@ -38,6 +39,10 @@ public struct AutoPassState: Equatable, Sendable {
         /// A pass ended. `endMs` is the watermark of an accepted response;
         /// nil means the pass failed or found nothing new.
         case passFinished(generation: Int, endMs: Int?)
+        /// An admitted pass sent nothing (too little new respondent talk).
+        /// It keeps the watermark and gives back the floor it took, so the
+        /// next settled talk is checked again without a new floor wait.
+        case passSkipped(generation: Int)
         /// Auto was turned off or the recording ended: drop a waiting pass,
         /// keep the watermark.
         case cancelPending
@@ -64,12 +69,15 @@ public struct AutoPassState: Equatable, Sendable {
     public static let quietWindow: TimeInterval = 7
 
     /// The minimum time between passes, or nil when the call type has no Auto.
-    /// It matches the rail's spacing (`LiveRailPacer.spacing`, 60 s), so a
-    /// paid pass is not made faster than the rail can show its first card.
-    public static func floor(for callType: CallType) -> TimeInterval? {
+    /// A client call matches the rail's spacing (`LiveRailPacer.spacing`,
+    /// 60 s), so a paid pass is not made faster than the rail can show its
+    /// first card. A research call runs every 150 s, and every 180 s in a
+    /// group (three or more voices): a moderator can use at most one card
+    /// every 2 to 3 minutes.
+    public static func floor(for callType: CallType, format: ResearchFormat = .unknown) -> TimeInterval? {
         switch callType {
         case .client: 60
-        case .research: 60
+        case .research: format == .group ? 180 : 150
         case .internal, .personal: nil
         }
     }
@@ -79,6 +87,8 @@ public struct AutoPassState: Equatable, Sendable {
     /// Ms of the last transcript an accepted pass covered.
     public private(set) var watermarkMs = 0
     public private(set) var lastPassAt: Date?
+    /// `lastPassAt` before the running pass started, for `passSkipped`.
+    private var lastPassBeforeRun: Date?
     /// A final landed while a pass ran; debounce again when it ends.
     public private(set) var activityDuringPass = false
 
@@ -154,6 +164,16 @@ public struct AutoPassState: Equatable, Sendable {
             phase = .idle
             return .none
 
+        case let .passSkipped(passGeneration):
+            guard owns(generation: passGeneration) else { return .none }
+            lastPassAt = lastPassBeforeRun
+            if activityDuringPass {
+                activityDuringPass = false
+                return debounce(now)
+            }
+            phase = .idle
+            return .none
+
         case .cancelPending:
             switch phase {
             case .debouncing, .waitingFloor:
@@ -174,6 +194,7 @@ public struct AutoPassState: Equatable, Sendable {
             phase = .idle
             watermarkMs = 0
             lastPassAt = nil
+            lastPassBeforeRun = nil
             activityDuringPass = false
             return .disarm
         }
@@ -187,6 +208,7 @@ public struct AutoPassState: Equatable, Sendable {
 
     private mutating func startPass(_ now: Date) -> Effect {
         phase = .generating(generation: generation)
+        lastPassBeforeRun = lastPassAt
         lastPassAt = now
         activityDuringPass = false
         return .startPass(generation: generation)

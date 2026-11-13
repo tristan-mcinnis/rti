@@ -42,6 +42,14 @@ private struct VoteEvidence: Codable, Equatable, Sendable {
     let turn: String
     let speaker: String
     let choice: String
+    /// A moderator's spoken tally of a show of hands. Absent in older files
+    /// and on a respondent's own pick.
+    var count: Int?
+    var source: String?
+
+    var isTally: Bool {
+        count != nil
+    }
 }
 
 public struct GuideCell: Codable, Equatable, Sendable {
@@ -62,6 +70,11 @@ public struct GuideCell: Codable, Equatable, Sendable {
         coverage == "Not covered" ? (passed ? "Skipped" : "Pending") : coverage
     }
     public fileprivate(set) var tally: String?
+    /// A moderator's spoken show-of-hands count was recorded for this question.
+    public var hasHandTally: Bool {
+        votes.contains(where: \.isTally)
+    }
+
     public let score: Double?
     public fileprivate(set) var who = ""
 
@@ -168,25 +181,48 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
         return speaker.isModerator ? nil : speaker
     }
 
+    /// `moderatorTurns` are turns the shared role rule (`TurnRoles`) reads as
+    /// moderator speech. They never supply a quote or a note; a cell that
+    /// cites one only for context still files its respondent turns. A
+    /// moderator's spoken tally is the one exception: it becomes a vote record.
+    /// `context` holds earlier turns already filed; it only lets a tally
+    /// count find the moderator line that named its choice.
     public mutating func apply(_ pass: GuidePass, turns: [GuideTurn], speakers: [String: GuideSpeaker],
-                               rosterBase: Int?, allows: (String, String) -> Bool = { _, _ in true })
+                               rosterBase: Int?, moderatorTurns: Set<String> = [], context: [GuideTurn] = [],
+                               allows: (String, String) -> Bool = { _, _ in true })
     {
         let byID = Dictionary(turns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let timeline = Self.timeline(turns + context)
         for proposed in pass.cells {
             guard let index = cells.firstIndex(where: { $0.qid == proposed.qid }) else { continue }
             func turn(_ id: String) -> GuideTurn? {
-                guard allows(proposed.qid, id), let turn = byID[id], !turn.text.isEmpty,
+                guard allows(proposed.qid, id), !moderatorTurns.contains(id), let turn = byID[id], !turn.text.isEmpty,
                       Self.respondent(turn.speaker, speakers) != nil else { return nil }
                 return turn
             }
             var cell = cells[index]
             let cited = Set(proposed.turns)
-            let supported = proposed.turns.compactMap(turn)
+            // Moderator turns and a spoken tally's turn may sit in the cell for
+            // context; the note rests on the respondent turns alone.
+            let isModerator: (GuideTurn) -> Bool = { turn in
+                moderatorTurns.contains(turn.id) || Self.respondent(turn.speaker, speakers) == nil
+            }
+            // Only a count that rests on a moderator line is a tally; a count
+            // on a respondent's pick is dropped and the turn stays evidence.
+            let tallyTurns = Set(proposed.votes.filter { vote in
+                guard vote.isTally, let source = byID[vote.turn] else { return false }
+                return Self.tallyAnchor(source, choice: vote.choice.trimmingCharacters(in: .whitespacesAndNewlines),
+                                        timeline: timeline, isModerator: isModerator) != nil
+            }.map(\.turn))
+            let respondentTurns = proposed.turns.filter { id in
+                byID[id] == nil || !(moderatorTurns.contains(id) || tallyTurns.contains(id))
+            }
+            let supported = respondentTurns.compactMap(turn)
             let summary = proposed.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !supported.isEmpty, supported.count == proposed.turns.count, Self.isUsableSummary(summary),
-               !cell.notes.contains(where: { Set($0.turnIDs) == Set(proposed.turns) })
+            if !supported.isEmpty, supported.count == respondentTurns.count, Self.isUsableSummary(summary),
+               !cell.notes.contains(where: { Set($0.turnIDs) == Set(respondentTurns) })
             {
-                cell.notes.append(NoteEvidence(summary: summary, speakers: supported.map(\.speaker), turnIDs: proposed.turns,
+                cell.notes.append(NoteEvidence(summary: summary, speakers: supported.map(\.speaker), turnIDs: respondentTurns,
                                                substantial: proposed.coverage == "Answered"))
             }
             var allQuotes = cell.orderedQuotes
@@ -200,6 +236,15 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
             cell.setQuotes(allQuotes)
             for vote in proposed.votes {
                 let choice = vote.choice.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let count = vote.count {
+                    // A spoken tally may come from either leg; it names a count, not a person.
+                    guard count > 0, cited.contains(vote.turn), allows(proposed.qid, vote.turn), let source = byID[vote.turn], !choice.isEmpty,
+                          Self.tallyAnchor(source, choice: choice, timeline: timeline, isModerator: isModerator) != nil,
+                          !cell.votes.contains(where: { $0.turn == vote.turn && $0.choice == choice }) else { continue }
+                    cell.votes.append(VoteEvidence(turn: source.id, speaker: source.speaker, choice: choice, count: count,
+                                                   source: vote.source ?? "moderator_tally"))
+                    continue
+                }
                 guard cited.contains(vote.turn), let source = turn(vote.turn), !choice.isEmpty,
                       Self.containsChoice(choice, in: source.text),
                       !cell.votes.contains(where: { $0.turn == vote.turn && $0.choice == choice }) else { continue }
@@ -208,6 +253,34 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
             cells[index] = cell
         }
         remap(speakers: speakers, rosterBase: rosterBase)
+    }
+
+    /// Turns in spoken order. Pieces of one utterance are timed by
+    /// interpolation; on a tie the ID decides (`…#p1` sorts after the base).
+    private static func timeline(_ turns: [GuideTurn]) -> [GuideTurn] {
+        var seen = Set<String>()
+        return turns.filter { seen.insert($0.id).inserted }.sorted {
+            $0.startMs == $1.startMs ? $0.id < $1.id : $0.startMs < $1.startMs
+        }
+    }
+
+    /// The moderator line a tally count rests on: the cited turn itself, or
+    /// the piece just before it from the same utterance. A split at the
+    /// question mark turns 选A的呢？一位。 into two pieces (`…@ms` and
+    /// `…@ms#p1`), and the count piece alone (一位。) does not name the
+    /// choice. A respondent's line is never a tally.
+    private static func tallyAnchor(_ source: GuideTurn, choice: String, timeline: [GuideTurn],
+                                    isModerator: (GuideTurn) -> Bool) -> GuideTurn?
+    {
+        var candidates = [source]
+        if let marker = source.id.range(of: "#p"), let index = timeline.firstIndex(where: { $0.id == source.id }), index > 0 {
+            let base = String(source.id[..<marker.lowerBound])
+            let previous = timeline[index - 1]
+            if previous.id == base || previous.id.hasPrefix(base + "#p") {
+                candidates.append(previous)
+            }
+        }
+        return candidates.first { containsChoice(choice, in: $0.text) && isModerator($0) }
     }
 
     private static func isUsableSummary(_ summary: String) -> Bool {
@@ -270,6 +343,20 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
     }
 
     private static func voteTally(_ votes: [VoteEvidence], speakers: [String: GuideSpeaker], base: Int?) -> String? {
+        let tallies = votes.filter(\.isTally)
+        let named = seatTally(votes.filter { !$0.isTally }, speakers: speakers, base: base)
+        guard !tallies.isEmpty else { return named }
+        // The latest spoken count per choice wins; counts are of hands, never named people.
+        var latest: [String: Int] = [:]
+        for vote in tallies {
+            latest[vote.choice] = vote.count
+        }
+        let line = latest.keys.sorted().map { "\(latest[$0] ?? 0) chose \($0)" }.joined(separator: "; ") + " (show of hands)"
+        // Seat picks in the same cell stay visible beside the count, never summed with it.
+        return named.map { "\(line). Named picks: \($0)" } ?? line
+    }
+
+    private static func seatTally(_ votes: [VoteEvidence], speakers: [String: GuideSpeaker], base: Int?) -> String? {
         guard let base, base > 0, !votes.isEmpty else { return nil }
         var bySeat: [String: String] = [:]
         for vote in votes {
@@ -294,8 +381,8 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
             cell.notes = notes.filter { note in note.speakers.allSatisfy { Self.respondent($0, speakers) != nil } }
             let hiddenNotes = notes.filter { note in note.speakers.contains { Self.respondent($0, speakers) == nil } }
             cell.withheldNotes = hiddenNotes.isEmpty ? nil : hiddenNotes
-            cell.votes = votes.filter { Self.respondent($0.speaker, speakers) != nil }
-            let hiddenVotes = votes.filter { Self.respondent($0.speaker, speakers) == nil }
+            cell.votes = votes.filter { $0.isTally || Self.respondent($0.speaker, speakers) != nil }
+            let hiddenVotes = votes.filter { !$0.isTally && Self.respondent($0.speaker, speakers) == nil }
             cell.withheldVotes = hiddenVotes.isEmpty ? nil : hiddenVotes
             var hiddenQuotes: [GuideQuote] = []
             cell.setQuotes(quotes.compactMap { quote in
@@ -317,7 +404,7 @@ public struct GuideExtraction: Codable, Equatable, Sendable {
                 cell.coverage = "Not covered"
                 cell.summary = ""
             }
-            let raw = cell.notes.flatMap(\.speakers) + cell.quotes.map(\.rawSpeaker) + cell.votes.map(\.speaker)
+            let raw = cell.notes.flatMap(\.speakers) + cell.quotes.map(\.rawSpeaker) + cell.votes.filter { !$0.isTally }.map(\.speaker)
             cell.who = Set(raw.compactMap { speakers[$0]?.seatCode }).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
                 .joined(separator: " ")
             cell.tally = Self.voteTally(cell.votes, speakers: speakers, base: rosterBase)

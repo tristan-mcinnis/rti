@@ -134,7 +134,7 @@ final class ResearchCodebookTests: XCTestCase {
         return ResearchCard(id: UUID(), name: name, aliases: [], type: type, origin: .emerged, pinned: pinned, entries: entries)
     }
 
-    func testTopicMapGroupsBrandsConceptsHypothesesAndLeavesOutPeople() {
+    func testTopicMapGroupsMeaningsAndLeavesOutPeopleAndOrganisations() {
         var book = ResearchCodebook()
         book.cards = [
             card("Morning Cup（晨杯）", .brand, [("session1", 1000, .positive), ("session1", 2000, .positive)]),
@@ -142,27 +142,28 @@ final class ResearchCodebookTests: XCTestCase {
             card("Side pocket", .concept, [("session1", 4000, .negative)]),
             card("Retail Co", .org, [("session1", 5000, .neutral)]),
             card("Carry beats capacity", .hypothesis, [("session1", 6000, .mixed)]),
-            card("Seeded, never mentioned", .concept, []),
+            card("洗起来麻烦", .barrier, [("session1", 7000, .negative)]),
+            card("Seeded, never mentioned", .theme, []),
         ]
         let map = book.topicMap()
-        XCTAssertEqual(map.sections.map(\.group), [.brands, .concepts, .hypotheses])
-        XCTAssertEqual(map.sections[0].topics.map(\.name), ["Morning Cup（晨杯）", "Retail Co"], "organisations sit with brands")
-        XCTAssertEqual(map.sections[1].topics.map(\.name), ["Side pocket"], "a card with no mention is left out")
-        XCTAssertFalse(map.sections.flatMap(\.topics).contains { $0.name == "小禾" }, "people are never shown")
-        XCTAssertEqual(map.sections[0].topics[0].mentions, 2)
+        XCTAssertEqual(map.sections.map(\.group), [.hypotheses, .brands, .themes])
+        XCTAssertEqual(map.sections[1].topics.map(\.name), ["Morning Cup（晨杯）"], "organisations are not codes")
+        XCTAssertEqual(map.sections[2].topics.map(\.name), ["Side pocket", "洗起来麻烦"], "an old concept reads as a theme; a code with no quote is left out")
+        XCTAssertFalse(map.sections.flatMap(\.topics).contains { $0.name == "小禾" || $0.name == "Retail Co" }, "people are never shown")
+        XCTAssertEqual(map.sections[1].topics[0].mentions, 2)
         XCTAssertEqual(map.total, 4)
         XCTAssertEqual(map.hidden, 0)
-        XCTAssertEqual(map.newestID, book.cards[4].id)
+        XCTAssertEqual(map.newestID, book.cards[5].id)
     }
 
     func testTopicMapKeepsCardOrderWhenCountsChangeAndCountsOneSession() {
         var book = ResearchCodebook()
         book.cards = [
-            card("Lid", .concept, [("session1", 1000, .neutral)]),
-            card("Handle", .concept, [("session1", 2000, .neutral), ("session2", 2500, .neutral)]),
+            card("Lid", .theme, [("session1", 1000, .neutral)]),
+            card("Handle", .theme, [("session1", 2000, .neutral), ("session2", 2500, .neutral)]),
         ]
         XCTAssertEqual(book.topicMap().sections[0].topics.map(\.name), ["Lid", "Handle"])
-        book.cards[1].entries += card("Handle", .concept, [("session1", 9000, .neutral), ("session1", 9500, .neutral)]).entries
+        book.cards[1].entries += card("Handle", .theme, [("session1", 9000, .neutral), ("session1", 9500, .neutral)]).entries
         XCTAssertEqual(book.topicMap().sections[0].topics.map(\.name), ["Lid", "Handle"], "a chip never moves when its count grows")
         let scoped = book.topicMap(sessionID: "session2")
         XCTAssertEqual(scoped.sections[0].topics.map(\.name), ["Handle"])
@@ -172,7 +173,7 @@ final class ResearchCodebookTests: XCTestCase {
     func testTopicMapCapKeepsPinnedAndMostMentionedAndCountsTheRest() {
         var book = ResearchCodebook()
         book.cards = (0 ..< 20).map { index in
-            card("Topic \(index)", .concept, pinned: index == 0, Array(repeating: ("session1", index * 100, ResearchValence.neutral), count: index == 0 ? 1 : index + 1))
+            card("Topic \(index)", .theme, pinned: index == 0, Array(repeating: ("session1", index * 100, ResearchValence.neutral), count: index == 0 ? 1 : index + 1))
         }
         let map = book.topicMap()
         XCTAssertEqual(map.shown, ResearchCodebook.topicLimit)

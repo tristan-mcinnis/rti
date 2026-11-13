@@ -245,6 +245,9 @@ public enum TranscriptUpgradePipeline {
         }
         let journal = try SessionMarkerJournal.read(in: sessionDir)
         var evidence = try SessionEvidence.read(in: sessionDir)
+        // The live system-leg turns, read before anything is replaced, so
+        // typed names can follow their voices to the new numbering.
+        let liveTurnsForNames = liveSystemTurns(in: sessionDir, evidence: evidence)
         guard !segments.isEmpty || !journal.isEmpty || (evidence?.notes.isEmpty == false) else {
             throw TranscriptUpgradePipelineError.emptyTranscript(providerDisplayName)
         }
@@ -314,6 +317,9 @@ public enum TranscriptUpgradePipeline {
 
         progress("Writing upgraded transcript")
         let artifactResult = try TranscriptUpgradeArtifacts.installUpgradedTranscript(markdown: md, in: sessionDir)
+        if let liveTurnsForNames, try SpeakerNameRemap.apply(in: sessionDir, live: liveTurnsForNames, upgraded: segments) {
+            progress("Moved typed speaker names to the upgraded speaker numbers")
+        }
 
         return TranscriptUpgradeExecutionResult(
             transcriptURL: originalTranscriptURL,
@@ -322,6 +328,31 @@ public enum TranscriptUpgradePipeline {
             artifactResult: artifactResult,
             guideAnchorTurns: guideAnchorTurns
         )
+    }
+}
+
+extension TranscriptUpgradePipeline {
+    /// The live transcript's system-leg turns for `SpeakerNameRemap`, or nil
+    /// when names must not move: a guided session keeps its seat
+    /// assignments on the live speaker IDs, and a re-upgrade with no live
+    /// record left has nothing to match.
+    static func liveSystemTurns(in sessionDir: URL, evidence: SessionEvidence?) -> [TranscriptUpgradeSegment]? {
+        if let data = try? Data(contentsOf: sessionDir.appendingPathComponent("session.json")),
+           let metadata = try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data), metadata.guidePath != nil {
+            return nil
+        }
+        if let turns = evidence?.turns, !turns.isEmpty {
+            return turns.filter { $0.leg == "Them" }.map {
+                TranscriptUpgradeSegment(speaker: SpeakerLabelMapping.displayLabel(forRawKey: $0.rawSpeaker) ?? $0.rawSpeaker,
+                                         startMs: $0.liveStartMs, text: $0.original)
+            }
+        }
+        let proof = sessionDir.appendingPathComponent("transcript.live.md")
+        let upgraded = sessionDir.appendingPathComponent("transcript.upgraded.md")
+        let source = FileManager.default.fileExists(atPath: proof.path) ? proof
+            : FileManager.default.fileExists(atPath: upgraded.path) ? nil : sessionDir.appendingPathComponent("transcript.md")
+        guard let source, let text = try? String(contentsOf: source, encoding: .utf8) else { return nil }
+        return TranscriptUpgradeMerge.liveSegments(from: text, remote: true)
     }
 }
 

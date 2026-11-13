@@ -1,0 +1,470 @@
+{
+ "about": "Recorded codebook pass replies. A pass gets every entry whose turnID line is in its batch (a model only cites the turns it was sent), else 'default'. {{Lnnn}} becomes the line's turn ID and {{code:NAME}} the short ID the prompt gave that known code. Some entries break the rules on purpose (a moderator line, a backchannel, a person, a speaker label, a brand merge); the code must refuse them.",
+ "default": {
+  "entries": [],
+  "names": []
+ },
+ "entries": [
+  {
+   "code": null,
+   "name_zh": "图个省事",
+   "name_en": "Wanting the morning to be effortless",
+   "type": "theme",
+   "aliases": [],
+   "turnID": "{{L021}}",
+   "point": "Picks a drink to save effort in the morning.",
+   "valence": "positive",
+   "quote": "图个省事",
+   "emic": "图个省事",
+   "strength": "spontaneous"
+  },
+  {
+   "code": null,
+   "name_zh": "图个省事",
+   "name_en": "Wanting the morning to be effortless",
+   "type": "theme",
+   "aliases": [],
+   "turnID": "{{L022}}",
+   "point": "Does not want to choose anything in the morning.",
+   "valence": "positive",
+   "emic": "图个省事",
+   "strength": "spontaneous"
+  },
+  {
+   "code": null,
+   "name_zh": null,
+   "name_en": "remote",
+   "type": "theme",
+   "aliases": [],
+   "turnID": "{{L013}}",
+   "point": "Speaker label as a code.",
+   "valence": "neutral"
+  },
+  {
+   "code": null,
+   "name_zh": null,
+   "name_en": "remote",
+   "type": "theme",
+   "aliases": [],
+   "turnID": "{{L014}}",
+   "point": "Speaker label as a code.",
+   "valence": "neutral"
+  },
+  {
+   "code": null,
+   "name_zh": "盖子难拧",
+   "name_en": "Caps that are hard to open on the go",
+   "type": "barrier",
+   "aliases": [],
+   "turnID": "{{L031}}",
+   "point": "A cap that is hard to open is a problem in a rush.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": "盖子难拧",
+   "name_en": "Caps that are hard to open on the go",
+   "type": "barrier",
+   "aliases": [],
+   "turnID": "{{L032}}",
+   "point": "Gave up opening a cap on the subway.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": "一定要甜",
+   "name_en": "A breakfast drink must taste sweet",
+   "type": "need",
+   "aliases": [],
+   "turnID": "{{L037}}",
+   "point": "Sweetness is the main pick criterion.",
+   "valence": "positive",
+   "quote": "最看重的就是甜",
+   "strength": "spontaneous"
+  },
+  {
+   "code": null,
+   "name_zh": "一定要甜",
+   "name_en": "A breakfast drink must taste sweet",
+   "type": "need",
+   "aliases": [],
+   "turnID": "{{L039}}",
+   "point": "Sweet lifts the morning mood.",
+   "valence": "positive"
+  },
+  {
+   "code": null,
+   "name_zh": "方便最重要",
+   "name_en": "Convenience matters most",
+   "type": "theme",
+   "aliases": [],
+   "turnID": "{{L045}}",
+   "point": "Convenience matters most.",
+   "valence": "positive"
+  },
+  {
+   "code": null,
+   "name_zh": "方便最重要",
+   "name_en": "Convenience matters most",
+   "type": "theme",
+   "aliases": [],
+   "turnID": "{{L046}}",
+   "point": "Agrees that convenience matters most.",
+   "valence": "positive"
+  },
+  {
+   "code": null,
+   "name_zh": "饱腹感",
+   "name_en": "Feeling full until lunch",
+   "type": "need",
+   "aliases": [],
+   "turnID": "{{L047}}",
+   "point": "Wants a drink that keeps them full.",
+   "valence": "positive"
+  },
+  {
+   "code": "{{code:A 'no added sugar' claim is believed only with a short ingredient list.}}",
+   "name_zh": null,
+   "name_en": null,
+   "type": "hypothesis",
+   "aliases": [],
+   "turnID": "{{L056}}",
+   "point": "A short ingredient list is how they judge health.",
+   "valence": "positive",
+   "stance": "for"
+  },
+  {
+   "code": "{{code:A 'no added sugar' claim is believed only with a short ingredient list.}}",
+   "name_zh": null,
+   "name_en": null,
+   "type": "hypothesis",
+   "aliases": [],
+   "turnID": "{{L057}}",
+   "point": "Believes 'no added' only with a short list.",
+   "valence": "positive",
+   "stance": "for"
+  },
+  {
+   "code": null,
+   "name_zh": "怕胀气",
+   "name_en": "Fear of bloating",
+   "type": "barrier",
+   "aliases": [],
+   "turnID": "{{L060}}",
+   "point": "Got bloated from oat drinks before.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": "乳糖不耐",
+   "name_en": "Lactose intolerance as the reason to switch",
+   "type": "trigger",
+   "aliases": [],
+   "turnID": "{{L066}}",
+   "point": "Lactose intolerance started the oat drink habit.",
+   "valence": "neutral"
+  },
+  {
+   "code": null,
+   "name_zh": "乳糖不耐",
+   "name_en": "Lactose intolerance as the reason to switch",
+   "type": "trigger",
+   "aliases": [],
+   "turnID": "{{L067}}",
+   "point": "Switched because milk upsets the stomach.",
+   "valence": "neutral"
+  },
+  {
+   "code": null,
+   "name_zh": "小红书测评",
+   "name_en": "Reviews on Xiaohongshu",
+   "type": "channel",
+   "aliases": [],
+   "turnID": "{{L070}}",
+   "point": "Reads reviews on Xiaohongshu.",
+   "valence": "neutral"
+  },
+  {
+   "code": null,
+   "name_zh": "小红书测评",
+   "name_en": "Reviews on Xiaohongshu",
+   "type": "channel",
+   "aliases": [],
+   "turnID": "{{L072}}",
+   "point": "Distrusts reviews that look like ads.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": "清悦",
+   "name_en": "Qingyue",
+   "type": "brand",
+   "aliases": [],
+   "turnID": "{{L096}}",
+   "point": "Too sweet; leaves the throat sticky.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": "晴越",
+   "name_en": "Qingyue Lite",
+   "type": "brand",
+   "aliases": [],
+   "turnID": "{{L097}}",
+   "point": "Lighter taste, no burden.",
+   "valence": "positive"
+  },
+  {
+   "code": null,
+   "name_zh": "清悦",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [
+    "晴越"
+   ],
+   "turnID": "{{L099}}",
+   "point": "The two names are easy to confuse.",
+   "valence": "neutral"
+  },
+  {
+   "code": "{{code:露慕 Lumo}}",
+   "name_zh": "露慕",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [
+    "小蓝盖"
+   ],
+   "turnID": "{{L100}}",
+   "point": "Drinks the blue-cap one often.",
+   "valence": "positive"
+  },
+  {
+   "code": "{{code:露慕 Lumo}}",
+   "name_zh": "露慕",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [
+    "小蓝盖"
+   ],
+   "turnID": "{{L101}}",
+   "point": "Smooth but a bit expensive.",
+   "valence": "mixed"
+  },
+  {
+   "code": "{{code:露慕 Lumo}}",
+   "name_zh": "露慕",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [
+    "路慕"
+   ],
+   "turnID": "{{L104}}",
+   "point": "Has tried it; it is fine.",
+   "valence": "positive"
+  },
+  {
+   "code": "{{code:露慕 Lumo}}",
+   "name_zh": "露慕",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [
+    "鹿木"
+   ],
+   "turnID": "{{L105}}",
+   "point": "New, and the pack looks good.",
+   "valence": "positive"
+  },
+  {
+   "code": "{{code:露慕 Lumo}}",
+   "name_zh": "露慕",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [],
+   "turnID": "{{L107}}",
+   "point": "Feels young and stylish.",
+   "valence": "positive"
+  },
+  {
+   "code": "{{code:露慕 Lumo}}",
+   "name_zh": "露慕",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [],
+   "turnID": "{{L109}}",
+   "point": "Too pricey except on discount.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": "价格劝退",
+   "name_en": "Price puts people off",
+   "type": "barrier",
+   "aliases": [],
+   "turnID": "{{L110}}",
+   "point": "The price puts them off ('全退' is likely 劝退).",
+   "valence": "negative",
+   "asrDoubt": true
+  },
+  {
+   "code": null,
+   "name_zh": "价格劝退",
+   "name_en": "Price puts people off",
+   "type": "barrier",
+   "aliases": [],
+   "turnID": "{{L109}}",
+   "point": "Buys only on discount.",
+   "valence": "negative"
+  },
+  {
+   "code": "{{code:露慕 Lumo}}",
+   "name_zh": "露慕",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [
+    "清悦"
+   ],
+   "turnID": "{{L111}}",
+   "point": "Lumo tastes better than Qingyue.",
+   "valence": "positive"
+  },
+  {
+   "code": null,
+   "name_zh": "小禾",
+   "name_en": null,
+   "type": "person",
+   "aliases": [],
+   "turnID": "{{L114}}",
+   "point": "Named participant.",
+   "valence": "neutral"
+  },
+  {
+   "code": "{{code:露慕 Lumo}}",
+   "name_zh": "露慕",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [],
+   "turnID": "{{L114}}",
+   "point": "Lumo's cap is easy to open.",
+   "valence": "positive"
+  },
+  {
+   "code": null,
+   "name_zh": null,
+   "name_en": "remote_1",
+   "type": "theme",
+   "aliases": [],
+   "turnID": "{{L115}}",
+   "point": "Speaker label as a code.",
+   "valence": "neutral"
+  },
+  {
+   "code": null,
+   "name_zh": null,
+   "name_en": "remote_1",
+   "type": "theme",
+   "aliases": [],
+   "turnID": "{{L117}}",
+   "point": "Speaker label as a code.",
+   "valence": "neutral"
+  },
+  {
+   "code": null,
+   "name_zh": "要甜还是怕糖",
+   "name_en": "Wanting sweetness vs avoiding sugar",
+   "type": "tension",
+   "aliases": [],
+   "turnID": "{{L119}}",
+   "point": "Said sweet is a must at 08:00; now avoids anything with sugar.",
+   "valence": "mixed",
+   "counterTurnID": "{{L037}}"
+  },
+  {
+   "code": null,
+   "name_zh": "清悦",
+   "name_en": null,
+   "type": "brand",
+   "aliases": [],
+   "turnID": "{{L121}}",
+   "point": "Would not drink Qingyue again: too sweet.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": null,
+   "name_en": "Route A or B",
+   "type": "vote",
+   "aliases": [],
+   "turnID": "{{L139}}",
+   "point": "Show of hands for route B.",
+   "valence": "neutral",
+   "choice": "B",
+   "count": 5,
+   "source": "moderator_tally"
+  },
+  {
+   "code": null,
+   "name_zh": null,
+   "name_en": "Route A or B",
+   "type": "vote",
+   "aliases": [],
+   "turnID": "{{L140}}",
+   "point": "Show of hands for route A.",
+   "valence": "neutral",
+   "choice": "A",
+   "count": 1,
+   "source": "moderator_tally"
+  },
+  {
+   "code": "{{code:Would a bigger bottle of route B sell every week?}}",
+   "name_zh": null,
+   "name_en": null,
+   "type": "client_question",
+   "aliases": [],
+   "turnID": "{{L148}}",
+   "point": "A big bottle spoils before one person finishes it.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": "大瓶喝不完",
+   "name_en": "A big bottle goes off before it is finished",
+   "type": "barrier",
+   "aliases": [],
+   "turnID": "{{L148}}",
+   "point": "A big bottle goes off before it is finished.",
+   "valence": "negative"
+  },
+  {
+   "code": null,
+   "name_zh": "大瓶喝不完",
+   "name_en": "A big bottle goes off before it is finished",
+   "type": "barrier",
+   "aliases": [],
+   "turnID": "{{L149}}",
+   "point": "Worries an opened bottle must be finished fast.",
+   "valence": "negative"
+  },
+  {
+   "code": "{{code:A 'no added sugar' claim is believed only with a short ingredient list.}}",
+   "name_zh": null,
+   "name_en": null,
+   "type": "hypothesis",
+   "aliases": [],
+   "turnID": "{{L155}}",
+   "point": "Only oats and water would convince them.",
+   "valence": "positive",
+   "stance": "for"
+  },
+  {
+   "code": "{{code:A 'no added sugar' claim is believed only with a short ingredient list.}}",
+   "name_zh": null,
+   "name_en": null,
+   "type": "hypothesis",
+   "aliases": [],
+   "turnID": "{{L159}}",
+   "point": "Reading the ingredient list is the most direct check.",
+   "valence": "positive",
+   "stance": "for"
+  }
+ ]
+}

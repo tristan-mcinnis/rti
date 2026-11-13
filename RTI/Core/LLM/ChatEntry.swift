@@ -3,7 +3,7 @@ import Foundation
 /// A single row of the assistant chat log. User rows carry the action taken
 /// and which context was attached; assistant rows carry the streamed reply.
 /// Ephemeral — held in memory for the session only.
-public struct ChatEntry: Identifiable, Equatable {
+public struct ChatEntry: Identifiable, Equatable, Sendable {
     public let id = UUID()
     public let role: String // "user" | "assistant"
     public var text: String

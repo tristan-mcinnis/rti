@@ -36,11 +36,21 @@ struct LiveRailContent: Equatable {
     struct Card: Identifiable, Equatable {
         let id: UUID
         let kind: AutoCardKind
+        /// The English line, or the only line.
         let text: String
         let why: String
         let source: String?
         var pinned = false
         var shownAt: Date?
+        /// The Mandarin line, shown first with `text` as a small gloss.
+        var textZH: String?
+        /// nil when the user's pinyin setting is off.
+        var pinyin: String?
+
+        /// What Copy puts on the pasteboard: the line to say.
+        var speakable: String {
+            textZH ?? text
+        }
     }
 
     struct Question: Equatable {
@@ -138,13 +148,15 @@ extension LiveRailContent {
         auto: AutoAssistController = .shared,
         guide: GuideSessionController = .shared,
         codebook: ResearchCodebookController = .shared,
-        session: SessionCoordinator = .shared
+        session: SessionCoordinator = .shared,
+        showsPinyin: Bool = AutoAssistSettings.showsPinyin()
     ) -> LiveRailContent {
         let cards = Dictionary(auto.cards.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         func card(_ item: LiveRailItem) -> Card? {
             guard let found = cards[item.id] else { return nil }
             return Card(id: item.id, kind: found.kind, text: found.text, why: found.why, source: found.source,
-                        pinned: item.state == .pinned, shownAt: item.shownAt)
+                        pinned: item.state == .pinned, shownAt: item.shownAt, textZH: found.textZH,
+                        pinyin: showsPinyin ? found.pinyin : nil)
         }
         var content = LiveRailContent(kind: callType == .research ? .research : .client)
         content.isRecording = session.isRunning
@@ -172,7 +184,7 @@ extension LiveRailContent {
         if callType == .research, session.isRunning,
            codebook.location.map({ $0.session.id == session.currentSessionId }) ?? true
         {
-            content.topics = codebook.book.topicMap(sessionID: codebook.location?.session.id)
+            content.topics = codebook.liveTopicMap()
         }
         return content
     }
@@ -203,9 +215,11 @@ extension LiveRailActions {
 struct LiveAssistRailHost: View {
     let callType: CallType
     let autoOn: Bool
+    @AppStorage(AutoAssistSettings.pinyinKey) private var pinyinStored: Bool?
 
     var body: some View {
-        LiveAssistRail(content: .live(callType: callType, autoOn: autoOn),
+        LiveAssistRail(content: .live(callType: callType, autoOn: autoOn,
+                                      showsPinyin: AutoAssistSettings.showsPinyin(stored: pinyinStored)),
                        actions: .live(callType: callType))
     }
 }
@@ -504,10 +518,11 @@ private struct LiveRailLane<Trailing: View>: View {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { index, card in
                         AutoCardRow(
                             kind: card.kind, text: card.text, why: card.why, source: card.source,
+                            textZH: card.textZH, pinyin: card.pinyin,
                             pinned: card.pinned, dimmed: index > 0 && !card.pinned,
                             compact: compactOlder && index > 0 && !card.pinned,
                             actions: .init(pin: { actions.pin(card.id) }, dismiss: { actions.dismiss(card.id) },
-                                           copy: { actions.copy(card.text) })
+                                           copy: { actions.copy(card.speakable) })
                         )
                         .padding(House.Spacing.xs)
                         .modifier(LiveRailFreshHighlight(shownAt: card.shownAt))
@@ -608,8 +623,9 @@ private struct LiveRailEarlier: View {
             .accessibilityValue(open ? "Open" : "Closed")
             if open {
                 ForEach(cards) { card in
-                    AutoCardRow(kind: card.kind, text: card.text, why: "", source: card.source, dimmed: true,
-                                actions: .init(copy: { copy(card.text) }))
+                    AutoCardRow(kind: card.kind, text: card.text, why: "", source: card.source,
+                                textZH: card.textZH, dimmed: true,
+                                actions: .init(copy: { copy(card.speakable) }))
                         .padding(.horizontal, House.Spacing.xs)
                 }
             }
@@ -619,9 +635,11 @@ private struct LiveRailEarlier: View {
 
 // MARK: - Topics
 
-/// The codebook's topics as chips: a mention count and a tone dot each,
-/// grouped Brands, Concepts, Hypotheses. The topic that moved last is lit
-/// for a moment.
+/// The codebook as a map of meanings: tensions with both sides, votes with
+/// their counts, hypotheses for and against, client questions, then brands
+/// and themes as chips with a quote count and a tone dot. Emic names come
+/// first, the English gloss after. The topic that moved last is lit for a
+/// moment.
 private struct LiveRailTopics: View {
     let map: ResearchTopicMap
     @State private var lit: UUID?
@@ -630,7 +648,7 @@ private struct LiveRailTopics: View {
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
             HStack(spacing: House.Spacing.xs) {
-                SlateSectionLabel(text: "Topics")
+                SlateSectionLabel(text: "Topic map")
                 if map.total > 0 {
                     Text("\(map.total)")
                         .font(House.TypeToken.caption.monospacedDigit())
@@ -638,25 +656,25 @@ private struct LiveRailTopics: View {
                 }
             }
             if map.sections.isEmpty {
-                LiveRailEmptyLine("Brands and ideas the group mentions show here.")
+                LiveRailEmptyLine("Themes, tensions and votes from the room show here.")
             } else {
                 ForEach(Array(map.sections.enumerated()), id: \.element.group) { index, section in
                     VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                         Text(section.group.title)
                             .font(House.TypeToken.caption)
                             .foregroundStyle(House.ColorToken.textTertiary)
-                        LiveRailFlowLayout(spacing: House.Spacing.xxs) {
+                        if section.group.isChips {
+                            LiveRailFlowLayout(spacing: House.Spacing.xxs) {
+                                ForEach(section.topics) { topic in
+                                    LiveRailTopicChip(topic: topic, lit: lit == topic.id)
+                                }
+                                if index == map.sections.count - 1, map.hidden > 0 { more }
+                            }
+                        } else {
                             ForEach(section.topics) { topic in
-                                LiveRailTopicChip(topic: topic, lit: lit == topic.id)
+                                LiveRailTopicRow(topic: topic, lit: lit == topic.id)
                             }
-                            if index == map.sections.count - 1, map.hidden > 0 {
-                                Text("+\(map.hidden)")
-                                    .font(House.TypeToken.meta.monospacedDigit())
-                                    .foregroundStyle(House.ColorToken.textTertiary)
-                                    .padding(.horizontal, House.Spacing.xs)
-                                    .frame(height: House.Control.tile)
-                                    .accessibilityLabel("\(map.hidden) more topics")
-                            }
+                            if index == map.sections.count - 1, map.hidden > 0 { more }
                         }
                     }
                 }
@@ -675,6 +693,29 @@ private struct LiveRailTopics: View {
             withAnimation(.easeOut(duration: 0.6)) { lit = nil }
         }
     }
+
+    private var more: some View {
+        Text("+\(map.hidden)")
+            .font(House.TypeToken.meta.monospacedDigit())
+            .foregroundStyle(House.ColorToken.textTertiary)
+            .padding(.horizontal, House.Spacing.xs)
+            .frame(height: House.Control.tile)
+            .accessibilityLabel("\(map.hidden) more topics")
+    }
+}
+
+/// The emic name, then the English gloss in a quieter tone.
+private struct LiveRailTopicName: View {
+    let topic: ResearchTopic
+
+    var body: some View {
+        if let gloss = topic.gloss {
+            Text(topic.name).foregroundStyle(House.ColorToken.textPrimary)
+                + Text(" " + gloss).foregroundStyle(House.ColorToken.textSecondary)
+        } else {
+            Text(topic.name).foregroundStyle(House.ColorToken.textPrimary)
+        }
+    }
 }
 
 private struct LiveRailTopicChip: View {
@@ -684,9 +725,8 @@ private struct LiveRailTopicChip: View {
     var body: some View {
         HStack(spacing: House.Spacing.xxs) {
             SlateStatusDot(color: topic.valence.dotColor)
-            Text(topic.name)
+            LiveRailTopicName(topic: topic)
                 .font(House.TypeToken.meta)
-                .foregroundStyle(House.ColorToken.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Text("\(topic.mentions)")
@@ -705,8 +745,68 @@ private struct LiveRailTopicChip: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(topic.name), \(topic.mentions) \(topic.mentions == 1 ? "mention" : "mentions"), \(topic.valence.rawValue)")
-        .help("\(topic.mentions) \(topic.mentions == 1 ? "mention" : "mentions"), \(topic.valence.rawValue)")
+        .accessibilityLabel(topic.spoken)
+        .help(topic.spoken)
+    }
+}
+
+/// A tension, vote, hypothesis or client question: the name on one line,
+/// what it holds below.
+private struct LiveRailTopicRow: View {
+    let topic: ResearchTopic
+    let lit: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            LiveRailTopicName(topic: topic)
+                .font(House.TypeToken.meta)
+                .lineLimit(2)
+            detail
+                .font(House.TypeToken.caption)
+                .foregroundStyle(House.ColorToken.textSecondary)
+        }
+        .padding(.horizontal, House.Spacing.xs)
+        .padding(.vertical, House.Spacing.xxs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if lit {
+                RowHighlight(isSelected: true, radius: House.Radius.sm)
+            } else {
+                RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous).fill(House.ColorToken.chipFill)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(topic.spoken)
+        .help(topic.spoken)
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch topic.type {
+        case .tension:
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(topic.sides.enumerated()), id: \.offset) { _, side in
+                    Text("\(ResearchTopic.Side.clock(side.offsetMs))  \(side.words)")
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+        case .vote:
+            Text(topic.tallies.map { "\($0.choice) \($0.count)" }.joined(separator: " · "))
+                .monospacedDigit()
+        case .hypothesis:
+            Text("\(topic.support) for · \(topic.against) against")
+                .monospacedDigit()
+        case .clientQuestion:
+            Text((topic.status ?? .open).rawValue.capitalizedFirst)
+        default:
+            Text("\(topic.mentions) \(topic.mentions == 1 ? "quote" : "quotes")")
+        }
+    }
+}
+
+private extension String {
+    var capitalizedFirst: String {
+        prefix(1).uppercased() + dropFirst()
     }
 }
 

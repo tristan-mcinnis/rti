@@ -104,6 +104,19 @@ public enum AutoAssistSettings {
     /// false from the opt-in era is removed once, so the new default reaches
     /// an existing install; a toggle set after that stays.
     public static let defaultOnMigrationKey = "rti.analysis.autoAssistDefaultOnMigrated"
+    /// Show tone-marked pinyin under a card's Mandarin line. Per user: on by
+    /// default (the owner is not a native speaker); a native speaker turns
+    /// it off in Settings > General.
+    public static let pinyinKey = "rti.analysis.autoAssistPinyin"
+    public static let defaultShowsPinyin = true
+
+    public static func showsPinyin(stored: Bool?) -> Bool {
+        stored ?? defaultShowsPinyin
+    }
+
+    public static func showsPinyin(defaults: UserDefaults = .standard) -> Bool {
+        showsPinyin(stored: defaults.object(forKey: pinyinKey) as? Bool)
+    }
 
     /// Run once at launch. In the opt-in era every install that had ever
     /// shown the toggle stored false, so a stored false then is not a choice

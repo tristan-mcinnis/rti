@@ -1,0 +1,119 @@
+{
+  "title": "Lumo oat drink FGD (invented fixture)",
+  "hypotheses": [
+    "Busy commuters choose an oat drink for convenience, not taste.",
+    "A 'no added sugar' claim is believed only with a short ingredient list."
+  ],
+  "sections": [
+    {
+      "id": "S1",
+      "title": "Introductions",
+      "minutes": 10,
+      "questions": [
+        {
+          "qid": "S1Q1",
+          "en": "Please introduce yourself and say what you usually drink in the morning.",
+          "zh": "请简单介绍一下自己，平时早上喝什么？",
+          "probes": []
+        },
+        {
+          "qid": "S1Q2",
+          "en": "Moderator to explain the recording and the viewing room.",
+          "zh": "主持人说明录音和观察室。",
+          "probes": []
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "title": "Morning routine",
+      "minutes": 15,
+      "questions": [
+        {
+          "qid": "S2Q1",
+          "en": "Can you walk me through a typical weekday morning?",
+          "zh": "能说说你平常工作日早上是怎么过的吗？",
+          "probes": [
+            {
+              "en": "Where do you buy your morning drink?",
+              "zh": "早上喝的东西一般在哪里买？"
+            }
+          ]
+        },
+        {
+          "qid": "S2Q2",
+          "en": "What matters most to you in a breakfast drink?",
+          "zh": "早餐饮品你最看重什么？",
+          "probes": [
+            {
+              "en": "How do you judge whether a drink is really healthy?",
+              "zh": "怎么判断一个饮品是真的健康？"
+            }
+          ]
+        },
+        {
+          "qid": "S2Q3",
+          "en": "What does 'healthy' mean to you for a drink?",
+          "zh": "对你来说，一款饮品健康是什么意思？",
+          "probes": []
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "title": "Brands",
+      "minutes": 15,
+      "questions": [
+        {
+          "qid": "S3Q1",
+          "en": "Which oat drink brands have you tried, and how do they compare?",
+          "zh": "你们喝过哪些燕麦饮品牌？觉得它们怎么样？",
+          "probes": []
+        },
+        {
+          "qid": "S3Q2",
+          "en": "What comes to mind when you hear Lumo?",
+          "zh": "听到露慕，你会想到什么？",
+          "probes": []
+        },
+        {
+          "qid": "S3Q3",
+          "en": "What does 'healthy' mean to you for a drink?",
+          "zh": "对你来说，一款饮品健康是什么意思？",
+          "probes": []
+        },
+        {
+          "qid": "S3Q4",
+          "en": "Which brand would you trust most for a 'no added sugar' claim, and why?",
+          "zh": "说到零添加糖，你最相信哪个品牌？为什么？",
+          "probes": []
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "title": "Pack routes",
+      "minutes": 15,
+      "questions": [
+        {
+          "qid": "S4Q1",
+          "en": "Here are two routes, A and B. Which one would you choose?",
+          "zh": "这里有两个方向，A和B，你们会选哪一个？",
+          "probes": []
+        },
+        {
+          "qid": "S4Q2",
+          "en": "If Lumo launched route B in a bigger bottle, would you buy it every week?",
+          "zh": "如果露慕推出B方向的大瓶装，你们会每周都买吗？",
+          "probes": []
+        },
+        {
+          "qid": "S4Q3",
+          "en": "What would make the 'no added sugar' claim believable?",
+          "zh": "怎样才能让你相信零添加糖这个说法？",
+          "probes": []
+        }
+      ]
+    }
+  ]
+}

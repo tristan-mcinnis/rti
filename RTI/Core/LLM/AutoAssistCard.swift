@@ -9,8 +9,17 @@ public struct AutoAssistCard: Identifiable, Equatable {
     /// Wall-clock time the card was surfaced.
     public let timestamp: Date
     public let kind: AutoCardKind
-    /// The suggestion itself (one line; what to say / ask / recall).
+    /// The suggestion itself in English (one line; what to say / ask /
+    /// recall). A card with only a Mandarin line carries that line here and
+    /// in `textZH`, so the rail shows it once and a Mandarin window keeps it.
     public let text: String
+    /// The speakable Mandarin line of a SAY or ASK card, or nil. The rail
+    /// shows it first, with `text` as a small English gloss.
+    public let textZH: String?
+    /// Tone-marked pinyin of `textZH`, made on this Mac when the card is
+    /// built (`AutoCardLanguage.pinyin`). Shown only when the user's
+    /// pinyin setting is on.
+    public let pinyin: String?
     /// Why it's relevant right now (one short line), or empty.
     public let why: String
     /// The retrieved document the suggestion draws on, or nil when the model
@@ -26,14 +35,25 @@ public struct AutoAssistCard: Identifiable, Equatable {
         timestamp: Date,
         kind: AutoCardKind,
         text: String,
+        textZH: String? = nil,
         why: String,
         citation: VaultSearch.Citation?
     ) {
         self.timestamp = timestamp
         self.kind = kind
+        // A Mandarin field that only repeats an English line is no Mandarin
+        // line. A Mandarin-only card carries the same line in both.
+        let chinese = textZH?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.textZH = chinese?.isEmpty == false && (chinese != text || AutoCardLanguage.isMandarin(text)) ? chinese : nil
         self.text = text
         self.why = why
         self.citation = citation
+        pinyin = AutoCardLanguage.pinyin(self.textZH)
+    }
+
+    /// The line the user would say: the Mandarin one when there is one.
+    public var speakable: String {
+        textZH ?? text
     }
 }
 
@@ -51,17 +71,19 @@ public extension AutoAssistCard {
     static func make(
         kind: AutoCardKind,
         text: String,
+        textZH: String? = nil,
         why: String?,
         sourceID: String?,
         citations: [VaultSearch.Citation],
         timestamp: Date = Date()
     ) -> AutoAssistCard? {
-        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return nil }
+        let lines = AutoCardLanguage.lines(english: text, mandarin: AutoCardCitation.normalize(textZH))
+        guard !lines.text.isEmpty else { return nil }
         return AutoAssistCard(
             timestamp: timestamp,
             kind: kind,
-            text: body,
+            text: lines.text,
+            textZH: lines.textZH,
             why: (why ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             citation: AutoCardCitation.resolve(sourceID, in: citations)
         )
@@ -78,6 +100,7 @@ public extension AutoAssistCard {
         make(
             kind: AutoCardKind(raw: item.kind ?? "RECALL"),
             text: item.text,
+            textZH: item.textZH,
             why: item.why,
             sourceID: item.sourceHandle,
             citations: citations,
@@ -86,12 +109,17 @@ public extension AutoAssistCard {
     }
 }
 
-/// Wire shape for one card in the model's JSON response. Everything but `text`
-/// is optional so a slightly malformed item still decodes; the lenient array
-/// decoder drops only the items it can't and keeps the rest of the batch.
+/// Wire shape for one card in the model's JSON response. Every field is
+/// optional so a slightly malformed item still decodes; a card with no line
+/// at all is dropped when it is built. The lenient array decoder drops only
+/// the items it can't decode and keeps the rest of the batch.
+///
+/// The English line is `text_en` (the current contract) or `text` (an
+/// older saved prompt); the Mandarin line is `text_zh`.
 public struct AutoCardItem: Decodable {
     public let kind: String?
     public let text: String
+    public let textZH: String?
     public let why: String?
     /// Handle for a document the pass injected; the current prompt asks for it.
     public let sourceId: String?
@@ -102,6 +130,11 @@ public struct AutoCardItem: Decodable {
         case kind, text, why, source, sourceId
         case sourceIdSnake = "source_id"
         case sourceIdCaps = "sourceID"
+        case textEN = "text_en"
+        case textEnCamel = "textEn"
+        case textZHSnake = "text_zh"
+        case textZhCamel = "textZh"
+        case textZHCaps = "textZH"
     }
 
     /// Accept the field under the spelling the model happened to emit. Every
@@ -109,7 +142,12 @@ public struct AutoCardItem: Decodable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
-        text = try container.decode(String.self, forKey: .text)
+        text = (try? container.decodeIfPresent(String.self, forKey: .textEN))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .textEnCamel))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        textZH = (try? container.decodeIfPresent(String.self, forKey: .textZHSnake))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .textZhCamel))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .textZHCaps))
         why = try container.decodeIfPresent(String.self, forKey: .why)
         source = try container.decodeIfPresent(String.self, forKey: .source)
         sourceId = try container.decodeIfPresent(String.self, forKey: .sourceId)

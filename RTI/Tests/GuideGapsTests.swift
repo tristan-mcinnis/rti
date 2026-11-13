@@ -10,6 +10,18 @@ final class GuideGapsTests: XCTestCase {
         return try GuideDocument.parse(JSONSerialization.data(withJSONObject: json))
     }
 
+    /// S1Q1 ... S1Q`first`, then S2Q1 ... S2Q`second`: reaching S2 closes S1.
+    private func twoSections(_ first: Int, _ second: Int) throws -> [GuideDocument.Question] {
+        func items(_ section: Int, _ count: Int) -> [[String: Any]] {
+            (1 ... count).map { ["qid": "S\(section)Q\($0)", "en": "Question \(section).\($0)?", "zh": "问题\(section).\($0)？", "probes": []] }
+        }
+        let json: [String: Any] = ["title": "Invented guide", "sections": [
+            ["id": "S1", "title": "Section 1", "questions": items(1, first)],
+            ["id": "S2", "title": "Section 2", "questions": items(2, second)],
+        ]]
+        return try GuideDocument.parse(JSONSerialization.data(withJSONObject: json)).questions
+    }
+
     /// A stored cell as decoded from disk. Only the selection tests use it; evidence
     /// rules are tested through the real extraction path below.
     private func cell(_ qid: String, _ coverage: String = "Not covered", quotes: Int = 0) throws -> GuideCell {
@@ -135,28 +147,83 @@ final class GuideGapsTests: XCTestCase {
         let speakers = ["remote_3": GuideSpeaker(participant: "Moderator", isModerator: true)]
         try extraction.apply(pass("Answered", turns: ["a", "b"]),
                              turns: [turn("a", "remote_3", 1000), turn("b", "remote_3", 2000)], speakers: speakers, rosterBase: nil)
-        XCTAssertEqual(try firstQuestionGaps(extraction).map(\.state), [.skipped])
+        let closed = try GuideGaps.find(questions: twoSections(1, 1), cells: extraction.cells, furthestIndex: 1,
+                                        currentQID: "S2Q1", rosterSize: nil)
+        XCTAssertEqual(closed.map(\.state), [.skipped])
     }
 
     // MARK: Selection
 
     func testPendingQuestionsAreExcluded() throws {
-        let cells = try (1 ... 4).map { try cell("S1Q\($0)") }
-        let result = try gaps(cells, furthest: 1, current: "S1Q2")
+        let questions = try twoSections(1, 3)
+        let cells = try questions.map { try cell($0.qid) }
+        let result = GuideGaps.find(questions: questions, cells: cells, furthestIndex: 1, currentQID: "S2Q1", rosterSize: nil)
         XCTAssertEqual(result.map(\.qid), ["S1Q1"])
-        XCTAssertTrue(try gaps(cells, furthest: 0, current: "S1Q1").isEmpty)
+        XCTAssertTrue(GuideGaps.find(questions: questions, cells: cells, furthestIndex: 0, currentQID: "S1Q1", rosterSize: nil).isEmpty)
     }
 
     func testPassedQuestionWithNoCoverageIsSkipped() throws {
-        let result = try gaps([cell("S1Q1"), cell("S1Q2")], furthest: 1, current: "S1Q2")
-        XCTAssertEqual(result, [GuideGap(qid: "S1Q1", title: "Question 1?", titleZH: "问题1？", state: .skipped)])
+        let result = try GuideGaps.find(questions: twoSections(1, 1), cells: [cell("S1Q1"), cell("S2Q1")], furthestIndex: 1,
+                                        currentQID: "S2Q1", rosterSize: nil)
+        XCTAssertEqual(result, [GuideGap(qid: "S1Q1", title: "Question 1.1?", titleZH: "问题1.1？", state: .skipped)])
         XCTAssertEqual(result.first?.detail, "Skipped")
+    }
+
+    func testUnaskedQuestionIsNotSkippedWhileItsSectionIsOpen() throws {
+        // Moderators reorder inside a section: S1Q1 is no gap until S1 closes.
+        let cells = try (1 ... 4).map { try cell("S1Q\($0)") }
+        XCTAssertTrue(try gaps(cells, furthest: 1, current: "S1Q2").isEmpty)
+        let questions = try twoSections(2, 1)
+        let closed = GuideGaps.find(questions: questions, cells: [], furthestIndex: 2, currentQID: "S2Q1", rosterSize: nil)
+        XCTAssertEqual(closed.map(\.qid), ["S1Q2", "S1Q1"])
+    }
+
+    func testQuestionsBeforeTheRecordingAreNotRecordedAndNeverActionable() throws {
+        // The recording reached the guide at S1Q3: S1Q1 and S1Q2 were asked before Record.
+        let questions = try twoSections(3, 1)
+        let actionable = GuideGaps.find(questions: questions, cells: [], furthestIndex: 3, currentQID: "S2Q1",
+                                        rosterSize: nil, recordedFromIndex: 2)
+        XCTAssertEqual(actionable.map(\.qid), ["S1Q3"])
+        XCTAssertTrue(actionable.allSatisfy(\.isActionable))
+        let all = GuideGaps.find(questions: questions, cells: [], furthestIndex: 3, currentQID: "S2Q1",
+                                 rosterSize: nil, recordedFromIndex: 2, includeNotRecorded: true)
+        XCTAssertEqual(all.map(\.qid), ["S1Q3", "S1Q2", "S1Q1"])
+        XCTAssertEqual(all.map(\.detail), ["Skipped", "Not recorded", "Not recorded"])
+        XCTAssertFalse(all[1].isActionable)
+    }
+
+    func testAnEarlySkipInsideTheFirstSectionStaysAGap() throws {
+        // A normal start: the moderator skipped S1Q1 and the guide reached
+        // S1Q3 at minute 1. That is a skip, not a late start.
+        let questions = try twoSections(3, 1)
+        XCTAssertEqual(GuideGaps.recordedFrom(questions: questions, firstReachedIndex: 2), 0)
+        let gaps = GuideGaps.find(questions: questions, cells: [], furthestIndex: 3, currentQID: "S2Q1", rosterSize: nil,
+                                  recordedFromIndex: GuideGaps.recordedFrom(questions: questions, firstReachedIndex: 2))
+        XCTAssertEqual(gaps.map(\.qid), ["S1Q3", "S1Q2", "S1Q1"])
+        XCTAssertTrue(gaps.allSatisfy(\.isActionable), "a real skip keeps its Go back to")
+        // A recording that first reached S2 started mid-guide: all of S1 was before Record.
+        XCTAssertEqual(GuideGaps.recordedFrom(questions: questions, firstReachedIndex: 3), 3)
+        XCTAssertEqual(GuideGaps.recordedFrom(questions: questions, firstReachedIndex: nil), 0)
+    }
+
+    func testModeratorInstructionItemsAreNeverGaps() throws {
+        let json: [String: Any] = ["title": "Invented guide", "sections": [
+            ["id": "S1", "title": "Section 1", "questions": [
+                ["qid": "S1Q1", "en": "Moderator to hand out the stimulus cards", "zh": "主持人发放卡片", "probes": []],
+                ["qid": "S1Q2", "en": "What do you see first?", "zh": "你先看到什么？", "probes": []],
+            ]],
+            ["id": "S2", "title": "Section 2", "questions": [["qid": "S2Q1", "en": "Next?", "zh": "", "probes": []]]],
+        ]]
+        let questions = try GuideDocument.parse(JSONSerialization.data(withJSONObject: json)).questions
+        let result = GuideGaps.find(questions: questions, cells: [], furthestIndex: 2, currentQID: "S2Q1", rosterSize: nil)
+        XCTAssertEqual(result.map(\.qid), ["S1Q2"])
     }
 
     func testCurrentQuestionIsNeverFlagged() throws {
         // A manual jump back makes an earlier question current while furthestIndex stays ahead.
-        let cells = try (1 ... 4).map { try cell("S1Q\($0)") }
-        let result = try gaps(cells, furthest: 3, current: "S1Q2")
+        let questions = try twoSections(3, 1)
+        let cells = try questions.map { try cell($0.qid) }
+        let result = GuideGaps.find(questions: questions, cells: cells, furthestIndex: 3, currentQID: "S1Q2", rosterSize: nil)
         XCTAssertEqual(result.map(\.qid), ["S1Q3", "S1Q1"])
     }
 
@@ -169,8 +236,9 @@ final class GuideGapsTests: XCTestCase {
     }
 
     func testCapAndMostRecentlyPassedFirst() throws {
-        let cells = try (1 ... 8).map { try cell("S1Q\($0)") }
-        let result = try gaps(cells, furthest: 7, current: "S1Q8", count: 8)
+        let questions = try twoSections(7, 1)
+        let cells = try questions.map { try cell($0.qid) }
+        let result = GuideGaps.find(questions: questions, cells: cells, furthestIndex: 7, currentQID: "S2Q1", rosterSize: nil)
         XCTAssertEqual(result.map(\.qid), ["S1Q7", "S1Q6", "S1Q5", "S1Q4", "S1Q3"])
         XCTAssertEqual(GuideGaps.limit, 5)
     }
@@ -178,10 +246,11 @@ final class GuideGapsTests: XCTestCase {
     func testMissingCellCountsAsSkippedAndChineseOnlyTitleIsKept() throws {
         let json: [String: Any] = ["title": "Invented guide", "sections": [["id": "S1", "title": "Section 1", "questions": [
             ["qid": "S1Q1", "en": "", "zh": "你怎么洗杯子？", "probes": []],
-            ["qid": "S1Q2", "en": "Next?", "zh": "", "probes": []],
+        ]], ["id": "S2", "title": "Section 2", "questions": [
+            ["qid": "S2Q1", "en": "Next?", "zh": "", "probes": []],
         ]]]]
         let questions = try GuideDocument.parse(JSONSerialization.data(withJSONObject: json)).questions
-        let result = GuideGaps.find(questions: questions, cells: [], furthestIndex: 1, currentQID: "S1Q2", rosterSize: nil)
+        let result = GuideGaps.find(questions: questions, cells: [], furthestIndex: 1, currentQID: "S2Q1", rosterSize: nil)
         XCTAssertEqual(result, [GuideGap(qid: "S1Q1", title: "你怎么洗杯子？", titleZH: nil, state: .skipped)])
     }
 }

@@ -49,15 +49,33 @@ extension SessionCoordinator {
     /// Crash-safety checkpoint: while a session runs, re-write the archive
     /// every 5 minutes so a hard crash (the one teardown path that can't
     /// archive) loses at most the last few minutes of notes/transcript.
+    /// Only the snapshot is taken on main; the rendering and the file writes
+    /// run on a utility task (2026-11-13 M1 audit: 50 to 150 ms on main per
+    /// checkpoint at two hours). `ArchiveWriteGate` keeps the stop's own
+    /// write after any checkpoint still writing.
     func startCheckpointLoop() {
         checkpointTask?.cancel()
         checkpointTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
                 guard let self, isRunning, !Task.isCancelled else { return }
-                archiveCurrentSession(endedAt: Date())
+                await checkpoint(endedAt: Date())
             }
         }
+    }
+
+    /// One crash-safety checkpoint: snapshot on main, write off main.
+    func checkpoint(endedAt: Date) async {
+        guard let job = PassSignpost.interval("checkpoint snapshot", { checkpointJob(endedAt: endedAt) }) else { return }
+        await Task.detached(priority: .utility) {
+            _ = SessionFinalizer.write(job)
+        }.value
+    }
+
+    func checkpointJob(endedAt: Date) -> SessionFinalizer.Job? {
+        guard let startedAt else { return nil }
+        let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt, sessionId: currentSessionId, includeAudio: false)
+        return SessionFinalizer(snapshot: snapshot).prepare()
     }
 
     static func archiveWasExpected(for snapshot: SessionFinalizer.Snapshot) -> Bool {

@@ -151,3 +151,24 @@ public enum AutoVaultQuery {
         "当然", "包括", "关于", "或者", "以及", "还要", "需要", "谢谢", "好好",
     ]
 }
+
+/// How often Auto searches the project. A search costs CPU on the call's
+/// Mac, and the project's notes do not change between two passes, so Auto
+/// searches at most once every `every` passes and reuses that result in
+/// between (2026-11-13 M1 audit).
+public struct AutoVaultCadence: Equatable, Sendable {
+    public static let every = 3
+    private var passesSinceSearch: Int?
+
+    public init() {}
+
+    /// True when this pass searches. Call once per pass that has a query.
+    public mutating func shouldSearch() -> Bool {
+        if let since = passesSinceSearch, since + 1 < Self.every {
+            passesSinceSearch = since + 1
+            return false
+        }
+        passesSinceSearch = 0
+        return true
+    }
+}

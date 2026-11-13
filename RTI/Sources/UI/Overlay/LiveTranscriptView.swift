@@ -339,7 +339,8 @@ private struct TranscriptRunView: View, Equatable {
                     .font(House.TypeToken.label)
                     .accessibilityAddTraits(.isHeader)
             } else {
-                if !turn.speakerId.isEmpty { header }
+                // A continuation block of a long turn carries no label.
+                if !turn.speakerId.isEmpty, !turn.isContinuation { header }
                 texts
             }
         }

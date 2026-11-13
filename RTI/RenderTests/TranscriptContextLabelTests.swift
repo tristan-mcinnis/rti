@@ -73,13 +73,16 @@ enum SplitWordTranscriptReplay {
         session.deactivateTranscriptPresentation(for: owner)
         let hiddenRevision = session.transcriptDisplayRevision
 
+        // `liveEntries` reads through to the pipeline; what the coalescer
+        // holds back is the observed revision the views redraw on.
+        let unpublished = session.transcriptRevision
         try await publishFinals(in: session) {
             session.receiveTranscriptWordsForProof([
                 word("The", start: 900, end: 960),
                 word(" blue", start: 1140, end: 1320),
                 word(" lan", start: 1440, end: 1500),
             ], channel: "mic")
-            XCTAssertTrue(session.liveEntries.isEmpty, "Final publication must use the real coalescer")
+            XCTAssertEqual(session.transcriptRevision, unpublished, "Final publication must use the real coalescer")
         }
         XCTAssertEqual(session.liveEntries.first?.text, "The blue lan")
 

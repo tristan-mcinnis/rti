@@ -11,9 +11,9 @@ struct ResearchCodebookPreparation: View {
             if SessionCoordinator.shared.isRunning {
                 Text("\(controller.book.cards.filter(\.seeded).count) seeded cards").font(House.TypeToken.meta)
             } else {
-                TextField("One per line, e.g. brand | Morning Cup（晨杯）", text: $controller.seedText, axis: .vertical)
+                TextField("One per line, e.g. client | Morning Cup（晨杯） or barrier | 洗起来麻烦", text: $controller.seedText, axis: .vertical)
                     .lineLimit(1 ... 4).textFieldStyle(.roundedBorder)
-                Text("Also reads codebook-seed.md from the selected project.")
+                Text("Also reads codebook-seed.md from the selected project. objective | … and client_question | … feed the brief.")
                     .font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
             }
         }
@@ -32,8 +32,11 @@ struct ResearchCodebookTab: View {
         Set(controller.book.sessions.map { $0.group ?? $0.id }).sorted()
     }
 
+    /// Codes only: people and organisations from older archives load but
+    /// are not codes.
     private var cards: [ResearchCard] {
-        controller.book.cards.sorted { ($0.pinned ? 0 : 1, -$0.entries.count, $0.name) < ($1.pinned ? 0 : 1, -$1.entries.count, $1.name) }
+        controller.book.cards.filter(\.type.isCode)
+            .sorted { ($0.pinned ? 0 : 1, -$0.quoteCount, $0.name) < ($1.pinned ? 0 : 1, -$1.quoteCount, $1.name) }
     }
 
     var body: some View {
@@ -69,10 +72,10 @@ struct ResearchCodebookTab: View {
                     } else if section == "Respondents" {
                         respondents
                     } else if cards.isEmpty {
-                        Text("Seed a card in Setup or record a Research call to collect quoted evidence.")
+                        Text("Seed a code in Setup or record a Research call to collect quotes.")
                     } else {
                         ForEach(cards) { card in
-                            if group == nil || !visible(card).isEmpty {
+                            if group == nil || !visible(card).isEmpty || !visibleVotes(card).isEmpty {
                                 cardView(card)
                             }
                         }
@@ -102,6 +105,11 @@ struct ResearchCodebookTab: View {
         card.entries.filter { group == nil || ($0.evidence.group ?? $0.evidence.sessionID) == group }
     }
 
+    /// A vote card's tallies under the group filter: only that group's sessions.
+    private func visibleVotes(_ card: ResearchCard) -> [ResearchVote] {
+        ResearchCodebook.votes(card, group: group, sessions: controller.book.sessions)
+    }
+
     private func cardView(_ card: ResearchCard) -> some View {
         let entries = visible(card)
         return DisclosureGroup {
@@ -111,22 +119,19 @@ struct ResearchCodebookTab: View {
             ForEach(controller.book.sessions.sorted { $0.startedAt < $1.startedAt }) { session in
                 let rows = entries.filter { $0.evidence.sessionID == session.id }
                 if !rows.isEmpty {
-                    let count = Set(rows.compactMap { entry in
-                        let speaker = entry.evidence.speaker
-                        return speaker.confidence == SpeakerEvidence.confirmed.rawValue ? speaker.seat ?? speaker.label : nil
-                    }).count
-                    Text("\(session.group ?? session.folder) · \(rows.count) entries\(count > 0 ? " · \(count) confirmed speakers" : "")").font(House.TypeToken.label)
+                    // Count quotes, never people.
+                    let quotes = rows.count + rows.filter { $0.counter != nil }.count
+                    Text("\(session.group ?? session.folder) · \(quotes) \(quotes == 1 ? "quote" : "quotes")").font(House.TypeToken.label)
                     Text(ResearchValence.allCases.map { value in "\(value.rawValue) \(rows.filter { $0.valence == value }.count)" }.joined(separator: " · ")).font(House.TypeToken.meta)
                     ForEach(rows.sorted { $0.evidence.offsetMs < $1.evidence.offsetMs }) { entry in quoteRow(entry) }
                 }
             }
         } label: {
-            HStack {
+            HStack(alignment: .top) {
                 if card.pinned {
                     Image(systemName: "pin.fill").accessibilityLabel("Pinned")
                 }
-                Text(card.name).font(House.TypeToken.label)
-                Text("\(card.type.rawValue) · \(card.seeded ? "seeded" : "emerged") · \(entries.count)").font(House.TypeToken.meta)
+                ResearchCodeLabel(card: card, entries: entries, votes: visibleVotes(card))
                 Spacer()
                 Menu {
                     Button(card.pinned ? "Unpin" : "Pin") { edit(.pin(card.id, !card.pinned)) }
@@ -153,8 +158,15 @@ struct ResearchCodebookTab: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-                Text(entry.point).font(House.TypeToken.bodySmall)
+                Text([entry.stance.map { $0 == .support ? "For:" : "Against:" }, entry.point].compactMap(\.self).joined(separator: " "))
+                    .font(House.TypeToken.bodySmall)
                 Text("[\(GuideExtraction.locator(quote.offsetMs)), \(quote.speaker.label)] \(quote.original)").font(House.TypeToken.meta)
+                if let counter = entry.counter {
+                    Text("vs [\(GuideExtraction.locator(counter.offsetMs)), \(counter.speaker.label)] \(counter.original)").font(House.TypeToken.meta)
+                }
+                if entry.asrDoubt == true {
+                    Text("May be a speech-recognition error").font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
+                }
                 let context = [quote.questionID, quote.markerLabel, quote.shownCodes.map { "Shown: " + $0.joined(separator: ", ") }].compactMap(\.self)
                 if let codes = quote.mentionedCodes, !codes.isEmpty {
                     Text("Mentioned: " + codes.joined(separator: ", ")).font(House.TypeToken.meta)
@@ -275,5 +287,67 @@ private struct ResearchArchivedEvidence: View {
 
     private func offset(_ row: SessionTranscriptTurn) -> Int {
         Int(row.timestamp.split(separator: ":").compactMap { Double($0) }.reduce(0) { $0 * 60 + $1 } * 1000)
+    }
+}
+
+/// A code's label: the emic name first, the English gloss after, then the
+/// type, origin and quote count, and what the type holds: both sides of a
+/// tension, a vote's counts, a hypothesis for and against, a client
+/// question's status.
+struct ResearchCodeLabel: View {
+    let card: ResearchCard
+    let entries: [ResearchEntry]
+    /// The tallies to show, already filtered to the selected group.
+    let votes: [ResearchVote]
+
+    private var quotes: Int {
+        entries.count + entries.filter { $0.counter != nil }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
+                Text(card.name).font(House.TypeToken.label).foregroundStyle(House.ColorToken.textPrimary)
+                if let gloss = card.gloss {
+                    Text(gloss).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
+                }
+            }
+            Text(meta).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textTertiary)
+            detail.font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
+        }
+    }
+
+    private var meta: String {
+        var parts = [card.type.label, card.seeded ? "seeded" : "emerged"]
+        if card.type != .vote { parts.append("\(quotes) \(quotes == 1 ? "quote" : "quotes")") }
+        if let provenance = card.provenance, provenance != .spontaneous { parts.append(provenance.label) }
+        if let qids = card.qids, !qids.isEmpty { parts.append(qids.prefix(3).joined(separator: ", ")) }
+        return parts.joined(separator: " · ")
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch card.type {
+        case .tension:
+            if let latest = entries.max(by: { $0.evidence.offsetMs < $1.evidence.offsetMs }), let counter = latest.counter {
+                let sides = [(counter.offsetMs, counter.original), (latest.evidence.offsetMs, latest.words)].sorted { $0.0 < $1.0 }
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(sides.enumerated()), id: \.offset) { _, side in
+                        Text("\(GuideExtraction.locator(side.0))  \(side.1)").lineLimit(2)
+                    }
+                }
+            }
+        case .vote:
+            let votes = votes.sorted { $0.count > $1.count }
+            if !votes.isEmpty {
+                Text(votes.map { "\($0.choice) \($0.count)" }.joined(separator: " · ")).monospacedDigit()
+            }
+        case .hypothesis:
+            let support = entries.filter { $0.stance == .support }.count, against = entries.filter { $0.stance == .against }.count
+            Text("\(support) for · \(against) against").monospacedDigit()
+        case .clientQuestion:
+            Text("Status: \((card.questionStatus ?? .open).rawValue)")
+        default:
+            EmptyView()
+        }
     }
 }

@@ -253,6 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         let dir = (Self.cleanExitFlag as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: Self.cleanExitFlag, contents: nil)
+        AppLog.flushFile()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {

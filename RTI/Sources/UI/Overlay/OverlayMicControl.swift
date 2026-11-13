@@ -49,14 +49,8 @@ struct OverlayMicControl: View {
                 // Zoom-style reassurance: a faint green level bar under the
                 // mic while recording, so you can SEE it's hearing you.
                 if session.isRunning, !session.micMuted {
-                    TimelineView(.periodic(from: .now, by: 0.15)) { _ in
-                        let level = CGFloat(min(1, max(0, session.audioLevels().mic)))
-                        Capsule()
-                            .fill(RTIDesign.Color.success)
-                            .frame(width: 3 + 11 * level, height: 2)
-                            .animation(.linear(duration: 0.12), value: level)
-                    }
-                    .padding(.bottom, 3)
+                    MicLevelBar(level: { session.audioLevels().mic })
+                        .padding(.bottom, 3)
                 }
             }
             .frame(width: House.Control.keyCap + House.Spacing.xxs, height: House.Control.chip)
@@ -189,5 +183,41 @@ struct OverlayMicControl: View {
 
     private var borderColor: Color {
         session.micMuted ? RTIDesign.Color.warning.opacity(0.4) : RTIDesign.Color.border
+    }
+}
+
+/// The faint level bar under the mic. Every `tick` seconds the timeline
+/// reads the level (one cheap closure), with no implicit animation. The
+/// width snaps to whole points and the capsule is an equatable child, so
+/// SwiftUI skips its body and draws nothing new unless the width changes:
+/// a quiet or steady level costs a level read per tick, not a redraw
+/// (2026-11-13 M1 audit: a 0.15 s tick with a 0.12 s animation kept Core
+/// Animation committing about 80% of a call).
+struct MicLevelBar: View {
+    static let tick: TimeInterval = 0.3
+    let level: () -> Float
+
+    /// The bar's width for a level from 0 to 1, in whole points.
+    static func width(for level: Float) -> CGFloat {
+        3 + (11 * CGFloat(min(1, max(0, level)))).rounded()
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: Self.tick)) { _ in
+            Capsule(width: Self.width(for: level()))
+                .equatable()
+        }
+    }
+
+    /// The drawn bar. Equal widths compare equal, so its body is skipped.
+    struct Capsule: View, Equatable {
+        let width: CGFloat
+
+        var body: some View {
+            SwiftUI.Capsule()
+                .fill(RTIDesign.Color.success)
+                .frame(width: width, height: 2)
+                .transaction { $0.animation = nil }
+        }
     }
 }

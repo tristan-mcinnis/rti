@@ -33,16 +33,23 @@ final class AutoAssistControllerTests: RenderProofTestCase {
         return try XCTUnwrap(pass)
     }
 
-    private func activeGuide() throws -> GuideSessionController {
+    /// A guide whose S1 closed with nothing filed, past the late-start
+    /// window, and a guide pass that just succeeded.
+    private func activeGuide(passSucceeded: Bool = true) throws -> GuideSessionController {
+        let guide = try startedGuide()
+        guide.select("S2Q1", at: Date(timeIntervalSince1970: 1_700_000_000).addingTimeInterval(400))
+        XCTAssertFalse(guide.gaps.isEmpty)
+        if passSucceeded { guide.notePassSucceededForTest(at: Date()) }
+        return guide
+    }
+
+    private func startedGuide() throws -> GuideSessionController {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Tests/GuideFixtures/dg-questions.json")
         let document = try GuideDocument.parse(Data(contentsOf: url))
         let guide = GuideSessionController()
-        let start = Date(timeIntervalSince1970: 1_700_000_000)
         guide.start(sessionID: "auto-guide-fixture", guide: document, guideURL: url, group: nil, roster: [],
-                    rosterURL: nil, startedAt: start)
-        guide.select("S2Q1", at: start.addingTimeInterval(20))
-        XCTAssertFalse(guide.gaps.isEmpty)
+                    rosterURL: nil, startedAt: Date(timeIntervalSince1970: 1_700_000_000))
         return guide
     }
 
@@ -116,6 +123,63 @@ final class AutoAssistControllerTests: RenderProofTestCase {
         let idle = try await unwrapPass(controller(.research), from: 0)
         XCTAssertFalse(idle.prompt.contains("Guide gaps"))
         XCTAssertFalse(idle.prompt.contains("Current guide question"))
+        XCTAssertFalse(idle.prompt.contains(AutoAssistPrompt.guidePositionUncertainLine), "no guide, no guide line")
+    }
+
+    func testGuidePositionAndGapsGoInOnlyWhileAGuidePassIsFresh() async throws {
+        seed([entry("remote", "我一般随便买。", 1000)])
+        // Following live, no pass yet: the position is uncertain and gaps stay out.
+        let guide = try startedGuide()
+        let unplaced = try await unwrapPass(controller(.research, guide: guide), from: 0)
+        XCTAssertTrue(unplaced.prompt.contains(AutoAssistPrompt.guidePositionUncertainLine))
+        XCTAssertFalse(unplaced.prompt.contains("Current guide question"))
+
+        guide.notePassSucceededForTest(at: Date(), position: "S1Q2")
+        let placed = try await unwrapPass(controller(.research, guide: guide), from: 0)
+        XCTAssertTrue(placed.prompt.contains("Current guide question:\nS1Q2 / How would you carry the cup?"))
+        XCTAssertFalse(placed.prompt.contains(AutoAssistPrompt.guidePositionUncertainLine))
+
+        guide.notePassSucceededForTest(at: Date().addingTimeInterval(-300), position: "S1Q2")
+        let stale = try await unwrapPass(controller(.research, guide: guide), from: 0)
+        XCTAssertTrue(stale.prompt.contains(AutoAssistPrompt.guidePositionUncertainLine), "a position over four minutes old is stale")
+
+        let gapsStale = try await unwrapPass(controller(.research, guide: activeGuide(passSucceeded: false)), from: 0)
+        XCTAssertFalse(gapsStale.prompt.contains("Guide gaps"), "gaps need a guide pass in the last four minutes")
+        XCTAssertTrue(gapsStale.prompt.contains("Current guide question:\nS2Q1"), "the user's own pick is always fresh")
+    }
+
+    /// A line timed one character every 200 ms, as provider tokens.
+    private func timed(_ speaker: String, _ text: String, _ start: Int) -> LiveEntry {
+        let tokens = text.enumerated().map { offset, character in
+            LiveEntry.TimedToken(text: String(character), startMs: start + offset * 200, endMs: start + offset * 200 + 150)
+        }
+        return LiveEntry(speakerId: speaker, text: text, startMs: start, confidence: 1, translationStatus: "none",
+                         language: "zh", sourceLanguage: nil, textOrigin: .providerTokens, streamID: UUID(), tokens: tokens)
+    }
+
+    func testResearchLinesCarryTheRoleHintAndLoseMicEchoes() async throws {
+        // An in-room group played on a speaker: the mic hears each room line
+        // at the same time, so the room is on both legs and its echoes go.
+        let room = ["你平时早上喝什么？我一般喝燕麦奶。", "我觉得这个包装很好看，颜色也很清爽。", "价格的话我觉得有点贵，不太划算。"]
+        seed(room.enumerated().flatMap { index, line in
+            [timed("remote", line, 1000 + index * 15000),
+             timed("self", line.filter { !"，。？".contains($0) }, 1200 + index * 15000)]
+        })
+        let research = try await unwrapPass(controller(.research), from: 0)
+        XCTAssertTrue(research.prompt.contains("Them, moderator] 你平时早上喝什么？"), research.prompt)
+        XCTAssertTrue(research.prompt.contains("Them, respondent] 我一般喝燕麦奶。"))
+        XCTAssertFalse(research.prompt.contains("Me]"), "the mic echo of the room is dropped")
+
+        // One overlapping repeat on an otherwise remote call is not a room on both legs.
+        seed([timed("remote", room[0], 1000), timed("self", "你平时早上喝什么我一般喝燕麦奶", 1200)])
+        let remote = try await unwrapPass(controller(.research), from: 0)
+        XCTAssertTrue(remote.prompt.contains("Me] 你平时早上喝什么我一般喝燕麦奶"), "no echo is dropped without the room gate")
+
+        seed([entry("remote", "我一般喝燕麦奶。", 1000), entry("self", "Note the oat point for later.", 1200)])
+        let own = try await unwrapPass(controller(.research), from: 0)
+        XCTAssertTrue(own.prompt.contains("Me] Note the oat point for later."), "the user's own words stay")
+        let client = try await unwrapPass(controller(.client), from: 0)
+        XCTAssertFalse(client.prompt.contains("moderator]"), "client calls get no role hint")
     }
 
     // MARK: - Watermark split
@@ -264,7 +328,8 @@ final class AutoAssistControllerTests: RenderProofTestCase {
     func testTheSchedulerTickWaitsForTheFloorAndSuggestNowDoesNot() async {
         let rig = Rig()
         defer { rig.cleanUp() }
-        var lines = [entry("remote", "When is the renewal?", 1000)]
+        // Research passes need enough new respondent talk, so every line is long.
+        var lines = [entry("remote", Self.longAnswer, 1000)]
         startRecording(lines)
         defer { stopRecording() }
         let calls = CallCounter()
@@ -280,7 +345,7 @@ final class AutoAssistControllerTests: RenderProofTestCase {
 
         for (second, line) in [(10.0, 2000), (floor - 1, 3000)] {
             rig.clock = start.addingTimeInterval(second)
-            lines.append(entry("remote", "More talk \(line).", line))
+            lines.append(entry("remote", "\(Self.longAnswer) \(line)", line))
             seed(lines)
             let tick = await auto.generate(sessionId: session)
             XCTAssertNil(tick, "a tick \(second) s after the last pass waits for the floor")
@@ -291,7 +356,7 @@ final class AutoAssistControllerTests: RenderProofTestCase {
         let manual = await auto.generate(sessionId: session, explicit: true)
         XCTAssertNotNil(manual, "Suggest now skips the floor")
         rig.clock = start.addingTimeInterval(2 * floor)
-        lines.append(entry("remote", "Later talk.", 9000))
+        lines.append(entry("remote", Self.longAnswer + "后来。", 9000))
         seed(lines)
         let late = await auto.generate(sessionId: session)
         XCTAssertNotNil(late, "a tick a floor after the last pass runs")
@@ -398,6 +463,129 @@ final class AutoAssistControllerTests: RenderProofTestCase {
         XCTAssertTrue(auto.rail.items.isEmpty, "and offers nothing to the rail")
         XCTAssertEqual(auto.pass.watermarkMs, 0)
         XCTAssertFalse(auto.isGenerating)
+    }
+}
+
+// MARK: - Research rules (P4 to P7, invented text)
+
+@MainActor
+extension AutoAssistControllerTests {
+    /// About 170 respondent characters: one pass's worth in a group.
+    static let longAnswer = String(repeating: "我平时早上一般喝燕麦奶，因为觉得比较健康，而且味道也不错，", count: 6)
+
+    private func reply(_ text: String) -> LLMRequest {
+        LLMRequest(collectStream: { _, _, _, _ in
+            LLMClient.CollectedResponse(text: text, finishReason: "stop", reasoningCharacters: 0)
+        }, priority: .background, admission: LLMAdmissionController())
+    }
+
+    func testResearchSkipsAPassOnThinRespondentInputAndKeepsTheWatermark() async {
+        let rig = Rig()
+        defer { rig.cleanUp() }
+        // Moderator questions and a short answer: under 150 respondent characters.
+        startRecording([entry("remote", "你平时早上喝什么？", 1000), entry("remote", "燕麦奶。", 3000),
+                        entry("self", "Note to self.", 4000)])
+        defer { stopRecording() }
+        let calls = CallCounter()
+        let request = LLMRequest(collectStream: { _, _, _, _ in
+            await calls.bump()
+            return LLMClient.CollectedResponse(text: #"{"cards":[]}"#, finishReason: "stop", reasoningCharacters: 0)
+        }, priority: .background, admission: LLMAdmissionController())
+        let auto = liveController(rig, request: request, callType: .research)
+        let thin = await auto.generate(sessionId: session)
+        XCTAssertNil(thin)
+        let none = await calls.count
+        XCTAssertEqual(none, 0, "no paid pass on thin respondent input")
+        XCTAssertEqual(auto.pass.watermarkMs, 0, "the thin window is read again next time")
+        XCTAssertNil(auto.pass.lastPassAt, "the skipped pass took no floor")
+        XCTAssertFalse(auto.isGenerating)
+
+        // A long answer a few seconds later is read at once, not after the floor.
+        seed([entry("remote", "你平时早上喝什么？", 1000), entry("remote", Self.longAnswer, 3000)])
+        rig.clock = rig.clock.addingTimeInterval(5)
+        let full = await auto.generate(sessionId: session)
+        XCTAssertEqual(full, 3000)
+        let one = await calls.count
+        XCTAssertEqual(one, 1)
+    }
+
+    func testAMandarinResearchPassShowsOneCardWithItsMandarinLine() async {
+        let rig = Rig()
+        defer { rig.cleanUp() }
+        startRecording([entry("remote", Self.longAnswer, 1000)])
+        defer { stopRecording() }
+        let json = #"""
+        {"cards":[
+          {"kind":"ASK","text_en":"Ask what healthy means here","text_zh":null,"why":"Vague word."},
+          {"kind":"RECALL","text_en":"Round 1 said the same","why":"Echo.","source":null},
+          {"kind":"ASK","text_en":"Ask the room who sees it differently","text_zh":"有没有人不一样的看法？","why":"One view so far."},
+          {"kind":"ASK","text_en":"Ask why taste matters","text_zh":"为什么味道对你重要？","why":"Laddering."}
+        ]}
+        """#
+        let auto = liveController(rig, request: reply(json), callType: .research)
+        _ = await auto.generate(sessionId: session)
+        XCTAssertEqual(auto.cards.map(\.text), ["Ask the room who sees it differently"],
+                       "no Mandarin line, no source, and a second card in one research pass are all dropped")
+        XCTAssertEqual(auto.cards.first?.textZH, "有没有人不一样的看法？")
+        XCTAssertNotNil(auto.cards.first?.pinyin)
+
+        auto.stop()
+    }
+
+    func testANearRepeatWithinFifteenMinutesIsDropped() async {
+        let rig = Rig()
+        defer { rig.cleanUp() }
+        startRecording([entry("remote", "When is the renewal? We still need the owner and the budget line.", 1000)])
+        defer { stopRecording() }
+        let counter = CallCounter()
+        let request = LLMRequest(collectStream: { _, _, _, _ in
+            await counter.bump()
+            let text = await counter.count == 1
+                ? #"{"cards":[{"kind":"ask","text_en":"Ask who signs off on the budget","why":"No owner."}]}"#
+                : #"{"cards":[{"kind":"ask","text_en":"Ask who signs off the budget","why":"Still no owner."}]}"#
+            return LLMClient.CollectedResponse(text: text, finishReason: "stop", reasoningCharacters: 0)
+        }, priority: .background, admission: LLMAdmissionController())
+        let auto = liveController(rig, request: request)
+        _ = await auto.generate(sessionId: session)
+        XCTAssertEqual(auto.rail.nowItems.map(\.text), ["Ask who signs off on the budget"])
+        rig.clock = rig.clock.addingTimeInterval(120)
+        seed([entry("remote", "When is the renewal? We still need the owner and the budget line.", 1000),
+              entry("remote", "And the pilot budget?", 6000)])
+        _ = await auto.generate(sessionId: session)
+        XCTAssertEqual(auto.cards.count, 1, "a paraphrase of a card shown 2 minutes ago is a repeat")
+        auto.stop()
+    }
+
+    func testResearchPromptCarriesBudgetsAndTheSilentLegSignal() async throws {
+        // Them spoke at 0:01, then only the mic for 4 minutes.
+        seed([entry("remote", Self.longAnswer, 1000), entry("self", "Let me check the audio.", 241_000)])
+        let guide = try activeGuide()
+        let pass = try await unwrapPass(controller(.research, guide: guide), from: 0)
+        XCTAssertTrue(pass.prompt.contains("Guide section budgets:\n- S1 SECTION 1: Cups (6 min): 6 min"), pass.prompt)
+        XCTAssertTrue(pass.prompt.contains("No Them speech for 4 min (since 0:01)"))
+        XCTAssertTrue(pass.mandarin, "the window is mostly Chinese")
+        XCTAssertTrue(pass.prompt.contains(AutoAssistPrompt.mandarinLine))
+
+        let client = try await unwrapPass(controller(.client, guide: guide), from: 0)
+        XCTAssertFalse(client.prompt.contains("Guide section budgets"))
+        XCTAssertFalse(client.prompt.contains("Signals"))
+    }
+
+    func testTheResearchFloorFollowsTheRoster() throws {
+        let guide = try startedGuide()
+        XCTAssertEqual(controller(.research, guide: guide).researchFormat, .unknown, "a mock title and no roster")
+        let group = GuideSessionController()
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Tests/GuideFixtures/dg-questions.json")
+        let document = try GuideDocument.parse(Data(contentsOf: url))
+        group.start(sessionID: "auto-group", guide: document, guideURL: url, group: nil,
+                    roster: (1 ... 6).map { GuideSeat(seat: $0, label: "R\($0)", segment: "A") }, rosterURL: nil)
+        XCTAssertEqual(controller(.research, guide: group).researchFormat, .group)
+    }
+
+    func testOlderSurfacedCardsBecomeShortTopics() {
+        XCTAssertEqual(AutoAssistController.topic("Ask who signs off on the budget and by when"), "Ask who signs off on the")
+        XCTAssertEqual(AutoAssistController.topic("有没有人不一样的看法？"), "有没有人不一样的看法？")
     }
 }
 

@@ -1,0 +1,421 @@
+{
+ "about": "Recorded guide pass replies for the invented fixture. A pass gets the reply of every entry whose 'when' line is new evidence in it (cells joined, the last suggestion kept as written), else 'default'. {{Lnnn}} becomes that line's turn ID. Several replies use the odd shapes real models sent: a suggestion as an object, no votes, a votes field that is not a list.",
+ "default": {
+  "suggestion": null,
+  "evidence": [],
+  "cells": []
+ },
+ "replies": [
+  {
+   "when": "L013",
+   "reply": {
+    "suggestion": {
+     "qid": "S2Q1",
+     "ids": [
+      "{{L013}}",
+      "{{L014}}"
+     ]
+    },
+    "cells": [
+     {
+      "qid": "S2Q1",
+      "coverage": "Answered",
+      "summary": "Mornings are rushed; breakfast is eaten on the way.",
+      "turns": [
+       "{{L012}}",
+       "{{L013}}",
+       "{{L014}}",
+       "{{L015}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L012}}",
+        "english": "Can you walk me through a weekday morning?"
+       },
+       {
+        "turn": "{{L013}}",
+        "english": "Breakfast happens on the way to the subway."
+       },
+       {
+        "turn": "{{L014}}",
+        "english": "Anything I can carry is best."
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "when": "L021",
+   "reply": {
+    "suggestion": "S2Q1",
+    "evidence": [
+     "{{L021}}"
+    ],
+    "cells": [
+     {
+      "qid": "S2Q1",
+      "coverage": "Answered",
+      "summary": "Convenience: grab it and go.",
+      "turns": [
+       "{{L021}}",
+       "{{L022}}",
+       "{{L024}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L021}}",
+        "english": "Just to save effort."
+       },
+       {
+        "turn": "{{L024}}",
+        "english": "Every minute in the morning counts."
+       }
+      ],
+      "votes": []
+     }
+    ]
+   }
+  },
+  {
+   "when": "L046",
+   "reply": {
+    "suggestion": "S2Q1",
+    "evidence": [],
+    "cells": [
+     {
+      "qid": "S2Q2",
+      "coverage": "Answered",
+      "summary": "Convenience matters most.",
+      "turns": [
+       "{{L045}}",
+       "{{L046}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L045}}",
+        "english": "So convenience matters most, right?"
+       },
+       {
+        "turn": "{{L046}}",
+        "english": "Yes, yes, yes."
+       }
+      ],
+      "votes": []
+     }
+    ]
+   }
+  },
+  {
+   "when": "L050",
+   "reply": {
+    "suggestion": "S2Q2",
+    "evidence": [
+     "{{L049}}",
+     "{{L050}}"
+    ],
+    "cells": [
+     {
+      "qid": "S2Q2",
+      "coverage": "Answered",
+      "summary": "Convenience, then taste, protein and price.",
+      "turns": [
+       "{{L050}}",
+       "{{L051}}",
+       "{{L052}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L050}}",
+        "english": "First convenience, then taste."
+       },
+       {
+        "turn": "{{L052}}",
+        "english": "Over eight yuan a carton is expensive."
+       }
+      ],
+      "votes": []
+     }
+    ]
+   }
+  },
+  {
+   "when": "L059",
+   "reply": {
+    "suggestion": "S2Q3",
+    "evidence": [
+     "{{L058}}",
+     "{{L059}}"
+    ],
+    "cells": [
+     {
+      "qid": "S2Q3",
+      "coverage": "Answered",
+      "summary": "Healthy means no burden, natural, little sugar.",
+      "turns": [
+       "{{L059}}",
+       "{{L060}}",
+       "{{L061}}",
+       "{{L062}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L059}}",
+        "english": "No burden, no bloating."
+       },
+       {
+        "turn": "{{L061}}",
+        "english": "Natural, no additives."
+       }
+      ],
+      "votes": "none"
+     }
+    ]
+   }
+  },
+  {
+   "when": "L096",
+   "reply": {
+    "suggestion": {
+     "qid": "S3Q1"
+    },
+    "evidence": [
+     "{{L095}}",
+     "{{L096}}"
+    ],
+    "cells": [
+     {
+      "qid": "S3Q1",
+      "coverage": "Answered",
+      "summary": "Qingyue is too sweet; Qingyue Lite is lighter.",
+      "turns": [
+       "{{L096}}",
+       "{{L097}}",
+       "{{L099}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L096}}",
+        "english": "Qingyue was too sweet."
+       },
+       {
+        "turn": "{{L097}}",
+        "english": "I like Qingyue Lite; it is lighter."
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "when": "L107",
+   "reply": {
+    "suggestion": "S3Q2",
+    "evidence": [
+     "{{L106}}",
+     "{{L107}}"
+    ],
+    "cells": [
+     {
+      "qid": "S3Q2",
+      "coverage": "Answered",
+      "summary": "Lumo feels young but pricey.",
+      "turns": [
+       "{{L107}}",
+       "{{L108}}",
+       "{{L109}}",
+       "{{L110}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L107}}",
+        "english": "Young and stylish."
+       },
+       {
+        "turn": "{{L109}}",
+        "english": "A bit expensive; bought on discount."
+       }
+      ],
+      "votes": []
+     }
+    ]
+   }
+  },
+  {
+   "when": "L125",
+   "reply": {
+    "suggestion": "S3Q3",
+    "evidence": [
+     "{{L124}}",
+     "{{L125}}"
+    ],
+    "cells": [
+     {
+      "qid": "S3Q3",
+      "coverage": "Answered",
+      "summary": "A healthy brand does not exaggerate and prints a clear label.",
+      "turns": [
+       "{{L124}}",
+       "{{L125}}",
+       "{{L126}}",
+       "{{L127}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L124}}",
+        "english": "What does healthy mean to you?"
+       },
+       {
+        "turn": "{{L126}}",
+        "english": "No exaggerated claims."
+       },
+       {
+        "turn": "{{L127}}",
+        "english": "Print the ingredient list clearly."
+       }
+      ],
+      "votes": []
+     }
+    ]
+   }
+  },
+  {
+   "when": "L140",
+   "reply": {
+    "suggestion": "S4Q1",
+    "evidence": [
+     "{{L139}}"
+    ],
+    "cells": [
+     {
+      "qid": "S4Q1",
+      "coverage": "Answered",
+      "summary": "Five chose B, one chose A.",
+      "turns": [
+       "{{L139}}",
+       "{{L140}}"
+      ],
+      "quotes": [],
+      "votes": [
+       {
+        "turn": "{{L139}}",
+        "choice": "B",
+        "count": 5,
+        "source": "moderator_tally"
+       },
+       {
+        "turn": "{{L140}}",
+        "choice": "A",
+        "count": 1,
+        "source": "moderator_tally"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "when": "L138",
+   "reply": {
+    "suggestion": "S4Q1",
+    "evidence": [
+     "{{L134}}",
+     "{{L135}}"
+    ],
+    "cells": [
+     {
+      "qid": "S4Q1",
+      "coverage": "Answered",
+      "summary": "B stands out on the shelf; one prefers plain A.",
+      "turns": [
+       "{{L134}}",
+       "{{L135}}",
+       "{{L136}}",
+       "{{L138}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L135}}",
+        "english": "B is brighter on the shelf."
+       },
+       {
+        "turn": "{{L138}}",
+        "english": "I prefer A: simple, not loud."
+       }
+      ],
+      "votes": []
+     }
+    ]
+   }
+  },
+  {
+   "when": "L148",
+   "reply": {
+    "suggestion": "S4Q2",
+    "evidence": [
+     "{{L145}}",
+     "{{L146}}"
+    ],
+    "cells": [
+     {
+      "qid": "S4Q2",
+      "coverage": "Answered",
+      "summary": "Two said yes when asked; one firmly said no: a big bottle spoils.",
+      "turns": [
+       "{{L146}}",
+       "{{L147}}",
+       "{{L148}}",
+       "{{L149}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L148}}",
+        "english": "No: a big bottle goes off in two days."
+       }
+      ],
+      "votes": [
+       {
+        "turn": "{{L146}}",
+        "choice": "yes"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "when": "L155",
+   "reply": {
+    "suggestion": "S4Q3",
+    "evidence": [
+     "{{L154}}",
+     "{{L155}}"
+    ],
+    "cells": [
+     {
+      "qid": "S4Q3",
+      "coverage": "Answered",
+      "summary": "A short ingredient list and a third-party mark make the claim believable.",
+      "turns": [
+       "{{L155}}",
+       "{{L156}}",
+       "{{L157}}",
+       "{{L159}}"
+      ],
+      "quotes": [
+       {
+        "turn": "{{L155}}",
+        "english": "Only oats and water."
+       },
+       {
+        "turn": "{{L156}}",
+        "english": "A third-party mark."
+       }
+      ],
+      "votes": []
+     }
+    ]
+   }
+  }
+ ]
+}

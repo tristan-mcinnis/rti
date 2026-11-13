@@ -1,0 +1,254 @@
+{
+ "about": "Recorded Auto pass replies. A pass gets the cards of every entry whose 'when' line is in its new window, in order, else 'default'. An 'until' line means no later scripted line may be in the window. Several replies break the rules on purpose: a card in the warm-up, two or three cards a pass, an ASK with no Mandarin line, a near repeat, a guide card with no guide. The code must drop them.",
+ "default": {
+  "cards": []
+ },
+ "replies": [
+  {
+   "when": "L002",
+   "reply": {
+    "cards": [
+     {
+      "kind": "ASK",
+      "text_en": "How was the break?",
+      "text_zh": "休息得怎么样？",
+      "why": "Warm-up small talk.",
+      "source": null
+     }
+    ]
+   },
+   "until": "L011"
+  },
+  {
+   "when": "L021",
+   "reply": {
+    "cards": [
+     {
+      "kind": "ASK",
+      "text_en": "What does 'saving effort' mean on a busy morning?",
+      "text_zh": "你说的“图个省事”，具体是指什么？",
+      "why": "Their own word; ladder it.",
+      "source": null
+     },
+     {
+      "kind": "SAY",
+      "text_en": "Thanks, that is really helpful.",
+      "text_zh": "谢谢，这个很有帮助。",
+      "why": "Rapport.",
+      "source": null
+     },
+     {
+      "kind": "ASK",
+      "text_en": "Walk me through the last time you bought a drink on the way.",
+      "text_zh": null,
+      "why": "Past behaviour.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L038",
+   "reply": {
+    "cards": [
+     {
+      "kind": "ASK",
+      "text_en": "Walk me through the last time you skipped breakfast.",
+      "text_zh": null,
+      "why": "Past behaviour.",
+      "source": null
+     },
+     {
+      "kind": "ASK",
+      "text_en": "Does anyone see sweetness differently?",
+      "text_zh": "关于甜这一点，有没有人看法不一样？",
+      "why": "One voice said sweet is a must; another disagreed.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L046",
+   "reply": {
+    "cards": [
+     {
+      "kind": "FLAG",
+      "text_en": "The 10:30 summary led the room to agree on convenience; 对对对 is not evidence.",
+      "text_zh": null,
+      "why": "A restating closed question.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L052",
+   "reply": {
+    "cards": [
+     {
+      "kind": "FLAG",
+      "text_en": "The guide's price probe was skipped; raise price now.",
+      "text_zh": null,
+      "why": "Guide gap.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L079",
+   "reply": {
+    "cards": [
+     {
+      "kind": "ASK",
+      "text_en": "Does anyone see sweetness another way?",
+      "text_zh": "关于甜，有没有人看法不太一样？",
+      "why": "Still one view on sweetness.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L080",
+   "reply": {
+    "cards": [
+     {
+      "kind": "FLAG",
+      "text_en": "Section S2 is past its 15 minute budget; S3 brands are still to come.",
+      "text_zh": null,
+      "why": "Section overrun.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L097",
+   "reply": {
+    "cards": [
+     {
+      "kind": "ASK",
+      "text_en": "Can you tell Qingyue and Qingyue Lite apart? What differs?",
+      "text_zh": "清悦和晴越，大家分得清吗？各自哪里不一样？",
+      "why": "Two similar names; keep them apart.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L110",
+   "reply": {
+    "cards": [
+     {
+      "kind": "FLAG",
+      "text_en": "At 31:05 '全退' is likely 劝退 (put off by the price).",
+      "text_zh": null,
+      "why": "Speech recognition error that changes the meaning.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L119",
+   "reply": {
+    "cards": [
+     {
+      "kind": "FLAG",
+      "text_en": "08:00 '最看重的就是甜' vs 34:00 '看到含糖我就不买了': ask which holds now.",
+      "text_zh": null,
+      "why": "A stated preference reversed.",
+      "source": null
+     },
+     {
+      "kind": "ASK",
+      "text_en": "Earlier sweetness was a must; what changed?",
+      "text_zh": "刚才说一定要甜，现在是什么让你改变了想法？",
+      "why": "Probe the reversal.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L129",
+   "reply": {
+    "cards": [
+     {
+      "kind": "FLAG",
+      "text_en": "No room audio since 37:20; check the meeting audio feed.",
+      "text_zh": null,
+      "why": "Silent system leg.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L145",
+   "reply": {
+    "cards": [
+     {
+      "kind": "FLAG",
+      "text_en": "Leading closed hypothetical at 47:00 ('你们会每周都买吗？'); the yes answers are prompted.",
+      "text_zh": null,
+      "why": "Moderator bias.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L148",
+   "reply": {
+    "cards": [
+     {
+      "kind": "ASK",
+      "text_en": "Does anyone else worry a big bottle won't get finished?",
+      "text_zh": "大瓶装喝不完这一点，其他人也担心吗？",
+      "why": "One strong dissent.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L151",
+   "reply": {
+    "cards": [
+     {
+      "kind": "FLAG",
+      "text_en": "At 50:00 a respondent took the moderator for the brand ('你们品牌'); restate neutrality.",
+      "text_zh": null,
+      "why": "Moderator bias.",
+      "source": null
+     }
+    ]
+   }
+  },
+  {
+   "when": "L157",
+   "reply": {
+    "cards": [
+     {
+      "kind": "ASK",
+      "text_en": "Which word on the pack would make 'no added sugar' believable?",
+      "text_zh": null,
+      "why": "Stimulus probe.",
+      "source": null
+     },
+     {
+      "kind": "SAY",
+      "text_en": "So a short list and a mark would do it.",
+      "text_zh": "所以配料表短、有认证标志，就会更相信。",
+      "why": "Summary.",
+      "source": null
+     }
+    ]
+   }
+  }
+ ]
+}

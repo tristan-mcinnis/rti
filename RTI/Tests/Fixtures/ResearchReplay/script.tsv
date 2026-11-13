@@ -1,0 +1,188 @@
+# Invented research replay script. Every name, brand and line is made up.
+# Columns (tab separated): key, time (mm:ss, or + to join the line before
+# with no pause), leg (sys = system audio, the room; mic = the observer at
+# the Mac), text. scripts/research-replay-fixture.py turns this into
+# transcript.jsonl and adds bland filler lines between the scripted ones.
+# The room is heard on one system leg with live labels off, so the
+# moderator and the respondents share one speaker ID.
+#
+# Recording starts mid-guide, after a break: S1 was not recorded.
+L001	00:02	sys	喂，大家能听到吗？我们休息好了，继续啊。
+L002	00:08	sys	能听到。
+L003	00:12	sys	可以可以。
+L004	00:16	mic	Room audio is back, I can hear them now.
+L005	00:24	sys	茶水还要吗？那边还有。
+L006	00:31	sys	不用了，谢谢。
+L007	00:42	sys	录音已经开着了，大家不用管它。
+L008	00:50	sys	好的。
+L009	01:05	sys	那个空调有点冷，能调高一点吗？
+L010	01:13	sys	我去调一下，稍等。
+L011	01:40	sys	好了，我们开始下一部分。
+# S2 Morning routine. Budget 15 min; it runs 25 min (2:00 to 27:00).
+L012	02:00	sys	能说说你们平常工作日早上是怎么过的吗？
+L013	02:08	sys	我一般七点起床，洗漱完就赶地铁，早饭基本在路上解决。
+L014	02:22	sys	我也差不多，早上时间特别紧，能拿着走的东西最好。
+L015	02:36	sys	我是在家吃，但是也就五分钟，喝一盒燕麦奶加个面包。
+L016	02:50	sys	有孩子的话更乱，先弄孩子的早饭，自己的随便对付一下。
+L017	03:05	sys	那你们早上喝的东西一般在哪里买？
+L018	03:12	sys	便利店，地铁口那家。
+L019	03:20	sys	我都是网上一次买一箱，放家里。
+L020	03:34	sys	我在公司楼下的咖啡店买，有时候买燕麦拿铁。
+L021	03:50	sys	对我来说就是图个省事，不用想，拿了就走。
+L022	04:05	sys	我也是图个省事，早上脑子是空的，不想做选择。
+L023	04:20	sys	为什么省事对你这么重要？
+L024	04:28	sys	因为早上每一分钟都很宝贵，多睡五分钟比什么都强。
+L025	04:45	sys	而且我不想在早上为吃什么纠结，纠结完就迟到了。
+L026	05:05	sys	你们会不会早上什么都不吃？
+L027	05:12	sys	会，一周有两三天是空腹上班的。
+L028	05:25	sys	我不吃早饭会胃疼，所以至少要喝点东西。
+L029	05:40	sys	我觉得喝的比吃的方便，喝完盒子一扔就行。
+L030	06:00	sys	有时候在地铁上喝，人太多了，盖子要好拧才行。
+L031	06:18	sys	有些盖子特别难拧，赶时间的时候很烦。
+L032	06:35	sys	我上次拧了半天没拧开，最后放包里了。
+L033	06:55	sys	那除了方便，还有什么？
+L034	07:05	sys	要有饱腹感，不然十点就饿了。
+L035	07:20	sys	我比较在意热量，早上不想喝太多糖。
+L036	07:40	sys	我同意，糖太多下午会犯困。
+L037	08:00	sys	我选早餐饮品最看重的就是甜，不甜的我根本喝不下去。
+L038	08:15	sys	我跟她不一样，我喜欢淡一点的。
+L039	08:30	sys	甜一点早上心情会好，这个我承认。
+L040	09:00	sys	所以甜和健康对你们来说有冲突吗？
+L041	09:10	sys	有一点吧，想喝甜的又怕胖。
+L042	09:25	sys	我会选那种标着零添加糖的，但是喝起来还是要有点甜味。
+L043	09:45	sys	零添加糖到底是不是真的，我其实不太相信。
+L044	10:05	sys	我也怀疑，配料表一长串我都看不懂。
+L045	10:30	sys	所以大家早上最看重的就是方便，对吧？
+L046	10:35	sys	对对对。
+L047	10:45	sys	还有饱腹感。
+L048	11:02	mic	They agreed to convenience very fast. Was that led?
+L049	11:30	sys	早餐饮品你最看重什么？
+L050	11:38	sys	第一是方便，第二是口感，不能有怪味。
+L051	11:55	sys	我看重成分，蛋白质高一点的。
+L052	12:10	sys	我会看价格，一盒超过八块我就觉得贵了。
+L053	12:30	sys	口感要顺滑，有颗粒感的我不喜欢。
+L054	12:50	sys	我喜欢有点燕麦颗粒的，感觉更真实。
+L055	13:10	sys	那怎么判断一个饮品是真的健康？
+L056	13:20	sys	看配料表，越短越好。
+L057	13:35	sys	配料表短的我才信它说的零添加。
+L058	14:00	sys	对你来说，一款饮品健康是什么意思？
+L059	14:10	sys	健康就是喝完身体没负担，不胀气。
+L060	14:25	sys	我之前喝燕麦奶胀气，后来就不敢多喝了。
+L061	14:45	sys	我觉得健康就是天然，没有乱七八糟的添加剂。
+L062	15:05	sys	还有就是不要太多糖，这个最重要。
+L063	15:25	sys	健康也要好喝，不好喝的健康我坚持不下去。
+L064	15:50	sys	你们早上喝咖啡吗？
+L065	15:58	sys	喝，燕麦拿铁，牛奶我喝了不舒服。
+L066	16:15	sys	我乳糖不耐，所以才开始喝燕麦奶的。
+L067	16:35	sys	我也是因为乳糖不耐换的，喝牛奶肚子不舒服。
+L068	16:55	sys	我不是乳糖不耐，就是觉得燕麦奶更轻一点。
+L069	17:20	sys	你们会在哪里看到燕麦奶的信息？
+L070	17:30	sys	小红书上看测评。
+L071	17:45	sys	我是看到朋友圈有人推荐。
+L072	18:05	sys	小红书上的测评我也不全信，很多是广告。
+L073	18:30	sys	我会去超市看实物，看包装和配料。
+L074	19:00	sys	包装好看我会多看两眼，但是不一定买。
+L075	19:25	sys	价格对我来说还是第一位的，打折我就囤。
+L076	19:50	sys	我一般买六盒装，算下来便宜一点。
+# Three minutes of English backroom talk on the mic leg.
+L077	20:05	mic	They are still on breakfast habits. We are well past the fifteen minutes for this section.
+L078	20:20	sys	我早上会喝两种，先喝水，再喝燕麦奶。
+L079	20:42	mic	The client will want brands before the half hour. Can someone message the moderator?
+L080	20:58	sys	我早上从来不喝水，直接喝饮料。
+L081	21:20	mic	I will send a note on the chat. Also the lady on the left has not said much.
+L082	21:35	sys	喝水是好习惯，我一直做不到。
+L083	22:00	mic	Noted. The sugar point is interesting though, she said sweet is a must.
+L084	22:15	sys	我上班第一件事就是去接一杯热水。
+L085	22:42	mic	Let us watch whether that holds when they see the routes.
+L086	22:58	sys	热水配燕麦奶也不错，冬天喝暖和。
+L087	23:30	sys	你们早上会不会给燕麦奶加热？
+L088	23:40	sys	冬天会，微波炉转一下。
+L089	24:00	sys	我直接喝凉的，懒得热。
+L090	24:30	sys	加热以后味道会变甜一点。
+L091	25:00	sys	我没注意过，下次试试。
+L092	25:30	sys	周末的话我会自己做燕麦粥，比较有时间。
+L093	26:00	sys	周末不一样，可以慢慢吃。
+L094	26:30	sys	好，时间关系，我们进入下一个话题。
+# S3 Brands. Two sound-alike competitors, the client brand by nickname
+# and three spellings, a meaning-changing ASR error, a name, the minute-34
+# contradiction of the minute-8 theme, the repeated healthy question.
+L095	27:00	sys	你们喝过哪些燕麦饮品牌？觉得它们怎么样？
+L096	27:10	sys	清悦喝过，太甜了，喝完嗓子黏黏的。
+L097	27:28	sys	晴越我挺喜欢的，味道比较淡，没有负担。
+L098	27:45	sys	清悦和晴越不是一家吗？名字差不多。
+L099	27:57	sys	不是一家，晴越是另外一个牌子，清悦是老牌子。
+L100	28:15	sys	我常喝那个小蓝盖，便利店都有。
+L101	28:30	sys	小蓝盖口感挺顺的，就是有点贵。
+L102	28:50	sys	小蓝盖是哪个？
+L103	28:58	sys	就是蓝色盖子那个，名字我记不住。
+L104	29:20	sys	我喝过路慕，感觉还行。
+L105	29:40	sys	鹿木那个是新出的，包装挺好看的。
+L106	30:00	sys	听到露慕，你会想到什么？
+L107	30:10	sys	露慕给我的感觉是年轻，挺时髦的。
+L108	30:28	sys	我想到的是早餐，蓝色，清爽。
+L109	30:45	sys	露慕就是有点贵，打折的时候才买。
+L110	31:05	sys	价格这么高，我直接全退了。
+L111	31:20	sys	我觉得露慕的味道比清悦好，没那么腻。
+L112	31:45	sys	那露慕跟晴越比呢？
+L113	31:55	sys	晴越更淡，露慕更香一点。
+L114	32:15	sys	像小禾刚才说的，露慕的盖子比较好拧。
+L115	32:35	sys	盖子好拧这一点我很在意。
+L116	33:00	sys	你们觉得露慕适合什么时候喝？
+L117	33:10	sys	早上上班路上，或者下午三四点。
+L118	33:30	sys	健身完也可以，补充一点能量。
+L119	34:00	sys	其实我刚才说喜欢甜的，但说实话现在只要看到含糖我就不买了。
+L120	34:20	sys	那你还会喝清悦吗？
+L121	34:28	sys	不会了，清悦太甜。
+L122	34:50	sys	我觉得甜不甜无所谓，关键是别骗人，标零添加就要真的零添加。
+L123	35:15	sys	最怕的就是标签和味道对不上。
+L124	36:00	sys	对你来说，一款饮品健康是什么意思？
+L125	36:10	sys	跟刚才一样，没负担，配料干净。
+L126	36:30	sys	对品牌来说，健康就是不夸大宣传。
+L127	36:55	sys	我觉得健康的品牌会把配料表印得很清楚。
+L128	37:20	sys	我们换一下设备，稍等一下。
+# The system leg is silent from 37:23 to 42:05.
+L129	38:40	mic	I have lost the room audio. Is anyone else hearing them?
+L130	40:30	mic	Still nothing from the room on my side.
+L131	41:40	mic	It should be back now.
+# S4 Pack routes. A spoken hand-raise tally, a leading closed
+# hypothetical with one strong dissent, a respondent who takes the
+# moderator for the brand.
+L132	42:05	sys	不好意思，刚才设备有点问题。我们来看两个方向。
+L133	42:30	sys	这里有两个方向，A和B，你们会选哪一个？
+L134	42:45	sys	A的包装太素了，看不出是燕麦。
+L135	43:05	sys	B的颜色更亮，放在货架上更显眼。
+L136	43:25	sys	B上面写的零添加糖很醒目，我会先看到这个。
+L137	43:45	sys	A的字太小，老人看不清。
+L138	44:05	sys	我反而喜欢A，简单，不吵。
+L139	44:40	sys	选B的举手，一二三四五，五位。选A的呢？
+L140	+	sys	一位。
+L141	45:05	mic	Five to one for B. The A vote is the one who likes plain packaging.
+L142	45:20	sys	选B的能说说为什么吗？
+L143	45:30	sys	一眼就能看到零添加糖，省得我去找。
+L144	45:50	sys	B看起来更有活力，适合早上。
+L145	47:00	sys	如果露慕推出B方向的大瓶装，你们会每周都买吗？
+L146	47:08	sys	会。
+L147	47:12	sys	应该会吧。
+L148	47:25	sys	我不会，大瓶装放冰箱两天就坏了，我一个人根本喝不完。
+L149	47:50	sys	开了以后要尽快喝完，这个我也担心。
+L150	48:15	sys	大瓶装适合家里人多的，我家就两个人。
+L151	50:00	sys	你们品牌要是真的零添加，就把配料表印大一点。
+L152	50:20	sys	我们只是做调研的，不代表品牌哈。
+L153	50:35	sys	哦哦，不好意思，我以为你们是露慕的人。
+L154	51:00	sys	怎样才能让你相信零添加糖这个说法？
+L155	51:12	sys	配料表短，只有燕麦和水。
+L156	51:30	sys	有第三方认证的标志我会更信。
+L157	51:50	sys	喝起来不能太甜，太甜我就觉得在骗人。
+L158	52:15	sys	朋友推荐比广告更可信。
+L159	52:40	sys	看配料表是最直接的。
+L160	53:10	sys	如果配料表写了麦芽糊精，我就不信了。
+L161	53:40	sys	我会拍照查一下配料是什么意思。
+L162	54:10	sys	包装上写清楚每天喝多少也有帮助。
+L163	55:00	sys	你们还有什么想对品牌说的吗？
+L164	55:10	sys	盖子一定要好拧。
+L165	55:25	sys	价格再便宜一点，我天天喝。
+L166	55:45	sys	不要只在小红书打广告，超市也要有。
+L167	57:00	sys	今天就到这里，谢谢大家。
+L168	57:10	sys	谢谢！
+L169	58:00	mic	Good group. The sugar reversal around minute thirty-four is worth the debrief.
+L170	59:30	mic	Stopping the recording now.

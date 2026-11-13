@@ -150,6 +150,39 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         try renderOverlay("transcript-live-long-run", width: Self.narrowWidth)
     }
 
+    /// One speaker for 14 sentences: the turn breaks into a block of 12
+    /// rows and a second block with no label, separated by a paragraph gap.
+    /// Then 26 rows with no sentence end: the block is forced to end at 24
+    /// rows, mid-sentence. PNG `transcript-live-long-turn-blocks-*`.
+    func testLiveLongTurnSplitsIntoBlocks() throws {
+        // Timed words, so each line is its own row after a pause, as live.
+        let stream = UUID()
+        func timed(_ speaker: String, _ words: [String], _ start: Int) -> LiveEntry {
+            let tokens = words.enumerated().map { offset, word in
+                LiveEntry.TimedToken(text: word, startMs: start + offset * 150, endMs: start + offset * 150 + 120)
+            }
+            return LiveEntry(speakerId: speaker, text: words.joined(), startMs: start, confidence: 1, translationStatus: "none",
+                             language: "en", sourceLanguage: nil, textOrigin: .providerTokens, streamID: stream, tokens: tokens)
+        }
+        let finished = (1 ... 14).map { index in
+            timed("remote_1", ["Sentence", " \(index)", " about", " the", " paper", " map."], 600_000 + index * 3_000)
+        }
+        let running = (1 ... 26).map { index in
+            timed("self", ["and", " part", " \(index)", " of", " one", " long", " thought"], 700_000 + index * 3_000)
+        }
+        // The same projection the reader runs, outside any view.
+        var projection = LiveTranscriptPresentation.Projection()
+        projection.updateFinals(finished + running)
+        let turns = LiveTranscriptPresentation.turns(projection.updateInterims([]))
+        XCTAssertEqual(turns.map(\.rows.count), [12, 2, 24, 2])
+        XCTAssertEqual(turns.map(\.isContinuation), [false, true, false, true])
+        LiveTranscriptList.startsFollowing = false
+        SessionCoordinator.shared.seedForRenderProof(entries: finished + running, interim: nil, phase: .recording,
+                                                     startedAt: Date().addingTimeInterval(-780))
+        try renderBothAppearances(name: "transcript-live-long-turn-blocks", size: CGSize(width: 600, height: 1500),
+                                  view: TranscriptTabView().padding(House.Spacing.md).background(House.ColorToken.surface))
+    }
+
     /// Keep one hosting view alive through real Core event batches. Still
     /// images of separate view trees cannot prove that existing rows update
     /// without moving when a later batch settles or corrects an earlier row.
@@ -574,8 +607,12 @@ final class TranscriptRenderProofTests: RenderProofTestCase {
         let pendingArrived = try await waitForAcceptance { !session.interimSegments.isEmpty }
         XCTAssertTrue(pendingArrived)
         session.restartTranscriptStreamForProof(channel: "mic", atMs: 2_000)
+        // `liveEntries` reads through to the pipeline; wait for the published revision.
+        let beforeRestart = session.transcriptRevision
         session.receiveTranscriptWordsForProof([acceptanceWord("After reconnect.", speaker: 1, at: 0, final: true)], channel: "mic")
-        let restarted = try await waitForAcceptance { session.liveEntries.last?.startMs == 2_000 }
+        let restarted = try await waitForAcceptance {
+            session.liveEntries.last?.startMs == 2_000 && session.transcriptRevision > beforeRestart
+        }
         XCTAssertTrue(restarted)
         XCTAssertTrue(session.interimSegments.isEmpty)
         XCTAssertEqual(session.transcriptRows.map(\.visibleText), ["Hello, world!", "After reconnect."])

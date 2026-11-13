@@ -55,8 +55,15 @@ Codebook). They have entries too.
 - Header mirror: `OverlayLivePhase` (`RTI/Core/UI/OverlayShellStatus.swift`)
   has the same six cases. `OverlayShellStatus` maps a phase to the header
   word, tone and record chip.
+- Archive writes: while `recording`, a checkpoint every 5 minutes takes
+  only the snapshot on main (`SessionFinalizer.prepare`) and renders and
+  writes it on a utility task (`SessionFinalizer.write`). The stop and
+  quit writes run on main. `ArchiveWriteGate` runs one write at a time
+  and skips a job older than one already written, so a checkpoint still
+  writing at Stop never lands after the final archive.
 - Tests: `RTI/Tests/MenuStatusTickTests.swift`,
   `RTI/Tests/OverlayShellStatusTests.swift`,
+  `RTI/RenderTests/LivePerfTests.swift`,
   `RTI/RenderTests/SessionStopErrorTests.swift`,
   `RTI/RenderTests/SessionCaptureFailurePolicyTests.swift`,
   `RTI/RenderTests/MenuTickWiringTests.swift`.
@@ -100,6 +107,10 @@ and `systemTranscriptionHealth`.
   (`failed`, after `maxRetries` = 5), stop (`idle`).
 - Effects: the header and the Transcript show the state. Only the current
   socket can change it: `emitStatus` checks the delivery generation.
+  Socket events arrive and frames decode on the client's own serial
+  `callbackQueue`, not on main. Words, status and errors then hop to main
+  in arrival order, so the per-leg re-base on `live` still comes before
+  the new stream's words.
 - Tests: `RTI/RenderTests/SonioxClientSocketEventTests.swift`,
   `RTI/RenderTests/AudioPipelineRecoveryTests.swift`.
 
@@ -122,17 +133,71 @@ Tests: `RTI/Tests/FinalPacketLogThrottleTests.swift`.
   `generating(generation:)`. Also `watermarkMs`, `lastPassAt`,
   `generation`.
 - Events: `activity`, `timerFired`, `tick`, `passRequested` ("Suggest
-  now"), `passFinished(generation:endMs:)`, `cancelPending`, `stop`,
-  `reset`.
+  now"), `passFinished(generation:endMs:)`, `passSkipped(generation:)`,
+  `cancelPending`, `stop`, `reset`.
 - Effects: `none`, `disarm`, `arm(at:)`, `startPass(generation:)`. The
   controller holds the one timer and runs the pass. The debounce is 7 s
-  (`quietWindow`). The floor is 60 s on client and research calls
-  (`floor(for:)`), nil on internal and personal calls. Only
+  (`quietWindow`). The floor (`floor(for:format:)`) is 60 s on client
+  calls, 150 s on research calls and 180 s in a research group
+  (`ResearchFormat.group`: two or more roster seats, or an FGD guide
+  title). It is nil on internal and personal calls. Only
   `passRequested` skips the floor. Only an accepted pass moves the
   watermark. `stop` and `reset` bump the generation, so an old reply is
   dropped.
+- Thin input: an admitted research pass that has fewer new respondent
+  characters than `ResearchFormat.minimumRespondentCharacters` (150, or
+  40 in an interview) ends at once as `passSkipped`. No request is
+  sent, the watermark stays and `lastPassAt` goes back to the last sent
+  pass, so the skip uses up no floor. The next settled final (7 s
+  debounce) or tick checks the window again. Respondent characters come
+  from the shared role rule (`AutoResearchSignals.respondentCharacters`).
+  The format reads "idi" in a guide title only as a whole word; "group
+  interview" is a group. One exception: when the system leg has been
+  silent for 3 minutes or more (`AutoResearchSignals.silence`), one thin
+  pass runs for that silence (`silencePassFor`, keyed on the system
+  leg's last speech), so the silence signal reaches the rail while the
+  room is still gone. `reset` clears it.
+- Card gate after a reply (`AutoCardRules.accept`, pure): a RECALL
+  without a supplied source is dropped; when more than 30% of the new
+  window is CJK (`AutoCardLanguage.isMandarin`), a SAY or ASK without
+  `text_zh` is dropped. A card whose only line is Mandarin (in
+  `text_zh`, or put in `text_en`) keeps it as its Mandarin line, and an
+  older saved prompt's one `text` with English, Mandarin and pinyin
+  lines splits into its lines (`AutoCardLanguage.lines`); a card with word or character-pair Jaccard 0.5
+  or more against a card shown in the last 15 minutes, or still
+  waiting, is dropped; a research pass keeps one card, plus a FLAG that
+  quotes two call times (a contradiction). With no guide running
+  (`guideActive` false), a card that names a guide (`mentionsGuide`:
+  "guide", 提纲, 指南, 访纲, 大纲) is dropped.
+- Observation: `pass` is not observed. Each committed final moves its
+  debounce deadline, and an observed `pass` redrew the rail at the flush
+  rate. Views read `isGenerating`, a stored flag written only when the
+  phase enters or leaves `generating`. An `arm` effect keeps a timer that
+  fires at or before the new time (less than 7 s before it): the early
+  fire re-arms. So a burst of finals re-arms about once per quiet
+  window.
+- Project search (client and research calls with a project picked):
+  at most once every three passes (`AutoVaultCadence`); the passes in
+  between reuse its hit. It runs on `VaultSearch.Budget.auto`: `.utility`
+  QoS, two workers, stopped after 300 ms with what it found, stopped at
+  once when the pass is cancelled. The walk checks the limit and the
+  cancel on every enumerated item, decks and images too, and may use only
+  the first 150 ms (`Budget.walkShare`), so reading always has time.
+  Files are read newest first, and each worker reads at least 8 files
+  (`Budget.minimumReadsPerWorker`) before the limit can stop it, so a
+  cold cache always warms. `VaultSearch.DocumentCache` keeps the
+  lowercased text of each file read in this session, keyed by path,
+  modification date and size, in memory only, up to 16 MB
+  (`DocumentCache.defaultByteLimit`); past that, files are still searched
+  but not kept. Only the top results read their excerpt, again from
+  disk. `search_vault` keeps `Budget.tool` (every core, no limit).
 - Tests: `RTI/Tests/AutoPassStateTests.swift`,
-  `RTI/RenderTests/AutoAssistControllerTests.swift`.
+  `RTI/Tests/AutoCardRulesTests.swift`,
+  `RTI/Tests/VaultSearchBudgetTests.swift`,
+  `RTI/RenderTests/AutoAssistControllerTests.swift`,
+  `RTI/RenderTests/LivePerfTests.swift`,
+  `RTI/RenderTests/ResearchReplayAcceptanceTests.swift` (see Research
+  replay).
 
 ## Live rail
 
@@ -152,7 +217,9 @@ the board.
   waits (`staleAfter`). An explicit request skips the spacing and the
   hold.
 - Effects: `advance` returns the next time to call it. The controller
-  arms one timer for that. A dismissed text never comes back. A card
+  arms one timer for that. `noteActivity` keeps the last self-speech time
+  outside the observed board and copies it in before each `advance`, so
+  a mic final does not redraw the rail. A dismissed text never comes back. A card
   that faded unseen may come back from a later pass. After `stop`, the
   rail admits nothing until the next session.
 - Layout: `LiveRailLayout.Mode` (`RTI/Sources/UI/Overlay/LiveRail/LiveAssistRail.swift`)
@@ -173,7 +240,35 @@ the board.
 - Effects: a pass appends one note block. Only the owning generation can
   clear `isGenerating` or write a result. The session archive writes the
   notes on stop (`notes.md` and the `-rti.md` sidecar), as before.
-- Tests: `RTI/RenderTests/LiveNotesTests.swift`.
+- Backlog cap: a window over 6,000 characters that covers more than two
+  scheduler intervals (a failed pass kept its watermark, or Notes was
+  turned on mid-call) keeps only its newest 6,000 characters
+  (`backlogStart`). The block starts where the kept part starts.
+- Tests: `RTI/RenderTests/LiveNotesTests.swift`,
+  `RTI/RenderTests/LivePerfTests.swift`.
+
+## Periodic passes
+
+`AutoAssistScheduler` (`RTI/Sources/Auto/AutoAssistScheduler.swift`).
+
+- One repeating timer at the Notes interval (default 120 s). Each tick
+  starts every enabled task at its own `phase` of the interval: Notes at
+  0, Auto at 1/6, the guide at 1/3, the codebook at 2/3 and its
+  synthesis at 5/6 (at 120 s: +0, +20, +40, +80, +100 s). A stop, a
+  restart or a task turned off during the wait drops that run. No two
+  passes prepare their prompts on the same main-thread turn.
+- Pass prep reads the transcript incrementally:
+  `TranscriptPipeline.utterances(includeNotes:)` keeps
+  `LiveTranscriptPresentation.utterances(from:)` up to date
+  (`UtteranceIndex`: fragments over a minute behind the newest are folded
+  once; a late fragment before that, a reset or a notes replay rebuilds),
+  and `GuideTranscript.liveSources()` reuses the sources of unchanged
+  utterances. Auto's windows are found by binary search on the sorted
+  entries. Signposts (`PassSignpost`, category `LivePerf`) time `guide
+  pass prep`, `codebook pass prep`, `auto pass prep` and `checkpoint
+  snapshot`.
+- Tests: `RTI/Tests/UtteranceIndexTests.swift`,
+  `RTI/RenderTests/LivePerfTests.swift`.
 
 ## Guide
 
@@ -182,23 +277,60 @@ the board.
 - States: inactive (no session ID), active and following live
   (`isFollowing`), active on a manual question (`manualQuestionID`),
   `isGenerating`, `sealed` (after `finish`). It also keeps
-  `furthestIndex`, the cursor and the extraction.
+  `furthestIndex`, the cursor, the extraction, the `GuideMatcher`, and
+  the pass state: `reached` (guide index to the earliest ms the
+  recording reached it), `lastPosition` and `lastPassAt` (for Auto
+  freshness), `emptyStreak` and `backoffTicks`, `retryTurns` (one failed
+  batch) and `unfiled` (turns given up after two failures).
 - Events: `startPreparedSession` (research call with a prepared guide,
-  else it resets `GuidePreparation`), `generate`, `move(by:)`,
-  `jump(to:)`, `select`, `followLive`, `selectMarker`,
-  `markersDidChange`, `finish` (final drain under an 8 s deadline),
-  `endSession`.
-- Effects: each pass files quotes against guide questions. A
-  `passRevision` bump drops an old pass. After `finish` no periodic pass
-  runs. `endSession` clears all state.
+  else it resets `GuidePreparation`), `generate` (scheduler tick, or
+  `explicit` from the Guide tab button), `move(by:)`, `jump(to:)`,
+  `select`, `followLive`, `selectMarker`, `markersDidChange`, `finish`
+  (final drain under an 8 s deadline), `endSession`.
+- Effects: each pass files quotes against guide questions anywhere in
+  the guide; only a manual pick or a marker link fixes where a turn
+  files. A moderator line matching a guide question sets the position
+  while following; every such line in a batch counts, in spoken order,
+  so a batch that crosses two questions keeps both on the timeline.
+  Moderator lines and bare backchannels (role `unknown`, such as 对对对)
+  never supply a quote or a note. A `passRevision` bump drops an old pass. A failed
+  pass sets `retryTurns`; the next pass sends only those turns; a second
+  failure moves them to `unfiled` and the archive marks the capture
+  incomplete. A decoded pass with no cells and no position adds to
+  `emptyStreak`; from 3, a scheduler tick runs only every third time
+  until a pass files something. A backed-off tick still reads its ready
+  turns' roles locally and sends nothing; a moderator line there that
+  moves the position ends the back-off and the pass runs at once.
+  After `finish` no periodic pass runs.
+  `endSession` clears all state.
 - Derived: `GuideGap.State` (`RTI/Core/Guide/GuideGaps.swift`) is
-  `skipped`, `thin(quotes:)` or `oneSeat(quotes:)`. `GuideGaps.find`
-  computes it from the extraction on read, up to 5 gaps. It keeps no
-  state. The rail and the Auto research prompt read it.
+  `notRecorded`, `skipped`, `thin(quotes:)` or `oneSeat(quotes:)`.
+  `GuideGaps.find` computes it from the extraction on read, up to 5
+  gaps. A question is `skipped` only once its section closed. When the
+  first guide index the recording reached (in the first 5 minutes) is in
+  a later section, the recording started mid-guide: the sections before
+  it are `notRecorded` (`GuideGaps.recordedFrom`). A first position
+  inside the first section is a normal start, so an early skip there
+  stays `skipped`. "Moderator to…" items are
+  never gaps. `gaps` (the rail's "Go back to") leaves `notRecorded` out.
+  `autoQuestion(at:)` is the user's pick, a marker link, or
+  `lastPosition` under 4 minutes old, else nil (Auto says "Guide position
+  uncertain"). `autoGaps(at:)` is `gaps` only while `lastPassAt` is under
+  4 minutes old. It keeps no other state. Turn roles come from
+  `TurnRoles` (`RTI/Core/Guide/TurnRoles.swift`), a pure rule.
+- Turn IDs: `consumed` holds source IDs. A split piece's ID is
+  `speaker@start#pk` (piece k of the utterance), never its interpolated
+  time, so it stays the same while the utterance grows. Mic-leg echoes
+  are left out only when `TurnRoles.roomOnBothLegs` holds for the last
+  10 minutes (an in-room group on a speaker).
 - Tests: `RTI/RenderTests/GuideLiveTimingTests.swift`,
   `RTI/RenderTests/GuideGapsControllerTests.swift`,
+  `RTI/RenderTests/GuidePassControllerTests.swift` (retry, back-off,
+  moderator position, payload, stable piece IDs, a tally split at its
+  question mark),
   `RTI/RenderTests/GuideRenderProofTests.swift`,
-  `RTI/Tests/GuideGapsTests.swift`.
+  `RTI/RenderTests/ResearchReplayAcceptanceTests.swift`,
+  `RTI/Tests/GuideGapsTests.swift`, `RTI/Tests/TurnRolesTests.swift`.
 
 ## Codebook
 
@@ -210,14 +342,125 @@ the board.
 - Events: `start(sessionID:at:callType:)`, `generate`, `finish` (final
   drain under an 8 s deadline), `edit`, `star`, `retryProjectMerge`,
   `markersDidChange`.
-- Effects: a pass merges proposals into the codebook through
+- Effects: each pass sends the batch's turns with a `TurnRoles` role
+  hint and leaves mic-leg echoes of the room out on an in-room group
+  only (they are still consumed). A turn whose role is not respondent
+  (a moderator line, or a bare backchannel with role `unknown`) is
+  stored with `moderator: true`, so it never becomes an entry. A pass merges proposals into the codebook through
   `ResearchCodebookStore` (on disk, in the session folder and the
   project). A new `passID` or `location` drops an old result. The rail
-  shows `topicMap` from the book.
+  shows `liveTopicMap()`, `topicMap` cached on the book revision.
+- Synthesis (2026-11-13): a second scheduler task,
+  `researchCodebookSynthesis`, calls `synthesize` on each tick. It runs
+  only when `synthesisDue` holds: 10 minutes of call time since the last
+  run, 4 or more codes, and a new quote. States: `synthesizing`, a
+  `synthesisID` token, `lastSynthesisMs`, `quotesAtLastSynthesis`. The
+  clock is checked before any counting. A failed run retries after
+  2 minutes even with no new quote. After a good run the count takes in
+  the quotes the reply re-cited (tension sides, hypothesis evidence), so
+  those links never make the next run due. `start` clears the clock and
+  the token; `finish` drops a synthesis in flight, and none runs after
+  the call ends. The reply goes through the store as `.synthesis`.
+- Code rules enforced in `ResearchCodebook.apply`: no person or
+  organisation codes and no speaker labels; a new non-brand code needs
+  two quotes, a brand or stimulus code in the quote, or a barrier; at
+  most 3 new non-brand codes a pass; about 40 codes a session (votes
+  still land); a tension cites two different turns; only a vote may
+  cite a moderator turn. Votes, tensions and hypotheses file only into
+  a card of their own type, and nothing else files into one
+  (`canFile`), so a tally never lands on a theme as a quote. A code never
+  resolves to a schema 1 person or org card: `matches` skips them. An
+  entry whose spellings reach two cards is dropped. A brand never takes
+  another brand's spelling as an alias (清悦 never absorbs 晴越), and a
+  brand created in a pass is found again in that pass by its name, not
+  by an alias. A new brand name whose alias is one known brand's
+  spelling is still read as a new spelling of that brand: code cannot
+  tell a sound-alike from a recognition variant.
 - Tests: `RTI/RenderTests/ResearchCodebookTests.swift` covers the store
-  and the topic map. No test drives the controller's states directly;
+  and the topic map. `RTI/RenderTests/ResearchCodebookMeaningTests.swift`
+  covers schema 1 loading, the code rules, votes, tensions, the synthesis
+  apply and due rule, the brief and the prompts.
+  `RTI/RenderTests/ResearchCodebookSynthesisTests.swift` drives
+  `synthesize` with a scripted request: the clock and new-quote gates,
+  the retry, the sealed guard, and a late reply after `start` or
+  `finish`.
+  `RTI/RenderTests/ResearchCodebookRenderProofTests.swift` renders the
+  tab. `RTI/RenderTests/ResearchReplayAcceptanceTests.swift` drives
+  `generateLive`, `synthesize` and `finish` over the invented replay. `RTI/Tests/StimulusCodeMatcherTests.swift` covers the code
+  matcher. No test drives the pass states (`generate`, `edit`, `star`);
   `RTI/RenderTests/LiveRailRenderProofTests.swift` and
-  `RTI/RenderTests/CommandPaletteFocusProofTests.swift` use it.
+  `RTI/RenderTests/CommandPaletteFocusProofTests.swift` only render the
+  controller.
+
+## Research replay
+
+An acceptance replay, not a state type. The fixture is
+`RTI/Tests/Fixtures/ResearchReplay/`: an invented 60-minute Mandarin
+group for an invented oat drink (Lumo 露慕), with every failure the
+2026-11-12 judges found scripted at a known minute. `script.tsv` is the
+source; `scripts/research-replay-fixture.py` writes `transcript.jsonl`
+(the live token journal shape) and adds bland filler lines (about 130
+characters a minute on the system leg). `guide.json` and
+`codebook-seed.md` are the inputs, `answer-key.json` says what a correct
+run shows, and `responses/` holds recorded replies, hand-written to the
+shipped schemas. Several break the rules on purpose (a moderator line
+cited, a backchannel, a person, a speaker label, a brand merge, a card
+in the warm-up, two cards a pass, an ASK with no Mandarin line, a near
+repeat, a guide card with no guide). The test bundle never bundles the
+fixture; tests read it by path.
+
+- `ResearchReplayRun` (`RTI/RenderTests/ResearchReplay.swift`) feeds
+  each journal batch through `receiveTranscriptWordsForProof` on a
+  simulated clock. It runs the shared guide controller (its request is
+  swapped with `useRequestForTest`), a codebook controller on a
+  temporary folder and an Auto controller. Guide, codebook and synthesis
+  run at +40, +80 and +100 s of each 120 s tick; Auto ticks every 10 s,
+  standing in for the debounce, and still waits for its floor.
+- Layer A, `ResearchReplayAcceptanceTests` (offline, in `make
+  test-render`): every guide reply decodes; role hints mark the summary
+  and the guide reads as moderator lines and none of them, nor the
+  backchannel, is cited; S1 is `notRecorded` and a question is `skipped`
+  only once its section closed; the three client spellings merge and the
+  sound-alike brands stay two cards, with no person or speaker-label
+  card; the tally is one vote card, 5 for B and 1 for A; Auto shows at
+  most one card a pass (plus a contradiction), every ASK and SAY has its
+  Mandarin line, no two cards within 15 minutes repeat, nothing runs in
+  the warm-up, the contradiction, silent-leg, leading-question and
+  brand-assumed FLAGs land in their windows, and with no guide no card
+  names one; consecutive Auto prompts share their first 3,000
+  characters; the scorer gives the recorded replies full marks.
+- Input budget: the run sends about 590,000 characters in 84 calls
+  (guide 29, codebook 31, synthesis 5, Auto 19). fd042d6b sent 541,165
+  in 118 calls on the same fixture (local harness, dry run). The section
+  5 target, 60% of that, is not met: Auto makes a third of the calls,
+  but each guide, codebook and Auto prompt is larger and the guide and
+  codebook still run every 2 minutes. The test holds a hard limit at
+  120% and marks the 60% check as an expected failure (strict, so it
+  fails once the target is met).
+- `ResearchReplayEnduranceTests`: the same text end to end for 120
+  minutes (about 2,500 packets), both legs and mic only, accelerated,
+  with the Transcript tab visible and the passes on their ticks against
+  a stub. It prints flush p95, the longest main-actor gap (a 10 ms
+  ping), pass preparation at minutes 30 and 120, the checkpoint snapshot
+  and `phys_footprint` growth from minute 10. Limits (M5, assert only
+  with `RTI_TIMING_TESTS=1`; an M1 is about 1.8x, an estimate): flush
+  p95 under 4 ms, gap under 50 ms, guide and codebook prep under 5 ms
+  and flat (median at minute 120 within 1.5x of minute 30), Auto prep
+  under 8 ms (measured 4.2 to 5.6 ms with both legs, over the 5 ms
+  target), checkpoint snapshot under 5 ms, footprint growth under 40 MB
+  (about 33 MB for the first replay in a process). `SessionCoordinator`
+  records each flush as the `transcript flush` signpost;
+  `flushTranscriptForProof` runs a pending flush at once (DEBUG).
+- Layer B, `ResearchReplayLiveEvalTests`: opt-in with
+  `RTI_EVAL_DEEPSEEK=1`, local only. It runs the same replay against
+  the configured provider and scores it with `ResearchReplayScore`
+  against the answer key (codebook recall 80% or more and no forbidden
+  card, the minute-34 tension and FLAG, guide position at 8 of 10
+  checkpoints, Auto volume, template share and Mandarin lines, input
+  estimate). Results go to `.deriveddata/research-replay-eval/<stamp>/`
+  only. `RTI_EVAL_STRICT=1` fails the test on a missed target.
+- `RTI_REPLAY_DUMP=<folder>` (as `TEST_RUNNER_RTI_REPLAY_DUMP` through
+  xcodebuild) writes Layer A's exchanges and timeline there.
 
 ## Transcript upgrade
 
@@ -233,8 +476,15 @@ The upgrade is the `upgrading` phase plus an on-disk marker.
   twice.
 - Effects: the end sets `done` only for the current session. It clears
   the chat only if the chat is still as Stop left it (`UpgradeChatMark`).
+  The upgrade numbers the other side's voices itself, so typed names move
+  to the upgraded voice heard at the same times (`SpeakerNameRemap`: over
+  5 s of shared time and more than half of that speaker's overlap). A
+  name with no clear match is left out. The live map stays in
+  `speaker-names.live.json`; a later upgrade starts from it. A guided
+  session keeps its names on the live speaker IDs.
 - Tests: `RTI/RenderTests/AssistSearchCancelTests.swift`
-  (`runUpgradePhaseForProof`), `RTI/RenderTests/SessionArchiveRecoveryTests.swift`.
+  (`runUpgradePhaseForProof`), `RTI/RenderTests/SessionArchiveRecoveryTests.swift`,
+  `RTI/Tests/SpeakerNameRemapTests.swift`.
 
 ## Window and pages
 

@@ -4,7 +4,9 @@ import RTICore
 import SwiftUI
 
 /// One Auto suggestion: its kind, the line itself, why it matters now and
-/// the document it draws on. The live rail and its sheet draw it.
+/// the document it draws on. The live rail and its sheet draw it. A card
+/// with a Mandarin line shows it first, then its pinyin (when the user's
+/// setting is on), then the English line as a small gloss.
 ///
 /// Monochrome: the kind is a glyph and a word, never a colour. On the rail
 /// an older card is dimmed and the newest one is lit for a moment.
@@ -19,6 +21,8 @@ struct AutoCardRow: View {
     let text: String
     let why: String
     let source: String?
+    var textZH: String?
+    var pinyin: String?
     var pinned = false
     /// Older cards step back so the newest reads first.
     var dimmed = false
@@ -54,24 +58,46 @@ struct AutoCardRow: View {
                 .opacity(dimmed && !hovering ? 0 : 1)
             }
             if compact {
-                Text(text)
+                Text(textZH ?? text)
                     .font(House.TypeToken.bodySmall)
                     .foregroundStyle(dimmed ? House.ColorToken.textSecondary : House.ColorToken.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .help(text)
+                    .help([textZH ?? text, gloss].compactMap(\.self).joined(separator: "\n"))
             } else {
-                Text(text)
-                    .font(House.TypeToken.bodySmall)
-                    .foregroundStyle(dimmed ? House.ColorToken.textSecondary : House.ColorToken.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                // The line, its pinyin and its English gloss sit tight as one
+                // block, so the gloss reads as the line's own.
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(textZH ?? text)
+                        .font(House.TypeToken.bodySmall)
+                        .foregroundStyle(dimmed ? House.ColorToken.textSecondary : House.ColorToken.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                    if textZH != nil {
+                        if let pinyin {
+                            Text(pinyin)
+                                .font(House.TypeToken.caption)
+                                .foregroundStyle(House.ColorToken.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                        if let gloss {
+                            Text(gloss)
+                                .font(House.TypeToken.meta)
+                                .foregroundStyle(dimmed ? House.ColorToken.textTertiary : House.ColorToken.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
             }
             if !compact, !why.isEmpty {
+                // The reason, set apart from the line block in a quieter tone.
                 Text(why)
-                    .font(House.TypeToken.meta)
-                    .foregroundStyle(dimmed ? House.ColorToken.textTertiary : House.ColorToken.textSecondary)
+                    .font(House.TypeToken.caption)
+                    .foregroundStyle(House.ColorToken.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, House.Spacing.xxs)
             }
             if !compact, let source, !source.isEmpty {
                 Label(source, systemImage: "doc.text")
@@ -85,7 +111,14 @@ struct AutoCardRow: View {
         .contentShape(Rectangle())
         .hoverHighlight($hovering)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(kind.label): \(text)")
+        .accessibilityLabel("\(kind.label): \([textZH ?? text, gloss].compactMap(\.self).joined(separator: ", "))")
+    }
+
+    /// The English line under a Mandarin one, or nil when the card has only
+    /// the one line.
+    private var gloss: String? {
+        guard let textZH, textZH != text else { return nil }
+        return text
     }
 }
 

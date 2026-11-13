@@ -54,7 +54,7 @@ public final class AppLog {
             .appendingPathComponent("Library/Logs/RTI", isDirectory: true)
     }()
     private nonisolated static let retentionDays = 14
-    private static let fileQueue = DispatchQueue(label: "rti.applog.file", qos: .utility)
+    private nonisolated static let fileQueue = DispatchQueue(label: "rti.applog.file", qos: .utility)
     private static let dayStamp: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -83,19 +83,18 @@ public final class AppLog {
         NSLog("[%@] %@", category, tagged)
         let line = "\(Self.lineStamp.string(from: entry.timestamp)) [\(category)] \(tagged)\n"
         let day = Self.dayStamp.string(from: entry.timestamp)
-        Self.fileQueue.async { Self.append(line, day: day) }
+        Self.fileBatch.enqueue(line, day: day, urgent: level == .error)
     }
 
-    private nonisolated static func append(_ line: String, day: String) {
-        let url = logsDirectory.appendingPathComponent("rti-\(day).log")
-        try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
-        if let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: Data(line.utf8))
-        } else {
-            try? line.write(to: url, atomically: true, encoding: .utf8)
-        }
+    /// Lines wait up to `LogFileBatch.delay` and go to disk in one write per
+    /// day file, instead of one open, seek, write and close per line.
+    private nonisolated static let fileBatch = LogFileBatch(queue: fileQueue) { day in
+        logsDirectory.appendingPathComponent("rti-\(day).log")
+    }
+
+    /// Write every waiting line now. Tests and app termination call this.
+    public nonisolated static func flushFile() {
+        fileBatch.flushNow()
     }
 
     private nonisolated static func pruneOldFiles() {
@@ -181,6 +180,81 @@ public enum RTILog {
             MainActor.assumeIsolated { AppLog.shared.log(message, level: level, category: category) }
         } else {
             DispatchQueue.main.async { AppLog.shared.log(message, level: level, category: category) }
+        }
+    }
+}
+
+/// Batches log lines for the daily files. `enqueue` is cheap from any
+/// thread; the first line of a batch schedules one flush on `queue` after
+/// `delay`, and an error line flushes at once. `@unchecked Sendable`:
+/// `lock` guards `pending` and `scheduled`.
+public final class LogFileBatch: @unchecked Sendable {
+    public static let delay: TimeInterval = 0.5
+    private let queue: DispatchQueue
+    private let url: @Sendable (String) -> URL
+    private let lock = NSLock()
+    private var pending: [(day: String, line: String)] = []
+    private var scheduled = false
+    private var writeCount = 0
+
+    public init(queue: DispatchQueue, url: @escaping @Sendable (String) -> URL) {
+        self.queue = queue
+        self.url = url
+    }
+
+    /// File writes so far, one per day file per flush. For tests.
+    public var writes: Int {
+        lock.withLock { writeCount }
+    }
+
+    public func enqueue(_ line: String, day: String, urgent: Bool = false) {
+        let schedule = lock.withLock { () -> Bool in
+            pending.append((day, line))
+            guard !scheduled else { return false }
+            scheduled = true
+            return true
+        }
+        if urgent {
+            queue.async { self.flush() }
+        } else if schedule {
+            queue.asyncAfter(deadline: .now() + Self.delay) { self.flush() }
+        }
+    }
+
+    /// Write every waiting line before returning.
+    public func flushNow() {
+        queue.sync { flush() }
+    }
+
+    private func flush() {
+        let lines = lock.withLock { () -> [(day: String, line: String)] in
+            defer {
+                pending = []
+                scheduled = false
+            }
+            return pending
+        }
+        guard !lines.isEmpty else { return }
+        var days: [String] = []
+        var text: [String: String] = [:]
+        for item in lines {
+            if text[item.day] == nil { days.append(item.day) }
+            text[item.day, default: ""] += item.line
+        }
+        for day in days {
+            append(text[day] ?? "", to: url(day))
+        }
+        lock.withLock { writeCount += days.count }
+    }
+
+    private func append(_ chunk: String, to file: URL) {
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let handle = try? FileHandle(forWritingTo: file) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(chunk.utf8))
+        } else {
+            try? chunk.write(to: file, atomically: true, encoding: .utf8)
         }
     }
 }

@@ -41,7 +41,7 @@ extension LLMController {
         let configured = UserDefaults.standard.object(forKey: action.settingsKey) as? Int
         let minutes = max(1, configured ?? 10)
         let nowMs = session.startedAt.map { max(0, Int(Date().timeIntervalSince($0) * 1000)) } ?? 0
-        let sources = GuideTranscript.sources(from: session.liveEntries)
+        let sources = GuideTranscript.liveSources()
         let end = max(nowMs, sources.last?.endMs ?? 0)
         let cutoff = max(0, end - min(minutes, Int.max / 60_000) * 60_000)
         let turns: [ResearchModeration.Turn] = sources.compactMap { source in

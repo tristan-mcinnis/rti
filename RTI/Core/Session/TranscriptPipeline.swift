@@ -8,7 +8,9 @@ public final class TranscriptPipeline {
     private let system = TranscriptAggregator(channel: "system")
     public private(set) var liveEntries: [LiveEntry] = []
     public private(set) var readerActivity = TranscriptReaderActivity()
-    private(set) var epoch = UUID()
+    /// Changes on a reset or a notes replay: anything derived from the
+    /// entries before must be rebuilt.
+    public private(set) var epoch = UUID()
     public private(set) var revision = 0
     private var recent: [LiveEntry] = []
     private var notesSnapshot: [SessionNote] = []
@@ -48,6 +50,26 @@ public final class TranscriptPipeline {
     }
 
     public init() {}
+
+    private var spokenIndex = LiveTranscriptPresentation.UtteranceIndex(includeNotes: false)
+    private var fullIndex = LiveTranscriptPresentation.UtteranceIndex(includeNotes: true)
+
+    /// `LiveTranscriptPresentation.utterances(from:)` over the original
+    /// (untranslated) entries, notes included only when asked. Kept up to
+    /// date incrementally (`UtteranceIndex`), so a pass reads it without
+    /// regrouping two hours of tokens.
+    public func utterances(includeNotes: Bool) -> [LiveTranscriptPresentation.Utterance] {
+        includeNotes ? fullIndex.utterances(from: self) : spokenIndex.utterances(from: self)
+    }
+
+    /// Full rebuilds of the incremental utterance indexes. A reader that
+    /// caches per-utterance work compares it between reads.
+    public var utteranceIndexRebuilds: Int { spokenIndex.rebuilds + fullIndex.rebuilds }
+
+    /// Where the spoken index (no notes) is final after its last read: an
+    /// utterance that ended a minute before it can no longer change unless
+    /// the index rebuilds (`UtteranceIndex.settledBeforeMsForReaders`).
+    public var spokenUtterancesSettledBeforeMs: Int { spokenIndex.settledBeforeMsForReaders }
 
     public var systemSpeakerLabelsEnabled: Bool {
         get { system.labelsEnabled }

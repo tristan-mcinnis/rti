@@ -108,16 +108,20 @@ public enum ProjectRoots {
 
     /// Visit the knowledge files (`.md`, `.txt`) under `root`, skipping hidden,
     /// media and output folders. `visit` returns false to stop the walk.
+    /// `shouldStop` is checked on every enumerated item, decks and images
+    /// too, so a time budget bounds the walk itself.
     public static func walkFiles(
         under root: URL,
         extraSkips: Set<String> = [],
         keys: [URLResourceKey] = [.isRegularFileKey],
+        shouldStop: () -> Bool = { false },
         _ visit: (URL) -> Bool
     ) {
         guard let en = FileManager.default.enumerator(
             at: root, includingPropertiesForKeys: keys + [.isSymbolicLinkKey], options: [.skipsHiddenFiles]
         ) else { return }
         for case let url as URL in en {
+            if shouldStop() { return }
             let name = url.lastPathComponent
             if skipDirComponents.contains(name) || extraSkips.contains(name) {
                 en.skipDescendants()

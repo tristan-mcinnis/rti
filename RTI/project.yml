@@ -133,7 +133,11 @@ targets:
     type: bundle.unit-test
     platform: macOS
     sources:
+      # Fixture folders are read by path (#filePath), never bundled: two
+      # folders may hold files with the same name.
       - path: Tests
+        excludes:
+          - "Fixtures/**"
       - path: Sources/UI/StatusItemSymbol.swift
       # StatusItemSymbol reads House.Control.statusGlyph (HouseDesign product).
       - path: Sources/Audio/AudioInputDevice.swift

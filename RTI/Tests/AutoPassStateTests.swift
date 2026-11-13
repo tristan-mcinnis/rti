@@ -103,7 +103,10 @@ final class AutoPassStateTests: XCTestCase {
     func testFloorsMatchTheRailSpacing() {
         let spacing = LiveRailPacer.standard.spacing
         XCTAssertEqual(AutoPassState.floor(for: .client), spacing, "a client pass is not paid for faster than the rail shows")
-        XCTAssertEqual(AutoPassState.floor(for: .research), spacing)
+        XCTAssertEqual(AutoPassState.floor(for: .research), 150, "a moderator uses at most one card every 2 to 3 minutes")
+        XCTAssertEqual(AutoPassState.floor(for: .research, format: .interview), 150)
+        XCTAssertEqual(AutoPassState.floor(for: .research, format: .group), 180, "three or more voices: every FGD")
+        XCTAssertEqual(AutoPassState.floor(for: .client, format: .group), spacing, "the format is research only")
         XCTAssertNil(AutoPassState.floor(for: .internal))
         XCTAssertNil(AutoPassState.floor(for: .personal))
 
@@ -126,6 +129,36 @@ final class AutoPassStateTests: XCTestCase {
         state.reduce(.passRequested, now: at(30), floor: clientFloor)
         state.reduce(.passFinished(generation: 0, endMs: nil), now: at(31), floor: clientFloor)
         XCTAssertEqual(state.watermarkMs, 4000, "a failed pass reads its window again")
+        XCTAssertEqual(state.phase, .idle)
+    }
+
+    func testASkippedPassGivesBackItsFloorAndKeepsTheWatermark() {
+        let floor: TimeInterval = 150
+        var state = AutoPassState()
+        state.reduce(.passRequested, now: at(0), floor: floor)
+        state.reduce(.passFinished(generation: 0, endMs: 4000), now: at(5), floor: floor)
+
+        // The floor passes; the next pass finds a thin window and sends nothing.
+        XCTAssertEqual(state.reduce(.tick, now: at(150), floor: floor), .startPass(generation: 0))
+        XCTAssertEqual(state.reduce(.passSkipped(generation: 0), now: at(150), floor: floor), .none)
+        XCTAssertEqual(state.phase, .idle)
+        XCTAssertEqual(state.watermarkMs, 4000)
+        XCTAssertEqual(state.lastPassAt, at(0), "the skipped pass took no floor")
+
+        // Respondent talk settles a few seconds later: checked at once, no 150 s wait.
+        let quiet = AutoPassState.quietWindow
+        XCTAssertEqual(state.reduce(.activity, now: at(155), floor: floor), .arm(at: at(155 + quiet)))
+        XCTAssertEqual(state.reduce(.timerFired, now: at(155 + quiet), floor: floor), .startPass(generation: 0))
+        state.reduce(.passFinished(generation: 0, endMs: 9000), now: at(170), floor: floor)
+        XCTAssertEqual(state.lastPassAt, at(155 + quiet), "a sent pass takes the floor")
+        XCTAssertEqual(state.reduce(.tick, now: at(200), floor: floor), .none)
+
+        // Talk during a skipped pass debounces again; a stale skip changes nothing.
+        state.reduce(.passRequested, now: at(400), floor: floor)
+        state.reduce(.activity, now: at(401), floor: floor)
+        XCTAssertEqual(state.reduce(.passSkipped(generation: 0), now: at(402), floor: floor), .arm(at: at(402 + quiet)))
+        state.reduce(.stop, now: at(403), floor: floor)
+        XCTAssertEqual(state.reduce(.passSkipped(generation: 0), now: at(404), floor: floor), .none)
         XCTAssertEqual(state.phase, .idle)
     }
 

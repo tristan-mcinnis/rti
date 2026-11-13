@@ -189,4 +189,42 @@ final class SonioxClientSocketEventTests: XCTestCase {
     }
 
     private static let finalToken = #"{"tokens":[{"text":"Hello","start_ms":0,"end_ms":100,"speaker":"1","confidence":0.99,"is_final":true}]}"#
+
+    /// The socket hands this test's events to the client queue. `@unchecked
+    /// Sendable`: the test only reads `socket`, which never changes.
+    private final class SocketBox: @unchecked Sendable {
+        let socket: WebSocket
+        init(_ socket: WebSocket) { self.socket = socket }
+    }
+
+    /// Frames are decoded on the client's own serial queue, not on main
+    /// (2026-11-13 M1 audit), and their words still reach main in order.
+    func test_framesDecodeOffMainAndKeepTheirOrder() async throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable)
+        let box = SocketBox(makeSocket())
+        client.adoptSocketForTesting(box.socket)
+        defer { client.disconnect() }
+        XCTAssertTrue(box.socket.callbackQueue === client.callbackQueue)
+        XCTAssertFalse(box.socket.callbackQueue === DispatchQueue.main)
+        var words: [String] = []
+        var allOnMain = true
+        client.onWords = { batch in
+            allOnMain = allOnMain && Thread.isMainThread
+            words += batch.map(\.text)
+        }
+        let decodedOffMain = expectation(description: "decoded off main")
+        decodedOffMain.expectedFulfillmentCount = 40
+        for index in 0..<40 {
+            let frame = #"{"tokens":[{"text":"w\#(index)","start_ms":\#(index * 100),"end_ms":\#(index * 100 + 90),"confidence":0.9,"is_final":true}]}"#
+            client.callbackQueue.async {
+                let offMain = !Thread.isMainThread
+                client.didReceive(event: .text(frame), client: box.socket)
+                if offMain { decodedOffMain.fulfill() }
+            }
+        }
+        await fulfillment(of: [decodedOffMain], timeout: 2)
+        await drainCallbacks()
+        XCTAssertEqual(words, (0..<40).map { "w\($0)" })
+        XCTAssertTrue(allOnMain, "words are delivered on main")
+    }
 }

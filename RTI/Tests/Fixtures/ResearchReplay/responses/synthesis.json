@@ -1,0 +1,42 @@
+{
+ "about": "Recorded synthesis replies, by call minute: a synthesis pass gets the reply of the latest entry at or before the minute in its input, once, else 'default'. The first one tries to merge the two sound-alike brands; the code must refuse.",
+ "default": {
+  "merges": [],
+  "tensions": [],
+  "hypotheses": [],
+  "clientQuestions": []
+ },
+ "replies": [
+  {
+   "from_minute": 30,
+   "reply": {
+    "merges": [
+     {
+      "from": "{{code:晴越}}",
+      "into": "{{code:清悦}}"
+     }
+    ],
+    "tensions": [],
+    "hypotheses": [],
+    "clientQuestions": []
+   }
+  },
+  {
+   "from_minute": 50,
+   "reply": {
+    "merges": [],
+    "tensions": [],
+    "hypotheses": [],
+    "clientQuestions": [
+     {
+      "code": "{{code:Would a bigger bottle of route B sell every week?}}",
+      "status": "partly answered",
+      "turnIDs": [
+       "{{L148}}"
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

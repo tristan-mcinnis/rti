@@ -41,10 +41,43 @@ final class SessionCoordinator {
     private var completedPauses: [DateInterval] = []
     /// Short status shown by the recording HUD while the offline pass runs.
     var postProcessingStatus: String?
-    private(set) var liveEntries: [LiveEntry] = []
+    /// The committed transcript, read through from the pipeline. Holding a
+    /// second copy made every append copy the whole array (2026-11-13 M1
+    /// audit: 3.6 s of `process()` over two hours instead of 47 ms). Reads
+    /// register on `transcriptRevision`, which a flush bumps when finals land.
+    var liveEntries: [LiveEntry] {
+        _ = transcriptRevision
+        return seededEntries ?? transcriptPipeline.liveEntries
+    }
+    /// Render proofs only: entries pushed by `seedForRenderProof`.
+    @ObservationIgnored private var seededEntries: [LiveEntry]?
     /// Final entries can change without changing their count or identity.
     /// This final-only revision is separate from provisional display updates.
     private(set) var transcriptRevision = 0
+
+    /// The live utterances (`LiveTranscriptPresentation.utterances`) over the
+    /// untranslated entries, from the pipeline's incremental index. A seeded
+    /// render proof regroups its seeded entries.
+    /// Identifies the live transcript `liveUtterances` reads; nil for a
+    /// seeded render proof. A cache keyed on it is dropped on a reset.
+    var liveTranscriptEpoch: UUID? {
+        seededEntries == nil ? transcriptPipeline.epoch : nil
+    }
+
+    /// The spoken index's rebuild count and settle point after its last
+    /// read; nil for a seeded render proof. `GuideTranscript.liveSources`
+    /// re-splits only utterances that can still have changed.
+    var liveUtteranceMarks: (rebuilds: Int, settledBeforeMs: Int)? {
+        seededEntries == nil
+            ? (transcriptPipeline.utteranceIndexRebuilds, transcriptPipeline.spokenUtterancesSettledBeforeMs) : nil
+    }
+
+    func liveUtterances(includeNotes: Bool) -> [LiveTranscriptPresentation.Utterance] {
+        guard let seededEntries else { return transcriptPipeline.utterances(includeNotes: includeNotes) }
+        return LiveTranscriptPresentation.utterances(from: seededEntries.filter {
+            $0.translationStatus != "translation" && (includeNotes || $0.speakerId != "note")
+        })
+    }
     private(set) var interimLine: String?
     private(set) var interimSegments: [LiveTranscriptPresentation.InterimSegment] = []
     /// One ordered snapshot owns pending and final runs, so a finalization
@@ -202,6 +235,18 @@ final class SessionCoordinator {
         if channel == "mic" { handleWords(words) } else { handleSystemWords(words) }
     }
 
+    /// Run the pending 120 ms publish now, as its timer would, so an
+    /// accelerated replay can time every flush without waiting for it.
+    func flushTranscriptForProof() {
+        precondition(isTranscriptReplayForProof)
+        guard publishFlushScheduled else { return }
+        publishGeneration += 1
+        publishFlushScheduled = false
+        let changed = pendingEntriesChanged
+        pendingEntriesChanged = false
+        flushPublishState(entriesChanged: changed)
+    }
+
     func restartTranscriptStreamForProof(channel: String, atMs: Int) {
         precondition(isTranscriptReplayForProof)
         handleStreamRestarted(channel: channel, atMs: atMs)
@@ -255,7 +300,7 @@ final class SessionCoordinator {
     ) {
         usesSeededTranscript = true
         if transcriptChanged {
-            self.liveEntries = entries
+            seededEntries = entries
             readerActivity = entries.reduce(into: TranscriptReaderActivity()) { $0.record($1) }
         }
         self.interimLine = interim
@@ -280,11 +325,23 @@ final class SessionCoordinator {
     /// Called once at launch from AppDelegate. The scheduler only fires a task
     /// while a session is running and that task's toggle is on.
     func registerPeriodicTasks() {
+        // Each task starts at its own point in the interval (`phase`): notes
+        // at 0, Auto at 1/6, the guide at 1/3, the codebook at 2/3 and its
+        // synthesis at 5/6 (120 s: +0, +20, +40, +80, +100 s).
         AutoAssistScheduler.shared.register(id: "researchCodebook", task: .init(enabledKey: "rti.researchCodebook.enabled", sessionEnabled: {
             ResearchCodebookController.shared.location?.session.id == SessionCoordinator.shared.currentSessionId && SessionCoordinator.shared.currentSessionId != nil
-        }) { _ in
+        }, phase: 2.0 / 3) { _ in
             guard let id = SessionCoordinator.shared.currentSessionId else { return nil }
-            return await ResearchCodebookController.shared.generate(sessionID: id, entries: SessionCoordinator.shared.liveEntries)
+            return await ResearchCodebookController.shared.generateLive(sessionID: id)
+        })
+        // The ten-minute codebook synthesis rides the same tick; the
+        // controller decides when it is due.
+        AutoAssistScheduler.shared.register(id: "researchCodebookSynthesis", task: .init(enabledKey: "rti.researchCodebook.enabled", sessionEnabled: {
+            ResearchCodebookController.shared.location?.session.id == SessionCoordinator.shared.currentSessionId && SessionCoordinator.shared.currentSessionId != nil
+        }, phase: 5.0 / 6) { _ in
+            guard let id = SessionCoordinator.shared.currentSessionId else { return nil }
+            await ResearchCodebookController.shared.synthesize(sessionID: id)
+            return nil
         })
         AutoAssistScheduler.shared.register(
             id: "notes",
@@ -296,15 +353,15 @@ final class SessionCoordinator {
         )
         AutoAssistScheduler.shared.register(
             id: "guide",
-            task: .init(enabledKey: nil, sessionEnabled: { GuideSessionController.shared.isActive }) { _ in
+            task: .init(enabledKey: nil, sessionEnabled: { GuideSessionController.shared.isActive }, phase: 1.0 / 3) { _ in
                 let session = SessionCoordinator.shared
                 guard let id = session.currentSessionId else { return nil }
-                return await GuideSessionController.shared.generate(sessionId: id, entries: session.liveEntries)
+                return await GuideSessionController.shared.generateLive(sessionId: id)
             }
         )
         AutoAssistScheduler.shared.register(
             id: "autoAssist",
-            task: .init(enabledKey: nil, sessionEnabled: { AutoAssistController.shared.isActiveForCall }) { _ in
+            task: .init(enabledKey: nil, sessionEnabled: { AutoAssistController.shared.isActiveForCall }, phase: 1.0 / 6) { _ in
                 // Auto mode owns its own watermark — ignore the scheduler's sinceMs.
                 // Internal and personal calls get no pass, and no tick error.
                 guard AutoAssistController.shared.runsOnActiveCallType else { return nil }
@@ -1009,7 +1066,7 @@ final class SessionCoordinator {
         transcriptPipeline.reset()
         autoActivityRevision = transcriptPipeline.revision
         usesSeededTranscript = false
-        liveEntries = []
+        seededEntries = nil
         readerActivity = TranscriptReaderActivity()
         interimLine = nil
         interimSegments = []
@@ -1055,13 +1112,16 @@ final class SessionCoordinator {
     /// interim fragments retain provider whitespace. Historical rows are
     /// republished only when finals changed, never for an interim-only frame.
     private func flushPublishState(entriesChanged: Bool) {
+        PassSignpost.interval("transcript flush") { flushPublishStateNow(entriesChanged: entriesChanged) }
+    }
+
+    private func flushPublishStateNow(entriesChanged: Bool) {
         let newInterim = transcriptPipeline.interimLine
         if newInterim != interimLine { interimLine = newInterim }
         let newSegments = transcriptPipeline.interimSegments
         let interimChanged = newSegments != interimSegments
         if interimChanged { interimSegments = newSegments }
         if entriesChanged {
-            liveEntries = transcriptPipeline.liveEntries
             if readerActivity != transcriptPipeline.readerActivity { readerActivity = transcriptPipeline.readerActivity }
             transcriptRevision += 1
         }

@@ -44,6 +44,11 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     private let translationConfig: TranslationConfig?
     private let context: SonioxContext?
     private let lock = NSLock()
+    /// Socket events arrive and frames are decoded here, not on main
+    /// (2026-11-13 M1 audit: 10 to 20 frames a second were decoded on main).
+    /// Serial, so frames keep their order; words, status and errors still
+    /// hop to main in that order.
+    let callbackQueue = DispatchQueue(label: "rti.soniox.callback", qos: .userInitiated)
     private var socket: WebSocket?
     /// Protected by lock; every new socket or terminal disconnect retires delivery.
     private var streamGeneration: UInt64 = 0
@@ -293,6 +298,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     /// current socket without opening a network connection, so socket events
     /// can be fed to `didReceive` directly. Never called by the app.
     func adoptSocketForTesting(_ ws: WebSocket) {
+        attach(ws)
         lock.lock()
         retryWorkItem?.cancel()
         retryWorkItem = nil
@@ -310,6 +316,12 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     }
 #endif
 
+    /// Deliver this socket's events on the client's own serial queue.
+    private func attach(_ ws: WebSocket) {
+        ws.delegate = self
+        ws.callbackQueue = callbackQueue
+    }
+
     /// Soniox refuses a key sent in the first message from 2027-01-15.
     static func upgradeRequest(url: URL, apiKey: String) -> URLRequest {
         var request = URLRequest(url: url)
@@ -320,7 +332,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
 
     private func openSocket(announceConnecting: Bool = false, expectedGeneration: UInt64? = nil) {
         let ws = WebSocket(request: Self.upgradeRequest(url: url, apiKey: apiKey))
-        ws.delegate = self
+        attach(ws)
         lock.lock()
         if let expectedGeneration,
            streamGeneration != expectedGeneration || intentionalDisconnect {

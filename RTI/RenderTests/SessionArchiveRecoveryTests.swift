@@ -36,6 +36,15 @@ final class SessionArchiveRecoveryTests: XCTestCase {
         try await super.tearDown()
     }
 
+    /// Overlapping free-text codes are each found, in package order, case
+    /// ignored, as whole tokens only.
+    func testEvidenceListsOverlappingCodesEachOnItsOwn() {
+        let matchers = SessionFinalizer.codeMatchers(for: ["Board 1", "1", "B2", "Option A"])
+        XCTAssertEqual(SessionFinalizer.discussedCodes(in: "I keep coming back to board 1.", matchers: matchers), ["Board 1", "1"])
+        XCTAssertEqual(SessionFinalizer.discussedCodes(in: "b2 over option a, not B21", matchers: matchers), ["B2", "Option A"])
+        XCTAssertEqual(SessionFinalizer.discussedCodes(in: "Boards 10 and 11", matchers: matchers), [])
+    }
+
     func testFinalizerWritesReadableTranscriptAndExactRetainedAudio() throws {
         let source = root.appendingPathComponent("mic.wav")
         let audio = pcmWAV(sample: 127)

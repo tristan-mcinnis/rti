@@ -20,7 +20,7 @@ final class PromptRegistryTests: XCTestCase {
     // MARK: - Contract metadata (drives the editor's warnings)
 
     func test_jsonContractPromptsRequireJSONToken() {
-        let json: Set<PromptID> = [.autoAssistCards]
+        let json: Set<PromptID> = [.autoAssistCards, .researchCodebook, .researchCodebookSynthesis]
         for id in PromptID.allCases {
             XCTAssertEqual(id.isJSONContract, json.contains(id), "isJSONContract wrong for \(id.rawValue)")
             if id.isJSONContract {
@@ -45,6 +45,17 @@ final class PromptRegistryTests: XCTestCase {
         }
         XCTAssertEqual(PromptID.allCases.filter { $0.group == .background },
                        [.autoAssistCards, .autoAssistClient, .autoAssistResearch, .liveNotes])
+    }
+
+    func test_codebookPromptsAreEditableJSONContracts() {
+        XCTAssertEqual(PromptID.allCases.filter { $0.group == .codebook }, [.researchCodebook, .researchCodebookSynthesis])
+        XCTAssertEqual(PromptID.researchCodebook.requiredTokens, ["JSON", "turnID"])
+        XCTAssertEqual(PromptID.researchCodebookSynthesis.requiredTokens, ["JSON", "counterTurnID"])
+        for id in [PromptID.researchCodebook, .researchCodebookSynthesis] {
+            for token in id.requiredTokens {
+                XCTAssertTrue(id.defaultText.contains(token), "\(id.rawValue) default lost \(token)")
+            }
+        }
     }
 
     // MARK: - Drift hash

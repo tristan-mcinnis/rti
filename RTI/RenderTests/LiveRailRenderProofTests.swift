@@ -32,13 +32,16 @@ final class LiveRailRenderProofTests: RenderProofTestCase {
 
     // MARK: - Fixtures
 
-    private static func card(_ kind: AutoCardKind, _ text: String, why: String = "") -> AutoAssistCard {
-        AutoAssistCard(timestamp: Date(), kind: kind, text: text, why: why, citation: nil)
+    private static func card(_ kind: AutoCardKind, _ text: String, zh: String? = nil, why: String = "") -> AutoAssistCard {
+        AutoAssistCard(timestamp: Date(), kind: kind, text: text, textZH: zh, why: why, citation: nil)
     }
 
-    private static func railCard(_ card: AutoAssistCard, pinned: Bool = false, age: TimeInterval) -> LiveRailContent.Card {
+    private static func railCard(_ card: AutoAssistCard, pinned: Bool = false, age: TimeInterval,
+                                 pinyin: Bool = true) -> LiveRailContent.Card
+    {
         LiveRailContent.Card(id: card.id, kind: card.kind, text: card.text, why: card.why, source: card.source,
-                             pinned: pinned, shownAt: Date().addingTimeInterval(-age))
+                             pinned: pinned, shownAt: Date().addingTimeInterval(-age), textZH: card.textZH,
+                             pinyin: pinyin ? card.pinyin : nil)
     }
 
     static let clientNow = [
@@ -52,14 +55,22 @@ final class LiveRailRenderProofTests: RenderProofTestCase {
 
     static let researchAsk = card(
         .ask,
-        "Ask how they clean the lid seal.\n你们怎么清洗杯盖的密封圈？\nNǐmen zěnme qīngxǐ bēigài de mìfēngquān?",
+        "Ask how they clean the lid seal.",
+        zh: "大家平时怎么清洗杯盖的密封圈？",
         why: "Cleaning was mentioned, never probed."
     )
     static let researchAsk2 = card(
         .ask,
-        "Ask what would make them carry it every day.\n什么会让你每天都带着它？\nShénme huì ràng nǐ měitiān dōu dàizhe tā?"
+        "Ask who sees carrying it differently.",
+        zh: "有没有人对带杯子出门有不一样的看法？"
     )
-    static let researchFlag = card(.flag, "“洗起来很麻烦” came up in two quotes. Nobody asked what makes it a hassle.")
+    /// A contradiction FLAG: two quotes with their times, the one FLAG a
+    /// research pass may add beside its card.
+    static let researchFlag = card(
+        .flag,
+        "10:18 “放在包的侧袋里” vs 11:19 “有时候就不带了”.",
+        why: "Two quotes disagree on carrying the cup."
+    )
 
     static var gaps: [GuideGap] {
         [
@@ -69,34 +80,50 @@ final class LiveRailRenderProofTests: RenderProofTestCase {
     }
 
     static var codebook: ResearchCodebook {
-        func entry(_ id: String, _ offset: Int, _ valence: ResearchValence) -> ResearchEntry {
+        func quote(_ id: String, _ offset: Int, _ original: String) -> ResearchQuote {
             let speaker = ResearchQuote.Attribution(rawSpeaker: "remote", label: "Them", leg: "Them", confidence: "legOnly",
                                                     seat: nil, segment: nil, moderator: false)
-            let quote = ResearchQuote(sessionID: "rail-fixture", turnID: id, group: "G1", offsetMs: offset, original: "我每天都放在侧袋里。",
-                                      speaker: speaker, revealRecorded: false)
-            return ResearchEntry(point: "A point.", evidence: quote, valence: valence, inferredName: nil)
+            return ResearchQuote(sessionID: "rail-fixture", turnID: id, group: "G1", offsetMs: offset, original: original,
+                                 speaker: speaker, revealRecorded: false)
         }
-        func card(_ name: String, _ type: ResearchCardType, _ valences: [ResearchValence]) -> ResearchCard {
+        func entry(_ id: String, _ offset: Int, _ valence: ResearchValence, stance: ResearchStance? = nil) -> ResearchEntry {
+            ResearchEntry(point: "A point.", evidence: quote(id, offset, "我每天都放在侧袋里。"), valence: valence, inferredName: nil, stance: stance)
+        }
+        func card(_ name: String, _ type: ResearchCardType, gloss: String? = nil, _ valences: [ResearchValence]) -> ResearchCard {
             ResearchCard(id: UUID(), name: name, aliases: [], type: type, origin: .emerged, pinned: false,
-                         entries: valences.enumerated().map { entry("\(name)-\($0.offset)", 1000 * ($0.offset + 1), $0.element) })
+                         entries: valences.enumerated().map { entry("\(name)-\($0.offset)", 1000 * ($0.offset + 1), $0.element) },
+                         gloss: gloss)
         }
+        var carry = card("Carry beats capacity", .hypothesis, [])
+        carry.entries = [entry("h1", 61000, .positive, stance: .support), entry("h2", 62000, .positive, stance: .support),
+                         entry("h3", 63000, .negative, stance: .against)]
+        var cleaning = card("洗不干净就不回购", .hypothesis, gloss: "Cleaning decides repurchase", [])
+        cleaning.entries = [entry("h4", 64000, .negative, stance: .support)]
+        var tension = card("说方便却不带", .tension, gloss: "Says it is handy, leaves it at home", [])
+        tension.entries = [ResearchEntry(point: "Handy in words, left at home in practice.",
+                                         evidence: quote("x2", 2_040_000, "其实我很少带出门，太重了。"), valence: .mixed, inferredName: nil,
+                                         excerpt: "很少带出门，太重了", counter: quote("x1", 485_000, "这个杯子很方便，我天天带。"))]
+        var vote = card("选A还是选B", .vote, gloss: "Cup A or cup B", [])
+        vote.votes = [ResearchVote(sessionID: "rail-fixture", choice: "B", count: 5, source: "moderator_tally", turnID: "v1", offsetMs: 1_500_000),
+                      ResearchVote(sessionID: "rail-fixture", choice: "A", count: 1, source: "moderator_tally", turnID: "v1", offsetMs: 1_500_000)]
+        var question = card("Would they pay more for a leak-proof lid?", .clientQuestion, [.neutral])
+        question.questionStatus = .partly
         var book = ResearchCodebook()
         book.cards = [
             card("Morning Cup（晨杯）", .brand, [.positive, .positive, .positive, .neutral]),
             card("Trail Flask", .brand, [.negative, .neutral]),
-            card("Corner Shop", .org, [.neutral]),
+            card("便利店", .channel, gloss: "Corner shop", [.neutral]),
             card("小禾", .person, [.neutral, .neutral]),
-            card("Side pocket", .concept, [.positive, .positive]),
-            card("Lid seal", .concept, [.negative, .negative, .negative]),
+            card("侧袋", .theme, gloss: "Side pocket", [.positive, .positive]),
+            card("洗起来麻烦", .barrier, gloss: "Hard to clean", [.negative, .negative, .negative]),
             card("Dishwasher safe", .concept, [.positive, .negative]),
-            card("Weight", .concept, [.neutral]),
-            card("Leak worry", .concept, [.negative]),
-            card("Cup as a gift", .concept, [.positive]),
-            card("Carry beats capacity", .hypothesis, [.positive, .mixed]),
-            card("Cleaning decides repurchase", .hypothesis, [.negative, .negative]),
+            card("Weight", .theme, [.neutral]),
+            card("怕漏", .barrier, gloss: "Leak worry", [.negative]),
+            card("送人", .theme, gloss: "Cup as a gift", [.positive]),
+            carry, cleaning, tension, vote, question,
         ]
         book.cards += ["Straw lid", "Colour", "Price", "Gift box", "Shop shelf", "Kettle", "Desk", "Car holder", "Bag strap"]
-            .map { card($0, .concept, [.neutral]) }
+            .map { card($0, .theme, [.neutral]) }
         return book
     }
 
@@ -137,7 +164,22 @@ final class LiveRailRenderProofTests: RenderProofTestCase {
     }
 
     func testResearchRail() throws {
-        try renderRail("live-rail-research", Self.researchContent, height: 1000)
+        try renderRail("live-rail-research", Self.researchContent, height: 1320)
+    }
+
+    /// Mandarin first, pinyin under it, the English line as a small gloss;
+    /// and the same card with the pinyin setting off.
+    func testMandarinCardsWithAndWithoutPinyin() throws {
+        var content = LiveRailContent(kind: .research)
+        content.isRecording = true
+        content.now = [Self.railCard(Self.researchAsk, age: 2)]
+        content.threads = [Self.railCard(Self.researchFlag, age: 140)]
+        try renderRail("live-rail-mandarin-pinyin", content, height: 360)
+        content.now = [Self.railCard(Self.researchAsk, age: 2, pinyin: false)]
+        try renderRail("live-rail-mandarin-no-pinyin", content, height: 360)
+        XCTAssertEqual(content.now.first?.speakable, "大家平时怎么清洗杯盖的密封圈？", "Copy takes the line to say")
+        XCTAssertTrue(AutoAssistSettings.showsPinyin(stored: nil), "pinyin is on until the user turns it off")
+        XCTAssertFalse(AutoAssistSettings.showsPinyin(stored: false))
     }
 
     func testEmptyStates() throws {
@@ -262,7 +304,7 @@ final class LiveRailContentTests: RenderProofTestCase {
 
     func testStripSummarySaysQuotesAndCountsNotPeople() {
         let research = LiveRailRenderProofTests.researchContent
-        XCTAssertEqual(research.summary, "2 to ask · 1 flag · 2 to revisit · 20 topics",
+        XCTAssertEqual(research.summary, "2 to ask · 1 flag · 2 to revisit · 23 topics",
                        "a thin question was asked, so gaps are to revisit, not missed")
         XCTAssertEqual(LiveRailRenderProofTests.clientContent.summary, "3 suggestions · 1 open thread")
         XCTAssertEqual(LiveRailContent(kind: .client).summary, "No suggestions yet")
@@ -374,7 +416,7 @@ final class LiveRailContentTests: RenderProofTestCase {
         }
         SessionCoordinator.shared.seedForRenderProof(entries: [], interim: nil, phase: .recording, startedAt: Date())
         let live = LiveRailContent.live(callType: .research, autoOn: true, guide: GuideSessionController())
-        XCTAssertEqual(live.topics?.total, 20)
+        XCTAssertEqual(live.topics?.total, 23)
     }
 
     func testRailShowsWhatThePacerHoldsBack() {

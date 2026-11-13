@@ -28,7 +28,9 @@ actor ResearchCodebookStore {
 
     enum Change: Sendable {
         case prepare(seeds: [String], hypotheses: [String])
-        case pass(ResearchProposal, [ResearchQuote], endMs: Int)
+        /// `codes` maps the prompt's short code ids (c1, c2) to card IDs.
+        case pass(ResearchProposal, [ResearchQuote], endMs: Int, codes: [String: UUID] = [:], forbidden: Set<String> = [])
+        case synthesis(ResearchSynthesis, codes: [String: UUID])
         case edit(ResearchCodebook.Edit)
         case finish(incomplete: Bool)
         case refresh
@@ -87,8 +89,10 @@ actor ResearchCodebookStore {
     private func read(_ dir: URL) throws -> ResearchCodebook {
         let src = try safeFile("codebook.json", in: dir)
         guard FileManager.default.fileExists(atPath: src.path) else { return ResearchCodebook() }
-        let book = try JSONDecoder().decode(ResearchCodebook.self, from: Data(contentsOf: src))
-        guard book.schemaVersion == 1 else { throw CocoaError(.fileReadCorruptFile) }
+        var book = try JSONDecoder().decode(ResearchCodebook.self, from: Data(contentsOf: src))
+        // Schema 1 files load as they are: their new fields are optional.
+        guard (1 ... ResearchCodebook.currentSchema).contains(book.schemaVersion) else { throw CocoaError(.fileReadCorruptFile) }
+        book.schemaVersion = ResearchCodebook.currentSchema
         return book
     }
 
@@ -114,22 +118,49 @@ actor ResearchCodebookStore {
     private func save(_ book: ResearchCodebook, in dir: URL) throws {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         try save(encoder.encode(book), as: "codebook.json", in: dir)
+        try save(Data(Self.markdown(book).utf8), as: "codebook.md", in: dir)
+    }
+
+    /// The readable projection. Schema 1 person and organisation cards stay
+    /// in the JSON but are not codes, so they are left out here.
+    nonisolated static func markdown(_ book: ResearchCodebook) -> String {
         var lines = ["# Research codebook", ""]
-        for card in book.cards.sorted(by: { ($0.pinned ? 0 : 1, -$0.entries.count, $0.name) < ($1.pinned ? 0 : 1, -$1.entries.count, $1.name) }) {
-            lines += ["## \(card.name)", card.summary]
+        if let objective = book.objective {
+            lines += ["Objective: \(objective)", ""]
+        }
+        let codes = book.cards.filter(\.type.isCode)
+        for card in codes.sorted(by: { ($0.pinned ? 0 : 1, -$0.quoteCount, $0.name) < ($1.pinned ? 0 : 1, -$1.quoteCount, $1.name) }) {
+            lines.append("## " + [card.name, card.gloss].compactMap(\.self).joined(separator: " · "))
+            var meta = [card.type.label, "\(card.quoteCount) \(card.quoteCount == 1 ? "quote" : "quotes")"]
+            if let provenance = card.provenance { meta.append(provenance.label) }
+            if card.type == .hypothesis { meta.append("\(card.support.for) for, \(card.support.against) against") }
+            if card.type == .clientQuestion { meta.append((card.questionStatus ?? .open).rawValue) }
+            if let qids = card.qids, !qids.isEmpty { meta.append(qids.joined(separator: ", ")) }
+            lines.append(meta.joined(separator: " · "))
+            if !card.summary.isEmpty { lines.append(card.summary) }
             for session in book.sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
                 let evidence = card.entries.filter { $0.evidence.sessionID == session.id }.sorted { $0.evidence.offsetMs < $1.evidence.offsetMs }
-                if !evidence.isEmpty {
+                let votes = (card.votes ?? []).filter { $0.sessionID == session.id }
+                if !evidence.isEmpty || !votes.isEmpty {
                     lines.append("### \(session.group ?? session.id)")
+                }
+                for vote in votes.sorted(by: { $0.count > $1.count }) {
+                    lines.append("- \(vote.choice): \(vote.count) [\(vote.source), \(GuideExtraction.locator(vote.offsetMs))]")
                 }
                 for item in evidence {
                     let quote = item.evidence
-                    lines += ["- \(item.point) [\(item.valence.rawValue)]", "  [\(GuideExtraction.locator(quote.offsetMs)), \(quote.speaker.label)] \(quote.original)"]
+                    var tags = [item.valence.rawValue]
+                    if let stance = item.stance { tags.append(stance.rawValue) }
+                    if item.asrDoubt == true { tags.append("ASR doubt") }
+                    lines += ["- \(item.point) [\(tags.joined(separator: ", "))]", "  [\(GuideExtraction.locator(quote.offsetMs)), \(quote.speaker.label)] \(quote.original)"]
+                    if let counter = item.counter {
+                        lines.append("  vs [\(GuideExtraction.locator(counter.offsetMs)), \(counter.speaker.label)] \(counter.original)")
+                    }
                 }
             }
             lines.append("")
         }
-        try save(Data(lines.joined(separator: "\n").utf8), as: "codebook.md", in: dir)
+        return lines.joined(separator: "\n")
     }
 
     /// Restore evidence from a session committed immediately before a failed project write.
@@ -147,10 +178,16 @@ actor ResearchCodebookStore {
             let keys = ResearchCodebook.spellings(card.name, aliases: card.aliases)
             guard keys.isDisjoint(with: project.suppressed) else { continue }
             let id = project.redirects[card.id.uuidString] ?? card.id
-            let names = project.cards.indices.filter { !keys.isDisjoint(with: ResearchCodebook.spellings(project.cards[$0].name, aliases: project.cards[$0].aliases)) }
+            let names = project.cards.indices.filter {
+                project.cards[$0].type.isCode == card.type.isCode
+                    && !keys.isDisjoint(with: ResearchCodebook.spellings(project.cards[$0].name, aliases: project.cards[$0].aliases))
+            }
             if let i = project.cards.firstIndex(where: { $0.id == id }) ?? (names.count == 1 ? names[0] : nil) {
                 let existing = Set(project.cards[i].entries.map(\.id))
                 project.cards[i].entries += card.entries.filter { !existing.contains($0.id) }
+                let votes = project.cards[i].votes ?? []
+                let missing = (card.votes ?? []).filter { vote in !votes.contains { $0.sessionID == vote.sessionID && ResearchCodebook.key($0.choice) == ResearchCodebook.key(vote.choice) } }
+                if !missing.isEmpty { project.cards[i].votes = votes + missing }
             } else {
                 project.cards.append(card)
             }
@@ -193,25 +230,16 @@ actor ResearchCodebookStore {
                     }
                 }
                 for line in seeds + fileSeeds {
-                    let name = line.trimmingCharacters(in: .whitespaces)
-                    if name.hasPrefix("#") || name.isEmpty {
-                        continue
-                    }
-                    let seed = name.hasPrefix("- ") || name.hasPrefix("* ") ? String(name.dropFirst(2)) : name
-                    let parts = seed.components(separatedBy: " | ")
-                    if parts.count == 2, let type = ResearchCardType(rawValue: parts[0].lowercased()) {
-                        book.seed(parts[1], type: type)
-                    } else {
-                        book.seed(seed)
-                    }
+                    Self.seed(line, into: &book)
                 }
                 for hypothesis in hypotheses {
                     book.seed(hypothesis, type: .hypothesis)
                 }
-            case let .pass(response, turns, endMs):
-                book.apply(response, sources: turns)
+            case let .pass(response, turns, endMs, codes, forbidden):
+                book.apply(response, sources: turns, codes: codes, forbidden: forbidden)
                 book.sessions[index].consumed.formUnion(turns.map(\.turnID))
                 book.sessions[index].endMs = max(book.sessions[index].endMs, endMs)
+            case let .synthesis(synthesis, codes): book.apply(synthesis, sessionID: location.session.id, codes: codes)
             case let .edit(edit): book.edit(edit)
             case let .finish(incomplete): book.sessions[index].incomplete = incomplete
             case .refresh, .upgrade: break
@@ -231,9 +259,38 @@ actor ResearchCodebookStore {
         switch change {
         case .refresh, .upgrade, .finish:
             try refreshStarred(in: location.directory, change: change)
-        case .prepare, .pass, .edit: break
+        case .prepare, .pass, .synthesis, .edit: break
         }
         return result
+    }
+
+    /// One seed line: a name, a Markdown list item, or `type | name`.
+    /// `client | name` pins the client's brand, `objective | text` sets the
+    /// study objective, `client_question | text` opens a client question.
+    /// A `person | name` line never becomes a code; `org | name` seeds a brand.
+    static func seed(_ line: String, into book: inout ResearchCodebook) {
+        let name = line.trimmingCharacters(in: .whitespaces)
+        guard !name.hasPrefix("#"), !name.isEmpty else { return }
+        let seed = name.hasPrefix("- ") || name.hasPrefix("* ") ? String(name.dropFirst(2)) : name
+        let parts = seed.components(separatedBy: " | ")
+        guard parts.count == 2 else {
+            book.seed(seed)
+            return
+        }
+        let word = parts[0].trimmingCharacters(in: .whitespaces).lowercased(), value = parts[1].trimmingCharacters(in: .whitespaces)
+        switch word {
+        case "client", "client brand", "client_brand":
+            book.seed(value, type: .brand, pinned: true, client: true)
+        case "objective":
+            if !value.isEmpty { book.objective = value }
+        default:
+            switch ResearchCardType(loose: word) {
+            case .person: break
+            case .org: book.seed(value, type: .brand)
+            case let .some(type): book.seed(value, type: type)
+            case .none: book.seed(seed)
+            }
+        }
     }
 
     private static func refresh(_ quote: inout ResearchQuote, timeline: MarkerTimeline, change: Change) {

@@ -47,6 +47,10 @@ public enum PromptID: String, CaseIterable, Sendable {
     case autoAssistResearch
     case liveNotes
 
+    // Research codebook (strict JSON)
+    case researchCodebook
+    case researchCodebookSynthesis
+
     // MARK: - Grouping (for the Settings UI)
 
     public enum Group: String, CaseIterable, Sendable {
@@ -56,6 +60,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case listener = "Listener research"
         case recap = "Recap"
         case background = "Live notes and Auto mode"
+        case codebook = "Research codebook"
     }
 
     public var group: Group {
@@ -66,6 +71,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .keyTensions, .probe, .themes, .saidVsDone: .listener
         case .recapBrief, .recapStandard, .recapDetailed, .recapLanguageRule: .recap
         case .autoAssistCards, .autoAssistClient, .autoAssistResearch, .liveNotes: .background
+        case .researchCodebook, .researchCodebookSynthesis: .codebook
         }
     }
 
@@ -95,6 +101,8 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .autoAssistClient: "Auto cards — client call"
         case .autoAssistResearch: "Auto cards — research"
         case .liveNotes: "Live notes"
+        case .researchCodebook: "Codebook pass"
+        case .researchCodebookSynthesis: "Codebook synthesis"
         }
     }
 
@@ -120,10 +128,12 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .recapStandard: "The clause spliced into Recap at Standard depth."
         case .recapDetailed: "The clause spliced into Recap at Detailed depth."
         case .recapLanguageRule: "Shared language/format rule appended to every Recap."
-        case .autoAssistCards: "Background: proactive SAY/ASK/RECALL/FLAG cards (strict JSON). Auto's meeting-language rule replaces \"Write in English.\"."
-        case .autoAssistClient: "Background: what Auto cards steer toward on a client call."
-        case .autoAssistResearch: "Background: what Auto cards look for in a research session."
+        case .autoAssistCards: "Background: proactive SAY/ASK/RECALL/FLAG cards (strict JSON: text_en, text_zh, why, source). Auto adds its meeting-language rule after the framing. A RECALL without a supplied source, and in a Mandarin conversation a SAY or ASK without text_zh, is dropped."
+        case .autoAssistClient: "Background: what Auto cards steer toward on a client call: presenting or receiving, claims a client could challenge, no commitments on raw materials."
+        case .autoAssistResearch: "Background: what Auto cards look for in a research session: probes fitted to the moment, FLAG only for contradictions, moderator bias, open client questions, overruns, silence named in the Signals list and meaning-changing ASR errors. One card per pass."
         case .liveNotes: "Background: rolling live meeting notes (TITLE + bullets)."
+        case .researchCodebook: "Research calls: files new respondent turns as quotes against codes of meaning (strict JSON)."
+        case .researchCodebookSynthesis: "Research calls, every 10 minutes: merges codes, finds tensions across minutes, counts hypotheses for and against, tracks client questions (strict JSON)."
         }
     }
 
@@ -131,12 +141,18 @@ public enum PromptID: String, CaseIterable, Sendable {
     /// so deleting the JSON-shape instruction silently breaks the feature. The
     /// Settings editor warns when an override drops a required token.
     public var isJSONContract: Bool {
-        self == .autoAssistCards
+        self == .autoAssistCards || self == .researchCodebook || self == .researchCodebookSynthesis
     }
 
     /// Substrings the default relies on for downstream parsing/format. If an
     /// override removes one, the editor flags it (warn, never block).
     public var requiredTokens: [String] {
+        switch self {
+        case .autoAssistCards: return ["JSON", "text_zh"]
+        case .researchCodebook: return ["JSON", "turnID"]
+        case .researchCodebookSynthesis: return ["JSON", "counterTurnID"]
+        default: break
+        }
         if isJSONContract { return ["JSON"] }
         switch self {
         case .liveNotes: return ["TITLE:"]
@@ -266,9 +282,10 @@ public enum PromptDefaults {
               "cards": [
                 {
                   "kind": "SAY | ASK | RECALL | FLAG",
-                  "text": "<=25 words: the suggestion itself — the line to say, the question to ask, the fact to recall, or the thing to flag>",
-                  "why": "<=15 words: why it's relevant right now>",
-                  "source": "<the project document or transcript this draws on, or null>"
+                  "text_en": "<=25 words, in English: the suggestion itself — the line to say, the question to ask, the fact to recall, or the thing to flag>",
+                  "text_zh": "<for SAY and ASK in a Mandarin conversation: the same line as natural, speakable Mandarin; otherwise null>",
+                  "why": "<=15 words, in English: why it's relevant right now>",
+                  "source": "<the bracketed ID of a supplied vault document, such as S1, or null>"
                 }
               ]
             }
@@ -279,34 +296,41 @@ public enum PromptDefaults {
             - RECALL: a relevant fact from the project's vault — what a participant said
               in a research session, a prior finding, a report conclusion, a status
               detail — ESPECIALLY when the other party just asked about that topic.
-              Only surface a RECALL when the provided vault material actually supports
-              it; cite the source. Never invent a finding or a quote.
+              Only surface a RECALL when the supplied vault material supports it, and
+              set "source" to that document's ID. A RECALL with no source is dropped.
+              Never invent a finding or a quote.
             - FLAG: a contradiction with the project record, a claim to verify, a risk,
               or an unresolved owner/date that should be pinned down.
 
             Rules:
             - Only NEW cards prompted by THIS window. Do NOT repeat anything in the
-              already-surfaced list below.
+              already-surfaced list below, even in other words.
             - High bar. If nothing in this window genuinely warrants a card, return
               {"cards": []}. Silence beats noise — the user is in a live conversation.
             - Be specific and immediately usable. Prefer cards like "Ask who owns X
               and by when" or "Confirm whether Y is now decided." No generic coaching
               ("listen actively"), no restating what was just said.
+            - Use only names that appear word for word in the conversation or the
+              confirmed speaker map.
             - Ground RECALL/FLAG cards in the project context or vault material given;
-              do not fabricate. Write in English.
+              do not fabricate.
             """
 
         case .autoAssistClient:
             """
-            CALL TYPE: client call. The user is speaking. Help them move this call toward its goal, not only protect them.
+            CALL TYPE: client call. The user is the person on the Me leg; their team and the client are named in the brief or the project context. Help them move this call toward its goal, not only protect them.
 
-            - ASK: the next question that steers the call toward the goal in the brief, or toward the decision still open. Prefer ASK when a decision, owner, number or date is vague: "Who signs off on X, and by when?"
+            First decide whether the user's team is presenting (a findings readout, a proposal, a pitch) or receiving (a briefing, a client explaining a need).
+            - When the user's team presents: never quiz a colleague. Give the user evidence from their own markets and the project record. FLAG a claim a client could challenge: "every" or "all", mismatched bases, a single anecdote, two presenters who contradict each other. Prepare a one-line SAY that answers the client's likely next question. Track the time left against the stated agenda.
+            - When the user's team receives: ASK the next question that steers the call toward the goal in the brief, or toward the decision still open. Prefer ASK when a decision, owner, number or date is vague: "Who signs off on X, and by when?"
+
             - SAY: a proactive idea the user can offer now: an opportunity the client hinted at, a way to unblock what they just raised, an option they have not considered, or a confirmation that locks a point in. Concrete, in the user's voice.
             - FLAG: an owner or date still open, a decision implied but never stated, scope drifting past what was agreed, or a contradiction with earlier in this call or with the brief.
-            - RECALL: unchanged; only from the vault material given.
+            - RECALL: only from the vault material given, with its source. No source, no RECALL.
 
             When a brief is attached, hold the call against it: favour cards that close a "Decision to Lock" or advance its goal.
-            Never suggest sharing internal costs, margins or supplier names.
+            Never suggest sharing internal costs, margins or supplier names. Never commit the user to sending recordings, raw data, participant photos or a deadline. When a client asks for raw materials, FLAG the consent scope (minors, images) and name who should confirm it.
+            Use only names that appear word for word in the conversation or the confirmed speaker map.
 
             Silence beats noise: no card is better than a generic one.
             """
@@ -314,14 +338,53 @@ public enum PromptDefaults {
             """
             CALL TYPE: research session. The user is observing or moderating. Help them get depth, not agreement.
 
-            - ASK: an open follow-up the moderator can ask now. First choice: a guide question in the gaps list that was skipped or covered thinly, or the current guide question if the last answers stayed shallow. Otherwise a probe on what was just said: an example, the last time it happened, what they did instead, what they mean by a vague word.
-            - FLAG: a vague claim nobody probed, or a tension or contradiction: a hedge, a euphemism, agreement with no example, a stated value that clashes with a described action. Quote the exact original words that prompted it in "why". Do not name or count people: speaker labels are not reliable, so refer to "a quote", "this answer" or the number of quotes.
-            - RECALL: unchanged; only from the vault material given, such as what came up in an earlier session.
+            - ASK: an open follow-up the moderator can ask now. First choice: a guide question in the gaps list that was skipped or covered thinly, or the current guide question if the last answers stayed shallow. Otherwise fit the probe to the moment. While stimulus is shown, probe the reaction: which word or line caused it, what they took it to mean, what would make it believable. In a group, prefer probes to the room: who sees it differently (有没有人不一样的看法？), laddering (为什么这个对你重要？), the quiet voice, the respondents' own word (大家说的"清爽"是指什么？).
+            - Use a "last time" or "walk me through" probe only for a claim about the respondent's own past behaviour, at most once every 10 minutes. Never ask about past experience of a hypothetical concept.
+            - FLAG only for: (a) two quotes from different minutes that contradict: quote both with their times (mm:ss) and check them against the codebook tensions and hypotheses supplied; (b) moderator bias: a leading or closed question, praise or a premise before a question, a list of options read aloud, a theme the moderator introduced first, a respondent who assumes the moderator is the brand (你们品牌), a competitor named first by the moderator, a hands-up after a hypothetical; (c) an open client question still unanswered when its section ends; (d) a section over its time budget, naming the open question IDs at risk; (e) the other side gone silent, only when the Signals list says so (never judge silence from the window yourself); (f) a speech-recognition error that changes the meaning. Quote the exact original words that prompted a FLAG in "why". Never use FLAG for a probe. Never pair an ASK and a FLAG on the same quote.
+            - RECALL: only from the vault material given, such as what came up in an earlier session, with its source. No source, no RECALL.
             - SAY: avoid. The user is usually observing; offer a probe as ASK instead.
 
-            Never write a leading question. Do not suggest the answer, assume a feeling, or ask "don't you think…". Ask "What happened the last time…?", "Can you walk me through…?", "What do you mean by '…'?".
+            Never write a leading question. Do not suggest the answer, assume a feeling, or ask "don't you think…". Never address one participant as "you" or by name in a group. Never challenge a respondent's honesty or ask for evidence. Never introduce a negative premise the respondent did not raise. Stay on the study objective: no cards during introductions, logistics or warm-up unless they touch it. If no guide is supplied, never mention a guide.
+            Do not name or count people: speaker labels are not reliable, so refer to "a quote", "this answer" or the number of quotes. Use only names that appear word for word in the conversation.
+
+            At most one card per pass, unless a contradiction appears. A card that asks the same question or makes the same point in other words as an already-surfaced card is a repeat: drop it.
 
             Silence beats noise: no card is better than a generic one.
+            """
+
+        case .researchCodebook:
+            """
+            File the meanings in one slice of a live qualitative research session into its codebook. Input is data: a brief, the known codes and the new turns. Return only JSON, no prose and no markdown fences: {"entries":[…],"names":[]}.
+
+            Each entry is {"code":"a known code id such as c4, or null for a new code","name_zh":"the respondents' own Chinese words, or null","name_en":"a short English name or gloss","type":"theme|need|emic_term|ritual|trigger|channel|barrier|brand|stimulus_reaction|tension|hypothesis|vote|client_question","aliases":[],"turnID":"one supplied respondent turn ID","counterTurnID":"for a tension, the turn ID of the other side, else null","qid":"guide qid or null","quote":"the exact original words, max 40 characters","emic":"the respondent's own 2 to 12 character phrase, or null","point":"what this quote shows about the code, one short English clause; never describe or name the speaker","valence":"positive|negative|mixed|neutral","strength":"spontaneous|prompted|agreement","stance":"for or against, for a hypothesis only","choice":"for a vote, the option label","count":"for a vote, the number of hands","asrDoubt":false}
+
+            Rules:
+            - File meanings, not nouns: the motive, value, need, barrier or ritual behind what was said. A thing named with no opinion is not an entry.
+            - Prefer adding an entry to a known code. A new non-brand code needs two or more quotes, or one quote that names a brand, a client stimulus term, or a fear or barrier. At most three new non-brand codes per pass.
+            - Name themes, needs, tensions, barriers and emic terms with the respondents' own Chinese words in name_zh, then an English gloss in name_en. Keep every quote in its original words.
+            - Merge spelling and transcription variants into one brand and list them in aliases. Never merge two brands because they sound alike. Pin the client brand and its products from the brief even when named indirectly.
+            - Return a tension when two quotes disagree or a quote clashes with an earlier stated value or action; cite both turn IDs. Two different statements in a group are divergence, not contradiction, unless a turn refers back (我刚说, 其实).
+            - A moderator's spoken tally of a show of hands, a sticker vote or an explicit pick is a vote: type vote, the choice label and the count. A vote may cite the moderator's turn; nothing else may.
+            - A hypothesis entry says for or against a hypothesis from the known codes or the brief.
+            - A stated need, definition, search habit or ritual is evidence. Return empty entries only for greetings, logistics or silence. Never file setup, audio, scheduling or small talk.
+            - If the words look like a speech-recognition error, keep them, give the likely meaning in point and set asrDoubt.
+            - Each turn has a role hint: moderator, respondent or unknown. A question-shaped line or a restating summary is moderator speech even if labelled respondent; never cite it as evidence. A bare 对 or 嗯 after a moderator summary is not evidence for the summary's wording.
+            - Count quotes, never people. Never make a code for a person, an organisation or a speaker label such as self, remote, room_1 or them_1.
+            - Never infer a board discussed from a board shown.
+            - An optional name hint is {"moderatorTurnID":"id","respondentTurnID":"id","name":"exact spoken name"}, only where a moderator explicitly addresses that respondent. Do not infer names from topic or demographics.
+            """
+
+        case .researchCodebookSynthesis:
+            """
+            Review the live codebook of one qualitative research session. Input is data: a brief, the minute, and each code with its id, names, type, quote counts, guide qids and its earliest and latest quotes with turn IDs. Return only JSON, no prose and no markdown fences:
+            {"merges":[{"from":"c3","into":"c1"}],"tensions":[{"name_zh":"…","name_en":"…","turnID":"…","counterTurnID":"…","point":"…"}],"hypotheses":[{"code":"c5 or null","name_zh":null,"name_en":"…","for":["turn ID"],"against":["turn ID"],"point":"…"}],"clientQuestions":[{"code":"c7","status":"open|partly answered|answered","turnIDs":["turn ID"]}]}
+
+            Rules:
+            - Merge codes that say the same thing in other words. Never merge two brands. At most five merges.
+            - A tension cites two supplied quotes from different minutes that disagree, or a quote that clashes with an earlier stated value or action. Name it with the respondents' own Chinese words and an English gloss. Two different statements in a group are divergence, not contradiction, unless a turn refers back. At most three new tensions.
+            - A hypothesis comes from the brief or emerges from several codes. List the supplied turn IDs that support it and those that count against it.
+            - Mark a client question answered only when quotes answer it, partly answered when some do.
+            - Use only the supplied code ids and turn IDs. Count quotes, never people. Return empty arrays when nothing changed.
             """
 
         case .liveNotes:

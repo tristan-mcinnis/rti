@@ -405,12 +405,30 @@ extension LiveTranscriptPresentation {
         /// A peer-leg correction is safe for reading but its words have no proven speaker alignment.
         public var includesPeerCorrection: Bool
         public var endMs: Int
+
+        /// Part of this utterance, as the shared role rule splits it
+        /// (`TurnRoles.splitAtQuestions`).
+        public func piece(_ text: String, startMs: Int, endMs: Int) -> Self {
+            Self(speakerId: speakerId, text: text, startMs: startMs, translationStatus: translationStatus,
+                 includesPeerCorrection: includesPeerCorrection, endMs: endMs)
+        }
     }
 
     public static func utterances(from entries: [LiveEntry]) -> [Utterance] {
+        var fold = UtteranceFold()
+        for fragment in entries.flatMap({ LiveFragment.pieces($0) }).sorted(by: { ordered($0, before: $1) }) {
+            fold.place(fragment)
+        }
+        return fold.sorted()
+    }
+
+    /// The grouping fold under `utterances(from:)`, shared with
+    /// `UtteranceIndex` so both apply the exact same rule.
+    private struct UtteranceFold {
         var grouping = UtteranceGrouping(pauseMs: utterancePauseMs)
         var result: [Utterance] = []
-        for fragment in entries.flatMap({ LiveFragment.pieces($0) }).sorted(by: { ordered($0, before: $1) }) {
+
+        mutating func place(_ fragment: LiveFragment) {
             let assignment = grouping.place(fragment)
             let corrected: Bool
             if case .providerCorrection = fragment.origin { corrected = true } else { corrected = false }
@@ -425,9 +443,101 @@ extension LiveTranscriptPresentation {
                 result[assignment.index].endMs = max(result[assignment.index].endMs, endMs)
             }
         }
-        return result.enumerated().sorted {
-            $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
-        }.map(\.element)
+
+        func sorted() -> [Utterance] {
+            result.enumerated().sorted {
+                $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
+            }.map(\.element)
+        }
+    }
+
+    /// `utterances(from:)` over a live pipeline, kept up to date instead of
+    /// regrouped from the whole transcript on every pass (2026-11-13 M1
+    /// audit: 35 to 55 ms on main per pass at two hours). Fragments that
+    /// start more than `settleMs` before the newest one are folded once and
+    /// kept. Newer fragments stay pending and are folded into a copy on each
+    /// read. A new entry that starts before the settled part, a reset, a
+    /// notes replay or a gap the pipeline's recent window cannot answer
+    /// rebuilds from all entries, so the result always equals
+    /// `utterances(from:)` over the same filtered entries.
+    public struct UtteranceIndex {
+        /// How far behind the newest fragment the fold is final. The
+        /// system leg lags the mic leg by seconds; a minute leaves room.
+        public static let settleMs = 60_000
+
+        public let includeNotes: Bool
+        /// Full rebuilds so far, for tests.
+        public private(set) var rebuilds = 0
+        private var epoch: UUID?
+        private var revision = 0
+        private var settled = UtteranceFold()
+        private var settledBeforeMs = Int.min
+        private var latestStartMs = Int.min
+        private var pending: [LiveFragment] = []
+        private var cached: [Utterance] = []
+
+        public init(includeNotes: Bool) {
+            self.includeNotes = includeNotes
+        }
+
+        /// Translations never count; notes only with `includeNotes`.
+        public func admits(_ entry: LiveEntry) -> Bool {
+            entry.translationStatus != "translation" && (includeNotes || entry.speakerId != "note")
+        }
+
+        public mutating func utterances(from pipeline: TranscriptPipeline) -> [Utterance] {
+            if epoch == pipeline.epoch, revision == pipeline.revision { return cached }
+            let delta = epoch == pipeline.epoch ? pipeline.additions(since: revision) : nil
+            let fresh = delta.map { $0.filter(admits).flatMap { LiveFragment.pieces($0) } }
+            if let fresh, !fresh.contains(where: { $0.id.startMs < settledBeforeMs }) {
+                pending.append(contentsOf: fresh)
+            } else {
+                rebuild(pipeline.liveEntries)
+            }
+            epoch = pipeline.epoch
+            revision = pipeline.revision
+            settle()
+            var fold = settled
+            for fragment in pending {
+                fold.place(fragment)
+            }
+            // Fragments are always placed in time order (each settle batch
+            // is sorted and starts at or after the last cut), so the fold
+            // is already in `sorted()` order. Skipping that sort keeps a
+            // read from growing with the call (2026-11-13 endurance replay).
+            cached = fold.result
+            return cached
+        }
+
+        /// Where the fold is final: a fragment that starts before it
+        /// rebuilds the index. Int.min before the first settle.
+        public var settledBeforeMsForReaders: Int {
+            settledBeforeMs
+        }
+
+        private mutating func rebuild(_ entries: [LiveEntry]) {
+            rebuilds += 1
+            settled = UtteranceFold()
+            settledBeforeMs = Int.min
+            latestStartMs = Int.min
+            pending = entries.filter(admits).flatMap { LiveFragment.pieces($0) }
+        }
+
+        /// Sort the pending fragments and fold the ones far enough behind
+        /// the newest for good.
+        private mutating func settle() {
+            pending.sort { ordered($0, before: $1) }
+            if let newest = pending.last?.id.startMs { latestStartMs = max(latestStartMs, newest) }
+            guard latestStartMs > Int.min + Self.settleMs else { return }
+            let cut = latestStartMs - Self.settleMs
+            guard cut > settledBeforeMs else { return }
+            let split = pending.firstIndex { $0.id.startMs >= cut } ?? pending.count
+            for fragment in pending[..<split] {
+                settled.place(fragment)
+            }
+            pending.removeFirst(split)
+            settledBeforeMs = cut
+        }
     }
 
     /// Assemble each source's utterances before ordering the two legs. Only a
@@ -550,7 +660,7 @@ extension LiveTranscriptPresentation {
                         let turn = containingTurn(existing)
                         var rows = cachedTurns[turn].rows
                         rows[existing - turnStarts[turn]] = row
-                        cachedTurns[turn] = Turn(rows: rows)
+                        cachedTurns[turn] = cachedTurns[turn].replacing(rows: rows)
                     } else { firstChanged = min(firstChanged, existing) }
                     cachedRows[existing] = row
                 } else {
@@ -575,6 +685,9 @@ extension LiveTranscriptPresentation {
             let old = cachedRows[row]
             if row > 0, LiveTranscriptPresentation.continues(cachedRows[row - 1], with: old) !=
                 LiveTranscriptPresentation.continues(cachedRows[row - 1], with: updated) { return false }
+            // A block may end after a row that ends a sentence.
+            if row + 1 < cachedRows.count,
+               LiveTranscriptPresentation.endsSentence(old) != LiveTranscriptPresentation.endsSentence(updated) { return false }
             return row + 1 == cachedRows.count || LiveTranscriptPresentation.continues(old, with: cachedRows[row + 1]) ==
                 LiveTranscriptPresentation.continues(updated, with: cachedRows[row + 1])
         }
@@ -598,7 +711,7 @@ extension LiveTranscriptPresentation {
             var index = firstTurn < turnStarts.count ? turnStarts[firstTurn] : 0
             turnStarts.removeSubrange(firstTurn...)
             cachedTurns.removeSubrange(firstTurn...)
-            for turn in LiveTranscriptPresentation.turns(cachedRows[index...]) {
+            for turn in LiveTranscriptPresentation.turns(cachedRows[index...], after: index > 0 ? cachedRows[index - 1] : nil) {
                 cachedTurns.append(turn)
                 turnStarts.append(index)
                 index += turn.rows.count
@@ -612,15 +725,17 @@ extension LiveTranscriptPresentation {
             if inserted.isEmpty, rows.patchedRows.allSatisfy({ boundariesUnchanged(at: $0.key, with: $0.value) }) {
                 for (index, row) in rows.patchedRows {
                     let group = containingTurn(index)
-                    var groupRows = (replaced[group] ?? cachedTurns[group]).rows
+                    let base = replaced[group] ?? cachedTurns[group]
+                    var groupRows = base.rows
                     groupRows[index - turnStarts[group]] = row
-                    replaced[group] = Turn(rows: groupRows)
+                    replaced[group] = base.replacing(rows: groupRows)
                 }
                 return LiveTurns(base: cachedTurns, replacements: replaced, insertions: [])
             }
             let firstTurn = firstAffectedTurn(at: patch)
             let firstRow = firstTurn < turnStarts.count ? turnStarts[firstTurn] : 0
-            return LiveTurns(prefix: cachedTurns[..<firstTurn], tail: LiveTranscriptPresentation.turns(rows[firstRow...]))
+            return LiveTurns(prefix: cachedTurns[..<firstTurn],
+                             tail: LiveTranscriptPresentation.turns(rows[firstRow...], after: firstRow > 0 ? rows[firstRow - 1] : nil))
         }
 
         private func isVisible(_ group: Int) -> Bool {

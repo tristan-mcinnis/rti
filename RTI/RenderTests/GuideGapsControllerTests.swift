@@ -18,8 +18,7 @@ final class GuideGapsControllerTests: RenderProofTestCase {
 
         controller.select("S2Q1", at: start.addingTimeInterval(20))
         XCTAssertEqual(controller.furthestIndex, 2)
-        XCTAssertEqual(controller.gaps.map(\.qid), ["S1Q2", "S1Q1"])
-        XCTAssertEqual(controller.gaps.map(\.detail), ["Skipped", "Skipped"])
+        XCTAssertTrue(controller.gaps.isEmpty, "a jump 20 s in means the recording started mid-guide: S1 was not recorded")
 
         controller.select("S1Q1", at: start.addingTimeInterval(30))
         XCTAssertEqual(controller.currentQuestionID, "S1Q1")
@@ -40,5 +39,27 @@ final class GuideGapsControllerTests: RenderProofTestCase {
         controller.endSession("gaps-fixture")
         XCTAssertTrue(controller.gaps.isEmpty)
         XCTAssertEqual(controller.furthestIndex, 0)
+    }
+
+    func testAnEarlySkipInTheFirstSectionAndALateJumpLeaveTheClosedSectionSkipped() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Tests/GuideFixtures/dg-questions.json")
+        let guide = try GuideDocument.parse(Data(contentsOf: url))
+        let controller = GuideSessionController()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.start(sessionID: "gaps-late", guide: guide, guideURL: url, group: nil, roster: [], rosterURL: nil, startedAt: start)
+        controller.select("S1Q2", at: start.addingTimeInterval(60))
+        XCTAssertTrue(controller.gaps.isEmpty, "S1 is still open")
+        controller.select("S2Q1", at: start.addingTimeInterval(400))
+        XCTAssertEqual(controller.gaps.map(\.qid), ["S1Q2", "S1Q1"],
+                       "a first position inside S1 is a normal start: the early skip of S1Q1 stays a gap")
+        XCTAssertTrue(controller.gaps.allSatisfy(\.isActionable))
+        controller.endSession("gaps-late")
+
+        controller.start(sessionID: "gaps-late-2", guide: guide, guideURL: url, group: nil, roster: [], rosterURL: nil, startedAt: start)
+        controller.select("S2Q1", at: start.addingTimeInterval(400))
+        XCTAssertEqual(controller.gaps.map(\.qid), ["S1Q2", "S1Q1"])
+        XCTAssertEqual(controller.gaps.map(\.detail), ["Skipped", "Skipped"])
+        controller.endSession("gaps-late-2")
     }
 }

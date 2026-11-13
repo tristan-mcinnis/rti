@@ -15,8 +15,9 @@ import RTICore
 ///
 /// On by default for client and research calls; a toggle the user set wins
 /// (`AutoAssistSettings.isActive`). Pass timing is one `AutoPassState` value:
-/// debounce, floor (60 s on client and research calls; the debounce and the
-/// scheduler tick both wait for it, "Suggest now" skips it), and the busy
+/// debounce, floor (60 s on client calls, 150 s on research calls and 180 s
+/// in a research group; the debounce and the scheduler tick both wait for
+/// it, "Suggest now" skips it), and the busy
 /// guard that the tick and "Suggest now" share, with the watermark that only
 /// an accepted pass advances. A `LiveRailBoard` paces what the rail shows. When a project is picked
 /// for the meeting, each pass first runs a project-scoped vault search keyed on
@@ -24,6 +25,13 @@ import RTICore
 /// a report concluded — the "they just asked about X, here's our answer" case.
 /// That search uses `AutoVaultQuery` (a few salient terms, none for a short
 /// window) and never leaves the project.
+///
+/// What a pass may show is checked in code (`AutoCardRules.accept`): a
+/// RECALL needs a supplied source, a SAY or ASK in a Mandarin window needs
+/// its Mandarin line, a card close to one shown in the last 15 minutes is a
+/// repeat, and a research pass shows one card unless a contradiction comes
+/// with it. A research pass is skipped while too little new respondent talk
+/// arrived (`ResearchFormat.minimumRespondentCharacters`).
 @Observable @MainActor
 final class AutoAssistController {
     static let shared = AutoAssistController()
@@ -31,29 +39,47 @@ final class AutoAssistController {
     private(set) var cards: [AutoAssistCard] = []
     private(set) var lastError: String?
     /// When the next pass may run. The one timing value; see `AutoPassState`.
-    private(set) var pass = AutoPassState()
+    /// Not observed: every committed final moves its debounce deadline, and
+    /// observing that re-ran the rail's body at the flush rate (2026-11-13 M1
+    /// audit). Views read `isGenerating`, which changes only with the phase.
+    @ObservationIgnored private(set) var pass = AutoPassState() {
+        didSet {
+            if isGenerating != pass.isGenerating { isGenerating = pass.isGenerating }
+        }
+    }
     /// What the live rail shows and when: each card's `new -> shown ->
     /// pinned | dismissed | expired` state, paced by `LiveRailPacer`.
     private(set) var rail = LiveRailBoard()
-
-    var isGenerating: Bool {
-        pass.isGenerating
-    }
+    /// A pass is running. Stored, and written only when it changes.
+    private(set) var isGenerating = false
+    /// When the user last spoke. Kept out of the observed `rail` so a mic
+    /// final does not redraw the rail; copied in before each `advance`.
+    @ObservationIgnored private var selfSpokeAt: Date?
 
     private let request: LLMRequest
     private let callTypes: CallTypeStore
     private let guide: GuideSessionController
+    private let codebook: ResearchCodebookController
     private let defaults: UserDefaults
     private let now: @MainActor () -> Date
     private var sessionId: String?
-    /// The one timer `pass` asks for (debounce or floor).
-    private var passTimer: Timer?
+    /// The one timer `pass` asks for (debounce or floor), and the time it
+    /// was armed for, on this controller's clock.
+    @ObservationIgnored private var passTimer: Timer?
+    @ObservationIgnored private var passTimerAt: Date?
     /// The one timer `rail` asks for (pacing, hold, fade).
     private var railTimer: Timer?
     /// A pass started by the debounce or floor timer. Stop cancels it.
     private var passTask: Task<Void, Never>?
     /// Set by `stop`: the rail admits nothing more until the next session.
     private var railStopped = false
+    /// When Auto searches the project, the session's read files, and the
+    /// last search's scope and result (reused between searches).
+    @ObservationIgnored private var vaultCadence = AutoVaultCadence()
+    @ObservationIgnored private var vaultCache = VaultSearch.DocumentCache()
+    @ObservationIgnored private var lastVault: (scope: String, retrieval: VaultSearch.Retrieval)?
+    /// The silence (by the system leg's last speech) a thin pass already ran for.
+    @ObservationIgnored private var silencePassFor: Int?
 
     // Prompt defaults live in the registry (`PromptID.autoAssistCards` plus the
     // call-type framing), resolved through `PromptStore` so they're editable in
@@ -72,12 +98,14 @@ final class AutoAssistController {
         request: LLMRequest = LLMRequest(priority: .background),
         callTypes: CallTypeStore? = nil,
         guide: GuideSessionController? = nil,
+        codebook: ResearchCodebookController? = nil,
         defaults: UserDefaults = .standard,
         now: @escaping @MainActor () -> Date = { Date() }
     ) {
         self.request = request
         self.callTypes = callTypes ?? .shared
         self.guide = guide ?? .shared
+        self.codebook = codebook ?? .shared
         self.defaults = defaults
         self.now = now
     }
@@ -96,8 +124,15 @@ final class AutoAssistController {
 
     static let offCallTypeMessage = "Auto runs on client and research calls only."
 
+    /// A group, an interview or not known, from the guide's roster and
+    /// title. It sets the research floor and the thin-input bar.
+    var researchFormat: ResearchFormat {
+        guard guide.isActive else { return .unknown }
+        return ResearchFormat.infer(rosterCount: guide.roster.count, guideTitle: guide.guide?.title)
+    }
+
     private var floor: TimeInterval {
-        AutoPassState.floor(for: callTypes.active) ?? AutoPassState.floor(for: .client) ?? 60
+        AutoPassState.floor(for: callTypes.active, format: researchFormat) ?? AutoPassState.floor(for: .client) ?? 60
     }
 
     /// Bind to a session and drop any prior cards.
@@ -114,11 +149,16 @@ final class AutoAssistController {
     private func clearState() {
         passTask?.cancel()
         passTask = nil
+        vaultCadence = AutoVaultCadence()
+        vaultCache = VaultSearch.DocumentCache()
+        lastVault = nil
+        silencePassFor = nil
         apply(pass.reduce(.reset, now: now(), floor: floor))
         lastError = nil
         cards = []
         rail.reset()
         railStopped = false
+        selfSpokeAt = nil
         railTimer?.invalidate()
         railTimer = nil
     }
@@ -172,7 +212,7 @@ final class AutoAssistController {
     func noteActivity(selfSpoke: Bool = false) {
         guard SessionCoordinator.shared.isRunning, isActiveForCall else { return }
         if selfSpoke {
-            rail.noteSelfSpeech(at: now())
+            selfSpokeAt = now()
         }
         apply(pass.reduce(.activity, now: now(), floor: floor))
     }
@@ -198,7 +238,15 @@ final class AutoAssistController {
             passTimer?.invalidate()
             passTimer = nil
         case let .arm(at):
+            // A timer that fires at or before `at` may stay: `pass` re-arms
+            // when it fires early. So a burst of finals re-arms about once
+            // per quiet window, not once per flush.
+            if let passTimer, passTimer.isValid, let armed = passTimerAt, armed <= at,
+               at.timeIntervalSince(armed) < AutoPassState.quietWindow {
+                return
+            }
             passTimer?.invalidate()
+            passTimerAt = at
             passTimer = Timer.scheduledTimer(withTimeInterval: max(0, at.timeIntervalSince(now())), repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated { self?.timerFired() }
             }
@@ -234,8 +282,27 @@ final class AutoAssistController {
     private func run(sessionId: String, generation passGeneration: Int, explicit: Bool = false) async -> Int? {
         lastError = nil
         var endMs: Int?
+        var skipped = false
         defer {
-            apply(pass.reduce(.passFinished(generation: passGeneration, endMs: endMs), now: now(), floor: floor))
+            let event: AutoPassState.Event = skipped
+                ? .passSkipped(generation: passGeneration)
+                : .passFinished(generation: passGeneration, endMs: endMs)
+            apply(pass.reduce(event, now: now(), floor: floor))
+        }
+        // A research pass waits for enough new respondent talk. It sends
+        // nothing, keeps the watermark and gives back its floor, so the
+        // next settled final (7 s debounce) or tick checks the window again.
+        // A silent system leg is the exception: the silence signal is the
+        // news, and with no respondent talk the thin rule would hold it back
+        // until the room came back (the 2026-11-13 replay). One pass per
+        // silence.
+        if !explicit, callTypes.active == .research, !hasEnoughRespondentTalk(since: pass.watermarkMs) {
+            let silentSince = silentThemSince()
+            guard let silentSince, silentSince != silencePassFor else {
+                skipped = true
+                return nil
+            }
+            silencePassFor = silentSince
         }
         guard let prepared = await preparePass(sessionId: sessionId, windowStartMs: pass.watermarkMs,
                                                generation: passGeneration)
@@ -247,16 +314,19 @@ final class AutoAssistController {
         guard pass.owns(generation: passGeneration) else { return nil }
 
         let items = JSONExtractor.decodeArrayLenient(response, key: "cards", as: AutoCardItem.self)
-        // Drop only repeats of cards the user saw or that still wait on the
-        // rail. A card that faded unseen may come back.
+        // Drop exact repeats of cards the user saw or that still wait on the
+        // rail. A card that faded unseen may come back. Then the code rules:
+        // source, Mandarin line, near repeats, one card per research pass.
         rail.fade(now: now())
         var seen = Set<String>()
-        let fresh: [AutoAssistCard] = items.compactMap { item in
+        let decoded: [AutoAssistCard] = items.compactMap { item in
             guard let card = AutoAssistCard.make(from: item, citations: prepared.citations),
                   !rail.repeatsKnownItem(card.text),
                   seen.insert(LiveRailPacer.normalized(card.text)).inserted else { return nil }
             return card
         }
+        let fresh = AutoCardRules.accept(decoded, callType: callTypes.active, mandarin: prepared.mandarin,
+                                         recent: recentCards, guideActive: guide.isActive)
         cards.append(contentsOf: fresh)
         if cards.count > 300 { cards.removeFirst(cards.count - 300) }
         // One arrival time per pass, so the pacer keeps the model's order
@@ -278,11 +348,39 @@ final class AutoAssistController {
         return rail.surfaced.compactMap { byID[$0.id] }
     }
 
+    /// Cards shown in the last 15 minutes or still waiting: a new card close
+    /// to one of these is a repeat (`AutoCardRules.isRepeat`).
+    private var recentCards: [AutoAssistCard] {
+        let since = now().addingTimeInterval(-AutoCardRules.repeatWindow)
+        let ids = Set(rail.items.filter { item in
+            item.state == .new || (item.shownAt.map { $0 >= since } ?? false)
+        }.map(\.id))
+        return cards.filter { ids.contains($0.id) }
+    }
+
+    /// When the system leg last spoke, while it has been silent long enough
+    /// for the silence signal (`AutoResearchSignals.silenceMs`); else nil.
+    private func silentThemSince() -> Int? {
+        let last = TranscriptContext.lastSpeech()
+        return AutoResearchSignals.silence(lastThemMs: last.them, latestMs: last.any) == nil ? nil : last.them
+    }
+
+    /// Enough new respondent talk since `watermarkMs` for a research pass.
+    func hasEnoughRespondentTalk(since watermarkMs: Int) -> Bool {
+        let characters = TranscriptContext.respondentCharacters(sinceMs: watermarkMs == 0 ? nil : watermarkMs,
+                                                                roles: guide.roleContext)
+        return characters >= researchFormat.minimumRespondentCharacters
+    }
+
     /// Let the pacer admit, fade and cap, then arm the one rail timer.
     private func advanceRail(explicit: Bool = false) {
         railTimer?.invalidate()
         railTimer = nil
-        guard !railStopped, let next = rail.advance(now: now(), callType: callTypes.active, explicit: explicit) else { return }
+        guard !railStopped else { return }
+        if let selfSpokeAt, rail.selfSpokeAt != selfSpokeAt {
+            rail.noteSelfSpeech(at: selfSpokeAt)
+        }
+        guard let next = rail.advance(now: now(), callType: callTypes.active, explicit: explicit) else { return }
         railTimer = Timer.scheduledTimer(withTimeInterval: max(0.5, next.timeIntervalSince(now())), repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.advanceRail() }
         }
@@ -294,6 +392,8 @@ final class AutoAssistController {
         let prompt: String
         let endMs: Int
         let citations: [VaultSearch.Citation]
+        /// More than 30% of the new window is CJK.
+        var mandarin = false
     }
 
     /// Gathers one pass's inputs from live state and builds its prompt. nil
@@ -309,23 +409,29 @@ final class AutoAssistController {
             return nil
         }
         let sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
+        // Research lines carry the shared role hint (`TurnRoles`), split at
+        // question marks, with mic-leg echoes of an in-room group removed.
+        let roles: TurnRoles.Context? = callType == .research ? guide.roleContext : nil
         // The minutes already covered, re-read as context only. A lower
         // bound at or before the start means "from the start": the filter is
         // exclusive, so 0 would drop a line spoken at 0 ms.
-        let recentContext: String? = sinceMs.map { watermark in
-            let lower = watermark - AutoAssistPrompt.contextWindowMs
-            return TranscriptContext.text(forSessionId: sessionId, sinceMs: lower > 0 ? lower : nil, untilMs: watermark,
-                                          hoistNotes: false)
-        }.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
-        // The evidence rule goes once, with the first transcript section.
-        let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs, hoistNotes: false,
-                                            evidenceRule: recentContext == nil)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let (recentContext, window, endMs) = PassSignpost.interval("auto pass prep") { () -> (String?, String, Int) in
+            let recentContext: String? = sinceMs.map { watermark in
+                let lower = watermark - AutoAssistPrompt.contextWindowMs
+                return TranscriptContext.text(forSessionId: sessionId, sinceMs: lower > 0 ? lower : nil, untilMs: watermark,
+                                              hoistNotes: false, roles: roles)
+            }.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            // The evidence rule goes once, with the first transcript section.
+            let window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs, hoistNotes: false,
+                                                evidenceRule: recentContext == nil, roles: roles)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Compute the watermark but DO NOT apply it until the LLM call succeeds.
+            // If the request fails or returns empty, we want to retry this window
+            // rather than permanently skip it.
+            let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? windowStartMs
+            return (recentContext, window, endMs)
+        }
         guard !window.isEmpty else { return nil }
-        // Compute the watermark but DO NOT apply it until the LLM call succeeds.
-        // If the request fails or returns empty, we want to retry this window
-        // rather than permanently skip it.
-        let endMs = TranscriptContext.watermarkEndMs(forSessionId: sessionId, sinceMs: sinceMs) ?? windowStartMs
 
         // Project-scoped retrieval: pull what the project's vault knows about
         // what's being discussed right now, so a RECALL card can be real. Only
@@ -336,35 +442,102 @@ final class AutoAssistController {
         let meeting = MeetingContextStore.shared
         var vaultMaterial: String?
         var citations: [VaultSearch.Citation] = []
+        // The search runs at `.utility` on two workers for at most 300 ms
+        // (`VaultSearch.Budget.auto`), reads each file once per session
+        // (`vaultCache`), and runs at most once every three passes
+        // (`AutoVaultCadence`); the passes between reuse its hit.
         if let scope = meeting.workstreamScopePath,
            let query = AutoVaultQuery.query(from: TranscriptContext.spokenText(sinceMs: sinceMs)) {
-            let found = await VaultSearch.retrieve(query: query, scopeRelativePath: scope, citeable: true,
-                                                   broaden: false)
-            guard passGeneration == generation else { return nil }
+            if vaultCadence.shouldSearch() || lastVault?.scope != scope {
+                let found = await VaultSearch.retrieve(query: query, scopeRelativePath: scope, citeable: true,
+                                                       broaden: false, budget: .auto, cache: vaultCache)
+                guard passGeneration == generation else { return nil }
+                lastVault = (scope, found)
+            }
             // Only inject a genuine hit, not the "nothing matched" sentinel.
-            if !found.isEmpty {
+            if let found = lastVault?.retrieval, !found.isEmpty {
                 vaultMaterial = found.formatted
                 citations = found.citations
             }
         }
 
-        let currentQuestion = guide.currentQuestionID.flatMap { qid in
-            guide.guide?.questions.first { $0.qid == qid }
-        }.map { [$0.en, $0.zh].filter { !$0.isEmpty }.joined(separator: " / ") }
+        // A guide position goes in only while fresh: the user's pick, a
+        // marker link, or a guide pass under four minutes old. Gaps go in
+        // only while a guide pass succeeded in the last four minutes.
+        let guideActive = callType == .research && guide.isActive
+        let question = guideActive ? guide.autoQuestion(at: now()) : nil
+        let currentQuestion = question.map { [$0.qid, $0.en, $0.zh].filter { !$0.isEmpty }.joined(separator: " / ") }
+        let surfaced = surfacedCards
+        let older = surfaced.dropLast(AutoAssistPrompt.priorLimit).suffix(30)
+        let mandarin = AutoCardLanguage.isMandarin(TranscriptContext.spokenText(sinceMs: sinceMs))
         let prompts = PromptStore.shared
         guard let prompt = AutoAssistPrompt.build(
             callType: callType,
             brief: meeting.briefContext,
             projectContext: meeting.combined,
-            gaps: guide.isActive ? guide.gaps : [],
-            currentQuestion: guide.isActive ? currentQuestion : nil,
-            prior: surfacedCards.suffix(30).map { "- [\($0.kind.rawValue)] \($0.text)" },
+            gaps: guideActive ? guide.autoGaps(at: now()) : [],
+            currentQuestion: currentQuestion,
+            guidePositionUncertain: guideActive && currentQuestion == nil,
+            sectionBudgets: guideActive ? guide.guide.map(AutoResearchSignals.budgets) ?? [] : [],
+            prior: surfaced.suffix(AutoAssistPrompt.priorLimit).map { "- [\($0.kind.rawValue)] \($0.text)" },
+            priorTopics: older.isEmpty ? nil : older.map { Self.topic($0.text) }.joined(separator: "; "),
+            codes: callType == .research ? codebookLines() : [],
+            signals: callType == .research ? researchSignals(question: guideActive ? question : nil) : [],
             userNotes: TranscriptContext.userNotes(),
             vault: vaultMaterial,
             recentContext: recentContext,
+            mandarin: mandarin,
             newWindow: window,
             resolve: { prompts.text($0) }
         ) else { return nil }
-        return Pass(prompt: prompt, endMs: endMs, citations: citations)
+        return Pass(prompt: prompt, endMs: endMs, citations: citations, mandarin: mandarin)
+    }
+
+    /// The first six words of an older card, for the one topic line.
+    static func topic(_ text: String) -> String {
+        let words = text.split(whereSeparator: \.isWhitespace)
+        guard words.count > 1 else { return String(text.prefix(16)) }
+        return words.prefix(6).joined(separator: " ")
+    }
+
+    /// The codebook's top 10 tensions and hypotheses for this call, with
+    /// quote counts. Only while the codebook follows this recording.
+    private func codebookLines() -> [String] {
+        guard let place = codebook.location, place.session.id == SessionCoordinator.shared.currentSessionId else { return [] }
+        let topics = codebook.book.topicMap(sessionID: place.session.id, limit: 60).sections
+            .filter { $0.group == .tensions || $0.group == .hypotheses }
+            .flatMap(\.topics)
+            .sorted { ($0.type == .tension ? $0.mentions : $0.support + $0.against) > ($1.type == .tension ? $1.mentions : $1.support + $1.against) }
+            .prefix(10)
+        return topics.map { topic in
+            let name = [topic.name, topic.gloss].compactMap(\.self).joined(separator: " / ")
+            if topic.type == .tension {
+                let sides = topic.sides.map { "\(ResearchTopic.Side.clock($0.offsetMs)) 「\($0.words)」" }.joined(separator: " vs ")
+                return "- Tension: \(name) (\(topic.mentions) quotes)" + (sides.isEmpty ? "" : ": \(sides)")
+            }
+            return "- Hypothesis: \(name): \(topic.support) for, \(topic.against) against"
+        }
+    }
+
+    /// Facts the model should not have to work out: the current section ran
+    /// past its budget, or the other side has been silent for 3 minutes.
+    private func researchSignals(question: GuideDocument.Question?) -> [String] {
+        var signals: [String] = []
+        if let question, let document = guide.guide,
+           let section = document.sections.first(where: { $0.questions.contains { $0.qid == question.qid } })
+        {
+            let answered = Set(guide.extraction?.cells.filter { $0.coverage == "Answered" }.map(\.qid) ?? [])
+            let open = section.questions.filter { !answered.contains($0.qid) && !GuideMatcher.isInstruction($0) }.map(\.qid)
+            if let overrun = AutoResearchSignals.overrun(section: section, elapsed: guide.elapsed(in: section.id, at: now()),
+                                                         openQIDs: open)
+            {
+                signals.append(overrun)
+            }
+        }
+        let last = TranscriptContext.lastSpeech()
+        if let silence = AutoResearchSignals.silence(lastThemMs: last.them, latestMs: last.any) {
+            signals.append(silence)
+        }
+        return signals
     }
 }

@@ -42,6 +42,20 @@ final class LLMControllerRetrievalTests: XCTestCase {
         }
     }
 
+    /// Three live asks that missed the vault in a judged client readout.
+    func testTranscriptsReportsPlacesAndChineseAsk() {
+        for question in ["but what about the fixture transcripts", "summarize the Lisbon report",
+                         "what do they say in chengdu about this", "what did they say about price",
+                         "How did it land in Osaka?", "他们怎么说包装的？", "上次访谈的结论是什么",
+                         "what do people mean by \"不会出错\""] {
+            XCTAssertTrue(RetrievalHeuristics.asksForPastWork(question), question)
+        }
+        for question in ["Say this in Mandarin please", "Give me scoping questions", "What should I ask next?",
+                         "Draft a reply in English"] {
+            XCTAssertFalse(RetrievalHeuristics.asksForPastWork(question), question)
+        }
+    }
+
     func testLiveCallWithholdsVaultToolsUnlessAsked() {
         let open = ChatToolPolicy(allowsExternalRetrieval: true)
 

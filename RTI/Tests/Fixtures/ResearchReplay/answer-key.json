@@ -1,0 +1,518 @@
+{
+ "about": "What a correct live run of the invented Lumo FGD shows. Line keys (Lnnn) are script.tsv rows. Layer A (ResearchReplayAcceptanceTests) checks the code rules against the recorded replies in responses/. Layer B (ResearchReplayLiveEvalTests, RTI_EVAL_DEEPSEEK=1) scores live model output against the same key. Counts are quotes, never people.",
+ "minutes": 60,
+ "warmupEndMs": 120000,
+ "events": [
+  {
+   "id": "late-start",
+   "minute": 0,
+   "lines": [
+    "L001"
+   ],
+   "what": "Recording starts mid-guide after a break: S1 was not recorded."
+  },
+  {
+   "id": "verbatim-guide-read",
+   "minute": 2,
+   "lines": [
+    "L012"
+   ],
+   "what": "The moderator reads S2Q1 almost word for word on the system leg."
+  },
+  {
+   "id": "restating-summary",
+   "minute": 10.5,
+   "lines": [
+    "L045",
+    "L046"
+   ],
+   "what": "A restating summary ending in 对吧？, then 对对对."
+  },
+  {
+   "id": "backroom-english",
+   "minute": 20,
+   "lines": [
+    "L077",
+    "L079",
+    "L081",
+    "L083",
+    "L085"
+   ],
+   "what": "Three minutes of English backroom talk on the mic leg."
+  },
+  {
+   "id": "section-overrun",
+   "minute": 17,
+   "lines": [
+    "L094"
+   ],
+   "what": "S2 runs 25 minutes against its 15 minute budget."
+  },
+  {
+   "id": "sound-alike-brands",
+   "minute": 27,
+   "lines": [
+    "L096",
+    "L097",
+    "L098",
+    "L099"
+   ],
+   "what": "Two competitor brands whose names sound alike, 清悦 and 晴越, each with its own opinion."
+  },
+  {
+   "id": "client-nickname",
+   "minute": 28,
+   "lines": [
+    "L100",
+    "L101",
+    "L102",
+    "L103"
+   ],
+   "what": "The client brand named only by its product nickname 小蓝盖."
+  },
+  {
+   "id": "asr-variants",
+   "minute": 29,
+   "lines": [
+    "L104",
+    "L105",
+    "L107"
+   ],
+   "what": "Three spellings of the client brand: 路慕, 鹿木 and 露慕."
+  },
+  {
+   "id": "asr-meaning-error",
+   "minute": 31,
+   "lines": [
+    "L110"
+   ],
+   "what": "全退 is a recognition error for 劝退 (put off): it changes the meaning."
+  },
+  {
+   "id": "contradiction",
+   "minute": 34,
+   "lines": [
+    "L037",
+    "L119"
+   ],
+   "what": "A theme stated at minute 8 (sweet is a must) is contradicted at minute 34."
+  },
+  {
+   "id": "silent-system-leg",
+   "minute": 37.4,
+   "lines": [
+    "L128",
+    "L129",
+    "L130",
+    "L131"
+   ],
+   "what": "No system-leg speech from 37:23 to 42:05."
+  },
+  {
+   "id": "hand-tally",
+   "minute": 44.7,
+   "lines": [
+    "L139",
+    "L140"
+   ],
+   "what": "A spoken show of hands: five for B, one for A."
+  },
+  {
+   "id": "leading-hypothetical",
+   "minute": 47,
+   "lines": [
+    "L145",
+    "L146",
+    "L147",
+    "L148"
+   ],
+   "what": "A leading closed hypothetical, then one strong dissent."
+  },
+  {
+   "id": "brand-assumed",
+   "minute": 50,
+   "lines": [
+    "L151",
+    "L153"
+   ],
+   "what": "A respondent says 你们品牌 to the moderator."
+  }
+ ],
+ "roles": {
+  "moderator": [
+   "L012",
+   "L017",
+   "L045",
+   "L049",
+   "L055",
+   "L058",
+   "L095",
+   "L106",
+   "L124",
+   "L133",
+   "L139",
+   "L145",
+   "L154"
+  ],
+  "neverEvidence": [
+   "L012",
+   "L045",
+   "L046",
+   "L124"
+  ]
+ },
+ "guide": {
+  "recordedFromSection": "S2",
+  "notRecorded": [
+   "S1Q1"
+  ],
+  "instructions": [
+   "S1Q2"
+  ],
+  "skippedAfterClose": [
+   {
+    "qid": "S3Q4",
+    "section": "S3"
+   }
+  ],
+  "checkpoints": [
+   {
+    "minute": 3,
+    "qid": "S2Q1"
+   },
+   {
+    "minute": 10,
+    "qid": "S2Q1"
+   },
+   {
+    "minute": 12,
+    "qid": "S2Q2"
+   },
+   {
+    "minute": 15,
+    "qid": "S2Q3"
+   },
+   {
+    "minute": 28,
+    "qid": "S3Q1"
+   },
+   {
+    "minute": 31,
+    "qid": "S3Q2"
+   },
+   {
+    "minute": 37,
+    "qid": "S3Q3"
+   },
+   {
+    "minute": 44,
+    "qid": "S4Q1"
+   },
+   {
+    "minute": 48,
+    "qid": "S4Q2"
+   },
+   {
+    "minute": 52,
+    "qid": "S4Q3"
+   }
+  ],
+  "minCheckpointsRight": 8,
+  "tally": {
+   "qid": "S4Q1",
+   "votes": {
+    "B": 5,
+    "A": 1
+   },
+   "text": "1 chose A; 5 chose B (show of hands)"
+  },
+  "decodeShapes": [
+   "a suggestion object with ids",
+   "a suggestion object with a qid only",
+   "a cell with no votes",
+   "votes that are not a list"
+  ],
+  "overrun": {
+   "section": "S2",
+   "budgetMinutes": 15,
+   "ranMinutes": 25
+  }
+ },
+ "codebook": {
+  "required": [
+   {
+    "id": "client-brand",
+    "types": [
+     "brand"
+    ],
+    "clientBrand": true,
+    "aliases": [
+     "小蓝盖",
+     "路慕",
+     "鹿木"
+    ],
+    "lines": [
+     "L100",
+     "L101",
+     "L104",
+     "L105",
+     "L107",
+     "L109",
+     "L111",
+     "L113",
+     "L114"
+    ],
+    "minLines": 5
+   },
+   {
+    "id": "qingyue",
+    "types": [
+     "brand"
+    ],
+    "name": "清悦",
+    "lines": [
+     "L096",
+     "L111",
+     "L121"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "qingyue-lite",
+    "types": [
+     "brand"
+    ],
+    "name": "晴越",
+    "lines": [
+     "L097",
+     "L113"
+    ],
+    "minLines": 1
+   },
+   {
+    "id": "convenience",
+    "types": [
+     "theme",
+     "need"
+    ],
+    "lines": [
+     "L021",
+     "L022",
+     "L024",
+     "L025",
+     "L029"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "hard-caps",
+    "types": [
+     "barrier",
+     "theme"
+    ],
+    "lines": [
+     "L030",
+     "L031",
+     "L032",
+     "L164"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "sweetness",
+    "types": [
+     "need",
+     "theme"
+    ],
+    "lines": [
+     "L037",
+     "L039",
+     "L041"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "sweet-vs-sugar",
+    "types": [
+     "tension"
+    ],
+    "lines": [
+     "L037",
+     "L119"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "route-vote",
+    "types": [
+     "vote"
+    ],
+    "votes": {
+     "B": 5,
+     "A": 1
+    }
+   },
+   {
+    "id": "short-list-hypothesis",
+    "types": [
+     "hypothesis"
+    ],
+    "lines": [
+     "L056",
+     "L057",
+     "L155",
+     "L159"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "big-bottle",
+    "types": [
+     "barrier",
+     "theme"
+    ],
+    "lines": [
+     "L148",
+     "L149",
+     "L150"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "lactose",
+    "types": [
+     "trigger",
+     "need",
+     "theme"
+    ],
+    "lines": [
+     "L066",
+     "L067"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "reviews",
+    "types": [
+     "channel",
+     "theme"
+    ],
+    "lines": [
+     "L070",
+     "L072"
+    ],
+    "minLines": 2
+   },
+   {
+    "id": "bloating",
+    "types": [
+     "barrier",
+     "theme"
+    ],
+    "lines": [
+     "L059",
+     "L060"
+    ],
+    "minLines": 1
+   }
+  ],
+  "minRecall": 0.8,
+  "forbidden": {
+   "types": [
+    "person",
+    "org"
+   ],
+   "names": [
+    "小禾"
+   ],
+   "speakerLabels": true,
+   "apart": [
+    [
+     "清悦",
+     "晴越"
+    ]
+   ],
+   "evidenceLines": [
+    "L012",
+    "L045",
+    "L046",
+    "L124"
+   ]
+  }
+ },
+ "auto": {
+  "maxCardsPerResearchPass": 1,
+  "repeatWindowMinutes": 15,
+  "repeatJaccard": 0.5,
+  "maxShownPerHour": 25,
+  "maxTemplateShare": 0.2,
+  "templatePatterns": [
+   "last time",
+   "walk me through",
+   "上次",
+   "最近一次"
+  ],
+  "guideWords": [
+   "guide",
+   "指南",
+   "提纲",
+   "访纲"
+  ],
+  "forbiddenNames": [
+   "小禾"
+  ],
+  "required": [
+   {
+    "id": "contradiction",
+    "kind": "FLAG",
+    "fromMinute": 34,
+    "byMinute": 37,
+    "contradiction": true
+   },
+   {
+    "id": "silent-system-leg",
+    "kind": "FLAG",
+    "fromMinute": 38,
+    "byMinute": 42.5,
+    "anyOf": [
+     "audio",
+     "silent",
+     "No Them",
+     "room"
+    ]
+   },
+   {
+    "id": "leading-hypothetical",
+    "kind": "FLAG",
+    "fromMinute": 47,
+    "byMinute": 51,
+    "anyOf": [
+     "leading",
+     "closed",
+     "prompted"
+    ]
+   },
+   {
+    "id": "brand-assumed",
+    "kind": "FLAG",
+    "fromMinute": 50,
+    "byMinute": 54,
+    "anyOf": [
+     "你们品牌",
+     "brand",
+     "neutral"
+    ]
+   }
+  ]
+ },
+ "tokenBudget": {
+  "baselineInputCharacters": 541165,
+  "baselineCalls": {
+   "auto": 58,
+   "codebook": 30,
+   "guide": 30
+  },
+  "baselineSource": "Local replay harness at fd042d6b (rti_replay.py --dry-run --passes codebook,guide,auto) on this transcript.jsonl, guide.json and codebook-seed.md, run 2026-11-13.",
+  "ceilingShare": 0.6
+ }
+}

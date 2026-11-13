@@ -241,7 +241,15 @@ private struct RealTimeSection: View {
     @AppStorage(NotesSettings.intervalKey) private var notesInterval: Double = NotesSettings.defaultInterval
     // Unset means "on for client and research calls"; a stored value wins.
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
+    @AppStorage(AutoAssistSettings.pinyinKey) private var pinyinStored: Bool?
     private var callTypes = CallTypeStore.shared
+
+    private var showsPinyin: Binding<Bool> {
+        Binding(
+            get: { AutoAssistSettings.showsPinyin(stored: pinyinStored) },
+            set: { pinyinStored = $0 }
+        )
+    }
 
     private var autoAssistEnabled: Binding<Bool> {
         Binding(
@@ -272,10 +280,16 @@ private struct RealTimeSection: View {
                 isOn: autoAssistEnabled
             )
             .disabled(!AutoAssistSettings.runs(on: callTypes.active))
+            SettingsToggleRow(
+                title: "Show pinyin under Mandarin cards",
+                detail: "Turn off if you read Mandarin without it",
+                isOn: showsPinyin
+            )
             CardNote {
                 Button("Reset to Defaults") {
                     notesEnabled = NotesSettings.defaultEnabled
                     autoAssistStored = nil
+                    pinyinStored = nil
                     notesInterval = NotesSettings.defaultInterval
                 }
             }
