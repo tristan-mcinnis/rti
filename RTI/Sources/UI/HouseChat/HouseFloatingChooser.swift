@@ -235,14 +235,14 @@ struct AddContextRow: Identifiable, Equatable {
         case vaultFile
         case readScreen
         case readWindow
+        /// The meeting's project, which bounds the vault search. It is set
+        /// on Prepare (its one home); the row opens Prepare.
         case searchScope
         /// How far the next question reaches: only what is attached, or the
         /// vault and the web as well. This replaced the composer's source bar,
         /// which drew the same choice as a pair of chips above the field.
         case searchMode
         case noteMode
-        /// On the scope page: the whole vault, or one project or client.
-        case scope(id: String?)
     }
 
     let kind: Kind
@@ -255,10 +255,7 @@ struct AddContextRow: Identifiable, Equatable {
     var isCurrent = false
 
     var id: String {
-        switch kind {
-        case .scope(let id): "scope:" + (id ?? "vault")
-        default: title
-        }
+        title
     }
 }
 
@@ -267,22 +264,20 @@ struct AddContextRow: Identifiable, Equatable {
 /// the plus circle. The pane
 /// carries its own search, as every house chooser does: it takes the keyboard
 /// when it opens, so typing narrows the rows instead of reaching the composer
-/// behind it. The scope row opens a second page of projects and clients;
-/// `esc` goes back.
+/// behind it. The scope row names the meeting's project and opens Prepare,
+/// where it is set.
 struct AddContextPane: View {
     let rows: [AddContextRow]
     let selectedIndex: Int
     /// The pane's own search, kept by the surface so it survives a redraw and
-    /// can be cleared when the page changes.
+    /// can be cleared when the pane opens.
     @Binding var query: String
-    /// Bumped when the pane opens or changes page, to put the keys in the field.
+    /// Bumped when the pane opens, to put the keys in the field.
     var focusToken: Int
-    /// "Search Scope" on the scope page.
     var title = "Add Context"
-    var isSubpage = false
     /// What the next answer can use, in one quiet line at the foot.
     var footnote: String? = nil
-    /// "Search attachments" or "Search scopes".
+    /// "Search context".
     var searchPlaceholder = "Search"
     /// Rows the pane shows before it scrolls, from the room above the composer.
     var maxRows = 6
@@ -296,7 +291,7 @@ struct AddContextPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
             ChooserHeader(title: title, hints: [
-                ("Move", ["↑", "↓"]), ("Add", ["↩"]), (isSubpage ? "Back" : "Close", ["esc"]),
+                ("Move", ["↑", "↓"]), ("Add", ["↩"]), ("Close", ["esc"]),
             ])
             HStack(spacing: House.Spacing.sm) {
                 Image(systemName: "magnifyingglass")

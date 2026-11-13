@@ -718,12 +718,6 @@ extension LLMController {
         chatSelection.model = nil
     }
 
-    /// This chat's reasoning choice. The app-level Smart mode default follows
-    /// so the two controls can never disagree.
-    func setChatReasoning(_ mode: ChatReasoningMode) {
-        smartMode = mode == .thinking
-    }
-
     /// The visible route label: provider, model, reasoning. The composer and
     /// the thread draw this so the destination is named before Send and on
     /// each answer.

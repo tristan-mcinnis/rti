@@ -5,8 +5,8 @@ import XCTest
 import HouseDesign
 
 /// Package C proofs: the overlay shell. The header in every session phase,
-/// the tabs row, the tab strips and empty hints, the Prepare tab, the
-/// header's in-window chooser, and Keep on Top, at the standard 700 and the
+/// the tabs row, the tab strips and empty hints, the Prepare tab and Keep
+/// on Top, at the standard 700 and the
 /// minimum 600 widths. PNG prefix `shell-`.
 ///
 /// Content comes from `RenderFixtures` and the fixture vault; the Prepare
@@ -29,7 +29,6 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         for (key, value) in savedDefaults {
             if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
         }
-        OverlayShellModel.shared.chooser = nil
         OverlayWindowChrome.shared.isKeptOnTop = false
         MeetingContextStore.shared.resetAfterSession()
         LLMController.shared.seedForRenderProof(entries: [])
@@ -57,9 +56,9 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         )
     }
 
-    /// A calendar event names the meeting, so before the recording the
-    /// project chip carries the project's name too; while capture runs (and
-    /// at 600) it is the glyph alone.
+    /// A calendar event names the meeting and the project follows the state
+    /// word ("Ready · Northwind app"); the project is set on Prepare, which
+    /// the title opens, so the header carries no project chip.
     func testHeaderWithCalendarTitleAndProject() throws {
         seedRecording()
         pickProjectAndEvent()
@@ -68,9 +67,9 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
                 name: "shell-header-calendar\(suffix)",
                 size: CGSize(width: width, height: 2 * (House.Control.composer + House.hairline)),
                 view: VStack(spacing: 0) {
-                    OverlayShellHeader(status: OverlayShellStatus(phase: .idle), callTypes: .inMemory())
+                    OverlayShellHeader(status: OverlayShellStatus(phase: .idle))
                     HouseDivider()
-                    OverlayShellHeader(status: OverlayShellStatus(phase: .recording), callTypes: .inMemory())
+                    OverlayShellHeader(status: OverlayShellStatus(phase: .recording))
                     HouseDivider()
                 }
                 .background(House.ColorToken.surface)
@@ -162,18 +161,6 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
 
     // MARK: - Header layers
 
-    func testModelChooser() throws {
-        seedRecording()
-        OverlayShellModel.shared.chooser = .model
-        try renderPanel("shell-chooser-model", widths: [Self.standardWidth])
-    }
-
-    func testCallTypeChooser() throws {
-        seedRecording()
-        OverlayShellModel.shared.chooser = .callType
-        try renderPanel("shell-chooser-call-type", widths: [Self.minimumWidth])
-    }
-
     func testKeptOnTop() throws {
         seedRecording()
         OverlayWindowChrome.shared.isKeptOnTop = true
@@ -198,17 +185,9 @@ final class OverlayShellRenderProofTests: RenderProofTestCase {
         XCTAssertEqual(phases.map(\.livePhase.rawValue), ["idle", "recording", "paused", "finishing", "upgrading", "done"])
     }
 
-    /// `esc` never hides the overlay: with nothing open it does nothing, and
-    /// the header chooser is the first layer it closes.
-    func testEscapeClosesTheHeaderChooserFirst() {
-        let router = OverlayEscapeRouter.shared
-        OverlayShellModel.shared.registerEscape()
-        OverlayShellModel.shared.chooser = nil
-        XCTAssertEqual(router.handleEscape(), .nothing)
-
-        OverlayShellModel.shared.chooser = .model
-        XCTAssertEqual(router.handleEscape(), .closeLayer)
-        XCTAssertNil(OverlayShellModel.shared.chooser)
+    /// `esc` never hides the overlay: with nothing open it does nothing.
+    func testEscapeWithNothingOpenDoesNothing() {
+        XCTAssertEqual(OverlayEscapeRouter.shared.handleEscape(), .nothing)
     }
 
     /// No key window means no RTI window is key, for the menu bar's
@@ -302,7 +281,7 @@ private struct HeaderStatesSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(Self.states.enumerated()), id: \.offset) { _, status in
-                OverlayShellHeader(status: status, callTypes: .inMemory())
+                OverlayShellHeader(status: status)
                 HouseDivider()
             }
             Spacer(minLength: 0)

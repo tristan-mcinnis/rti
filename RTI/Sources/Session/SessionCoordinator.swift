@@ -315,6 +315,12 @@ final class SessionCoordinator {
         if transcriptChanged, entries.isEmpty { transcriptProjection.reset() }
         refreshTranscriptPresentation(finalsChanged: transcriptChanged)
     }
+
+    /// Render proofs only: draw a mic state (Listening only in a call)
+    /// without starting audio. Debug builds only, like the seed above.
+    func seedMicForRenderProof(_ control: MicControl) {
+        mic = control
+    }
 #endif
 
     private init() {

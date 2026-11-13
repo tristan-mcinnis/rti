@@ -86,7 +86,7 @@ struct ResearchCodebookTab: View {
                     } else if section == "Respondents" {
                         respondents
                     } else if cards.isEmpty {
-                        Text("Seed a code in Setup or record a Research call to collect quotes.")
+                        Text("Add words to watch on Prepare, or record a Research call to collect quotes.")
                     } else {
                         ForEach(cards) { card in
                             if group == nil || !visible(card).isEmpty || !visibleVotes(card).isEmpty {

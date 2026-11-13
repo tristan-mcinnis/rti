@@ -4,133 +4,102 @@ import HouseDesign
 
 // MARK: - Visual context control
 
-/// The recording header identifies automatic capture even before its first frame.
+/// What the eye menu's project rows do: set or clear the picked project's
+/// own screenshot choice for one call type. They never touch the Settings
+/// default (`ScreenshotPolicy.global`).
+enum OverlayScreenshotChoice {
+    @MainActor
+    static func apply(_ mode: ScreenshotMode?, policy: ScreenshotPolicy, project: String, callType: CallType) {
+        policy.setOverride(mode, project: project, callType: callType)
+    }
+}
+
+/// The header's screenshot menu (2026-11-13). Each value has one home: the
+/// default for every call is Settings > General (the menu names it and
+/// links there), and the picked project's own choice for this call type is
+/// set here and nowhere else. Shown before and during a call, so the project
+/// choice can be set ahead of Record; "Auto" names automatic capture only
+/// while it runs.
 struct OverlayVisualContextButton: View {
     let isLive: Bool
     private let trail = VisualContextTrail.shared
     private let policy = ScreenshotPolicy.shared
+    private let context = MeetingContextStore.shared
+    private let callTypes = CallTypeStore.shared
 
     var body: some View {
-        if isLive {
-            Menu {
-                ForEach(ScreenshotMode.allCases) { mode in
+        Menu {
+            Section("Screenshots: \(policy.effective.title)") {
+                Text(Self.defaultLine(policy.global))
+                Button("Change Default in Settings…") { WindowCoordinator.shared.openSettings(pane: .general) }
+            }
+            if let project = policy.project {
+                Section(Self.projectSectionTitle(project: context.workstreamName, callType: callTypes.active)) {
                     Button {
-                        policy.choose(mode)
+                        OverlayScreenshotChoice.apply(nil, policy: policy, project: project, callType: callTypes.active)
                     } label: {
-                        if mode == policy.effective {
-                            Label(mode.title, systemImage: "checkmark")
-                        } else {
-                            Text(mode.title)
+                        checked("Use default (\(policy.global.title))", policy.projectOverride == nil)
+                    }
+                    ForEach(ScreenshotMode.allCases) { mode in
+                        Button {
+                            OverlayScreenshotChoice.apply(mode, policy: policy, project: project, callType: callTypes.active)
+                        } label: {
+                            checked(mode.title, policy.projectOverride == mode)
                         }
                     }
                 }
-                if trail.state == .permissionRequired {
-                    Button("Open Screen Recording Settings") { trail.openScreenRecordingSettings() }
-                }
-            } label: {
-                SlateChip(stroked: true, emphasised: false) {
-                    Image(systemName: policy.effective == .off ? "eye.slash" : "eye")
-                    if policy.effective == .automatic {
-                        Text(trail.state == .paused ? "Paused" : "Auto")
-                    }
-                }
-                .font(House.TypeToken.meta)
+                .disabled(policy.global == .off)
+            } else {
+                Text("Pick a project on Prepare to give it its own choice")
             }
-            .menuStyle(.button)
-            .menuIndicator(.hidden)
-            .buttonStyle(.plain)
-            .accessibilityLabel("Screenshots")
-            .accessibilityValue(status)
-            .help("Screenshots: \(status). Choose a capture mode.")
+            if trail.state == .permissionRequired {
+                Button("Open Screen Recording Settings") { trail.openScreenRecordingSettings() }
+            }
+        } label: {
+            SlateChip(stroked: true, emphasised: false) {
+                Image(systemName: policy.effective == .off ? "eye.slash" : "eye")
+                if isLive, policy.effective == .automatic {
+                    Text(trail.state == .paused ? "Paused" : "Auto")
+                }
+            }
+            .font(House.TypeToken.meta)
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .fixedSize()
+        .accessibilityLabel("Screenshots")
+        .accessibilityValue(status)
+        .help("Screenshots: \(status). \(policy.project == nil ? "The default is in Settings." : "Set this project's own choice, or change the default in Settings.")")
+    }
+
+    /// The read-only default line: Settings owns it. When it is Off, it
+    /// wins over every project's choice, and the line says so.
+    static func defaultLine(_ global: ScreenshotMode) -> String {
+        global == .off ? "Default: Off for every call (project choices wait)" : "Default: \(global.title)"
+    }
+
+    /// The project section's header: whose calls the choice covers.
+    static func projectSectionTitle(project: String?, callType: CallType) -> String {
+        let name = project?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? "This project's \(callType.name) calls" : "\(name): \(callType.name) calls"
+    }
+
+    @ViewBuilder
+    private func checked(_ title: String, _ isOn: Bool) -> some View {
+        if isOn {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
         }
     }
 
     private var status: String {
         if trail.state == .permissionRequired { return "Screen Recording permission required" }
         if trail.state == .failed { return trail.lastError ?? "Capture unavailable" }
-        if trail.state == .paused { return "Automatic capture paused" }
+        if isLive, trail.state == .paused { return "Automatic capture paused" }
+        if policy.projectOverride != nil, policy.global != .off { return "\(policy.effective.title) for this project" }
         return policy.effective.title
-    }
-}
-
-// MARK: - Project routing picker
-
-/// Optional project context. Unclassified meetings remain valid and flow into
-/// the same meeting library and Neon index without a project declaration.
-struct OverlayProjectPicker: View {
-    /// The widest the project name draws in the chip before it truncates.
-    /// Not a token yet: half the chat rail.
-    private static let nameMaxWidth = House.Layout.chatRail / 2
-
-    /// The header allows the name before a recording, at its standard
-    /// width; not at 600 and not while capture runs.
-    var allowsName = true
-
-    private let context = MeetingContextStore.shared
-    @State private var hovering = false
-
-    private var selectedName: String? {
-        context.workstreamItem?.isProject == true ? context.workstreamName : nil
-    }
-
-    /// The header title already shows the project when no calendar event is
-    /// picked; the chip then draws its glyph only (the name stays in the
-    /// tooltip and for VoiceOver).
-    private var showsName: Bool {
-        guard allowsName, selectedName != nil else { return false }
-        let calendarTitle = context.calendarMeeting?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return !calendarTitle.isEmpty
-    }
-
-    var body: some View {
-        let projects = VaultWorkstreamStore.projects()
-        Menu {
-            if projects.isEmpty {
-                Text("No projects found in the vault")
-            }
-            ForEach(projects) { item in
-                Button {
-                    context.selectWorkstream(item)
-                } label: {
-                    if item.id == context.workstreamItem?.id {
-                        Label(item.name, systemImage: "checkmark")
-                    } else {
-                        Text(item.name)
-                    }
-                }
-            }
-            if selectedName != nil {
-                Divider()
-                Button("No project") { context.clearWorkstream() }
-            }
-        } label: {
-            SlateChip(emphasised: selectedName != nil) {
-                Image(systemName: selectedName == nil ? "folder.badge.questionmark" : "folder.fill")
-                    .font(House.TypeToken.meta)
-                if showsName, let name = selectedName {
-                    Text(name)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: Self.nameMaxWidth, alignment: .leading)
-                }
-            }
-            .slateRaisedTile(false, cornerRadius: House.Radius.sm, hovering: hovering)
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .hoverHighlight($hovering)
-        .accessibilityLabel("Meeting project")
-        .accessibilityValue(selectedName ?? "No project selected")
-        .help(helpText)
-    }
-
-    private var helpText: String {
-        if let name = selectedName {
-            return "This recording files to \(name). Click to change."
-        }
-        return "File this meeting to a project (optional)"
     }
 }
 

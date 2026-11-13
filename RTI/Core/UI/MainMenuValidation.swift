@@ -153,6 +153,18 @@ public enum MainMenuValidation {
 
     /// The item's title in `context`. Tabs take their names from
     /// `OverlayTab`; this returns the raw value for them.
+    /// The project chooser's one name: the Meeting menu, the palette and
+    /// the status item all say it, and all open Prepare.
+    public static let chooseProjectTitle = "Choose Project…"
+
+    /// The status item's row: the picked project, else the chooser's name.
+    public static func chooseProjectTitle(current: String?) -> String {
+        guard let name = current?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            return chooseProjectTitle
+        }
+        return "Project: \(name)…"
+    }
+
     public static func title(_ item: MainMenuItem, in context: MainMenuContext) -> String {
         switch item {
         case .about: return "About RTI"
@@ -173,7 +185,7 @@ public enum MainMenuValidation {
         case .muteMicrophone: return "Mute Microphone"
         case .readScreen: return "Read Screen"
         case .readWindow: return "Read Frontmost Window"
-        case .chooseProject: return "Choose Project…"
+        case .chooseProject: return chooseProjectTitle
         case let .tab(rawValue): return rawValue
         case .sessionList:
             return context.isSessionListVisible ? "Hide Session List" : "Show Session List"

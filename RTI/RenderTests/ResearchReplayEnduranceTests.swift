@@ -13,9 +13,12 @@ import XCTest
 /// It measures each flush, the longest main-thread gap (a 10 ms ping on the
 /// main actor), pass preparation at minute 30 and minute 120, the
 /// checkpoint's main-thread snapshot and memory growth from minute 10.
-/// The numbers always print. Two limits always assert, because neither
-/// depends on the machine's speed: the live heap grows under 40 MB, and
-/// each pass prep at minute 120 stays within 1.5x of minute 30 (medians). The millisecond limits (flush p95 4 ms, main-actor gap
+/// The numbers always print. The live heap limit (under 40 MB) always
+/// asserts, because it does not depend on the machine's speed. The ratio
+/// check (each pass prep at minute 120 within 1.5x of minute 30, medians)
+/// compares sub-millisecond wall times, so it is gated with the other
+/// timing limits; `LivePerfTests` asserts the index stays incremental
+/// without a clock. The millisecond limits (flush p95 4 ms, main-actor gap
 /// 50 ms, every pass prep 5 ms, checkpoint 5 ms) hold on the M5 they were
 /// set on and assert only with `RTI_TIMING_TESTS=1`; on an M1 expect about
 /// 1.8x (2026-11-12 perf audit, an estimate).
@@ -299,14 +302,15 @@ final class ResearchReplayEnduranceTests: XCTestCase {
         // Live objects only, so the limit holds whichever variant runs first.
         XCTAssertGreaterThan(heapGrowthMB, 0.5, "the transcript itself is kept")
         XCTAssertLessThan(heapGrowthMB, 40, "live heap growth over \(minutes) minutes")
+        guard timingAsserted else { return }
         // Guide and codebook prep read only the changed tail of the
         // utterance index (`GuideTranscript.liveSources`); Auto prep reads
         // a fixed window. A linear term shows as a ratio over 1.5 (guide
-        // prep was 1.56 before 2026-11-13).
+        // prep was 1.56 before 2026-11-13). Sub-millisecond medians are
+        // noisy under load, so this sits behind the timing gate.
         for name in names {
             XCTAssertLessThanOrEqual(median120[name] ?? 0, max(median30[name] ?? 0, 0.2) * 1.5, "\(name): flat, not linear")
         }
-        guard timingAsserted else { return }
         XCTAssertLessThan(p95, 4, "flush p95")
         XCTAssertLessThan(longestGap, 50, "longest main-actor gap")
         for name in names {

@@ -40,11 +40,8 @@ final class MenuCoordinator: NSObject, NSMenuDelegate {
         addCommand("meeting.project", to: menu)
         addCommand("session.start", to: menu)
         addCommand("session.pause", to: menu)
-        let captures = NSMenu(title: "Screenshots")
-        for mode in ScreenshotMode.allCases { addCommand("screenshots.\(mode.rawValue)", to: captures) }
-        let captureItem = NSMenuItem(title: "Screenshots", action: nil, keyEquivalent: "")
-        captureItem.submenu = captures
-        menu.addItem(captureItem)
+        // No Screenshots submenu (2026-11-13): the default lives in Settings
+        // and the project's choice in the header's eye menu.
         addCommand("view.sessions", to: menu)
 
         menu.addItem(NSMenuItem.separator())

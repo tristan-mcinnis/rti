@@ -31,13 +31,13 @@ struct WorkspaceView: View {
             if nativeTitlebar {
                 House.ColorToken.surfaceSunken.frame(height: headerHeight)
             } else {
-                WorkspaceWindowHeader(model: model, callTypes: callTypes)
+                WorkspaceWindowHeader(model: model)
             }
             sessionChatContext
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
                 // position survive trips to the archive or preferences.
-                OverlayPanelView(onOpenSettings: { model.showSettings() }, callTypes: callTypes, isActive: model.isLivePageActive)
+                OverlayPanelView(callTypes: callTypes, isActive: model.isLivePageActive)
                     .workspacePage(isActive: model.page == .live)
                 if model.hasVisitedLibrary {
                     SessionsBrowserView(model: model.sessions)
@@ -53,7 +53,6 @@ struct WorkspaceView: View {
             .slateRaisedCard(cornerRadius: House.Radius.lg)
             .padding(House.Spacing.xs)
         }
-        .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(callTypes: callTypes, headerHeight: headerHeight) }
         .background(House.ColorToken.surface)
         .ignoresSafeArea(.container, edges: .top)
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { _ in model.select(.live) }
@@ -161,13 +160,12 @@ struct WorkspaceView: View {
 /// workspace in windowless render proofs.
 struct WorkspaceWindowHeader: View {
     var model: WorkspaceModel
-    var callTypes: CallTypeStore = .shared
     var nativeTitlebar = false
     private let session = SessionCoordinator.shared
 
     var body: some View {
         OverlayShellHeader(status: OverlayShellStatus(phase: session.phase.livePhase, processingStatus: session.postProcessingStatus),
-                           callTypes: callTypes, fill: House.ColorToken.surfaceSunken, workspace: model, nativeTitlebar: nativeTitlebar)
+                           fill: House.ColorToken.surfaceSunken, workspace: model, nativeTitlebar: nativeTitlebar)
     }
 }
 

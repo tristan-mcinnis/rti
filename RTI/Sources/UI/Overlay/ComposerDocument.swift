@@ -67,7 +67,7 @@ struct ComposerDocument: Identifiable, Equatable {
 /// Nil in the app.
 struct ComposerRenderSeed {
     enum Layer {
-        case none, addContext, searchScope, palette
+        case none, addContext, palette
     }
 
     var draft = ""
@@ -77,8 +77,8 @@ struct ComposerRenderSeed {
     var layer: Layer = .none
     /// Stands in for the vault's mention search.
     var mentionCandidates: [String]?
-    /// The rows the `@` chooser draws, when a proof needs RTI's project,
-    /// meeting and file rows without a vault read.
+    /// The rows the `@` chooser draws, when a proof needs RTI's meeting and
+    /// file rows without a vault read.
     var mentionRows: [AddContextRow]?
     /// Stands in for `LLMController.pendingScreenImage`, so a proof can draw
     /// the image route.

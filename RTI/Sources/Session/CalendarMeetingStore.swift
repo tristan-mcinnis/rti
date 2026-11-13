@@ -3,7 +3,7 @@ import Foundation
 import Observation
 import RTICore
 
-/// Read-only EventKit bridge for the Setup tab. It only reads a compact window
+/// Read-only EventKit bridge for the Prepare tab. It only reads a compact window
 /// around now and never writes, responds, or edits calendar events.
 @Observable @MainActor
 final class CalendarMeetingStore {

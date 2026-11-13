@@ -1,7 +1,7 @@
 import RTICore
 import XCTest
 
-/// Pins the overlay's `esc` order: input method, layer, find bar, stream,
+/// Pins the overlay's `esc` order: input method, find bar, stream,
 /// typed text, then nothing. It never hides the window.
 final class OverlayEscapeOrderTests: XCTestCase {
     func test_nothingOpen_doesNothingAndLeavesTheWindowUp() {
@@ -12,17 +12,14 @@ final class OverlayEscapeOrderTests: XCTestCase {
 
     func test_markedText_belongsToTheInputMethod() {
         let everything = OverlayEscapeState(
-            hasMarkedText: true, isLayerOpen: true, isFindOpen: true, isStreaming: true, hasTypedText: true
+            hasMarkedText: true, isFindOpen: true, isStreaming: true, hasTypedText: true
         )
         XCTAssertEqual(OverlayEscapeOrder.action(for: everything), .passToInputMethod)
         XCTAssertFalse(OverlayEscapeOrder.action(for: everything).handlesKey)
     }
 
     func test_popsOneLayerAtATime_inTheHouseOrder() {
-        var state = OverlayEscapeState(isLayerOpen: true, isFindOpen: true, isStreaming: true, hasTypedText: true)
-        XCTAssertEqual(OverlayEscapeOrder.action(for: state), .closeLayer)
-
-        state.isLayerOpen = false
+        var state = OverlayEscapeState(isFindOpen: true, isStreaming: true, hasTypedText: true)
         XCTAssertEqual(OverlayEscapeOrder.action(for: state), .closeFind)
 
         state.isFindOpen = false
@@ -41,25 +38,24 @@ final class OverlayEscapeOrderTests: XCTestCase {
     }
 
     func test_everyActingStepHandlesTheKey() {
-        for action in [OverlayEscapeAction.closeLayer, .closeFind, .stopStream, .clearText] {
+        for action in [OverlayEscapeAction.closeFind, .stopStream, .clearText] {
             XCTAssertTrue(action.handlesKey, "\(action)")
         }
     }
 
-    /// Every combination of the five flags gives one of the six actions, and
+    /// Every combination of the four flags gives one of the five actions, and
     /// none of them is a way to hide the window.
     func test_noCombinationHides() {
-        for bits in 0..<32 {
+        for bits in 0..<16 {
             let state = OverlayEscapeState(
                 hasMarkedText: bits & 1 != 0,
-                isLayerOpen: bits & 2 != 0,
-                isFindOpen: bits & 4 != 0,
-                isStreaming: bits & 8 != 0,
-                hasTypedText: bits & 16 != 0
+                isFindOpen: bits & 2 != 0,
+                isStreaming: bits & 4 != 0,
+                hasTypedText: bits & 8 != 0
             )
             let action = OverlayEscapeOrder.action(for: state)
             XCTAssertTrue(
-                [.passToInputMethod, .closeLayer, .closeFind, .stopStream, .clearText, .nothing].contains(action),
+                [.passToInputMethod, .closeFind, .stopStream, .clearText, .nothing].contains(action),
                 "\(state)"
             )
         }

@@ -143,6 +143,16 @@ public struct OverlayShellStatus: Equatable, Sendable {
         return phase.isLive ? "Live session" : RTIBuildProfile.displayName
     }
 
+    /// The project, when the title is a calendar event and so does not name
+    /// it: the header puts it after the state word ("Ready · Northwind
+    /// app"), so the project stays visible with an event picked. Nil when
+    /// the title already is the project, or there is none.
+    public static func projectDetail(calendarTitle: String?, projectName: String?) -> String? {
+        guard nonEmpty(calendarTitle) != nil, let project = nonEmpty(projectName),
+              project != nonEmpty(calendarTitle) else { return nil }
+        return project
+    }
+
     // MARK: Private
 
     /// A post-processing line that reports a problem, not the normal

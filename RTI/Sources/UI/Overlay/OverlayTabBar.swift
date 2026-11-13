@@ -16,7 +16,7 @@ enum OverlayTab: String, CaseIterable, Identifiable {
 
     @MainActor var title: String {
         switch self {
-        case .setup: "Setup"
+        case .setup: "Prepare"
         case .assist: "Assist"
         case .transcript: "Transcript"
         case .notes: "Notes"
@@ -124,7 +124,7 @@ struct OverlaySetupButton: View {
                 selection = .setup
             }
         } label: {
-            Label("Setup", systemImage: OverlayTab.setup.icon)
+            Label(OverlayTab.setup.title, systemImage: OverlayTab.setup.icon)
                 .font(RTIDesign.Font.tab)
                 .padding(.horizontal, House.Spacing.xs)
                 .foregroundStyle(selection == .setup
@@ -137,7 +137,7 @@ struct OverlaySetupButton: View {
         .buttonStyle(.plain)
         .hoverHighlight($hovering)
         .accessibilityLabel("Prepare meeting")
-        .accessibilityHint("Project, calendar, screen context, and the live-aid toggles")
+        .accessibilityHint("Call type, project, guide, audio and the live-aid toggles")
         .help("Prepare the meeting: call type, project, guide and audio (\(OverlayTab.setup.shortcutLabel))")
     }
 }

@@ -78,4 +78,21 @@ final class OverlayShellStatusTests: XCTestCase {
         XCTAssertEqual(OverlayShellStatus.title(calendarTitle: nil, projectName: nil, phase: .idle), "RTI")
         XCTAssertEqual(OverlayShellStatus.title(calendarTitle: nil, projectName: nil, phase: .done), "RTI")
     }
+
+    /// With an event as the title, the project still shows after the state
+    /// word; with none, the title is the project and there is no detail.
+    func test_projectDetailOnlyWhenTheTitleIsAnEvent() {
+        XCTAssertEqual(OverlayShellStatus.projectDetail(calendarTitle: "Quarterly planning sync", projectName: "Northwind"), "Northwind")
+        XCTAssertNil(OverlayShellStatus.projectDetail(calendarTitle: nil, projectName: "Northwind"))
+        XCTAssertNil(OverlayShellStatus.projectDetail(calendarTitle: "  ", projectName: "Northwind"))
+        XCTAssertNil(OverlayShellStatus.projectDetail(calendarTitle: "Quarterly planning sync", projectName: nil))
+        XCTAssertNil(OverlayShellStatus.projectDetail(calendarTitle: "Northwind", projectName: "Northwind"))
+    }
+
+    func test_chooseProjectTitleIsOneNameEverywhere() {
+        XCTAssertEqual(MainMenuValidation.chooseProjectTitle, "Choose Project…")
+        XCTAssertEqual(MainMenuValidation.chooseProjectTitle(current: nil), "Choose Project…")
+        XCTAssertEqual(MainMenuValidation.chooseProjectTitle(current: " "), "Choose Project…")
+        XCTAssertEqual(MainMenuValidation.chooseProjectTitle(current: "Northwind"), "Project: Northwind…")
+    }
 }

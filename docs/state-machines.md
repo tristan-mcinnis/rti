@@ -502,12 +502,12 @@ The upgrade is the `upgrading` phase plus an on-disk marker.
   starts from Prepare: Transcript when the rail shows, Guide for a guided
   start with no rail, else Assist. Tests:
   `RTI/RenderTests/LiveRailRenderProofTests.swift`.
-- `OverlayShellModel.Chooser` (`RTI/Sources/OverlayPanelView.swift`):
-  which header chooser is open, or nil.
 - `OverlayEscapeState` and `OverlayEscapeAction`
   (`RTI/Core/UI/OverlayEscapeOrder.swift`): what `esc` does, in order:
-  pass to the input method, close a layer, close find, stop the stream,
-  clear text, nothing. Tests: `RTI/Tests/OverlayEscapeOrderTests.swift`.
+  pass to the input method, close find, stop the stream, clear text,
+  nothing (the window-level layer step went with the header chooser,
+  2026-11-13; the composer's chooser and palette take `esc` through
+  `ComposerKeyRouter`). Tests: `RTI/Tests/OverlayEscapeOrderTests.swift`.
 - `RTIWindowKind` (`RTI/Core/UI/MainMenuValidation.swift`) names the key
   window for menu validation. Tests: `RTI/Tests/MenuValidationTests.swift`.
 - `SessionsWindowRules` (`RTI/Core/Session/SessionsWindowRules.swift`)

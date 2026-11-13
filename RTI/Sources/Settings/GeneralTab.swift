@@ -236,13 +236,13 @@ private struct AudioInputSection: View {
 
 // MARK: - Real-time notes and Auto mode
 
+/// How Notes and Auto run. Whether they run at all has one home, Prepare >
+/// More options > Live aids (2026-11-13), so this card holds no on/off
+/// switch for either: only the interval and the pinyin line.
 private struct RealTimeSection: View {
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled: Bool = NotesSettings.defaultEnabled
     @AppStorage(NotesSettings.intervalKey) private var notesInterval: Double = NotesSettings.defaultInterval
-    // Unset means "on for client and research calls"; a stored value wins.
-    @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
     @AppStorage(AutoAssistSettings.pinyinKey) private var pinyinStored: Bool?
-    private var callTypes = CallTypeStore.shared
 
     private var showsPinyin: Binding<Bool> {
         Binding(
@@ -251,17 +251,9 @@ private struct RealTimeSection: View {
         )
     }
 
-    private var autoAssistEnabled: Binding<Bool> {
-        Binding(
-            get: { AutoAssistSettings.isActive(for: callTypes.active, stored: autoAssistStored) },
-            set: { autoAssistStored = $0 }
-        )
-    }
-
     var body: some View {
-        SettingsCard("Real-Time Notes and Auto", detail: "Runs by itself while recording.", rows: true) {
-            SettingsToggleRow(title: "Write notes", isFirst: true, isOn: $notesEnabled)
-            SettingsRow(title: "Notes interval") {
+        SettingsCard("Real-Time Notes and Auto", detail: "Turn them on or off on Prepare, under More options.", rows: true) {
+            SettingsRow(title: "Notes interval", isFirst: true) {
                 HStack(spacing: House.Spacing.xs) {
                     Slider(value: $notesInterval, in: NotesSettings.intervalRange, step: 60) {}
                         .labelsHidden()
@@ -274,21 +266,12 @@ private struct RealTimeSection: View {
                 .disabled(!notesEnabled)
             }
             SettingsToggleRow(
-                title: "Show next-move cards (Auto)",
-                detail: AutoAssistSettings.runs(on: callTypes.active)
-                    ? nil : "Runs on client and research calls only",
-                isOn: autoAssistEnabled
-            )
-            .disabled(!AutoAssistSettings.runs(on: callTypes.active))
-            SettingsToggleRow(
                 title: "Show pinyin under Mandarin cards",
                 detail: "Turn off if you read Mandarin without it",
                 isOn: showsPinyin
             )
             CardNote {
                 Button("Reset to Defaults") {
-                    notesEnabled = NotesSettings.defaultEnabled
-                    autoAssistStored = nil
                     pinyinStored = nil
                     notesInterval = NotesSettings.defaultInterval
                 }

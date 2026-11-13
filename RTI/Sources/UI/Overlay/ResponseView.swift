@@ -2,16 +2,15 @@ import AppKit
 import RTICore
 import SwiftUI
 
-/// The Assist tab's answer area: the house thread (`AssistThread`), the
-/// find bar over it, and the errors that belong to no turn just above the
-/// composer. An adapter only: it reads `LLMController` and hands the thread
+/// The Assist tab's answer area: the house thread (`AssistThread`) and the
+/// find bar over it. Errors that belong to no turn (missing keys, an auth
+/// failure) have one home, the composer's error line. An adapter only: it reads `LLMController` and hands the thread
 /// plain values, so the thread never observes the session or the recorder.
 struct ResponseView: View {
     let entries: [ChatEntry]
     let streaming: Bool
     let error: String?
     var errorIsAuth: Bool = false
-    var onOpenSettings: () -> Void = {}
 
     private let llm = LLMController.shared
     @Bindable private var find = ThreadFindState.shared
@@ -41,7 +40,6 @@ struct ResponseView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // The thread never scrolls up under what sits above it.
             .clipped()
-            composerNotices
         }
         .background { keyShortcuts(hitCount: index?.hits.count ?? 0) }
     }
@@ -80,27 +78,6 @@ struct ResponseView: View {
 
     private var missingKeyHints: [String] {
         ["RTI needs a Soniox key to transcribe and a \(LLMProviders.active.displayName) key to answer.", "Keys stay on this Mac."]
-    }
-
-    // MARK: - Above the composer
-
-    /// Errors with no turn to sit under: missing keys, an auth failure, a
-    /// file that would not attach, a capture fault. Each with its fix.
-    @ViewBuilder
-    private var composerNotices: some View {
-        if keysMissing {
-            AssistComposerNotice(message: missingKeysMessage, fixTitle: "Open Settings", onFix: onOpenSettings)
-        } else if let error, !error.isEmpty, errorIsAuth || llm.lastErrorTurnID == nil {
-            AssistComposerNotice(message: error, fixTitle: errorIsAuth ? "Open Settings" : nil, onFix: onOpenSettings)
-        }
-    }
-
-    private var missingKeysMessage: String {
-        switch (STTProviders.activeHasKey, LLMProviders.activeHasKey) {
-        case (false, false): "No API keys yet."
-        case (false, true): "No Soniox key yet."
-        default: "No \(LLMProviders.active.displayName) key yet."
-        }
     }
 
     // MARK: - Keys

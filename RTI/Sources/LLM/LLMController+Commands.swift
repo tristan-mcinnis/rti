@@ -271,7 +271,7 @@ extension LLMController {
                 ?? "No project/client selected. RAG defaults to the whole vault."
             let projects = VaultWorkstreamStore.projects().prefix(8).map(\.name).joined(separator: ", ")
             let clients = VaultWorkstreamStore.clients().prefix(5).map(\.name).joined(separator: ", ")
-            let examples = "Use `/project acme wear`, `/project clear`, or pick one in Setup."
+            let examples = "Use `/project acme wear`, `/project clear`, or pick one on Prepare."
             postLocalTurn(
                 userInput: "/project",
                 action: "Project",
@@ -289,7 +289,7 @@ extension LLMController {
             let scope = item.isProject ? (VaultWorkstreamStore.scopeRelativePath(for: item) ?? "unknown") : (VaultWorkstreamStore.fileAccessRelativePath(for: item) ?? "unknown")
             postLocalTurn(userInput: "/project \(trimmed)", action: "Project", output: "Using \(kind): **\(item.name)**\n\nScope: `\(scope)`")
         } else {
-            postLocalTurn(userInput: "/project \(trimmed)", action: "Project", output: "No matching project or client found for `\(trimmed)`. Try a shorter name or pick it in Setup.")
+            postLocalTurn(userInput: "/project \(trimmed)", action: "Project", output: "No matching project or client found for `\(trimmed)`. Try a shorter name or pick it on Prepare.")
         }
     }
 }

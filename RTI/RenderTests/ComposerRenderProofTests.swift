@@ -206,10 +206,6 @@ final class ComposerRenderProofTests: RenderProofTestCase {
         try render("composer-add-context", seed: ComposerRenderSeed(layer: .addContext))
     }
 
-    func testSearchScope() throws {
-        try render("composer-search-scope", seed: ComposerRenderSeed(layer: .searchScope, chooserIndex: 1))
-    }
-
     func testMentionChooser() throws {
         let seed = ComposerRenderSeed(
             draft: "Summarize @onb",
@@ -400,9 +396,9 @@ final class ComposerRenderProofTests: RenderProofTestCase {
     }
 
     /// One searchable chooser for `@` and `+`: the vault files the mention
-    /// index matched, RTI's recent meetings, its projects and clients, and the
-    /// composer's own actions, in one ranked list.
-    func testUnifiedMentionChooserSearchesProjectsAndMeetings() throws {
+    /// index matched, RTI's recent meetings and the composer's own actions,
+    /// in one ranked list. No project rows: the project is set on Prepare.
+    func testUnifiedMentionChooserSearchesFilesAndMeetings() throws {
         let rows = [
             AddContextRow(kind: .vaultFile, symbol: "doc.text", title: "onboarding-brief.md",
                           detail: "projects/northwind"),
@@ -410,8 +406,6 @@ final class ComposerRenderProofTests: RenderProofTestCase {
                           detail: "2026-09-02 · session"),
             AddContextRow(kind: .vaultFile, symbol: "calendar", title: "Onboarding scope review",
                           detail: "2026-09-04 · meeting"),
-            AddContextRow(kind: .scope(id: "northwind"), symbol: "folder", title: "Northwind app",
-                          detail: "Project", isCurrent: true),
             AddContextRow(kind: .attachFile, symbol: "paperclip", title: "Attach File…",
                           detail: "PDF, Markdown, text, or an image, for the next question"),
         ]

@@ -56,7 +56,6 @@ final class WorkspaceModel {
         if page != self.page {
             previousPage = self.page
             self.page = page
-            OverlayShellModel.shared.chooser = nil
             sessions.playback.pause()
         }
         if page == .sessions || page == .chats {

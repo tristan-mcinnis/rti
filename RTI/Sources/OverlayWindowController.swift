@@ -53,12 +53,12 @@ final class OverlayWindowChrome {
 // MARK: - esc
 
 /// Routes `esc` in the overlay through the house order
-/// (`OverlayEscapeOrder`): a layer, then the find bar, then the stream, then
-/// typed text, then nothing. It never hides the window.
+/// (`OverlayEscapeOrder`): the find bar, then the stream, then typed text,
+/// then nothing. It never hides the window. The composer's chooser and
+/// palette close on their own `esc` (`ComposerKeyRouter`).
 ///
-/// The surfaces that own a layer, the find bar, or the draft register here;
-/// the stream is `LLMController`'s. Registrations are closures so this file
-/// needs no knowledge of the views that own the state.
+/// The find bar and the draft are closures so this file needs no knowledge
+/// of the views that own the state; the stream is `LLMController`'s.
 @MainActor
 final class OverlayEscapeRouter {
     static let shared = OverlayEscapeRouter()
@@ -69,9 +69,6 @@ final class OverlayEscapeRouter {
         let close: () -> Void
     }
 
-    /// Floating layers by owner ("header.chooser", "composer.chooser",
-    /// "composer.palette"). Any open one is closed first.
-    private var layers: [String: Closable] = [:]
     /// The find bar (Assist thread).
     var findBar: Closable?
     /// The composer's draft. `isOpen` means "the composer has focus and holds
@@ -85,14 +82,9 @@ final class OverlayEscapeRouter {
 
     private init() {}
 
-    func registerLayer(_ id: String, isOpen: @escaping () -> Bool, close: @escaping () -> Void) {
-        layers[id] = Closable(isOpen: isOpen, close: close)
-    }
-
     func state(hasMarkedText: Bool) -> OverlayEscapeState {
         OverlayEscapeState(
             hasMarkedText: hasMarkedText,
-            isLayerOpen: layers.values.contains { $0.isOpen() },
             isFindOpen: findBar?.isOpen() ?? false,
             isStreaming: stream.isOpen(),
             hasTypedText: draft?.isOpen() ?? false
@@ -104,8 +96,6 @@ final class OverlayEscapeRouter {
     func handleEscape(hasMarkedText: Bool = false) -> OverlayEscapeAction {
         let action = OverlayEscapeOrder.action(for: state(hasMarkedText: hasMarkedText))
         switch action {
-        case .closeLayer:
-            layers.values.first { $0.isOpen() }?.close()
         case .closeFind:
             findBar?.close()
         case .stopStream:
@@ -141,12 +131,6 @@ private final class OverlayWindow: NSWindow {
 
     override func sendEvent(_ event: NSEvent) {
         let workspace = WorkspaceModel.shared
-        if event.type == .keyDown, Self.isPlainEscape(event),
-           (firstResponder as? NSTextInputClient)?.hasMarkedText() != true,
-           OverlayShellModel.shared.chooser != nil {
-            OverlayShellModel.shared.chooser = nil
-            return
-        }
         if workspace.page == .sessions || workspace.page == .chats {
             switch event.type {
             case .flagsChanged:
@@ -171,13 +155,11 @@ private final class OverlayWindow: NSWindow {
         super.sendEvent(event)
     }
 
-    /// `esc` that no control took. It used to hide the window; now it pops a
-    /// layer or does nothing, so a stray press never hides the cockpit.
+    /// `esc` that no control took. It used to hide the window; now it closes
+    /// one thing or does nothing, so a stray press never hides the cockpit.
     override func cancelOperation(_ sender: Any?) {
         let workspace = WorkspaceModel.shared
-        if OverlayShellModel.shared.chooser != nil {
-            OverlayShellModel.shared.chooser = nil
-        } else if workspace.page == .settings {
+        if workspace.page == .settings {
             if workspace.settings.query.isEmpty { workspace.leaveSettings() }
             else { workspace.settings.query = "" }
         } else if workspace.page == .live {

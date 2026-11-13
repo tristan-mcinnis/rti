@@ -85,7 +85,7 @@ final class SetupRenderProofTests: RenderProofTestCase {
         try prepareResearch()
         for (label, width) in widths {
             let frames = try checkGrid(.research, width: width, height: 720)
-            for name in ["text.project", "text.calendarLine", "text.guide", "text.microphone", "text.status",
+            for name in ["text.project", "text.calendarLine", "text.guide", "text.status",
                          "title.Codebook and stimulus", "title.More options"]
             {
                 XCTAssertNotNil(frames[name], "\(name) missing at \(label)")

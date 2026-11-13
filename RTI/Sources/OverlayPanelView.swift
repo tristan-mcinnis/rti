@@ -11,9 +11,7 @@ struct OverlayPanelView: View {
     @Environment(\.isWorkspaceEmbedded) private var embedded
     private let llm = LLMController.shared
     private let session = SessionCoordinator.shared
-    private let shell = OverlayShellModel.shared
     private let hotkeyNotice = HotkeyNoticeModel.shared
-    var onOpenSettings: () -> Void = {}
     /// Render proofs only: draw this header state instead of the session's
     /// (the proofs cannot finish a real session to reach the saved state).
     var statusOverride: OverlayShellStatus? = nil
@@ -114,7 +112,7 @@ struct OverlayPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !embedded { OverlayShellHeader(status: status, callTypes: callTypes) }
+            if !embedded { OverlayShellHeader(status: status) }
             tabsRow
             if MuteBannerRule.shows(isRunning: session.isRunning, mic: session.mic) {
                 OverlayNoticeBanner(
@@ -159,9 +157,6 @@ struct OverlayPanelView: View {
             // transparent title bar.
             .clipped()
         }
-        .overlay(alignment: .topLeading) {
-            if !embedded { OverlayHeaderChooserLayer(callTypes: callTypes) }
-        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(embedded ? House.ColorToken.surfaceRaised : House.ColorToken.surface)
         // The header shares the title-bar row with the traffic lights.
@@ -173,7 +168,6 @@ struct OverlayPanelView: View {
         .tint(Color.overlayInk)
         .preferredColorScheme(preferredColorScheme)
         .overlay(themeRefreshToken)
-        .onAppear { shell.registerEscape() }
         .onChange(of: tab) { _, selection in
             if selection == .transcript { hasVisitedTranscript = true }
         }
@@ -242,8 +236,7 @@ struct OverlayPanelView: View {
                 entries: llm.entries,
                 streaming: llm.streaming,
                 error: llm.lastError,
-                errorIsAuth: llm.lastErrorIsAuth,
-                onOpenSettings: onOpenSettings
+                errorIsAuth: llm.lastErrorIsAuth
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, House.Spacing.lg)
@@ -286,45 +279,6 @@ private extension View {
     }
 }
 
-// MARK: - Shell state
-
-/// Overlay state the header and the menu bar share: which header chooser is
-/// open. In memory only.
-@Observable @MainActor
-final class OverlayShellModel {
-    static let shared = OverlayShellModel()
-
-    enum Chooser: Equatable {
-        case options
-        case model
-        case callType
-    }
-
-    /// The chooser open under the title block, if any. An in-window layer,
-    /// never a menu window, so it stays out of screen shares with the
-    /// overlay and its window-sharing preference.
-    var chooser: Chooser?
-
-    @ObservationIgnored private var escapeRegistered = false
-
-    private init() {}
-
-    func toggle(_ chooser: Chooser) {
-        self.chooser = self.chooser == chooser ? nil : chooser
-    }
-
-    /// `esc` closes the chooser first.
-    func registerEscape() {
-        guard !escapeRegistered else { return }
-        escapeRegistered = true
-        OverlayEscapeRouter.shared.registerLayer(
-            "header.chooser",
-            isOpen: { OverlayShellModel.shared.chooser != nil },
-            close: { OverlayShellModel.shared.chooser = nil }
-        )
-    }
-}
-
 extension SessionCoordinator.Phase {
     /// The header's copy of the phase (`OverlayShellStatus` lives in RTICore).
     var livePhase: OverlayLivePhase {
@@ -349,15 +303,11 @@ extension SessionCoordinator.Phase {
 /// the window.
 struct OverlayShellHeader: View {
     let status: OverlayShellStatus
-    /// The call type store the title reads. Defaults to the shared one so
-    /// production is unchanged; a proof passes an in-memory store.
-    var callTypes: CallTypeStore = .shared
     var fill: Color = House.ColorToken.surface
     var workspace: WorkspaceModel?
     var nativeTitlebar = false
 
     private let chrome = OverlayWindowChrome.shared
-    @State private var showsCompactControls = false
 
     private var sessionIsListeningOnly: Bool { SessionCoordinator.shared.isListeningOnly }
 
@@ -371,38 +321,41 @@ struct OverlayShellHeader: View {
     /// The native title bar clips anything taller than itself.
     private var rowHeight: CGFloat { nativeTitlebar ? chrome.titleRowHeight : House.Control.composer }
 
+    static let listeningOnlyWord = "Listening only"
+
+    /// True when the workspace row is narrower than its standard width: the
+    /// Listening only chip would then squeeze the title to a letter.
+    static func foldsListeningOnly(width: CGFloat, inWorkspace: Bool) -> Bool {
+        inWorkspace && width < WorkspaceLayout.standardSize.width
+    }
+
+    /// The title's column in the workspace header. Fixed, so the route
+    /// segments beside it never move when the title changes ("RTI" to "Live
+    /// session" on Record); a row tighter than 720 pt would shrink
+    /// it, never hides it. Not a token yet: half the chat rail.
+    static let workspaceTitleWidth = House.Layout.chatRail / 2
+
+    /// Each control here has one home (2026-11-13): call type, project and
+    /// guide live on Prepare (the title opens it), the model in Settings and
+    /// the palette, the microphone in the mic menu, the project's screenshot
+    /// choice in the eye menu. The title shows at every width. Below the
+    /// workspace's standard width a live Listening only folds into the
+    /// title's state line instead of its own chip, so the title keeps its
+    /// column beside the clock (`foldsListeningOnly`).
     private func header(width: CGFloat) -> some View {
-        let availableWidth = width + (nativeTitlebar ? HouseChatMetrics.trafficLightInset : 0)
-        let compact = workspace != nil && availableWidth < WorkspaceLayout.standardSize.width
         let hideStandaloneKeys = width < OverlayAppearanceDefaults.defaultWidth
+        let listeningOnly = status.phase.isLive && sessionIsListeningOnly
+        let foldsListening = listeningOnly && Self.foldsListeningOnly(
+            width: width + (nativeTitlebar ? HouseChatMetrics.trafficLightInset : 0), inWorkspace: workspace != nil)
         return HStack(spacing: House.Spacing.xs) {
-            if compact {
-                Button { showsCompactControls.toggle() } label: {
-                    Image(systemName: "ellipsis.circle").font(House.TypeToken.body)
-                        .frame(width: House.Control.chip, height: House.Control.chip)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Meeting, microphone and project")
-                .help("Meeting title, microphone, project and assistant options")
-                .popover(isPresented: $showsCompactControls) {
-                    VStack(alignment: .leading, spacing: House.Spacing.xs) {
-                        Text(OverlayShellStatus.title(calendarTitle: MeetingContextStore.shared.calendarMeeting?.title,
-                             projectName: MeetingContextStore.shared.workstreamName, phase: status.phase))
-                            .font(House.TypeToken.label).lineLimit(2)
-                        HStack { OverlayMicControl(); OverlayProjectPicker(allowsName: true) }
-                        Button("Assistant options") {
-                            showsCompactControls = false
-                            OverlayShellModel.shared.toggle(.options)
-                        }
-                    }
-                    .padding(House.Spacing.sm)
-                }
-            } else {
-                OverlayHeaderTitle(status: status, callTypes: callTypes)
-                    .layoutPriority(-1)
-            }
+            OverlayHeaderTitle(status: status, stateOverride: foldsListening ? Self.listeningOnlyWord : nil)
+                .frame(minWidth: 0, maxWidth: workspace == nil ? House.Layout.chatRail : Self.workspaceTitleWidth,
+                       alignment: .leading)
             if let workspace { WorkspaceRouteSegments(model: workspace) }
+            // Lowest priority: the title takes its column first, the drag
+            // area what is left.
             Spacer(minLength: 0).background(WindowDragArea())
+                .layoutPriority(-1)
             if chrome.isKeptOnTop {
                 QuickAIGlyphButton(
                     symbol: "pin.fill",
@@ -415,13 +368,10 @@ struct OverlayShellHeader: View {
                 }
             }
             HStack(spacing: House.Spacing.xs) {
-                if !compact { OverlayMicControl() }
+                OverlayMicControl()
                 OverlayVisualContextButton(isLive: status.phase.isLive)
-                // While capture runs the state line needs the room; the
-                // project's name stays in the chip's tooltip.
-                if !compact { OverlayProjectPicker(allowsName: !hideStandaloneKeys && !status.phase.isLive) }
-                if status.phase.isLive && sessionIsListeningOnly {
-                    Text("Listening only")
+                if listeningOnly && !foldsListening {
+                    Text(Self.listeningOnlyWord)
                         .font(House.TypeToken.caption)
                         .padding(.horizontal, House.Spacing.xs)
                         .frame(height: House.Control.chip)
@@ -443,15 +393,18 @@ struct OverlayShellHeader: View {
     }
 }
 
-/// The meeting title and capture state stay visible. Call type and model live in
-/// one in-window options layer, alongside the model and call type choosers.
+/// The meeting title and capture state. The title names the calendar event,
+/// else the project; with an event, the project follows the state word
+/// ("Ready · Northwind app"), so the header always names it. A click opens
+/// the Live page's Prepare tab, the one home of call type, project and guide.
 struct OverlayHeaderTitle: View {
     let status: OverlayShellStatus
-    /// The call type store, injected so a proof never reads the live one.
-    var callTypes: CallTypeStore = .shared
+    /// Replaces the state word when the row folds a chip into it
+    /// ("Listening only" at 720 pt).
+    var stateOverride: String? = nil
 
     private let context = MeetingContextStore.shared
-    private let shell = OverlayShellModel.shared
+    @State private var hovering = false
 
     private var title: String {
         OverlayShellStatus.title(
@@ -461,41 +414,63 @@ struct OverlayHeaderTitle: View {
         )
     }
 
+    private var projectDetail: String? {
+        OverlayShellStatus.projectDetail(calendarTitle: context.calendarMeeting?.title, projectName: context.workstreamName)
+    }
+
+    private var stateLine: String {
+        if let stateOverride { return stateOverride }
+        return projectDetail.map { "\(status.word) · \($0)" } ?? status.word
+    }
+
+    private var stateWords: String {
+        stateOverride.map { "\(status.word), \($0)" } ?? status.word
+    }
+
+    /// What a click does: show Prepare. Tests call it without a click.
+    static func openPrepare() {
+        NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.setup.rawValue)
+    }
+
     var body: some View {
-        HStack(spacing: House.Spacing.xs) {
+        Button {
+            Self.openPrepare()
+        } label: {
             VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                 Text(title)
-                    .help(title)
                     .font(HouseChatType.subheading)
                     .foregroundStyle(House.ColorToken.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 HStack(spacing: House.Spacing.xxs) {
                     SlateStatusDot(color: status.tone.color)
-                    Text(status.word)
+                    Text(stateLine)
                         .font(House.TypeToken.meta)
                         .foregroundStyle(House.ColorToken.textSecondary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-                .fixedSize()
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("State: \(status.word)")
             }
-            Button {
-                shell.toggle(.options)
-            } label: {
-                Label("Assistant options", systemImage: "ellipsis")
-                    .labelStyle(.iconOnly)
-                    .font(House.TypeToken.meta)
-                    .foregroundStyle(House.ColorToken.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .frame(width: House.Control.pill, height: House.Control.pill)
+            .padding(.horizontal, House.Spacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
+                    .fill(hovering ? House.ColorToken.hoverFill : Color.clear)
+            )
             .contentShape(Rectangle())
-            .accessibilityLabel("Assistant options")
-            .accessibilityValue(shell.chooser == .options ? "Open" : "Closed")
-            .help("Change the call type or model")
         }
+        .buttonStyle(.plain)
+        .hoverHighlight($hovering)
+        .accessibilityLabel(Self.summary(title: title, project: projectDetail, state: stateWords))
+        .accessibilityHint("Opens Prepare")
+        .help("\(Self.summary(title: title, project: projectDetail, state: stateWords)). Click to open Prepare: call type, project and guide (\(OverlayTab.setup.shortcutLabel))")
+    }
+
+    /// The tooltip and VoiceOver line: the title, the project when the
+    /// title does not name it, and the state.
+    static func summary(title: String, project: String?, state: String) -> String {
+        let project = project.map { ", project \($0)" } ?? ""
+        return "\(title)\(project). State: \(state)"
     }
 }
 
@@ -507,147 +482,5 @@ extension OverlayStatusTone {
         case .recording: House.ColorToken.danger
         case .busy: House.ColorToken.warning
         }
-    }
-}
-
-// MARK: - Header choosers
-
-/// Assistant options and model and call type choosers float under the title block on panel glass
-/// (chat-surfaces.md section 3 "Floating layers"). In-window SwiftUI, so it
-/// inherits the overlay's window-sharing preference. A click outside or `esc`
-/// closes it.
-struct OverlayHeaderChooserLayer: View {
-    /// The call type store, injected so a proof never reads the live one.
-    var callTypes: CallTypeStore = .shared
-    /// The header row's height: the chooser opens just under it.
-    var headerHeight: CGFloat = House.Control.composer
-
-    private let shell = OverlayShellModel.shared
-    private let chrome = OverlayWindowChrome.shared
-
-    var body: some View {
-        if let chooser = shell.chooser {
-            ZStack(alignment: .topLeading) {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { shell.chooser = nil }
-                    .accessibilityHidden(true)
-                OverlayHeaderChooser(kind: chooser, callTypes: callTypes)
-                    .frame(width: House.Layout.chatRail + House.Spacing.xxxxl)
-                    .panelGlass(radius: House.Radius.lg)
-                    .panelShadows()
-                    .padding(.leading, chrome.isFullScreen ? House.Spacing.sm : HouseChatMetrics.trafficLightInset)
-                    .padding(.top, headerHeight)
-            }
-            .ignoresSafeArea(.container, edges: .top)
-        }
-    }
-}
-
-/// The rows of one header chooser.
-struct OverlayHeaderChooser: View {
-    let kind: OverlayShellModel.Chooser
-    /// The call type store, injected so a proof never reads the live one.
-    var callTypes: CallTypeStore = .shared
-
-    private let shell = OverlayShellModel.shared
-    private let llm = LLMController.shared
-    @State private var hovered: String?
-
-    private var title: String {
-        switch kind {
-        case .options: "Assistant options"
-        case .model: "Model · \(llm.chatRouteLabel)"
-        case .callType: "Call type"
-        }
-    }
-
-    private var accessibilityTitle: String {
-        switch kind {
-        case .options: "Assistant options"
-        case .model: "Choose a model"
-        case .callType: "Choose a call type"
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            if kind != .options {
-                row(id: "options", title: "Back to assistant options", detail: nil, isChecked: false, dismissesChooser: false) {
-                    shell.chooser = .options
-                }
-                HouseDivider().padding(.vertical, House.Spacing.xxs)
-            }
-            SlateSectionLabel(text: title)
-                .padding(.horizontal, House.Spacing.xs)
-                .padding(.top, House.Spacing.xxs)
-            switch kind {
-            case .options:
-                row(id: "callType", title: "Call type", detail: callTypes.active.name, isChecked: false, dismissesChooser: false) {
-                    shell.chooser = .callType
-                }
-                row(id: "model", title: "Model", detail: llm.chatRouteLabel, isChecked: false, dismissesChooser: false) {
-                    shell.chooser = .model
-                }
-            case .model:
-                ForEach(LLMProviders.all) { provider in
-                    row(id: provider.id, title: provider.displayName, detail: provider.model,
-                        isChecked: llm.chatSelection.providerId == provider.id) {
-                        llm.selectChatProvider(provider.id)
-                    }
-                }
-                HouseDivider()
-                    .padding(.vertical, House.Spacing.xxs)
-                row(id: "thinking", title: "Thinking", detail: "Slower, deeper",
-                    isChecked: llm.chatSelection.reasoning == .thinking) {
-                    llm.setChatReasoning(llm.chatSelection.reasoning == .thinking ? .fast : .thinking)
-                }
-            case .callType:
-                ForEach(CallType.allCases) { type in
-                    row(id: type.id, title: type.name, detail: nil,
-                        isChecked: callTypes.active == type) {
-                        CommandBuilder.switchCallType(to: type, callTypes: callTypes, llm: llm)
-                    }
-                }
-            }
-        }
-        .padding(House.Spacing.xs)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilityTitle)
-    }
-
-    private func row(id: String, title: String, detail: String?, isChecked: Bool, dismissesChooser: Bool = true, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            if dismissesChooser { shell.chooser = nil }
-        } label: {
-            HStack(spacing: House.Spacing.xs) {
-                Image(systemName: "checkmark")
-                    .font(House.TypeToken.caption)
-                    .foregroundStyle(House.ColorToken.textSecondary)
-                    .opacity(isChecked ? 1 : 0)
-                    .frame(width: House.Control.keyCap)
-                Text(title)
-                    .font(House.TypeToken.label)
-                    .foregroundStyle(House.ColorToken.textPrimary)
-                    .lineLimit(1)
-                Spacer(minLength: House.Spacing.xs)
-                if let detail {
-                    Text(detail)
-                        .font(House.TypeToken.meta)
-                        .foregroundStyle(House.ColorToken.textTertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-            .padding(.horizontal, House.Spacing.xs)
-            .frame(height: House.Control.railRow)
-            .background { RowHighlight(isSelected: false, isHovering: hovered == id) }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .hoverHighlight($hovered, id: id)
-        .accessibilityLabel(title)
-        .accessibilityValue(isChecked ? "Selected" : "")
     }
 }

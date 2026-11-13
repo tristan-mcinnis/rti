@@ -89,7 +89,7 @@ public enum VaultMeetings {
         }
         var out = scoped
             ? "This project's most recent meetings and sessions, newest first (the latest is #1):\n"
-            : "No project is set for this meeting, so this is the vault's most recent meetings overall, newest first (the latest is #1). Pick a project in Setup for a project-scoped list, or use search_vault for a topic-based lookup:\n"
+            : "No project is set for this meeting, so this is the vault's most recent meetings overall, newest first (the latest is #1). Pick a project on Prepare for a project-scoped list, or use search_vault for a topic-based lookup:\n"
         for (i, m) in items.enumerated() {
             out += "\n\(i + 1). \(m.title) — \(m.displayDate) (\(m.kind), \(m.relativePath))"
             // The most recent meeting gets its full summary so "what did we

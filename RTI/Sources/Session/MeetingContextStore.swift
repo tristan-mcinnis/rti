@@ -17,7 +17,7 @@ final class MeetingContextStore {
     var workstreamName: String?
     /// Content loaded from the picked vault client/project.
     var workstreamContext: String?
-    /// The picked vault item itself — kept so the Setup tab can offer that
+    /// The picked vault item itself — kept so the Prepare tab can offer that
     /// project's discussion guides. nil when nothing is picked.
     var workstreamItem: VaultItem? {
         didSet {
@@ -25,7 +25,7 @@ final class MeetingContextStore {
         }
     }
 
-    /// Calendar meeting explicitly selected in Setup. This is read-only context
+    /// Calendar meeting explicitly selected on Prepare. This is read-only context
     /// for the current session; RTI never changes the source calendar event.
     private(set) var calendarMeeting: CalendarMeeting?
 

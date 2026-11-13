@@ -32,17 +32,20 @@ enum CommandBuilder {
             + callTypeCommands(callTypes: callTypes, llm: llm)
     }
 
+    /// The keyboard route to the Settings default ("Screenshots default:
+    /// Off"), the same value as Settings > General. A project's own choice
+    /// is set only in the header's eye menu.
     @MainActor
     private static func screenshotCommands() -> [RTICommand] {
         ScreenshotMode.allCases.map { mode in
             RTICommand(
                 id: "screenshots.\(mode.rawValue)",
                 title: mode.title,
-                keywords: ["screenshots", "capture", "screen", mode.title],
-                perform: { ScreenshotPolicy.shared.choose(mode) },
+                keywords: ["screenshots", "capture", "screen", "default", mode.title],
+                perform: { ScreenshotPolicy.shared.setGlobal(mode) },
                 menuSection: .panels,
-                menuParent: "Screenshots",
-                menuStateProvider: { ScreenshotPolicy.shared.effective == mode }
+                menuParent: "Screenshots default",
+                menuStateProvider: { ScreenshotPolicy.shared.global == mode }
             )
         }
     }
@@ -56,7 +59,8 @@ enum CommandBuilder {
                 id: "llm.provider.\(provider.id)",
                 title: "Assistant: \(provider.displayName)",
                 keywords: ["assistant", "llm", "provider", "model", "openai", "deepseek", "openrouter", "switch"],
-                perform: { LLMProviders.activeId = provider.id },
+                // The current chat follows, as the deleted header chooser did.
+                perform: { LLMController.shared.selectChatProvider(provider.id) },
                 menuSection: .panels,
                 menuParent: "Assistant model",
                 menuStateProvider: { LLMProviders.activeId == provider.id }
@@ -94,7 +98,7 @@ enum CommandBuilder {
         let tabs = OverlayTab.allCases.map { tab in
             RTICommand(
                 id: "view.tab.\(tab.rawValue)",
-                title: tab == .setup ? "Go to Prepare" : "Go to \(tab.title)",
+                title: "Go to \(tab.title)",
                 subtitle: tab.shortcutLabel,
                 keywords: ["tab", "switch", "jump", "go", tab.rawValue, tab.title.lowercased()],
                 perform: { [weak windows] in
@@ -173,14 +177,16 @@ enum CommandBuilder {
             ),
             RTICommand(
                 id: "meeting.project",
-                title: "Choose Meeting Project",
+                // One name everywhere (palette, Meeting menu, status item);
+                // every route opens Prepare, the project's one home.
+                title: MainMenuValidation.chooseProjectTitle,
                 keywords: ["project", "client", "route", "context", "meeting"],
                 perform: {
                     windows.showOverlay()
                     NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.setup.rawValue)
                 },
                 menuTitleProvider: {
-                    MeetingContextStore.shared.workstreamName.map { "Context: \($0)" } ?? "Add Context…"
+                    MainMenuValidation.chooseProjectTitle(current: MeetingContextStore.shared.workstreamName)
                 }
             ),
             RTICommand(
@@ -485,7 +491,7 @@ enum CommandBuilder {
     }
 
     /// Make `type` active and follow it with the listener framing. Shared by
-    /// the palette, the header chooser and Prepare.
+    /// the palette and Prepare.
     @MainActor
     static func switchCallType(to type: CallType, callTypes: CallTypeStore, llm: LLMController) {
         callTypes.active = type

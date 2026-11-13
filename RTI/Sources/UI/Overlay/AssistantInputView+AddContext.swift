@@ -32,7 +32,9 @@ extension AssistantInputView {
                     : "Off: only what you attach answers",
                 isCurrent: isBroaderSearch
             ),
-            AddContextRow(kind: .searchScope, symbol: "scope", title: "Search Scope", detail: scope),
+            // The project bounds the search; it is set on Prepare, its one
+            // home, so this row names it and opens Prepare (2026-11-13).
+            AddContextRow(kind: .searchScope, symbol: "scope", title: "Search Scope", detail: "\(scope) · change on Prepare"),
             AddContextRow(
                 kind: .noteMode,
                 symbol: "note.text",
@@ -43,30 +45,7 @@ extension AssistantInputView {
         ]
     }
 
-    /// RTI's own projects and clients, the rows that make this a context
-    /// chooser rather than a file list.
-    private var scopeItemRows: [ComposerContextRow] {
-        let current = MeetingContextStore.shared.workstreamName
-        return scopeItems.map { scope in
-            ComposerContextRow(row: AddContextRow(
-                kind: .scope(id: scope.item.id),
-                symbol: scope.isClient ? "person.2" : "folder",
-                title: scope.item.name,
-                detail: scope.isClient ? "Client" : "Project",
-                isCurrent: current == scope.item.name
-            ))
-        }
-    }
-
-    /// The scope page: the whole vault, then the projects and clients.
-    private var scopePageRows: [ComposerContextRow] {
-        let current = MeetingContextStore.shared.workstreamName
-        let whole = AddContextRow(kind: .scope(id: nil), symbol: "archivebox", title: "Whole vault",
-                                  detail: "Search every note", isCurrent: current == nil)
-        return [ComposerContextRow(row: whole)] + scopeItemRows
-    }
-
-    /// The meetings and sessions already on disk: RTI's second addition to the
+    /// The meetings and sessions already on disk: RTI's addition to the
     /// context space, so `@` can reach a meeting and not only a file.
     private var meetingRows: [ComposerContextRow] {
         contextMeetings.map { meeting in
@@ -103,9 +82,10 @@ extension AssistantInputView {
     }
 
     /// The one search over the shared context space, for `@` and for `+`.
-    /// `includeAtRest` adds RTI's meetings, projects and clients even with an
-    /// empty query: the `@` chooser opens on them, while the `+` pane keeps its
-    /// short action list and reaches them by typing or through its scope page.
+    /// `includeAtRest` adds RTI's meetings even with an empty query: the `@`
+    /// chooser opens on them, while the `+` pane keeps its short action list
+    /// and reaches them by typing. Projects and clients are not here: the
+    /// meeting's project is set on Prepare only.
     ///
     /// `vaultCandidates` is the vault's own matches, and only the `@` chooser
     /// passes any: the `+` pane filters locally, so typing there never reads
@@ -119,27 +99,20 @@ extension AssistantInputView {
         var rows = Self.vaultFileRows(vaultCandidates)
         if includeAtRest || !needle.isEmpty {
             rows += meetingRows
-            rows += scopeItemRows
         }
         rows += contextActionRows.map { ComposerContextRow(row: $0) }
         return Self.rankContext(rows, query: needle)
     }
 
-    /// The Add Context pane's rows: the root page, or the scope page. Typing in
-    /// the pane narrows the rows it already holds, locally, and never reads the
+    /// The Add Context pane's rows. Typing in the pane narrows the rows it
+    /// already holds, locally, and never reads the
     /// vault; the composer draft is never touched. The highlight always indexes
     /// this list, so the keys and the drawn rows agree.
     var visibleAddContextRows: [ComposerContextRow] {
-        switch addContextPage {
-        case .root:
-            // No vault candidates: typing here narrows the rows on screen
-            // (meetings, projects, clients, the actions) and nothing else. A
-            // vault-wide search belongs to `@`, which the pane's "Vault File"
-            // row hands off to.
-            contextRows(query: addContextQuery, vaultCandidates: [], includeAtRest: false)
-        case .scope:
-            Self.rankContext(scopePageRows, query: addContextQuery)
-        }
+        // No vault candidates: typing here narrows the rows on screen (the
+        // meetings and the actions) and nothing else. A vault-wide search
+        // belongs to `@`, which the pane's "Vault File" row hands off to.
+        contextRows(query: addContextQuery, vaultCandidates: [], includeAtRest: false)
     }
 
     /// The `@` chooser's rows: the same space, searched with the words typed
@@ -189,12 +162,6 @@ extension AssistantInputView {
         return "Next answer uses: " + labels.joined(separator: ", ")
     }
 
-    /// Projects (8) then clients (6), read once when a chooser opens.
-    static func loadScopeItems() -> [ScopeItem] {
-        VaultWorkstreamStore.projects().prefix(8).map { ScopeItem(item: $0, isClient: false) }
-            + VaultWorkstreamStore.clients().prefix(6).map { ScopeItem(item: $0, isClient: true) }
-    }
-
     /// The recent meetings and sessions for the current scope, newest first.
     static func loadContextMeetings() -> [VaultMeetings.Meeting] {
         VaultMeetings.recent(scopeRelativePath: MeetingContextStore.shared.fileAccessScopePath, limit: 6)
@@ -235,13 +202,8 @@ extension AssistantInputView {
             isAddContextOpen = false
             ScreenshotManager.shared.captureFocusedWindowAndAttach()
         case .searchScope:
-            scopeItems = Self.loadScopeItems()
-            contextMeetings = Self.loadContextMeetings()
-            addContextPage = .scope
-            addContextQuery = ""
-            chooserIndex = 0
-            addContextFocusToken &+= 1
-            isAddContextOpen = true
+            isAddContextOpen = false
+            NotificationCenter.default.post(name: .rtiSelectTab, object: OverlayTab.setup.rawValue)
             return
         case .searchMode:
             isAddContextOpen = false
@@ -249,15 +211,6 @@ extension AssistantInputView {
         case .noteMode:
             isAddContextOpen = false
             toggleNoteMode()
-        case let .scope(id):
-            if let id, let scope = scopeItems.first(where: { $0.item.id == id }) {
-                MeetingContextStore.shared.selectWorkstream(scope.item)
-            } else {
-                MeetingContextStore.shared.clearWorkstream()
-            }
-            refreshMentionSuggestions()
-            addContextPage = .root
-            isAddContextOpen = false
         }
         focusField()
     }

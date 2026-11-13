@@ -7,10 +7,11 @@ import HouseDesign
 // MARK: - Setup
 
 /// The Prepare page. Before Record it answers three questions: what kind of
-/// call, which project, and (research only) which guide. Audio is one card;
-/// everything else (live aids, screenshots, speakers, the calendar picker,
-/// the prep note) waits behind one "More options" disclosure that stays as
-/// the user left it.
+/// call, which project, and (research only) which guide. Audio is one card,
+/// Listening only (the microphone itself is the header's mic menu); the
+/// calendar is one quiet line under the project; everything else (live aids,
+/// speakers, the prep note) waits behind one "More options" disclosure that stays as the user left
+/// it. Screenshots are the header's eye menu, the model is Settings.
 struct SetupTabView: View {
     private enum LiveOption: Equatable, Identifiable {
         case notes
@@ -418,22 +419,68 @@ struct SetupTabView: View {
         allItems.isEmpty ? "Nothing found in your vault." : "No match for “\(query)”."
     }
 
-    /// The calendar, quietly: the chosen event, else the one overlapping now,
-    /// else nothing. The full picker is under More options.
+    /// The calendar, the one control for it on the page: the chosen event
+    /// (Change, Remove), else the one overlapping now (Use event, and Other
+    /// when there are more), else a chooser over the next 12 hours, else
+    /// nothing. Access is asked for here too.
     @ViewBuilder
     private var calendarLine: some View {
         if let selected = store.calendarMeeting {
             calendarLineRow(icon: "calendar.badge.checkmark", text: "Meeting: \(selected.title) · \(calendarTime(selected))") {
-                Button("Remove") { store.clearCalendarMeeting() }
-                    .help("Remove calendar meeting context")
-                    .accessibilityLabel("Remove calendar meeting context")
+                HStack(spacing: House.Spacing.xs) {
+                    if calendarStore.events.contains(where: { $0.id != selected.id }) {
+                        calendarEventMenu("Change", excluding: selected)
+                    }
+                    Button("Remove") { store.clearCalendarMeeting() }
+                        .help("Remove calendar meeting context")
+                        .accessibilityLabel("Remove calendar meeting context")
+                }
             }
-        } else if calendarStore.accessState == .available, let suggestion = calendarStore.suggestion {
-            calendarLineRow(icon: "calendar", text: "Now: \(suggestion.title) · \(calendarTime(suggestion))") {
-                Button("Use event") { store.selectCalendarMeeting(suggestion) }
-                    .help("Use this event for the title and invitees")
+        } else {
+            switch calendarStore.accessState {
+            case .notDetermined:
+                calendarLineRow(icon: "calendar", text: "Calendar: use an event for the title and invitees") {
+                    Button("Allow access") { calendarStore.requestAccess() }
+                }
+            case .denied:
+                calendarLineRow(icon: "calendar.badge.exclamationmark", text: "Calendar access is off in System Settings") {
+                    EmptyView()
+                }
+            case .available:
+                if let suggestion = calendarStore.suggestion {
+                    calendarLineRow(icon: "calendar", text: "Now: \(suggestion.title) · \(calendarTime(suggestion))") {
+                        HStack(spacing: House.Spacing.xs) {
+                            if calendarStore.events.contains(where: { $0.id != suggestion.id }) {
+                                calendarEventMenu("Other", excluding: suggestion)
+                            }
+                            Button("Use event") { store.selectCalendarMeeting(suggestion) }
+                                .help("Use this event for the title and invitees")
+                        }
+                    }
+                } else if !calendarStore.events.isEmpty {
+                    let count = calendarStore.events.count
+                    calendarLineRow(icon: "calendar", text: "\(count) calendar \(count == 1 ? "event" : "events") in the next 12 hours") {
+                        calendarEventMenu("Choose event", excluding: nil)
+                    }
+                }
             }
         }
+    }
+
+    /// The events of the next 12 hours, as a quiet menu beside the line.
+    private func calendarEventMenu(_ title: String, excluding: CalendarMeeting?) -> some View {
+        Menu(title) {
+            ForEach(calendarStore.events.filter { $0.id != excluding?.id }) { event in
+                Button("\(calendarTime(event))  \(event.title)  ·  \(calendarSourceLabel(event))") {
+                    store.selectCalendarMeeting(event)
+                }
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .font(House.TypeToken.meta)
+        .fixedSize()
+        .accessibilityLabel(title == "Choose event" ? "Choose a calendar event" : "\(title) calendar event")
     }
 
     /// A quiet line under the project card: glyph in the glyph column, text
@@ -515,21 +562,6 @@ struct SetupTabView: View {
     private var audioSection: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
             settingsGroup {
-                rowFrame(
-                    HStack(spacing: House.Spacing.sm) {
-                        rowGlyph("mic")
-                        rowText("Microphone", detail: captureReadiness)
-                            .setupLayoutMark("text.microphone")
-                        Spacer(minLength: House.Spacing.sm)
-                        Button("Configure…") {
-                            WindowCoordinator.shared.openSettings(pane: .general)
-                        }
-                        .buttonStyle(.setupAction)
-                        .fixedSize()
-                        .help("Choose the microphone and call audio in Settings")
-                    }
-                )
-                settingsRowDivider
                 toggleRow(icon: "mic.slash", title: "Listening only", detail: "Record the call with your mic muted",
                           isOn: Binding(get: { Self.listeningOnlyToggleIsOn }, set: { Self.setListeningOnlyToggle($0) }))
                     .help("Record call audio with your microphone muted.")
@@ -537,11 +569,6 @@ struct SetupTabView: View {
             footnote(liveStatusLine, mark: "text.status")
                 .accessibilityLabel("Live aids: \(liveStatusLine)")
         }
-    }
-
-    private var captureReadiness: String {
-        let devices = session.audioDeviceNames()
-        return "\(devices.input) · call audio follows \(devices.output)"
     }
 
     private var guideNotesOn: Bool {
@@ -568,13 +595,12 @@ struct SetupTabView: View {
     // MARK: - More options
 
     private var moreOptions: some View {
-        SetupDisclosure(title: "More options", detail: "Live aids, screenshots, speakers, calendar, prep note",
+        SetupDisclosure(title: "More options", detail: "Live aids, speakers, prep note",
                         isExpanded: $moreOptionsOpen)
         {
             VStack(alignment: .leading, spacing: House.Spacing.xl) {
                 section("Live aids") { liveAidsGroup }
                 section("Speakers") { speakerGroup.disabled(session.phase == .finishing) }
-                section("Calendar") { calendarGroup }
                 section("Prep note") { noteEditor }
             }
         }
@@ -603,8 +629,6 @@ struct SetupTabView: View {
                     }
                 )
             }
-            settingsRowDivider
-            screenshotsRow
         }
     }
 
@@ -615,31 +639,6 @@ struct SetupTabView: View {
         guard AutoAssistSettings.runs(on: callType) else { return "Auto does not run on this call type" }
         guard autoAssistStored == nil else { return LiveOption.autoAssist.detail }
         return "Auto on for this call type"
-    }
-
-    private var screenshotsRow: some View {
-        let policy = ScreenshotPolicy.shared
-        return rowFrame(
-            HStack(spacing: House.Spacing.sm) {
-                rowGlyph("eye")
-                rowText("Screenshots", detail: policy.project != nil ? "Now: \(policy.effective.title)" : nil)
-                    .help(policy.project != nil ? "For this project’s \(callTypes.active.name) calls" : "For every call")
-                Spacer(minLength: House.Spacing.sm)
-                if let project = policy.project {
-                    Picker("Project screenshot mode", selection: Binding(
-                        get: { policy.projectOverride },
-                        set: { policy.setOverride($0, project: project, callType: callTypes.active) }
-                    )) {
-                        Text("Use global (\(policy.global.title))").tag(ScreenshotMode?.none)
-                        ForEach(ScreenshotMode.allCases) { mode in Text(mode.title).tag(Optional(mode)) }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                } else {
-                    ScreenshotModePicker().fixedSize()
-                }
-            }
-        )
     }
 
     private var speakerGroup: some View {
@@ -674,72 +673,7 @@ struct SetupTabView: View {
         }
     }
 
-    // MARK: - Calendar picker
-
-    private var calendarGroup: some View {
-        settingsGroup {
-            switch calendarStore.accessState {
-            case .notDetermined:
-                rowFrame(
-                    HStack(spacing: House.Spacing.sm) {
-                        rowGlyph("calendar")
-                        rowText("Calendar", detail: "Use an event for the title and invitees")
-                        Spacer(minLength: House.Spacing.sm)
-                        Button("Allow access") { calendarStore.requestAccess() }
-                            .buttonStyle(.setupAction)
-                            .fixedSize()
-                    }
-                )
-            case .denied:
-                rowFrame(
-                    HStack(spacing: House.Spacing.sm) {
-                        rowGlyph("calendar.badge.exclamationmark")
-                        Text("Calendar access is off. Turn it on in System Settings to choose an event.")
-                            .font(House.TypeToken.meta)
-                            .foregroundStyle(House.ColorToken.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                    }
-                )
-            case .available:
-                rowFrame(
-                    HStack(spacing: House.Spacing.sm) {
-                        rowGlyph(store.calendarMeeting == nil ? "calendar" : "calendar.badge.checkmark")
-                        if let selected = store.calendarMeeting {
-                            rowText(selected.title, detail: calendarDetail(selected))
-                        } else {
-                            rowText("No event chosen", detail: calendarStore.events.isEmpty ? "No events in the next 12 hours" : nil)
-                        }
-                        Spacer(minLength: House.Spacing.sm)
-                        if !calendarStore.events.isEmpty {
-                            Menu(store.calendarMeeting == nil ? "Choose event" : "Change") {
-                                ForEach(calendarStore.events) { event in
-                                    Button("\(calendarTime(event))  \(event.title)  ·  \(calendarSourceLabel(event))") {
-                                        store.selectCalendarMeeting(event)
-                                    }
-                                }
-                            }
-                            .menuStyle(.borderlessButton)
-                            .font(House.TypeToken.meta)
-                            .fixedSize()
-                        }
-                        if store.calendarMeeting != nil {
-                            Button("Remove") { store.clearCalendarMeeting() }
-                                .buttonStyle(.setupAction)
-                                .fixedSize()
-                                .help("Remove calendar meeting context")
-                                .accessibilityLabel("Remove calendar meeting context")
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    private func calendarDetail(_ event: CalendarMeeting) -> String {
-        let count = event.attendees.count
-        return "\(calendarTime(event)) · \(calendarSourceLabel(event)) · \(count == 0 ? "no invitees" : "\(count) invitee\(count == 1 ? "" : "s")")"
-    }
+    // MARK: - Calendar
 
     private func calendarTime(_ event: CalendarMeeting) -> String {
         Self.calendarTimeFormatter.string(from: event.startDate)

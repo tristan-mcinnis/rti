@@ -168,15 +168,8 @@ extension AssistantInputView {
         case .palette:
             closePalette()
         case .addContext:
-            if addContextPage == .scope {
-                addContextPage = .root
-                addContextQuery = ""
-                chooserIndex = 0
-                addContextFocusToken &+= 1
-            } else {
-                isAddContextOpen = false
-                focusField()
-            }
+            isAddContextOpen = false
+            focusField()
         case .mention, .slash:
             dismissedChooserDraft = input
         case .none:
@@ -191,7 +184,6 @@ extension AssistantInputView {
         } else {
             isPaletteOpen = false
             focusedChipID = nil
-            addContextPage = .root
             addContextQuery = ""
             chooserIndex = 0
             isAddContextOpen = true
@@ -278,10 +270,8 @@ extension AssistantInputView {
                     selectedIndex: chooserIndex,
                     query: $addContextQuery,
                     focusToken: addContextFocusToken,
-                    title: addContextPage == .scope ? "Search Scope" : "Add Context",
-                    isSubpage: addContextPage == .scope,
-                    footnote: addContextPage == .root ? contextFootnote : nil,
-                    searchPlaceholder: addContextPage == .scope ? "Search scopes" : "Search context",
+                    footnote: contextFootnote,
+                    searchPlaceholder: "Search context",
                     maxRows: HouseComposerMetrics.addContextRows(
                         availableHeight: availableHeight,
                         composerHeight: composerChromeHeight

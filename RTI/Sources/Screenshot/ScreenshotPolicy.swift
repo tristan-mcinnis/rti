@@ -76,18 +76,6 @@ final class ScreenshotPolicy {
         changed()
     }
 
-    /// A quick choice edits the active project's override when it has one.
-    func choose(_ mode: ScreenshotMode) {
-        if let project, projectOverride != nil {
-            setOverride(mode, project: project, callType: CallTypeStore.shared.active)
-            if global == .off, mode != .off {
-                setGlobal(mode)
-            }
-        } else {
-            setGlobal(mode)
-        }
-    }
-
     func changed() {
         generation &+= 1
         guard self === Self.shared else { return }

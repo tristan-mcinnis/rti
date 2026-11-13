@@ -20,14 +20,6 @@ import HouseDesign
 // MARK: - Composer
 
 struct AssistantInputView: View {
-    enum AddContextPage { case root, scope }
-
-    /// A project or client on the Search Scope page.
-    struct ScopeItem {
-        let item: VaultItem
-        let isClient: Bool
-    }
-
     @State var input: String
     @State var isDropTargeted: Bool
     @State var isQueued: Bool
@@ -37,14 +29,11 @@ struct AssistantInputView: View {
     @State var focusedChipID: String?
     @State var isPaletteOpen: Bool
     @State var isAddContextOpen: Bool
-    @State var addContextPage: AddContextPage
     /// The Add Context pane's own search. Typing there narrows the rows and
     /// never touches the draft.
     @State var addContextQuery = ""
-    /// Bumped to put the keys in the pane's search field when it opens or
-    /// changes page.
+    /// Bumped to put the keys in the pane's search field when it opens.
     @State var addContextFocusToken = 0
-    @State var scopeItems: [ScopeItem] = []
     /// The meetings and sessions the unified context chooser can reach, read
     /// once when a chooser opens.
     @State var contextMeetings: [VaultMeetings.Meeting] = []
@@ -90,11 +79,7 @@ struct AssistantInputView: View {
         _documents = State(initialValue: seed.documents)
         _focusedChipID = State(initialValue: seed.focusedChipID)
         _isPaletteOpen = State(initialValue: seed.layer == .palette)
-        _isAddContextOpen = State(initialValue: seed.layer == .addContext || seed.layer == .searchScope)
-        _addContextPage = State(initialValue: seed.layer == .searchScope ? .scope : .root)
-        if seed.layer == .searchScope {
-            _scopeItems = State(initialValue: Self.loadScopeItems())
-        }
+        _isAddContextOpen = State(initialValue: seed.layer == .addContext)
         streamingOverride = seed.isStreaming
         seededCandidates = seed.mentionCandidates
         seededMentionRows = seed.mentionRows
@@ -409,11 +394,10 @@ struct AssistantInputView: View {
         // The pane filters the rows it already has and never reads the vault:
         // the vault is searched only by the `@` in the field.
         .onChange(of: addContextQuery) { _, _ in chooserIndex = 0 }
-        // A chooser opens on the space it can reach: RTI's projects, clients
-        // and recent meetings are read once, not on every keystroke.
+        // A chooser opens on the space it can reach: RTI's recent meetings
+        // are read once, not on every keystroke.
         .onChange(of: layer) { _, newLayer in
             guard newLayer == .mention || newLayer == .addContext else { return }
-            if scopeItems.isEmpty { scopeItems = Self.loadScopeItems() }
             if contextMeetings.isEmpty { contextMeetings = Self.loadContextMeetings() }
         }
     }
@@ -511,15 +495,20 @@ struct AssistantInputView: View {
 
     // MARK: Error above the row
 
-    /// Errors that belong to no turn: a capture error, a missing or bad
-    /// key (with the fix-it), or a route that cannot run as chosen. Turn
-    /// errors stay in the thread.
+    /// Errors that belong to no turn, in their one home (the Assist thread
+    /// draws none): a capture error, missing keys, a bad key or another
+    /// turnless failure, or a route that cannot run as chosen, each with its
+    /// fix-it. Turn errors stay in the thread.
     private var errorLine: ComposerErrorLine? {
         if let message = session.lastError, !message.isEmpty {
             return .init(message: message, fixTitle: session.lastErrorIsAuth ? "Open Settings" : (session.canRetryLiveTranscription ? "Retry transcription" : nil))
         }
-        if llm.lastErrorIsAuth, let message = llm.lastError, !message.isEmpty {
-            return .init(message: message, fixTitle: "Open Settings")
+        if let missing = Self.missingKeysMessage(speechHasKey: STTProviders.activeHasKey, assistantHasKey: LLMProviders.activeHasKey,
+                                                 assistantName: LLMProviders.active.displayName) {
+            return .init(message: missing, fixTitle: "Open Settings")
+        }
+        if let message = llm.lastError, !message.isEmpty, llm.lastErrorIsAuth || llm.lastErrorTurnID == nil {
+            return .init(message: message, fixTitle: llm.lastErrorIsAuth ? "Open Settings" : nil)
         }
         // The route's own reason, in its own words: a turn that cannot run is
         // named before Send, with the fix that resolves it.
@@ -529,4 +518,13 @@ struct AssistantInputView: View {
         return nil
     }
 
+    /// The one missing-keys line, or nil when both keys are set.
+    static func missingKeysMessage(speechHasKey: Bool, assistantHasKey: Bool, assistantName: String) -> String? {
+        switch (speechHasKey, assistantHasKey) {
+        case (true, true): nil
+        case (false, false): "No API keys yet."
+        case (false, true): "No Soniox key yet."
+        case (true, false): "No \(assistantName) key yet."
+        }
+    }
 }

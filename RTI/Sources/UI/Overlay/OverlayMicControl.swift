@@ -3,7 +3,9 @@ import HouseDesign
 import RTICore
 
 /// Zoom-style mic control in the overlay top bar: click the mic to mute /
-/// unmute the mic leg, click the chevron for the input-device picker.
+/// unmute the mic leg, click the chevron for the input-device picker. It is
+/// the one in-window home of the microphone; its last row opens Settings >
+/// General for the rest of the audio setup.
 ///
 /// Mute is a TRUE mute (buffers dropped before they reach Soniox) and only
 /// affects the mic leg — system audio keeps flowing, so it's the right tool
@@ -122,6 +124,12 @@ struct OverlayMicControl: View {
             if !session.canToggleMute {
                 Text(MicControl.muteUnavailableHelp)
             }
+            Divider()
+            // The rest of the audio setup (echo cancellation, Bluetooth
+            // volume, live levels, capture access) is Settings > General.
+            Button("Audio Settings…") {
+                WindowCoordinator.shared.openSettings(pane: .general)
+            }
         } label: {
             Image(systemName: "chevron.down")
                 .font(.system(size: House.TypeToken.Size.micro, weight: .bold))
@@ -130,7 +138,7 @@ struct OverlayMicControl: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .accessibilityLabel("Choose input device")
+        .accessibilityLabel("Audio devices and settings")
         .onAppear { refreshLists() }
         // The overlay can outlive an entire meeting app's lifecycle (Zoom
         // launched after RTI, for instance), so a one-shot .onAppear load
@@ -139,7 +147,7 @@ struct OverlayMicControl: View {
         .onChange(of: hovering) { _, isHovering in
             if isHovering { refreshLists() }
         }
-        .help("Choose input device")
+        .help("Choose the microphone, speaker output and call audio, or open Audio Settings")
     }
 
     private func refreshLists() {
