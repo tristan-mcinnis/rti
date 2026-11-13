@@ -18,7 +18,10 @@ extension SessionsWindowModel {
             case .editTranscript:
                 return row.session.isRTIArchive && row.hasTranscript
             case .upgradeTranscript:
+                // The folder of the live recording grows until Stop; an
+                // upgrade now would transcribe and cache only its start.
                 return row.hasRetainedAudio && upgradingRowID == nil
+                    && !SessionCoordinator.shared.isCapturing(sessionStartedAt: row.session.date)
             case .copy, .saveMarkdown, .savePDF:
                 return !isOpen || !fileText.isEmpty
             case .share:

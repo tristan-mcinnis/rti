@@ -45,11 +45,15 @@ public struct SessionArchiveMetadata: Codable {
     public var turns: [SessionAnnotatedTurn]?
     public var stimulusPackageRevision: String?
     public var speakerPolicy: SessionSpeakerPolicy?
+    /// Stretches a leg did not record (AUD-4). Nil when none, and in files
+    /// written before 2026-11-13.
+    public var captureGaps: [CaptureGap]?
 
     private enum CodingKeys: String, CodingKey {
         case sessionId, systemAudioStartOffsetMs, micAudioFile, systemAudioFile, mode, workstream
         case durationSeconds, calendarTitle, recordingError, speechContext
         case schemaVersion, liveTokenJournal, asyncTokenFiles, evidenceFile, noteIDs, markerSpans, turns, stimulusPackageRevision, speakerPolicy
+        case captureGaps = "capture_gaps"
         case groupID = "group_id"
         case guidePath = "guide_path"
         case guideSourcePath = "guide_source_path"

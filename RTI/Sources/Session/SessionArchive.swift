@@ -90,6 +90,12 @@ enum SessionArchive {
     /// text, metadata, and retained-audio artifact was saved. A failure is
     /// logged and returns nil, so the caller can retain the snapshot for retry.
     /// An empty session also returns nil without writing anything.
+    /// F6: one failed file does not stop the others. Every file that can be
+    /// written is written from this snapshot (so notes.md, chat.md and
+    /// session.json never stay at an older checkpoint behind one blocked
+    /// file), and the nil return still says the archive is incomplete.
+    /// Only session.json waits for the audio: it never names a leg that was
+    /// not staged.
     /// `workstreamSlug` is a pure DECLARATION stamped into frontmatter —
     /// routing policy lives in the `/meeting` skill, never in this app.
     @discardableResult
@@ -114,6 +120,7 @@ enum SessionArchive {
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0,
         recordingError: String? = nil,
+        captureGaps: [CaptureGap] = [],
         guide: GuideArchiveSnapshot? = nil,
         evidence: SessionEvidence? = nil,
         speakerPolicy: SessionSpeakerPolicy? = nil,
@@ -123,28 +130,35 @@ enum SessionArchive {
             .compactMap { $0 }
             .contains { isRegularFile($0) }
         let expectsAudio = micRecordingURL != nil || systemRecordingURL != nil
-        guard guide != nil || !transcript.isEmpty || !chat.isEmpty || !notes.isEmpty || !visualContext.isEmpty || !chatThreads.isEmpty || unreadableChatCount > 0 || expectsAudio else { return nil }
+        // A live session's write (it carries evidence) or a placed system leg
+        // is recovery state even before anyone speaks: without session.json a
+        // crash recovers the system leg at offset 0 with no speech context.
+        let recoveryState = evidence != nil || systemAudioStartOffsetMs != nil
+        guard guide != nil || !transcript.isEmpty || !chat.isEmpty || !notes.isEmpty || !visualContext.isEmpty || !chatThreads.isEmpty || unreadableChatCount > 0 || expectsAudio || recoveryState else { return nil }
         guard let dir = sessionDirectory(startedAt: startedAt) else { return nil }
 
         func fm(_ kind: String) -> [String] {
             frontmatter(kind: kind, startedAt: startedAt, workstreamSlug: workstreamSlug)
         }
+        var complete = true
 
         // User-authored notes are content too, even before the first spoken
         // word. Retained audio also needs a transcript target for recovery.
         if !transcript.isEmpty || hasRetainedAudio || guide != nil {
             let body = guide == nil
-                ? renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, selfName: speakerNames["self"])
-                : renderGuideTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript)
+                ? renderTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, selfName: speakerNames["self"],
+                                   captureGaps: captureGaps)
+                : renderGuideTranscript(startedAt: startedAt, endedAt: endedAt, entries: transcript, captureGaps: captureGaps)
             let md = (fm("Transcript") + [body]).joined(separator: "\n")
             let transcriptURL = dir.appendingPathComponent("transcript.md")
-            guard writeOwnerOnly(md, to: transcriptURL) else { return nil }
-            if guide != nil || evidence != nil {
+            if !writeOwnerOnly(md, to: transcriptURL) {
+                complete = false
+            } else if guide != nil || evidence != nil {
                 do {
                     try preserveGuideTranscript(transcriptURL)
                 } catch {
                     RTILog.log("Could not preserve Guide transcript: \(error.localizedDescription)", level: .error, category: .archive)
-                    return nil
+                    complete = false
                 }
             }
         }
@@ -157,13 +171,14 @@ enum SessionArchive {
                                              startMs: $0.liveStartMs, text: $0.original)
                 }
                 let annotated = evidence.transcript(segments: segments, raw: false)
-                if !annotated.isEmpty {
-                    guard writeOwnerOnly((fm("Transcript") + ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), "", annotated]).joined(separator: "\n"),
-                                         to: dir.appendingPathComponent("transcript.md")) else { return nil }
+                if !annotated.isEmpty,
+                   !writeOwnerOnly((fm("Transcript") + ["# Transcript", ""] + headerLines(startedAt: startedAt, endedAt: endedAt, captureGaps: captureGaps) + [annotated]).joined(separator: "\n"),
+                                   to: dir.appendingPathComponent("transcript.md")) {
+                    complete = false
                 }
             } catch {
                 RTILog.log("Could not save transcript evidence: \(error.localizedDescription)", level: .error, category: .archive)
-                return nil
+                complete = false
             }
         }
 
@@ -174,10 +189,12 @@ enum SessionArchive {
         if !speakerArchive.isEmpty || guide != nil {
             do {
                 let data = try JSONEncoder().encode(speakerArchive)
-                guard writeOwnerOnly(String(decoding: data, as: UTF8.self), to: dir.appendingPathComponent("speaker-names.json")) else { return nil }
+                if !writeOwnerOnly(String(decoding: data, as: UTF8.self), to: dir.appendingPathComponent("speaker-names.json")) {
+                    complete = false
+                }
             } catch {
                 RTILog.log("Could not encode speaker-names.json: \(error.localizedDescription)", level: .error, category: .archive)
-                return nil
+                complete = false
             }
         }
 
@@ -186,31 +203,13 @@ enum SessionArchive {
         // a recording that held several chats keeps all of them. The flat dated
         // list is used only when there are no structured threads at all, and it
         // never invents boundaries between them.
-        if !chatThreads.isEmpty || (chat.isEmpty && unreadableChatCount > 0) {
-            let body = ChatProjectionMarkdown.render(
-                threads: chatThreads,
-                startedAt: startedAt,
-                endedAt: endedAt,
-                unreadableChats: unreadableChatCount,
-                header: header(startedAt: startedAt, endedAt: endedAt)
-            )
-            let md = (fm("Chat") + [body]).joined(separator: "\n")
-            guard writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md")) else { return nil }
-        } else if !chat.isEmpty {
-            let body = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
-            var lines = [body]
-            if unreadableChatCount > 0 {
-                lines.append("")
-                lines.append("_\(unreadableChatCount) stored chat\(unreadableChatCount == 1 ? "" : "s") in this recording could not be read and \(unreadableChatCount == 1 ? "is" : "are") not shown here. Nothing was removed._")
-            }
-            let md = (fm("Chat") + lines).joined(separator: "\n")
-            guard writeOwnerOnly(md, to: dir.appendingPathComponent("chat.md")) else { return nil }
+        if !writeChat(in: dir, startedAt: startedAt, endedAt: endedAt, chat: chat, chatThreads: chatThreads,
+                      unreadableChatCount: unreadableChatCount, workstreamSlug: workstreamSlug) {
+            complete = false
         }
 
-        if !notes.isEmpty {
-            let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(notes)]).joined(separator: "\n")
-            let md = (fm("Notes") + [body]).joined(separator: "\n")
-            guard writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md")) else { return nil }
+        if !writeNotes(in: dir, startedAt: startedAt, endedAt: endedAt, notes: notes, workstreamSlug: workstreamSlug) {
+            complete = false
         }
         // Frames staged during the session (local-vision lane) move into
         // `frames/` beside screen-context.md; gitignored, owner-only.
@@ -225,12 +224,13 @@ enum SessionArchive {
         if !visualContext.isEmpty {
             let body = (["# Screen context", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderVisualContext(visualContext, archive: dir, startedAt: startedAt)]).joined(separator: "\n")
             let md = (fm("Screen context") + [body]).joined(separator: "\n")
-            guard writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md")) else { return nil }
+            if !writeOwnerOnly(md, to: dir.appendingPathComponent("screen-context.md")) { complete = false }
         }
         let micName = stageRecordingIfPresent(micRecordingURL, as: "audio-mic.wav", in: dir)
-        guard micRecordingURL == nil || micName != nil else { return nil }
         let systemName = stageRecordingIfPresent(systemRecordingURL, as: "audio-system.wav", in: dir)
-        guard systemRecordingURL == nil || systemName != nil else { return nil }
+        // A leg that was not staged keeps its earlier session.json: a new one
+        // would drop the audio file name the upgrade and recovery read.
+        let audioStaged = (micRecordingURL == nil || micName != nil) && (systemRecordingURL == nil || systemName != nil)
         var guidePath = guide?.guidePath
         var guideSourcePath: String?
         if let guide {
@@ -244,9 +244,10 @@ enum SessionArchive {
                 try saveGuideExtraction(guide.extraction, in: dir)
             } catch {
                 RTILog.log("Could not save Guide files: \(error.localizedDescription)", level: .error, category: .archive)
-                return nil
+                complete = false
             }
         }
+        guard audioStaged else { return nil }
         var metadata = ArchiveMetadata(
                 sessionId: sessionId,
                 systemAudioStartOffsetMs: systemAudioStartOffsetMs,
@@ -265,6 +266,7 @@ enum SessionArchive {
                 guideRoster: guide?.roster
             )
         metadata.speakerPolicy = speakerPolicy
+        metadata.captureGaps = captureGaps.isEmpty ? nil : captureGaps
         if let evidence {
             metadata.schemaVersion = evidence.schemaVersion
             if isRegularFile(dir.appendingPathComponent("soniox-live.jsonl")) {
@@ -276,8 +278,52 @@ enum SessionArchive {
             metadata.turns = evidence.turns
             metadata.stimulusPackageRevision = packageRevision
         }
-        guard writeMetadata(metadata, to: dir) else { return nil }
+        guard writeMetadata(metadata, to: dir), complete else { return nil }
         return dir
+    }
+
+    /// Write `chat.md` alone. Also used after Stop, when an answer that was
+    /// still streaming at Stop is filed (`LateChatArchiveRefresher`); every
+    /// other archive file is left as it is. True when nothing needed writing.
+    static func writeChat(
+        in dir: URL,
+        startedAt: Date,
+        endedAt: Date,
+        chat: [ChatEntry],
+        chatThreads: [ChatProjectionMarkdown.Thread],
+        unreadableChatCount: Int,
+        workstreamSlug: String?
+    ) -> Bool {
+        let fm = frontmatter(kind: "Chat", startedAt: startedAt, workstreamSlug: workstreamSlug)
+        if !chatThreads.isEmpty || (chat.isEmpty && unreadableChatCount > 0) {
+            let body = ChatProjectionMarkdown.render(
+                threads: chatThreads,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                unreadableChats: unreadableChatCount,
+                header: header(startedAt: startedAt, endedAt: endedAt)
+            )
+            return writeOwnerOnly((fm + [body]).joined(separator: "\n"), to: dir.appendingPathComponent("chat.md"))
+        } else if !chat.isEmpty {
+            let body = renderChat(startedAt: startedAt, endedAt: endedAt, entries: chat)
+            var lines = [body]
+            if unreadableChatCount > 0 {
+                lines.append("")
+                lines.append("_\(unreadableChatCount) stored chat\(unreadableChatCount == 1 ? "" : "s") in this recording could not be read and \(unreadableChatCount == 1 ? "is" : "are") not shown here. Nothing was removed._")
+            }
+            return writeOwnerOnly((fm + lines).joined(separator: "\n"), to: dir.appendingPathComponent("chat.md"))
+        }
+        return true
+    }
+
+    /// Write `notes.md` alone. Also used after Stop, when a notes block lands
+    /// after the archive was written (`LateChatArchiveRefresher`). True when
+    /// nothing needed writing.
+    static func writeNotes(in dir: URL, startedAt: Date, endedAt: Date, notes: [GeneratedNote], workstreamSlug: String?) -> Bool {
+        guard !notes.isEmpty else { return true }
+        let body = (["# Notes", "", header(startedAt: startedAt, endedAt: endedAt), ""] + [renderNotes(notes)]).joined(separator: "\n")
+        let md = (frontmatter(kind: "Notes", startedAt: startedAt, workstreamSlug: workstreamSlug) + [body]).joined(separator: "\n")
+        return writeOwnerOnly(md, to: dir.appendingPathComponent("notes.md"))
     }
 
     /// Export RTI's live transcript into the raw-transcript lane
@@ -338,17 +384,30 @@ enum SessionArchive {
     }
 
     static func requiredCanonicalExport(in archive: URL, startedAt: Date) throws -> URL? {
-        guard let raw = meetingTranscriptsRawDirectory() else { return nil }
+        // No meetings folder is a failure, never a quiet success: the caller
+        // would clear the upgrade marker and /meeting would never run.
+        guard let raw = meetingTranscriptsRawDirectory() else {
+            throw TranscriptUpgradeError.writeFailed(missingTranscriptsFolderMessage())
+        }
         guard let url = refreshCanonicalMeetingTranscript(fromArchiveDir: archive, startedAt: startedAt) else {
             throw TranscriptUpgradeError.writeFailed("The upgraded transcript is saved. Could not write the raw transcript in " + raw.path)
         }
-        if FileManager.default.fileExists(atPath: archive.appendingPathComponent(SessionEvidence.filename).path) {
+        // Any current-format session gets a sidecar, even one that died
+        // before its first archive write: its typed notes sit in the marker
+        // journal. Historical archives (none of these files) get none.
+        let tracked = [SessionEvidence.filename, SessionMarkerJournal.filename, SonioxLiveJournal.filename].contains {
+            FileManager.default.fileExists(atPath: archive.appendingPathComponent($0).path)
+        }
+        if tracked {
             let sidecar = raw.appendingPathComponent(canonicalMeetingStem(startedAt: startedAt) + "-rti.md")
             if !isRegularFile(sidecar) {
                 let mode = (try? readMetadata(in: archive))?.mode
                 let type = CallType.allCases.first { $0.name == mode } ?? .client
+                // Stop never finished (a crash, or a quit before the
+                // emergency write): carry what the archive itself kept.
                 guard writeCanonicalMeetingSidecar(startedAt: startedAt, chat: [], visualContext: [], notes: [],
-                                                   archiveDir: archive, callType: type) != nil else {
+                                                   archiveDir: archive, callType: type,
+                                                   archivedSections: archivedSidecarSections(in: archive)) != nil else {
                     throw TranscriptUpgradeError.writeFailed("The upgraded transcript is saved. Could not write " + sidecar.path)
                 }
             }
@@ -426,7 +485,8 @@ enum SessionArchive {
         callType: CallType,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0,
-        typedNotes: [LiveEntry] = []
+        typedNotes: [LiveEntry] = [],
+        archivedSections: [String] = []
     ) -> URL? {
         guard let transcriptsRaw = meetingTranscriptsRawDirectory() else { return nil }
         try? FileManager.default.createDirectory(at: transcriptsRaw, withIntermediateDirectories: true)
@@ -441,7 +501,8 @@ enum SessionArchive {
             callType: callType,
             chatThreads: chatThreads,
             unreadableChatCount: unreadableChatCount,
-            typedNotes: typedNotes
+            typedNotes: typedNotes,
+            archivedSections: archivedSections
         )
         guard !sidecar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let url = transcriptsRaw.appendingPathComponent("\(stem)-rti.md")
@@ -493,6 +554,14 @@ enum SessionArchive {
         return CanonicalMeetingExport(transcriptURL: transcriptURL, sidecarURL: sidecarURL)
     }
 
+    /// The user-facing reason no meetings folder could be found.
+    static func missingTranscriptsFolderMessage() -> String {
+        let cause = VaultPaths.configReadProblem()
+            ?? "\(VaultPaths.configURL().path) names no transcripts_dir, knowledge_base_dir or recordings_dir."
+        return "The upgraded transcript is saved, but RTI could not find the meetings folder, so /meeting has not run. "
+            + cause + " RTI tries again at next launch."
+    }
+
     static func meetingTranscriptsRawDirectory() -> URL? {
         if let transcriptsRaw = VaultPaths.meetingTranscriptsRawDirectory() { return transcriptsRaw }
         return VaultLogStore.rtiDirectory()?
@@ -515,7 +584,8 @@ enum SessionArchive {
         callType: CallType,
         chatThreads: [ChatProjectionMarkdown.Thread] = [],
         unreadableChatCount: Int = 0,
-        typedNotes: [LiveEntry] = []
+        typedNotes: [LiveEntry] = [],
+        archivedSections: [String] = []
     ) -> String {
         var lines = [
             "---",
@@ -549,6 +619,10 @@ enum SessionArchive {
         }
         lines.append("")
 
+        // Stretches a leg did not record, before anything else /meeting reads.
+        if let archiveDir, let gaps = (try? readMetadata(in: archiveDir))?.captureGaps, !gaps.isEmpty {
+            lines += ["## Recording gaps", ""] + CaptureGapLog.markdown(gaps) + [""]
+        }
         // Notes the user typed during the call; the canonical transcript drops them.
         if let archiveDir, let journal = try? SessionMarkerJournal.read(in: archiveDir), !journal.isEmpty {
             lines += ["## My notes and markers", ""]
@@ -583,7 +657,38 @@ enum SessionArchive {
             lines.append("")
             lines += chatBlock(chat)
         }
+        for section in archivedSections {
+            lines += [section, ""]
+        }
         return lines.joined(separator: "\n")
+    }
+
+    /// The sidecar sections a session folder can still supply when Stop never
+    /// wrote the sidecar: the generated notes, the screen context and the chat
+    /// from its last archive write, each without its file's frontmatter, title
+    /// and date line.
+    static func archivedSidecarSections(in archive: URL) -> [String] {
+        [("notes.md", "## Generated notes"), ("screen-context.md", "## Screen context"), ("chat.md", "## Assistant chat")]
+            .compactMap { file, heading in
+                guard let text = try? String(contentsOf: archive.appendingPathComponent(file), encoding: .utf8) else { return nil }
+                let body = archivedBody(text)
+                return body.isEmpty ? nil : heading + "\n\n" + body
+            }
+    }
+
+    /// An archive file's body: the frontmatter, the `# Title` line and the
+    /// `_date · duration_` line removed.
+    private static func archivedBody(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n")[...]
+        if lines.first == "---", let close = lines.dropFirst().firstIndex(of: "---") {
+            lines = lines[(close + 1)...]
+        }
+        func dropBlank() { while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty { lines = lines.dropFirst() } }
+        dropBlank()
+        if let first = lines.first, first.hasPrefix("# ") { lines = lines.dropFirst() }
+        dropBlank()
+        if let first = lines.first, first.hasPrefix("_"), first.hasSuffix("_") { lines = lines.dropFirst() }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func meetingProcessorPrompt(transcriptURL: URL) -> String {
@@ -802,13 +907,13 @@ enum SessionArchive {
         }
     }
 
-    private static func renderGuideTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry]) -> String {
+    private static func renderGuideTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry], captureGaps: [CaptureGap] = []) -> String {
         var rows = GuideTranscript.sources(from: entries).map { source in
             let turn = source.turn
             return (turn.startMs, SpeakerLabelMapping.displayLabel(forRawKey: turn.speaker) ?? turn.speaker, turn.text)
         }
         rows.append(contentsOf: entries.filter { $0.speakerId == "note" }.map { ($0.startMs, "📝 Note", $0.text) })
-        var lines = ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), ""]
+        var lines = ["# Transcript", ""] + headerLines(startedAt: startedAt, endedAt: endedAt, captureGaps: captureGaps)
         for (ms, speaker, text) in rows.sorted(by: { $0.0 < $1.0 }) {
             let stamp = GuideExtraction.locator(ms) + String(format: ".%03d", max(0, ms) % 1000)
             lines += ["`\(stamp)` **\(speaker):** \(text)", ""]
@@ -818,8 +923,9 @@ enum SessionArchive {
 
     // MARK: - Rendering
 
-    static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry], selfName: String? = nil) -> String {
-        var lines = ["# Transcript", "", header(startedAt: startedAt, endedAt: endedAt), ""]
+    static func renderTranscript(startedAt: Date, endedAt: Date, entries: [LiveEntry], selfName: String? = nil,
+                                 captureGaps: [CaptureGap] = []) -> String {
+        var lines = ["# Transcript", ""] + headerLines(startedAt: startedAt, endedAt: endedAt, captureGaps: captureGaps)
 
         // Originals only — live-translation tokens are a viewing convenience, not
         // part of the kept record.
@@ -941,6 +1047,13 @@ enum SessionArchive {
             }
             return lines.joined(separator: "\n")
         }.joined(separator: "\n\n---\n\n")
+    }
+
+    /// The date line, then the recording-gaps block when a leg missed part
+    /// of the call (AUD-4), each followed by a blank line.
+    private static func headerLines(startedAt: Date, endedAt: Date, captureGaps: [CaptureGap]) -> [String] {
+        let gaps = CaptureGapLog.markdown(captureGaps)
+        return [header(startedAt: startedAt, endedAt: endedAt), ""] + (gaps.isEmpty ? [] : gaps + [""])
     }
 
     private static func header(startedAt: Date, endedAt: Date) -> String {

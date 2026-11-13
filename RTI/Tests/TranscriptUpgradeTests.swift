@@ -511,6 +511,61 @@ final class TranscriptUpgradeTests: XCTestCase {
         XCTAssertTrue(transcript.contains("upgraded remote"))
     }
 
+    /// F4 (batch 5): the app was killed 5 minutes after its last
+    /// checkpoint. The provider returns nothing for the system leg, so the
+    /// live lines stand in. The checkpointed evidence ends at 300 s; the
+    /// token journal holds the remote side's later lines, and its last line
+    /// was cut mid-write by the kill.
+    func testEmptyLegFallbackReplaysTheTokenJournalPastTheLastCheckpoint() async throws {
+        let dir = try makeTemporarySessionDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try Data("mic".utf8).write(to: dir.appendingPathComponent("audio-mic.m4a"))
+        try Data("system".utf8).write(to: dir.appendingPathComponent("audio-system.m4a"))
+        try #"{"sessionId":"fixture","micAudioFile":"audio-mic.m4a","systemAudioFile":"audio-system.m4a"}"#
+            .write(to: dir.appendingPathComponent("session.json"), atomically: true, encoding: .utf8)
+        let context = MarkerTimeline(events: []).context(at: 0)
+        let checkpointed = SessionAnnotatedTurn(turnID: "remote_1@290000", rawSpeaker: "remote_1", leg: "Them",
+                                                speakerConfidence: "unverified", original: "Invented checkpointed remark.",
+                                                liveStartMs: 290_000, endMs: 300_000, context: context)
+        try SessionEvidence(sessionID: "fixture", groupID: nil, events: [], through: 300_000, turns: [checkpointed]).write(in: dir)
+        func word(_ text: String, _ start: Int, translation: Bool = false) -> SonioxWord {
+            SonioxWord(text: text, startMs: start, endMs: start + 400, speaker: 0, confidence: 0.9, isFinal: true,
+                       translationStatus: translation ? "translation" : "original", language: nil, sourceLanguage: nil)
+        }
+        // A stream that restarted at 280 s: its clock counts from there.
+        let batches = [
+            SonioxLiveJournal.Batch(leg: "system", stream: "s1", baseMs: 280_000, tokens: [word("Invented", 10_000), word(" checkpointed", 10_400)]),
+            SonioxLiveJournal.Batch(leg: "system", stream: "s1", baseMs: 280_000, tokens: [word("Invented", 30_000), word(" late", 30_400), word(" remark.", 30_800)]),
+            SonioxLiveJournal.Batch(leg: "system", stream: "s1", baseMs: 280_000, tokens: [word("Not original", 31_000, translation: true)]),
+            SonioxLiveJournal.Batch(leg: "mic", stream: "m1", baseMs: 0, tokens: [word("Invented mic words.", 305_000)]),
+            SonioxLiveJournal.Batch(leg: "system", stream: "s2", baseMs: 400_000, tokens: [word("Invented final words", 190_000)]),
+        ]
+        var journal = Data()
+        for batch in batches {
+            journal += try JSONEncoder().encode(batch) + Data([0x0A])
+        }
+        journal += Data(#"{"leg":"system","stream":"s2","baseMs":400000,"tokens":[{"text":"cut"#.utf8)
+        try journal.write(to: dir.appendingPathComponent(SonioxLiveJournal.filename))
+
+        let mic = Data(#"{"tokens":[{"text":"Invented upgraded mic.","start_ms":305000,"end_ms":306000}]}"#.utf8)
+        let progress = Box<[String]>([])
+        _ = try await TranscriptUpgradePipeline.upgradeLegs(sessionDir: dir, startedAt: Date(timeIntervalSince1970: 1_782_000_000),
+                                                            providerID: "fixture", providerDisplayName: "Soniox", frontmatter: [],
+                                                            progress: { progress.value.append($0) }) { input, _ in
+            .soniox(data: input.defaultSpeaker == "Remote speaker" ? Data(#"{"tokens":[]}"#.utf8) : mic, policy: .init())
+        }
+        let transcript = try String(contentsOf: dir.appendingPathComponent("transcript.md"), encoding: .utf8)
+        XCTAssertTrue(transcript.contains("Invented checkpointed remark."))
+        XCTAssertTrue(transcript.contains("Invented late remark."), "the line after the last checkpoint is kept")
+        XCTAssertTrue(transcript.contains("Invented final words"), "a later stream is placed by its own base")
+        XCTAssertEqual(transcript.components(separatedBy: "Invented checkpointed").count, 2)
+        XCTAssertFalse(transcript.contains("Not original"), "translation tokens are not speech")
+        XCTAssertFalse(transcript.contains("cut"), "the line the kill cut is skipped, not fatal")
+        XCTAssertTrue(progress.value.contains { $0.contains("kept 3 live lines") }, "\(progress.value)")
+        let segments = SonioxLiveJournalReplay.segments(in: dir, leg: "system", fromMs: 300_000)
+        XCTAssertEqual(segments.map(\.startMs), [310_000, 590_000])
+    }
+
     private func makeTemporarySessionDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("rti-upgrade-test-\(UUID().uuidString)", isDirectory: true)

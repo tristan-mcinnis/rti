@@ -77,7 +77,34 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     private static let maxRetries = 5
     private static let retryDelays: [TimeInterval] = [1, 2, 4, 8, 8]
 
-    init(apiKey: String, url: URL, translationConfig: TranslationConfig? = nil, context: SonioxContext? = nil, diarize: Bool = true) {
+    /// A Wi-Fi drop or roam that sends no TCP reset left the socket "open"
+    /// for minutes (the TCP retransmission give-up) while health read live
+    /// and no words came. These three signals end that stall early; each
+    /// abandons the socket into the ordinary retry path:
+    /// - the path stays not viable for `viabilityGrace` seconds;
+    /// - the system suggests a better path (`.reconnectSuggested(true)`);
+    /// - audible audio has gone unanswered for `stallTimeout` seconds: no
+    ///   frame at all came back since the first audible frame was sent.
+    private let viabilityGrace: TimeInterval
+    private let stallTimeout: TimeInterval
+    private let now: @Sendable () -> Date
+    /// Bumped on every viability change of the current socket, so a grace
+    /// timer only acts on the loss it was started for. Protected by `lock`.
+    private var viabilityEpoch: UInt64 = 0
+    private var pathViable = true
+    /// The first audible frame sent since the server last sent anything on
+    /// this socket. Protected by `lock`.
+    private var firstUnansweredAudibleAt: Date?
+    /// Peak level (of 32,767) a frame needs to count as audible. Room tone
+    /// stays under it; speech is well over it.
+    static let audibleFloor: Int16 = 1_000
+
+    init(apiKey: String, url: URL, translationConfig: TranslationConfig? = nil, context: SonioxContext? = nil, diarize: Bool = true,
+         viabilityGrace: TimeInterval = 5, stallTimeout: TimeInterval = 15,
+         now: @escaping @Sendable () -> Date = { Date() }) {
+        self.viabilityGrace = viabilityGrace
+        self.stallTimeout = stallTimeout
+        self.now = now
         self.diarize = diarize
         self.apiKey = apiKey
         self.url = url
@@ -108,6 +135,7 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
     }
 
     func sendAudio(_ data: Data) {
+        let audible = Self.isAudible(data)
         lock.lock()
         guard let socket = socket, configSent else {
             // Drop audio captured before the config frame is on the wire
@@ -126,10 +154,65 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         let sent = sentFrameCount + 1
         sentFrameCount = sent
         sentByteCount += data.count
+        var stalled: UInt64?
+        if audible {
+            let time = now()
+            if let first = firstUnansweredAudibleAt {
+                if time.timeIntervalSince(first) > stallTimeout { stalled = streamGeneration }
+            } else {
+                firstUnansweredAudibleAt = time
+            }
+        }
         lock.unlock()
         if sent == 1 || sent % 500 == 0 {
             RTILog.log("sent audio frame #\(sent) (total \(sentByteCount) bytes)", category: .soniox)
         }
+        if let stalled {
+            abandonSocket(.transient(reason: "no reply for \(Int(stallTimeout)) s while audio flows"), generation: stalled)
+        }
+    }
+
+    /// True when any sampled 16-bit little-endian sample reaches
+    /// `audibleFloor`. Every fourth sample is enough for speech.
+    static func isAudible(_ data: Data) -> Bool {
+        data.withUnsafeBytes { raw in
+            var index = 0
+            while index + 1 < raw.count {
+                let sample = Int16(bitPattern: UInt16(raw[index]) | UInt16(raw[index + 1]) << 8)
+                if sample >= audibleFloor || sample <= -audibleFloor { return true }
+                index += 8
+            }
+            return false
+        }
+    }
+
+    /// Give up on the current socket without waiting for the OS to notice:
+    /// detach it, run the ordinary drop path (retry with backoff, health
+    /// `.reconnecting`), then close it. Its own teardown events are ignored,
+    /// because it is no longer the current socket. Never while finalizing:
+    /// the finals still in flight belong to that socket.
+    private func abandonSocket(_ failure: SonioxFailure, generation: UInt64) {
+        lock.lock()
+        guard streamGeneration == generation, !intentionalDisconnect, let ws = socket else {
+            lock.unlock()
+            return
+        }
+        socket = nil
+        firstUnansweredAudibleAt = nil
+        lock.unlock()
+        RTILog.log("abandoning a stalled socket — \(failure)", category: .soniox)
+        handleDrop(failure, generation: generation)
+        ws.forceDisconnect()
+    }
+
+    /// The path stayed not viable through the grace: the socket is dead even
+    /// if the OS has not said so yet.
+    private func pathLost(generation: UInt64, epoch: UInt64) {
+        let stillLost = lock.withLock {
+            streamGeneration == generation && viabilityEpoch == epoch && !pathViable
+        }
+        guard stillLost else { return }
+        abandonSocket(.transient(reason: "network path lost for \(Int(viabilityGrace)) s"), generation: generation)
     }
 
     // Write-path diagnostics (2026-08-31): the system leg was observed
@@ -164,7 +247,8 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         // finalize(), until disconnect() releases it.
         let eventGeneration: UInt64
         switch event {
-        case .connected, .disconnected, .error, .cancelled, .peerClosed, .text:
+        case .connected, .disconnected, .error, .cancelled, .peerClosed, .text,
+             .viabilityChanged, .reconnectSuggested:
             lock.lock()
             let isCurrent = socket.map { $0 === client } ?? false
             eventGeneration = streamGeneration
@@ -185,6 +269,9 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             isConnected = true
             didOpen = true
             retryCount = 0
+            pathViable = true
+            viabilityEpoch &+= 1
+            firstUnansweredAudibleAt = nil
             lock.unlock()
             RTILog.log("connected — sending config", category: .soniox)
             emitStatus(.live, generation: eventGeneration)
@@ -198,7 +285,27 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
             // receipt only for the first packet and then every 100th
             // (`FinalPacketLogThrottle`). (Payload is live transcript content
             // and must never land in the user-copyable log buffer anyway.)
+            // Any frame, tokens or not, proves the server still answers.
+            lock.withLock { firstUnansweredAudibleAt = nil }
             handleMessage(string, generation: eventGeneration)
+
+        case .viabilityChanged(let viable):
+            let epoch: UInt64 = lock.withLock {
+                pathViable = viable
+                viabilityEpoch &+= 1
+                return viabilityEpoch
+            }
+            guard !viable else { return }
+            RTILog.log("network path not viable — waiting \(viabilityGrace) s before reconnecting", category: .soniox)
+            callbackQueue.asyncAfter(deadline: .now() + viabilityGrace) { [weak self] in
+                self?.pathLost(generation: eventGeneration, epoch: epoch)
+            }
+
+        case .reconnectSuggested(let suggested):
+            // A better path (another network) is up; the old one may be
+            // about to die without a reset. Move now, in the retry path.
+            guard suggested else { return }
+            abandonSocket(.transient(reason: "better network path available"), generation: eventGeneration)
 
         case .disconnected(let reason, let code):
             handleDrop(SonioxFailure.fromTransport(reason: "disconnected code=\(code) reason=\(reason)"), generation: eventGeneration)
@@ -344,6 +451,8 @@ final class SonioxClient: WebSocketDelegate, STTClient, @unchecked Sendable {
         streamGeneration &+= 1
         socket = ws
         configSent = false
+        pathViable = true
+        firstUnansweredAudibleAt = nil
         let generation = streamGeneration
         lock.unlock()
         if announceConnecting { emitStatus(.connecting, generation: generation) }

@@ -43,6 +43,24 @@ public enum VaultPaths {
         return config
     }
 
+    /// Why config.json gave no settings, in plain words, or nil when it was
+    /// read (or does not exist). `configDictionary` reads a broken file as
+    /// empty; a caller that must not mistake that for "nothing configured"
+    /// (the hand-off to /meeting) asks here first.
+    public static func configReadProblem(configURL: URL = configURL()) -> String? {
+        guard FileManager.default.fileExists(atPath: configURL.path) else { return nil }
+        let data: Data
+        do {
+            data = try Data(contentsOf: configURL)
+        } catch {
+            return "RTI could not read \(configURL.path) (\(error.localizedDescription))."
+        }
+        guard (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
+            return "\(configURL.path) is not valid JSON. Fix the typo in it."
+        }
+        return nil
+    }
+
     public static func recordingsDirectory(configURL: URL = configURL()) -> URL? {
         recordingsDirectory(config: configDictionary(configURL: configURL))
     }

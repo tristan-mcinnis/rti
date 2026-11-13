@@ -62,6 +62,9 @@ struct TranscriptTabView: View {
                 Text("Switching transcription settings…")
                     .font(House.TypeToken.caption).foregroundStyle(House.ColorToken.textSecondary)
             }
+            if let notice = session.recordingAudioNotice {
+                Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
+            }
             if let notice = session.micAudioNotice {
                 Text(notice).font(House.TypeToken.caption).foregroundStyle(House.ColorToken.warning)
             }

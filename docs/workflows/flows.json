@@ -363,7 +363,7 @@
     {
       "id": "upgrade-transcript",
       "title": "Upgrade a saved transcript",
-      "summary": "Sessions browser → Upgrade Transcript → confirm → Soniox file pass over the retained audio → transcript replaced (backup kept). At launch, AppDelegate resumes any upgrade a quit interrupted.",
+      "summary": "Sessions browser → Upgrade Transcript → confirm → Soniox file pass over the retained audio → transcript replaced (backup kept). At launch and when the network comes back, PendingUpgradeResumer resumes any upgrade a quit or an outage interrupted.",
       "steps": [
         {
           "from": "SessionsWindowModel",
@@ -383,8 +383,8 @@
           "from": "AppDelegate",
           "to": "TranscriptUpgradeService",
           "label": "resume pending upgrades",
-          "passes": "At launch, sessions with an automatic-upgrade marker are found off the main thread and upgraded in order.",
-          "ref": "RTI/Sources/AppDelegate.swift · SessionArchive.pendingAutomaticUpgrades()"
+          "passes": "At launch and when the network comes back, sessions with an automatic-upgrade marker are found off the main thread and upgraded in order; the live session's folder is skipped.",
+          "ref": "RTI/Sources/AppDelegate.swift · PendingUpgradeResumer.shared.start()"
         }
       ]
     },

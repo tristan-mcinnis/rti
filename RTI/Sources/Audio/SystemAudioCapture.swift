@@ -32,10 +32,14 @@ protocol SystemAudioCapturing: AnyObject, Sendable {
     func stop()
     func captureHealth() -> SystemAudioCaptureHealth
     func recoverFromSilentAudio() async -> Bool
+    /// True for the CoreAudio process tap: the pipeline may swap it for the
+    /// ScreenCaptureKit backend if it never delivers a buffer.
+    var fallsBackToScreenCapture: Bool { get }
 }
 
 extension SystemAudioCapturing {
     func recoverFromSilentAudio() async -> Bool { false }
+    var fallsBackToScreenCapture: Bool { false }
 }
 
 final class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput, SystemAudioCapturing, @unchecked Sendable {

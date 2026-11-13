@@ -89,32 +89,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         ControlService.shared.start()
 
         // A quit, crash, or network outage during the offline pass leaves a
-        // durable marker beside retained audio. Resume those jobs on launch;
-        // nothing is routed or indexed until an upgrade succeeds.
-        Task { @MainActor in
-            // The scan lists every session folder and legacy meeting sidecar;
-            // keep that file walk off the main thread at launch.
-            let pending = await Task.detached(priority: .utility) {
-                SessionArchive.pendingAutomaticUpgrades()
-            }.value
-            for session in pending {
-                do {
-                    _ = try await TranscriptUpgradeService.upgrade(
-                        session: session,
-                        provider: AsyncTranscriptProviders.soniox
-                    ) { _ in }
-                    SessionArchive.clearAutomaticUpgradePending(in: session.url)
-                } catch TranscriptUpgradeError.emptyTranscript(let provider)
-                    where TranscriptUpgradeService.retainedAudioSeconds(in: session.url) < 60 {
-                    // A sub-minute session that transcribes to nothing is a
-                    // test blip, not a meeting — stop re-queueing it forever.
-                    SessionArchive.clearAutomaticUpgradePending(in: session.url)
-                    RTILog.log("cleared pending upgrade for \(session.url.lastPathComponent): \(provider) returned an empty transcript and the retained audio is under a minute", category: .archive)
-                } catch {
-                    RTILog.log("pending transcript upgrade remains queued for \(session.url.lastPathComponent): \(error.localizedDescription)", category: .archive)
-                }
-            }
-        }
+        // durable marker beside retained audio. Resume those jobs at launch
+        // and whenever the network comes back; nothing is routed or indexed
+        // until an upgrade succeeds. The folder still recording is refused.
+        PendingUpgradeResumer.shared.start()
 
         windows.install(onOpenSettings: { [weak self] in
             Task { @MainActor [weak self] in self?.windows.openSettings() }

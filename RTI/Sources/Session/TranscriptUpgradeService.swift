@@ -24,6 +24,11 @@ enum TranscriptUpgradeError: LocalizedError {
     case unreadableTranscript
     case writeFailed(String)
     case alreadyUpgrading
+    /// Soniox could not be reached (offline, DNS, refused connection, a
+    /// dropped upload). Transient: retried, and never blamed on the disk.
+    case networkFailed(String)
+    /// The folder still belongs to the recording in progress.
+    case stillRecording
 
     var errorDescription: String? {
         switch self {
@@ -43,6 +48,10 @@ enum TranscriptUpgradeError: LocalizedError {
             return "Couldn't write the upgraded transcript: \(detail)"
         case .alreadyUpgrading:
             return "This session's transcript upgrade is already running."
+        case .networkFailed(let detail):
+            return "Couldn't reach Soniox (\(detail)). Check the internet connection; the audio is kept for a retry."
+        case .stillRecording:
+            return "This session is still recording. Stop the recording first, then upgrade its transcript."
         }
     }
 }
@@ -87,6 +96,11 @@ enum TranscriptUpgradeService {
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
         let directory = session.url.standardizedFileURL
+        // Never upgrade the folder capture is still writing: the provider
+        // would cache a transcript of the first minutes only.
+        guard !SessionCoordinator.shared.isCapturing(sessionStartedAt: session.date) else {
+            throw TranscriptUpgradeError.stillRecording
+        }
         guard upgradingSessions.insert(directory).inserted else { throw TranscriptUpgradeError.alreadyUpgrading }
         defer { upgradingSessions.remove(directory) }
         return try await performUpgrade(session: session, option: option, progress: progress)
@@ -173,7 +187,7 @@ enum TranscriptUpgradeService {
         progress: @Sendable @escaping (TranscriptUpgradeProgress) -> Void
     ) async throws -> Result {
         try await RetryOnce.run(delay: .seconds(30), shouldRetry: { error in
-            guard case TranscriptUpgradeError.providerFailed = error else { return false }
+            guard isRetryable(error) else { return false }
             RTILog.log("transcript upgrade failed, retrying once: \(error.localizedDescription)", category: .archive)
             progress(.running("Retrying transcript…"))
             return true
@@ -185,6 +199,15 @@ enum TranscriptUpgradeService {
                 progress: progress
             )
         })
+    }
+
+    /// A provider or network failure is worth one more automatic try; a
+    /// missing file, key or disk write is not.
+    static func isRetryable(_ error: Error) -> Bool {
+        switch error as? TranscriptUpgradeError {
+        case .providerFailed, .networkFailed: true
+        default: false
+        }
     }
 
     private static func makeProvider(
@@ -232,9 +255,17 @@ enum TranscriptUpgradeService {
         return try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data)
     }
 
-    private static func mapPipelineError(_ error: Error) -> Error {
+    static func mapPipelineError(_ error: Error) -> Error {
         if let upgradeError = error as? TranscriptUpgradeError {
             return upgradeError
+        }
+        // Transport and provider faults are not write faults: the old
+        // mapping told the user the disk failed when Wi-Fi dropped.
+        if let urlError = error as? URLError {
+            return TranscriptUpgradeError.networkFailed(urlError.localizedDescription)
+        }
+        if SonioxAsyncFileClient.isProviderError(error) {
+            return TranscriptUpgradeError.providerFailed(error.localizedDescription)
         }
         guard let pipelineError = error as? TranscriptUpgradePipelineError else {
             return TranscriptUpgradeError.writeFailed(error.localizedDescription)

@@ -42,7 +42,6 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
     /// Fired (on main) after the engine was rebound following a configuration
     /// change or a restart request; the pipeline resets its watchdogs.
     var onRestarted: (() -> Void)?
-    private var converter: AVAudioConverter?
     private var isRunning = false
 
     // Last time the input tap delivered a buffer. The tap fires continuously
@@ -190,13 +189,14 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
         }
         let nativeFormat = input.outputFormat(forBus: 0)
 
-        guard let converter = AVAudioConverter(from: nativeFormat, to: Self.targetFormat) else {
+        // Each engine run owns its converter inside its own tap block, so the
+        // audio thread never reads state that `stop()`/`restart()` replace on
+        // main (AUD-7: a strong-reference race during a device switch).
+        guard let converter = MicTapConverter(inputFormat: nativeFormat) else {
             throw AudioCaptureError.converterCreationFailed
         }
-        self.converter = converter
-
-        input.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
-            self?.handleInputBuffer(buffer)
+        Self.installInputTap(on: input) { [weak self] buffer in
+            self?.handleInputBuffer(buffer, converter: converter)
         }
 
         do {
@@ -246,25 +246,66 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
                 RTILog.log("failed to disable voice processing on stop: \(error)", category: .audio)
             }
         }
-        converter = nil
         isRunning = false
     }
 
-    private func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
+    /// Install the mic tap with no format: the tap then takes the bus's own
+    /// format when it is installed. Passing the format read a moment earlier
+    /// raised an uncatchable AVAudioEngine exception ("format.sampleRate ==
+    /// hwFormat.sampleRate") when the device changed in between, which is
+    /// exactly when `restart()` runs (AUD-7). `MicTapConverter` follows any
+    /// format the buffers arrive in.
+    static func installInputTap(on node: AVAudioNode, block: @escaping (AVAudioPCMBuffer) -> Void) {
+        node.installTap(onBus: 0, bufferSize: 4096, format: nil) { buffer, _ in
+            block(buffer)
+        }
+    }
+
+    func handleInputBuffer(_ buffer: AVAudioPCMBuffer, converter: MicTapConverter) {
         markBufferReceived()
-        guard let converter = converter else { return }
         // Mute = SILENCE, not absence: Soniox 408-times-out a stream that
         // stops receiving audio (observed 2026-06-11, killed the session).
         // So while muted we keep the exact buffer cadence but zero the
         // samples after conversion — the stream stays alive, hears nothing.
         let muted = micMuted
+        guard let output = converter.convert(buffer) else { return }
 
-        let ratio = Self.targetFormat.sampleRate / buffer.format.sampleRate
+        recordZeroState(output)
+        if muted, let channelData = output.int16ChannelData {
+            let byteCount = Int(output.frameLength) * MemoryLayout<Int16>.size
+            memset(channelData[0], 0, byteCount)
+        }
+        onPCMBuffer?(output)
+    }
+}
+
+/// One engine run's converter to 16 kHz mono Int16. Owned by that run's tap
+/// block and used only there; a tap delivers its blocks one at a time, so no
+/// lock is needed. A buffer in a new format (the device changed under a
+/// running tap) gets a new converter instead of a crash or a dropped leg.
+final class MicTapConverter: @unchecked Sendable {
+    private var converter: AVAudioConverter
+
+    init?(inputFormat: AVAudioFormat) {
+        guard let converter = AVAudioConverter(from: inputFormat, to: AudioCaptureManager.targetFormat) else { return nil }
+        self.converter = converter
+    }
+
+    /// The converted buffer, or nil when this buffer cannot be converted
+    /// (it is dropped and logged; the next buffer is tried again).
+    func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        if buffer.format != converter.inputFormat {
+            guard let rebuilt = AVAudioConverter(from: buffer.format, to: AudioCaptureManager.targetFormat) else {
+                RTILog.log("mic format \(buffer.format) cannot be converted — buffer dropped", category: .audio)
+                return nil
+            }
+            RTILog.log("mic format changed to \(buffer.format) — converter rebuilt", category: .audio)
+            converter = rebuilt
+        }
+        let target = AudioCaptureManager.targetFormat
+        let ratio = target.sampleRate / buffer.format.sampleRate
         let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
-        guard let output = AVAudioPCMBuffer(
-            pcmFormat: Self.targetFormat,
-            frameCapacity: outputFrameCapacity
-        ) else { return }
+        guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: outputFrameCapacity) else { return nil }
 
         final class MutableBool: @unchecked Sendable { var value: Bool = false }
         let consumed = MutableBool()
@@ -281,17 +322,11 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
         var error: NSError?
         let status = converter.convert(to: output, error: &error, withInputFrom: inputBlock)
         guard status != .error, output.frameLength > 0 else {
-            if let error = error {
+            if let error {
                 RTILog.log("converter error: \(error)", category: .audio)
             }
-            return
+            return nil
         }
-
-        recordZeroState(output)
-        if muted, let channelData = output.int16ChannelData {
-            let byteCount = Int(output.frameLength) * MemoryLayout<Int16>.size
-            memset(channelData[0], 0, byteCount)
-        }
-        onPCMBuffer?(output)
+        return output
     }
 }

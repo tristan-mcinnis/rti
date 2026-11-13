@@ -26,23 +26,29 @@ public enum WAVWriter {
 
 /// Frames written to one leg and the clock time its audio began. A device
 /// can stop delivering buffers (a Bluetooth output with nothing playing, a
-/// tap rebuild, a mic restart), but the upgrade merges the legs with one
-/// fixed offset, so a leg that falls behind the clock is filled with
-/// silence first. Gaps under a second are ordinary delivery jitter.
+/// tap rebuild, a mic restart, system sleep), but the upgrade merges the
+/// legs with one fixed offset, so a leg that falls behind the clock is
+/// filled with silence first. Gaps under a second are ordinary delivery
+/// jitter, except frames a failed write still owes: those are always filled.
 private struct LegTimeline {
     static let maxLagFrames = AudioFormat.sampleRateHz
     var anchor: TimeInterval?
     var frames = 0
+    /// Frames a failed write did not put in the file.
+    var owed = 0
+    /// Clock time of the first failure in the current run of failed writes.
+    var failingSince: TimeInterval?
+    var fatalReported = false
 
     /// Silence frames to write before `count` frames that arrive at `now`.
     mutating func gap(before count: Int, at now: TimeInterval) -> Int {
         let rate = Double(AudioFormat.sampleRateHz)
         guard let anchor else {
             anchor = now - Double(count) / rate
-            return 0
+            return owed
         }
         let lag = Int((now - anchor) * rate) - frames - count
-        return lag > Self.maxLagFrames ? lag : 0
+        return max(lag > Self.maxLagFrames ? lag : 0, owed)
     }
 }
 
@@ -50,7 +56,20 @@ private struct LegTimeline {
 /// Keeping mic and system audio separate gives the upgrader clean channel
 /// identity and avoids mixing two independently-clocked capture streams.
 public final class MeetingRecorder {
+    /// Fatal: a leg has failed every write for `writeFailureTolerance`, or a
+    /// file did not close cleanly. Called on the capture thread.
     public var onWriteFailure: ((String) -> Void)?
+    /// Degraded: a leg's write failed (message) or a later write worked again
+    /// (nil). Capture continues and the missed frames are written as silence
+    /// once writes work, so the leg keeps its timeline. Capture thread.
+    public var onWriteDegraded: ((_ leg: String, _ message: String?) -> Void)?
+    /// A stretch of the leg was written as silence because no audio arrived
+    /// for it (`writeFailed` false) or a failed write owed it (true). Frames
+    /// count from the leg's start. Capture thread. The session records it
+    /// as a capture gap (AUD-4), so the silence is not mistaken for a quiet room.
+    public var onGapFilled: ((_ leg: String, _ startFrame: Int, _ frameCount: Int, _ writeFailed: Bool) -> Void)?
+    /// How long one leg may fail every write before the recording stops.
+    public static let writeFailureTolerance: TimeInterval = 30
     private var micFile: DurableWAVFile?
     private var systemFile: DurableWAVFile?
     public private(set) var micURL: URL?
@@ -58,9 +77,24 @@ public final class MeetingRecorder {
     private var mic = LegTimeline()
     private var system = LegTimeline()
     private let now: () -> TimeInterval
+    private let writeFault: ((_ leg: String) -> Error?)?
 
-    public init(now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    /// The gap clock must count system sleep: live offsets, notes and
+    /// markers use wall time, so a lid closed mid-call must become silence in
+    /// both legs. `systemUptime` stops during sleep; `CLOCK_MONOTONIC` on
+    /// Darwin keeps counting and never jumps with a wall-clock change.
+    public static func sleepInclusiveUptime() -> TimeInterval {
+        TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
+    }
+
+    /// `writeFault` is a test seam: return an error to fail that leg's next
+    /// block after its payload is written (the real partial-write case).
+    public init(
+        now: @escaping () -> TimeInterval = MeetingRecorder.sleepInclusiveUptime,
+        writeFault: ((_ leg: String) -> Error?)? = nil
+    ) {
         self.now = now
+        self.writeFault = writeFault
     }
 
     public func open(in directory: URL) throws {
@@ -75,8 +109,8 @@ public final class MeetingRecorder {
         let mic = directory.appendingPathComponent("audio-mic.wav")
         let system = directory.appendingPathComponent("audio-system.wav")
         do {
-            micFile = try DurableWAVFile(url: mic)
-            systemFile = try DurableWAVFile(url: system)
+            micFile = try DurableWAVFile(url: mic, fault: writeFault.map { fault in { fault("mic") } })
+            systemFile = try DurableWAVFile(url: system, fault: writeFault.map { fault in { fault("system") } })
             micURL = mic
             systemURL = system
         } catch {
@@ -126,44 +160,53 @@ public final class MeetingRecorder {
         append(buffer, silent: true, to: systemFile, leg: &system, name: "system")
     }
 
+    /// One failed block never ends the recording: the frames it did not
+    /// write are owed and written as silence before the next block that
+    /// succeeds. Only a leg that fails every write for
+    /// `writeFailureTolerance` is fatal.
     private func append(
         _ buffer: AVAudioPCMBuffer, silent: Bool, to file: DurableWAVFile?, leg: inout LegTimeline, name: String
     ) {
         let count = Int(buffer.frameLength)
-        guard file != nil, count > 0, validFormat(buffer) else { return }
-        let gap = leg.gap(before: count, at: now())
-        if gap > 0, writeSilence(frameCount: gap, to: file) {
-            leg.frames += gap
-            CoreLog.log("filled \(gap * 1000 / AudioFormat.sampleRateHz) ms delivery gap in \(name) leg", category: "audio")
-        }
-        let written = silent ? writeSilence(frameCount: count, to: file) : write(buffer, to: file)
-        if written { leg.frames += count }
-    }
-
-    private func writeSilence(frameCount: Int, to file: DurableWAVFile?) -> Bool {
-        guard let file, frameCount > 0 else { return false }
+        guard let file, count > 0, validFormat(buffer) else { return }
+        let time = now()
+        let gap = leg.gap(before: count, at: time)
+        let expected = leg.frames + gap + count
         do {
-            try file.appendSilence(frameCount: frameCount)
-            return true
+            if gap > 0 {
+                let gapStart = leg.frames
+                let owed = leg.owed
+                try file.appendSilence(frameCount: gap)
+                CoreLog.log("filled \(gap * 1000 / AudioFormat.sampleRateHz) ms gap in \(name) leg", category: "audio")
+                onGapFilled?(name, gapStart, gap, owed > 0)
+            }
+            if silent {
+                try file.appendSilence(frameCount: count)
+            } else if let source = buffer.int16ChannelData {
+                try file.append(samples: source[0], count: count)
+            }
+            leg.frames = file.frameCount
+            leg.owed = 0
+            if leg.failingSince != nil {
+                leg.failingSince = nil
+                leg.fatalReported = false
+                CoreLog.log("\(name) leg writes work again", category: "audio")
+                onWriteDegraded?(name, nil)
+            }
         } catch {
-            let message = "Durable meeting audio write failed: \(error.localizedDescription)"
-            CoreLog.log(message, category: "audio")
-            onWriteFailure?(message)
-            return false
-        }
-    }
-
-    private func write(_ input: AVAudioPCMBuffer, to file: DurableWAVFile?) -> Bool {
-        guard let file, let source = input.int16ChannelData else { return false }
-        let count = Int(input.frameLength)
-        do {
-            try file.append(samples: source[0], count: count)
-            return true
-        } catch {
-            let message = "Durable meeting audio write failed: \(error.localizedDescription)"
-            CoreLog.log(message, category: "audio")
-            onWriteFailure?(message)
-            return false
+            leg.frames = file.frameCount
+            leg.owed = max(0, expected - leg.frames)
+            let detail = error.localizedDescription
+            CoreLog.log("Durable meeting audio write failed (\(name) leg, \(leg.owed) frames owed): \(detail)", category: "audio")
+            guard let since = leg.failingSince else {
+                leg.failingSince = time
+                onWriteDegraded?(name, detail)
+                return
+            }
+            if time - since >= Self.writeFailureTolerance, !leg.fatalReported {
+                leg.fatalReported = true
+                onWriteFailure?("Meeting audio could not be saved for \(Int(Self.writeFailureTolerance)) seconds (\(detail)), so recording stopped. Free disk space, then start a new recording.")
+            }
         }
     }
 
@@ -217,12 +260,16 @@ private final class DurableWAVFile {
     private static let silenceChunkFrames = AudioFormat.sampleRateHz * 10
 
     private let handle: FileHandle
+    /// Test seam: an error thrown after the payload write, before the header
+    /// update, exactly where a real ENOSPC/EIO surfaces mid-block.
+    private let fault: (() -> Error?)?
     /// Appends run on capture threads and close runs on main.
     private let lock = NSLock()
     private var dataByteCount: UInt32 = 0
     private var isClosed = false
 
-    public init(url: URL) throws {
+    init(url: URL, fault: (() -> Error?)? = nil) throws {
+        self.fault = fault
         let descriptor = Darwin.open(url.path, O_RDWR | O_CREAT | O_EXCL, 0o600)
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
@@ -234,6 +281,11 @@ private final class DurableWAVFile {
             try? FileManager.default.removeItem(at: url)
             throw error
         }
+    }
+
+    /// Frames committed to the file (the header's data size).
+    var frameCount: Int {
+        lock.withLock { Int(dataByteCount) / Int(Self.bytesPerSample) }
     }
 
     public func append(samples: UnsafePointer<Int16>, count: Int) throws {
@@ -251,6 +303,7 @@ private final class DurableWAVFile {
         do {
             try handle.seek(toOffset: UInt64(Self.headerBytes) + UInt64(committedBytes))
             try handle.write(contentsOf: data)
+            if let error = fault?() { throw error }
             let nextBytes = committedBytes + UInt32(byteCount)
             try writeHeader(dataBytes: nextBytes)
             dataByteCount = nextBytes

@@ -37,7 +37,11 @@ Codebook). They have entries too.
   - `pause` -> `paused`. `resume` -> `recording`.
   - `stopSession` -> `finishing`.
   - `completeStop` -> `upgrading` when the archive and audio are good,
-    else `done`.
+    else `done` (the review path: the `-rti.md` sidecar is still
+    written, through `writeStopSidecar`, and no upgrade is queued; if
+    that write fails, the error says the `/meeting` notes file is
+    missing). On the upgrade path a failed stop sidecar is logged and the
+    export writes it again from the archive.
   - The upgrade ends -> `done`, only if the same session is still
     current and the phase is still `upgrading`.
   - `emergencyShutdown` -> `idle`.
@@ -49,8 +53,8 @@ Codebook). They have entries too.
 |---|---|
 | `startSession` | `PendingStartGate.begin`. Then, once the mic is granted: transcript and speaker names reset, `NotesGenerationController.reset(for:)`, `AutoAssistController.reset(for:)` (`AutoPassState` `.reset`, `LiveRailBoard.reset`), `GuideSessionController.startPreparedSession`, `ResearchCodebookController.start`, `MicControl` `.sessionStarted`. |
 | `stopSession` | `PendingStartGate.cancel` if a start waits. `AutoAssistScheduler.stop`, `AutoAssistController.stop` (`AutoPassState` `.stop`, the rail admits nothing more), `MicControl` `.sessionFinishing`, both `TranscriptionHealth` values to `idle`. |
-| `completeStop` | `ResearchCodebookController.finish` and `GuideSessionController.finish` (final drain), `MicControl` `.sessionStopped`, `GuideSessionController.endSession`, then the upgrade. |
-| `emergencyShutdown` | `MicControl` `.sessionStopped`, health to `idle`, phase to `idle`. |
+| `completeStop` | `ResearchCodebookController.finish`, `GuideSessionController.finish` and `NotesGenerationController.finish` (final drain, 8 s each, run together), `MicControl` `.sessionStopped`, `GuideSessionController.endSession`, then the upgrade. |
+| `emergencyShutdown` | `writeQuitRecord`: the archive and the `-rti.md` sidecar (completeStop never runs on this path). `MicControl` `.sessionStopped`, health to `idle`, phase to `idle`. |
 
 - Header mirror: `OverlayLivePhase` (`RTI/Core/UI/OverlayShellStatus.swift`)
   has the same six cases. `OverlayShellStatus` maps a phase to the header
@@ -60,12 +64,35 @@ Codebook). They have entries too.
   writes it on a utility task (`SessionFinalizer.write`). The stop and
   quit writes run on main. `ArchiveWriteGate` runs one write at a time
   and skips a job older than one already written, so a checkpoint still
-  writing at Stop never lands after the final archive.
+  writing at Stop never lands after the final archive. A live write
+  (it carries evidence) or one with a system-leg offset writes
+  `session.json` and `transcript-evidence.json` even when nothing was
+  said yet. The start writes once (session id, speech context, speaker
+  policy) and the system leg's start writes again (its offset), so a
+  crash before the first checkpoint recovers the system leg at its real
+  offset with the raw provider.
+- Recovery: the next launch's upgrade writes the `-rti.md` sidecar for
+  any current-format folder (evidence, `notes.jsonl` or
+  `soniox-live.jsonl` present) that has none, with the generated notes,
+  screen context and chat read back from `notes.md`,
+  `screen-context.md` and `chat.md`
+  (`SessionArchive.archivedSidecarSections`). The export
+  (`requiredCanonicalExport`) throws, so the upgrade marker and
+  `canonical-export.pending.json` stay, when it cannot write the
+  transcript or the sidecar, and when no meetings folder resolves: a
+  broken `config.json` (`VaultPaths.configReadProblem`) or one that
+  names no `transcripts_dir`, `knowledge_base_dir` or `recordings_dir`.
+  It never reports success without an export. When one leg transcribes to
+  nothing, its live lines come from the evidence and then from
+  `soniox-live.jsonl` past the last checkpoint
+  (`SonioxLiveJournalReplay`; a line cut by a kill is skipped).
 - Tests: `RTI/Tests/MenuStatusTickTests.swift`,
   `RTI/Tests/OverlayShellStatusTests.swift`,
   `RTI/RenderTests/LivePerfTests.swift`,
   `RTI/RenderTests/SessionStopErrorTests.swift`,
   `RTI/RenderTests/SessionCaptureFailurePolicyTests.swift`,
+  `RTI/RenderTests/SessionArchiveRecoveryTests.swift`,
+  `RTI/Tests/TranscriptUpgradeTests.swift`,
   `RTI/RenderTests/MenuTickWiringTests.swift`.
 
 ## Start admission
@@ -104,7 +131,19 @@ and `systemTranscriptionHealth`.
 - States: `idle`, `connecting`, `live`, `reconnecting`, `failed`.
 - Events: socket open (`connecting`), configured (`live`), drop
   (`reconnecting`, backoff 1, 2, 4, 8 s), retries spent or a fatal error
-  (`failed`, after `maxRetries` = 5), stop (`idle`).
+  (`failed`, after `maxRetries` = 5), stop (`idle`). A dead path that
+  sends no TCP reset is a drop too (`abandonSocket`): the path stays not
+  viable for 5 s (`.viabilityChanged(false)`), the system suggests a
+  better path (`.reconnectSuggested(true)`), or audible audio (peak
+  1,000 or more) goes 15 s with no frame back (`stallTimeout`). Room
+  tone and silence never count.
+- Spent retries: `AudioPipeline` gives each leg one fresh client after
+  45 s, doubling to 6 min per spent budget, until the leg is `live`
+  again (mic: `scheduleMicAutoReconnect`; system:
+  `scheduleSystemAutoReconnect`, the new client connects at the next
+  system buffer). Never after auth or a client bug. The system notice
+  says whether capture failed (`systemCaptureLostNotice`) or only the
+  live text (`systemTranscriptLostNotice`: the audio is still recorded).
 - Effects: the header and the Transcript show the state. Only the current
   socket can change it: `emitStatus` checks the delivery generation.
   Socket events arrive and frames decode on the client's own serial
@@ -118,6 +157,74 @@ and `systemTranscriptionHealth`.
 is a sample, not a machine: buffer time, audible time and RMS levels.
 `AudioPipeline` reads it to tell a silent leg from a dead one. Tests:
 `RTI/RenderTests/AudioPipelineRecoveryTests.swift`.
+
+## Capture faults (degraded, not terminal)
+
+`AudioPipeline` (`RTI/Sources/Audio/AudioPipeline.swift`), `MeetingRecorder`
+(`RTI/Core/Audio/WAVWriter.swift`) and `TapStallPolicy`
+(`RTI/Core/Audio/TapStallPolicy.swift`). Only a recording that cannot be
+saved stops the session (`onError`).
+
+- Mic outage: states healthy, outage (`micOutageStartedAt`). Event: no
+  mic buffer for 8 s, counted from the later of the last buffer and the
+  last input start (session start, rebind, wake). Effects: `micLostNotice`
+  once, then `audio.restart()` at once and after 5, 10, 20, 40 and every
+  60 s for as long as it lasts. The system leg keeps recording. A buffer
+  ends the outage and clears the notice; the recorder pads the mic gap.
+- Sleep: states awake, asleep (`isAsleep`). Events: `NSWorkspace`
+  willSleep, didWake. Effects: the mic and system watchdogs skip while
+  asleep; wake gives both an 8 s first-buffer grace, then the normal
+  rebind. The recorder's gap clock (`sleepInclusiveUptime`,
+  `CLOCK_MONOTONIC`) counts sleep, so each leg is padded with silence for
+  it and WAV time stays equal to live (wall) time.
+- System backend: the tap never gives up (`TapStallPolicy`: rebuild after
+  6 s without buffers, three times, then every 60 s). The pipeline
+  watchdog makes two quick recoveries, then one a minute. A tap that
+  delivered any buffer this session is idle, not dead, and is kept. A tap
+  that never delivered falls back to ScreenCaptureKit once, only with
+  Screen Recording already granted; the fallback starts before the tap
+  stops, and the tap stays if it fails. `systemAudio` is never nil while
+  capturing. A fallback whose `start()` returns after its call ended (a
+  Screen Recording prompt held it while the user stopped and started the
+  next call) is stopped: it needs the same `captureGeneration` and the
+  same tap, and its buffers pass only after it is installed (AUD-5).
+- Mic tap: each engine run converts with its own `MicTapConverter`, held
+  by that run's tap block, so `stop()` and `restart()` on main change
+  nothing the audio thread reads. The tap is installed with no format
+  (`installInputTap`), so a device that changes format between the format
+  read and the install cannot raise AVAudioEngine's exception; the
+  converter is rebuilt when a buffer arrives in a new format (AUD-7).
+- Capture gaps (`CaptureGapLog`, `RTI/Core/Audio/CaptureGap.swift`): one
+  record per leg of what was not recorded, in session ms. Events: mic
+  outage begin and end (`noAudio`), mic all-zero input from 10 s until it
+  clears, mute or pause (`silentInput`), system capture failed or never
+  started, set and cleared with `systemAudioOutageReported`
+  (`captureFailed`), and each silence fill of the writer
+  (`MeetingRecorder.onGapFilled`: `noAudio`, or `writeFailed` for frames a
+  failed write owed). `finalize` and `abort` close every open gap. Reports
+  of one stretch merge per leg. Effects: `session.json` `capture_gaps`, a
+  "Recording gaps" block under the date line of `transcript.md` (kept when
+  the upgraded transcript replaces it) and a "## Recording gaps" section
+  at the top of the `-rti.md` sidecar, so `/meeting` never reads a
+  one-sided stretch as a quiet one (AUD-4). A checkpoint saves open gaps
+  as still missing.
+- Durable writes: states writing, degraded (per leg `failingSince`),
+  failed. Event: a block write throws. Effects: the block's frames are
+  owed and written as silence before the next good block; `onWriteDegraded`
+  drives `recordingAudioNotice`. Every write failing for 30 s
+  (`writeFailureTolerance`) is fatal once: `onWriteFailure`, the
+  recording-failure latch, the session stops and the archive is marked
+  "Recording needs review" (`recordingStoppedEarly`: the reason stays on
+  screen until the next start). The review path still writes the
+  `-rti.md` sidecar; the upgrade is manual. A recovered failure sets no
+  `recordingError`, so automatic processing stays queued.
+- Tests: `RTI/RenderTests/AudioPipelineDegradedCaptureTests.swift`,
+  `RTI/Tests/RecordingFaultToleranceTests.swift`,
+  `RTI/RenderTests/AudioPipelineRecoveryTests.swift`,
+  `RTI/RenderTests/AudioPipelineStaleFallbackTests.swift`,
+  `RTI/RenderTests/MicTapConverterTests.swift`,
+  `RTI/RenderTests/CaptureGapArchiveTests.swift`,
+  `RTI/Tests/CaptureGapLogTests.swift`.
 
 `FinalPacketLogThrottle` (`RTI/Core/Soniox/FinalPacketLogThrottle.swift`)
 is a counter per leg. Event: `record`. Effect: true for the first packet
@@ -236,14 +343,21 @@ the board.
 - States: `isGenerating`, a `generation` counter, the `lastNotedMs`
   watermark, the session ID.
 - Events: `reset(for:)` (session start), `clear`, `generate(sessionId:)`
-  (scheduler tick or "Write notes now").
-- Effects: a pass appends one note block. Only the owning generation can
-  clear `isGenerating` or write a result. The session archive writes the
-  notes on stop (`notes.md` and the `-rti.md` sidecar), as before.
+  (scheduler tick or "Write notes now"), `finish(sessionId:)` (one pass
+  at Stop over the talk since the last tick, bounded to 8 s).
+- Effects: a pass appends one note block and posts
+  `.rtiNotesBlockAdded`. Only the owning generation can clear
+  `isGenerating` or write a result. The session archive writes the
+  notes on stop (`notes.md` and the `-rti.md` sidecar). The Stop pass
+  does not wait for a manual pass already running, and "Write notes now"
+  stays on after Stop: a block that lands after the archive is written
+  to `notes.md` and the sidecar by `LateChatArchiveRefresher`.
 - Backlog cap: a window over 6,000 characters that covers more than two
   scheduler intervals (a failed pass kept its watermark, or Notes was
   turned on mid-call) keeps only its newest 6,000 characters
-  (`backlogStart`). The block starts where the kept part starts.
+  (`backlogStart`). The block starts where the kept part starts, and a
+  "Notes skipped" block (`skippedNote`) marks the dropped stretch, so
+  `notes.md` and the sidecar show the gap.
 - Tests: `RTI/RenderTests/LiveNotesTests.swift`,
   `RTI/RenderTests/LivePerfTests.swift`.
 
@@ -470,10 +584,30 @@ The upgrade is the `upgrading` phase plus an on-disk marker.
   running (`runUpgradePhase`, `postProcessingStatus` shows progress),
   cleared (`clearAutomaticUpgradePending`) or kept for retry.
 - Events: `completeStop` starts it. Success clears the marker. Failure
-  keeps the audio and the marker. At the next launch,
-  `SessionArchive.pendingAutomaticUpgrades` runs each one again
-  (`AppDelegate`). `TranscriptUpgradeService.upgradeRetryingOnce` tries
-  twice.
+  keeps the audio and the marker. `PendingUpgradeResumer` runs
+  `SessionArchive.pendingAutomaticUpgrades` again at launch and each time
+  the network comes back (`NetworkReturnGate`: offline to online only);
+  runs never overlap and skip the live session's folder.
+  `TranscriptUpgradeService.upgradeRetryingOnce` tries twice when the
+  error `isRetryable`: `providerFailed` (a Soniox answer) or
+  `networkFailed` (a `URLError`, never called a write failure).
+- Refusal: `upgrade` throws `stillRecording` for the folder of a session
+  in `recording`, `paused` or `finishing`
+  (`SessionCoordinator.isCapturing(sessionStartedAt:)`), and Sessions
+  hides Upgrade on that row.
+- Soniox file jobs (`SonioxAsyncFileClient`): a request that never left
+  the Mac (offline, DNS, connect refused) is sent again, POST included;
+  a timed-out or dropped GET or DELETE is replayed; a POST that may have
+  arrived is resumed by its reference in the next run. Remote cleanup
+  after the transcript is saved never fails the run; the job file stays
+  for the next run to delete the leftovers. `.soniox-async-<leg>-audio.json`
+  stamps the audio byte size of each raw result; a raw result or job for a
+  different size is stale, set aside as `.soniox-async-<leg>-stale.json`,
+  and the audio is sent again.
+- Early stop: a terminal `AudioPipeline.onError` sets
+  `recordingStoppedEarly`. Its message is never retired on the timer,
+  and a later upgrade ends on "Recording stopped early · see message",
+  never "Session saved".
 - Effects: the end sets `done` only for the current session. It clears
   the chat only if the chat is still as Stop left it (`UpgradeChatMark`).
   The upgrade numbers the other side's voices itself, so typed names move
@@ -484,6 +618,9 @@ The upgrade is the `upgrading` phase plus an on-disk marker.
   session keeps its names on the live speaker IDs.
 - Tests: `RTI/RenderTests/AssistSearchCancelTests.swift`
   (`runUpgradePhaseForProof`), `RTI/RenderTests/SessionArchiveRecoveryTests.swift`,
+  `RTI/RenderTests/RecordingHandoffSafetyTests.swift`,
+  `RTI/Tests/SonioxAsyncFileClientTests.swift`,
+  `RTI/Tests/NetworkReturnGateTests.swift`,
   `RTI/Tests/SpeakerNameRemapTests.swift`.
 
 ## Window and pages
@@ -544,6 +681,21 @@ The upgrade is the `upgrading` phase plus an on-disk marker.
   hold the draft and the find bar. Tests:
   `RTI/RenderTests/ComposerRenderProofTests.swift`,
   `RTI/RenderTests/AssistThreadRenderProofTests.swift`.
+- `LateChatArchiveRefresher` (`RTI/Sources/Session/LateChatArchiveRefresher.swift`):
+  a target (session id, the stop snapshot, archive folder, call type,
+  `filedBeforeArchive`). Events: `begin` at Stop, `archived` after
+  completeStop wrote the archive and sidecar, `.rtiChatTurnFiled` (posted
+  by `persistTerminalTurn` with the turn's session ids). Effects: a turn
+  of the stopped recording filed after Stop re-reads its chats from the
+  store and rewrites only `chat.md` and the `-rti.md` sidecar; one filed
+  before `archived` is remembered and rewritten then. Stop does not wait
+  for a streaming answer. The target lasts until the next Stop (NET-7).
+  `.rtiNotesBlockAdded` (posted by `NotesGenerationController` with the
+  session id and every block) does the same for a notes block that lands
+  after `archived`: it rewrites only `notes.md` and the sidecar, and a
+  failed write sets the coordinator's error (F2, batch 6).
+  Tests: `RTI/RenderTests/LateChatArchiveTests.swift`,
+  `RTI/RenderTests/LiveNotesTests.swift`.
 - `VaultRetrieval.Status` (`RTI/Core/LLM/VaultRetrieval.swift`):
   `available`, `noMatch`, `unavailable(reason:)`. Tests:
   `RTI/RenderTests/AssistSearchCancelTests.swift`.

@@ -31,6 +31,23 @@ final class SessionCoordinator {
         phase == .paused
     }
 
+    /// True while capture may still write into the archive folder of the
+    /// session that started at `date` (recording, paused, or closing its
+    /// files). A transcript upgrade of that folder would read a partial
+    /// recording, so the upgrade and the Sessions action refuse it.
+    func isCapturing(sessionStartedAt date: Date?) -> Bool {
+        guard phase == .recording || phase == .paused || phase == .finishing,
+              let startedAt, let date else { return false }
+        return abs(startedAt.timeIntervalSince(date)) < 1
+    }
+
+    /// True while this session still owns the folder of the session that
+    /// started at `date`: capturing it, or running its own upgrade after Stop.
+    func ownsArchive(sessionStartedAt date: Date?) -> Bool {
+        guard phase != .idle, phase != .done, let startedAt, let date else { return false }
+        return abs(startedAt.timeIntervalSince(date)) < 1
+    }
+
     private(set) var currentSessionId: String?
     private(set) var startedAt: Date?
     private(set) var endedAt: Date?
@@ -138,7 +155,11 @@ final class SessionCoordinator {
     /// Non-fatal notice when the system-audio (other-party) leg drops while
     /// the mic leg keeps recording. nil when system audio is fine/absent.
     private(set) var systemAudioNotice: String?
+    /// Non-fatal: the mic stopped delivering audio and is being rebound, or
+    /// it records exact silence. The system leg keeps recording.
     private(set) var micAudioNotice: String?
+    /// Non-fatal: durable audio writes are failing; capture continues.
+    private(set) var recordingAudioNotice: String?
     private(set) var systemAudioStartOffsetMs: Int?
     /// When non-nil, Soniox will stream translation tokens alongside
     /// the regular transcript. Bound to UserDefaults and the live
@@ -207,6 +228,11 @@ final class SessionCoordinator {
 
     var stopErrorRetireTask: Task<Void, Never>?
 
+    /// The reason the recording ended before the user pressed Stop (a
+    /// terminal `AudioPipeline.onError`), or nil. Such a notice is never
+    /// retired on a timer and the session never reads "Session saved".
+    private(set) var recordingStoppedEarly: String?
+
 #if DEBUG
     private var isTranscriptReplayForProof = false
 
@@ -227,6 +253,11 @@ final class SessionCoordinator {
 
     func receiveTranscriptionFailureForProof(_ message: String, isAuth: Bool, channel: String) {
         audioPipeline.onTranscriptionError?(message, isAuth, channel)
+    }
+
+    /// The pipeline's terminal recording failure, through the real wiring.
+    func receiveRecordingFailureForProof(_ message: String) {
+        audioPipeline.onError?(message, false)
     }
 
     func receiveTranscriptWordsForProof(_ words: [SonioxWord], channel: String) {
@@ -311,6 +342,7 @@ final class SessionCoordinator {
         self.startedAt = startedAt
         self.lastError = lastError
         self.lastErrorIsAuth = lastErrorIsAuth
+        recordingStoppedEarly = nil
         if transcriptChanged { transcriptRevision += 1 }
         if transcriptChanged, entries.isEmpty { transcriptProjection.reset() }
         refreshTranscriptPresentation(finalsChanged: transcriptChanged)
@@ -426,7 +458,10 @@ final class SessionCoordinator {
         audioPipeline.onStreamRestarted = { [weak self] channel, atMs in
             self?.handleStreamRestarted(channel: channel, atMs: atMs)
         }
+        // Only a recording that cannot be saved is terminal; mic loss and
+        // brief write failures arrive as notices and keep the session running.
         audioPipeline.onError = { [weak self] message, isAuth in
+            self?.recordingStoppedEarly = message
             self?.lastError = message
             self?.lastErrorIsAuth = isAuth
             if self?.isRunning == true { self?.stopSession() }
@@ -435,6 +470,7 @@ final class SessionCoordinator {
             self?.handleLiveTranscriptionFailure(message, isAuth: isAuth, channel: channel)
         }
         audioPipeline.onMicNotice = { [weak self] notice in self?.micAudioNotice = notice }
+        audioPipeline.onRecordingNotice = { [weak self] notice in self?.recordingAudioNotice = notice }
         audioPipeline.onTranscriptionHealth = { [weak self] health in
             self?.transcriptionHealth = health
             if health == .live || health == .failed { self?.switchingLegs.remove("mic") }
@@ -445,7 +481,9 @@ final class SessionCoordinator {
             if health == .live || health == .idle || health == .failed { self?.switchingLegs.remove("system") }
             switch health {
             case .failed:
-                self?.systemAudioNotice = "Other-party audio or live transcription is unavailable. Microphone recording continues."
+                guard let self else { return }
+                systemAudioNotice = audioPipeline.systemAudioOutageReported
+                    ? Self.systemCaptureLostNotice : Self.systemTranscriptLostNotice
             case .live:
                 self?.systemAudioNotice = nil
                 self?.retireLiveTranscriptionFailure(channel: "system")
@@ -454,6 +492,12 @@ final class SessionCoordinator {
             }
         }
     }
+
+    /// The other side's capture failed: their audio is not being recorded.
+    static let systemCaptureLostNotice = "RTI is not getting the other side's audio, so it is not being recorded. Your microphone is still recorded. Check the output device; RTI keeps trying to reattach."
+    /// Only the live text failed: the audio is safe. Saying "unavailable"
+    /// here pushed users to stop and restart, which splits the recording.
+    static let systemTranscriptLostNotice = "Live transcript of the other side has stopped. Their audio is still being recorded, and the full transcript is rebuilt from it after the call. RTI reconnects on its own. Do not restart the recording."
 
     /// A provider outage degrades live text, never the retained capture.
     func handleLiveTranscriptionFailure(_ message: String, isAuth: Bool, channel: String) {
@@ -596,6 +640,7 @@ final class SessionCoordinator {
         guard let startToken = startGate.begin() else { return }
         lastError = nil
         lastErrorIsAuth = false
+        recordingStoppedEarly = nil
         transcriptionFailures = [:]
         // A retire task left over from the last session must not clear this
         // one's failure.
@@ -751,6 +796,11 @@ final class SessionCoordinator {
         phase = .recording
         VisualContextTrail.shared.start(sessionStartedAt: now)
         startCheckpointLoop()
+        // session.json (session id, speech context, speaker policy) before
+        // anyone speaks: a crash before the first checkpoint otherwise
+        // recovers with the legacy provider and no context. The system leg's
+        // offset follows in `onSystemAudioStarted`.
+        archiveCurrentSession(endedAt: now)
     }
 
     func stopSession() {
@@ -788,10 +838,14 @@ final class SessionCoordinator {
         systemTranscriptionHealth = .idle
         systemAudioNotice = nil
         micAudioNotice = nil
+        recordingAudioNotice = nil
 
         let endedAt = Date()
         self.endedAt = endedAt // freeze widget timer immediately
         NotificationCenter.default.post(name: .rtiSessionDidStop, object: nil)
+        // An answer still streaming now is filed after the projection below;
+        // the refresher adds it to chat.md and the sidecar when it lands.
+        lateChat.begin(sessionID: sessionId)
         scheduleStopErrorRetirement()
         delayedCompleteTask?.cancel()
         delayedCompleteTask = Task { [weak self] in
@@ -818,6 +872,9 @@ final class SessionCoordinator {
     /// synchronous archive can project them. Nothing here ends or changes the
     /// recording; it only reads ids.
     private(set) var chatThreadProjection: [ChatProjectionMarkdown.Thread] = []
+    /// Rewrites chat.md and the sidecar when an answer still streaming at
+    /// Stop is filed later (NET-7).
+    let lateChat = LateChatArchiveRefresher()
     private(set) var unreadableChatCount = 0
 
     private func prepareChatThreadProjection(sessionId: String) async {
@@ -844,8 +901,11 @@ final class SessionCoordinator {
         let closed = audio.finish()
         let turns = transcript()
         async let codebookFinished: Void = ResearchCodebookController.shared.finish(sessionID: sessionID, entries: turns)
+        // The talk since the last notes tick gets its block too.
+        async let notesFinished: Void = NotesGenerationController.shared.finish(sessionId: sessionID)
         if guide.isActive { await guide.finish(sessionId: sessionID, entries: turns) }
         await codebookFinished
+        await notesFinished
         return closed
     }
 
@@ -873,9 +933,15 @@ final class SessionCoordinator {
             let archiveDir = SessionFinalizer(snapshot: snapshot).archive()
 
             if !audioFinished || snapshot.recordingError != nil {
+                // Notes, typed notes and chat still reach transcripts-raw.
+                // No upgrade runs on files marked for review; a manual
+                // upgrade from Sessions keeps this full sidecar.
+                let sidecar = Self.writeStopSidecar(snapshot: snapshot, archiveDir: archiveDir, callType: CallTypeStore.shared.active)
+                lateChat.archived(sessionID: sessionId, snapshot: snapshot, archiveDir: archiveDir, callType: CallTypeStore.shared.active)
                 phase = .done
                 resetWorkspaceForDone()
-                reportArchiveSaveFailure(recordingError: snapshot.recordingError ?? audioPipeline.recordingFailureMessage)
+                reportArchiveSaveFailure(recordingError: snapshot.recordingError ?? audioPipeline.recordingFailureMessage,
+                                         sidecarMissing: archiveDir != nil && sidecar == nil)
                 MeetingContextStore.shared.resetAfterSession()
                 publishState()
                 return
@@ -885,16 +951,14 @@ final class SessionCoordinator {
                 // writing a provisional raw transcript. Only upgraded text
                 // becomes the canonical transcript and reaches meeting
                 // processing.
-                SessionArchive.writeCanonicalMeetingSidecar(
-                    startedAt: startedAt,
-                    chat: snapshot.chat,
-                    visualContext: snapshot.visualContext,
-                    notes: snapshot.notes,
-                    archiveDir: archiveDir,
-                    callType: CallTypeStore.shared.active,
-                    chatThreads: snapshot.chatThreads,
-                    typedNotes: snapshot.transcript.filter { $0.speakerId == "note" }
-                )
+                if Self.writeStopSidecar(snapshot: snapshot, archiveDir: archiveDir, callType: CallTypeStore.shared.active) == nil {
+                    // Not silent: the export after the upgrade writes it
+                    // again from the archive's notes.md, chat.md and
+                    // screen-context.md, and fails the upgrade (marker kept,
+                    // error shown) if it still cannot.
+                    RTILog.log("Stop could not write the -rti.md sidecar; the transcript export writes it from the archive", level: .error, category: .archive)
+                }
+                lateChat.archived(sessionID: sessionId, snapshot: snapshot, archiveDir: archiveDir, callType: CallTypeStore.shared.active)
                 speakerPolicy = SessionSpeakerPolicy()
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
                 runUpgradePhase(sessionId: sessionId, llm: LLMController.shared) {
@@ -959,8 +1023,21 @@ final class SessionCoordinator {
             // Only resolve to `done` if this is still the session the
             // user is looking at — a new recording may already be live.
             guard currentSessionId == sessionId, phase == .upgrading else { return }
-            postProcessingStatus = failure == nil ? "Session saved" : "No meeting note · see message"
-            if let failure { stopErrorRetireTask?.cancel(); lastError = failure; lastErrorIsAuth = false }
+            if let failure {
+                postProcessingStatus = "No meeting note · see message"
+                stopErrorRetireTask?.cancel()
+                lastError = recordingStoppedEarly.map { "\($0)\n\(failure)" } ?? failure
+                lastErrorIsAuth = false
+            } else if let early = recordingStoppedEarly {
+                // The upgrade worked, but only on what was recorded before
+                // the failure. Say so and keep the reason on screen.
+                postProcessingStatus = "Recording stopped early · see message"
+                stopErrorRetireTask?.cancel()
+                lastError = early
+                lastErrorIsAuth = false
+            } else {
+                postProcessingStatus = "Session saved"
+            }
             phase = .done
             if Self.shouldClearChatAfterUpgrade(mark: chatMark, llm: llm) {
                 llm.clear()
@@ -1023,7 +1100,10 @@ final class SessionCoordinator {
         // Retain the closed audio and checkpoint transcript, but leave routing
         // to the resumable automatic upgrade on the next launch.
         closeRawJournal()
-        archiveCurrentSession(endedAt: endedAt ?? Date())
+        if let startedAt {
+            let snapshot = finalizerSnapshot(startedAt: startedAt, endedAt: endedAt ?? Date(), sessionId: currentSessionId, includeAudio: false)
+            Self.writeQuitRecord(snapshot: snapshot, callType: CallTypeStore.shared.active)
+        }
 
         phase = .idle
         mic.reduce(.sessionStopped)
@@ -1031,6 +1111,7 @@ final class SessionCoordinator {
         systemTranscriptionHealth = .idle
         systemAudioNotice = nil
         micAudioNotice = nil
+        recordingAudioNotice = nil
     }
 
     private func closeRawJournal() {
@@ -1171,7 +1252,9 @@ final class SessionCoordinator {
     /// from `stopSession` to here is one call and is not covered by a test.
     func scheduleStopErrorRetirement() {
         stopErrorRetireTask?.cancel()
-        guard lastError != nil, !lastErrorIsAuth else { return }
+        // A recording that ended on its own keeps its reason until the next
+        // start: it is the only sign that the rest of the call is missing.
+        guard lastError != nil, !lastErrorIsAuth, recordingStoppedEarly == nil else { return }
         stopErrorRetireTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: Self.stopErrorRetirementNs)
             guard !Task.isCancelled else { return }

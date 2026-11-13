@@ -6,7 +6,15 @@ import RTICore
 /// Recorder boundary for deterministic capture-lifecycle failures. Production
 /// keeps the real writer; injected recorders can fail close without disk faults.
 protocol PipelineRecording: AnyObject {
+    /// Fatal: a leg could not be written for `MeetingRecorder.writeFailureTolerance`,
+    /// or the file could not be closed. The session stops.
     var onWriteFailure: ((String) -> Void)? { get set }
+    /// Degraded: a leg write failed (message) or works again (nil). Capture
+    /// goes on and the missed frames are written as silence on recovery.
+    var onWriteDegraded: ((_ leg: String, _ message: String?) -> Void)? { get set }
+    /// A stretch of a leg was written as silence (no audio, or owed by a
+    /// failed write). Recorded as a capture gap (AUD-4).
+    var onGapFilled: ((_ leg: String, _ startFrame: Int, _ frameCount: Int, _ writeFailed: Bool) -> Void)? { get set }
     var micURL: URL? { get }
     var systemURL: URL? { get }
     func open(in directory: URL) throws
@@ -57,9 +65,14 @@ final class AudioPipeline {
     /// milliseconds later it started than the mic leg. Used to align the two
     /// channels' transcript timestamps onto a common timeline.
     var onSystemAudioStarted: ((Int) -> Void)?
-    /// Fires on terminal mic-audio failures. `isAuth` gates the "Open Settings"
-    /// affordance in the UI.
+    /// Fires on terminal recording failures: the durable WAV could not be
+    /// written for `MeetingRecorder.writeFailureTolerance` or not closed. A
+    /// lost or rebinding microphone is NOT terminal (`onMicNotice`), so the
+    /// other leg keeps recording. `isAuth` gates the "Open Settings" affordance.
     var onError: ((String, Bool) -> Void)?
+    /// Non-fatal: a durable audio write is failing (message) or works again
+    /// (nil). Capture continues; the missed frames become silence.
+    var onRecordingNotice: ((String?) -> Void)?
     /// Provider failures degrade live text, but must not stop durable audio.
     var onTranscriptionError: ((_ message: String, _ isAuth: Bool, _ channel: String) -> Void)?
     /// Mic-leg transcription connection health (drives the UI "● live" dot).
@@ -80,6 +93,11 @@ final class AudioPipeline {
     /// Automatic mic reconnects since the mic last reached `.live`. Each one
     /// doubles the pause before the next (`micAutoReconnectDelay`).
     private var micAutoReconnectAttempts = 0
+    /// The same for the system leg since it last reached `.live`. Without
+    /// it a spent system budget left the other side's live transcript dead
+    /// for the rest of the call: a tap that keeps delivering (silent)
+    /// buffers never parks, so nothing re-armed the leg.
+    private var systemAutoReconnectAttempts = 0
 
     /// Mute the user's mic leg (system-audio capture is unaffected). True
     /// mute — buffers are dropped inside the capture manager before they
@@ -103,6 +121,21 @@ final class AudioPipeline {
     private let systemAudioEnabled: Bool
     private let now: () -> Date
     private let log: (String, LogCategory) -> Void
+    /// The backend the watchdog swaps a never-delivering process tap for.
+    private let makeFallbackSystemCapture: () -> SystemAudioCapturing
+    /// Screen Recording is optional for RTI, and asking for it mid-call
+    /// raises a TCC prompt. The fallback is tried only when already granted.
+    private let screenCapturePermitted: () -> Bool
+    /// Sleep and wake arrive here (`NSWorkspace`'s center in production).
+    private let workspaceNotifications: NotificationCenter
+    private var sleepObservers: [NSObjectProtocol] = []
+    /// True between willSleep and didWake. The watchdogs run on a clock that
+    /// counts sleep, so their first tick after wake must not judge the legs.
+    private(set) var isAsleep = false
+    private var sleepStartedAt: Date?
+    /// The system watchdog waits this long after wake before it judges the
+    /// leg (the mic uses `micInputStartedAt` for the same grace).
+    private var systemWakeGraceUntil: Date?
     /// Picked at `start()`: a CoreAudio process tap when available (macOS
     /// 14.2+ and permission granted), else the ScreenCaptureKit fallback.
     private var systemAudio: SystemAudioCapturing?
@@ -127,6 +160,13 @@ final class AudioPipeline {
     private var micInputStartedAt: Date?
     private let recorder: PipelineRecording
     private var recordingFailure = RecordingFailureLatch()
+    /// Stretches a leg did not record this session (AUD-4): mic outages and
+    /// all-zero input, system capture failures, and the writer's silence
+    /// fills. Written to session.json, transcript.md and the sidecar.
+    private(set) var captureGapLog = CaptureGapLog()
+    /// When the system leg started, in session milliseconds: the writer
+    /// counts system frames from there.
+    private var systemLegStartMs: Int?
     /// The active speech-to-text client (Soniox today), built by
     /// STTProviders from the user's Settings choice. `soniox` is a historical
     /// name; it is whichever provider is active. Capture callbacks read
@@ -161,10 +201,22 @@ final class AudioPipeline {
     /// mute, revoked permission) — the "silent dead air" case the user can't
     /// otherwise detect. See `checkMicHealth`.
     private var micWatchdog: Task<Void, Never>?
-    private var micOutageReported = false
+    /// Set while the mic delivers nothing: the session keeps recording the
+    /// other leg and the watchdog rebinds the input with backoff.
+    private(set) var micOutageStartedAt: Date?
+    private(set) var micOutageRestarts = 0
+    private var lastMicOutageRestartAt: Date?
     /// Seconds without a mic buffer before we call it dead. Generous so a brief
     /// hiccup or device reroute doesn't false-alarm.
     private let micOutageThreshold: TimeInterval = 8
+    /// Pause before outage rebind `attempt` (0-based): at once, then 5 s,
+    /// doubling to a 60 s cap, for as long as the outage lasts.
+    static func micOutageRestartDelay(attempt: Int) -> TimeInterval {
+        attempt <= 0 ? 0 : min(5 * pow(2, Double(min(attempt - 1, 4))), 60)
+    }
+
+    static let micLostNotice = "Your microphone stopped sending audio. RTI keeps recording the other side and is reconnecting the mic. If this stays, check the input device in Settings or Privacy & Security > Microphone."
+    static let recordingWriteNotice = "RTI could not save meeting audio to disk. It keeps trying, and the missed seconds are kept as silence. Free disk space now; recording stops if this lasts 30 seconds."
     /// Mic delivering buffers of exact zeros (not just quiet) this long is a
     /// dead leg, not a silent room: rebuild the engine, up to a few times.
     private let micZeroThreshold: TimeInterval = 10
@@ -182,7 +234,9 @@ final class AudioPipeline {
     private var systemAudioWatchdog: Task<Void, Never>?
     private var systemAudioStartedAt: Date?
     private var lastSystemAudioRecoveryAt: Date?
-    private var systemAudioOutageReported = false
+    /// The system CAPTURE failed (not just its transcription), so the other
+    /// side is not being recorded. Read by the session's notice.
+    private(set) var systemAudioOutageReported = false
     private var systemAudioRecoveryAttempts = 0
     /// The system-leg PCM/error handlers, kept so the watchdog can rewire
     /// them onto a ScreenCaptureKit backend if the CoreAudio tap turns out
@@ -191,6 +245,11 @@ final class AudioPipeline {
     private var systemCaptureErrorHandler: ((String) -> Void)?
     /// One-shot per session: a dead tap swaps to SCK at most once.
     private var didFallBackToSCK = false
+    /// After the fast recovery attempts are spent, the watchdog keeps
+    /// rebuilding a silent backend at this slower cadence for the whole call.
+    private let systemAudioSlowRecoveryInterval: TimeInterval = 60
+    /// Legs whose durable writes are failing now, with the latest error.
+    private var degradedWriteLegs: [String: String] = [:]
     /// The system-leg STT socket connects only once the backend actually
     /// delivers audio. Connecting eagerly meant a dead tap left Soniox with
     /// a config and no audio → endless 408 timeout/reconnect spam.
@@ -225,8 +284,9 @@ final class AudioPipeline {
     /// call. Let the mic leg settle first; missing the first few seconds of
     /// other-party audio is better than destabilizing the meeting app.
     private let systemAudioStartupDelayNs: UInt64
-    /// How long a mic leg whose client spent its retry budget waits before
-    /// the first fresh reconnect. Auth and client-bug failures never schedule one.
+    /// How long a leg (mic or system) whose client spent its retry budget
+    /// waits before the first fresh reconnect. Auth and client-bug failures
+    /// never schedule one.
     private let micAutoReconnectDelayNs: UInt64
     /// The pause doubles per spent budget up to this many times the base
     /// (45 s → 6 min), so a long outage does not flap the error banner.
@@ -234,6 +294,8 @@ final class AudioPipeline {
     /// The pending automatic mic reconnect. Cancelled by `.live`, a
     /// manual client swap, a new session, finalize and abort.
     private var micAutoReconnectTask: Task<Void, Never>?
+    /// The pending automatic system-leg reconnect, cancelled the same way.
+    private var systemAutoReconnectTask: Task<Void, Never>?
 
     init(
         audio: MicrophoneCapturing = AudioCaptureManager(),
@@ -242,6 +304,9 @@ final class AudioPipeline {
             STTProviders.makeActiveClient(translationConfig: $0, context: $1, diarize: $2)
         },
         makeSystemCapture: (() -> SystemAudioCapturing)? = nil,
+        makeFallbackSystemCapture: @escaping () -> SystemAudioCapturing = { SystemAudioCapture() },
+        screenCapturePermitted: @escaping () -> Bool = { CGPreflightScreenCaptureAccess() },
+        workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter,
         systemAudioEnabled: Bool = true,
         systemAudioStartupDelayNs: UInt64 = 8_000_000_000,
         micAutoReconnectDelayNs: UInt64 = 45_000_000_000,
@@ -253,6 +318,9 @@ final class AudioPipeline {
         self.hasSTTKey = hasSTTKey
         self.makeSTTClient = makeSTTClient
         self.makeSystemCapture = makeSystemCapture
+        self.makeFallbackSystemCapture = makeFallbackSystemCapture
+        self.screenCapturePermitted = screenCapturePermitted
+        self.workspaceNotifications = workspaceNotifications
         self.systemAudioEnabled = systemAudioEnabled
         self.systemAudioStartupDelayNs = systemAudioStartupDelayNs
         self.micAutoReconnectDelayNs = micAutoReconnectDelayNs
@@ -282,7 +350,9 @@ final class AudioPipeline {
         }
 
         cancelMicAutoReconnect()
+        cancelSystemAutoReconnect()
         micAutoReconnectAttempts = 0
+        systemAutoReconnectAttempts = 0
         let failure = RecordingFailureLatch()
         recordingFailure = failure
         let onWriteFailure: @Sendable (String) -> Void = { [weak self, failure] message in
@@ -295,6 +365,21 @@ final class AudioPipeline {
             }
         }
         recorder.onWriteFailure = onWriteFailure
+        degradedWriteLegs = [:]
+        recorder.onWriteDegraded = { [weak self, failure] leg, message in
+            Task { @MainActor [weak self] in
+                guard let self, recordingFailure === failure else { return }
+                writeDegradedChanged(leg: leg, message: message)
+            }
+        }
+        captureGapLog = CaptureGapLog()
+        systemLegStartMs = nil
+        recorder.onGapFilled = { [weak self, failure] leg, startFrame, frames, writeFailed in
+            Task { @MainActor [weak self] in
+                guard let self, recordingFailure === failure else { return }
+                recordFilledGap(leg: leg, startFrame: startFrame, frames: frames, writeFailed: writeFailed)
+            }
+        }
         try recorder.open(in: recordingDirectory)
 
         let client = makeSTTClient(translationConfig, speechContext, false)
@@ -342,6 +427,7 @@ final class AudioPipeline {
         lastSystemBufferAt = nil
         systemSTTLinkArmed = false
         startMicWatchdog()
+        observeSleepAndWake()
 
         // Don't even attempt the system-audio Soniox leg without a key.
         // The mic leg already enforces this in `prepare`; this guard
@@ -390,7 +476,7 @@ final class AudioPipeline {
                 Task { @MainActor [weak self] in
                     guard let self, isCapturing, captureGeneration == generation else { return }
                     log("system audio capture error — \(msg)", .audio)
-                    systemAudioOutageReported = true
+                    setSystemCaptureOutage(true, since: now())
                     onSystemAudioHealth?(.failed)
                 }
             }
@@ -407,6 +493,7 @@ final class AudioPipeline {
                     systemAudio = backend
                     markSystemAudioStarted()
                 } catch {
+                    setSystemCaptureOutage(true, since: now())
                     onSystemAudioHealth?(.failed)
                 }
                 return
@@ -444,6 +531,7 @@ final class AudioPipeline {
                 markSystemAudioStarted()
             } catch {
                 log("system audio start failed — \(error)", .audio)
+                setSystemCaptureOutage(true, since: now())
                 onSystemAudioHealth?(.failed)
             }
         }
@@ -468,7 +556,11 @@ final class AudioPipeline {
     /// upgrade offset) is a separate value and does not move here.
     private func systemStatusChanged(_ health: TranscriptionHealth) {
         systemTranscriptionHealth = health
-        if health == .live { onStreamRestarted?("system", captureElapsedMs()) }
+        if health == .live {
+            cancelSystemAutoReconnect()
+            systemAutoReconnectAttempts = 0
+            onStreamRestarted?("system", captureElapsedMs())
+        }
         onSystemAudioHealth?(systemAudioOutageReported ? .failed : health)
     }
 
@@ -479,14 +571,50 @@ final class AudioPipeline {
         // is exhausted. Its ordinary drop message still says "reconnecting".
         let captureState = suspended ? "Recording remains paused." : "Audio is still recording."
         let message = failure.shouldRetry
-            ? "Live transcription stopped after repeated connection failures. \(captureState)"
+            ? "Live transcription stopped after repeated connection failures. \(captureState) RTI reconnects on its own."
             : failure.userMessage(didOpen: didOpen)
         onTranscriptionError?((system ? "System audio: " : "") + message, failure.isAuth, system ? "system" : "mic")
-        // A spent retry budget leaves the mic client dead until someone acts.
-        // Self-heal with one fresh client after a pause; the pause doubles per
-        // spent budget until the mic is live again. Never for auth or a client
-        // bug: those fail the same way again (a 401 loop).
-        if !system, failure.shouldRetry { scheduleMicAutoReconnect() }
+        // A spent retry budget leaves the leg's client dead until someone
+        // acts. Self-heal with one fresh client after a pause; the pause
+        // doubles per spent budget until the leg is live again. Never for auth
+        // or a client bug: those fail the same way again (a 401 loop).
+        guard failure.shouldRetry else { return }
+        if system { scheduleSystemAutoReconnect() } else { scheduleMicAutoReconnect() }
+    }
+
+    private func scheduleSystemAutoReconnect() {
+        guard isCapturing else { return }
+        cancelSystemAutoReconnect()
+        let generation = captureGeneration
+        let delay = Self.micAutoReconnectDelay(baseNs: micAutoReconnectDelayNs, attempt: systemAutoReconnectAttempts)
+        systemAutoReconnectAttempts += 1
+        systemAutoReconnectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: delay)
+            guard let self, !Task.isCancelled, isCapturing, captureGeneration == generation else { return }
+            systemAutoReconnectTask = nil
+            log("system transcription retries spent — automatic reconnect", .soniox)
+            reconnectSystem()
+        }
+    }
+
+    private func cancelSystemAutoReconnect() {
+        systemAutoReconnectTask?.cancel()
+        systemAutoReconnectTask = nil
+    }
+
+    /// Replace only the system client. The new one connects at the next
+    /// system buffer (`connectSystemSTTIfNeeded`), exactly like a parked leg
+    /// rejoining, so a backend that delivers nothing is not dialled. Its
+    /// stream re-bases itself on its `.live` (`systemStatusChanged`).
+    func reconnectSystem() {
+        guard isCapturing, hasSTTKey(), let old = systemSoniox else { return }
+        systemSoniox = nil
+        old.disconnect()
+        let sys = makeSTTClient(translationConfig, speechContext, systemSpeakerLabelsEnabled)
+        systemSoniox = sys
+        bindTranscriptionCallbacks(sys, system: true)
+        systemSTTConnected = false
+        systemSTTLinkArmed = false
     }
 
     private func scheduleMicAutoReconnect() {
@@ -576,7 +704,9 @@ final class AudioPipeline {
     private func markSystemAudioStarted() {
         recorder.markSystemStarted()
         systemAudioStartedAt = now()
-        systemAudioOutageReported = false
+        // The writer keeps the leg's first anchor across a backend swap.
+        if systemLegStartMs == nil { systemLegStartMs = captureElapsedMs() }
+        setSystemCaptureOutage(false, since: nil)
         lastSystemAudioRecoveryAt = nil
         systemAudioRecoveryAttempts = 0
         reportSystemAudioStart()
@@ -593,7 +723,9 @@ final class AudioPipeline {
     // MARK: - Mic health watchdog
 
     private func startMicWatchdog() {
-        micOutageReported = false
+        micOutageStartedAt = nil
+        micOutageRestarts = 0
+        lastMicOutageRestartAt = nil
         micZeroRestarts = 0
         lastMicZeroRestartAt = nil
         micZeroNoticeShown = false
@@ -618,50 +750,70 @@ final class AudioPipeline {
         micWatchdog = nil
     }
 
-    /// If the mic tap has stopped delivering buffers for longer than the
-    /// threshold, the input is effectively dead — surface it (which stops the
-    /// session) so the user isn't unknowingly recording silence. Fires at most
-    /// once per outage.
+    /// A mic that delivers no buffers for longer than the threshold is dead
+    /// (device unplugged or switched, another app holding it, a rebind that
+    /// failed). That is degraded, never terminal: the system leg keeps
+    /// recording, the user sees `micLostNotice`, and the input is rebound with
+    /// backoff until buffers return. The recorder pads the mic leg's gap with
+    /// silence when they do, so both legs keep one timeline.
     func checkMicHealth() {
-        guard let since = audio.secondsSinceLastBuffer() else {
-            // No FIRST buffer ever. This used to be treated as "still starting
-            // up" forever, which let a bound-but-dead input device (2026-08-31:
-            // an A2DP-parked AirPods mic) record silently-nothing for a whole
-            // meeting. Apply the threshold from the last input start instead.
-            if let started = micInputStartedAt,
-               now().timeIntervalSince(started) > micOutageThreshold,
-               !micOutageReported {
-                micOutageReported = true
-                onError?(
-                    "The microphone never delivered audio — the selected input device may be unavailable. Check the input device in Settings, then start the session again.",
-                    false
-                )
-            }
+        guard !isAsleep else { return }
+        let now = now()
+        let since = audio.secondsSinceLastBuffer()
+        if let since, since <= micOutageThreshold {
+            endMicOutageIfNeeded()
+            checkMicSilence()
             return
         }
-        if since > micOutageThreshold {
-            guard !micOutageReported else { return }
-            micOutageReported = true
-            onError?(
-                "Microphone audio stopped (\(Int(since))s ago) — the input device may have disconnected or RTI lost mic access. Restart the session, or check Settings → Privacy → Microphone.",
-                false
-            )
-        } else {
-            micOutageReported = false
-            checkMicSilence()
+        // No recent buffer. Count from the later of the last buffer and the
+        // last input start (session start, rebind, wake): a rebound device
+        // gets its own first-buffer grace.
+        let sinceInputStart = micInputStartedAt.map { now.timeIntervalSince($0) } ?? 0
+        let silentFor = since.map { min($0, sinceInputStart) } ?? sinceInputStart
+        guard silentFor > micOutageThreshold else { return }
+        if micOutageStartedAt == nil {
+            micOutageStartedAt = now
+            micOutageRestarts = 0
+            lastMicOutageRestartAt = nil
+            captureGapLog.begin(.mic, .noAudio, atMs: sessionMs(now) - Int(silentFor * 1000))
+            log("mic delivered no audio for \(Int(silentFor))s — rebinding the input; the session keeps recording", .audio)
+            onMicNotice?(Self.micLostNotice)
         }
+        let delay = Self.micOutageRestartDelay(attempt: micOutageRestarts)
+        if let last = lastMicOutageRestartAt, now.timeIntervalSince(last) < delay { return }
+        micOutageRestarts += 1
+        lastMicOutageRestartAt = now
+        do {
+            try audio.restart()
+            log("mic rebind attempt \(micOutageRestarts) started", .audio)
+        } catch {
+            log("mic rebind attempt \(micOutageRestarts) failed: \(error)", .audio)
+        }
+    }
+
+    private func endMicOutageIfNeeded() {
+        guard let started = micOutageStartedAt else { return }
+        log("mic audio back after \(Int(now().timeIntervalSince(started)))s (\(micOutageRestarts) rebind attempts)", .audio)
+        captureGapLog.end(.mic, .noAudio, atMs: sessionMs(now()))
+        micOutageStartedAt = nil
+        micOutageRestarts = 0
+        lastMicOutageRestartAt = nil
+        micZeroNoticeShown = false
+        onMicNotice?(nil)
     }
 
     /// Exact-zero mic audio (liveness is fine, content is dead): log, rebuild
     /// the engine with backoff, and surface a non-fatal notice if that fails.
     private func checkMicSilence() {
         guard !suspended, !audio.micMuted, let zero = audio.secondsAllZero(), zero >= micZeroThreshold else {
+            captureGapLog.end(.mic, .silentInput, atMs: sessionMs(now()))
             if micZeroNoticeShown {
                 micZeroNoticeShown = false
                 onMicNotice?(nil)
             }
             return
         }
+        captureGapLog.begin(.mic, .silentInput, atMs: sessionMs(now()) - Int(zero * 1000))
         if let last = lastMicZeroRestartAt, now().timeIntervalSince(last) < micZeroRestartBackoff { return }
         if micZeroRestarts < micZeroMaxRestarts {
             micZeroRestarts += 1
@@ -700,13 +852,17 @@ final class AudioPipeline {
     }
 
     func checkSystemAudioHealth() async {
-        guard let backend = systemAudio, let startedAt = systemAudioStartedAt else { return }
+        guard !isAsleep, let backend = systemAudio, let startedAt = systemAudioStartedAt else { return }
         let health = backend.captureHealth()
         let now = self.now()
+        if let grace = systemWakeGraceUntil, now < grace { return }
         let elapsed = now.timeIntervalSince(startedAt)
         guard elapsed >= systemAudioNoBufferThreshold else { return }
 
-        let secondsSinceBuffer = health.lastBufferAt.map { now.timeIntervalSince($0) } ?? elapsed
+        // A backend's own counters restart at every rebuild; the pipeline's
+        // last buffer covers the backend's whole life.
+        let lastBuffer = health.lastBufferAt ?? lastSystemBufferAt
+        let secondsSinceBuffer = lastBuffer.map { now.timeIntervalSince($0) } ?? elapsed
         let secondsSinceAudible = health.lastAudibleBufferAt.map { now.timeIntervalSince($0) } ?? elapsed
         let hasAudibleAudio = health.audibleDuration >= systemAudioMinimumAudibleDuration
 
@@ -742,7 +898,7 @@ final class AudioPipeline {
         }
 
         if systemAudioOutageReported {
-            systemAudioOutageReported = false
+            setSystemCaptureOutage(false, since: nil)
             onSystemAudioHealth?(systemTranscriptionHealth)
         }
         systemAudioRecoveryAttempts = 0
@@ -762,7 +918,13 @@ final class AudioPipeline {
             return
         }
 
-        if systemAudioRecoveryAttempts < systemAudioMaxRecoveryAttempts {
+        // Fast attempts first, then one every `systemAudioSlowRecoveryInterval`
+        // for the rest of the call: a Bluetooth output stops the tap while
+        // nothing plays, and the other party can speak again at any time.
+        let slowRetryDue = lastSystemAudioRecoveryAt.map {
+            now.timeIntervalSince($0) >= systemAudioSlowRecoveryInterval
+        } ?? true
+        if systemAudioRecoveryAttempts < systemAudioMaxRecoveryAttempts || slowRetryDue {
             lastSystemAudioRecoveryAt = now
 
             if await (systemAudio?.recoverFromSilentAudio() ?? false) {
@@ -784,32 +946,51 @@ final class AudioPipeline {
     /// no buffers at all (seen 2026-08-31 with a Bluetooth output device —
     /// captured=0.0s for a whole meeting, so the other party was never
     /// transcribed). When rebuild attempts are exhausted and the tap has
-    /// produced essentially nothing, replace it with the ScreenCaptureKit
-    /// backend. Only fires for a tap that never delivered — buffers arriving
-    /// with silent CONTENT just mean nobody is talking, and stay untouched.
+    /// delivered nothing this whole session, try ScreenCaptureKit. The tap's
+    /// own counters restart at every rebuild, so the pipeline's
+    /// `lastSystemBufferAt` decides: a tap that worked earlier is idle (nobody
+    /// playing), not dead, and is kept. The fallback runs only with Screen
+    /// Recording already granted, starts before the tap stops, and on failure
+    /// leaves the tap in place for the slow rebuild cadence. `systemAudio` is
+    /// never nil while capturing.
     private func fallBackToSCKIfTapDead(health: SystemAudioCaptureHealth) async -> Bool {
         guard !didFallBackToSCK, isCapturing,
-              health.duration < 0.5,
+              lastSystemBufferAt == nil, health.duration < 0.5,
+              let tap = systemAudio, tap.fallsBackToScreenCapture,
               let onPCM = systemPCMHandler, let onErr = systemCaptureErrorHandler else { return false }
-        guard #available(macOS 14.2, *), systemAudio is CoreAudioTapCapture else { return false }
-        didFallBackToSCK = true
-        log("CoreAudio tap delivered no audio — falling back to ScreenCaptureKit", .audio)
-        systemAudio?.stop()
-        systemAudio = nil
-        let sck = SystemAudioCapture()
-        sck.onPCMBuffer = onPCM
-        sck.onError = onErr
-        do {
-            try await sck.start()
-            guard isCapturing else { sck.stop(); return false }
-            systemAudio = sck
-            markSystemAudioStarted()
-            return true
-        } catch {
-            log("ScreenCaptureKit fallback failed — \(error)", .audio)
-            onSystemAudioHealth?(.failed)
+        guard screenCapturePermitted() else {
+            log("CoreAudio tap delivered no audio; ScreenCaptureKit fallback skipped (no Screen Recording permission) — keeping the tap and retrying it", .audio)
+            didFallBackToSCK = true
             return false
         }
+        didFallBackToSCK = true
+        log("CoreAudio tap delivered no audio — trying ScreenCaptureKit before releasing the tap", .audio)
+        // `start()` can wait a long time (a Screen Recording prompt). The user
+        // may stop and start another call meanwhile, and that call's backend
+        // can be the same object (an injected factory), so the identity check
+        // alone is not enough: the capture generation must match too.
+        let generation = captureGeneration
+        let gate = FallbackGate()
+        let sck = makeFallbackSystemCapture()
+        sck.onPCMBuffer = { buffer in if gate.isOpen { onPCM(buffer) } }
+        sck.onError = { message in if gate.isOpen { onErr(message) } }
+        do {
+            try await sck.start()
+        } catch {
+            sck.stop()
+            log("ScreenCaptureKit fallback failed — keeping the CoreAudio tap: \(error)", .audio)
+            return false
+        }
+        guard isCapturing, captureGeneration == generation, systemAudio === tap else {
+            log("ScreenCaptureKit fallback finished after its session ended — released it", .audio)
+            sck.stop()
+            return false
+        }
+        tap.stop()
+        gate.open()
+        systemAudio = sck
+        markSystemAudioStarted()
+        return true
     }
 
     private func reportPersistentSystemAudioOutageIfNeeded(
@@ -819,7 +1000,7 @@ final class AudioPipeline {
         shouldNotify: Bool
     ) {
         guard shouldNotify, elapsed >= systemAudioNoticeThreshold, !systemAudioOutageReported else { return }
-        systemAudioOutageReported = true
+        setSystemCaptureOutage(true, since: lastSystemBufferAt ?? systemAudioStartedAt ?? now())
         log(
             "system audio \(reason) for \(Int(elapsed))s (captured=\(String(format: "%.1f", health.duration))s audible=\(String(format: "%.1f", health.audibleDuration))s peakRMS=\(String(format: "%.4f", health.peakRMSLevel)))",
             .audio
@@ -830,8 +1011,11 @@ final class AudioPipeline {
     /// Stop capture and signal end-of-audio to Soniox. Call `finish()`
     /// after the 1.5 s finalize window to disconnect and close the WAV.
     func finalize() {
+        closeCaptureGaps()
         isCapturing = false
+        stopObservingSleepAndWake()
         cancelMicAutoReconnect()
+        cancelSystemAutoReconnect()
         stopMicWatchdog()
         stopSystemAudioWatchdog()
         stopSystemIdleMonitor()
@@ -890,7 +1074,9 @@ final class AudioPipeline {
     /// system leg. The caller shows "switching" only for these.
     func reconfigureStreamingClients() -> Set<String> {
         cancelMicAutoReconnect()
+        cancelSystemAutoReconnect()
         micAutoReconnectAttempts = 0
+        systemAutoReconnectAttempts = 0
         guard hasSTTKey() else { return [] }
         var restarted: Set<String> = []
 
@@ -921,8 +1107,11 @@ final class AudioPipeline {
 
     /// Immediate teardown for failures and app termination.
     func abort() {
+        closeCaptureGaps()
         isCapturing = false
+        stopObservingSleepAndWake()
         cancelMicAutoReconnect()
+        cancelSystemAutoReconnect()
         stopMicWatchdog()
         stopSystemAudioWatchdog()
         stopSystemIdleMonitor()
@@ -940,6 +1129,111 @@ final class AudioPipeline {
         system?.disconnect()
         recorder.close()
     }
+}
+
+// MARK: - Sleep, wake and degraded writes
+
+extension AudioPipeline {
+    private func observeSleepAndWake() {
+        stopObservingSleepAndWake()
+        isAsleep = false
+        systemWakeGraceUntil = nil
+        let center = workspaceNotifications
+        sleepObservers = [
+            center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.systemWillSleep() }
+            },
+            center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.systemDidWake() }
+            },
+        ]
+    }
+
+    private func stopObservingSleepAndWake() {
+        sleepObservers.forEach { workspaceNotifications.removeObserver($0) }
+        sleepObservers = []
+        isAsleep = false
+    }
+
+    /// Lid close or system sleep. The watchdogs stop judging the legs until
+    /// wake; the recorder's clock counts the sleep, so on wake each leg is
+    /// padded with silence for it and the WAVs stay on the live timeline.
+    private func systemWillSleep() {
+        guard isCapturing else { return }
+        isAsleep = true
+        sleepStartedAt = now()
+        log("system going to sleep — capture watchdogs paused", .audio)
+    }
+
+    /// Give both legs the first-buffer grace of a fresh start: devices rebind
+    /// after wake. If the mic is still silent after it, the watchdog rebinds it.
+    private func systemDidWake() {
+        guard isCapturing else { return }
+        let woke = now()
+        let slept = sleepStartedAt.map { Int(woke.timeIntervalSince($0)) } ?? 0
+        isAsleep = false
+        sleepStartedAt = nil
+        micInputStartedAt = woke
+        systemWakeGraceUntil = woke.addingTimeInterval(systemAudioNoBufferThreshold)
+        lastSystemAudioRecoveryAt = nil
+        systemAudioRecoveryAttempts = 0
+        log("system woke after \(slept)s — capture watchdogs resume after a grace period", .audio)
+    }
+
+    /// Session milliseconds of `date` on the transcript's clock.
+    func sessionMs(_ date: Date) -> Int {
+        Int(max(0, date.timeIntervalSince(captureStartWall ?? date) * 1000))
+    }
+
+    /// The capture gaps so far, merged; open ones still have no end.
+    var captureGaps: [CaptureGap] { captureGapLog.gaps }
+
+    /// The system capture failed (or works again). Drives the notice and
+    /// the capture-gap record together, so neither can disagree.
+    fileprivate func setSystemCaptureOutage(_ failed: Bool, since: Date?) {
+        if failed {
+            captureGapLog.begin(.system, .captureFailed, atMs: sessionMs(since ?? now()))
+        } else {
+            captureGapLog.end(.system, .captureFailed, atMs: sessionMs(now()))
+        }
+        systemAudioOutageReported = failed
+    }
+
+    fileprivate func recordFilledGap(leg: String, startFrame: Int, frames: Int, writeFailed: Bool) {
+        let rate = AudioFormat.sampleRateHz
+        let isSystem = leg == "system"
+        let legStart = isSystem ? (systemLegStartMs ?? 0) : 0
+        let startMs = legStart + startFrame * 1000 / rate
+        captureGapLog.add(isSystem ? .system : .mic, writeFailed ? .writeFailed : .noAudio,
+                          startMs: startMs, endMs: startMs + frames * 1000 / rate)
+    }
+
+    fileprivate func closeCaptureGaps() {
+        guard isCapturing else { return }
+        captureGapLog.closeAll(atMs: captureElapsedMs())
+    }
+
+    /// One notice for both legs while any leg's writes fail.
+    fileprivate func writeDegradedChanged(leg: String, message: String?) {
+        let wasDegraded = !degradedWriteLegs.isEmpty
+        if let message {
+            degradedWriteLegs[leg] = message
+        } else {
+            degradedWriteLegs.removeValue(forKey: leg)
+        }
+        let isDegraded = !degradedWriteLegs.isEmpty
+        guard wasDegraded != isDegraded else { return }
+        onRecordingNotice?(isDegraded ? Self.recordingWriteNotice : nil)
+    }
+}
+
+/// Opened once the fallback backend replaced the tap, so the two never feed
+/// the leg at once. Lock-guarded: read on the backend's queue.
+private final class FallbackGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var opened = false
+    var isOpen: Bool { lock.withLock { opened } }
+    func open() { lock.withLock { opened = true } }
 }
 
 enum AudioPipelineError: LocalizedError {

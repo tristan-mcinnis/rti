@@ -151,11 +151,15 @@ final class AudioPipelineRecoveryTests: XCTestCase {
                        Array(repeating: 123, count: 320) + Array(repeating: 456, count: 320))
     }
 
-    func testDeviceStillMissingAfterGraceReportsOneFatalOutageAndKeepsPrefix() throws {
+    /// A device still missing after its grace is degraded, not terminal: one
+    /// notice, a rebind attempt, no session stop (AUD-1).
+    func testDeviceStillMissingAfterGraceShowsOneNoticeRebindsAndKeepsPrefix() throws {
         let fixture = try Fixture()
         defer { fixture.cleanUp() }
         var errors: [String] = []
+        var notices: [String?] = []
         fixture.pipeline.onError = { message, _ in errors.append(message) }
+        fixture.pipeline.onMicNotice = { notices.append($0) }
         try fixture.start()
         fixture.audio.emit(try pcm(value: 789))
         fixture.date = fixture.date.addingTimeInterval(60)
@@ -164,8 +168,9 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         fixture.date = fixture.date.addingTimeInterval(9)
         fixture.pipeline.checkMicHealth()
         fixture.pipeline.checkMicHealth()
-        XCTAssertEqual(errors.count, 1)
-        XCTAssertTrue(errors.first?.contains("never delivered audio") == true)
+        XCTAssertTrue(errors.isEmpty, "A missing mic must not stop the session")
+        XCTAssertEqual(notices, [AudioPipeline.micLostNotice])
+        XCTAssertEqual(fixture.audio.restartCount, 1)
         fixture.pipeline.finalize()
         fixture.pipeline.finish()
         XCTAssertEqual(try samples(fixture.pipeline.micRecordingURL), Array(repeating: 789, count: 320))
@@ -430,6 +435,88 @@ final class AudioPipelineRecoveryTests: XCTestCase {
         XCTAssertEqual(recordingOffsets, [0], "The WAV and upgrade offset does not move")
     }
 
+    /// NET-3: the system leg spends its 5 retries while the tap keeps
+    /// delivering buffers (so the idle park never re-arms it). It must come
+    /// back on its own, as the mic does, and the notice must say the other
+    /// side's audio is still recorded.
+    func testSpentSystemRetriesReconnectWhileTheTapKeepsDelivering() async throws {
+        let backend = InjectedSystemCapture()
+        let fixture = try Fixture(system: backend, micAutoReconnectDelayNs: 100_000_000)
+        defer { fixture.cleanUp() }
+        var health: [TranscriptionHealth] = []
+        var restarts: [String] = []
+        var errors: [String] = []
+        let started = expectation(description: "System backend started")
+        fixture.pipeline.onSystemAudioStarted = { _ in started.fulfill() }
+        fixture.pipeline.onSystemAudioHealth = { health.append($0) }
+        fixture.pipeline.onStreamRestarted = { channel, _ in restarts.append(channel) }
+        fixture.pipeline.onTranscriptionError = { message, _, channel in if channel == "system" { errors.append(message) } }
+        try fixture.start()
+        await fulfillment(of: [started], timeout: 2)
+        try await feedSystem(backend, for: 0.1)
+        XCTAssertEqual(fixture.clients.count, 2, "mic, then the system client")
+        let first = fixture.clients[1]
+        first.onStatus?(.live)
+        // What SonioxClient reports when its retry budget is spent.
+        first.onStatus?(.failed)
+        first.onError?(.transient(reason: "injected network flap"), true)
+        // The tap keeps delivering (silent) buffers through and past the pause.
+        try await feedSystem(backend, for: 0.6)
+        XCTAssertEqual(fixture.clients.count, 3, "One fresh system client after the pause")
+        let second = fixture.clients[2]
+        XCTAssertEqual(health.last, .connecting, "The next buffer connected the fresh client")
+        second.onStatus?(.live)
+        XCTAssertEqual(health.last, .live)
+        XCTAssertEqual(restarts.filter { $0 == "system" }.count, 2, "The new system stream re-bases on its own .live")
+        XCTAssertFalse(fixture.pipeline.systemAudioOutageReported, "Only the transcript failed; capture did not")
+        XCTAssertTrue(errors.last?.contains("Audio is still recording") == true)
+        XCTAssertTrue(SessionCoordinator.systemTranscriptLostNotice.contains("still being recorded"))
+        XCTAssertTrue(SessionCoordinator.systemTranscriptLostNotice.contains("Do not restart"))
+        XCTAssertFalse(SessionCoordinator.systemTranscriptLostNotice.contains("unavailable"))
+        fixture.pipeline.finalize()
+        XCTAssertTrue(fixture.pipeline.finish())
+        XCTAssertGreaterThan(try samples(fixture.pipeline.systemRecordingURL).count, 320 * 20,
+                             "The system WAV kept the buffers from before, during and after the outage")
+    }
+
+    func testSystemAuthFailureOrStopNeverAutoReconnectsTheSystemLeg() async throws {
+        for failure in [SonioxFailure.auth, .clientBug("injected 400")] {
+            let backend = InjectedSystemCapture()
+            let fixture = try Fixture(system: backend, micAutoReconnectDelayNs: 50_000_000)
+            defer { fixture.cleanUp() }
+            let started = expectation(description: "System backend started")
+            fixture.pipeline.onSystemAudioStarted = { _ in started.fulfill() }
+            try fixture.start()
+            await fulfillment(of: [started], timeout: 2)
+            try await feedSystem(backend, for: 0.1)
+            fixture.clients[1].onError?(failure, true)
+            try await feedSystem(backend, for: 0.4)
+            XCTAssertEqual(fixture.clients.count, 2, "\(failure) must never auto-retry (a 401 loop)")
+        }
+        let backend = InjectedSystemCapture()
+        let stopped = try Fixture(system: backend, micAutoReconnectDelayNs: 50_000_000)
+        defer { stopped.cleanUp() }
+        let started = expectation(description: "System backend started")
+        stopped.pipeline.onSystemAudioStarted = { _ in started.fulfill() }
+        try stopped.start()
+        await fulfillment(of: [started], timeout: 2)
+        try await feedSystem(backend, for: 0.1)
+        stopped.clients[1].onError?(.transient(reason: "injected offline"), true)
+        stopped.pipeline.finalize()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(stopped.clients.count, 2, "Stop cancels the pending system reconnect")
+    }
+
+    /// Push a quiet system buffer every 20 ms, keeping the leg's last-buffer
+    /// time fresh so the idle park cannot fire.
+    private func feedSystem(_ backend: InjectedSystemCapture, for seconds: TimeInterval) async throws {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            backend.onPCMBuffer?(try pcm(value: 3))
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     /// A listening-only call is muted before capture opens: the first buffer,
     /// delivered while `start()` runs, and every later one reach neither the
     /// WAV nor the transcription socket as speech.
@@ -547,6 +634,12 @@ private final class CloseFailureRecorder: PipelineRecording {
     var onWriteFailure: ((String) -> Void)? {
         didSet { writer.onWriteFailure = onWriteFailure }
     }
+    var onWriteDegraded: ((String, String?) -> Void)? {
+        didSet { writer.onWriteDegraded = onWriteDegraded }
+    }
+    var onGapFilled: ((String, Int, Int, Bool) -> Void)? {
+        didSet { writer.onGapFilled = onGapFilled }
+    }
     var micURL: URL? { writer.micURL }
     var systemURL: URL? { writer.systemURL }
     func open(in directory: URL) throws { try writer.open(in: directory) }
@@ -602,7 +695,22 @@ final class InjectedMicrophoneCapture: MicrophoneCapturing, @unchecked Sendable 
         if let buffer = bufferOnStart { emit(buffer) }
     }
     func stop() { lock.withLock { stops += 1 } }
-    func restart() throws { onRestarted?() }
+    private var restarts = 0
+    private var failure: Error?
+    var restartCount: Int { lock.withLock { restarts } }
+    /// When set, `restart()` fails as AVAudioEngine does mid-switch.
+    var restartError: Error? {
+        get { lock.withLock { failure } }
+        set { lock.withLock { failure = newValue } }
+    }
+    /// Like the real engine: a restart clears the last-buffer time, and only
+    /// a successful one reports `onRestarted`.
+    func restart() throws {
+        lock.withLock { restarts += 1 }
+        lastBufferAge = nil
+        if let restartError { throw restartError }
+        onRestarted?()
+    }
     func secondsSinceLastBuffer() -> TimeInterval? { lastBufferAge }
     func secondsAllZero() -> TimeInterval? { nil }
     func emit(_ buffer: AVAudioPCMBuffer) {
@@ -656,6 +764,21 @@ final class InjectedSystemCapture: SystemAudioCapturing, @unchecked Sendable {
                                                         lastAudibleBufferAt: nil, lastRMSLevel: 0, peakRMSLevel: 0)
     private var canRecover = false
     private var recoveries = 0
+    private var stops = 0
+    private var starts = 0
+    private var startFailure: Error?
+    private var isTap = false
+    var stopCount: Int { lock.withLock { stops } }
+    var startCount: Int { lock.withLock { starts } }
+    var startError: Error? {
+        get { lock.withLock { startFailure } }
+        set { lock.withLock { startFailure = newValue } }
+    }
+    /// Plays the CoreAudio process tap, which may fall back to ScreenCaptureKit.
+    var fallsBackToScreenCapture: Bool {
+        get { lock.withLock { isTap } }
+        set { lock.withLock { isTap = newValue } }
+    }
     var onPCMBuffer: ((AVAudioPCMBuffer) -> Void)? {
         get { lock.withLock { pcm } }
         set { lock.withLock { pcm = newValue } }
@@ -673,8 +796,11 @@ final class InjectedSystemCapture: SystemAudioCapturing, @unchecked Sendable {
         set { lock.withLock { canRecover = newValue } }
     }
     var recoveryCount: Int { lock.withLock { recoveries } }
-    func start() async throws {}
-    func stop() {}
+    func start() async throws {
+        lock.withLock { starts += 1 }
+        if let startError { throw startError }
+    }
+    func stop() { lock.withLock { stops += 1 } }
     func captureHealth() -> SystemAudioCaptureHealth { health }
     func recoverFromSilentAudio() async -> Bool {
         lock.withLock { recoveries += 1; return canRecover }

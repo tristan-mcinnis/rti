@@ -57,6 +57,30 @@ public struct SonioxAsyncFileClient: Sendable {
         var uploading = false
         var creating = false
         var terminalError: String?
+        /// The audio this job uploaded. Nil in jobs saved before 2026-11-13.
+        var audio: AudioStamp?
+    }
+
+    /// True for an error the Soniox service returned (an HTTP status, a bad
+    /// or failed job), as opposed to a local file or network error.
+    public static func isProviderError(_ error: Error) -> Bool {
+        error is Failure || error is HTTPFailure
+    }
+
+    /// The audio a raw transcript was made from, by byte size. A raw file
+    /// whose stamp no longer matches the audio (the WAV grew after an
+    /// upgrade of a recording in progress) is stale. Size alone, so a copied
+    /// or restored session folder keeps its paid result.
+    private struct AudioStamp: Codable, Equatable {
+        let bytes: Int64
+
+        init?(_ audio: URL) {
+            // Read the file, not URL resource values: a URL caches those, and
+            // the same URL is passed again after the file grew.
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: audio.path),
+                  let size = (attributes[.size] as? NSNumber)?.int64Value else { return nil }
+            bytes = size
+        }
     }
 
     private struct HTTPFailure: LocalizedError {
@@ -95,12 +119,31 @@ public struct SonioxAsyncFileClient: Sendable {
     {
         let raw = directory.appendingPathComponent("soniox-async-\(leg.rawValue).json")
         let checkpoint = directory.appendingPathComponent(".soniox-async-\(leg.rawValue)-job.json")
+        let stampURL = directory.appendingPathComponent(".soniox-async-\(leg.rawValue)-audio.json")
         let manager = FileManager.default
+        let currentAudio = AudioStamp(audio)
         var job: Job
         if manager.fileExists(atPath: checkpoint.path) {
             job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: checkpoint))
             guard job.audioName == audio.lastPathComponent else { throw Failure(message: "The saved Soniox job belongs to another audio file.") }
         } else {
+            job = Job(reference: "\(sessionID)/\(leg.rawValue)/\(UUID().uuidString)", audioName: audio.lastPathComponent)
+        }
+        // A raw result or a job made from an earlier, shorter copy of this
+        // audio would stand in for the whole recording forever. Set it aside
+        // and transcribe the audio as it is now.
+        let savedStamp = (try? Data(contentsOf: stampURL)).flatMap { try? JSONDecoder().decode(AudioStamp.self, from: $0) }
+        let rawIsStale = manager.fileExists(atPath: raw.path) && savedStamp != nil && savedStamp != currentAudio
+        let jobIsStale = job.audio != nil && job.audio != currentAudio && job.terminalError == nil
+        if rawIsStale || jobIsStale {
+            if manager.fileExists(atPath: checkpoint.path) {
+                await bestEffortCleanup(job: &job, at: checkpoint)
+            }
+            if rawIsStale {
+                let aside = directory.appendingPathComponent(".soniox-async-\(leg.rawValue)-stale.json")
+                try? manager.removeItem(at: aside)
+                try manager.moveItem(at: raw, to: aside)
+            }
             job = Job(reference: "\(sessionID)/\(leg.rawValue)/\(UUID().uuidString)", audioName: audio.lastPathComponent)
         }
         // A killed upload can leave a temporary multipart body. Its filename
@@ -112,7 +155,7 @@ public struct SonioxAsyncFileClient: Sendable {
             let result = try Data(contentsOf: raw)
             try Self.validate(result, jobID: job.transcriptionID)
             if manager.fileExists(atPath: checkpoint.path) {
-                try await cleanup(job: &job, at: checkpoint)
+                await bestEffortCleanup(job: &job, at: checkpoint)
             }
             return result
         }
@@ -127,6 +170,7 @@ public struct SonioxAsyncFileClient: Sendable {
             }
             if job.fileID == nil {
                 job.uploading = true
+                job.audio = currentAudio
                 try Self.save(job, to: checkpoint)
                 let upload = try await upload(audio, reference: job.reference)
                 job.fileID = upload.id
@@ -180,8 +224,16 @@ public struct SonioxAsyncFileClient: Sendable {
             case "completed":
                 let (bytes, _) = try await exchange(request(path + "/transcript"))
                 try Self.validate(bytes, jobID: jobID)
+                // The stamp goes first: a raw file never exists without the
+                // audio it describes once this version wrote it.
+                if let stamp = job.audio ?? currentAudio {
+                    try Self.atomic(JSONEncoder().encode(stamp), to: stampURL)
+                }
                 try Self.atomic(bytes, to: raw)
-                try await cleanup(job: &job, at: checkpoint)
+                // The transcript is saved. A failed remote delete keeps the
+                // job file, so a later run deletes the leftovers; it never
+                // fails this run.
+                await bestEffortCleanup(job: &job, at: checkpoint)
                 return bytes
             case "error":
                 job.terminalError = status.error_type ?? "provider error"
@@ -228,13 +280,21 @@ public struct SonioxAsyncFileClient: Sendable {
         return request
     }
 
+    /// The request never left the Mac, so even a POST is safe to send again.
+    static let unsentCodes: Set<URLError.Code> = [.notConnectedToInternet, .cannotFindHost, .dnsLookupFailed, .cannotConnectToHost]
+    /// The request may have reached Soniox: replay only a GET or DELETE. A
+    /// POST is resumed from the job file by the next run instead.
+    static let interruptedCodes: Set<URLError.Code> = [.timedOut, .networkConnectionLost]
+
     private func exchange(_ request: URLRequest, upload: URL? = nil, allowMissing: Bool = false) async throws -> (Data, HTTPURLResponse) {
         let replayable = request.httpMethod != "POST"
         for attempt in 0 ... 2 {
             try Task.checkCancellation()
             let result: (Data, HTTPURLResponse)
             do { result = try await send(request, upload) }
-            catch let error as URLError where replayable && attempt < 2 && [.timedOut, .networkConnectionLost, .notConnectedToInternet].contains(error.code) {
+            catch let error as URLError where attempt < 2
+                && (Self.unsentCodes.contains(error.code) || (replayable && Self.interruptedCodes.contains(error.code)))
+            {
                 try await sleep(.seconds(2 << attempt))
                 continue
             }
@@ -250,6 +310,14 @@ public struct SonioxAsyncFileClient: Sendable {
             throw HTTPFailure(status: status, method: request.httpMethod ?? "request")
         }
         throw Failure(message: "Soniox could not complete the request.")
+    }
+
+    /// Cleanup after the transcript is saved locally: a failure is left for a
+    /// later run (the job file stays) and never fails this one.
+    private func bestEffortCleanup(job: inout Job, at checkpoint: URL) async {
+        do { try await cleanup(job: &job, at: checkpoint) } catch {
+            CoreLog.log("Soniox cleanup deferred to the next run: \(error.localizedDescription)", category: "archive")
+        }
     }
 
     private func cleanup(job: inout Job, at checkpoint: URL) async throws {

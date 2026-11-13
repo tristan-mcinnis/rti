@@ -12,3 +12,6 @@ RTI/Sources/UI/RTIDesign.swift:SwiftUI\.Color\(red:.*// (blue|red|green|purple|a
 # transcript"). Each pair is one palette entry, built by one helper.
 RTI/Sources/UI/RTIDesign.swift:speaker\(light:.*// (blue|red|green|purple|amber|teal)
 RTI/Sources/UI/RTIDesign.swift:NSColor\(srgbRed: rgb\.0
+# Agent worktrees under .claude/worktrees/ are temporary copies of this repo;
+# their files are linted where they live, not twice.
+.claude/worktrees/**

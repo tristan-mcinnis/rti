@@ -22,6 +22,12 @@ extension LLMController {
         Task { @MainActor [weak self] in
             await checkpoint?.value
             await self?.persistTurnResult(pending, text: text, status: status, error: error)
+            // A recording that already stopped re-reads its chats, so its
+            // chat.md and sidecar get this answer too (NET-7).
+            let sessionIDs = pending.sessionLinks.compactMap(\.id)
+            if !sessionIDs.isEmpty {
+                NotificationCenter.default.post(name: .rtiChatTurnFiled, object: nil, userInfo: ["sessionIDs": sessionIDs])
+            }
         }
     }
 

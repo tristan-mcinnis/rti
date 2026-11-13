@@ -182,6 +182,130 @@ final class SonioxClientSocketEventTests: XCTestCase {
         XCTAssertEqual(words.map(\.text), ["Hello"], "A queued old retry cannot replace the adopted stream")
     }
 
+    // MARK: - NET-4: a dead path without a TCP reset
+
+    /// A Wi-Fi drop or roam that sends no reset: the path stays not viable
+    /// past the grace, so the socket is abandoned into the retry path
+    /// instead of reading live for minutes.
+    func test_aPathThatStaysNotViable_isADropThatReconnects() async throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable, viabilityGrace: 0.1)
+        let current = makeSocket()
+        client.adoptSocketForTesting(current)
+        defer { client.disconnect() }
+        let seen = try await statuses(of: client, after: {
+            client.didReceive(event: .connected([:]), client: current)
+            client.didReceive(event: .viabilityChanged(false), client: current)
+        }, wait: 0.5)
+        XCTAssertEqual(seen, [.live, .reconnecting])
+        XCTAssertNotNil(client.pendingReconnectForTesting(), "a reconnect is queued")
+    }
+
+    func test_aBriefViabilityBlip_doesNotReconnect() async throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable, viabilityGrace: 0.1)
+        let current = makeSocket()
+        client.adoptSocketForTesting(current)
+        defer { client.disconnect() }
+        let seen = try await statuses(of: client, after: {
+            client.didReceive(event: .connected([:]), client: current)
+            client.didReceive(event: .viabilityChanged(false), client: current)
+            client.didReceive(event: .viabilityChanged(true), client: current)
+        }, wait: 0.5)
+        XCTAssertEqual(seen, [.live])
+        XCTAssertNil(client.pendingReconnectForTesting())
+    }
+
+    func test_aBetterPathSuggestion_reconnectsAtOnce() async throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable)
+        let current = makeSocket()
+        client.adoptSocketForTesting(current)
+        defer { client.disconnect() }
+        let seen = try await statuses(of: client) {
+            client.didReceive(event: .connected([:]), client: current)
+            client.didReceive(event: .reconnectSuggested(false), client: current)
+            client.didReceive(event: .reconnectSuggested(true), client: current)
+        }
+        XCTAssertEqual(seen, [.live, .reconnecting])
+    }
+
+    func test_aReplacedSocketsPathEvents_doNotTouchTheCurrentOne() async throws {
+        let client = SonioxClient(apiKey: "test", url: unreachable, viabilityGrace: 0.05)
+        let current = makeSocket()
+        let replaced = makeSocket()
+        client.adoptSocketForTesting(current)
+        defer { client.disconnect() }
+        let seen = try await statuses(of: client, after: {
+            client.didReceive(event: .viabilityChanged(false), client: replaced)
+            client.didReceive(event: .reconnectSuggested(true), client: replaced)
+        }, wait: 0.3)
+        XCTAssertEqual(seen, [])
+    }
+
+    /// Audible audio goes out and nothing at all comes back for longer than
+    /// the stall limit: the stream is dead even though no event said so.
+    func test_audibleAudioWithNoReplyPastTheLimit_reconnects() async throws {
+        let clock = TestClock()
+        let client = SonioxClient(apiKey: "test", url: unreachable, stallTimeout: 15, now: { clock.now })
+        let current = makeSocket()
+        client.adoptSocketForTesting(current)
+        defer { client.disconnect() }
+        let seen = try await statuses(of: client) {
+            client.didReceive(event: .connected([:]), client: current)
+            for _ in 0..<16 {
+                client.sendAudio(Self.speech)
+                clock.advance(1)
+            }
+            client.sendAudio(Self.speech)
+        }
+        XCTAssertEqual(seen, [.live, .reconnecting], "16 s of unanswered speech is a stall")
+    }
+
+    func test_repliesOrSilence_neverCountAsAStall() async throws {
+        let clock = TestClock()
+        let client = SonioxClient(apiKey: "test", url: unreachable, stallTimeout: 15, now: { clock.now })
+        let current = makeSocket()
+        client.adoptSocketForTesting(current)
+        defer { client.disconnect() }
+        let seen = try await statuses(of: client) {
+            client.didReceive(event: .connected([:]), client: current)
+            // Speech answered every 10 s: never 15 s unanswered.
+            for second in 0..<40 {
+                client.sendAudio(Self.speech)
+                if second % 10 == 9 { client.didReceive(event: .text(#"{"tokens":[]}"#), client: current) }
+                clock.advance(1)
+            }
+            // A silent room for a minute: nothing to answer.
+            for _ in 0..<60 {
+                client.sendAudio(Self.silence)
+                clock.advance(1)
+            }
+        }
+        XCTAssertEqual(seen, [.live])
+        XCTAssertTrue(SonioxClient.isAudible(Self.speech))
+        XCTAssertFalse(SonioxClient.isAudible(Self.silence))
+    }
+
+    /// 20 ms of 16 kHz PCM at a speech level, and of room tone.
+    private static let speech = pcm(level: 6_000)
+    private static let silence = pcm(level: 120)
+
+    private static func pcm(level: Int16) -> Data {
+        var data = Data()
+        for index in 0..<320 {
+            var sample = (index % 2 == 0 ? level : -level).littleEndian
+            withUnsafeBytes(of: &sample) { data.append(contentsOf: $0) }
+        }
+        return data
+    }
+
+    /// A clock the test moves by hand. Lock-guarded: the client reads it on
+    /// whatever thread sends audio.
+    private final class TestClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var current = Date(timeIntervalSinceReferenceDate: 0)
+        var now: Date { lock.withLock { current } }
+        func advance(_ seconds: TimeInterval) { lock.withLock { current += seconds } }
+    }
+
     private func drainCallbacks() async {
         let drained = expectation(description: "Earlier main-queue callbacks delivered")
         DispatchQueue.main.async { drained.fulfill() }

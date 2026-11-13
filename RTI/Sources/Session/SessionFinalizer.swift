@@ -38,6 +38,14 @@ final class ArchiveWriteGate: @unchecked Sendable {
             return result
         }
     }
+
+    /// F6: a retry of a stopped session's failed final write. It has its own
+    /// folder, so it needs no place in the sequence (taking one could make a
+    /// live session's checkpoint look stale); it only waits for a write
+    /// still running.
+    func runAlone(_ write: () -> URL?) -> URL? {
+        writing.withLock { write() }
+    }
 }
 
 @MainActor
@@ -48,7 +56,7 @@ struct SessionFinalizer {
         let transcript: [LiveEntry]
         let chat: [ChatEntry]
         let visualContext: [VisualContextEvent]
-        let notes: [GeneratedNote]
+        var notes: [GeneratedNote]
         let sessionId: String?
         let micRecordingURL: URL?
         let systemRecordingURL: URL?
@@ -63,6 +71,8 @@ struct SessionFinalizer {
         var unreadableChatCount: Int = 0
         var recordingError: String? = nil
         var guide: GuideArchiveSnapshot? = nil
+        /// Stretches a leg did not record (AUD-4), merged, in session ms.
+        var captureGaps: [CaptureGap] = []
     }
 
     let snapshot: Snapshot
@@ -73,8 +83,9 @@ struct SessionFinalizer {
     struct Job: Sendable {
         let snapshot: Snapshot
         let sequence: Int
-        let speakerNames: [String: String]
-        let speakerAssignments: [String: GuideSpeakerAssignment]
+        /// `var`: a name typed after Stop updates a job kept for retry (F6, F10).
+        var speakerNames: [String: String]
+        var speakerAssignments: [String: GuideSpeakerAssignment]
         let calendarTitle: String?
         let speechContext: SonioxContext?
         let evidence: EvidenceInput?
@@ -132,7 +143,17 @@ struct SessionFinalizer {
     /// Render and write one job. Writes are serialized, and a job older
     /// than one already written is skipped (`ArchiveWriteGate`).
     nonisolated static func write(_ job: Job) -> URL? {
-        ArchiveWriteGate.shared.run(job.sequence) {
+        ArchiveWriteGate.shared.run(job.sequence) { render(job) }
+    }
+
+    /// Write a job kept after its final write failed (F6). Outside the
+    /// checkpoint sequence; see `ArchiveWriteGate.runAlone`.
+    nonisolated static func retry(_ job: Job) -> URL? {
+        ArchiveWriteGate.shared.runAlone { render(job) }
+    }
+
+    private nonisolated static func render(_ job: Job) -> URL? {
+        do {
             let snapshot = job.snapshot
             if snapshot.recordingError != nil {
                 guard let directory = SessionArchive.sessionDirectory(startedAt: snapshot.startedAt),
@@ -159,6 +180,7 @@ struct SessionFinalizer {
                 chatThreads: snapshot.chatThreads,
                 unreadableChatCount: snapshot.unreadableChatCount,
                 recordingError: snapshot.recordingError,
+                captureGaps: snapshot.captureGaps,
                 guide: snapshot.guide,
                 evidence: job.evidence.map { makeEvidence($0, snapshot: snapshot) },
                 speakerPolicy: job.speakerPolicy,

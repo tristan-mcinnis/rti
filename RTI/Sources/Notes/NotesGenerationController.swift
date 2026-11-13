@@ -2,6 +2,12 @@ import Foundation
 import Observation
 import RTICore
 
+extension Notification.Name {
+    /// A notes pass appended at least one block.
+    /// `userInfo["sessionID"]` is the session, `userInfo["notes"]` every block.
+    static let rtiNotesBlockAdded = Notification.Name("rtiNotesBlockAdded")
+}
+
 /// Periodically generates running meeting notes from the live transcript, one
 /// time-block per tick. Ephemeral: notes live in memory for the session and are
 /// dropped on `clear()`. The end-of-session `SessionArchive` writes the final
@@ -60,7 +66,7 @@ final class NotesGenerationController {
     /// block, and append it. Used by both the periodic scheduler and the manual
     /// "Generate" button; both share `lastNotedMs` so neither duplicates.
     @discardableResult
-    func generate(sessionId: String) async -> Int? {
+    func generate(sessionId: String, timeout: Double? = nil) async -> Int? {
         guard !isGenerating else { return nil }
         let passGeneration = generation
         isGenerating = true
@@ -73,6 +79,8 @@ final class NotesGenerationController {
 
         var windowStartMs = lastNotedMs
         var sinceMs: Int? = windowStartMs == 0 ? nil : windowStartMs
+        // Set when the backlog cap dropped the older part of the window.
+        var skipped: (startMs: Int, endMs: Int)?
 
         // Nothing new spoken since the last note → skip quietly (no error).
         var window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
@@ -82,6 +90,7 @@ final class NotesGenerationController {
         // its newest part, so one prompt never carries an hour of talk.
         if let capped = Self.backlogStart(window: window, sinceMs: sinceMs,
                                           sessionElapsedMs: SessionCoordinator.shared.startedAt.map { Int(Date().timeIntervalSince($0) * 1000) }) {
+            skipped = (windowStartMs, capped)
             windowStartMs = capped
             sinceMs = capped
             window = TranscriptContext.text(forSessionId: sessionId, sinceMs: sinceMs)
@@ -100,13 +109,13 @@ final class NotesGenerationController {
         } ?? ""
         let prompt = PromptStore.shared.text(.liveNotes) + "\n" + priorBlock + window
         let response = await request.collectAsync(
-            messages: [LLMMessage(role: "user", content: prompt)], smart: false
+            messages: [LLMMessage(role: "user", content: prompt)], smart: false, timeoutOverride: timeout
         )
         guard passGeneration == generation else { return nil }
         guard let response, !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             // There WAS transcript to summarize but the model returned nothing.
             // A real failure worth surfacing (don't leave the user guessing).
-            lastError = "Couldn't generate notes just now. Will retry."
+            lastError = "Couldn't generate notes just now. RTI tries again on the next pass."
             RTILog.log("notes: model returned nothing for \(window.count)-char window", category: .notes)
             return nil
         }
@@ -114,18 +123,63 @@ final class NotesGenerationController {
         // Advance the watermark even if this block was empty, so we never
         // re-cover the same stretch.
         lastNotedMs = endMs
+        let blocksBefore = notes.count
+        // The cap is a silent hole otherwise: notes.md and the /meeting
+        // sidecar would read as if nothing was said in it.
+        if let skipped, skipped.endMs > skipped.startMs {
+            notes.append(Self.skippedNote(startMs: skipped.startMs, endMs: skipped.endMs))
+        }
 
         let parsed = Self.parse(response)
-        guard !parsed.bullets.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return endMs }
-
-        notes.append(GeneratedNote(
-            timestamp: Date(),
-            rangeStartMs: windowStartMs,
-            rangeEndMs: endMs,
-            title: parsed.title,
-            content: parsed.bullets
-        ))
+        if !parsed.bullets.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            notes.append(GeneratedNote(
+                timestamp: Date(),
+                rangeStartMs: windowStartMs,
+                rangeEndMs: endMs,
+                title: parsed.title,
+                content: parsed.bullets
+            ))
+        }
+        // A block that lands after Stop archived the session (a manual
+        // "Write notes now", or a pass Stop did not wait for) is saved to
+        // notes.md and the sidecar by the late-archive refresher.
+        if notes.count > blocksBefore {
+            NotificationCenter.default.post(name: .rtiNotesBlockAdded, object: nil,
+                                            userInfo: ["sessionID": sessionId, "notes": notes])
+        }
         return endMs
+    }
+
+    /// One bounded pass at Stop over the talk since the last tick, which no
+    /// tick would ever cover: the scheduler stops with the call. Runs beside
+    /// the Guide and Codebook finish, under the same 8 s limit, so a slow
+    /// provider cannot hold the archive back.
+    func finish(sessionId: String, timeout: Double = 8) async {
+        guard self.sessionId == sessionId, UserDefaults.standard.bool(forKey: NotesSettings.enabledKey) else { return }
+        // The request timeout bounds a silent provider; the race bounds a slow
+        // stream. Stop goes on at the earlier end, and a pass still running
+        // is cancelled (its late result cannot reach the next session).
+        let (ended, end) = AsyncStream<Void>.makeStream()
+        let pass = Task {
+            _ = await generate(sessionId: sessionId, timeout: timeout)
+            end.finish()
+        }
+        let limit = Task {
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            end.finish()
+        }
+        for await _ in ended {}
+        limit.cancel()
+        pass.cancel()
+    }
+
+    static let skippedTitle = "Notes skipped"
+
+    /// The marker for a stretch the backlog cap left without notes.
+    static func skippedNote(startMs: Int, endMs: Int) -> GeneratedNote {
+        GeneratedNote(timestamp: Date(), rangeStartMs: startMs, rangeEndMs: endMs, title: skippedTitle,
+                      content: "- RTI wrote no notes for this stretch: the notes service did not answer in time, "
+                          + "or Notes was turned on late. The transcript and the audio keep every word of it.")
     }
 
     /// The most transcript text one backlog pass sends (2026-11-13 M1 audit).

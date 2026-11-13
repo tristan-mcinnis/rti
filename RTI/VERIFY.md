@@ -119,14 +119,15 @@ This is the definitive both-sides-recorded test. Open the **Audio I/O Monitor**
 - [ ] **The AirPods trap:** with AirPods in, both rows should read the AirPods device and both meters move. If **Them** is flat while they're talking, system-audio capture is on the wrong output → re-pick / restart. If **You** is flat while you talk, your mic is wrong → Settings → Audio.
 
 ### Mic dead-air watchdog
-- [ ] Start a session, then disconnect/mute the mic. Within ~10s "Microphone audio stopped…" appears and the session stops — **no silent dead-air recording**.
+- [ ] Start a session with call audio playing, then unplug or switch the mic. Within ~10s the Transcript tab shows "Your microphone stopped sending audio…", the session keeps running and the other side keeps recording; reconnect the mic and the notice clears — **no silent dead-air recording, no lost other-party audio**.
+- [ ] Close the lid for a minute mid-session, then reopen. The session is still recording, and after the call `audio-mic.wav` and `audio-system.wav` are as long as the session (the sleep is silence).
 - [ ] During a *normal* silent stretch (no one talking), it does **not** false-fire (the meter is flat but the leg still reads "Live").
 
 ## C. Connection-health indicator (Live Transcript header, ⌘⌥T)
 - [ ] On start: dot goes yellow "Connecting…" → green "Live".
 - [ ] Kill wifi ~10s: → orange "Reconnecting…". Restore: → green "Live".
 - [ ] If the other-party (system-audio) leg drops, the amber "other-party audio stopped" notice appears and the session keeps running.
-- [ ] Kill wifi until the mic leg shows "Live transcription stopped after repeated connection failures" (about 25 s). Restore wifi and do not click Retry: within about 45 s the dot goes back to green "Live" and new lines appear. A rejected key (401) never retries on its own.
+- [ ] Kill wifi until the mic leg shows "Live transcription stopped after repeated connection failures" (about 25 s). Restore wifi and do not click Retry: within about 45 s the dot goes back to green "Live" and new lines appear. A rejected key (401) never retries on its own. The other side's leg heals the same way: during a call with remote audio playing, its notice says their audio is still being recorded, and their lines return without Retry.
 - [ ] Minimize the window while recording, then restore it by clicking its thumbnail in the Dock (not the app icon). The transcript keeps advancing; it does not freeze on the last line before the minimize.
 
 ## D. Security (after any session)

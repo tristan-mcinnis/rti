@@ -260,9 +260,14 @@ public enum TranscriptUpgradePipeline {
             let live: [TranscriptUpgradeSegment]
             if nativeLegs.contains(leg.url) {
                 let system = leg.defaultSpeaker == "Remote speaker"
-                live = (evidence?.turns ?? []).filter { ($0.leg == "Them") == system }.map {
+                let checkpointed = (evidence?.turns ?? []).filter { ($0.leg == "Them") == system }
+                // The evidence is as old as the last checkpoint. After a
+                // crash the token journal holds that leg's later lines.
+                let journaled = SonioxLiveJournalReplay.segments(in: sessionDir, leg: system ? "system" : "mic",
+                                                                 fromMs: checkpointed.map(\.endMs).max() ?? 0)
+                live = checkpointed.map {
                     TranscriptUpgradeSegment(speaker: $0.leg, startMs: $0.liveStartMs, text: $0.original)
-                }
+                } + journaled
             } else {
                 live = TranscriptUpgradeMerge.liveSegments(from: originalTranscript, remote: leg.defaultSpeaker == "Remote speaker")
             }
@@ -713,6 +718,13 @@ public enum TranscriptUpgradeArtifacts {
         let backupStamp = backupStamp ?? timestamp.string(from: Date())
         let upgradedURL = sessionDir.appendingPathComponent("transcript.upgraded.md")
         let transcriptURL = sessionDir.appendingPathComponent("transcript.md")
+        // The live transcript showed where a leg recorded nothing (AUD-4);
+        // the upgraded one replaces it and must keep saying so.
+        let gaps = (try? JSONDecoder().decode(
+            SessionArchiveMetadata.self,
+            from: Data(contentsOf: sessionDir.appendingPathComponent("session.json"))
+        ))?.captureGaps ?? []
+        let markdown = CaptureGapLog.annotate(markdown, gaps: gaps)
 
         try writeOwnerOnly(markdown, to: upgradedURL)
         let transcriptBackup = try backupIfPresent(transcriptURL, stamp: backupStamp)

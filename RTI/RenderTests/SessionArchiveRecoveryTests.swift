@@ -404,6 +404,286 @@ final class SessionArchiveRecoveryTests: XCTestCase {
         })
     }
 
+    /// F5: a recording that stopped on a write failure takes the review
+    /// path. Its notes and typed notes still reach transcripts-raw, no
+    /// automatic upgrade is queued, and a later manual export keeps that full
+    /// sidecar instead of writing an empty one.
+    func testReviewPathStillHandsNotesToMeetingAndManualExportKeepsThem() throws {
+        let directory = try XCTUnwrap(SessionArchive.sessionDirectory(startedAt: startedAt))
+        XCTAssertTrue(SessionArchive.seedTranscriptForAutomaticUpgrade(in: directory, startedAt: startedAt))
+        XCTAssertTrue(SessionArchive.markAutomaticUpgradePending(in: directory))
+        let audioURL = directory.appendingPathComponent("audio-mic.wav")
+        let audio = pcmWAV(sample: 53)
+        try audio.write(to: audioURL)
+        let note = GeneratedNote(timestamp: startedAt, rangeStartMs: 0, rangeEndMs: 60_000,
+                                 title: "Invented pricing block", content: "- The invented panel preferred option B")
+        let typed = LiveEntry(speakerId: "note", text: "Invented typed reminder", startMs: 5_000, confidence: 1,
+                              translationStatus: "none", language: nil, sourceLanguage: nil)
+        let snapshot = SessionFinalizer.Snapshot(
+            startedAt: startedAt, endedAt: startedAt.addingTimeInterval(60),
+            transcript: [entry("Words before the disk filled"), typed], chat: [], visualContext: [], notes: [note],
+            sessionId: "stopped-early", micRecordingURL: audioURL, systemRecordingURL: nil,
+            systemAudioStartOffsetMs: nil, workstreamItem: nil, modeName: nil,
+            recordingError: "Meeting audio could not be saved for 30 seconds (invented ENOSPC), so recording stopped."
+        )
+        let archived = try XCTUnwrap(SessionFinalizer(snapshot: snapshot).archive())
+        let sidecar = try XCTUnwrap(SessionCoordinator.writeStopSidecar(snapshot: snapshot, archiveDir: archived, callType: .research))
+        XCTAssertEqual(sidecar.deletingLastPathComponent().resolvingSymlinksInPath().path,
+                       root.appendingPathComponent("transcripts-raw").resolvingSymlinksInPath().path)
+        let text = try String(contentsOf: sidecar, encoding: .utf8)
+        XCTAssertTrue(text.contains("The invented panel preferred option B"))
+        XCTAssertTrue(text.contains("Invented typed reminder"))
+        XCTAssertFalse(SessionArchive.pendingAutomaticUpgrades().contains { identity($0.url) == identity(archived) },
+                       "files marked for review are never upgraded automatically")
+        XCTAssertEqual(try Data(contentsOf: audioURL), audio)
+
+        _ = try SessionArchive.requiredCanonicalExport(in: archived, startedAt: startedAt)
+        XCTAssertEqual(try String(contentsOf: sidecar, encoding: .utf8), text, "a manual upgrade keeps the full sidecar")
+    }
+
+    /// NET-6: the app died (crash, or a quit before the emergency write)
+    /// after a checkpoint, so Stop never wrote the sidecar. The upgrade at the
+    /// next launch writes it from what the archive kept: generated notes,
+    /// screen context and chat, not empty sections.
+    func testRecoverySidecarCarriesTheArchivedNotesChatAndScreenContext() throws {
+        let note = GeneratedNote(timestamp: startedAt, rangeStartMs: 0, rangeEndMs: 60_000,
+                                 title: "Invented budget block", content: "- Fixture note: budget raised")
+        let chat = [
+            ChatEntry(role: "user", text: "Invented question about the fixture", action: "Ask", contextUsed: true, screenContextUsed: false),
+            ChatEntry(role: "assistant", text: "Invented answer about the fixture", action: nil, contextUsed: false, screenContextUsed: false),
+        ]
+        let screen = [VisualContextEvent(offsetSeconds: 30, text: "Invented slide: option B pricing")]
+        let directory = try XCTUnwrap(SessionArchive.write(
+            startedAt: startedAt, endedAt: startedAt.addingTimeInterval(60),
+            transcript: [entry("Invented words before the crash")], chat: chat, visualContext: screen, notes: [note],
+            sessionId: "crashed", mode: CallType.research.name, evidence: evidence("Invented words before the crash")
+        ))
+        XCTAssertNil(sidecarFile(), "Stop never ran, so there is no sidecar yet")
+
+        _ = try SessionArchive.requiredCanonicalExport(in: directory, startedAt: startedAt)
+        let text = try String(contentsOf: XCTUnwrap(sidecarFile()), encoding: .utf8)
+        XCTAssertTrue(text.contains("\ncall_type: research\n"))
+        XCTAssertTrue(text.contains("## Generated notes"))
+        XCTAssertTrue(text.contains("Fixture note: budget raised"))
+        XCTAssertTrue(text.contains("## Screen context"))
+        XCTAssertTrue(text.contains("Invented slide: option B pricing"))
+        XCTAssertTrue(text.contains("## Assistant chat"))
+        XCTAssertTrue(text.contains("Invented answer about the fixture"))
+        XCTAssertFalse(text.contains("title: \"RTI session"), "the archive files' own frontmatter stays out")
+    }
+
+    /// NET-6: Quit during the finishing window cancels completeStop. The quit
+    /// record writes the sidecar itself, and the next launch keeps it.
+    func testQuitRecordWritesTheFullSidecarAndRecoveryKeepsIt() throws {
+        let note = GeneratedNote(timestamp: startedAt, rangeStartMs: 0, rangeEndMs: 60_000,
+                                 title: "Invented closing block", content: "- Fixture note: launch moved to Q3")
+        let chat = [ChatEntry(role: "assistant", text: "Invented in-call answer", action: nil, contextUsed: false, screenContextUsed: false)]
+        let snapshot = SessionFinalizer.Snapshot(
+            startedAt: startedAt, endedAt: startedAt.addingTimeInterval(60),
+            transcript: [entry("Invented words before quit")], chat: chat,
+            visualContext: [VisualContextEvent(offsetSeconds: 12, text: "Invented shared screen")], notes: [note],
+            sessionId: "quit-while-finishing", micRecordingURL: nil, systemRecordingURL: nil,
+            systemAudioStartOffsetMs: nil, workstreamItem: nil, modeName: CallType.client.name
+        )
+        let record = SessionCoordinator.writeQuitRecord(snapshot: snapshot, callType: .client)
+        let archived = try XCTUnwrap(record.archive)
+        let sidecar = try XCTUnwrap(record.sidecar)
+        let text = try String(contentsOf: sidecar, encoding: .utf8)
+        XCTAssertTrue(text.contains("Fixture note: launch moved to Q3"))
+        XCTAssertTrue(text.contains("Invented in-call answer"))
+        XCTAssertTrue(text.contains("Invented shared screen"))
+        try evidence("Invented words before quit").write(in: archived)
+        _ = try SessionArchive.requiredCanonicalExport(in: archived, startedAt: startedAt)
+        XCTAssertEqual(try String(contentsOf: sidecar, encoding: .utf8), text, "the upgrade at next launch keeps the quit sidecar")
+    }
+
+    /// F2/F4 (batch 5): the system leg started 8 s after the mic, nobody
+    /// has spoken, no note, chat or screen context, and live transcription
+    /// may be down. The write the coordinator makes at that moment (and at
+    /// launch, at each checkpoint and on quit) still leaves session.json, so a
+    /// crash recovers the system leg at 8 s with the speech context and the
+    /// speaker policy, and the upgrade writes a sidecar.
+    func testAnEmptyLiveWriteStillLeavesTheOffsetAndContextForRecovery() throws {
+        let directory = try XCTUnwrap(SessionArchive.sessionDirectory(startedAt: startedAt))
+        XCTAssertTrue(SessionArchive.seedTranscriptForAutomaticUpgrade(in: directory, startedAt: startedAt))
+        XCTAssertTrue(SessionArchive.markAutomaticUpgradePending(in: directory))
+        try pcmWAV(sample: 41).write(to: directory.appendingPathComponent("audio-mic.wav"))
+        try pcmWAV(sample: 42).write(to: directory.appendingPathComponent("audio-system.wav"))
+        XCTAssertEqual(TranscriptUpgradeAudioDiscovery.inputs(in: directory).map(\.offsetMs), [0, 0],
+                       "before the write the system leg would be placed 8 s early")
+
+        let snapshot = SessionFinalizer.Snapshot(
+            startedAt: startedAt, endedAt: startedAt.addingTimeInterval(8),
+            transcript: [], chat: [], visualContext: [], notes: [],
+            sessionId: "invented-silent", micRecordingURL: nil, systemRecordingURL: nil,
+            systemAudioStartOffsetMs: 8_000, workstreamItem: nil, modeName: CallType.client.name
+        )
+        let context = SonioxContext.forMeeting(callType: "Client call", project: nil, meetingTitle: nil,
+                                               participants: [], terms: ["Qorvane"])
+        let lookup = GuideSessionController.QuestionLookup(hasGuide: false, selections: [], markers: nil)
+        let job = SessionFinalizer.Job(
+            snapshot: snapshot, sequence: ArchiveWriteGate.shared.nextSequence(), speakerNames: [:], speakerAssignments: [:],
+            calendarTitle: nil, speechContext: context,
+            evidence: .init(events: [], timeline: MarkerTimeline(events: []), codes: [], namedSpeakers: [], questions: lookup),
+            speakerPolicy: SessionSpeakerPolicy(), packageRevision: nil
+        )
+        XCTAssertEqual(identity(try XCTUnwrap(SessionFinalizer.write(job))), identity(directory))
+
+        let metadata = try sessionMetadata(directory)
+        XCTAssertEqual(metadata.sessionId, "invented-silent")
+        XCTAssertEqual(metadata.speechContext, context)
+        XCTAssertNotNil(metadata.speakerPolicy, "the upgrade picks the raw provider and its policy")
+        XCTAssertEqual(TranscriptUpgradeAudioDiscovery.inputs(in: directory).map(\.offsetMs), [0, 8_000])
+        XCTAssertTrue(SessionArchive.pendingAutomaticUpgrades().contains { identity($0.url) == identity(directory) })
+
+        try writeUpgradedTranscript(in: directory)
+        _ = try SessionArchive.requiredCanonicalExport(in: directory, startedAt: startedAt)
+        XCTAssertNotNil(sidecarFile(), "a session that died before speech still hands /meeting a sidecar")
+    }
+
+    /// F2/F4: Quit Anyway with the same empty state. The quit record writes
+    /// session.json from the offset alone; before, it wrote nothing.
+    func testQuitWithNoContentStillWritesTheSystemOffset() throws {
+        let directory = try XCTUnwrap(SessionArchive.sessionDirectory(startedAt: startedAt))
+        try pcmWAV(sample: 43).write(to: directory.appendingPathComponent("audio-system.wav"))
+        let snapshot = SessionFinalizer.Snapshot(
+            startedAt: startedAt, endedAt: startedAt.addingTimeInterval(20),
+            transcript: [], chat: [], visualContext: [], notes: [],
+            sessionId: "invented-quit", micRecordingURL: nil, systemRecordingURL: nil,
+            systemAudioStartOffsetMs: 8_000, workstreamItem: nil, modeName: CallType.client.name
+        )
+        XCTAssertNotNil(SessionCoordinator.writeQuitRecord(snapshot: snapshot, callType: .client).archive)
+        XCTAssertEqual(try sessionMetadata(directory).systemAudioStartOffsetMs, 8_000)
+        XCTAssertEqual(TranscriptUpgradeAudioDiscovery.inputs(in: directory).map(\.offsetMs), [8_000])
+    }
+
+    /// F1 (batch 5): a crash before any write that kept evidence. The marker
+    /// journal and notes.md are on disk; the recovery upgrade still writes a
+    /// sidecar that carries the typed note and the generated notes.
+    func testRecoverySidecarIsWrittenWithoutAnEvidenceFile() throws {
+        let note = GeneratedNote(timestamp: startedAt, rangeStartMs: 0, rangeEndMs: 60_000,
+                                 title: "Invented early block", content: "- Fixture note: kickoff moved")
+        let directory = try XCTUnwrap(SessionArchive.write(
+            startedAt: startedAt, endedAt: startedAt.addingTimeInterval(60),
+            transcript: [], chat: [], notes: [note], sessionId: "no-evidence"
+        ))
+        XCTAssertTrue(SessionArchive.seedTranscriptForAutomaticUpgrade(in: directory, startedAt: startedAt))
+        try SessionMarkerJournal.append(SessionNote(id: "typed", kind: .note, offsetMs: 4_000, text: "Invented typed reminder"),
+                                        in: directory)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(SessionEvidence.filename).path))
+
+        try writeUpgradedTranscript(in: directory)
+        _ = try SessionArchive.requiredCanonicalExport(in: directory, startedAt: startedAt)
+        let text = try String(contentsOf: XCTUnwrap(sidecarFile()), encoding: .utf8)
+        XCTAssertTrue(text.contains("Fixture note: kickoff moved"))
+        XCTAssertTrue(text.contains("Invented typed reminder"))
+    }
+
+    /// F5 (batch 6): config.json was broken by a hand edit (or caught half
+    /// rewritten) when the upgrade finished. The export used to read that as
+    /// "no meetings folder", return success, and let the caller clear the
+    /// marker, so /meeting never ran. Now it fails in plain words, keeps both
+    /// retry markers, and the retry after the fix exports and writes the sidecar.
+    func testBrokenConfigAtExportKeepsTheRetryAndSaysWhy() throws {
+        let note = GeneratedNote(timestamp: startedAt, rangeStartMs: 0, rangeEndMs: 60_000,
+                                 title: "Invented config block", content: "- Fixture note: config case")
+        let directory = try XCTUnwrap(SessionArchive.write(
+            startedAt: startedAt, endedAt: startedAt.addingTimeInterval(60),
+            transcript: [entry("Invented words before the config broke")], chat: [], notes: [note],
+            sessionId: "broken-config", evidence: evidence("Invented words before the config broke")
+        ))
+        XCTAssertTrue(SessionArchive.markAutomaticUpgradePending(in: directory))
+        let configURL = root.appendingPathComponent("config/config.json")
+        let good = try Data(contentsOf: configURL)
+        try Data(#"{"recordings_dir": "/invented/x","#.utf8).write(to: configURL)
+
+        XCTAssertThrowsError(try TranscriptUpgradeService.finishExport(in: directory, startedAt: startedAt, provider: "Fixture", segmentCount: 1)) { error in
+            let text = error.localizedDescription
+            XCTAssertTrue(text.contains("could not find the meetings folder"), text)
+            XCTAssertTrue(text.contains("is not valid JSON"), text)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("canonical-export.pending.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("automatic-upgrade.pending").path))
+        XCTAssertNil(sidecarFile())
+
+        // Valid JSON that names no folder fails the same way, with its own reason.
+        try JSONSerialization.data(withJSONObject: ["sessions_dir": root.appendingPathComponent("sessions").path]).write(to: configURL)
+        XCTAssertThrowsError(try TranscriptUpgradeService.finishExport(in: directory, startedAt: startedAt, provider: "Fixture", segmentCount: 1)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("names no transcripts_dir"), error.localizedDescription)
+        }
+
+        try good.write(to: configURL)
+        let raw = try XCTUnwrap(TranscriptUpgradeService.finishExport(in: directory, startedAt: startedAt, provider: "Fixture", segmentCount: 1))
+        XCTAssertTrue(try String(contentsOf: raw, encoding: .utf8).contains("Invented words before the config broke"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("canonical-export.pending.json").path))
+        XCTAssertTrue(try String(contentsOf: XCTUnwrap(sidecarFile()), encoding: .utf8).contains("Fixture note: config case"))
+    }
+
+    /// F6 (batch 6): Stop could not write the sidecar (a folder sits at its
+    /// path, as when the disk or mount refuses the file). That is no longer
+    /// silent: the export after the upgrade fails and keeps the retry, and
+    /// once the path is free it writes the sidecar from the archive with the
+    /// generated notes, the screen context and the chat. A recording marked
+    /// for review, which runs no upgrade, says so in its error.
+    func testFailedStopSidecarIsRetriedByTheExportWithTheArchivedSections() throws {
+        let note = GeneratedNote(timestamp: startedAt, rangeStartMs: 0, rangeEndMs: 60_000,
+                                 title: "Invented stop block", content: "- Fixture note: sidecar refused")
+        let chat = [ChatEntry(role: "assistant", text: "Invented stop answer", action: nil, contextUsed: false, screenContextUsed: false)]
+        let snapshot = SessionFinalizer.Snapshot(
+            startedAt: startedAt, endedAt: startedAt.addingTimeInterval(60),
+            transcript: [entry("Invented words at stop")], chat: chat,
+            visualContext: [VisualContextEvent(offsetSeconds: 9, text: "Invented stop slide")], notes: [note],
+            sessionId: "stop-sidecar-refused", micRecordingURL: nil, systemRecordingURL: nil,
+            systemAudioStartOffsetMs: nil, workstreamItem: nil, modeName: CallType.client.name
+        )
+        let archived = try XCTUnwrap(SessionFinalizer(snapshot: snapshot).archive())
+        try evidence("Invented words at stop").write(in: archived)
+        let path = try XCTUnwrap(SessionCoordinator.writeStopSidecar(snapshot: snapshot, archiveDir: archived, callType: .client))
+        try FileManager.default.removeItem(at: path)
+        try FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
+        XCTAssertNil(SessionCoordinator.writeStopSidecar(snapshot: snapshot, archiveDir: archived, callType: .client),
+                     "precondition: the stop write fails")
+        XCTAssertTrue(SessionCoordinator.archiveSaveFailureMessage(recordingError: "Invented error.", sidecarMissing: true)
+            .contains("The notes file for /meeting was not written"))
+        XCTAssertFalse(SessionCoordinator.archiveSaveFailureMessage(recordingError: "Invented error.", sidecarMissing: false)
+            .contains("/meeting"))
+
+        XCTAssertTrue(SessionArchive.markAutomaticUpgradePending(in: archived))
+        XCTAssertThrowsError(try TranscriptUpgradeService.finishExport(in: archived, startedAt: startedAt, provider: "Fixture", segmentCount: 1))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archived.appendingPathComponent("canonical-export.pending.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archived.appendingPathComponent("automatic-upgrade.pending").path))
+
+        try FileManager.default.removeItem(at: path)
+        XCTAssertNotNil(try TranscriptUpgradeService.finishExport(in: archived, startedAt: startedAt, provider: "Fixture", segmentCount: 1))
+        let text = try String(contentsOf: path, encoding: .utf8)
+        XCTAssertTrue(text.contains("Fixture note: sidecar refused"), text)
+        XCTAssertTrue(text.contains("Invented stop slide"), text)
+        XCTAssertTrue(text.contains("Invented stop answer"), text)
+    }
+
+    /// What the recovery upgrade leaves before it exports.
+    private func writeUpgradedTranscript(in directory: URL) throws {
+        try "# Transcript\n\n_Upgraded with Soniox._\n\n`0:09` **Remote speaker 1:** Invented upgraded words\n"
+            .write(to: directory.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
+    }
+
+    private func sessionMetadata(_ directory: URL) throws -> SessionArchiveMetadata {
+        try JSONDecoder().decode(SessionArchiveMetadata.self, from: Data(contentsOf: directory.appendingPathComponent("session.json")))
+    }
+
+    private func evidence(_ text: String) -> SessionEvidence {
+        let turn = SessionAnnotatedTurn(turnID: "self@0", rawSpeaker: "self", leg: "Me", speakerConfidence: "unverified",
+                                        original: text, liveStartMs: 0, endMs: 1_000,
+                                        context: MarkerTimeline(events: []).context(at: 0))
+        return SessionEvidence(sessionID: "fixture", groupID: nil, events: [], through: 60_000, turns: [turn])
+    }
+
+    private func sidecarFile() -> URL? {
+        let raw = root.appendingPathComponent("transcripts-raw")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: raw.path)) ?? []
+        return names.first { $0.hasSuffix("-rti.md") }.map { raw.appendingPathComponent($0) }
+    }
+
     private func archive(transcript: [LiveEntry], mic: URL? = nil) -> URL? {
         SessionArchive.write(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(60), transcript: transcript, chat: [], sessionId: "invented-session", micRecordingURL: mic)
     }

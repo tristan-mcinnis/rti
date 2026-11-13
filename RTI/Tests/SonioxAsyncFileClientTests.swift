@@ -12,11 +12,19 @@ final class SonioxAsyncFileClientTests: XCTestCase {
     """.utf8)
     private struct Step: Sendable {
         let method: String, path: String, status: Int, body: Data
+        /// Thrown instead of a response: the network fault for this request.
+        var fault: URLError.Code?
         init(_ method: String, _ path: String, _ status: Int, _ text: String = "") {
             self.method = method
             self.path = path
             self.status = status
             body = Data(text.utf8)
+        }
+
+        static func failing(_ method: String, _ path: String, _ code: URLError.Code) -> Step {
+            var step = Step(method, path, 0)
+            step.fault = code
+            return step
         }
     }
 
@@ -36,6 +44,7 @@ final class SonioxAsyncFileClientTests: XCTestCase {
             XCTAssertEqual(request.httpMethod, expected.method)
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer invented")
             calls.append(expected.method + " " + expected.path)
+            if let fault = expected.fault { throw URLError(fault) }
             if let upload {
                 self.upload = try Data(contentsOf: upload)
                 XCTAssertEqual(try (FileManager.default.attributesOfItem(atPath: upload.path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
@@ -151,17 +160,116 @@ final class SonioxAsyncFileClientTests: XCTestCase {
         XCTAssertFalse(calls.contains(where: { $0.hasPrefix("POST") }))
     }
 
+    /// NET-1: the transcript is saved, then the remote DELETE fails three
+    /// times on a dropped connection. The run succeeds with the saved bytes;
+    /// the job file stays, so the next run only deletes the leftovers.
     func testRawBytesSurviveFailedRemoteCleanupAndRetryOnlyDeletes() async throws {
         let (dir, audio) = try fixture()
         defer { try? FileManager.default.removeItem(at: dir) }
         var steps = Self.submitted + [Self.status("completed"), Self.result, Self.cleanup[0]]
-        steps += Array(repeating: Step("DELETE", "files/" + Self.file, 503), count: 3)
-        do {
-            _ = try await client(Transport(steps)).transcript(audio: audio, in: dir, sessionID: "demo", leg: .system, labels: true, context: nil)
-            XCTFail("Expected cleanup failure")
-        } catch { XCTAssertTrue(error.localizedDescription.contains("503")) }
+        steps += Array(repeating: Step.failing("DELETE", "files/" + Self.file, .networkConnectionLost), count: 3)
+        let transport = Transport(steps)
+        let first = try await client(transport).transcript(audio: audio, in: dir, sessionID: "demo", leg: .system, labels: true, context: nil)
+        XCTAssertEqual(first, Self.raw, "a failed cleanup after the transcript is saved must not fail the run")
+        let left = await transport.steps.count
+        XCTAssertEqual(left, 0)
         XCTAssertEqual(try Data(contentsOf: dir.appendingPathComponent("soniox-async-system.json")), Self.raw)
-        let final = try await client(Transport([Self.cleanup[1]])).transcript(audio: audio, in: dir, sessionID: "demo", leg: .system, labels: true, context: nil)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent(".soniox-async-system-job.json").path))
+        let retry = Transport([Self.cleanup[1]])
+        let final = try await client(retry).transcript(audio: audio, in: dir, sessionID: "demo", leg: .system, labels: true, context: nil)
         XCTAssertEqual(final, Self.raw)
+        let calls = await retry.calls
+        XCTAssertEqual(calls, ["DELETE files/" + Self.file])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent(".soniox-async-system-job.json").path))
+    }
+
+    /// NET-1: DNS fails right after Wi-Fi rejoins. The upload never left the
+    /// Mac, so it is sent again and the run completes with one upload.
+    func testUnsentUploadAndCreateAreSentAgainAfterDNSAndConnectFailures() async throws {
+        let (dir, audio) = try fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let transport = Transport([
+            .failing("POST", "files", .cannotFindHost),
+            .failing("POST", "files", .notConnectedToInternet),
+            Self.submitted[0],
+            .failing("POST", "transcriptions", .cannotConnectToHost),
+            Self.submitted[1],
+            .failing("GET", "transcriptions/" + Self.job, .dnsLookupFailed),
+            Self.status("completed"), Self.result,
+        ] + Self.cleanup)
+        let bytes = try await client(transport).transcript(audio: audio, in: dir, sessionID: "demo", leg: .mic, labels: true, context: nil)
+        XCTAssertEqual(bytes, Self.raw)
+        let calls = await transport.calls
+        XCTAssertEqual(calls.filter { $0 == "POST files" }.count, 3)
+        XCTAssertEqual(calls.filter { $0 == "POST transcriptions" }.count, 2)
+        let left = await transport.steps.count
+        XCTAssertEqual(left, 0)
+    }
+
+    /// A POST that may have reached Soniox (timed out mid-upload) is never
+    /// blindly sent again; the next run finds it by its reference instead.
+    func testInterruptedUploadIsNotReplayedButResumedByReference() async throws {
+        let (dir, audio) = try fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let first = Transport([.failing("POST", "files", .timedOut)])
+        do {
+            _ = try await client(first).transcript(audio: audio, in: dir, sessionID: "demo", leg: .mic, labels: true, context: nil)
+            XCTFail("an interrupted upload was replayed or ignored")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .timedOut)
+            XCTAssertFalse(SonioxAsyncFileClient.isProviderError(error), "a network fault is not a Soniox answer")
+        }
+        let job = try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent(".soniox-async-mic-job.json"))) as? [String: Any]
+        let reference = try XCTUnwrap(job?["reference"] as? String)
+        let listing: [String: Any] = ["files": [["id": Self.file, "client_reference_id": reference]]]
+        let found = try Step("GET", "files", 200, String(decoding: JSONSerialization.data(withJSONObject: listing), as: UTF8.self))
+        let resumed = Transport([found, Self.submitted[1], Self.status("completed"), Self.result] + Self.cleanup)
+        let bytes = try await client(resumed).transcript(audio: audio, in: dir, sessionID: "demo", leg: .mic, labels: true, context: nil)
+        XCTAssertEqual(bytes, Self.raw)
+        let calls = await resumed.calls
+        XCTAssertFalse(calls.contains("POST files"), "the upload Soniox already has is not paid for twice")
+    }
+
+    /// NET-2: a transcript cached while the WAV was still growing must not
+    /// stand in for the finished recording. The grown audio is sent again
+    /// and the stale result is set aside, not deleted.
+    func testCachedTranscriptOfAShorterAudioIsSetAsideAndTheGrownAudioSent() async throws {
+        let (dir, audio) = try fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let partial = Transport(Self.submitted + [Self.status("completed"), Self.result] + Self.cleanup)
+        _ = try await client(partial).transcript(audio: audio, in: dir, sessionID: "demo", leg: .mic, labels: true, context: nil)
+        let unchanged = Transport([])
+        let cached = try await client(unchanged).transcript(audio: audio, in: dir, sessionID: "demo", leg: .mic, labels: true, context: nil)
+        XCTAssertEqual(cached, Self.raw, "unchanged audio keeps using its saved transcript with no request")
+
+        let handle = try FileHandle(forWritingTo: audio)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("_TEN_MORE_SECONDS".utf8))
+        try handle.close()
+
+        let full = Transport(Self.submitted + [Self.status("completed"), Self.result] + Self.cleanup)
+        _ = try await client(full).transcript(audio: audio, in: dir, sessionID: "demo", leg: .mic, labels: true, context: nil)
+        let calls = await full.calls
+        XCTAssertTrue(calls.contains("POST files"), "the grown audio must be uploaded again")
+        let body = await full.upload
+        let uploaded = try String(decoding: XCTUnwrap(body), as: UTF8.self)
+        XCTAssertTrue(uploaded.contains("INVENTED_AUDIO_TEN_MORE_SECONDS"))
+        XCTAssertEqual(try Data(contentsOf: dir.appendingPathComponent(".soniox-async-mic-stale.json")), Self.raw)
+    }
+
+    func testOnlySonioxAnswersCountAsProviderErrors() async throws {
+        let (dir, audio) = try fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for steps in [Self.submitted + [Self.status("error")] + Self.cleanup, [Step("POST", "files", 403)]] {
+            do {
+                _ = try await client(Transport(steps)).transcript(audio: audio, in: dir, sessionID: "demo", leg: .mic, labels: true, context: nil)
+                XCTFail("the provider failure was accepted")
+            } catch {
+                XCTAssertTrue(SonioxAsyncFileClient.isProviderError(error), "\(error)")
+            }
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(".soniox-async-mic-job.json"))
+        }
+        XCTAssertFalse(SonioxAsyncFileClient.isProviderError(URLError(.notConnectedToInternet)))
+        XCTAssertFalse(SonioxAsyncFileClient.isProviderError(CocoaError(.fileWriteOutOfSpace)))
     }
 }

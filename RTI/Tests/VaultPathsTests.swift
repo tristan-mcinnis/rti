@@ -33,6 +33,25 @@ final class VaultPathsTests: XCTestCase {
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: stable.path), [])
     }
 
+    /// F5 (batch 6): a broken config.json reads as empty settings; the
+    /// hand-off to /meeting asks why, so it never mistakes it for "no folder".
+    func testConfigReadProblemNamesABrokenFileOnly() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: dir) }
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("config.json")
+        XCTAssertNil(VaultPaths.configReadProblem(configURL: url), "no file is not a broken file")
+        try Data(#"{"recordings_dir": "/invented/rec","#.utf8).write(to: url)
+        XCTAssertEqual(VaultPaths.configDictionary(configURL: url).count, 0)
+        XCTAssertNil(VaultPaths.meetingTranscriptsRawDirectory(configURL: url))
+        XCTAssertEqual(VaultPaths.configReadProblem(configURL: url), url.path + " is not valid JSON. Fix the typo in it.")
+        try Data("[1, 2]".utf8).write(to: url)
+        XCTAssertNotNil(VaultPaths.configReadProblem(configURL: url), "JSON that is not an object is broken too")
+        try Data(#"{"transcripts_dir": "/invented/raw"}"#.utf8).write(to: url)
+        XCTAssertNil(VaultPaths.configReadProblem(configURL: url))
+    }
+
     func testConfigURLHonorsHomeOverride() {
         let env = ["RTI_CONFIG_HOME": "/tmp/rti-config-test"]
 
