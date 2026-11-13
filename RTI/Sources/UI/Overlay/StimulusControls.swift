@@ -25,18 +25,33 @@ struct StimulusPrepareControls: View {
     let projectID: String?
 
     var body: some View {
+        HStack(alignment: .top, spacing: House.Spacing.sm) {
+            Image(systemName: "photo.on.rectangle")
+                .font(House.TypeToken.label)
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .frame(width: House.Control.tile, height: House.Control.chip)
+                .accessibilityHidden(true)
+            content
+        }
+        .buttonStyle(.setupAction)
+        .controlSize(.small)
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            HStack {
+            HStack(spacing: House.Spacing.xs) {
                 Text("Stimulus").font(House.TypeToken.label)
-                Spacer()
+                    .setupLayoutMark("text.stimulus")
+                if reading {
+                    ProgressView().controlSize(.small).accessibilityLabel("Reading the manifest")
+                }
+                Spacer(minLength: House.Spacing.xs)
                 Button("Choose manifest…") { pickingManifest = true }
+                    .fixedSize()
                     .disabled(reading || SessionCoordinator.shared.isRunning)
             }
-            if reading {
-                ProgressView().controlSize(.small)
-            }
             if let package = store.prepared {
-                DisclosureGroup("\(package.version) · \(package.items.count) items") {
+                DisclosureGroup("\(package.version) · \(package.items.count) \(package.items.count == 1 ? "item" : "items")") {
                     ForEach(Array(package.items.enumerated()), id: \.element.id) { index, item in
                         HStack {
                             Text(item.code)
@@ -49,8 +64,10 @@ struct StimulusPrepareControls: View {
                             Spacer()
                             Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
                                 .accessibilityLabel("Move \(item.code) earlier").disabled(index == 0)
+                                .help("Move earlier")
                             Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
                                 .accessibilityLabel("Move \(item.code) later").disabled(index + 1 == package.items.count)
+                                .help("Move later")
                         }
                     }
                     if let guide = GuidePreparation.shared.guide {
@@ -76,17 +93,27 @@ struct StimulusPrepareControls: View {
                     }
                 }
             }
-            HStack {
-                TextField("Neutral item label", text: $manual)
+            HStack(spacing: House.Spacing.xs) {
+                TextField("Neutral item label", text: $manual, prompt: Text(""))
+                    .setupField("Neutral item label", isEmpty: manual.isEmpty)
+                    .frame(minWidth: House.Control.hero * 2)
+                    .setupLayoutMark("field.stimulus")
                 Button(reference?.lastPathComponent ?? "File…") { pickingSource = true }
-                TextField("Page", text: $page).frame(maxWidth: 60)
+                    .truncationMode(.middle)
+                    .layoutPriority(1)
+                    .help("Attach the item's source file")
+                TextField("Page", text: $page, prompt: Text(""))
+                    .setupField("Page", isEmpty: page.isEmpty)
+                    .frame(width: House.Control.hero)
                 Button("Add") {
                     var package = store.prepared ?? .init(revision: "", version: "Manual", items: [])
                     package.addManual(label: manual.trimmingCharacters(in: .whitespacesAndNewlines), file: reference, page: Int(page))
                     store.preparedProjectID = projectID
                     store.prepared = package
                     manual = ""; page = ""; reference = nil; confirmed = false
-                }.disabled(manual.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .fixedSize()
+                .disabled(manual.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if let error = store.lastError {
                 Text(error).font(House.TypeToken.meta)

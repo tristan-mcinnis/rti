@@ -226,7 +226,7 @@
       "id": "SetupTabView",
       "subsystem": "settings",
       "file": "RTI/Sources/UI/Overlay/SetupTabView.swift",
-      "description": "The Prepare tab, which picks the call type."
+      "description": "The Prepare tab: call type, project, guide (research), audio, then More options."
     },
     {
       "id": "ProvidersTab",

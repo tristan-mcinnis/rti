@@ -21,6 +21,20 @@ final class OverlayWindowChrome {
     /// room it keeps for them.
     var isFullScreen = false
 
+    /// The height of the window's title-bar row, read from AppKit
+    /// (`titleRowHeight(windowHeight:contentLayoutHeight:)`). The header in
+    /// the title bar and the band under it take this height, so the header
+    /// is never taller than the bar that clips it. Windowless proofs keep
+    /// `Control.composer`.
+    var titleRowHeight: CGFloat = House.Control.composer
+
+    /// The title-bar row is what the window's content layout leaves at the
+    /// top. In full screen AppKit may leave nothing; keep the house row then.
+    nonisolated static func titleRowHeight(windowHeight: CGFloat, contentLayoutHeight: CGFloat) -> CGFloat {
+        let height = (windowHeight - contentLayoutHeight).rounded()
+        return height > 0 ? height : House.Control.composer
+    }
+
     /// Window › Keep on Top. In memory only and off at every launch: RTI
     /// dropped the always-on-top float as its default on 1 Sep, so floating
     /// over a call is a deliberate, per-launch choice.
@@ -231,6 +245,16 @@ final class OverlayWindowController {
         win.identifier = NSUserInterfaceItemIdentifier(RTIWindowKind.overlay.windowIdentifier)
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
+        // An empty compact toolbar gives the title bar room for the header's
+        // 28 pt controls with the traffic lights centred on the same line
+        // (40 pt on macOS 26). With no toolbar the bar is 32 pt and AppKit
+        // clipped the 52 pt `.right` accessory: the mic, brief and Record
+        // backgrounds lost their lower edge. A `.unified` toolbar is 66 pt on
+        // macOS 26 with the lights centred in its top 52 pt, and the 14 pt
+        // below them swallows clicks meant for the workspace card. The header
+        // takes the bar's measured height (`OverlayWindowChrome.titleRowHeight`).
+        win.toolbar = NSToolbar(identifier: "RTIWorkspace")
+        win.toolbarStyle = .unifiedCompact
         // Place interactive title-row controls in AppKit's title bar itself.
         // A full-size content view can draw under its title bar even when the
         // native window server treats clicks there as window management.
@@ -242,6 +266,7 @@ final class OverlayWindowController {
         header.frame.size = NSSize(width: initialSize.width - HouseChatMetrics.trafficLightInset, height: House.Control.composer)
         accessory.view = header
         win.addTitlebarAccessoryViewController(accessory)
+        Self.fitTitleRow(header, to: win)
         // Selecting transcript or answer text must not drag the window; the
         // header carries the drag (`WindowDragArea`).
         win.isMovableByWindowBackground = false
@@ -271,7 +296,7 @@ final class OverlayWindowController {
         resizeObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: win, queue: .main) { [weak win, weak header] _ in
             MainActor.assumeIsolated {
                 guard let win, let header else { return }
-                header.setFrameSize(NSSize(width: max(0, win.frame.width - HouseChatMetrics.trafficLightInset), height: House.Control.composer))
+                Self.fitTitleRow(header, to: win)
             }
         }
 
@@ -326,6 +351,16 @@ final class OverlayWindowController {
             if page == .live { OverlayInputState.shared.requestFocus() }
         }
         restoreFrame()
+    }
+
+    /// Size the title-row header to the bar AppKit drew, and publish that
+    /// height so the band under the header and the choosers follow it.
+    private static func fitTitleRow(_ header: NSView, to win: NSWindow) {
+        let height = OverlayWindowChrome.titleRowHeight(windowHeight: win.frame.height,
+                                                        contentLayoutHeight: win.contentLayoutRect.height)
+        let chrome = OverlayWindowChrome.shared
+        if chrome.titleRowHeight != height { chrome.titleRowHeight = height }
+        header.setFrameSize(NSSize(width: max(0, win.frame.width - HouseChatMetrics.trafficLightInset), height: height))
     }
 
     deinit {

@@ -343,8 +343,10 @@ extension SessionCoordinator.Phase {
 
 /// The overlay header (chat-surfaces.md sections 1 and 8): the title block
 /// over its state line on the left, the capture controls and the record
-/// chip (the one live action) on the right. `Control.composer` high, in the
-/// title-bar row, no divider. Its empty space drags the window.
+/// chip (the one live action) on the right. `Control.composer` high in a
+/// windowless proof; in the app it takes the native title bar's height
+/// (`OverlayWindowChrome.titleRowHeight`), no divider. Its empty space drags
+/// the window.
 struct OverlayShellHeader: View {
     let status: OverlayShellStatus
     /// The call type store the title reads. Defaults to the shared one so
@@ -363,8 +365,11 @@ struct OverlayShellHeader: View {
         GeometryReader { geometry in
             header(width: geometry.size.width)
         }
-        .frame(height: House.Control.composer)
+        .frame(height: rowHeight)
     }
+
+    /// The native title bar clips anything taller than itself.
+    private var rowHeight: CGFloat { nativeTitlebar ? chrome.titleRowHeight : House.Control.composer }
 
     private func header(width: CGFloat) -> some View {
         let availableWidth = width + (nativeTitlebar ? HouseChatMetrics.trafficLightInset : 0)
@@ -432,7 +437,7 @@ struct OverlayShellHeader: View {
         .padding(.leading, nativeTitlebar ? 0 : (chrome.isFullScreen ? House.Spacing.sm : HouseChatMetrics.trafficLightInset))
         .padding(.trailing, House.Spacing.lg)
         .frame(maxWidth: .infinity)
-        .frame(height: House.Control.composer)
+        .frame(height: rowHeight)
         .background(fill)
         .zIndex(1)
     }
@@ -514,6 +519,8 @@ extension OverlayStatusTone {
 struct OverlayHeaderChooserLayer: View {
     /// The call type store, injected so a proof never reads the live one.
     var callTypes: CallTypeStore = .shared
+    /// The header row's height: the chooser opens just under it.
+    var headerHeight: CGFloat = House.Control.composer
 
     private let shell = OverlayShellModel.shared
     private let chrome = OverlayWindowChrome.shared
@@ -530,7 +537,7 @@ struct OverlayHeaderChooserLayer: View {
                     .panelGlass(radius: House.Radius.lg)
                     .panelShadows()
                     .padding(.leading, chrome.isFullScreen ? House.Spacing.sm : HouseChatMetrics.trafficLightInset)
-                    .padding(.top, House.Control.composer)
+                    .padding(.top, headerHeight)
             }
             .ignoresSafeArea(.container, edges: .top)
         }

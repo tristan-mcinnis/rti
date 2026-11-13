@@ -202,3 +202,10 @@ public enum ScreenPrivacyDefaults {
 public enum UISettingsDefaults {
     public static let paletteRecentsKey = "rti.palette.recents"
 }
+
+/// The Prepare page's two disclosures ("More options", and "Codebook and
+/// stimulus" on research calls) stay as the user left them.
+public enum SetupPageSettings {
+    public static let moreOptionsExpandedKey = "rti.setup.moreOptionsExpanded"
+    public static let researchExtrasExpandedKey = "rti.setup.codebookStimulusExpanded"
+}

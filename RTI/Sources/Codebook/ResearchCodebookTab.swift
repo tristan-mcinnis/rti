@@ -6,15 +6,29 @@ struct ResearchCodebookPreparation: View {
     @Bindable private var controller = ResearchCodebookController.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            Text("Codebook seeds").font(House.TypeToken.label)
-            if SessionCoordinator.shared.isRunning {
-                Text("\(controller.book.cards.filter(\.seeded).count) seeded cards").font(House.TypeToken.meta)
-            } else {
-                TextField("One per line, e.g. client | Morning Cup（晨杯） or barrier | 洗起来麻烦", text: $controller.seedText, axis: .vertical)
-                    .lineLimit(1 ... 4).textFieldStyle(.roundedBorder)
-                Text("Also reads codebook-seed.md from the selected project. objective | … and client_question | … feed the brief.")
-                    .font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
+        HStack(alignment: .top, spacing: House.Spacing.sm) {
+            Image(systemName: "tag")
+                .font(House.TypeToken.label)
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .frame(width: House.Control.tile, height: House.Control.chip)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                Text("Brands and words to watch")
+                    .font(House.TypeToken.label)
+                    .frame(minHeight: House.Control.chip)
+                    .setupLayoutMark("text.seeds")
+                if SessionCoordinator.shared.isRunning {
+                    Text("\(controller.book.cards.filter(\.seeded).count) seeded cards").font(House.TypeToken.meta)
+                } else {
+                    // Plain lines are names; `type | name` lines still work
+                    // (ResearchCodebookStore.seed) but are not taught here.
+                    SetupTextEditor(text: $controller.seedText, placeholder: "Morning Cup 晨杯\n洗起来麻烦",
+                                    accessibilityLabel: "Brands and words to watch, one per line", growsWithText: true)
+                        .setupLayoutMark("field.seeds")
+                    Text("One per line. RTI also reads the project's codebook-seed.md.")
+                        .font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

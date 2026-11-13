@@ -31,37 +31,48 @@ struct GuidePrepareControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
             if let pending {
-                HStack(spacing: House.Spacing.xs) {
+                HStack(spacing: House.Spacing.sm) {
                     ProgressView().controlSize(.small)
+                        .frame(width: House.Control.tile)
                     Text(pending.readingLabel).font(House.TypeToken.label)
                 }
             } else if let guide = preparation.guide, let file = preparation.guideURL {
                 readyGuide(guide, file: file)
             } else {
-                Text("Choose a guide to file respondent answers by question. You can also record without a guide.")
-                    .font(House.TypeToken.bodySmall)
-                Text("Word (.docx), Markdown (.md) or dg-questions.json")
-                    .font(House.TypeToken.meta)
-                    .foregroundStyle(House.ColorToken.textSecondary)
-                HStack(spacing: House.Spacing.xs) {
-                    Button("Choose guide…") { choose(roster: false) }
-                    if let project, project.isProject {
-                        Button("Use project guide") { request(.project(project.url)) }
-                            .buttonStyle(.borderless)
+                HStack(alignment: .top, spacing: House.Spacing.sm) {
+                    glyph
+                    VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                        Text("No guide chosen")
+                            .font(House.TypeToken.label)
+                            .foregroundStyle(House.ColorToken.textPrimary)
+                        Text("Word (.docx), Markdown (.md) or dg-questions.json. Optional: answers are filed by question.")
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: House.Spacing.xs) {
+                            Button("Choose guide…") { choose(roster: false) }
+                            if let project, project.isProject {
+                                Button("Use project guide") { request(.project(project.url)) }
+                            }
+                        }
+                        .fixedSize()
+                        .disabled(!editable)
                     }
+                    Spacer(minLength: 0)
                 }
-                .disabled(!editable)
             }
             if let error {
                 Text(error)
                     .font(House.TypeToken.meta)
                     .foregroundStyle(House.ColorToken.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, SetupGrid.textIndent)
                     .accessibilityLabel("Guide selection error: \(error)")
             }
         }
         .padding(House.Spacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .buttonStyle(.bordered)
+        .buttonStyle(.setupAction)
         .controlSize(.small)
         .task(id: pending) {
             if let choice = pending {
@@ -70,31 +81,69 @@ struct GuidePrepareControls: View {
         }
     }
 
+    private var glyph: some View {
+        Image(systemName: "list.bullet.rectangle")
+            .font(House.TypeToken.label)
+            .foregroundStyle(House.ColorToken.textSecondary)
+            .frame(width: House.Control.tile)
+            .accessibilityHidden(true)
+    }
+
     @ViewBuilder
     private func readyGuide(_ guide: GuideDocument, file: URL) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
-            Label("Ready", systemImage: "checkmark.circle")
-                .font(House.TypeToken.label)
-                .fixedSize()
-            Text(guide.title)
-                .font(House.TypeToken.label)
-                .lineLimit(2)
-            Spacer(minLength: House.Spacing.xs)
-            Button("Change guide…") { choose(roster: false) }
-                .disabled(!editable)
-            Button("Clear") {
-                preparation.reset()
-                error = nil
-                previewExpanded = false
+        HStack(spacing: House.Spacing.sm) {
+            glyph
+            VStack(alignment: .leading, spacing: 0) {
+                Text(guide.title)
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .setupLayoutMark("text.guide")
+                Text("\(file.lastPathComponent) · \(count(guide.sections.count, "section")) · \(count(guide.questions.count, "question"))")
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(file.path)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Guide ready: \(guide.title)")
+            Spacer(minLength: House.Spacing.xs)
+            HStack(spacing: House.Spacing.xs) {
+                Button("Change…") { choose(roster: false) }
+                Button("Remove") {
+                    preparation.reset()
+                    error = nil
+                    previewExpanded = false
+                }
+            }
+            .fixedSize()
             .disabled(!editable)
         }
-        Text("\(file.lastPathComponent) · \(count(guide.sections.count, "section")) · \(count(guide.questions.count, "question"))")
-            .font(House.TypeToken.meta)
-            .foregroundStyle(House.ColorToken.textSecondary)
-            .help(file.path)
-        Text("Guide files respondent answers under these questions during recording.")
-            .font(House.TypeToken.bodySmall)
+        HStack(spacing: House.Spacing.xs) {
+            Text("Group").font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textSecondary)
+            TextField("Group", text: $preparation.groupText, prompt: Text(""))
+                .accessibilityLabel("Optional group ID")
+                .setupField("G1", isEmpty: preparation.groupText.isEmpty)
+                .frame(width: House.Control.hero)
+            Button(preparation.rosterURL?.lastPathComponent ?? "Choose roster…") { choose(roster: true) }
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help("Choose respondent seats from JSON or CSV")
+            if preparation.rosterURL != nil {
+                Button("Clear roster") { preparation.clearRoster(); error = nil }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, SetupGrid.textIndent)
+        .disabled(!editable)
+        if !preparation.groupText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, preparation.group == nil {
+            Text("Use a group ID such as G1. This group will be saved as unassigned.")
+                .font(House.TypeToken.meta)
+                .padding(.leading, SetupGrid.textIndent)
+        }
         DisclosureGroup("Preview questions", isExpanded: $previewExpanded) {
             VStack(alignment: .leading, spacing: House.Spacing.xs) {
                 ForEach(guide.sections, id: \.id) { section in
@@ -110,25 +159,7 @@ struct GuidePrepareControls: View {
             .padding(.top, House.Spacing.xxs)
         }
         .font(House.TypeToken.meta)
-
-        HStack(spacing: House.Spacing.xs) {
-            Text("Group").font(House.TypeToken.label)
-            TextField("G1", text: $preparation.groupText)
-                .accessibilityLabel("Optional group ID")
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: House.Control.composer * 2)
-            Spacer(minLength: House.Spacing.xs)
-            Button(preparation.rosterURL?.lastPathComponent ?? "Choose roster…") { choose(roster: true) }
-                .lineLimit(1)
-                .help("Choose respondent seats from JSON or CSV")
-            if preparation.rosterURL != nil {
-                Button("Clear roster") { preparation.clearRoster(); error = nil }
-            }
-        }
-        .disabled(!editable)
-        if !preparation.groupText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, preparation.group == nil {
-            Text("Use a group ID such as G1. This group will be saved as unassigned.").font(House.TypeToken.meta)
-        }
+        .padding(.leading, SetupGrid.textIndent)
     }
 
     private func count(_ amount: Int, _ noun: String) -> String {

@@ -21,10 +21,15 @@ struct WorkspaceView: View {
     var nativeTitlebar = false
     private let session = SessionCoordinator.shared
 
+    /// The band under the native title-row header matches the bar AppKit drew.
+    private var headerHeight: CGFloat {
+        nativeTitlebar ? OverlayWindowChrome.shared.titleRowHeight : House.Control.composer
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if nativeTitlebar {
-                House.ColorToken.surfaceSunken.frame(height: House.Control.composer)
+                House.ColorToken.surfaceSunken.frame(height: headerHeight)
             } else {
                 WorkspaceWindowHeader(model: model, callTypes: callTypes)
             }
@@ -48,7 +53,7 @@ struct WorkspaceView: View {
             .slateRaisedCard(cornerRadius: House.Radius.lg)
             .padding(House.Spacing.xs)
         }
-        .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(callTypes: callTypes) }
+        .overlay(alignment: .topLeading) { OverlayHeaderChooserLayer(callTypes: callTypes, headerHeight: headerHeight) }
         .background(House.ColorToken.surface)
         .ignoresSafeArea(.container, edges: .top)
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { _ in model.select(.live) }

@@ -46,6 +46,16 @@ final class CalendarMeetingStore {
         }
     }
 
+    #if DEBUG
+        /// Test seam: invented events with access granted, so a proof never
+        /// reads the Mac's calendar. `nil` puts the store back to not asked.
+        func seedForRenderProof(_ events: [CalendarMeeting]?, suggestion: CalendarMeeting? = nil) {
+            accessState = events == nil ? .notDetermined : .available
+            self.events = events ?? []
+            self.suggestion = suggestion
+        }
+    #endif
+
     private func loadEvents(around date: Date) {
         let interval: TimeInterval = 12 * 60 * 60
         let predicate = eventStore.predicateForEvents(

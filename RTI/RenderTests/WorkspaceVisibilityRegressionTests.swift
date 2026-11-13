@@ -27,6 +27,9 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
             styleMask: production.styleMask.union(.nonactivatingPanel), backing: .buffered, defer: false)
         panel.titleVisibility = production.titleVisibility
         panel.titlebarAppearsTransparent = production.titlebarAppearsTransparent
+        // The same title-bar height as production: its empty toolbar style.
+        panel.toolbar = NSToolbar(identifier: "RTIWorkspaceProof")
+        panel.toolbarStyle = production.toolbarStyle
         panel.isMovableByWindowBackground = production.isMovableByWindowBackground
         panel.animationBehavior = .none
         panel.hasShadow = false
@@ -62,6 +65,84 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
             }
             XCTAssertFalse(NSScreen.screens.contains { $0.frame.intersects(panel.frame) })
         }
+    }
+
+    /// The title-row header must sit wholly inside the native title bar and
+    /// share its centre line with the traffic lights. AppKit clips a `.right`
+    /// accessory to the bar: a 52 pt header in the 32 pt bar lost its lower
+    /// 20 pt (the mic, brief and Record backgrounds). Hosted exactly as the
+    /// app hosts it, from `OverlayWindowController`.
+    func testTitleRowHeaderFitsTheNativeTitleBar() throws {
+        _ = NSApplication.shared
+        let controller = OverlayWindowController()
+        let window = controller.window
+        let chrome = OverlayWindowChrome.shared
+        let previousHeight = chrome.titleRowHeight
+        defer { chrome.titleRowHeight = previousHeight }
+        for size in [WorkspaceLayout.standardSize, WorkspaceLayout.minimumSize] {
+            window.setFrame(NSRect(origin: NSPoint(x: -20000, y: -20000), size: size), display: true)
+            let content = try XCTUnwrap(window.contentView)
+            settle(content)
+            let accessory = try XCTUnwrap(window.titlebarAccessoryViewControllers.first)
+            let header = accessory.view
+            settle(header)
+            let headerFrame = header.convert(header.bounds, to: nil)
+            let close = try XCTUnwrap(window.standardWindowButton(.closeButton))
+            let closeFrame = close.convert(close.bounds, to: nil)
+            let barHeight = window.frame.height - window.contentLayoutRect.height
+            let barMinY = window.frame.height - barHeight
+            // The whole header is drawn: nothing of it lies below the bar.
+            XCTAssertEqual(header.visibleRect.height, header.bounds.height, accuracy: 0.5, "Header clipped at \(size)")
+            XCTAssertGreaterThanOrEqual(headerFrame.minY, barMinY - 0.5, "Header hangs below the title bar at \(size)")
+            XCTAssertLessThanOrEqual(headerFrame.maxY, window.frame.height + 0.5)
+            XCTAssertEqual(headerFrame.height, chrome.titleRowHeight, accuracy: 0.5)
+            // Centred with the traffic lights: equal room above and below.
+            XCTAssertEqual(headerFrame.midY, closeFrame.midY, accuracy: 1, "Header off the traffic lights' line at \(size)")
+            // The workspace starts where the bar ends, so no strip of the bar
+            // swallows clicks meant for the card under it.
+            XCTAssertEqual(chrome.titleRowHeight, barHeight, accuracy: 0.5)
+            let frameView = try XCTUnwrap(content.superview)
+            let below = try XCTUnwrap(frameView.hitTest(frameView.convert(NSPoint(x: size.width / 2, y: barMinY - 2), from: nil)))
+            XCTAssertTrue(below.isDescendant(of: content), "The bar covers the workspace at \(size)")
+            // Every header control fits the row with room to spare.
+            let status = OverlayShellStatus(phase: .idle, processingStatus: nil)
+            let controls = NSHostingView(rootView: HStack(spacing: House.Spacing.xs) {
+                OverlayHeaderTitle(status: status)
+                WorkspaceRouteSegments(model: .shared)
+                OverlayMicControl()
+                OverlayVisualContextButton(isLive: false)
+                OverlayRecordButton(status: status, showsTitle: true, showsKeys: false)
+            }.fixedSize())
+            XCTAssertLessThanOrEqual(controls.fittingSize.height, headerFrame.height,
+                                     "Header controls (\(controls.fittingSize.height) pt) overflow a \(headerFrame.height) pt row")
+            try writeTitleBarProof(window, name: "workspace-titlebar-\(Int(size.width))")
+        }
+    }
+
+    /// The real window's frame view, title bar included (traffic lights,
+    /// accessory header, band and card top), for a person to read.
+    private func writeTitleBarProof(_ window: NSWindow, name: String) throws {
+        try RenderProofHarness.prepare()
+        let frameView = try XCTUnwrap(window.contentView?.superview)
+        for (suffix, appearance) in [("dark", NSAppearance.Name.darkAqua), ("light", .aqua)] {
+            UserDefaults.standard.set(appearance == .darkAqua ? RTIAppearanceMode.dark.rawValue : RTIAppearanceMode.light.rawValue,
+                                      forKey: OverlayAppearanceDefaults.appearanceModeKey)
+            window.appearance = NSAppearance(named: appearance)
+            frameView.appearance = window.appearance
+            settle(frameView)
+            settle(frameView)
+            let height = min(frameView.bounds.height, 140)
+            let rect = NSRect(x: 0, y: frameView.isFlipped ? 0 : frameView.bounds.height - height, width: frameView.bounds.width, height: height)
+            let bitmap = try XCTUnwrap(frameView.bitmapImageRepForCachingDisplay(in: rect))
+            frameView.cacheDisplay(in: rect, to: bitmap)
+            let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            try png.write(to: RenderProofHarness.outputDirectory.appendingPathComponent("\(name)-\(suffix).png"))
+        }
+    }
+
+    func testTitleRowHeightFollowsTheWindowsContentLayout() {
+        XCTAssertEqual(OverlayWindowChrome.titleRowHeight(windowHeight: 660, contentLayoutHeight: 620), 40)
+        XCTAssertEqual(OverlayWindowChrome.titleRowHeight(windowHeight: 660, contentLayoutHeight: 660), House.Control.composer)
     }
 
     private final class HeaderEventPanel: NSPanel {

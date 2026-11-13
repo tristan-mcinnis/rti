@@ -138,6 +138,6 @@ struct OverlaySetupButton: View {
         .hoverHighlight($hovering)
         .accessibilityLabel("Prepare meeting")
         .accessibilityHint("Project, calendar, screen context, and the live-aid toggles")
-        .help("Prepare the meeting: project, calendar, screen context, and live aids (\(OverlayTab.setup.shortcutLabel))")
+        .help("Prepare the meeting: call type, project, guide and audio (\(OverlayTab.setup.shortcutLabel))")
     }
 }

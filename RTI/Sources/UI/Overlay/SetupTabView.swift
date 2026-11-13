@@ -6,25 +6,12 @@ import HouseDesign
 
 // MARK: - Setup
 
-/// The meeting home: establish context and choose the live aids before going
-/// live.
+/// The Prepare page. Before Record it answers three questions: what kind of
+/// call, which project, and (research only) which guide. Audio is one card;
+/// everything else (live aids, screenshots, speakers, the calendar picker,
+/// the prep note) waits behind one "More options" disclosure that stays as
+/// the user left it.
 struct SetupTabView: View {
-    private enum ScopeFilter: String, CaseIterable, Identifiable {
-        case all
-        case projects
-        case clients
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .all: "All"
-            case .projects: "Projects"
-            case .clients: "Clients"
-            }
-        }
-    }
-
     private enum LiveOption: Equatable, Identifiable {
         case notes
         case autoAssist
@@ -62,6 +49,16 @@ struct SetupTabView: View {
     /// calendar (real meeting titles). The app always reads it.
     @MainActor static var readsCalendar = true
 
+    /// Render proofs turn this on to read where the page put its text
+    /// (`setupLayoutMark`). Off in the app.
+    @MainActor static var reportsLayout = false
+
+    /// The page's readable column: one centred column with even gutters.
+    static let columnWidth = House.Layout.quickAIAnswerMaxWidth
+
+    /// The call type store the page reads and sets. Shared in the app; a
+    /// proof passes a memory-only one.
+    private let callTypes: CallTypeStore
     private let store = MeetingContextStore.shared
     private let calendarStore = CalendarMeetingStore.shared
     private let session = SessionCoordinator.shared
@@ -71,175 +68,670 @@ struct SetupTabView: View {
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
     /// Unset means Auto follows the call type; a stored value wins.
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
+    @AppStorage private var moreOptionsOpen: Bool
+    @AppStorage private var researchExtrasOpen: Bool
     @State private var clients: [VaultItem] = []
     @State private var projects: [VaultItem] = []
-    @State private var scopeFilter: ScopeFilter = .all
     @State private var pickerOpen = false
     @State private var query = ""
     @State private var suppressNextQueryDisclosure = false
     @FocusState private var searchFocused: Bool
 
+    /// `defaults` holds the disclosure state; a proof passes its own suite.
+    init(callTypes: CallTypeStore = .shared, defaults: UserDefaults = .standard) {
+        self.callTypes = callTypes
+        _moreOptionsOpen = AppStorage(wrappedValue: false, SetupPageSettings.moreOptionsExpandedKey, store: defaults)
+        _researchExtrasOpen = AppStorage(wrappedValue: false, SetupPageSettings.researchExtrasExpandedKey, store: defaults)
+    }
+
+    private var isResearch: Bool { callTypes.active == .research }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: House.Spacing.lg) {
-                prepareHeader
-                callTypeSection
-                speakerSection.disabled(session.phase == .finishing)
-                meetingFocusSection
-                if CallTypeStore.shared.active == .research {
-                    VStack(alignment: .leading, spacing: House.Spacing.xs) {
-                        sectionHeader("Discussion guide")
-                        settingsGroup {
-                            ResearchCodebookPreparation()
-                            StimulusPrepareControls(projectID: store.workstreamItem?.url.path)
-                            GuidePrepareControls(project: store.workstreamItem)
-                                .id(store.workstreamItem?.id)
-                        }
-                    }
+            VStack(alignment: .leading, spacing: House.Spacing.xl) {
+                Text("Prepare")
+                    .font(House.TypeToken.heading)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                section("Call type") { callTypePicker.setupLayoutMark("edge.callType") }
+                section("Project") { projectSection }
+                if isResearch {
+                    section("Guide") { guideSection }
                 }
-                calendarMeetingSection
-                liveCallSection
-                noteEditor
+                section("Audio") { audioSection }
+                moreOptions
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: Self.columnWidth, alignment: .leading)
+            .setupLayoutMark("page")
+            .coordinateSpace(name: SetupGrid.space)
+            .padding(.top, House.Spacing.xs)
+            .padding(.bottom, House.Spacing.xl)
+            .frame(maxWidth: .infinity)
         }
         .scrollContentBackground(.hidden)
         .onAppear {
             load()
             if Self.readsCalendar { calendarStore.refresh() }
         }
-
     }
 
-    private var prepareHeader: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            Text("Prepare the meeting")
-                .font(House.TypeToken.heading)
+    // MARK: - Layout grammar
+
+    /// One section: the uppercase `section` label, `xs`, then its controls.
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            SlateSectionLabel(text: title)
+                .setupLayoutMark("edge.section.\(title)")
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A settings-shell group: a quiet card at `Radius.lg` holding 40 pt rows.
+    private func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .slateGroupCard(cornerRadius: House.Radius.lg)
+    }
+
+    /// The line between rows, inset to the rows' text column.
+    private var settingsRowDivider: some View {
+        HouseDivider()
+            .padding(.leading, SetupGrid.textColumn)
+    }
+
+    /// A row glyph in the fixed tile column, so every row's text starts on
+    /// the same line whatever the symbol width.
+    private func rowGlyph(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(House.TypeToken.label)
+            .foregroundStyle(House.ColorToken.textSecondary)
+            .frame(width: House.Control.tile)
+    }
+
+    /// A row's title over its one-line detail.
+    private func rowText(_ title: String, detail: String?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(House.TypeToken.label)
                 .foregroundStyle(House.ColorToken.textPrimary)
-            Text("RTI records the meeting and improves the transcript after Finish. A client or project is optional.")
-                .font(House.TypeToken.meta)
-                .foregroundStyle(House.ColorToken.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, House.Spacing.xs)
-    }
-
-    // MARK: - Meeting focus
-
-    private var meetingFocusSection: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            sectionHeader("Focus", detail: "Client or project")
-            if store.workstreamName != nil {
-                usingBanner
-            }
-            picker
-        }
-    }
-
-    // MARK: - Confirmed calendar meeting
-
-    private var calendarMeetingSection: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            sectionHeader("Meeting", detail: "Calendar (optional)")
-            settingsGroup {
-                switch calendarStore.accessState {
-                case .notDetermined:
-                    HStack(spacing: 9) {
-                        Image(systemName: "calendar")
-                            .foregroundStyle(Color.overlayInkSecondary)
-                        Text("Use a calendar event for the title and invitees")
-                            .font(RTIDesign.Font.caption)
-                            .foregroundStyle(Color.overlayInkSecondary)
-                        Spacer(minLength: 6)
-                        Button("Allow access") { calendarStore.requestAccess() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
-                    .padding(10)
-                case .denied:
-                    HStack(spacing: 8) {
-                        Image(systemName: "calendar.badge.exclamationmark")
-                            .foregroundStyle(RTIDesign.Color.warning)
-                        Text("Calendar access is off. Enable it in System Settings to choose a meeting.")
-                            .font(RTIDesign.Font.caption)
-                            .foregroundStyle(Color.overlayInkSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(10)
-                case .available:
-                    calendarPicker
-                }
+            if let detail {
+                Text(detail)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
     }
 
-    private var calendarPicker: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if let selected = store.calendarMeeting {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(RTIDesign.Color.success)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(selected.title)
-                            .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                            .foregroundStyle(Color.overlayInk)
-                            .lineLimit(1)
-                        Text(calendarDetail(selected))
-                            .font(RTIDesign.Font.micro)
-                            .foregroundStyle(Color.overlayInkSecondary)
-                    }
-                    Spacer(minLength: 4)
-                    Button { store.clearCalendarMeeting() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(Color.overlayInkTertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Remove calendar meeting context")
+    private func rowFrame(_ row: some View) -> some View {
+        row
+            .padding(.horizontal, House.Spacing.sm)
+            .padding(.vertical, House.Spacing.xxs)
+            .frame(maxWidth: .infinity, minHeight: House.Control.row, alignment: .leading)
+    }
+
+    /// A quiet line under a card, on the card's text column.
+    private func footnote(_ text: String, mark: String) -> some View {
+        Text(text)
+            .font(House.TypeToken.meta)
+            .foregroundStyle(House.ColorToken.textTertiary)
+            .fixedSize(horizontal: false, vertical: true)
+            .setupLayoutMark(mark)
+            .padding(.leading, SetupGrid.textColumn)
+            .padding(.trailing, House.Spacing.sm)
+    }
+
+    /// A row with an ink switch on the right.
+    private func toggleRow(icon: String, title: String, detail: String?, isOn: Binding<Bool>) -> some View {
+        rowFrame(
+            Toggle(isOn: isOn) {
+                HStack(spacing: House.Spacing.sm) {
+                    rowGlyph(icon)
+                    rowText(title, detail: detail)
+                    Spacer(minLength: House.Spacing.sm)
                 }
-                .padding(.horizontal, 10)
-                .padding(.top, 9)
-            } else if let suggestion = calendarStore.suggestion {
-                HStack(spacing: 8) {
-                    Image(systemName: "calendar.badge.clock")
-                        .foregroundStyle(RTIDesign.Color.textSecondary)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Suggested: \(suggestion.title)")
-                            .font(.system(size: House.TypeToken.Size.meta, weight: .semibold))
-                            .foregroundStyle(Color.overlayInk)
-                            .lineLimit(1)
-                        Text(calendarDetail(suggestion))
-                            .font(RTIDesign.Font.micro)
-                            .foregroundStyle(Color.overlayInkSecondary)
-                    }
-                    Spacer(minLength: 4)
-                    Button("Use") { store.selectCalendarMeeting(suggestion) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .tint(House.ColorToken.textPrimary)
+        )
+    }
+
+    // MARK: - Call type
+
+    private var callTypePicker: some View {
+        Picker("Call type", selection: Binding(
+            get: { callTypes.active },
+            set: { CommandBuilder.switchCallType(to: $0, callTypes: callTypes, llm: .shared) }
+        )) {
+            ForEach(CallType.allCases) { Text($0.name).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+    }
+
+    // MARK: - Project
+
+    private var projectSection: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            if let item = store.workstreamItem, !pickerOpen {
+                selectedProject(item)
             } else {
-                Text("No event overlaps the current time.")
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(Color.overlayInkSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 9)
+                searchField
             }
+            if pickerOpen {
+                pickerList
+            }
+            calendarLine
+        }
+    }
 
-            if !calendarStore.events.isEmpty {
-                Menu {
-                    ForEach(calendarStore.events) { event in
-                        Button("\(calendarTime(event))  \(event.title)  ·  \(calendarSourceLabel(event))") {
-                            store.selectCalendarMeeting(event)
+    private func selectedProject(_ item: VaultItem) -> some View {
+        HStack(spacing: House.Spacing.sm) {
+            rowGlyph(item.isProject ? "folder.fill" : "person.crop.circle.fill")
+            HStack(spacing: House.Spacing.xs) {
+                Text(item.name)
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .setupLayoutMark("text.project")
+                Text(item.isProject ? "Project" : "Client")
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+            }
+            Spacer(minLength: House.Spacing.xs)
+            HStack(spacing: House.Spacing.xs) {
+                Button("Change…") { openPicker() }
+                    .help("Choose another client or project")
+                Button("Remove") { store.clearWorkstream() }
+                    .help("Clear the project")
+                    .accessibilityLabel("Clear the project")
+            }
+            .buttonStyle(.setupAction)
+            .fixedSize()
+        }
+        .padding(.horizontal, House.Spacing.sm)
+        .frame(minHeight: House.Control.row)
+        .slateGroupCard(cornerRadius: House.Radius.lg)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: House.Spacing.sm) {
+            rowGlyph("magnifyingglass")
+            TextField("Search clients and projects", text: $query, prompt: Text(""))
+                .textFieldStyle(.plain)
+                .font(House.TypeToken.label)
+                .foregroundStyle(House.ColorToken.textPrimary)
+                .setupPlaceholder("Search clients and projects", shown: query.isEmpty, font: House.TypeToken.label)
+                .focused($searchFocused)
+                .onTapGesture { openPicker() }
+                .onChange(of: query) { _, _ in
+                    if suppressNextQueryDisclosure {
+                        suppressNextQueryDisclosure = false
+                    } else {
+                        pickerOpen = true
+                    }
+                }
+                .onSubmit {
+                    if let first = filteredItems.first {
+                        pick(first)
+                        closePicker()
+                    }
+                }
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(House.TypeToken.meta)
+                        .foregroundStyle(House.ColorToken.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+            Button { togglePicker() } label: {
+                Image(systemName: pickerOpen ? "chevron.up" : "chevron.down")
+                    .font(House.TypeToken.micro)
+                    .foregroundStyle(House.ColorToken.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(pickerOpen ? "Hide results" : "Show clients and projects")
+        }
+        .padding(.horizontal, House.Spacing.sm)
+        .frame(minHeight: House.Control.row)
+        .slateGroupCard(cornerRadius: House.Radius.lg)
+    }
+
+    private func openPicker() {
+        pickerOpen = true
+        searchFocused = true
+    }
+
+    private func closePicker() {
+        pickerOpen = false
+        searchFocused = false
+    }
+
+    private func togglePicker() {
+        pickerOpen ? closePicker() : openPicker()
+    }
+
+    private var pickerList: some View {
+        VStack(spacing: 0) {
+            if filteredItems.isEmpty {
+                Text(emptyPickerMessage)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(House.Spacing.sm)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if !visibleProjects.isEmpty {
+                            pickerGroup("Projects", items: visibleProjects, total: filteredProjects.count)
+                        }
+                        if !visibleClients.isEmpty {
+                            pickerGroup("Clients", items: visibleClients, total: filteredClients.count)
                         }
                     }
-                } label: {
-                    Label("Choose calendar event", systemImage: "chevron.up.chevron.down")
-                        .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
+                    .padding(.vertical, House.Spacing.xxs)
                 }
-                .menuStyle(.borderlessButton)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 9)
+                .frame(maxHeight: House.Control.row * 5)
+            }
+        }
+        .slateGroupCard(cornerRadius: House.Radius.md)
+    }
+
+    private func pickerGroup(_ title: String, items: [VaultItem], total: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: House.Spacing.xs) {
+                SlateSectionLabel(text: title)
+                Spacer()
+                Text("\(total)")
+                    .font(House.TypeToken.micro)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+            }
+            .padding(.horizontal, House.Spacing.sm)
+            .padding(.top, House.Spacing.xs)
+            .padding(.bottom, House.Spacing.xxs)
+            ForEach(items) { pickerRow($0) }
+        }
+    }
+
+    private func pickerRow(_ item: VaultItem) -> some View {
+        Button {
+            pick(item)
+            closePicker()
+        } label: {
+            HStack(spacing: House.Spacing.sm) {
+                rowGlyph(item.isProject ? "folder" : "person.crop.circle")
+                Text(item.name)
+                    .font(House.TypeToken.label)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: House.Spacing.xs)
+            }
+            .padding(.horizontal, House.Spacing.sm)
+            .frame(minHeight: House.Control.compact)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: House.Radius.xs)
+                    .fill(store.workstreamItem == item ? House.ColorToken.selectionFill : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var allItems: [VaultItem] {
+        projects + clients
+    }
+
+    private var filteredItems: [VaultItem] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return allItems }
+        return allItems.filter { $0.name.lowercased().contains(q) }
+    }
+
+    private var filteredProjects: [VaultItem] {
+        filteredItems.filter(\.isProject)
+    }
+
+    private var filteredClients: [VaultItem] {
+        filteredItems.filter { !$0.isProject }
+    }
+
+    private var visibleProjects: [VaultItem] {
+        Array(filteredProjects.prefix(visibleResultLimit))
+    }
+
+    private var visibleClients: [VaultItem] {
+        Array(filteredClients.prefix(max(2, visibleResultLimit - visibleProjects.count)))
+    }
+
+    private var emptyPickerMessage: String {
+        allItems.isEmpty ? "Nothing found in your vault." : "No match for “\(query)”."
+    }
+
+    /// The calendar, quietly: the chosen event, else the one overlapping now,
+    /// else nothing. The full picker is under More options.
+    @ViewBuilder
+    private var calendarLine: some View {
+        if let selected = store.calendarMeeting {
+            calendarLineRow(icon: "calendar.badge.checkmark", text: "Meeting: \(selected.title) · \(calendarTime(selected))") {
+                Button("Remove") { store.clearCalendarMeeting() }
+                    .help("Remove calendar meeting context")
+                    .accessibilityLabel("Remove calendar meeting context")
+            }
+        } else if calendarStore.accessState == .available, let suggestion = calendarStore.suggestion {
+            calendarLineRow(icon: "calendar", text: "Now: \(suggestion.title) · \(calendarTime(suggestion))") {
+                Button("Use event") { store.selectCalendarMeeting(suggestion) }
+                    .help("Use this event for the title and invitees")
+            }
+        }
+    }
+
+    /// A quiet line under the project card: glyph in the glyph column, text
+    /// on the text column, its action chip on the right like a card row's.
+    private func calendarLineRow(icon: String, text: String, @ViewBuilder action: () -> some View) -> some View {
+        HStack(spacing: House.Spacing.sm) {
+            rowGlyph(icon)
+            Text(text)
+                .font(House.TypeToken.meta)
+                .foregroundStyle(House.ColorToken.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .setupLayoutMark("text.calendarLine")
+            Spacer(minLength: House.Spacing.xs)
+            action()
+                .buttonStyle(.setupAction)
+                .fixedSize()
+        }
+        .padding(.horizontal, House.Spacing.sm)
+    }
+
+    // MARK: - Guide (research)
+
+    private var guideSection: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.sm) {
+            GuidePrepareControls(project: store.workstreamItem)
+                .id(store.workstreamItem?.id)
+                .slateGroupCard(cornerRadius: House.Radius.lg)
+            SetupDisclosure(title: "Codebook and stimulus", detail: researchExtrasSummary, isExpanded: $researchExtrasOpen) {
+                VStack(alignment: .leading, spacing: House.Spacing.sm) {
+                    ResearchCodebookPreparation()
+                    HouseDivider()
+                        .padding(.leading, SetupGrid.textIndent)
+                    StimulusPrepareControls(projectID: store.workstreamItem?.url.path)
+                }
+                .padding(House.Spacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .slateGroupCard(cornerRadius: House.Radius.lg)
+            }
+        }
+    }
+
+    private var researchExtrasSummary: String {
+        let seeds = ResearchCodebookController.shared.seedText
+            .components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+        let items = SessionMarkers.shared.prepared?.items.count ?? 0
+        return Self.researchExtrasSummary(seeds: seeds, stimulusItems: items)
+    }
+
+    /// The collapsed "Codebook and stimulus" line: what is set, else what it
+    /// holds.
+    static func researchExtrasSummary(seeds: Int, stimulusItems: Int) -> String {
+        var parts: [String] = []
+        if seeds > 0 { parts.append("\(seeds) \(seeds == 1 ? "word" : "words") to watch") }
+        if stimulusItems > 0 { parts.append("\(stimulusItems) stimulus \(stimulusItems == 1 ? "item" : "items")") }
+        return parts.isEmpty ? "Optional" : parts.joined(separator: " · ")
+    }
+
+    // MARK: - Audio
+
+    /// Before a call the switch shows the one-call preset. During a call it
+    /// shows whether this call is listening only; turning it off unmutes, and
+    /// the preset cannot be turned on mid-call (use the mic button to mute).
+    private static var listeningOnlyToggleIsOn: Bool {
+        let session = SessionCoordinator.shared
+        return session.mic.isLive ? session.isListeningOnly : session.listeningOnlyPreset
+    }
+
+    private static func setListeningOnlyToggle(_ enabled: Bool) {
+        let session = SessionCoordinator.shared
+        if session.mic.isLive {
+            if !enabled, session.isListeningOnly { session.unmuteMic() }
+        } else {
+            session.setListeningOnlyPreset(enabled)
+        }
+    }
+
+    private var audioSection: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            settingsGroup {
+                rowFrame(
+                    HStack(spacing: House.Spacing.sm) {
+                        rowGlyph("mic")
+                        rowText("Microphone", detail: captureReadiness)
+                            .setupLayoutMark("text.microphone")
+                        Spacer(minLength: House.Spacing.sm)
+                        Button("Configure…") {
+                            WindowCoordinator.shared.openSettings(pane: .general)
+                        }
+                        .buttonStyle(.setupAction)
+                        .fixedSize()
+                        .help("Choose the microphone and call audio in Settings")
+                    }
+                )
+                settingsRowDivider
+                toggleRow(icon: "mic.slash", title: "Listening only", detail: "Record the call with your mic muted",
+                          isOn: Binding(get: { Self.listeningOnlyToggleIsOn }, set: { Self.setListeningOnlyToggle($0) }))
+                    .help("Record call audio with your microphone muted.")
+            }
+            footnote(liveStatusLine, mark: "text.status")
+                .accessibilityLabel("Live aids: \(liveStatusLine)")
+        }
+    }
+
+    private var captureReadiness: String {
+        let devices = session.audioDeviceNames()
+        return "\(devices.input) · call audio follows \(devices.output)"
+    }
+
+    private var guideNotesOn: Bool {
+        GuideSessionController.shared.isActive || (isResearch && GuidePreparation.shared.guide != nil)
+    }
+
+    private var liveStatusLine: String {
+        let callType = callTypes.active
+        return Self.liveStatusLine(notes: notesEnabled,
+                                   auto: AutoAssistSettings.runs(on: callType)
+                                       ? AutoAssistSettings.isActive(for: callType, stored: autoAssistStored) : nil,
+                                   guideNotes: guideNotesOn)
+    }
+
+    /// The one quiet line under Audio: which live aids run. `auto` is nil
+    /// when Auto never runs on the call type.
+    static func liveStatusLine(notes: Bool, auto: Bool?, guideNotes: Bool) -> String {
+        var parts = ["Notes \(notes ? "on" : "off")"]
+        if let auto { parts.append("Auto \(auto ? "on" : "off")") }
+        if guideNotes { parts.append("Guide notes on") }
+        return parts.joined(separator: " · ") + ". Change in More options."
+    }
+
+    // MARK: - More options
+
+    private var moreOptions: some View {
+        SetupDisclosure(title: "More options", detail: "Live aids, screenshots, speakers, calendar, prep note",
+                        isExpanded: $moreOptionsOpen)
+        {
+            VStack(alignment: .leading, spacing: House.Spacing.xl) {
+                section("Live aids") { liveAidsGroup }
+                section("Speakers") { speakerGroup.disabled(session.phase == .finishing) }
+                section("Calendar") { calendarGroup }
+                section("Prep note") { noteEditor }
+            }
+        }
+    }
+
+    private var liveAidsGroup: some View {
+        settingsGroup {
+            toggleRow(icon: LiveOption.notes.icon, title: LiveOption.notes.title, detail: LiveOption.notes.detail, isOn: $notesEnabled)
+            settingsRowDivider
+            toggleRow(icon: LiveOption.autoAssist.icon, title: LiveOption.autoAssist.title, detail: autoAssistDetail,
+                      isOn: Binding(
+                          get: { AutoAssistSettings.isActive(for: callTypes.active, stored: autoAssistStored) },
+                          set: { autoAssistStored = $0 }
+                      ))
+                .disabled(!AutoAssistSettings.runs(on: callTypes.active))
+            if guideNotesOn {
+                settingsRowDivider
+                rowFrame(
+                    HStack(spacing: House.Spacing.sm) {
+                        rowGlyph("list.bullet.rectangle")
+                        rowText("Guide notes", detail: "Respondent answers filed by question")
+                        Spacer(minLength: House.Spacing.sm)
+                        Text("On")
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textSecondary)
+                    }
+                )
+            }
+            settingsRowDivider
+            screenshotsRow
+        }
+    }
+
+    /// Until the user flips the switch, Auto follows the call type, and the
+    /// row says so.
+    private var autoAssistDetail: String {
+        let callType = callTypes.active
+        guard AutoAssistSettings.runs(on: callType) else { return "Auto does not run on this call type" }
+        guard autoAssistStored == nil else { return LiveOption.autoAssist.detail }
+        return "Auto on for this call type"
+    }
+
+    private var screenshotsRow: some View {
+        let policy = ScreenshotPolicy.shared
+        return rowFrame(
+            HStack(spacing: House.Spacing.sm) {
+                rowGlyph("eye")
+                rowText("Screenshots", detail: policy.project != nil ? "Now: \(policy.effective.title)" : nil)
+                    .help(policy.project != nil ? "For this project’s \(callTypes.active.name) calls" : "For every call")
+                Spacer(minLength: House.Spacing.sm)
+                if let project = policy.project {
+                    Picker("Project screenshot mode", selection: Binding(
+                        get: { policy.projectOverride },
+                        set: { policy.setOverride($0, project: project, callType: callTypes.active) }
+                    )) {
+                        Text("Use global (\(policy.global.title))").tag(ScreenshotMode?.none)
+                        ForEach(ScreenshotMode.allCases) { mode in Text(mode.title).tag(Optional(mode)) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                } else {
+                    ScreenshotModePicker().fixedSize()
+                }
+            }
+        )
+    }
+
+    private var speakerGroup: some View {
+        @Bindable var session = session
+        return VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            settingsGroup {
+                toggleRow(icon: "person.2.wave.2", title: "Live speaker guesses", detail: "Numbered speakers; often flip in groups",
+                          isOn: $session.speakerPolicy.liveLabelsEnabled)
+                settingsRowDivider
+                toggleRow(icon: "person.text.rectangle", title: "Speaker labels after the call", detail: "On the upgraded transcript",
+                          isOn: $session.speakerPolicy.labelsEnabled)
+                settingsRowDivider
+                rowFrame(
+                    HStack(spacing: House.Spacing.sm) {
+                        rowGlyph("person.3")
+                        rowText("Speakers in the room", detail: nil)
+                        Spacer(minLength: House.Spacing.sm)
+                        Stepper(session.speakerPolicy.expectedCount.map(String.init) ?? "Unknown") {
+                            let count = session.speakerPolicy.expectedCount ?? 0
+                            if count < Int.max { session.speakerPolicy.expectedCount = count + 1 }
+                        } onDecrement: {
+                            let count = session.speakerPolicy.expectedCount ?? 0
+                            session.speakerPolicy.expectedCount = count > 1 ? count - 1 : nil
+                        }
+                        .font(House.TypeToken.meta)
+                        .fixedSize()
+                    }
+                )
+            }
+            footnote("Live rows say Me or Them. The transcript after the call names each speaker; a count helps.",
+                     mark: "text.speakers")
+        }
+    }
+
+    // MARK: - Calendar picker
+
+    private var calendarGroup: some View {
+        settingsGroup {
+            switch calendarStore.accessState {
+            case .notDetermined:
+                rowFrame(
+                    HStack(spacing: House.Spacing.sm) {
+                        rowGlyph("calendar")
+                        rowText("Calendar", detail: "Use an event for the title and invitees")
+                        Spacer(minLength: House.Spacing.sm)
+                        Button("Allow access") { calendarStore.requestAccess() }
+                            .buttonStyle(.setupAction)
+                            .fixedSize()
+                    }
+                )
+            case .denied:
+                rowFrame(
+                    HStack(spacing: House.Spacing.sm) {
+                        rowGlyph("calendar.badge.exclamationmark")
+                        Text("Calendar access is off. Turn it on in System Settings to choose an event.")
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                )
+            case .available:
+                rowFrame(
+                    HStack(spacing: House.Spacing.sm) {
+                        rowGlyph(store.calendarMeeting == nil ? "calendar" : "calendar.badge.checkmark")
+                        if let selected = store.calendarMeeting {
+                            rowText(selected.title, detail: calendarDetail(selected))
+                        } else {
+                            rowText("No event chosen", detail: calendarStore.events.isEmpty ? "No events in the next 12 hours" : nil)
+                        }
+                        Spacer(minLength: House.Spacing.sm)
+                        if !calendarStore.events.isEmpty {
+                            Menu(store.calendarMeeting == nil ? "Choose event" : "Change") {
+                                ForEach(calendarStore.events) { event in
+                                    Button("\(calendarTime(event))  \(event.title)  ·  \(calendarSourceLabel(event))") {
+                                        store.selectCalendarMeeting(event)
+                                    }
+                                }
+                            }
+                            .menuStyle(.borderlessButton)
+                            .font(House.TypeToken.meta)
+                            .fixedSize()
+                        }
+                        if store.calendarMeeting != nil {
+                            Button("Remove") { store.clearCalendarMeeting() }
+                                .buttonStyle(.setupAction)
+                                .fixedSize()
+                                .help("Remove calendar meeting context")
+                                .accessibilityLabel("Remove calendar meeting context")
+                        }
+                    }
+                )
             }
         }
     }
@@ -267,518 +759,11 @@ struct SetupTabView: View {
         return formatter
     }()
 
-    /// A group's lead-in, as the settings shell draws it: the uppercase
-    /// `section` label, then a `meta` detail.
-    private func sectionHeader(_ title: String, detail: String? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
-            SlateSectionLabel(text: title)
-            if let detail {
-                Text(detail)
-                    .font(House.TypeToken.meta)
-                    .foregroundStyle(House.ColorToken.textTertiary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    /// A settings-shell group: a quiet card at `Radius.lg` holding 40 pt rows.
-    private func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 0) {
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .slateGroupCard(cornerRadius: House.Radius.lg)
-    }
-
-    // MARK: - Combined client/project picker
-
-    private var picker: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(Color.overlayInkSecondary)
-                TextField(store.workstreamName == nil ? "Search client or project" : "Change client or project", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: House.TypeToken.Size.meta, weight: .medium))
-                    .foregroundStyle(Color.overlayInk)
-                    .focused($searchFocused)
-                    .onTapGesture { openPicker() }
-                    .onChange(of: query) { _, _ in
-                        if suppressNextQueryDisclosure {
-                            suppressNextQueryDisclosure = false
-                        } else {
-                            pickerOpen = true
-                        }
-                    }
-                    .onSubmit {
-                        if let first = filteredItems.first {
-                            pick(first)
-                            closePicker()
-                        }
-                    }
-                if !query.isEmpty {
-                    Button {
-                        query = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(RTIDesign.Font.caption)
-                            .foregroundStyle(Color.overlayInkTertiary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                Button {
-                    togglePicker()
-                } label: {
-                    Image(systemName: pickerOpen ? "chevron.up" : "chevron.down")
-                        .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
-                        .foregroundStyle(Color.overlayInkSecondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.chipFill))
-
-            HStack(spacing: 8) {
-                Picker("", selection: $scopeFilter) {
-                    ForEach(ScopeFilter.allCases) { filter in
-                        Text(filter.title).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 194)
-                .onChange(of: scopeFilter) { _, _ in
-                    pickerOpen = true
-                }
-                if let hint = scopeHint {
-                    Text(hint)
-                        .font(RTIDesign.Font.micro)
-                        .foregroundStyle(Color.overlayInkTertiary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                Spacer(minLength: 0)
-            }
-
-            if pickerOpen {
-                pickerList
-            }
-        }
-    }
-
-    private func openPicker() {
-        pickerOpen = true
-        searchFocused = true
-    }
-
-    private func closePicker() {
-        pickerOpen = false
-        searchFocused = false
-    }
-
-    private func togglePicker() {
-        pickerOpen ? closePicker() : openPicker()
-    }
-
-    private var pickerList: some View {
-        VStack(spacing: 0) {
-            if filteredItems.isEmpty {
-                Text(emptyPickerMessage)
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(Color.overlayInkTertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        if !visibleProjects.isEmpty {
-                            pickerSection("Projects", items: visibleProjects, total: filteredProjects.count)
-                        }
-                        if !visibleClients.isEmpty {
-                            pickerSection("Clients", items: visibleClients, total: filteredClients.count)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                .frame(maxHeight: 178)
-                if scopeFilter == .all, !query.isEmpty, !filteredProjects.isEmpty, filteredClients.isEmpty {
-                    Text("Showing individual projects for “\(query)”.")
-                        .font(RTIDesign.Font.micro)
-                        .foregroundStyle(Color.overlayInkTertiary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 10)
-                }
-            }
-        }
-        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.chipFill))
-        .overlay(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).stroke(RTIDesign.Color.border, lineWidth: House.hairline))
-    }
-
-    private func pickerSection(_ title: String, items: [VaultItem], total: Int) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
-                    .foregroundStyle(Color.overlayInkSecondary)
-                Spacer()
-                Text("\(total)")
-                    .font(.system(size: House.TypeToken.Size.micro, weight: .semibold))
-                    .foregroundStyle(Color.overlayInkTertiary)
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
-            .padding(.bottom, 2)
-            ForEach(items) { pickerRow($0) }
-        }
-    }
-
-    private func pickerRow(_ item: VaultItem) -> some View {
-        Button {
-            pick(item)
-            closePicker()
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: item.isProject ? "folder" : "person.crop.circle")
-                    .font(RTIDesign.Font.caption)
-                    .foregroundStyle(Color.overlayInkSecondary)
-                    .frame(width: 16)
-                Text(item.name)
-                    .font(RTIDesign.Font.meta)
-                    .foregroundStyle(Color.overlayInk)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 8)
-                Text(item.isProject ? "Project" : "Client")
-                    .font(.system(size: House.TypeToken.Size.micro, weight: .medium))
-                    .foregroundStyle(Color.overlayInkTertiary)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-            .background(
-                RoundedRectangle(cornerRadius: RTIDesign.Radius.xs)
-                    .fill(store.workstreamItem == item ? RTIDesign.Color.selectionFill : Color.clear)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var usingBanner: some View {
-        HStack(spacing: 7) {
-            Image(systemName: store.workstreamItem?.isProject == false ? "person.crop.circle.fill" : "folder.fill")
-                .font(RTIDesign.Font.caption)
-                .foregroundStyle(RTIDesign.Color.success)
-                .frame(width: 16)
-            Text(store.workstreamName ?? "")
-                .font(.system(size: House.TypeToken.Size.caption, weight: .semibold))
-                .foregroundStyle(Color.overlayInk)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            if let item = store.workstreamItem {
-                Text(item.isProject ? "Project scope" : "Client note")
-                    .font(.system(size: House.TypeToken.Size.micro, weight: .medium))
-                    .foregroundStyle(Color.overlayInkTertiary)
-            }
-            Spacer(minLength: 8)
-            Button { store.clearWorkstream() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(RTIDesign.Font.meta)
-                    .foregroundStyle(Color.overlayInkTertiary)
-            }
-            .buttonStyle(.plain)
-            .help("Clear meeting focus")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.tile).fill(RTIDesign.Color.success.opacity(0.10)))
-    }
-
-    private var allItems: [VaultItem] {
-        switch scopeFilter {
-        case .all:
-            projects + clients
-        case .projects:
-            projects
-        case .clients:
-            clients
-        }
-    }
-
-    private var filteredItems: [VaultItem] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return allItems }
-        return allItems.filter { $0.name.lowercased().contains(q) }
-    }
-
-    private var filteredProjects: [VaultItem] {
-        filteredItems.filter(\.isProject)
-    }
-
-    private var filteredClients: [VaultItem] {
-        filteredItems.filter { !$0.isProject }
-    }
-
-    private var visibleProjects: [VaultItem] {
-        Array(filteredProjects.prefix(scopeFilter == .all ? visibleResultLimit : visibleResultLimit + 2))
-    }
-
-    private var visibleClients: [VaultItem] {
-        Array(filteredClients.prefix(scopeFilter == .all ? max(2, visibleResultLimit - visibleProjects.count) : visibleResultLimit + 2))
-    }
-
-    private var scopeHint: String? {
-        switch scopeFilter {
-        case .all:
-            nil
-        case .projects:
-            "searches project files"
-        case .clients:
-            "uses one client note"
-        }
-    }
-
-    private var emptyPickerMessage: String {
-        if allItems.isEmpty {
-            return "Nothing found in your vault."
-        }
-        if scopeFilter == .clients {
-            return "No client note matches “\(query)”."
-        }
-        return "No match for “\(query)”."
-    }
-
-    // MARK: - Call type
-
-    private var speakerSection: some View {
-        @Bindable var session = session
-        return VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            sectionHeader("Speakers")
-            Toggle("Live speaker guesses", isOn: $session.speakerPolicy.liveLabelsEnabled)
-                .toggleStyle(.switch)
-            Toggle("Speaker labels after the call", isOn: $session.speakerPolicy.labelsEnabled)
-                .toggleStyle(.switch)
-            HStack {
-                Text("Speakers in the room")
-                Stepper(session.speakerPolicy.expectedCount.map(String.init) ?? "Unknown") {
-                    let count = session.speakerPolicy.expectedCount ?? 0
-                    if count < Int.max { session.speakerPolicy.expectedCount = count + 1 }
-                } onDecrement: {
-                    let count = session.speakerPolicy.expectedCount ?? 0
-                    session.speakerPolicy.expectedCount = count > 1 ? count - 1 : nil
-                }
-                .fixedSize()
-            }
-            Text("Live rows say Me or Them from the audio leg. Live guesses add numbered speakers that often flip in groups. The file transcript after the call labels speakers; a count helps review it.")
-                .font(House.TypeToken.meta)
-                .foregroundStyle(House.ColorToken.textSecondary)
-        }
-    }
-
-    private var callTypeSection: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            sectionHeader("Call type", detail: "Sets how RTI answers")
-            Picker("Call type", selection: Binding(
-                get: { CallTypeStore.shared.active },
-                set: { CommandBuilder.switchCallType(to: $0, callTypes: .shared, llm: .shared) }
-            )) {
-                ForEach(CallType.allCases) { Text($0.name).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-        }
-    }
-
-    // MARK: - Live call
-
-    private var screenshotsRow: some View {
-        let policy = ScreenshotPolicy.shared
-        return HStack(spacing: House.Spacing.sm) {
-            Image(systemName: "eye").frame(width: House.Control.tile)
-            VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-                Text("Screenshots").font(House.TypeToken.label)
-                if policy.project != nil {
-                    Text("For this project’s \(CallTypeStore.shared.active.name) calls. Effective: \(policy.effective.title).")
-                        .font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
-                }
-            }
-            Spacer()
-            if let project = policy.project {
-                Picker("Project screenshot mode", selection: Binding(
-                    get: { policy.projectOverride },
-                    set: { policy.setOverride($0, project: project, callType: CallTypeStore.shared.active) }
-                )) {
-                    Text("Use global (\(policy.global.title))").tag(ScreenshotMode?.none)
-                    ForEach(ScreenshotMode.allCases) { mode in Text(mode.title).tag(Optional(mode)) }
-                }
-                .labelsHidden()
-            } else {
-                ScreenshotModePicker()
-            }
-        }
-    }
-
-    /// Before a call the switch shows the one-call preset. During a call it
-    /// shows whether this call is listening only; turning it off unmutes, and
-    /// the preset cannot be turned on mid-call (use the mic button to mute).
-    private static var listeningOnlyToggleIsOn: Bool {
-        let session = SessionCoordinator.shared
-        return session.mic.isLive ? session.isListeningOnly : session.listeningOnlyPreset
-    }
-
-    private static func setListeningOnlyToggle(_ enabled: Bool) {
-        let session = SessionCoordinator.shared
-        if session.mic.isLive {
-            if !enabled, session.isListeningOnly { session.unmuteMic() }
-        } else {
-            session.setListeningOnlyPreset(enabled)
-        }
-    }
-
-    private var liveCallSection: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            sectionHeader("Live", detail: "Capture & assist")
-            settingsGroup {
-                liveTranscriptionRow
-                Toggle("Listening only", isOn: Binding(get: { Self.listeningOnlyToggleIsOn },
-                                                        set: { Self.setListeningOnlyToggle($0) }))
-                    .toggleStyle(.switch)
-                    .padding(.horizontal, House.Spacing.sm)
-                    .frame(minHeight: House.Control.row)
-                    .help("Record call audio with your microphone muted.")
-                settingsRowDivider
-                screenshotsRow
-                settingsRowDivider
-                if GuideSessionController.shared.isActive || (CallTypeStore.shared.active == .research && GuidePreparation.shared.guide != nil) {
-                    HStack(spacing: House.Spacing.sm) {
-                        Image(systemName: "list.bullet.rectangle").frame(width: House.Control.tile)
-                        VStack(alignment: .leading) {
-                            Text("Guide notes").font(House.TypeToken.label)
-                            Text("Respondent answers filed by question")
-                                .font(House.TypeToken.meta)
-                                .foregroundStyle(House.ColorToken.textSecondary)
-                        }
-                        Spacer()
-                        Text("On").font(House.TypeToken.meta)
-                    }
-                    .padding(.horizontal, House.Spacing.sm)
-                    .padding(.vertical, House.Spacing.xxs)
-                    .frame(minHeight: House.Control.row)
-                    settingsRowDivider
-                }
-                livePanelToggle(.notes, $notesEnabled)
-                settingsRowDivider
-                livePanelToggle(.autoAssist, Binding(
-                    get: { AutoAssistSettings.isActive(for: CallTypeStore.shared.active, stored: autoAssistStored) },
-                    set: { autoAssistStored = $0 }
-                ), detail: autoAssistDetail)
-                    .disabled(!AutoAssistSettings.runs(on: CallTypeStore.shared.active))
-            }
-        }
-    }
-
-    private var liveTranscriptionRow: some View {
-        HStack(spacing: House.Spacing.sm) {
-            Image(systemName: "waveform")
-                .font(House.TypeToken.label)
-                .foregroundStyle(House.ColorToken.textSecondary)
-                .frame(width: House.Control.tile)
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Transcription")
-                    .font(House.TypeToken.label)
-                    .foregroundStyle(House.ColorToken.textPrimary)
-                Text(captureReadiness)
-                    .font(House.TypeToken.meta)
-                    .foregroundStyle(House.ColorToken.textTertiary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: House.Spacing.sm)
-            Button("Configure") {
-                WindowCoordinator.shared.openSettings(pane: .general)
-            }
-            .buttonStyle(.borderless)
-            .font(.system(size: House.TypeToken.Size.caption, weight: .medium))
-            .foregroundStyle(Color.overlayAccent)
-        }
-        .padding(.horizontal, House.Spacing.sm)
-        .padding(.vertical, House.Spacing.xxs)
-        .frame(maxWidth: .infinity, minHeight: House.Control.row, alignment: .leading)
-    }
-
-    private var captureReadiness: String {
-        let devices = session.audioDeviceNames()
-        return "Mic: \(devices.input) · call audio follows: \(devices.output)"
-    }
-
-    /// The line between rows, inset to the rows' text column.
-    private var settingsRowDivider: some View {
-        HouseDivider()
-            .padding(.leading, House.Spacing.sm + House.Control.tile + House.Spacing.sm)
-    }
-
-    /// Until the user flips the switch, Auto follows the call type, and the
-    /// row says so.
-    private var autoAssistDetail: String {
-        let callType = CallTypeStore.shared.active
-        guard AutoAssistSettings.runs(on: callType) else { return "Auto does not run on this call type" }
-        guard autoAssistStored == nil else { return LiveOption.autoAssist.detail }
-        return "Auto on for this call type"
-    }
-
-    private func livePanelToggle(_ option: LiveOption, _ isOn: Binding<Bool>, detail: String? = nil) -> some View {
-        Toggle(isOn: isOn) {
-            HStack(spacing: House.Spacing.sm) {
-                Image(systemName: option.icon)
-                    .font(House.TypeToken.label)
-                    .foregroundStyle(House.ColorToken.textSecondary)
-                    .frame(width: House.Control.tile)
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: HouseChatMetrics.chipGap) {
-                        Text(option.title)
-                            .font(House.TypeToken.label)
-                            .foregroundStyle(House.ColorToken.textPrimary)
-                        if option == .notes {
-                            Text("Default")
-                                .font(House.TypeToken.meta)
-                                .foregroundStyle(House.ColorToken.textTertiary)
-                        }
-                    }
-                    Text(detail ?? option.detail)
-                        .font(House.TypeToken.meta)
-                        .foregroundStyle(House.ColorToken.textTertiary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: House.Spacing.sm)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .toggleStyle(.switch)
-        .controlSize(.small)
-        .tint(House.ColorToken.textPrimary)
-        .padding(.horizontal, House.Spacing.sm)
-        .padding(.vertical, House.Spacing.xxs)
-        .frame(maxWidth: .infinity, minHeight: House.Control.row, alignment: .leading)
-    }
+    // MARK: - Prep note
 
     private var noteEditor: some View {
-        VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            sectionHeader("Prep note", detail: "Optional")
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: Binding(get: { store.note }, set: { store.note = $0 }))
-                    .font(RTIDesign.Font.meta).foregroundStyle(Color.overlayInk).scrollContentBackground(.hidden)
-                    .frame(height: 64).padding(6)
-                    .background(RoundedRectangle(cornerRadius: RTIDesign.Radius.row).fill(RTIDesign.Color.chipFill))
-                if store.note.isEmpty {
-                    Text("Anything extra for the assistant…")
-                        .font(RTIDesign.Font.meta).foregroundStyle(Color.overlayInkTertiary)
-                        .padding(.horizontal, 11).padding(.vertical, 13).allowsHitTesting(false)
-                }
-            }
-        }
+        SetupTextEditor(text: Binding(get: { store.note }, set: { store.note = $0 }),
+                        placeholder: "Anything extra for the assistant…", accessibilityLabel: "Prep note")
     }
 
     private func pick(_ item: VaultItem) {
@@ -792,5 +777,52 @@ struct SetupTabView: View {
     private func load() {
         clients = VaultWorkstreamStore.clients()
         projects = VaultWorkstreamStore.projects()
+    }
+}
+
+/// A disclosure that keeps its content on the page's own leading edge (the
+/// system DisclosureGroup indents it): a chevron, a `label` title and a
+/// `meta` summary of what it holds.
+struct SetupDisclosure<Content: View>: View {
+    let title: String
+    var detail: String?
+    @Binding var isExpanded: Bool
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.sm) {
+            Button { isExpanded.toggle() } label: {
+                HStack(spacing: House.Spacing.sm) {
+                    Image(systemName: "chevron.right")
+                        .font(House.TypeToken.micro.weight(.semibold))
+                        .foregroundStyle(House.ColorToken.textSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: House.Control.tile)
+                    Text(title)
+                        .font(House.TypeToken.label)
+                        .foregroundStyle(House.ColorToken.textPrimary)
+                        .setupLayoutMark("title.\(title)")
+                    if let detail {
+                        Text(detail)
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textTertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, SetupGrid.glyphInset)
+                .frame(minHeight: House.Control.compact)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(detail ?? "")
+            if isExpanded {
+                content
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
