@@ -28,7 +28,12 @@ struct OverlayPanelView: View {
     // wins (`AutoAssistSettings.isActive`), and its cards show in the rail.
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
-    @State private var tab: OverlayTab = .assist
+    /// The selected Live view, shared with the workspace sidebar.
+    @Bindable private var liveTabs = LiveTabState.shared
+    private var tab: OverlayTab {
+        get { liveTabs.selected }
+        nonmutating set { liveTabs.selected = newValue }
+    }
     @State private var hasVisitedTranscript = false
     /// The strip's rail sheet. Owned here, not by the strip, so widening the
     /// window or leaving the page closes it on purpose instead of tearing it
@@ -174,16 +179,27 @@ struct OverlayPanelView: View {
     }
 
     /// The tabs in a row under the header: Prepare, then the live tabs.
+    /// In the workspace the sidebar lists the views, so the row draws
+    /// nothing there; it still owns the tab routing below.
     private var tabsRow: some View {
-        HStack(spacing: House.Spacing.xxs) {
-            OverlaySetupButton(selection: $tab)
-            OverlayTabBar(selection: $tab, tabs: visibleTabs)
+        Group {
+            if embedded {
+                Color.clear.frame(height: 0)
+            } else {
+                HStack(spacing: House.Spacing.xxs) {
+                    OverlaySetupButton(selection: $liveTabs.selected)
+                    OverlayTabBar(selection: $liveTabs.selected, tabs: visibleTabs)
+                }
+                .padding(.horizontal, House.Spacing.sm)
+                .frame(height: House.Control.chip)
+            }
         }
-        .padding(.horizontal, House.Spacing.sm)
-        .frame(height: House.Control.chip)
-        .background(embedded ? House.ColorToken.surface : Color.clear)
+        .onAppear { liveTabs.visible = visibleTabs }
         // If the active tab gets turned off in Prepare, fall back to Assist.
-        .onChange(of: visibleTabs) { _, _ in normalizeSelection() }
+        .onChange(of: visibleTabs) { _, tabs in
+            liveTabs.visible = tabs
+            normalizeSelection()
+        }
         // The View menu (⌘1…⌘7) and commands switch tabs by posting a
         // notification with the target tab's rawValue.
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { note in
@@ -326,7 +342,7 @@ struct OverlayShellHeader: View {
     /// True when the workspace row is narrower than its standard width: the
     /// Listening only chip would then squeeze the title to a letter.
     static func foldsListeningOnly(width: CGFloat, inWorkspace: Bool) -> Bool {
-        inWorkspace && width < WorkspaceLayout.standardSize.width
+        inWorkspace && width < House.Layout.chatWidth
     }
 
     /// The title's column in the workspace header. Fixed, so the route
@@ -348,10 +364,10 @@ struct OverlayShellHeader: View {
         let foldsListening = listeningOnly && Self.foldsListeningOnly(
             width: width + (nativeTitlebar ? HouseChatMetrics.trafficLightInset : 0), inWorkspace: workspace != nil)
         return HStack(spacing: House.Spacing.xs) {
+            if let workspace { WorkspaceHeaderToggles(model: workspace) }
             OverlayHeaderTitle(status: status, stateOverride: foldsListening ? Self.listeningOnlyWord : nil)
                 .frame(minWidth: 0, maxWidth: workspace == nil ? House.Layout.chatRail : Self.workspaceTitleWidth,
                        alignment: .leading)
-            if let workspace { WorkspaceRouteSegments(model: workspace) }
             // Lowest priority: the title takes its column first, the drag
             // area what is left.
             Spacer(minLength: 0).background(WindowDragArea())

@@ -66,7 +66,7 @@ final class CompactChromeRenderProofTests: RenderProofTestCase {
         let recording = OverlayShellStatus(phase: .recording)
         let controls = NSHostingView(rootView: HStack(spacing: House.Spacing.xs) {
             Color.clear.frame(width: OverlayShellHeader.workspaceTitleWidth)
-            WorkspaceRouteSegments(model: model)
+            WorkspaceHeaderToggles(model: model)
             OverlayMicControl()
             OverlayVisualContextButton(isLive: true)
             OverlaySessionAuxButton(phase: .recording)

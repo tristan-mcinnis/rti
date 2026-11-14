@@ -22,7 +22,7 @@ public enum OverlayAppearanceDefaults {
     /// A fresh profile follows macOS until the user selects a specific appearance.
     public static let defaultAppearanceMode = RTIAppearanceMode.system.rawValue
     public static let defaultContrast: Double = 60
-    public static let defaultUIFontSize: Double = 14
+    public static let defaultUIFontSize: Double = 15
     // The overlay's single-row chrome and footer remain legible at 600 pt.
     // Below that, tab names and shortcut labels compress into wrapped glyphs.
     public static let widthRange: ClosedRange<Double> = 600...800

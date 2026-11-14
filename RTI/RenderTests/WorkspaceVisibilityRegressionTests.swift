@@ -108,7 +108,7 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
             let status = OverlayShellStatus(phase: .idle, processingStatus: nil)
             let controls = NSHostingView(rootView: HStack(spacing: House.Spacing.xs) {
                 OverlayHeaderTitle(status: status)
-                WorkspaceRouteSegments(model: .shared)
+                WorkspaceHeaderToggles(model: .shared)
                 OverlayMicControl()
                 OverlayVisualContextButton(isLive: false)
                 OverlayRecordButton(status: status, showsTitle: true, showsKeys: false)

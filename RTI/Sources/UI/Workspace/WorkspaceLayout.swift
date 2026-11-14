@@ -3,8 +3,10 @@ import HouseDesign
 
 /// One geometry for every workspace page. Navigation never resizes the window.
 enum WorkspaceLayout {
+    /// The chat width plus the sidebar, so the Live side panel keeps its
+    /// full rail beside the transcript with the sidebar open.
     static let standardSize = NSSize(
-        width: House.Layout.chatWidth,
+        width: House.Layout.chatWidth + House.Layout.chatRail,
         height: House.Layout.chatHeight + House.Control.row
     )
     static let minimumSize = NSSize(

@@ -47,9 +47,10 @@ enum OverlayInk {
         }
     }
 
-    /// contrast 35 → 0.74, 60 (default) → 0.90, 85 → 1.0.
+    /// contrast 35 → 0.84, 60 (default) → 1.0: the default is full ink, so
+    /// text is near-black, not grey (2026-11-14 review).
     static func primaryAlpha(_ contrast: CGFloat) -> CGFloat {
-        min(1.0, 0.52 + contrast * 0.0064)
+        min(1.0, 0.616 + contrast * 0.0064)
     }
 }
 

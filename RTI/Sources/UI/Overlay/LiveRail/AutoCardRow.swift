@@ -44,18 +44,6 @@ struct AutoCardRow: View {
                         .accessibilityLabel("Pinned")
                 }
                 Spacer(minLength: House.Spacing.xs)
-                // A dimmed card keeps its actions out of sight until the
-                // pointer is on it; they stay reachable by keyboard.
-                HStack(spacing: House.Spacing.xxs) {
-                    if let pin = actions.pin, !pinned {
-                        LiveRailGlyphButton(icon: "pin", help: "Pin", action: pin)
-                    }
-                    LiveRailGlyphButton(icon: "doc.on.doc", help: "Copy line", action: actions.copy)
-                    if let dismiss = actions.dismiss {
-                        LiveRailGlyphButton(icon: "xmark", help: "Dismiss", action: dismiss)
-                    }
-                }
-                .opacity(dimmed && !hovering ? 0 : 1)
             }
             if compact {
                 Text(textZH ?? text)
@@ -106,6 +94,19 @@ struct AutoCardRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
+            // Actions under the card, as under an answer (2026-11-14). A
+            // dimmed card keeps them out of sight until the pointer is on it;
+            // they stay reachable by keyboard.
+            HStack(spacing: House.Spacing.xxs) {
+                LiveRailGlyphButton(icon: "doc.on.doc", help: "Copy line", action: actions.copy)
+                if let pin = actions.pin, !pinned {
+                    LiveRailGlyphButton(icon: "pin", help: "Pin", action: pin)
+                }
+                if let dismiss = actions.dismiss {
+                    LiveRailGlyphButton(icon: "xmark", help: "Dismiss", action: dismiss)
+                }
+            }
+            .opacity(dimmed && !hovering ? 0 : 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())

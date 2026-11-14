@@ -85,7 +85,7 @@ final class SetupRenderProofTests: RenderProofTestCase {
         try prepareResearch()
         for (label, width) in widths {
             let frames = try checkGrid(.research, width: width, height: 720)
-            for name in ["text.project", "text.calendarLine", "text.guide", "text.status",
+            for name in ["text.project", "text.calendarLine", "text.guide",
                          "title.Codebook and stimulus", "title.More options"]
             {
                 XCTAssertNotNil(frames[name], "\(name) missing at \(label)")
@@ -236,9 +236,9 @@ final class SetupRenderProofTests: RenderProofTestCase {
 
     func testQuietLinesSayWhatIsSet() {
         XCTAssertEqual(SetupTabView.liveStatusLine(notes: true, auto: true, guideNotes: true),
-                       "Notes on · Auto on · Guide notes on. Change in More options.")
+                       "Notes on · Auto on · Guide notes on")
         XCTAssertEqual(SetupTabView.liveStatusLine(notes: false, auto: nil, guideNotes: false),
-                       "Notes off. Change in More options.")
+                       "Notes off")
         XCTAssertEqual(SetupTabView.researchExtrasSummary(seeds: 0, stimulusItems: 0), "Optional")
         XCTAssertEqual(SetupTabView.researchExtrasSummary(seeds: 2, stimulusItems: 1), "2 words to watch · 1 stimulus item")
     }

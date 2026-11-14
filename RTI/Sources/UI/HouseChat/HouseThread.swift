@@ -532,10 +532,9 @@ private struct AssistAnswerRow: View, Equatable {
             if !sources.isEmpty {
                 sourceList(sources)
             }
+            copyButton
         }
-        .padding(.trailing, House.Control.input + House.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .topTrailing) { copyButton }
         .contentShape(Rectangle())
         .hoverHighlight($hovering)
         .task(id: copied) {
@@ -545,11 +544,10 @@ private struct AssistAnswerRow: View, Equatable {
         }
     }
 
-    /// Copy, always at the row's top right: drawn in every state and always
-    /// clickable (user preference, 2026-09-14 — a control that appears only
-    /// on hover is a control that cannot be found). The hover only deepens
-    /// its ink. The fixed action gutter keeps prose clear of both the glyph
-    /// and the Copied label without moving the text after a click.
+    /// Copy, in the action row directly under the answer, as in the Codex
+    /// and Claude apps (2026-11-14 review): a bare glyph, drawn in every
+    /// state and always clickable (2026-09-14: a control that appears only
+    /// on hover cannot be found). The hover only deepens its ink.
     private var copyButton: some View {
         Button {
             copy(text)
@@ -563,13 +561,8 @@ private struct AssistAnswerRow: View, Equatable {
                     Text("Copied").font(House.TypeToken.meta)
                 }
             }
-            .foregroundStyle(hovering || copied ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
-            .padding(.horizontal, House.Spacing.xs)
-            .frame(minWidth: House.Control.compact, minHeight: House.Control.compact)
-            .background(
-                RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous)
-                    .fill(House.ColorToken.surfaceRaised)
-            )
+            .foregroundStyle(hovering || copied ? House.ColorToken.textSecondary : House.ColorToken.textTertiary)
+            .frame(minWidth: House.Control.compact, minHeight: House.Control.compact, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

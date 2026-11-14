@@ -99,7 +99,8 @@ struct SetupTabView: View {
                 if isResearch {
                     section("Guide") { guideSection }
                 }
-                section("Audio") { audioSection }
+                // Audio, live aids, speakers and the prep note fold into
+                // More options; its line says what runs (2026-11-14 review).
                 moreOptions
             }
             .frame(maxWidth: Self.columnWidth, alignment: .leading)
@@ -566,8 +567,6 @@ struct SetupTabView: View {
                           isOn: Binding(get: { Self.listeningOnlyToggleIsOn }, set: { Self.setListeningOnlyToggle($0) }))
                     .help("Record call audio with your microphone muted.")
             }
-            footnote(liveStatusLine, mark: "text.status")
-                .accessibilityLabel("Live aids: \(liveStatusLine)")
         }
     }
 
@@ -589,16 +588,17 @@ struct SetupTabView: View {
         var parts = ["Notes \(notes ? "on" : "off")"]
         if let auto { parts.append("Auto \(auto ? "on" : "off")") }
         if guideNotes { parts.append("Guide notes on") }
-        return parts.joined(separator: " · ") + ". Change in More options."
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - More options
 
     private var moreOptions: some View {
-        SetupDisclosure(title: "More options", detail: "Live aids, speakers, prep note",
+        SetupDisclosure(title: "More options", detail: liveStatusLine,
                         isExpanded: $moreOptionsOpen)
         {
             VStack(alignment: .leading, spacing: House.Spacing.xl) {
+                section("Audio") { audioSection }
                 section("Live aids") { liveAidsGroup }
                 section("Speakers") { speakerGroup.disabled(session.phase == .finishing) }
                 section("Prep note") { noteEditor }

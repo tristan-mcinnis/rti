@@ -299,12 +299,16 @@ struct LiveAssistRail: View {
 
     private var gapsSection: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            SlateSectionLabel(text: "Go back to")
+            SlateSectionLabel(text: "Missed")
             if content.gaps.isEmpty {
                 LiveRailEmptyLine("Nothing missed so far.")
             } else {
-                ForEach(content.gaps) { gap in
+                // Two at most: the side panel is read in a glance (2026-11-14).
+                ForEach(content.gaps.prefix(LiveRailLimits.gaps)) { gap in
                     LiveRailGapRow(gap: gap, enabled: content.isRecording) { actions.jump(gap.qid) }
+                }
+                if content.gaps.count > LiveRailLimits.gaps {
+                    LiveRailEmptyLine("\(content.gaps.count - LiveRailLimits.gaps) more in the Guide.")
                 }
             }
         }
@@ -322,7 +326,8 @@ struct LiveAssistRail: View {
         } else {
             LiveRailLane(
                 title: content.nowTitle,
-                cards: content.now,
+                // One suggestion at a time on research calls (2026-11-14).
+                cards: content.kind == .research ? Array(content.now.prefix(1)) : content.now,
                 waiting: content.nowWaiting,
                 requestedID: content.requestedID,
                 // With a guide on screen, older asks fold to one line so the
@@ -640,43 +645,30 @@ private struct LiveRailEarlier: View {
 /// and themes as chips with a quote count and a tone dot. Emic names come
 /// first, the English gloss after. The topic that moved last is lit for a
 /// moment.
+/// What the room is working through, in words: tensions, votes, hypotheses
+/// and client questions, three at most. Brand and theme chips, and their tone
+/// dots, live in the Codebook, not here (2026-11-14 review: the dots had no
+/// legend and the chips were noise during a group).
 private struct LiveRailTopics: View {
     let map: ResearchTopicMap
     @State private var lit: UUID?
     @State private var lastNewest: UUID?
 
+    private var topics: [ResearchTopic] {
+        map.sections.filter { !$0.group.isChips }.flatMap(\.topics)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xs) {
-            HStack(spacing: House.Spacing.xs) {
-                SlateSectionLabel(text: "Topic map")
-                if map.total > 0 {
-                    Text("\(map.total)")
-                        .font(House.TypeToken.caption.monospacedDigit())
-                        .foregroundStyle(House.ColorToken.textTertiary)
-                }
-            }
-            if map.sections.isEmpty {
-                LiveRailEmptyLine("Themes, tensions and votes from the room show here.")
+            SlateSectionLabel(text: "From the room")
+            if topics.isEmpty {
+                LiveRailEmptyLine("Tensions and open questions from the room show here.")
             } else {
-                ForEach(Array(map.sections.enumerated()), id: \.element.group) { index, section in
-                    VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-                        Text(section.group.title)
-                            .font(House.TypeToken.caption)
-                            .foregroundStyle(House.ColorToken.textTertiary)
-                        if section.group.isChips {
-                            LiveRailFlowLayout(spacing: House.Spacing.xxs) {
-                                ForEach(section.topics) { topic in
-                                    LiveRailTopicChip(topic: topic, lit: lit == topic.id)
-                                }
-                                if index == map.sections.count - 1, map.hidden > 0 { more }
-                            }
-                        } else {
-                            ForEach(section.topics) { topic in
-                                LiveRailTopicRow(topic: topic, lit: lit == topic.id)
-                            }
-                            if index == map.sections.count - 1, map.hidden > 0 { more }
-                        }
-                    }
+                ForEach(topics.prefix(LiveRailLimits.topics)) { topic in
+                    LiveRailTopicRow(topic: topic, lit: lit == topic.id)
+                }
+                if topics.count > LiveRailLimits.topics {
+                    LiveRailEmptyLine("\(topics.count - LiveRailLimits.topics) more in the Codebook.")
                 }
             }
         }
@@ -694,14 +686,12 @@ private struct LiveRailTopics: View {
         }
     }
 
-    private var more: some View {
-        Text("+\(map.hidden)")
-            .font(House.TypeToken.meta.monospacedDigit())
-            .foregroundStyle(House.ColorToken.textTertiary)
-            .padding(.horizontal, House.Spacing.xs)
-            .frame(height: House.Control.tile)
-            .accessibilityLabel("\(map.hidden) more topics")
-    }
+}
+
+/// How much the side panel shows at once.
+enum LiveRailLimits {
+    static let gaps = 2
+    static let topics = 3
 }
 
 /// The emic name, then the English gloss in a quieter tone.
@@ -715,38 +705,6 @@ private struct LiveRailTopicName: View {
         } else {
             Text(topic.name).foregroundStyle(House.ColorToken.textPrimary)
         }
-    }
-}
-
-private struct LiveRailTopicChip: View {
-    let topic: ResearchTopic
-    let lit: Bool
-
-    var body: some View {
-        HStack(spacing: House.Spacing.xxs) {
-            SlateStatusDot(color: topic.valence.dotColor)
-            LiveRailTopicName(topic: topic)
-                .font(House.TypeToken.meta)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Text("\(topic.mentions)")
-                .font(House.TypeToken.meta.monospacedDigit())
-                .foregroundStyle(House.ColorToken.textTertiary)
-        }
-        .padding(.horizontal, House.Spacing.xs)
-        .frame(height: House.Control.tile)
-        .frame(maxWidth: LiveRailLayout.width - House.Spacing.xl, alignment: .leading)
-        .background {
-            if lit {
-                RowHighlight(isSelected: true, radius: House.Radius.sm)
-            } else {
-                RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous).fill(House.ColorToken.chipFill)
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(topic.spoken)
-        .help(topic.spoken)
     }
 }
 
@@ -765,14 +723,11 @@ private struct LiveRailTopicRow: View {
                 .font(House.TypeToken.caption)
                 .foregroundStyle(House.ColorToken.textSecondary)
         }
-        .padding(.horizontal, House.Spacing.xs)
         .padding(.vertical, House.Spacing.xxs)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             if lit {
                 RowHighlight(isSelected: true, radius: House.Radius.sm)
-            } else {
-                RoundedRectangle(cornerRadius: House.Radius.sm, style: .continuous).fill(House.ColorToken.chipFill)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -807,76 +762,5 @@ private struct LiveRailTopicRow: View {
 private extension String {
     var capitalizedFirst: String {
         prefix(1).uppercased() + dropFirst()
-    }
-}
-
-extension ResearchValence {
-    /// The tone dot. The chip's label and tooltip say the word too.
-    var dotColor: Color {
-        switch self {
-        case .positive: House.ColorToken.success
-        case .negative: House.ColorToken.danger
-        case .mixed: House.ColorToken.warning
-        case .neutral: House.ColorToken.textTertiary
-        }
-    }
-}
-
-/// Lays chips left to right and wraps to a new row when the next one does
-/// not fit.
-struct LiveRailFlowLayout: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        let rows = rows(for: subviews, width: width)
-        let used = rows.map(\.width).max() ?? 0
-        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
-        return CGSize(width: proposal.width ?? used, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
-        var y = bounds.minY
-        for row in rows(for: subviews, width: bounds.width) {
-            var x = bounds.minX
-            for index in row.indices {
-                let size = fitted(subviews[index], width: bounds.width)
-                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-                x += size.width + spacing
-            }
-            y += row.height + spacing
-        }
-    }
-
-    private struct Row {
-        var indices: [Int] = []
-        var width: CGFloat = 0
-        var height: CGFloat = 0
-    }
-
-    private func fitted(_ subview: LayoutSubview, width: CGFloat) -> CGSize {
-        let ideal = subview.sizeThatFits(.unspecified)
-        guard ideal.width > width else { return ideal }
-        return subview.sizeThatFits(ProposedViewSize(width: width, height: ideal.height))
-    }
-
-    private func rows(for subviews: Subviews, width: CGFloat) -> [Row] {
-        var rows: [Row] = []
-        var current = Row()
-        for index in subviews.indices {
-            let size = fitted(subviews[index], width: width)
-            let added = current.indices.isEmpty ? size.width : current.width + spacing + size.width
-            if added > width, !current.indices.isEmpty {
-                rows.append(current)
-                current = Row()
-            }
-            current.width = current.indices.isEmpty ? size.width : current.width + spacing + size.width
-            current.height = max(current.height, size.height)
-            current.indices.append(index)
-        }
-        if !current.indices.isEmpty {
-            rows.append(current)
-        }
-        return rows
     }
 }

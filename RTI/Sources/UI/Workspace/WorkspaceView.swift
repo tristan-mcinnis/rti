@@ -20,6 +20,7 @@ struct WorkspaceView: View {
     var callTypes: CallTypeStore = .shared
     var nativeTitlebar = false
     private let session = SessionCoordinator.shared
+    @AppStorage(WorkspaceSidebarSettings.visibleKey) private var sidebarVisible = true
 
     /// The band under the native title-row header matches the bar AppKit drew.
     private var headerHeight: CGFloat {
@@ -34,6 +35,10 @@ struct WorkspaceView: View {
                 WorkspaceWindowHeader(model: model)
             }
             sessionChatContext
+            HStack(spacing: 0) {
+            if sidebarVisible {
+                WorkspaceSidebar(model: model)
+            }
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
                 // position survive trips to the archive or preferences.
@@ -52,8 +57,9 @@ struct WorkspaceView: View {
             .clipShape(RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous))
             .slateRaisedCard(cornerRadius: House.Radius.lg)
             .padding(House.Spacing.xs)
+            }
         }
-        .background(House.ColorToken.surface)
+        .background(House.ColorToken.surfaceSunken)
         .ignoresSafeArea(.container, edges: .top)
         .onReceive(NotificationCenter.default.publisher(for: .rtiSelectTab)) { _ in model.select(.live) }
         .onReceive(NotificationCenter.default.publisher(for: .rtiFindInSession)) { _ in
@@ -166,40 +172,6 @@ struct WorkspaceWindowHeader: View {
     var body: some View {
         OverlayShellHeader(status: OverlayShellStatus(phase: session.phase.livePhase, processingStatus: session.postProcessingStatus),
                            fill: House.ColorToken.surfaceSunken, workspace: model, nativeTitlebar: nativeTitlebar)
-    }
-}
-
-struct WorkspaceRouteSegments: View {
-    @Bindable var model: WorkspaceModel
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(WorkspaceModel.Page.allCases.enumerated()), id: \.element.id) { index, page in
-                Button { model.select(page) } label: {
-                    Text(page.rawValue).font(House.TypeToken.meta).lineLimit(1)
-                        .padding(.horizontal, House.Spacing.xs)
-                        .frame(height: House.Control.chip)
-                        .foregroundStyle(model.page == page ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
-                        .slateRaisedTile(model.page == page, cornerRadius: House.Radius.sm)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option])
-                .accessibilityIdentifier("workspace.route." + page.rawValue)
-                .accessibilityLabel(page.rawValue)
-                .accessibilityValue(model.page == page ? "Selected" : "")
-                .accessibilityAddTraits(model.page == page ? .isSelected : [])
-                .help("\(page.rawValue) (⌥⌘\(index + 1))")
-            }
-            if model.page == .sessions || model.page == .chats {
-                QuickAIGlyphButton(symbol: "sidebar.left", font: HouseChatType.glyphSmall,
-                    color: House.ColorToken.textSecondary, label: model.sessions.isRailVisible ? "Hide library list" : "Show library list",
-                    help: "Show or hide the library list (⌃⌘S)") { model.sessions.toggleRail() }
-            }
-        }
-        .background(House.ColorToken.surface, in: RoundedRectangle(cornerRadius: House.Radius.sm))
-        .fixedSize()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Workspace navigation")
     }
 }
 

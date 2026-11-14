@@ -41,6 +41,7 @@ struct ResearchCodebookTab: View {
     @State private var renamed: ResearchCard?
     @State private var renameText = ""
     @State private var archivedQuote: ResearchQuote?
+    @State private var open: Set<ResearchCard.ID> = []
 
     private var groups: [String] {
         Set(controller.book.sessions.map { $0.group ?? $0.id }).sorted()
@@ -56,11 +57,14 @@ struct ResearchCodebookTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.sm) {
             HStack {
+                // The stored tags stay; the words say what each view is.
                 Picker("View", selection: $section) {
-                    ForEach(["Cards", "Respondents", "Different from last group"], id: \.self) { Text($0) }
-                }.pickerStyle(.menu)
+                    Text("Ideas").tag("Cards")
+                    Text("Respondents").tag("Respondents")
+                    Text("Compare with last group").tag("Different from last group")
+                }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 Spacer()
-                if section != "Different from last group" {
+                if section != "Different from last group", groups.count > 1 {
                     Picker("Group", selection: $group) {
                         Text("All groups").tag(String?.none)
                         ForEach(groups, id: \.self) { Text($0).tag(Optional($0)) }
@@ -80,13 +84,16 @@ struct ResearchCodebookTab: View {
                 Text(notice).font(House.TypeToken.meta)
             }
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: House.Spacing.md) {
+                LazyVStack(alignment: .leading, spacing: section == "Cards" ? 0 : House.Spacing.md) {
                     if section == "Different from last group" {
                         comparison
                     } else if section == "Respondents" {
                         respondents
                     } else if cards.isEmpty {
-                        Text("Add words to watch on Prepare, or record a Research call to collect quotes.")
+                        Text("Ideas from the room collect here during a research call, ranked by how often they come up. Add brands and words to watch on Prepare.")
+                            .font(House.TypeToken.bodySmall)
+                            .foregroundStyle(House.ColorToken.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     } else {
                         ForEach(cards) { card in
                             if group == nil || !visible(card).isEmpty || !visibleVotes(card).isEmpty {
@@ -97,7 +104,8 @@ struct ResearchCodebookTab: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(House.Spacing.sm)
+        .padding(.horizontal, House.Spacing.lg)
+        .padding(.vertical, House.Spacing.sm)
         .task(id: MeetingContextStore.shared.workstreamItem?.id) { await controller.browseSelectedProject() }
         .sheet(item: $archivedQuote) { quote in ResearchArchivedEvidence(quote: quote, folder: controller.book.sessions.first { $0.id == quote.sessionID }?.folder) }
         .alert("Rename card", isPresented: Binding(get: { renamed != nil }, set: {
@@ -124,45 +132,74 @@ struct ResearchCodebookTab: View {
         ResearchCodebook.votes(card, group: group, sessions: controller.book.sessions)
     }
 
+    /// One idea: its words, gloss and count on one row; open, its summary
+    /// once and then its quotes, each with when and where it was said
+    /// (2026-11-14 review: one ranked reading list, nothing repeated).
     private func cardView(_ card: ResearchCard) -> some View {
         let entries = visible(card)
-        return DisclosureGroup {
-            if !card.summary.isEmpty {
-                Text(card.summary).textSelection(.enabled)
-            }
-            ForEach(controller.book.sessions.sorted { $0.startedAt < $1.startedAt }) { session in
-                let rows = entries.filter { $0.evidence.sessionID == session.id }
-                if !rows.isEmpty {
-                    // Count quotes, never people.
-                    let quotes = rows.count + rows.filter { $0.counter != nil }.count
-                    Text("\(session.group ?? session.folder) · \(quotes) \(quotes == 1 ? "quote" : "quotes")").font(House.TypeToken.label)
-                    Text(ResearchValence.allCases.map { value in "\(value.rawValue) \(rows.filter { $0.valence == value }.count)" }.joined(separator: " · ")).font(House.TypeToken.meta)
-                    ForEach(rows.sorted { $0.evidence.offsetMs < $1.evidence.offsetMs }) { entry in quoteRow(entry) }
+        let isOpen = open.contains(card.id)
+        return VStack(alignment: .leading, spacing: House.Spacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: House.Spacing.sm) {
+                Button {
+                    if isOpen { open.remove(card.id) } else { open.insert(card.id) }
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
+                        Image(systemName: "chevron.right")
+                            .font(House.TypeToken.caption)
+                            .foregroundStyle(House.ColorToken.textTertiary)
+                            .rotationEffect(.degrees(isOpen ? 90 : 0))
+                            .accessibilityHidden(true)
+                        ResearchCodeLabel(card: card, entries: entries, votes: visibleVotes(card))
+                        Spacer(minLength: House.Spacing.sm)
+                    }
+                    .contentShape(Rectangle())
                 }
-            }
-        } label: {
-            HStack(alignment: .top) {
-                if card.pinned {
-                    Image(systemName: "pin.fill").accessibilityLabel("Pinned")
-                }
-                ResearchCodeLabel(card: card, entries: entries, votes: visibleVotes(card))
-                Spacer()
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(card.name), \(isOpen ? "open" : "closed")")
                 Menu {
                     Button(card.pinned ? "Unpin" : "Pin") { edit(.pin(card.id, !card.pinned)) }
                     Button("Rename…") { renameText = card.name; renamed = card }
                     Menu("Merge into") { ForEach(cards.filter { $0.id != card.id }) { into in Button(into.name) { edit(.merge(card.id, into: into.id)) } } }
                     Button("Drop card", role: .destructive) { edit(.drop(card.id)) }
-                } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Edit \(card.name)")
+                } label: {
+                    Image(systemName: "ellipsis").foregroundStyle(House.ColorToken.textTertiary)
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .accessibilityLabel("Edit \(card.name)")
+            }
+            if isOpen {
+                VStack(alignment: .leading, spacing: House.Spacing.sm) {
+                    if !card.summary.isEmpty {
+                        Text(card.summary)
+                            .font(House.TypeToken.bodySmall)
+                            .foregroundStyle(House.ColorToken.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                    ForEach(entries.sorted { ($0.evidence.sessionID, $0.evidence.offsetMs) < ($1.evidence.sessionID, $1.evidence.offsetMs) }) { entry in
+                        quoteRow(entry)
+                    }
+                }
+                .padding(.leading, House.Spacing.lg)
             }
         }
+        .padding(.vertical, House.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) { HouseDivider() }
     }
 
     private func edit(_ change: ResearchCodebook.Edit) {
         Task { await controller.edit(change) }
     }
 
+    /// A quote: the respondent's own words, then when, where and under
+    /// which question. A click jumps to it in the live transcript, or opens
+    /// the archived transcript at that line.
     private func quoteRow(_ entry: ResearchEntry) -> some View {
         let quote = entry.evidence
+        let session = controller.book.sessions.first { $0.id == quote.sessionID }
+        let place = [GuideExtraction.locator(quote.offsetMs), session?.group, quote.questionID, quote.markerLabel]
+            .compactMap(\.self).joined(separator: " · ")
         return Button {
             if SessionCoordinator.shared.isRunning, SessionCoordinator.shared.currentSessionId == quote.sessionID {
                 controller.pendingJump = quote.offsetMs
@@ -172,27 +209,28 @@ struct ResearchCodebookTab: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-                Text([entry.stance.map { $0 == .support ? "For:" : "Against:" }, entry.point].compactMap(\.self).joined(separator: " "))
+                if let stance = entry.stance {
+                    Text(stance == .support ? "For" : "Against")
+                        .font(House.TypeToken.caption)
+                        .foregroundStyle(House.ColorToken.textTertiary)
+                }
+                Text(quote.original)
                     .font(House.TypeToken.bodySmall)
-                Text("[\(GuideExtraction.locator(quote.offsetMs)), \(quote.speaker.label)] \(quote.original)").font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let counter = entry.counter {
-                    Text("vs [\(GuideExtraction.locator(counter.offsetMs)), \(counter.speaker.label)] \(counter.original)").font(House.TypeToken.meta)
+                    Text("vs \(GuideExtraction.locator(counter.offsetMs))  \(counter.original)")
+                        .font(House.TypeToken.bodySmall)
+                        .foregroundStyle(House.ColorToken.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                if entry.asrDoubt == true {
-                    Text("May be a speech-recognition error").font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
-                }
-                let context = [quote.questionID, quote.markerLabel, quote.shownCodes.map { "Shown: " + $0.joined(separator: ", ") }].compactMap(\.self)
-                if let codes = quote.mentionedCodes, !codes.isEmpty {
-                    Text("Mentioned: " + codes.joined(separator: ", ")).font(House.TypeToken.meta)
-                }
-                if quote.anchorNeedsReview == true {
-                    Text("Upgraded locator needs review").font(House.TypeToken.meta)
-                }
-                if !context.isEmpty {
-                    Text(context.joined(separator: " · ")).font(House.TypeToken.meta)
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }.buttonStyle(.plain).help("Jump to this turn in the transcript")
+                Text(entry.asrDoubt == true ? place + " · may be misheard" : place)
+                    .font(House.TypeToken.meta)
+                    .foregroundStyle(House.ColorToken.textTertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain).help("Show this line in its transcript")
     }
 
     @ViewBuilder private var comparison: some View {
@@ -274,13 +312,16 @@ private struct ResearchArchivedEvidence: View {
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.sm) {
             HStack { Text("Source transcript").font(House.TypeToken.label); Spacer(); Button("Done") { dismiss() } }
-            Text("[\(GuideExtraction.locator(quote.offsetMs)), \(quote.speaker.label)] \(quote.original)").textSelection(.enabled)
             if turns.isEmpty {
-                Text("The archived transcript could not be opened. The cited original is shown above.").font(House.TypeToken.meta)
+                Text("[\(GuideExtraction.locator(quote.offsetMs)), \(quote.speaker.label)] \(quote.original)").textSelection(.enabled)
+                Text("The archived transcript could not be opened, so only the quote is shown.").font(House.TypeToken.meta)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView { LazyVStack(alignment: .leading, spacing: House.Spacing.xs) { ForEach(turns) { row in
+                        // The quoted line reads in full ink; the lines around it step back.
                         Text("[\(row.timestamp), \(row.speaker)] \(row.text)").textSelection(.enabled).id(row.id)
+                            .foregroundStyle(row.id == nearest ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
+                            .fontWeight(row.id == nearest ? .medium : .regular)
                     } } }
                     .onAppear {
                         if let nearest {
@@ -321,9 +362,13 @@ struct ResearchCodeLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
             HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
+                if card.pinned {
+                    Image(systemName: "pin.fill").font(House.TypeToken.caption)
+                        .foregroundStyle(House.ColorToken.textTertiary).accessibilityLabel("Pinned")
+                }
                 Text(card.name).font(House.TypeToken.label).foregroundStyle(House.ColorToken.textPrimary)
                 if let gloss = card.gloss {
-                    Text(gloss).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textSecondary)
+                    Text(gloss).font(House.TypeToken.bodySmall).foregroundStyle(House.ColorToken.textSecondary)
                 }
             }
             Text(meta).font(House.TypeToken.meta).foregroundStyle(House.ColorToken.textTertiary)
@@ -332,10 +377,11 @@ struct ResearchCodeLabel: View {
     }
 
     private var meta: String {
-        var parts = [card.type.label, card.seeded ? "seeded" : "emerged"]
+        // The type in words and the count; seeded or emerged and the guide
+        // questions stay in the file, not on the row (2026-11-14 review).
+        var parts = [card.type.label.capitalizedFirstLetter]
         if card.type != .vote { parts.append("\(quotes) \(quotes == 1 ? "quote" : "quotes")") }
         if let provenance = card.provenance, provenance != .spontaneous { parts.append(provenance.label) }
-        if let qids = card.qids, !qids.isEmpty { parts.append(qids.prefix(3).joined(separator: ", ")) }
         return parts.joined(separator: " · ")
     }
 
@@ -363,5 +409,11 @@ struct ResearchCodeLabel: View {
         default:
             EmptyView()
         }
+    }
+}
+
+private extension String {
+    var capitalizedFirstLetter: String {
+        prefix(1).uppercased() + dropFirst()
     }
 }
