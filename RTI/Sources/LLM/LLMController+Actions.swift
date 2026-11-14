@@ -39,10 +39,20 @@ extension LLMController {
         }
         let guide = GuideSessionController.shared
         let configured = UserDefaults.standard.object(forKey: action.settingsKey) as? Int
-        let minutes = max(1, configured ?? 10)
         let nowMs = session.startedAt.map { max(0, Int(Date().timeIntervalSince($0) * 1000)) } ?? 0
-        let sources = GuideTranscript.liveSources()
-        let end = max(nowMs, sources.last?.endMs ?? 0)
+        // Themes and tensions are about the whole call unless the user set a
+        // window for them in Settings; a stored 0 is the whole call too.
+        let wholeCall = configured == 0 || (configured == nil && action.readsWholeCall)
+        let minutes = wholeCall ? nowMs / 60000 + 1 : max(1, configured ?? 10)
+        let allSources = GuideTranscript.liveSources()
+        let end = max(nowMs, allSources.last?.endMs ?? 0)
+        // A whole-call list keeps its newest turns within the cap (each turn
+        // carries about 120 characters of fields besides its words).
+        var budget = TranscriptScope.wholeCallCharacterCap
+        let sources = wholeCall ? Array(allSources.reversed().prefix { source in
+            budget -= source.turn.text.count + 120
+            return budget >= 0
+        }.reversed()) : allSources
         let cutoff = max(0, end - min(minutes, Int.max / 60_000) * 60_000)
         let turns: [ResearchModeration.Turn] = sources.compactMap { source in
             let turn = source.turn
@@ -142,6 +152,7 @@ extension LLMController {
             performSend(
                 userInput: userInput,
                 action: "Ask",
+                fullTranscript: TranscriptScope.wantsWholeCall(userInput),
                 referencedDocuments: prepared.references,
                 initialTrace: prepared.references.isEmpty ? nil : label,
                 attachments: Self.attachmentRefs(references: prepared.references),
@@ -168,6 +179,7 @@ extension LLMController {
             performSend(
                 userInput: userInput,
                 action: "Ask",
+                fullTranscript: TranscriptScope.wantsWholeCall(userInput),
                 referencedDocuments: prepared.references,
                 attachments: Self.attachmentRefs(references: prepared.references),
                 sourcePayloads: freshPayloads,
@@ -210,6 +222,7 @@ extension LLMController {
             performSend(
                 userInput: userInput,
                 action: "Ask",
+                fullTranscript: TranscriptScope.wantsWholeCall(userInput),
                 referencedDocuments: prepared.references,
                 retrievalContext: retrieval.modelContextForQuestion,
                 initialTrace: retrieval.trace,
@@ -305,7 +318,7 @@ extension LLMController {
     /// (⌘⌥R and the ⌘⏎ primary action both take the default).
     func sendRecap(depth: RecapDepth? = nil) {
         guard hasLiveTranscriptForRecap() else { return }
-        performSend(userInput: PromptStore.shared.recap(depth ?? recapDepth), action: "Recap")
+        performSend(userInput: PromptStore.shared.recap(depth ?? recapDepth), action: "Recap", fullTranscript: true)
     }
 
     /// Quick recap: the last five minutes, one or two bullets — the "catch me

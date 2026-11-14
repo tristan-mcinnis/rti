@@ -9,6 +9,11 @@ public struct ResearchModeration: Sendable {
         case echo = "probe"
         case themes
 
+        /// Themes and tensions read the whole call unless a window is set.
+        public var readsWholeCall: Bool {
+            self == .themes || self == .tension
+        }
+
         public var settingsKey: String {
             "rti.research.\(rawValue).minutes"
         }

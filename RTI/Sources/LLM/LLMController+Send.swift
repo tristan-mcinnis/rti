@@ -945,11 +945,12 @@ extension LLMController {
         // Labels come from the speaker id, as in the Transcript tab, so "Speaker
         // 2" in a question and in the answer is the person the tab shows.
         let names = SpeakerNameStore.shared.names
-        return TranscriptContext.format(
+        let text = TranscriptContext.format(
             windowed,
             label: { TranscriptContext.speakerLabel(for: $0, names: names) },
             noteLabel: "[my note]",
             includeTimestamps: SessionCoordinator.shared.isRunning
         )
+        return fullWindow ? TranscriptScope.fitted(text) : text
     }
 }

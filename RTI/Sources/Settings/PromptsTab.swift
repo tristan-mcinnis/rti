@@ -195,11 +195,13 @@ private struct PromptEditorView: View {
 private struct ResearchWindowPreference: View {
     @AppStorage private var minutes: Int
 
+    /// 0 is the whole call: the default for Emerging themes and Key tensions.
     init(action: ResearchModeration.Action) {
-        _minutes = AppStorage(wrappedValue: 10, action.settingsKey)
+        _minutes = AppStorage(wrappedValue: action.readsWholeCall ? 0 : 10, action.settingsKey)
     }
 
     var body: some View {
-        Stepper("Transcript window: \(minutes) min", value: $minutes, in: 1...1440)
+        Stepper(minutes == 0 ? "Transcript window: whole call" : "Transcript window: \(minutes) min",
+                value: $minutes, in: 0...1440)
     }
 }
