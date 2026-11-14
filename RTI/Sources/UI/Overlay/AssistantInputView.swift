@@ -427,10 +427,11 @@ struct AssistantInputView: View {
             focusField()
         }
         .onChange(of: llm.streaming) { _, streaming in
-            // The queued follow-up goes when the answer ends.
+            // The queued follow-up goes when the answer finishes. A failed,
+            // stopped or cancelled turn leaves it in the field, unsent.
             guard !streaming, isQueued else { return }
             isQueued = false
-            submit()
+            if llm.lastTurnCompleted { submit() }
         }
         .onAppear {
             guard seededCandidates == nil else { return }

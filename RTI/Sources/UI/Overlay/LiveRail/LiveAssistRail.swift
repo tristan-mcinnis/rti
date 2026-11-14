@@ -89,7 +89,8 @@ struct LiveRailContent: Equatable {
         kind == .research ? "Flags" : "Open threads"
     }
 
-    /// The strip's one line, such as "2 to ask · 1 to revisit · 14 topics".
+    /// The strip's one line, such as "2 to ask · 1 to revisit". Topics are
+    /// not counted: the brand and theme chips left the rail (2026-11-14).
     /// A gap is a question passed thin or skipped, so it is one to revisit,
     /// not one missed.
     var summary: String {
@@ -104,9 +105,6 @@ struct LiveRailContent: Equatable {
             }
             if !gaps.isEmpty {
                 parts.append("\(gaps.count) to revisit")
-            }
-            if let topics, topics.total > 0 {
-                parts.append(Self.count(topics.total, "topic"))
             }
         case .client:
             if !now.isEmpty {
@@ -299,7 +297,7 @@ struct LiveAssistRail: View {
 
     private var gapsSection: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-            SlateSectionLabel(text: "Missed")
+            SlateSectionLabel(text: "Go back to")
             if content.gaps.isEmpty {
                 LiveRailEmptyLine("Nothing missed so far.")
             } else {

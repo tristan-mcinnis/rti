@@ -13,6 +13,11 @@ final class CalendarMeetingStore {
     private(set) var events: [CalendarMeeting] = []
     private(set) var suggestion: CalendarMeeting?
     private(set) var accessState: AccessState = .notDetermined
+    /// When `loadEvents` last read EventKit. The read takes about 200 ms on
+    /// the main actor, so the Prepare page reuses one under a minute old
+    /// (2026-11-14: every visit to Prepare paid it).
+    private var loadedAt: Date?
+    static let freshFor: TimeInterval = 60
 
     enum AccessState: Equatable {
         case notDetermined
@@ -21,6 +26,13 @@ final class CalendarMeetingStore {
     }
 
     private init() {}
+
+    /// `refresh`, unless events were read under a minute ago. For views that
+    /// appear often; session start calls `refresh` for an exact answer.
+    func refreshIfStale(at date: Date = Date()) {
+        if let loadedAt, accessState == .available, date.timeIntervalSince(loadedAt) < Self.freshFor { return }
+        refresh(at: date)
+    }
 
     func refresh(at date: Date = Date()) {
         switch EKEventStore.authorizationStatus(for: .event) {
@@ -68,6 +80,7 @@ final class CalendarMeetingStore {
             .map(CalendarMeeting.init(event:))
             .sorted { $0.startDate < $1.startDate }
         suggestion = CalendarMeetingMatcher.suggestion(for: events, sessionStart: date)
+        loadedAt = date
     }
 }
 

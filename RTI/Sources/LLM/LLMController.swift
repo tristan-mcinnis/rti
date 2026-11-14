@@ -35,8 +35,14 @@ final class LLMController {
     static let shared = LLMController()
 
     var entries: [ChatEntry] = []
+    /// True only when the last turn ended by finishing its answer: not by a
+    /// failure, Stop, Esc or a screen-policy cancel. A follow-up queued
+    /// during the turn is sent only then (2026-11-14: Esc and errors sent it).
+    var lastTurnCompleted = false
+
     var streaming = false {
         didSet {
+            if streaming, !oldValue { lastTurnCompleted = false }
             // The busy notice speaks of the running turn. Once no turn runs,
             // it would read as stale, so it goes with the turn.
             if oldValue, !streaming, lastError == Self.busySendMessage {

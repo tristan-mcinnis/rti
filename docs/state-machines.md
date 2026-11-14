@@ -738,3 +738,12 @@ call.
 - Reset it from the session spine above. Do not add a second spine.
 - Keep it in memory. Do not archive it, and do not add an index.
 - Add an entry here with its test file in the same change.
+
+## Implicit machines still open (2026-11-14 audit)
+
+A sweep found ten lifecycles still held as loose flags. Two are fixed: the
+queued follow-up now waits for a turn that finished its answer
+(`LLMController.lastTurnCompleted`), and the stimulus "Order confirmed" reads
+the stored package. The other eight, ranked, with the enum each should
+become, are in `docs/first-principles-20261114.md` ("Implicit state machines
+found"). Convert one at a time, each with its own test.

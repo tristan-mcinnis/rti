@@ -61,7 +61,7 @@ struct ResearchCodebookTab: View {
                 Picker("View", selection: $section) {
                     Text("Ideas").tag("Cards")
                     Text("Respondents").tag("Respondents")
-                    Text("Compare with last group").tag("Different from last group")
+                    Text("Compare").tag("Different from last group")
                 }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 Spacer()
                 if section != "Different from last group", groups.count > 1 {

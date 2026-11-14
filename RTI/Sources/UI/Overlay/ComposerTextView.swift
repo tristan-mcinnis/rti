@@ -63,6 +63,13 @@ struct ComposerTextView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? RoutingTextView else { return }
         context.coordinator.text = $text
         textView.onKey = onKey
+        // Disabled while its view is hidden behind another (the Live views
+        // stay built, 2026-11-14): it must not keep the keyboard.
+        let enabled = context.environment.isEnabled
+        if textView.isEditable != enabled { textView.isEditable = enabled }
+        if !enabled, let window = textView.window, window.firstResponder === textView {
+            window.makeFirstResponder(nil)
+        }
         if textView.string != text, !textView.hasMarkedText() {
             textView.string = text
         }

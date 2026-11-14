@@ -46,7 +46,8 @@ struct GuideTabView: View {
             GuideReadingView(
                 guide: guide, currentID: controller.currentQuestionID, cells: controller.extraction?.cells ?? [],
                 elapsed: { controller.elapsed(in: $0, at: $1) }, jump: { controller.jump(to: $0) },
-                furthestIndex: controller.furthestIndex, visit: { controller.visitNumber(for: $0, at: $1) }
+                furthestIndex: controller.furthestIndex, visit: { controller.visitNumber(for: $0, at: $1) },
+                isActive: isActive
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -97,6 +98,9 @@ struct GuideReadingView: View {
     let jump: (String) -> Void
     var furthestIndex = 0
     var visit: (String, Int) -> Int = { _, _ in 1 }
+    /// False while the Guide is hidden behind another view: the section
+    /// clock then stops ticking.
+    var isActive = true
     @State private var expandedSections: Set<String> = []
     @State private var expandedQuestions: Set<String> = []
 
@@ -126,18 +130,11 @@ struct GuideReadingView: View {
                                     let states = section.questions.map { question in
                                         status(byID[question.qid], passed: (order[question.qid] ?? 0) < reached - 1)
                                     }
-                                    ForEach(["Answered", "Lightly covered", "Skipped", "Pending"], id: \.self) { state in
-                                        let count = states.filter { $0 == state }.count
-                                        if count > 0 {
-                                            HStack(spacing: House.Spacing.xxs) {
-                                                SlateStatusDot(color: state == "Answered" ? House.ColorToken.success
-                                                    : state == "Lightly covered" ? House.ColorToken.warning : House.ColorToken.textTertiary)
-                                                Text(String(count)).monospacedDigit()
-                                            }
-                                            .help("\(count) \(state.lowercased())")
-                                            .accessibilityLabel("\(count) \(state.lowercased())")
-                                        }
-                                    }
+                                    // Counts in words, not coloured dots (2026-11-14 review:
+                                    // the dots had no legend).
+                                    Text(GuideSectionSummary.text(states))
+                                        .monospacedDigit()
+                                        .foregroundStyle(House.ColorToken.textTertiary)
                                 }
                                 .font(House.TypeToken.meta)
                                 .foregroundStyle(House.ColorToken.textSecondary)
@@ -171,7 +168,9 @@ struct GuideReadingView: View {
             HStack(alignment: .firstTextBaseline, spacing: House.Spacing.xs) {
                 Text(section.title).font(House.TypeToken.heading).lineLimit(1)
                 Spacer(minLength: House.Spacing.xs)
-                TimelineView(.periodic(from: .now, by: 1)) { clock in
+                // Ticks only while the Guide shows: the view stays mounted
+                // behind other views (2026-11-14).
+                TimelineView(.periodic(from: .now, by: isActive ? 1 : 3600)) { clock in
                     let seconds = max(0, Int(elapsed(section.id, clock.date)))
                     let time = String(format: "%d:%02d", seconds / 60, seconds % 60)
                     if let plan = section.minutes {
@@ -261,5 +260,17 @@ struct GuideReadingView: View {
         .padding(current ? House.Spacing.sm : House.Spacing.xs)
         .slateRaisedTile(current)
         .accessibilityAddTraits(current ? .isSelected : [])
+    }
+}
+
+/// A section's question states as one quiet line: "9 answered · 1 thin · 8 to ask".
+enum GuideSectionSummary {
+    static let words = [("Answered", "answered"), ("Lightly covered", "thin"), ("Skipped", "skipped"), ("Pending", "to ask")]
+
+    static func text(_ states: [String]) -> String {
+        words.compactMap { state, word in
+            let count = states.filter { $0 == state }.count
+            return count > 0 ? "\(count) \(word)" : nil
+        }.joined(separator: " · ")
     }
 }

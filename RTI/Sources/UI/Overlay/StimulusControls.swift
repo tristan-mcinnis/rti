@@ -21,7 +21,10 @@ struct StimulusPrepareControls: View {
     @State private var reference: URL?
     @State private var loadTask: Task<Void, Never>?
     @State private var reading = false
-    @State private var confirmed = false
+    /// Read from the package, not kept in the view: a view rebuilt by a
+    /// trip to another tab showed "Confirm group order" again for an order
+    /// already confirmed (2026-11-14).
+    private var confirmed: Bool { store.prepared?.confirmedGroup != nil }
     let projectID: String?
 
     var body: some View {
@@ -89,7 +92,6 @@ struct StimulusPrepareControls: View {
                     }
                     Button(confirmed ? "Order confirmed" : "Confirm group order") {
                         store.prepared?.confirmedGroup = GuidePreparation.shared.group ?? "Session"
-                        confirmed = true
                     }
                 }
             }
@@ -110,7 +112,7 @@ struct StimulusPrepareControls: View {
                     package.addManual(label: manual.trimmingCharacters(in: .whitespacesAndNewlines), file: reference, page: Int(page))
                     store.preparedProjectID = projectID
                     store.prepared = package
-                    manual = ""; page = ""; reference = nil; confirmed = false
+                    manual = ""; page = ""; reference = nil; store.prepared?.confirmedGroup = nil
                 }
                 .fixedSize()
                 .disabled(manual.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -142,13 +144,13 @@ struct StimulusPrepareControls: View {
                     store.preparedProjectID = projectID
                     store.prepared = package
                     store.lastError = nil
-                    confirmed = false
                 } catch {
                     if !Task.isCancelled {
                         store.lastError = error.localizedDescription
                     }
                 }
-                reading = false
+                // A load replaced by a newer pick leaves the spinner to it.
+                if !Task.isCancelled { reading = false }
             }
         }
         .fileImporter(isPresented: $pickingSource, allowedContentTypes: [.item]) { result in
@@ -174,7 +176,7 @@ struct StimulusPrepareControls: View {
             }
         }
         .onChange(of: projectID) { _, _ in
-            loadTask?.cancel(); reading = false; confirmed = false; store.prepared = nil; reference = nil
+            loadTask?.cancel(); reading = false; store.prepared = nil; reference = nil
         }
     }
 
@@ -183,7 +185,6 @@ struct StimulusPrepareControls: View {
         package.items.swapAt(index, index + delta)
         package.confirmedGroup = nil
         store.prepared = package
-        confirmed = false
     }
 }
 

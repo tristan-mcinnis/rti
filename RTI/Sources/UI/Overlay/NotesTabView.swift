@@ -42,11 +42,11 @@ struct NotesTabView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        // A plain VStack: a lazy stack has no heights for
-                        // blocks it has not drawn, so scrolling to the newest
-                        // block stopped partway (2026-11-14). A call writes
-                        // at most about 60 blocks.
-                        VStack(alignment: .leading, spacing: 14) {
+                        // Lazy: a plain stack laid out every Markdown block on
+                        // each visit (about 300 ms in a 75-minute call,
+                        // 2026-11-14). The bottom scroll anchor lands the
+                        // newest block without measuring the rest.
+                        LazyVStack(alignment: .leading, spacing: 14) {
                             ForEach(controller.notes) { note in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(alignment: .top, spacing: 6) {
@@ -78,7 +78,11 @@ struct NotesTabView: View {
                         if !following {
                             Button("Jump to latest", systemImage: "arrow.down") {
                                 following = true
-                                if let last = controller.notes.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                                guard let last = controller.notes.last else { return }
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                                // Again on the next frame: the first jump lands on
+                                // estimated heights; by then the block is measured.
+                                DispatchQueue.main.async { proxy.scrollTo(last.id, anchor: .bottom) }
                             }
                             .buttonStyle(.bordered)
                             .padding(.bottom, House.Spacing.sm)

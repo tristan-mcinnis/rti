@@ -35,6 +35,14 @@ struct OverlayPanelView: View {
         nonmutating set { liveTabs.selected = newValue }
     }
     @State private var hasVisitedTranscript = false
+    /// Live views built once and then shown or hidden, never rebuilt: a
+    /// switch rebuilt the Markdown thread, notes or codebook every time,
+    /// about 200 ms each during a call (2026-11-14). Prepare stays rebuilt:
+    /// it is cheap and refreshes on each visit.
+    @State private var visited: Set<OverlayTab> = []
+    private static var keptTabs: [OverlayTab] { keepsViews ? [.assist, .notes, .codebook, .guide] : [] }
+    /// The latency harness turns this off to measure the old rebuild-on-switch.
+    nonisolated(unsafe) static var keepsViews = true
     /// The strip's rail sheet. Owned here, not by the strip, so widening the
     /// window or leaving the page closes it on purpose instead of tearing it
     /// down with the strip.
@@ -134,27 +142,34 @@ struct OverlayPanelView: View {
                 // first visit. Hidden readers hold their last displayed rows;
                 // they catch up once on return instead of laying out each frame.
                 if hasVisitedTranscript || tab == .transcript {
-                    transcriptPage
-                        .opacity(tab == .transcript ? 1 : 0)
-                        .allowsHitTesting(tab == .transcript)
-                        .disabled(tab != .transcript)
-                        .accessibilityHidden(tab != .transcript)
+                    IsolatedPage(isVisible: tab == .transcript, content: AnyView(
+                        transcriptPage
+                            .environment(\.isWorkspaceEmbedded, embedded)
+                            .font(.system(size: CGFloat(uiFontSize), weight: .regular))
+                            .foregroundStyle(Color.overlayInk)
+                            .tint(Color.overlayInk)
+                    ))
+                    .accessibilityHidden(tab != .transcript)
                 }
-                switch tab {
-                case .assist:
-                    assistTab
-                case .transcript:
-                    EmptyView()
-                case .codebook:
-                    ResearchCodebookTab()
-                case .notes:
-                    NotesTabView().tabContentPadding()
-                case .guide:
-                    if let guide = GuideSessionController.shared.guide {
-                        GuideTabView(guide: guide, isActive: isActive).tabContentPadding()
+                ForEach(Self.keptTabs) { kept in
+                    if visited.contains(kept) || tab == kept {
+                        // Each kept view has its own hosting view and graph
+                        // (`IsolatedPage`); the composer is disabled on its
+                        // own when hidden (`assistTab(active:)`).
+                        IsolatedPage(isVisible: tab == kept, content: AnyView(
+                            keptView(kept)
+                                .environment(\.isWorkspaceEmbedded, embedded)
+                                .font(.system(size: CGFloat(uiFontSize), weight: .regular))
+                                .foregroundStyle(Color.overlayInk)
+                                .tint(Color.overlayInk)
+                        ))
+                        .accessibilityHidden(tab != kept)
                     }
-                case .setup:
+                }
+                if tab == .setup {
                     SetupTabView().tabContentPadding()
+                } else if !Self.keepsViews, tab != .transcript {
+                    keptView(tab)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -173,8 +188,36 @@ struct OverlayPanelView: View {
         .tint(Color.overlayInk)
         .preferredColorScheme(preferredColorScheme)
         .overlay(themeRefreshToken)
+        // The shared Live view may already be selected when this view
+        // appears (a recording that landed on Transcript), so the first view
+        // counts as visited too; otherwise leaving it removed it instead of
+        // hiding it, and its reading position was lost.
+        .onAppear { markVisited(tab) }
         .onChange(of: tab) { _, selection in
-            if selection == .transcript { hasVisitedTranscript = true }
+            markVisited(selection)
+        }
+    }
+
+    private func markVisited(_ selection: OverlayTab) {
+        if selection == .transcript { hasVisitedTranscript = true }
+        if Self.keptTabs.contains(selection) { visited.insert(selection) }
+    }
+
+    @ViewBuilder
+    private func keptView(_ kept: OverlayTab) -> some View {
+        switch kept {
+        case .assist:
+            assistTab(active: tab == .assist)
+        case .codebook:
+            ResearchCodebookTab()
+        case .notes:
+            NotesTabView().tabContentPadding()
+        case .guide:
+            if let guide = GuideSessionController.shared.guide {
+                GuideTabView(guide: guide, isActive: isActive && tab == .guide).tabContentPadding()
+            }
+        case .setup, .transcript:
+            EmptyView()
         }
     }
 
@@ -245,7 +288,7 @@ struct OverlayPanelView: View {
 
     /// The Assist chat: the thread over the composer row, which is the
     /// surface's footer (no footer well).
-    private var assistTab: some View {
+    private func assistTab(active: Bool) -> some View {
         GeometryReader { geometry in
           VStack(spacing: 0) {
             ResponseView(
@@ -258,6 +301,7 @@ struct OverlayPanelView: View {
             .padding(.horizontal, House.Spacing.lg)
 
             AssistantInputView(availableHeight: geometry.size.height - House.Spacing.xs)
+                .disabled(!active)
                 .padding(House.Spacing.xs)
                 .background(embedded ? House.ColorToken.surface : Color.clear)
           }
@@ -349,7 +393,9 @@ struct OverlayShellHeader: View {
     /// segments beside it never move when the title changes ("RTI" to "Live
     /// session" on Record); a row tighter than 720 pt would shrink
     /// it, never hides it. Not a token yet: half the chat rail.
-    static let workspaceTitleWidth = House.Layout.chatRail / 2
+    /// The route segments left the header for the sidebar (2026-11-14), so
+    /// the title takes the chat rail's width: "SH Yo…gnosis" was cut at 110.
+    static let workspaceTitleWidth = House.Layout.chatRail
 
     /// Each control here has one home (2026-11-13): call type, project and
     /// guide live on Prepare (the title opens it), the model in Settings and

@@ -113,7 +113,7 @@ struct SetupTabView: View {
         .scrollContentBackground(.hidden)
         .onAppear {
             load()
-            if Self.readsCalendar { calendarStore.refresh() }
+            if Self.readsCalendar { calendarStore.refreshIfStale() }
         }
     }
 
@@ -430,7 +430,7 @@ struct SetupTabView: View {
             calendarLineRow(icon: "calendar.badge.checkmark", text: "Meeting: \(selected.title) · \(calendarTime(selected))") {
                 HStack(spacing: House.Spacing.xs) {
                     if calendarStore.events.contains(where: { $0.id != selected.id }) {
-                        calendarEventMenu("Change", excluding: selected)
+                        calendarEventMenu("Change…", excluding: selected)
                     }
                     Button("Remove") { store.clearCalendarMeeting() }
                         .help("Remove calendar meeting context")
@@ -477,9 +477,11 @@ struct SetupTabView: View {
                 }
             }
         }
-        .menuStyle(.borderlessButton)
+        // A button-styled menu, so it takes the same `.setupAction` look as
+        // the Remove beside it (2026-11-14: a plain "Change" next to a boxed
+        // "Remove").
+        .menuStyle(.button)
         .menuIndicator(.hidden)
-        .font(House.TypeToken.meta)
         .fixedSize()
         .accessibilityLabel(title == "Choose event" ? "Choose a calendar event" : "\(title) calendar event")
     }
@@ -708,9 +710,16 @@ struct SetupTabView: View {
         }
     }
 
+    /// The client and project lists walk the vault on disk, so they load off
+    /// the main actor (2026-11-14: each visit to Prepare stalled the window).
     private func load() {
-        clients = VaultWorkstreamStore.clients()
-        projects = VaultWorkstreamStore.projects()
+        Task {
+            let lists = await Task.detached(priority: .userInitiated) {
+                (VaultWorkstreamStore.clients(), VaultWorkstreamStore.projects())
+            }.value
+            clients = lists.0
+            projects = lists.1
+        }
     }
 }
 

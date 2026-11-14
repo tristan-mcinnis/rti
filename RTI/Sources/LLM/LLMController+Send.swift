@@ -406,6 +406,7 @@ extension LLMController {
     private func finalizeAssistantTurn(streamingEntryID thisEntryID: UUID) {
         guard streamingEntryID == thisEntryID else { return }
         flushStreamBuffer()
+        lastTurnCompleted = true
         streaming = false
         reasoning = false
         toolStatus = nil

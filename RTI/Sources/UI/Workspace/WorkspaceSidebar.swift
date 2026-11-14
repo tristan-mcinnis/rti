@@ -18,6 +18,18 @@ enum WorkspaceSidebarSettings {
     static let visibleKey = "rti.workspace.sidebarVisible"
     /// The chat rail's width, as in the AI Chat window.
     static let width = House.Layout.chatRail
+    /// Icons only: one rail row square plus its inset.
+    static let compactWidth = House.Control.railRow + House.Spacing.xs * 2
+    /// Below this window width the sidebar shows icons only, so the Live
+    /// side panel keeps its rail beside the transcript.
+    static let fullFrom: CGFloat = 1000
+
+    /// Icons only on pages with a list of their own (Sessions, Chats,
+    /// Settings: three columns of navigation was too many, 2026-11-14) and
+    /// in a narrow window.
+    static func isCompact(page: WorkspaceModel.Page, windowWidth: CGFloat) -> Bool {
+        page != .live || windowWidth < fullFrom
+    }
 }
 
 /// The workspace's left sidebar, as in the Codex and Claude apps (2026-11-14
@@ -28,6 +40,7 @@ enum WorkspaceSidebarSettings {
 struct WorkspaceSidebar: View {
     @Bindable var model: WorkspaceModel
     @Bindable var live = LiveTabState.shared
+    var compact = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
@@ -47,7 +60,8 @@ struct WorkspaceSidebar: View {
             Spacer(minLength: 0)
         }
         .padding(House.Spacing.xs)
-        .frame(width: WorkspaceSidebarSettings.width, alignment: .topLeading)
+        .frame(width: compact ? WorkspaceSidebarSettings.compactWidth : WorkspaceSidebarSettings.width,
+               alignment: .topLeading)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(House.ColorToken.surfaceSunken)
         .accessibilityElement(children: .contain)
@@ -62,7 +76,7 @@ struct WorkspaceSidebar: View {
     private func row(_ title: String, symbol: String, selected: Bool, help: String,
                      action: @escaping () -> Void) -> some View
     {
-        SidebarRow(title: title, symbol: symbol, selected: selected, action: action)
+        SidebarRow(title: title, symbol: symbol, selected: selected, compact: compact, action: action)
             .help(help)
             .accessibilityIdentifier("workspace.sidebar." + title)
     }
@@ -72,6 +86,7 @@ private struct SidebarRow: View {
     let title: String
     let symbol: String
     let selected: Bool
+    var compact = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -82,14 +97,16 @@ private struct SidebarRow: View {
                     .font(House.TypeToken.bodySmall)
                     .frame(width: House.Control.keyCap)
                     .accessibilityHidden(true)
-                Text(title)
-                    .font(House.TypeToken.label)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+                if !compact {
+                    Text(title)
+                        .font(House.TypeToken.label)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
             }
             .foregroundStyle(selected || hovering ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
-            .padding(.horizontal, House.Spacing.sm)
-            .frame(height: House.Control.railRow)
+            .padding(.horizontal, compact ? 0 : House.Spacing.sm)
+            .frame(width: compact ? House.Control.railRow : nil, height: House.Control.railRow)
             .slateRaisedTile(selected, cornerRadius: House.Radius.sm, hovering: hovering)
             .contentShape(Rectangle())
         }
@@ -112,8 +129,8 @@ struct WorkspaceHeaderToggles: View {
         HStack(spacing: House.Spacing.xxs) {
             QuickAIGlyphButton(symbol: "sidebar.left", font: HouseChatType.glyphSmall,
                                color: House.ColorToken.textSecondary,
-                               label: sidebarVisible ? "Hide sidebar" : "Show sidebar",
-                               help: "Show or hide the sidebar (⌃⌘0)") { sidebarVisible.toggle() }
+                               label: sidebarVisible ? "Collapse sidebar to icons" : "Expand sidebar",
+                               help: "Collapse the sidebar to icons, or expand it (⌃⌘0)") { sidebarVisible.toggle() }
                 .keyboardShortcut("0", modifiers: [.control, .command])
             if model.page == .sessions || model.page == .chats {
                 QuickAIGlyphButton(symbol: "list.bullet", font: HouseChatType.glyphSmall,

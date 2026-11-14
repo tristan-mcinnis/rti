@@ -304,7 +304,7 @@ final class LiveRailContentTests: RenderProofTestCase {
 
     func testStripSummarySaysQuotesAndCountsNotPeople() {
         let research = LiveRailRenderProofTests.researchContent
-        XCTAssertEqual(research.summary, "2 to ask · 1 flag · 2 to revisit · 23 topics",
+        XCTAssertEqual(research.summary, "2 to ask · 1 flag · 2 to revisit",
                        "a thin question was asked, so gaps are to revisit, not missed")
         XCTAssertEqual(LiveRailRenderProofTests.clientContent.summary, "3 suggestions · 1 open thread")
         XCTAssertEqual(LiveRailContent(kind: .client).summary, "No suggestions yet")

@@ -37,6 +37,13 @@ final class NotesGenerationController {
     /// Bumped on reset/clear so a pass still awaiting the LLM from an older
     /// session cannot write into the new one.
     private var generation = 0
+    #if DEBUG
+        /// Test seam: invented note blocks for render and latency proofs.
+        func seedForRenderProof(_ notes: [GeneratedNote]) {
+            self.notes = notes
+        }
+    #endif
+
     init(request: LLMRequest = LLMRequest(priority: .background)) {
         self.request = request
     }

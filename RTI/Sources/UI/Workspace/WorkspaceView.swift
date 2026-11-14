@@ -35,10 +35,13 @@ struct WorkspaceView: View {
                 WorkspaceWindowHeader(model: model)
             }
             sessionChatContext
+            GeometryReader { geometry in
             HStack(spacing: 0) {
-            if sidebarVisible {
-                WorkspaceSidebar(model: model)
-            }
+            // The toggle collapses the sidebar to icons; it never vanishes,
+            // so every view stays one click away (2026-11-14).
+            WorkspaceSidebar(model: model,
+                             compact: !sidebarVisible
+                                 || WorkspaceSidebarSettings.isCompact(page: model.page, windowWidth: geometry.size.width))
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
                 // position survive trips to the archive or preferences.
@@ -57,6 +60,7 @@ struct WorkspaceView: View {
             .clipShape(RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous))
             .slateRaisedCard(cornerRadius: House.Radius.lg)
             .padding(House.Spacing.xs)
+            }
             }
         }
         .background(House.ColorToken.surfaceSunken)

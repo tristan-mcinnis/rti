@@ -84,6 +84,10 @@ struct TranscriptTabView: View {
                     }
                 }
         }
+        // Kept mounted while another view shows, so its toolbar must leave the
+        // accessibility tree too: VoiceOver and agents found "Copy transcript"
+        // on every view (2026-11-14).
+        .accessibilityHidden(!isActive)
         // SessionCoordinator observes UserDefaults and is the sole writer of
         // `translationConfig`. The view only reads the same defaults keys for
         // its controls; it no longer pushes config directly.

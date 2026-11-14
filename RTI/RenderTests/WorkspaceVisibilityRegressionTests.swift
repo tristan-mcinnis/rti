@@ -44,8 +44,13 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
             panel.setFrame(frame, display: true)
             settle(content)
             let frameView = try XCTUnwrap(content.superview)
-            for page in [WorkspaceModel.Page.sessions, .chats, .settings, .live] {
-                let point = try headerLabel(page.rawValue, accessory: accessory)
+            // Page routes live in the sidebar since 2026-11-14. The title row
+            // keeps one label that navigates: the title opens Prepare from any
+            // page, and a physical click on it must reach it through the bar.
+            for start in [WorkspaceModel.Page.sessions, .chats, .settings] {
+                model.select(start)
+                settle(content)
+                let point = try headerLabel("RTI", accessory: accessory)
                 let hit = try XCTUnwrap(frameView.hitTest(frameView.convert(point, from: nil)))
                 XCTAssertTrue(hit === accessory.view || hit.isDescendant(of: accessory.view))
                 for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
@@ -55,7 +60,8 @@ final class WorkspaceVisibilityRegressionTests: RenderProofTestCase {
                     NSApp.sendEvent(event)
                 }
                 settle(content)
-                XCTAssertEqual(model.page, page, "Physical mouse click on " + page.rawValue)
+                XCTAssertEqual(model.page, .live, "Physical mouse click on the title from " + start.rawValue)
+                XCTAssertEqual(LiveTabState.shared.selected, .setup)
             }
             for role in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
                 let button = try XCTUnwrap(panel.standardWindowButton(role))
