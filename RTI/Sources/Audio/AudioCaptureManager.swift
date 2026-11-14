@@ -220,6 +220,9 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
         } else {
             RTILog.log("using system default input device", category: .audio)
         }
+        if !input.isVoiceProcessingEnabled {
+            Self.matchInputClientRate(input)
+        }
         let nativeFormat = input.outputFormat(forBus: 0)
 
         // Each engine run owns its converter inside its own tap block, so the
@@ -280,6 +283,29 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
             }
         }
         isRunning = false
+    }
+
+    /// The input node's client side (output scope, bus 1) runs at the OUTPUT
+    /// device's sample rate, and the input AUHAL cannot convert rates. With a
+    /// 48 kHz mic and a 16 kHz output (a Bluetooth headset in call mode,
+    /// because another app holds its mic) engine.start() fails with -10868
+    /// in InitializeActiveNodesInInputChain (2026-11-14). Setting the client
+    /// rate to the device's own rate lets the engine start; MicTapConverter
+    /// resamples to 16 kHz anyway.
+    static func matchInputClientRate(_ input: AVAudioInputNode) {
+        guard let unit = input.audioUnit else { return }
+        let size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        var device = AudioStreamBasicDescription()
+        var client = AudioStreamBasicDescription()
+        var deviceSize = size, clientSize = size
+        guard AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 1, &device, &deviceSize) == noErr,
+              AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &client, &clientSize) == noErr,
+              device.mSampleRate > 0, client.mSampleRate != device.mSampleRate
+        else { return }
+        let from = client.mSampleRate
+        client.mSampleRate = device.mSampleRate
+        let status = AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &client, clientSize)
+        RTILog.log("mic client rate \(Int(from)) Hz → \(Int(device.mSampleRate)) Hz to match the input device\(status == noErr ? "" : " (failed, status=\(status))")", category: .audio)
     }
 
     /// Install the mic tap with no format: the tap then takes the bus's own
