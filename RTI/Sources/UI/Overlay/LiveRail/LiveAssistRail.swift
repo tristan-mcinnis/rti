@@ -329,7 +329,7 @@ struct LiveAssistRail: View {
             LiveRailLane(
                 title: content.nowTitle,
                 // One suggestion at a time on research calls (2026-11-14).
-                cards: content.kind == .research ? Array(content.now.prefix(1)) : content.now,
+                cards: content.kind == .research ? LiveRailLimits.research(content.now) : content.now,
                 waiting: content.nowWaiting,
                 requestedID: content.requestedID,
                 // With a guide on screen, older asks fold to one line so the
@@ -694,6 +694,12 @@ private struct LiveRailTopics: View {
 enum LiveRailLimits {
     static let gaps = 2
     static let topics = 3
+
+    /// Research shows one suggestion at a time, but a pinned card always
+    /// stays: pinned first, then the newest unpinned one.
+    static func research(_ cards: [LiveRailContent.Card]) -> [LiveRailContent.Card] {
+        cards.filter(\.pinned) + cards.filter { !$0.pinned }.prefix(1)
+    }
 }
 
 /// The emic name, then the English gloss in a quieter tone.

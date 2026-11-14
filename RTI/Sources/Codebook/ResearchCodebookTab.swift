@@ -172,11 +172,15 @@ struct ResearchCodebookTab: View {
                     if !card.summary.isEmpty {
                         Text(card.summary)
                             .font(House.TypeToken.bodySmall)
-                            .foregroundStyle(House.ColorToken.textSecondary)
+                            .foregroundStyle(House.ColorToken.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
                     }
-                    ForEach(entries.sorted { ($0.evidence.sessionID, $0.evidence.offsetMs) < ($1.evidence.sessionID, $1.evidence.offsetMs) }) { entry in
+                    let starts = Dictionary(controller.book.sessions.map { ($0.id, $0.startedAt) }, uniquingKeysWith: { first, _ in first })
+                    ForEach(entries.sorted {
+                        (starts[$0.evidence.sessionID] ?? .distantPast, $0.evidence.offsetMs)
+                            < (starts[$1.evidence.sessionID] ?? .distantPast, $1.evidence.offsetMs)
+                    }) { entry in
                         quoteRow(entry)
                     }
                 }
@@ -221,7 +225,7 @@ struct ResearchCodebookTab: View {
                 if let counter = entry.counter {
                     Text("vs \(GuideExtraction.locator(counter.offsetMs))  \(counter.original)")
                         .font(House.TypeToken.bodySmall)
-                        .foregroundStyle(House.ColorToken.textSecondary)
+                        .foregroundStyle(House.ColorToken.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Text(entry.asrDoubt == true ? place + " · may be misheard" : place)

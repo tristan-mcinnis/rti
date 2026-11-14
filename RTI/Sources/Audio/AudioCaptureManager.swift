@@ -128,21 +128,14 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
         }
 
         // A fresh engine per start: the input AUHAL of a reused engine keeps
-        // the device it first saw. When BluetoothMicGuard has just moved the
-        // default input off a Bluetooth headset, that stale binding fails
-        // engine.start() with -10868 (kAudioUnitErr_FormatNotSupported in
-        // InitializeActiveNodesInInputChain; 2026-11-14, Bose QC45). The
-        // device switch can also still be settling, so a failed start is
-        // retried once on another fresh engine after a short pause.
-        do {
-            engine = AVAudioEngine()
-            try startEngine()
-        } catch AudioCaptureError.engineStartFailed(let error) {
-            RTILog.log("audio engine start failed (\(error)) — retrying once on a fresh engine", category: .audio)
-            Thread.sleep(forTimeInterval: 0.3)
-            engine = AVAudioEngine()
-            try startEngine()
-        }
+        // the device it first saw. The -10868 start failure of 2026-11-14
+        // (Bose QC45 in call mode) was the client rate, fixed in
+        // `matchInputClientRate`; no retry here, and nothing on this path
+        // sleeps, because `restart()` runs on the main actor (2026-11-15
+        // concurrency review). A failure throws to the caller, whose outage
+        // backoff retries.
+        engine = AVAudioEngine()
+        try startEngine()
     }
 
     private func startEngine() throws {
@@ -204,9 +197,11 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
                 RTILog.log("bound to input device id=\(deviceID)", category: .audio)
             }
         } else if let current = AudioInputDeviceStore.defaultInputDeviceID(),
-                  let unit = input.audioUnit {
-            // Bind the current default explicitly instead of trusting the
-            // AUHAL to have followed a default switch made a moment ago.
+                  let unit = input.audioUnit, Self.boundDevice(unit) != current {
+            // Bind the current default explicitly when the AUHAL is not on it
+            // yet (a default switch made a moment ago). Only when it differs:
+            // a needless set could post a configuration change, and the
+            // change observer restarts the engine.
             var deviceID = current
             let setStatus = AudioUnitSetProperty(
                 unit,
@@ -292,6 +287,14 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
     /// in InitializeActiveNodesInInputChain (2026-11-14). Setting the client
     /// rate to the device's own rate lets the engine start; MicTapConverter
     /// resamples to 16 kHz anyway.
+    /// The device an input AUHAL is bound to, or nil when unreadable.
+    static func boundDevice(_ unit: AudioUnit) -> AudioDeviceID? {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, &size)
+        return status == noErr ? device : nil
+    }
+
     static func matchInputClientRate(_ input: AVAudioInputNode) {
         guard let unit = input.audioUnit else { return }
         let size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)

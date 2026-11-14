@@ -82,8 +82,12 @@ final class LiteRenderProofTests: RenderProofTestCase {
                                   view: livePage(answerOpen: true))
     }
 
-    func testLiteSkipsLiveNotesAndCodebookOnly() {
-        let defaults = UserDefaults.standard
+    func testLiteSkipsLiveNotesAndCodebookOnly() throws {
+        let suite = "fixture.lite." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertFalse(RTILiteSettings.isOn(in: defaults), "unregistered code sees the full workspace")
+        defaults.set(true, forKey: RTILiteSettings.enabledKey)
         XCTAssertTrue(RTILiteSettings.isOn(in: defaults))
         XCTAssertFalse(RTILiteSettings.runs(task: "notes", in: defaults))
         XCTAssertFalse(RTILiteSettings.runs(task: "researchCodebook", in: defaults))

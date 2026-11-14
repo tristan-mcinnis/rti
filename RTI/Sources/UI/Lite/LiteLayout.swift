@@ -8,10 +8,11 @@ enum LiteLayout {
     /// The card takes at most this share of the page above the ask bar, so
     /// the newest transcript lines stay readable behind it.
     static let answerHeightShare: CGFloat = 0.55
-    /// Room the composer may use for its palette and add-context panes.
-    static let askBarRoom: CGFloat = 360
-    /// The answer rises and settles: quick, no bounce.
-    static let rise = Animation.spring(response: 0.32, dampingFraction: 0.92)
+    /// Room the composer may use for its palette and add-context panes:
+    /// half the chat window's height.
+    static let askBarRoom = House.Layout.chatHeight / 2
+    /// The answer opens with the house `open` motion (0.12 s ease-out).
+    static let rise = Animation.easeOut(duration: House.Motion.open)
 }
 
 private struct RTILiteKey: EnvironmentKey {

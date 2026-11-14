@@ -39,7 +39,7 @@ private struct WorkspaceModeSection: View {
         SettingsCard("Workspace", rows: true) {
             SettingsToggleRow(
                 title: "RTI Lite",
-                detail: "One live page: transcript, guide position, what to go back to, the next question and an ask bar. Live notes and the codebook run after the call instead. Off shows every view in a sidebar.",
+                detail: "One live page: transcript, guide and the next question. Off shows every view.",
                 isFirst: true,
                 isOn: $liteEnabled
             )

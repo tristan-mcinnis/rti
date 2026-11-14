@@ -81,7 +81,9 @@ struct ComposerTextView: NSViewRepresentable {
             // One hop, so the focus change lands after the window finishes
             // its becomeKey transition and SwiftUI finishes this update.
             DispatchQueue.main.async { [weak textView] in
-                guard let textView, let window = textView.window else { return }
+                // A disabled or hidden composer never takes the keyboard.
+                guard let textView, let window = textView.window,
+                      textView.isEditable, !textView.isHiddenOrHasHiddenAncestor else { return }
                 window.makeFirstResponder(textView)
             }
         }

@@ -32,29 +32,27 @@ struct LiteAnswerCard: View {
             .padding(.horizontal, House.Spacing.lg)
             .frame(height: House.Control.row)
             HouseDivider()
-            // The card hugs a short answer and scrolls a long one: the first
-            // layout that fits the room wins.
-            ViewThatFits(in: .vertical) {
-                thread.fixedSize(horizontal: false, vertical: true)
-                thread.frame(maxHeight: .infinity, alignment: .topLeading)
-            }
+            // One thread with one identity: switching between a hugging and a
+            // scrolling copy mid-stream reset its scroll and following state
+            // (2026-11-15 SwiftUI review). The card takes its full share.
+            thread.frame(maxHeight: .infinity, alignment: .topLeading)
         }
         .background(House.ColorToken.surfaceRaised,
-                    in: RoundedRectangle(cornerRadius: House.Radius.xl, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: House.Radius.xl, style: .continuous))
+                    in: RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: House.Radius.xl, style: .continuous)
+            RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous)
                 .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
         }
         .overlay(alignment: .top) {
             House.ColorToken.highlightTop
                 .frame(height: House.hairline)
-                .padding(.horizontal, House.Radius.xl / 2)
+                .padding(.horizontal, House.Spacing.xs)
         }
-        // Depth from the near panel shadow only: the far one is for windows
-        // that float over other apps and hazes the transcript behind a card.
-        .shadow(color: .black.opacity(House.Shadow.panelNear.opacity(dark: scheme == .dark)),
-                radius: House.Shadow.panelNear.blur / 2, y: House.Shadow.panelNear.y)
+        // A raised card inside the window: `Radius.lg` and the `card`
+        // shadow (DESIGN.md), not the floating-panel treatment.
+        .shadow(color: .black.opacity(House.Shadow.card.opacity(dark: scheme == .dark)),
+                radius: House.Shadow.card.blur / 2, y: House.Shadow.card.y)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Answer")
         .accessibilityIdentifier("rti-lite-answer")

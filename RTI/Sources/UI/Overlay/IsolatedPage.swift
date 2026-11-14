@@ -34,6 +34,13 @@ struct IsolatedPage: NSViewRepresentable {
         // it for nothing, except once, at the moment it is hidden, so the
         // page learns it is no longer active (Transcript stops projecting).
         let changed = context.coordinator.wasVisible != isVisible
+        // A page being hidden gives up the keyboard first: AppKit moves the
+        // first responder on hide only when it is the hidden view itself,
+        // not a field inside it (2026-11-15 SwiftUI review).
+        if changed, !isVisible, let window = view.window,
+           let responder = window.firstResponder as? NSView, responder.isDescendant(of: view) {
+            window.makeFirstResponder(nil)
+        }
         if isVisible || changed { view.rootView = content }
         context.coordinator.wasVisible = isVisible
         if view.isHidden == isVisible { view.isHidden = !isVisible }

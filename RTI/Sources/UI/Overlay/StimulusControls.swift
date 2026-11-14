@@ -130,6 +130,8 @@ struct StimulusPrepareControls: View {
             loadTask?.cancel()
             reading = true
             loadTask = Task {
+                // Every exit clears the spinner, unless a newer pick took over.
+                defer { if !Task.isCancelled { reading = false } }
                 do {
                     let package = try await Task.detached(priority: .userInitiated) {
                         let scoped = url.startAccessingSecurityScopedResource()
@@ -149,8 +151,6 @@ struct StimulusPrepareControls: View {
                         store.lastError = error.localizedDescription
                     }
                 }
-                // A load replaced by a newer pick leaves the spinner to it.
-                if !Task.isCancelled { reading = false }
             }
         }
         .fileImporter(isPresented: $pickingSource, allowedContentTypes: [.item]) { result in

@@ -22,7 +22,7 @@ enum WorkspaceSidebarSettings {
     static let compactWidth = House.Control.railRow + House.Spacing.xs * 2
     /// Below this window width the sidebar shows icons only, so the Live
     /// side panel keeps its rail beside the transcript.
-    static let fullFrom: CGFloat = 1000
+    static let fullFrom = House.Layout.chatWidth + House.Layout.chatRail / 2
 
     /// Icons only on pages with a list of their own (Sessions, Chats,
     /// Settings: three columns of navigation was too many, 2026-11-14) and
@@ -94,7 +94,7 @@ private struct SidebarRow: View {
         Button(action: action) {
             HStack(spacing: House.Spacing.sm) {
                 Image(systemName: symbol)
-                    .font(House.TypeToken.bodySmall)
+                    .font(HouseChatType.glyphSmall)
                     .frame(width: House.Control.keyCap)
                     .accessibilityHidden(true)
                 if !compact {
@@ -107,7 +107,7 @@ private struct SidebarRow: View {
             .foregroundStyle(selected || hovering ? House.ColorToken.textPrimary : House.ColorToken.textSecondary)
             .padding(.horizontal, compact ? 0 : House.Spacing.sm)
             .frame(width: compact ? House.Control.railRow : nil, height: House.Control.railRow)
-            .slateRaisedTile(selected, cornerRadius: House.Radius.sm, hovering: hovering)
+            .slateRaisedTile(selected, cornerRadius: House.Radius.row, hovering: hovering)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -168,11 +168,14 @@ struct WorkspaceHeaderToggles: View {
                 }
             }
             Divider()
-            Button("Use the full workspace") { liteEnabled = false }
+            // The switch itself has one home, Settings > General > Workspace.
+            Button("Workspace settings…") { model.select(.settings) }
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(HouseChatType.glyphSmall)
                 .foregroundStyle(House.ColorToken.textSecondary)
+                .frame(width: House.Control.compact, height: House.Control.compact)
+                .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

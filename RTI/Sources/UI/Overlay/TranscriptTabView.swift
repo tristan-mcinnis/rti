@@ -32,7 +32,9 @@ struct TranscriptTabView: View {
             OverlayTabStrip {
                 // Lite shows the capture line only when something needs a
                 // look; the title bar already says the call is recording.
-                if !lite || healthColor != RTIDesign.Color.success || !following {
+                // Not tied to scrolling: inserting a row while the reader
+                // scrolls up shifted the transcript under them.
+                if !lite || healthColor != RTIDesign.Color.success {
                 VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                     HStack(spacing: House.Spacing.xs) {
                         SlateStatusDot(color: healthColor)

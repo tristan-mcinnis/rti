@@ -113,9 +113,9 @@ struct SetupTabView: View {
         }
         .scrollContentBackground(.hidden)
         .onAppear {
-            load()
             if Self.readsCalendar { calendarStore.refreshIfStale() }
         }
+        .task { await load() }
     }
 
     // MARK: - Layout grammar
@@ -717,14 +717,15 @@ struct SetupTabView: View {
 
     /// The client and project lists walk the vault on disk, so they load off
     /// the main actor (2026-11-14: each visit to Prepare stalled the window).
-    private func load() {
-        Task {
-            let lists = await Task.detached(priority: .userInitiated) {
-                (VaultWorkstreamStore.clients(), VaultWorkstreamStore.projects())
-            }.value
-            clients = lists.0
-            projects = lists.1
-        }
+    private func load() async {
+        let lists = await Task.detached(priority: .userInitiated) {
+            (VaultWorkstreamStore.clients(), VaultWorkstreamStore.projects())
+        }.value
+        // Owned by the view's `.task`: a load for a page already gone is
+        // cancelled and never overwrites a newer one.
+        guard !Task.isCancelled else { return }
+        clients = lists.0
+        projects = lists.1
     }
 }
 

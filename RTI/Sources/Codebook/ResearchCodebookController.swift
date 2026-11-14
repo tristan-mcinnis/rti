@@ -370,13 +370,15 @@ final class ResearchCodebookController {
     }
 
     func finish(sessionID: String, entries: [LiveEntry]) async {
-        // Lite keeps no live codebook, so Stop runs no final codebook pass.
-        guard RTILiteSettings.runs(task: "researchCodebook") else { return }
         guard let place = location, place.session.id == sessionID, !sealed else { return }
         request?.cancel(); passID = UUID(); generating = false; sealed = true
         synthesisID = UUID(); synthesizing = false
         let deadline = ContinuousClock.now.advanced(by: .seconds(8))
-        while ContinuousClock.now < deadline, !Task.isCancelled {
+        // Lite keeps no live codebook, so Stop runs no final codebook pass,
+        // but the session is still sealed and written as finished below: a
+        // skipped seal left an open session in the project's codebook
+        // (2026-11-15 concurrency review).
+        while RTILiteSettings.runs(task: "researchCodebook"), ContinuousClock.now < deadline, !Task.isCancelled {
             if await generate(sessionID: sessionID, entries: entries, finalDeadline: deadline) == nil {
                 break
             }

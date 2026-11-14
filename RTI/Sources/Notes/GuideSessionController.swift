@@ -538,7 +538,17 @@ final class GuideSessionController {
             let evidenceIDs = Set(pass.evidence)
             let evidence = sentContext.filter { $0.attributable && evidenceIDs.contains($0.turn.id) }.map(\.turn)
             if suggestion == self.cursor?.currentQID {
-                if let first = evidence.map(\.startMs).min() { noteReached(suggestion, atMs: first) }
+                if let first = evidence.map(\.startMs).min() {
+                    noteReached(suggestion, atMs: first)
+                    // The cursor can move under a held pick; a pass that
+                    // confirms that question later must still release the
+                    // pick once it has held (2026-11-15 concurrency review).
+                    if !isFollowing, suggestion != manualQuestionID,
+                       let pick = selections.last(where: \.manual), first >= pick.transcriptMs + Self.manualHoldMs {
+                        manualQuestionID = nil
+                        appendSelection(suggestion, atMs: first, manual: false)
+                    }
+                }
             } else if self.cursor?.suggest(suggestion, evidence: evidence, revision: cursor.revision) == true {
                 let first = self.cursor?.acceptedFromMs ?? latest
                 updateProgress(suggestion)

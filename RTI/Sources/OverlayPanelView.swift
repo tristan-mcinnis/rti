@@ -45,6 +45,7 @@ struct OverlayPanelView: View {
     @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
     @State private var liteAnswerOpen: Bool
     @State private var liteGuideOpen = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var panelWidth: CGFloat = 0
 
     /// In Lite the rail runs the page's full height, so the ask bar and the
@@ -69,7 +70,7 @@ struct OverlayPanelView: View {
     @State private var visited: Set<OverlayTab> = []
     private static var keptTabs: [OverlayTab] { keepsViews ? [.assist, .notes, .codebook, .guide] : [] }
     /// The latency harness turns this off to measure the old rebuild-on-switch.
-    nonisolated(unsafe) static var keepsViews = true
+    static var keepsViews = true
     /// The strip's rail sheet. Owned here, not by the strip, so widening the
     /// window or leaving the page closes it on purpose instead of tearing it
     /// down with the strip.
@@ -139,15 +140,6 @@ struct OverlayPanelView: View {
                 if !strip { railSheetOpen = false }
             }
         }
-        // Finish ends live help: a sheet left open does not outlive the call.
-        .onChange(of: session.phase.livePhase.isLive) { _, live in
-            if !live { railSheetOpen = false }
-        }
-        .sheet(isPresented: $railSheetOpen) {
-            LiveRailSheet(done: { railSheetOpen = false }) {
-                LiveAssistRailHost(callType: callTypes.active, autoOn: autoOn)
-            }
-        }
     }
 
     private var status: OverlayShellStatus {
@@ -176,7 +168,7 @@ struct OverlayPanelView: View {
                 // first visit. Hidden readers hold their last displayed rows;
                 // they catch up once on return instead of laying out each frame.
                 if hasVisitedTranscript || shownTab == .transcript {
-                    IsolatedPage(isVisible: shownTab == .transcript, content: AnyView(
+                    IsolatedPage(isVisible: isActive && shownTab == .transcript, content: AnyView(
                         transcriptPage
                             .environment(\.isWorkspaceEmbedded, embedded)
                             .environment(\.rtiLite, liteEnabled)
@@ -191,7 +183,7 @@ struct OverlayPanelView: View {
                         // Each kept view has its own hosting view and graph
                         // (`IsolatedPage`); the composer is disabled on its
                         // own when hidden (`assistTab(active:)`).
-                        IsolatedPage(isVisible: tab == kept, content: AnyView(
+                        IsolatedPage(isVisible: isActive && tab == kept, content: AnyView(
                             keptView(kept)
                                 .environment(\.isWorkspaceEmbedded, embedded)
                                 .font(.system(size: CGFloat(uiFontSize), weight: .regular))
@@ -216,15 +208,15 @@ struct OverlayPanelView: View {
                     GeometryReader { geometry in
                         LiteAnswerCard { closeLiteAnswer() }
                             .frame(maxWidth: LiteLayout.answerWidth)
-                            .frame(maxHeight: min(geometry.size.height * LiteLayout.answerHeightShare,
-                                                  geometry.size.height - House.Spacing.lg))
-                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(height: min(geometry.size.height * LiteLayout.answerHeightShare,
+                                               geometry.size.height - House.Spacing.lg))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                             .padding(.horizontal, House.Spacing.lg)
                             .padding(.bottom, House.Spacing.sm)
                             .padding(.trailing, liteRailInset)
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // Reduce Motion: fade only (DESIGN.md).
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
             if liteEnabled {
@@ -247,6 +239,17 @@ struct OverlayPanelView: View {
         // counts as visited too; otherwise leaving it removed it instead of
         // hiding it, and its reading position was lost.
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panelWidth = $0 }
+        // The strip's sheet lives here, in the outer graph: the transcript
+        // page has its own hosting view, so a sheet there never saw the
+        // flag flip (2026-11-15 SwiftUI review). Finish closes it.
+        .onChange(of: session.phase.livePhase.isLive) { _, live in
+            if !live { railSheetOpen = false }
+        }
+        .sheet(isPresented: $railSheetOpen) {
+            LiveRailSheet(done: { railSheetOpen = false }) {
+                LiveAssistRailHost(callType: callTypes.active, autoOn: autoOn)
+            }
+        }
         .onAppear { markVisited(shownTab) }
         .onChange(of: shownTab) { _, selection in
             markVisited(selection)
@@ -320,7 +323,7 @@ struct OverlayPanelView: View {
     private func keptView(_ kept: OverlayTab) -> some View {
         switch kept {
         case .assist:
-            assistTab(active: tab == .assist)
+            assistTab(active: isActive && tab == .assist)
         case .codebook:
             ResearchCodebookTab()
         case .notes:
