@@ -102,7 +102,6 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
     /// the current input device. Throws if the new engine cannot start.
     func restart() throws {
         stop()
-        engine = AVAudioEngine()
         try start()
         onRestarted?()
     }
@@ -127,6 +126,26 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
         guard status == .authorized else {
             throw AudioCaptureError.permissionDenied
         }
+
+        // A fresh engine per start: the input AUHAL of a reused engine keeps
+        // the device it first saw. When BluetoothMicGuard has just moved the
+        // default input off a Bluetooth headset, that stale binding fails
+        // engine.start() with -10868 (kAudioUnitErr_FormatNotSupported in
+        // InitializeActiveNodesInInputChain; 2026-11-14, Bose QC45). The
+        // device switch can also still be settling, so a failed start is
+        // retried once on another fresh engine after a short pause.
+        do {
+            engine = AVAudioEngine()
+            try startEngine()
+        } catch AudioCaptureError.engineStartFailed(let error) {
+            RTILog.log("audio engine start failed (\(error)) — retrying once on a fresh engine", category: .audio)
+            Thread.sleep(forTimeInterval: 0.3)
+            engine = AVAudioEngine()
+            try startEngine()
+        }
+    }
+
+    private func startEngine() throws {
 
         // If the user picked a non-default input device (e.g. BlackHole or an
         // aggregate that combines mic + system audio), point the AVAudioEngine
@@ -184,6 +203,20 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
             } else {
                 RTILog.log("bound to input device id=\(deviceID)", category: .audio)
             }
+        } else if let current = AudioInputDeviceStore.defaultInputDeviceID(),
+                  let unit = input.audioUnit {
+            // Bind the current default explicitly instead of trusting the
+            // AUHAL to have followed a default switch made a moment ago.
+            var deviceID = current
+            let setStatus = AudioUnitSetProperty(
+                unit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &deviceID,
+                UInt32(MemoryLayout.size(ofValue: deviceID))
+            )
+            RTILog.log("using system default input device id=\(current)\(setStatus == noErr ? "" : " (bind status=\(setStatus))")", category: .audio)
         } else {
             RTILog.log("using system default input device", category: .audio)
         }
