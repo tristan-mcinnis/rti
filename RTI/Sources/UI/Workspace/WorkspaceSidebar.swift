@@ -124,14 +124,19 @@ private struct SidebarRow: View {
 struct WorkspaceHeaderToggles: View {
     @Bindable var model: WorkspaceModel
     @AppStorage(WorkspaceSidebarSettings.visibleKey) private var sidebarVisible = true
+    @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
 
     var body: some View {
         HStack(spacing: House.Spacing.xxs) {
-            QuickAIGlyphButton(symbol: "sidebar.left", font: HouseChatType.glyphSmall,
-                               color: House.ColorToken.textSecondary,
-                               label: sidebarVisible ? "Collapse sidebar to icons" : "Expand sidebar",
-                               help: "Collapse the sidebar to icons, or expand it (⌃⌘0)") { sidebarVisible.toggle() }
-                .keyboardShortcut("0", modifiers: [.control, .command])
+            if liteEnabled {
+                liteControls
+            } else {
+                QuickAIGlyphButton(symbol: "sidebar.left", font: HouseChatType.glyphSmall,
+                                   color: House.ColorToken.textSecondary,
+                                   label: sidebarVisible ? "Collapse sidebar to icons" : "Expand sidebar",
+                                   help: "Collapse the sidebar to icons, or expand it (⌃⌘0)") { sidebarVisible.toggle() }
+                    .keyboardShortcut("0", modifiers: [.control, .command])
+            }
             if model.page == .sessions || model.page == .chats {
                 QuickAIGlyphButton(symbol: "list.bullet", font: HouseChatType.glyphSmall,
                                    color: House.ColorToken.textSecondary,
@@ -141,6 +146,40 @@ struct WorkspaceHeaderToggles: View {
         }
         .background { routeKeys }
         .fixedSize()
+    }
+
+    /// Lite has no sidebar: away from the call a back arrow returns to it,
+    /// and one menu holds everything else (2026-11-14).
+    @ViewBuilder private var liteControls: some View {
+        if model.page != .live {
+            QuickAIGlyphButton(symbol: "chevron.left", font: HouseChatType.glyphSmall,
+                               color: House.ColorToken.textSecondary,
+                               label: "Back to the call", help: "Back to the call (⌥⌘1)") { model.select(.live) }
+                .accessibilityIdentifier("rti-lite-back")
+        }
+        Menu {
+            ForEach(WorkspaceModel.Page.allCases.filter { $0 != .live }) { page in
+                Button(page.rawValue, systemImage: page.symbol) { model.select(page) }
+            }
+            if GuideSessionController.shared.guide != nil {
+                Button("Full guide", systemImage: OverlayTab.guide.icon) {
+                    model.select(.live)
+                    NotificationCenter.default.post(name: .rtiLiteShowGuide, object: nil)
+                }
+            }
+            Divider()
+            Button("Use the full workspace") { liteEnabled = false }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(HouseChatType.glyphSmall)
+                .foregroundStyle(House.ColorToken.textSecondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Sessions, chats, settings and the full guide")
+        .accessibilityLabel("More")
+        .accessibilityIdentifier("rti-lite-more")
     }
 
     /// ⌥⌘1…⌥⌘4 pick a page, as the route segments did.

@@ -18,6 +18,7 @@ struct TranscriptTabView: View {
     @State private var following = LiveTranscriptList.startsFollowing
     /// A rename refreshes the shared projection and copied text together.
     private let speakerNames = SpeakerNameStore.shared
+    @Environment(\.rtiLite) private var lite
 
     private static let languageOptions: [(code: String, label: String)] = [
         ("en", "English"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French"),
@@ -29,6 +30,9 @@ struct TranscriptTabView: View {
             // The strip lines up with the tabs row. The captured-time clock
             // is the header's record chip; it is not repeated here.
             OverlayTabStrip {
+                // Lite shows the capture line only when something needs a
+                // look; the title bar already says the call is recording.
+                if !lite || healthColor != RTIDesign.Color.success || !following {
                 VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                     HStack(spacing: House.Spacing.xs) {
                         SlateStatusDot(color: healthColor)
@@ -43,6 +47,7 @@ struct TranscriptTabView: View {
                     }
                 }
                 .accessibilityElement(children: .combine)
+                }
             } trailing: {
                 if session.canRetryLiveTranscription {
                     Button("Retry transcription", systemImage: "arrow.clockwise") { session.retryLiveTranscription() }

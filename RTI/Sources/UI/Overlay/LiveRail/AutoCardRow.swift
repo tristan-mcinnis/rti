@@ -31,9 +31,13 @@ struct AutoCardRow: View {
     var compact = false
     var actions: Actions
     @State private var hovering = false
+    /// In Lite the lane is titled "To ask", so an Ask card's own "ASK"
+    /// label would say it twice.
+    @Environment(\.rtiLite) private var lite
 
     var body: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+            if !(lite && kind == .ask && !pinned) {
             HStack(spacing: House.Spacing.xxs) {
                 Label(kind.label, systemImage: kind.icon)
                     .labelStyle(AutoCardKindLabelStyle())
@@ -44,6 +48,7 @@ struct AutoCardRow: View {
                         .accessibilityLabel("Pinned")
                 }
                 Spacer(minLength: House.Spacing.xs)
+            }
             }
             if compact {
                 Text(textZH ?? text)

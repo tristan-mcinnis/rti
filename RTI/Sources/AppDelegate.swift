@@ -67,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         UserDefaults.standard.register(defaults: [
             NotesSettings.enabledKey: NotesSettings.defaultEnabled,
             NotesSettings.intervalKey: NotesSettings.defaultInterval,
+            // Lite is the app's default workspace; code that never registers
+            // it (tests, previews) sees the full workspace.
+            RTILiteSettings.enabledKey: true,
         ])
 
         // Clear any phantom system-audio aggregate devices left by a prior

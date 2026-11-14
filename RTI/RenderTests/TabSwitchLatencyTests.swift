@@ -79,6 +79,40 @@ final class TabSwitchLatencyTests: RenderProofTestCase {
         try measure(label: "rebuilt")
     }
 
+    /// The real-time path: a new transcript line arriving during a two-hour
+    /// call, drawn on the Lite page. Median of 9 arrivals.
+    func testNewLineLatencyOnTheLitePage() throws {
+        UserDefaults.standard.set(true, forKey: RTILiteSettings.enabledKey)
+        defer { UserDefaults.standard.removeObject(forKey: RTILiteSettings.enabledKey) }
+        seedTwoHourCall()
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: WorkspaceLayout.standardSize),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: WorkspaceView(model: WorkspaceModel(), callTypes: .inMemory(.research)))
+        window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
+        window.orderBack(nil)
+        defer {
+            window.orderOut(nil)
+            window.close()
+        }
+        RunLoop.main.run(until: Date())
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        var entries = SessionCoordinator.shared.liveEntries
+        var samples: [Double] = []
+        for index in 0 ..< 9 {
+            entries.append(RenderFixtures.liveEntry("remote_1", "新到的一句话 \(index)。", 7_200_000 + index * 2000))
+            let start = DispatchTime.now().uptimeNanoseconds
+            SessionCoordinator.shared.seedForRenderProof(entries: entries, interim: nil, phase: .recording,
+                                                         startedAt: Date().addingTimeInterval(-7200))
+            RunLoop.main.run(until: Date())
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            samples.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+        }
+        print(String(format: "LATENCY lite new-line median=%.1fms", samples.sorted()[4]))
+    }
+
     private func measure(label: String) throws {
         seedTwoHourCall()
         let model = WorkspaceModel()

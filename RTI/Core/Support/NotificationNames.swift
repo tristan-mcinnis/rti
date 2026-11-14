@@ -16,6 +16,8 @@ public extension Notification.Name {
     /// Posted (object = OverlayTab rawValue String) to switch the overlay's
     /// active tab from a global hotkey or command.
     static let rtiSelectTab = Notification.Name("rti.selectTab")
+    /// RTI Lite: open the full guide in a sheet over the call.
+    static let rtiLiteShowGuide = Notification.Name("rti.lite.showGuide")
     /// Posted (object = vault-relative path String, under `databases/`) to
     /// seed the overlay chat composer with an `@file` mention — e.g. the
     /// Sessions browser's "Ask about this session" action.

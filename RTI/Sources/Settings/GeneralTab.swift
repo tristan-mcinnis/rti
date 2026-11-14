@@ -12,6 +12,7 @@ struct GeneralTab: View {
     var body: some View {
         SettingsPage {
             VStack(alignment: .leading, spacing: House.Spacing.xl) {
+                WorkspaceModeSection()
                 LaunchAtLoginSection()
                 SettingsCard("Screenshots", rows: true) {
                     SettingsRow(title: "Capture mode", isFirst: true) { ScreenshotModePicker() }
@@ -24,6 +25,24 @@ struct GeneralTab: View {
                 HotkeysSection()
                 DataAndSupportSection()
             }
+        }
+    }
+}
+
+// MARK: - Workspace
+
+/// Lite or the full workspace. Lite is the default (2026-11-14).
+private struct WorkspaceModeSection: View {
+    @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
+
+    var body: some View {
+        SettingsCard("Workspace", rows: true) {
+            SettingsToggleRow(
+                title: "RTI Lite",
+                detail: "One live page: transcript, guide position, what to go back to, the next question and an ask bar. Live notes and the codebook run after the call instead. Off shows every view in a sidebar.",
+                isFirst: true,
+                isOn: $liteEnabled
+            )
         }
     }
 }

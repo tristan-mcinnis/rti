@@ -21,6 +21,7 @@ struct WorkspaceView: View {
     var nativeTitlebar = false
     private let session = SessionCoordinator.shared
     @AppStorage(WorkspaceSidebarSettings.visibleKey) private var sidebarVisible = true
+    @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
 
     /// The band under the native title-row header matches the bar AppKit drew.
     private var headerHeight: CGFloat {
@@ -39,9 +40,12 @@ struct WorkspaceView: View {
             HStack(spacing: 0) {
             // The toggle collapses the sidebar to icons; it never vanishes,
             // so every view stays one click away (2026-11-14).
-            WorkspaceSidebar(model: model,
-                             compact: !sidebarVisible
-                                 || WorkspaceSidebarSettings.isCompact(page: model.page, windowWidth: geometry.size.width))
+            // Lite has no sidebar; its header menu holds the other pages.
+            if !liteEnabled {
+                WorkspaceSidebar(model: model,
+                                 compact: !sidebarVisible
+                                     || WorkspaceSidebarSettings.isCompact(page: model.page, windowWidth: geometry.size.width))
+            }
             ZStack {
                 // Keep the composer mounted so a draft, attachments, and scroll
                 // position survive trips to the archive or preferences.

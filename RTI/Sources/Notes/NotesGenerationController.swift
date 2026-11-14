@@ -162,6 +162,8 @@ final class NotesGenerationController {
     /// the Guide and Codebook finish, under the same 8 s limit, so a slow
     /// provider cannot hold the archive back.
     func finish(sessionId: String, timeout: Double = 8) async {
+        // Lite writes no live notes, so Stop runs no final notes pass.
+        guard RTILiteSettings.runs(task: "notes") else { return }
         guard self.sessionId == sessionId, UserDefaults.standard.bool(forKey: NotesSettings.enabledKey) else { return }
         // The request timeout bounds a silent provider; the race bounds a slow
         // stream. Stop goes on at the earlier end, and a pass still running

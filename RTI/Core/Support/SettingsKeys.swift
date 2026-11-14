@@ -209,3 +209,27 @@ public enum SetupPageSettings {
     public static let moreOptionsExpandedKey = "rti.setup.moreOptionsExpanded"
     public static let researchExtrasExpandedKey = "rti.setup.codebookStimulusExpanded"
 }
+
+/// RTI Lite (2026-11-14): the default workspace. One live surface (transcript,
+/// a context rail with the guide position, what to go back to and one
+/// question to ask, and an ask bar) with Sessions, Chats and Settings behind
+/// one menu. Live notes and the live codebook do not run in Lite: the
+/// `/meeting` skill and the findings skills do that work after the call, so
+/// a research call makes about a third of the model calls. Off restores the
+/// full workspace; nothing is deleted either way.
+public enum RTILiteSettings {
+    public static let enabledKey = "rti.lite.enabled"
+    /// Scheduler task ids that do not run in Lite.
+    public static let skippedTasks: Set<String> = ["notes", "researchCodebook", "researchCodebookSynthesis"]
+
+    /// The app registers `true` at launch (AppDelegate); unregistered code
+    /// such as tests sees the full workspace.
+    public static func isOn(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: enabledKey)
+    }
+
+    /// Whether a scheduled task runs under the current workspace.
+    public static func runs(task id: String, in defaults: UserDefaults = .standard) -> Bool {
+        !(isOn(in: defaults) && skippedTasks.contains(id))
+    }
+}

@@ -245,6 +245,10 @@ struct LiveRailStripHost: View {
 struct LiveAssistRail: View {
     let content: LiveRailContent
     var actions = LiveRailActions()
+    /// Lite keeps the three things a glance needs: where the guide is, what
+    /// to go back to, and the next question. Room topics, flags and older
+    /// cards stay in the full workspace.
+    @Environment(\.rtiLite) private var lite
 
     var body: some View {
         ScrollView {
@@ -256,10 +260,10 @@ struct LiveAssistRail: View {
                 nowSection
                 // Topics sit above the flags and the faded cards, so the
                 // map stays in view in a short window.
-                if let topics = content.topics {
+                if !lite, let topics = content.topics {
                     LiveRailTopics(map: topics)
                 }
-                if content.autoOn {
+                if content.autoOn, !lite {
                     laterSections
                 }
             }

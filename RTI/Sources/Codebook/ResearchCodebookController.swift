@@ -370,6 +370,8 @@ final class ResearchCodebookController {
     }
 
     func finish(sessionID: String, entries: [LiveEntry]) async {
+        // Lite keeps no live codebook, so Stop runs no final codebook pass.
+        guard RTILiteSettings.runs(task: "researchCodebook") else { return }
         guard let place = location, place.session.id == sessionID, !sealed else { return }
         request?.cancel(); passID = UUID(); generating = false; sealed = true
         synthesisID = UUID(); synthesizing = false

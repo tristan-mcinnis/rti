@@ -20,6 +20,17 @@ struct OverlayPanelView: View {
     var callTypes: CallTypeStore = .shared
     var isActive = true
 
+    /// `liteAnswerStartsOpen` is a render-proof seam: the answer card drawn
+    /// open without sending a question.
+    init(statusOverride: OverlayShellStatus? = nil, callTypes: CallTypeStore = .shared, isActive: Bool = true,
+         liteAnswerStartsOpen: Bool = false)
+    {
+        self.statusOverride = statusOverride
+        self.callTypes = callTypes
+        self.isActive = isActive
+        _liteAnswerOpen = State(initialValue: liteAnswerStartsOpen)
+    }
+
     @AppStorage(OverlayAppearanceDefaults.appearanceModeKey) private var appearanceMode: String = OverlayAppearanceDefaults.defaultAppearanceMode
     @AppStorage(OverlayAppearanceDefaults.contrastKey) private var contrast: Double = OverlayAppearanceDefaults.defaultContrast
     @AppStorage(OverlayAppearanceDefaults.uiFontSizeKey) private var uiFontSize: Double = OverlayAppearanceDefaults.defaultUIFontSize
@@ -28,6 +39,22 @@ struct OverlayPanelView: View {
     // wins (`AutoAssistSettings.isActive`), and its cards show in the rail.
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
+    /// RTI Lite (default): no view switching. Before a call the page is
+    /// Prepare; during one it is the transcript with the context rail; the
+    /// ask bar sits under both and its answer rises above it.
+    @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
+    @State private var liteAnswerOpen: Bool
+    @State private var liteGuideOpen = false
+    @State private var panelWidth: CGFloat = 0
+
+    /// In Lite the rail runs the page's full height, so the ask bar and the
+    /// answer keep to the transcript's column: this is the rail's width when
+    /// it shows, else 0.
+    private var liteRailInset: CGFloat {
+        guard liteEnabled, shownTab == .transcript,
+              LiveRailLayout.mode(width: panelWidth, applies: railApplies) == .rail else { return 0 }
+        return LiveRailLayout.width
+    }
     /// The selected Live view, shared with the workspace sidebar.
     @Bindable private var liveTabs = LiveTabState.shared
     private var tab: OverlayTab {
@@ -55,6 +82,13 @@ struct OverlayPanelView: View {
         OverlayTab.visibleTabs(notes: notesEnabled, guide: GuideSessionController.shared.isActive, codebook: callTypes.active == .research)
     }
 
+    /// The view on screen: the selected one, or in Lite the one the call's
+    /// state calls for.
+    private var shownTab: OverlayTab {
+        guard liteEnabled else { return tab }
+        return session.phase.livePhase.isLive ? .transcript : .setup
+    }
+
     private var autoOn: Bool {
         AutoAssistSettings.isActive(for: callTypes.active, stored: autoAssistStored)
     }
@@ -74,7 +108,7 @@ struct OverlayPanelView: View {
     private var transcriptPage: some View {
         GeometryReader { geometry in
             let mode = LiveRailLayout.mode(width: geometry.size.width, applies: railApplies)
-            let showsHelp = isActive && tab == .transcript
+            let showsHelp = isActive && shownTab == .transcript
             VStack(alignment: .leading, spacing: 0) {
                 if mode == .strip, showsHelp {
                     LiveRailStripHost(callType: callTypes.active, autoOn: autoOn) { railSheetOpen = true }
@@ -82,7 +116,7 @@ struct OverlayPanelView: View {
                         .padding(.top, House.Spacing.xs)
                 }
                 HStack(alignment: .top, spacing: 0) {
-                    TranscriptTabView(isActive: isActive && tab == .transcript)
+                    TranscriptTabView(isActive: isActive && shownTab == .transcript)
                         .tabContentPadding()
                     if mode == .rail {
                         Group {
@@ -141,17 +175,18 @@ struct OverlayPanelView: View {
                 // Keep the reader's scroll view and local edit state after its
                 // first visit. Hidden readers hold their last displayed rows;
                 // they catch up once on return instead of laying out each frame.
-                if hasVisitedTranscript || tab == .transcript {
-                    IsolatedPage(isVisible: tab == .transcript, content: AnyView(
+                if hasVisitedTranscript || shownTab == .transcript {
+                    IsolatedPage(isVisible: shownTab == .transcript, content: AnyView(
                         transcriptPage
                             .environment(\.isWorkspaceEmbedded, embedded)
+                            .environment(\.rtiLite, liteEnabled)
                             .font(.system(size: CGFloat(uiFontSize), weight: .regular))
                             .foregroundStyle(Color.overlayInk)
                             .tint(Color.overlayInk)
                     ))
-                    .accessibilityHidden(tab != .transcript)
+                    .accessibilityHidden(shownTab != .transcript)
                 }
-                ForEach(Self.keptTabs) { kept in
+                ForEach(liteEnabled ? [] : Self.keptTabs) { kept in
                     if visited.contains(kept) || tab == kept {
                         // Each kept view has its own hosting view and graph
                         // (`IsolatedPage`); the composer is disabled on its
@@ -166,9 +201,9 @@ struct OverlayPanelView: View {
                         .accessibilityHidden(tab != kept)
                     }
                 }
-                if tab == .setup {
+                if shownTab == .setup {
                     SetupTabView().tabContentPadding()
-                } else if !Self.keepsViews, tab != .transcript {
+                } else if !liteEnabled, !Self.keepsViews, tab != .transcript {
                     keptView(tab)
                 }
             }
@@ -176,6 +211,25 @@ struct OverlayPanelView: View {
             // The tab content never scrolls up under the header or the
             // transparent title bar.
             .clipped()
+            .overlay(alignment: .bottom) {
+                if liteEnabled, liteAnswerOpen, !llm.entries.isEmpty {
+                    GeometryReader { geometry in
+                        LiteAnswerCard { closeLiteAnswer() }
+                            .frame(maxWidth: LiteLayout.answerWidth)
+                            .frame(maxHeight: min(geometry.size.height * LiteLayout.answerHeightShare,
+                                                  geometry.size.height - House.Spacing.lg))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                            .padding(.horizontal, House.Spacing.lg)
+                            .padding(.bottom, House.Spacing.sm)
+                            .padding(.trailing, liteRailInset)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            if liteEnabled {
+                liteAskBar
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(embedded ? House.ColorToken.surfaceRaised : House.ColorToken.surface)
@@ -192,9 +246,68 @@ struct OverlayPanelView: View {
         // appears (a recording that landed on Transcript), so the first view
         // counts as visited too; otherwise leaving it removed it instead of
         // hiding it, and its reading position was lost.
-        .onAppear { markVisited(tab) }
-        .onChange(of: tab) { _, selection in
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panelWidth = $0 }
+        .onAppear { markVisited(shownTab) }
+        .onChange(of: shownTab) { _, selection in
             markVisited(selection)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .rtiLiteShowGuide)) { _ in liteGuideOpen = true }
+        .sheet(isPresented: $liteGuideOpen) {
+            if let guide = GuideSessionController.shared.guide {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Guide").font(House.TypeToken.heading)
+                        Spacer()
+                        Button("Done") { liteGuideOpen = false }.keyboardShortcut(.cancelAction)
+                    }
+                    .padding(House.Spacing.md)
+                    GuideTabView(guide: guide, isActive: liteGuideOpen).tabContentPadding()
+                }
+                .frame(width: House.Layout.chatWidth, height: House.Layout.chatHeight)
+                .background(House.ColorToken.surface)
+            }
+        }
+        // A sent question opens the answer above the ask bar.
+        .onChange(of: llm.entries.count) { old, new in
+            guard liteEnabled, new > old else { return }
+            withAnimation(LiteLayout.rise) { liteAnswerOpen = true }
+        }
+    }
+
+    private func closeLiteAnswer() {
+        withAnimation(LiteLayout.rise) { liteAnswerOpen = false }
+    }
+
+    /// Lite's ask bar: the house composer, alone at the foot of the page.
+    /// An answer opens in the card above it; the chevron in the bar's corner
+    /// brings the last answer back.
+    private var liteAskBar: some View {
+        HStack(alignment: .bottom, spacing: House.Spacing.xs) {
+                // Room for the composer's palette and add-context panes.
+                AssistantInputView(availableHeight: LiteLayout.askBarRoom)
+                if !llm.entries.isEmpty, !liteAnswerOpen {
+                    QuickAIGlyphButton(symbol: "chevron.up", font: HouseChatType.glyphSmall,
+                                       color: House.ColorToken.textSecondary,
+                                       label: "Show the last answer", help: "Show the last answer") {
+                        withAnimation(LiteLayout.rise) { liteAnswerOpen = true }
+                    }
+                    .padding(.bottom, House.Spacing.xs)
+                    .accessibilityIdentifier("rti-lite-answer-open")
+                }
+        }
+        .padding(.horizontal, House.Spacing.xs)
+        .padding(.bottom, House.Spacing.xs)
+        .padding(.trailing, liteRailInset)
+        // The rail's ground continues under the bar's row, so the rail reads
+        // as one column from the top of the page to the bottom.
+        .background(alignment: .trailing) {
+            if liteRailInset > 0 {
+                House.ColorToken.surfaceSunken
+                    .frame(width: liteRailInset)
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(House.ColorToken.divider).frame(width: House.hairline)
+                    }
+            }
         }
     }
 

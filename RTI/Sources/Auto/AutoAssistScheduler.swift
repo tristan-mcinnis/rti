@@ -106,7 +106,8 @@ final class AutoAssistScheduler {
         let interval = timer?.timeInterval ?? NotesSettings.tickInterval
         let offsets = offsets(interval: interval)
         for (id, task) in tasks {
-            guard Self.isEnabled(task) else { continue }
+            // Lite skips live notes and the live codebook (RTILiteSettings).
+            guard Self.isEnabled(task), RTILiteSettings.runs(task: id) else { continue }
             let tickGeneration = runGeneration
             let delay = offsets[id] ?? 0
             let key = UUID()

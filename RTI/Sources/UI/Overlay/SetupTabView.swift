@@ -67,6 +67,7 @@ struct SetupTabView: View {
     // These also gate the Live page: the Notes tab and the Auto rail beside
     // the transcript, see OverlayPanelView.
     @AppStorage(NotesSettings.enabledKey) private var notesEnabled = NotesSettings.defaultEnabled
+    @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
     /// Unset means Auto follows the call type; a stored value wins.
     @AppStorage(AutoAssistSettings.enabledKey) private var autoAssistStored: Bool?
     @AppStorage private var moreOptionsOpen: Bool
@@ -578,7 +579,7 @@ struct SetupTabView: View {
 
     private var liveStatusLine: String {
         let callType = callTypes.active
-        return Self.liveStatusLine(notes: notesEnabled,
+        return Self.liveStatusLine(notes: notesEnabled && !liteEnabled,
                                    auto: AutoAssistSettings.runs(on: callType)
                                        ? AutoAssistSettings.isActive(for: callType, stored: autoAssistStored) : nil,
                                    guideNotes: guideNotesOn)
@@ -610,8 +611,12 @@ struct SetupTabView: View {
 
     private var liveAidsGroup: some View {
         settingsGroup {
-            toggleRow(icon: LiveOption.notes.icon, title: LiveOption.notes.title, detail: LiveOption.notes.detail, isOn: $notesEnabled)
-            settingsRowDivider
+            // Lite writes no live notes (the /meeting skill does that after
+            // the call), so its switch would mean nothing here.
+            if !liteEnabled {
+                toggleRow(icon: LiveOption.notes.icon, title: LiveOption.notes.title, detail: LiveOption.notes.detail, isOn: $notesEnabled)
+                settingsRowDivider
+            }
             toggleRow(icon: LiveOption.autoAssist.icon, title: LiveOption.autoAssist.title, detail: autoAssistDetail,
                       isOn: Binding(
                           get: { AutoAssistSettings.isActive(for: callTypes.active, stored: autoAssistStored) },
