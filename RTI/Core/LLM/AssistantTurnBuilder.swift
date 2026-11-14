@@ -158,7 +158,7 @@ public enum AssistantTurnBuilder {
             ? base + "\n\n" + input.listenerSystemSuffix
             : base
         if input.liveReply {
-            effectivePrompt += "\n\n" + LiveReplyLanguage.instructions(history: input.existingEntries)
+            effectivePrompt += "\n\n" + LiveReplyLanguage.instructions(history: input.existingEntries, action: input.action)
         }
         let promptContext = PromptContext(
             baseSystemPrompt: effectivePrompt,

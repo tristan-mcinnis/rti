@@ -3,11 +3,22 @@ import Foundation
 /// User-selected language takes precedence over the live default. Only an
 /// explicit continuing preference from this thread outlives a single request.
 public enum LiveReplyLanguage {
-    public static func instructions(history: [ChatEntry]) -> String {
+    /// Recap actions that reply as a summary: their answer is the English
+    /// bullets alone, with no Source and Pinyin blocks after them (2026-11-14:
+    /// those blocks buried the takeaway during a live group).
+    public static let summaryActions: Set<String> = ["Quick recap", "Recap"]
+
+    public static func instructions(history: [ChatEntry], action: String? = nil) -> String {
         var rule = """
         Live reply language: default to a self-contained English answer. Put ALL English takeaways first. Chinese source material, earlier assistant output or a question typed in Chinese does not change that default. An explicit user instruction about reply language or format, including in an edited action prompt, takes precedence. A one-turn request expires after that reply.
+        """
+        if let action, summaryActions.contains(action) {
+            rule += "\nThis is a summary: give only the English bullets. No Source blocks, quotes, timestamps or pinyin unless the user asks for them."
+        } else {
+            rule += "\n" + """
         After the English, put each needed annotation in a separate Markdown paragraph. Label exact original speech **Source [time, speaker]**, using only supplied timestamps and confidence-safe labels. Preserve embedded English and original punctuation. Label drafted words **Suggested question for the moderator** or **Suggested reply for the user**. For a Mandarin source or a Mandarin line to speak, put **Pinyin** on a separate line with tone marks; preserve neutral tones and Latin names. Mark uncertain readings, dialects and proper names when needed. Do not invent Chinese or pinyin for English-only material. Keep quotations, suggestions and pronunciation separate.
         """
+        }
         // History is truncated for the model. Carry only the recognized language
         // setting across that boundary, never unrelated text from an old turn.
         for entry in history.reversed() where entry.role == "user" && (entry.action == "Ask" || entry.action == nil) {

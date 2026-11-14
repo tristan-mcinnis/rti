@@ -78,7 +78,7 @@ final class PromptRegistryTests: XCTestCase {
         let composed = PromptComposer.recap(.standard, resolve: resolve)
         XCTAssertTrue(composed.hasPrefix("Recap the conversation so far "))
         XCTAssertTrue(composed.contains("CUSTOM_CLAUSE"))
-        XCTAssertTrue(composed.contains("Lead with the English takeaways"))
+        XCTAssertTrue(composed.contains("Answer in English bullets only"))
     }
 
     func test_recapClauseIDMapsDepths() {

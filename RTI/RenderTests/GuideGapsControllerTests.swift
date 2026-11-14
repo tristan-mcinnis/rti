@@ -51,8 +51,8 @@ final class GuideGapsControllerTests: RenderProofTestCase {
         controller.select("S1Q2", at: start.addingTimeInterval(60))
         XCTAssertTrue(controller.gaps.isEmpty, "S1 is still open")
         controller.select("S2Q1", at: start.addingTimeInterval(400))
-        XCTAssertEqual(controller.gaps.map(\.qid), ["S1Q2", "S1Q1"],
-                       "a first position inside S1 is a normal start: the early skip of S1Q1 stays a gap")
+        XCTAssertEqual(controller.gaps.map(\.qid), ["S1Q2"],
+                       "a pick in the first five minutes says where the recording joined: S1Q1 was not recorded")
         XCTAssertTrue(controller.gaps.allSatisfy(\.isActionable))
         controller.endSession("gaps-late")
 

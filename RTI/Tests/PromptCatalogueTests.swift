@@ -22,7 +22,7 @@ final class PromptCatalogueTests: XCTestCase {
         // Every depth starts with the same stem and carries the same language rule.
         for p in [brief, standard, detailed] {
             XCTAssertTrue(p.hasPrefix("Recap the conversation so far "))
-            XCTAssertTrue(p.contains("Lead with the English takeaways"))
+            XCTAssertTrue(p.contains("Answer in English bullets only"))
         }
         XCTAssertNotEqual(brief, standard)
         XCTAssertNotEqual(standard, detailed)

@@ -42,7 +42,11 @@ struct NotesTabView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 14) {
+                        // A plain VStack: a lazy stack has no heights for
+                        // blocks it has not drawn, so scrolling to the newest
+                        // block stopped partway (2026-11-14). A call writes
+                        // at most about 60 blocks.
+                        VStack(alignment: .leading, spacing: 14) {
                             ForEach(controller.notes) { note in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(alignment: .top, spacing: 6) {
@@ -62,6 +66,7 @@ struct NotesTabView: View {
                         .trackReaderFollowing($following)
                     }
                     .scrollContentBackground(.hidden)
+                    .defaultScrollAnchor(.bottom)
                     .onChange(of: controller.notes.count) { _, _ in
                         if following, let last = controller.notes.last {
                             withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }

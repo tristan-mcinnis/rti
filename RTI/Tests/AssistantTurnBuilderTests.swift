@@ -62,6 +62,15 @@ final class AssistantTurnBuilderTests: XCTestCase {
         XCTAssertFalse(build(live: false, history: history).promptContext.baseSystemPrompt.contains("Live reply language"))
     }
 
+    func testRecapRepliesCarryNoSourceOrPinyinBlocks() {
+        let recap = LiveReplyLanguage.instructions(history: [], action: "Quick recap")
+        XCTAssertTrue(recap.contains("only the English bullets"))
+        XCTAssertFalse(recap.contains("**Source"))
+        let ask = LiveReplyLanguage.instructions(history: [], action: "Ask")
+        XCTAssertTrue(ask.contains("**Source"))
+        XCTAssertTrue(ask.contains("tone marks"))
+    }
+
     func testBuildsTranscriptBackedUserMessageWithScopeInstruction() {
         let output = build(transcript: "Client: We need pricing.", scope: "projects/acme")
 

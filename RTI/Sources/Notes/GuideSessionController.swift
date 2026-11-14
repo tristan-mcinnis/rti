@@ -48,6 +48,7 @@ final class GuideSessionController {
     /// and that first position sits in a later section (`GuideGaps.recordedFrom`):
     /// an early skip inside the first section is a real skip, not a late start.
     private var recordedFromIndex: Int {
+        if let lateStartIndex { return lateStartIndex }
         guard let guide, let earliest = reached.values.min(), earliest <= Self.lateStartWindowMs else { return 0 }
         let filed = extraction?.cells.compactMap { cell in
             cell.coverage == "Not covered" ? nil : guide.questions.firstIndex { $0.qid == cell.qid }
@@ -172,6 +173,7 @@ final class GuideSessionController {
     }
 
     private func resetPassState() {
+        lateStartIndex = nil
         reached = [:]
         lastPosition = nil
         lastPassAt = nil
@@ -189,6 +191,15 @@ final class GuideSessionController {
     }
 
     private var cursor: GuideCursor?
+    /// The earliest guide index the user picked in the first
+    /// `lateStartWindowMs` of the recording: they joined there, so every earlier question is
+    /// `notRecorded`, never a skip, even inside the first section
+    /// (2026-11-14: a group joined 25 minutes in listed warm-up as skipped).
+    private var lateStartIndex: Int?
+    /// A manual pick older than this lets a guide pass with evidence move the
+    /// position again. A moderator line that reads another question moves it
+    /// at once.
+    static let manualHoldMs = 3 * 60 * 1000
     private(set) var matcher: GuideMatcher?
     /// Guide index -> earliest transcript ms the recording reached it.
     private var reached: [Int: Int] = [:]
@@ -314,6 +325,9 @@ final class GuideSessionController {
         let timeline = max(0, Int((date.timeIntervalSince(startedAt) * 1000).rounded()))
         cursor?.resetEvidence(atMs: timeline)
         manualQuestionID = qid
+        if timeline <= Self.lateStartWindowMs, let index = guide?.questions.firstIndex(where: { $0.qid == qid }) {
+            lateStartIndex = min(lateStartIndex ?? index, index)
+        }
         appendSelection(qid, atMs: timeline, manual: true)
     }
 
@@ -528,6 +542,9 @@ final class GuideSessionController {
             } else if self.cursor?.suggest(suggestion, evidence: evidence, revision: cursor.revision) == true {
                 let first = self.cursor?.acceptedFromMs ?? latest
                 updateProgress(suggestion)
+                if !isFollowing, let pick = selections.last(where: \.manual), first >= pick.transcriptMs + Self.manualHoldMs {
+                    manualQuestionID = nil
+                }
                 if isFollowing { appendSelection(suggestion, atMs: first, manual: false) }
             }
         } else if !established {
@@ -547,18 +564,23 @@ final class GuideSessionController {
     /// establishes that question on its own, anywhere in the guide. Every
     /// such line in the batch counts, in spoken order, so a batch that
     /// crosses two questions keeps both on the timeline (the replay found a
-    /// backed-off pass that kept only the later one). A manual selection is
-    /// never moved. `established` is true when a line set or confirmed the
+    /// backed-off pass that kept only the later one). A manual selection
+    /// holds until a moderator line after it reads a different question:
+    /// the room has moved on, so the pick is released. `established` is true when a line set or confirmed the
     /// position, `moved` when it set a new one.
     @discardableResult
     private func establishFromModerator(_ turns: [GuideTranscript.Source], roles: [String: SpeechRole],
                                         at date: Date) -> (established: Bool, moved: Bool) {
-        guard isFollowing, let guide, let matcher, var current = cursor?.currentQID else { return (false, false) }
+        guard let guide, let matcher, var current = manualQuestionID ?? cursor?.currentQID else { return (false, false) }
         var lastSelectionMs = selections.last?.transcriptMs ?? 0
         var established = false, moved = false
         for source in turns where roles[source.turn.id] == .moderator && source.turn.startMs >= lastSelectionMs {
             let currentIndex = guide.questions.firstIndex { $0.qid == current }
             guard let qid = matcher.question(asked: source.turn.text, near: currentIndex) else { continue }
+            if !isFollowing {
+                guard qid != manualQuestionID else { continue }
+                manualQuestionID = nil
+            }
             lastPosition = (qid, date)
             established = true
             if qid == current {

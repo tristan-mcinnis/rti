@@ -100,6 +100,27 @@ final class GuidePassControllerTests: RenderProofTestCase {
         XCTAssertEqual(guide.emptyStreak, 0)
     }
 
+    func testAModeratorLineReadingAnotherQuestionReleasesAManualPick() async throws {
+        let guide = try controller(Script([]))
+        guide.select("S1Q1", at: start.addingTimeInterval(10))
+        XCTAssertFalse(guide.isFollowing)
+        let entries = [RenderFixtures.liveEntry("remote_1", "好，那下一个问题，你会怎么洗这个杯子？", 40000),
+                       RenderFixtures.liveEntry("remote_2", "我一般用热水冲一下。", 45000)]
+        await guide.generate(sessionId: "pass-fixture", entries: entries, at: start.addingTimeInterval(60))
+        XCTAssertTrue(guide.isFollowing, "the room moved on, so the pick is released")
+        XCTAssertEqual(guide.currentQuestionID, "S2Q1")
+        XCTAssertEqual(guide.questionID(atTranscriptMs: 20000), "S1Q1", "talk before the move stays with the pick")
+    }
+
+    func testAFreshManualPickHoldsAgainstAGuidePass() async throws {
+        let early = try controller(Script([#"{"suggestion":"S2Q1","evidence":[],"cells":[]}"#]))
+        early.select("S1Q1", at: start.addingTimeInterval(10))
+        await early.generate(sessionId: "pass-fixture", entries: [RenderFixtures.liveEntry("remote_1", "Line one.", 20000),
+                                                                  RenderFixtures.liveEntry("remote_2", "我一般用热水冲一下。", 30000)],
+                             at: start.addingTimeInterval(40))
+        XCTAssertEqual(early.currentQuestionID, "S1Q1", "a fresh pick holds against a pass")
+    }
+
     func testAModeratorLineReadingAGuideQuestionSetsThePosition() async throws {
         let guide = try controller(Script([]))
         XCTAssertEqual(guide.currentQuestionID, "S1Q1")

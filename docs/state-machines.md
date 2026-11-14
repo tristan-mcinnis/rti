@@ -403,7 +403,13 @@ the board.
   (final drain under an 8 s deadline), `endSession`.
 - Effects: each pass files quotes against guide questions anywhere in
   the guide; only a manual pick or a marker link fixes where a turn
-  files. A moderator line matching a guide question sets the position
+  files. A manual pick holds until a moderator line after it reads a
+  different guide question, or a guide pass with evidence moves the
+  position at least 3 minutes after the pick (`manualHoldMs`); then it
+  follows live again. The earliest manual pick in the first 5 minutes
+  is where the recording joined (`lateStartIndex`): every earlier
+  question is `notRecorded`, never skipped, even inside section 1.
+  A moderator line matching a guide question sets the position
   while following; every such line in a batch counts, in spoken order,
   so a batch that crosses two questions keeps both on the timeline.
   Moderator lines and bare backchannels (role `unknown`, such as 对对对)

@@ -267,7 +267,7 @@ public enum PromptDefaults {
             "in 8–12 bullets grouped under short bold topic headers: cover each distinct topic raised, who said what, decisions, points of disagreement, and open threads. Thorough but still skimmable."
 
         case .recapLanguageRule:
-            "Lead with the English takeaways. After the English, cite useful original words separately and put tone-marked Mandarin pinyin on its own line. Follow the user's explicit answer language or format."
+            "Answer in English bullets only. Do not add sources, quotes, timestamps or pinyin; the transcript is one tap away. Follow the user's explicit answer language or format."
 
         case .autoAssistCards:
             """
