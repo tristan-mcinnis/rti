@@ -268,6 +268,9 @@ final class AutoAssistController {
     /// card at once instead of waiting out the pacer's spacing.
     @discardableResult
     func generate(sessionId: String, explicit: Bool = false) async -> Int? {
+        // Lite, listening only: the rail shows what was said, not what to
+        // ask, so no suggestion pass runs (2026-11-15).
+        if !explicit, RTILiteSettings.isOn(), SessionCoordinator.shared.isListeningOnly { return nil }
         let event: AutoPassState.Event = explicit ? .passRequested : .tick
         guard case let .startPass(passGeneration) = pass.reduce(event, now: now(), floor: floor) else {
             return nil

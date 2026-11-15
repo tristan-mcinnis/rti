@@ -179,7 +179,7 @@ struct GuidePrepareControls: View {
         do {
             switch choice {
             case let .guide(url), let .project(url):
-                let loaded = try await GuideFileReader.shared.loadGuide(at: url)
+                let loaded = try await GuideFileReader.shared.loadGuide(at: url, group: preparation.group)
                 try Task.checkCancellation()
                 if editable, projectIsCurrent {
                     preparation.setGuide(loaded.document, url: loaded.sourceURL, parsedSourceJSON: loaded.parsedSourceJSON)

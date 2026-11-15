@@ -59,6 +59,16 @@ struct LiveRailContent: Equatable {
         let zh: String
     }
 
+    /// What the group said to one guide question, as the guide pass filed
+    /// it: its summary and the respondents' own words.
+    struct Answer: Equatable, Identifiable {
+        let qid: String
+        let question: String
+        let summary: String
+        let quotes: [String]
+        var id: String { qid }
+    }
+
     var kind: Kind
     var isRecording = false
     /// Auto runs on this call (`AutoAssistSettings.isActive`).
@@ -68,6 +78,10 @@ struct LiveRailContent: Equatable {
     var guideActive = false
     var question: Question?
     var gaps: [GuideGap] = []
+    /// Listening only (the user observes; someone else moderates): the rail
+    /// shows what was said per guide question instead of things to ask.
+    var listening = false
+    var answers: [Answer] = []
     var now: [Card] = []
     var threads: [Card] = []
     var earlier: [Card] = []
@@ -168,6 +182,20 @@ extension LiveRailContent {
             }.map { Question(qid: $0.qid, en: $0.en, zh: $0.zh) }
             content.gaps = guide.gaps
         }
+        content.listening = session.isListeningOnly
+        if content.listening, guide.isActive, let document = guide.guide, let cells = guide.extraction?.cells {
+            let byID = Dictionary(cells.map { ($0.qid, $0) }, uniquingKeysWith: { first, _ in first })
+            let order = document.questions.map(\.qid)
+            let current = guide.currentQuestionID.flatMap { order.firstIndex(of: $0) } ?? order.count - 1
+            // The current question, then the two before it that have answers.
+            let candidates = order.indices.filter { $0 <= current }.reversed().map { order[$0] }
+            content.answers = candidates.compactMap { qid -> Answer? in
+                guard let cell = byID[qid], !(cell.summary.isEmpty && cell.quotes.isEmpty),
+                      let question = document.questions.first(where: { $0.qid == qid }) else { return nil }
+                return Answer(qid: qid, question: question.en, summary: cell.summary,
+                              quotes: cell.quotes.prefix(2).map(\.original))
+            }.prefix(3).map { $0 }
+        }
         if autoOn {
             content.now = auto.rail.nowItems.compactMap(card)
             content.threads = auto.rail.threadItems.compactMap(card)
@@ -257,7 +285,12 @@ struct LiveAssistRail: View {
                     questionSection
                     gapsSection
                 }
-                nowSection
+                // Listening only: what was said, not what to ask (2026-11-15).
+                if lite, content.listening {
+                    answersSection
+                } else {
+                    nowSection
+                }
                 // Topics sit above the flags and the faded cards, so the
                 // map stays in view in a short window.
                 if !lite, let topics = content.topics {
@@ -311,6 +344,44 @@ struct LiveAssistRail: View {
                 }
                 if content.gaps.count > LiveRailLimits.gaps {
                     LiveRailEmptyLine("\(content.gaps.count - LiveRailLimits.gaps) more in the Guide.")
+                }
+            }
+        }
+    }
+
+    private var answersSection: some View {
+        VStack(alignment: .leading, spacing: House.Spacing.sm) {
+            SlateSectionLabel(text: "What they said")
+            if content.answers.isEmpty {
+                LiveRailEmptyLine(content.guideActive
+                    ? "Answers show here by guide question, every couple of minutes."
+                    : "Choose a guide on Prepare to see answers by question.")
+            } else {
+                ForEach(content.answers) { answer in
+                    VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                        Text(answer.question)
+                            .font(House.TypeToken.meta)
+                            .foregroundStyle(House.ColorToken.textTertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        if !answer.summary.isEmpty {
+                            Text(answer.summary)
+                                .font(House.TypeToken.bodySmall)
+                                .foregroundStyle(House.ColorToken.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        ForEach(answer.quotes, id: \.self) { quote in
+                            Text("“\(quote)”")
+                                .font(House.TypeToken.bodySmall)
+                                .foregroundStyle(House.ColorToken.textSecondary)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(House.Spacing.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .modifier(LiveRailCardSurface(raised: true))
                 }
             }
         }
@@ -532,6 +603,7 @@ private struct LiveRailLane<Trailing: View>: View {
                                            copy: { actions.copy(card.speakable) })
                         )
                         .padding(House.Spacing.xs)
+                        .modifier(LiveRailCardSurface(raised: index == 0 || card.pinned))
                         .modifier(LiveRailFreshHighlight(shownAt: card.shownAt))
                         .transition(.opacity)
                     }
@@ -574,6 +646,31 @@ enum LiveRailHold {
     }
 }
 
+/// The card that matters now sits on the grey rail as a white raised card
+/// with a hairline, so it reads as an object, not text on grey (2026-11-15:
+/// "white on white with a shadow, hard to see what's going on"). Older,
+/// dimmed cards stay flat.
+private struct LiveRailCardSurface: ViewModifier {
+    let raised: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        if raised {
+            content
+                .background(House.ColorToken.surfaceRaised,
+                            in: RoundedRectangle(cornerRadius: House.Radius.row, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: House.Radius.row, style: .continuous)
+                        .strokeBorder(House.ColorToken.strokeStrong, lineWidth: House.hairline)
+                }
+                .shadow(color: .black.opacity(House.Shadow.card.opacity(dark: scheme == .dark)),
+                        radius: House.Shadow.card.blur / 2, y: House.Shadow.card.y)
+        } else {
+            content
+        }
+    }
+}
+
 /// Lights a card that just arrived, then lets it settle. The light is a
 /// selection fill that fades; the card never moves.
 private struct LiveRailFreshHighlight: ViewModifier {
@@ -593,8 +690,9 @@ private struct LiveRailFreshHighlight: ViewModifier {
     }
 
     func body(content: Content) -> some View {
+        // Over the card, so the light shows on a raised white card too.
         content
-            .background { RowHighlight(isSelected: lit, radius: House.Radius.row) }
+            .overlay { RowHighlight(isSelected: lit, radius: House.Radius.row).allowsHitTesting(false) }
             .task(id: shownAt) {
                 guard let shownAt, Self.isFresh(shownAt, now: Date()) else { return }
                 lit = true

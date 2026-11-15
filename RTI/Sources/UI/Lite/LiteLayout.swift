@@ -11,6 +11,8 @@ enum LiteLayout {
     /// Room the composer may use for its palette and add-context panes:
     /// half the chat window's height.
     static let askBarRoom = House.Layout.chatHeight / 2
+    /// Whether the Lite side panel shows beside the transcript (⌃⌘0).
+    static let railVisibleKey = "rti.lite.railVisible"
     /// The answer opens with the house `open` motion (0.12 s ease-out).
     static let rise = Animation.easeOut(duration: House.Motion.open)
 }

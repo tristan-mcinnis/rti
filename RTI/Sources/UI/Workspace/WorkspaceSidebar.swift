@@ -125,6 +125,7 @@ struct WorkspaceHeaderToggles: View {
     @Bindable var model: WorkspaceModel
     @AppStorage(WorkspaceSidebarSettings.visibleKey) private var sidebarVisible = true
     @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
+    @AppStorage(LiteLayout.railVisibleKey) private var railVisible = true
 
     var body: some View {
         HStack(spacing: House.Spacing.xxs) {
@@ -156,6 +157,14 @@ struct WorkspaceHeaderToggles: View {
                                color: House.ColorToken.textSecondary,
                                label: "Back to the call", help: "Back to the call (⌥⌘1)") { model.select(.live) }
                 .accessibilityIdentifier("rti-lite-back")
+        }
+        if model.page == .live {
+            QuickAIGlyphButton(symbol: "sidebar.right", font: HouseChatType.glyphSmall,
+                               color: House.ColorToken.textSecondary,
+                               label: railVisible ? "Hide the side panel" : "Show the side panel",
+                               help: "Show or hide the side panel (⌃⌘0)") { railVisible.toggle() }
+                .keyboardShortcut("0", modifiers: [.control, .command])
+                .accessibilityIdentifier("rti-lite-rail-toggle")
         }
         Menu {
             ForEach(WorkspaceModel.Page.allCases.filter { $0 != .live }) { page in

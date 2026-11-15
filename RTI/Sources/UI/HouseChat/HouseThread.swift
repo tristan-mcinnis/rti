@@ -136,6 +136,10 @@ struct AssistThread: View {
             // back to the tab lands on the newest turn).
             .task {
                 if startsFollowingBottom { scrollToEnd(proxy, animated: false) }
+                // Again once an opening animation (the Lite answer card) has
+                // settled and the heights are real (2026-11-15).
+                try? await Task.sleep(for: .milliseconds(250))
+                if startsFollowingBottom, following { scrollToEnd(proxy, animated: false) }
             }
             // A new question follows the bottom again.
             .onChange(of: model.entries.count) { _, _ in
@@ -532,7 +536,10 @@ private struct AssistAnswerRow: View, Equatable {
             if !sources.isEmpty {
                 sourceList(sources)
             }
-            copyButton
+            // Close under the text: the prose's own bottom margin is enough.
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                copyButton.padding(.top, -House.Spacing.sm)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())

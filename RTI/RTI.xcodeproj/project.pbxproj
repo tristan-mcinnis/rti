@@ -154,6 +154,7 @@
 		3AF3B6537EBE56DFB18295E6 /* RTIMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D64733E271DE5F43A278DD /* RTIMarkdown.swift */; };
 		3BA599A86DD7F9F5B3EB5362 /* PasteboardHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18F9E23AC8C6C42DF807253D /* PasteboardHelpers.swift */; };
 		3BAA31FDA93CBA9A68700D50 /* HouseDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 99BDA0C117D44CD2E2C8BBCD /* HouseDesign */; };
+		3BBB029C959BEC6783937ECE /* BoldLineGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = D69357D518011B73774C083E /* BoldLineGuide.swift */; };
 		3BD1566DB592CBE5E8373AA0 /* AudioFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68C4BDDE00A18D5FCFA1E81 /* AudioFormat.swift */; };
 		3C07035F4BBA9131F1042C5E /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE15B20C4952DBA9C07E302 /* CredentialStore.swift */; };
 		3C688634C9CACC192A81F241 /* AutoVaultQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D0DC4C94A901B15573D7C1C /* AutoVaultQuery.swift */; };
@@ -1064,6 +1065,7 @@
 		D420B4688E416E5509DE1C22 /* JSONExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONExtractor.swift; sourceTree = "<group>"; };
 		D4326F9CC201900F37F9AF73 /* SessionArchiveActionRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionArchiveActionRules.swift; sourceTree = "<group>"; };
 		D4B85DFB7EB29D69F47AC554 /* LiveTranscriptTurns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptTurns.swift; sourceTree = "<group>"; };
+		D69357D518011B73774C083E /* BoldLineGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoldLineGuide.swift; sourceTree = "<group>"; };
 		D795EAF33BDF5493434151E4 /* NotesGenerationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesGenerationController.swift; sourceTree = "<group>"; };
 		D819EC454C99C8A18BE673A6 /* HouseFloatingChooser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseFloatingChooser.swift; sourceTree = "<group>"; };
 		D8540F7BDEA943EBFBA7AA62 /* PendingUpgradeResumer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingUpgradeResumer.swift; sourceTree = "<group>"; };
@@ -1869,6 +1871,7 @@
 		BF9C152B4F2B22FBF3876354 /* Guide */ = {
 			isa = PBXGroup;
 			children = (
+				D69357D518011B73774C083E /* BoldLineGuide.swift */,
 				9B7A08EBC40E0E662C493740 /* GuideDocument.swift */,
 				B6FD2D3E5996F6A43CDA96E6 /* GuideExtraction.swift */,
 				FAB3AECCCFE09D3D290CE11C /* GuideGaps.swift */,
@@ -2572,6 +2575,7 @@
 				8255669AF0B5CA461CFB7919 /* AutoCardRules.swift in Sources */,
 				DB977B25127BF67F2E96098C /* AutoPassState.swift in Sources */,
 				3C688634C9CACC192A81F241 /* AutoVaultQuery.swift in Sources */,
+				3BBB029C959BEC6783937ECE /* BoldLineGuide.swift in Sources */,
 				93F495FCD3B4A971DAAE24D5 /* BriefRail.swift in Sources */,
 				5719B398067FDBB3209E0CC6 /* CalendarMeeting.swift in Sources */,
 				E934BA0A4032D28C2A3C11CA /* CallType.swift in Sources */,

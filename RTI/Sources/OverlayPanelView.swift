@@ -43,6 +43,7 @@ struct OverlayPanelView: View {
     /// Prepare; during one it is the transcript with the context rail; the
     /// ask bar sits under both and its answer rises above it.
     @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
+    @AppStorage(LiteLayout.railVisibleKey) private var liteRailVisible = true
     @State private var liteAnswerOpen: Bool
     @State private var liteGuideOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -97,8 +98,10 @@ struct OverlayPanelView: View {
     /// Live help sits beside the transcript when Auto runs on this call or a
     /// guide is active.
     private var railApplies: Bool {
-        AutoAssistSettings.liveHelpApplies(for: callTypes.active, stored: autoAssistStored,
-                                           guideActive: GuideSessionController.shared.isActive)
+        // Lite: the header's side-panel button can hide it (⌃⌘0).
+        if liteEnabled, !liteRailVisible { return false }
+        return AutoAssistSettings.liveHelpApplies(for: callTypes.active, stored: autoAssistStored,
+                                                  guideActive: GuideSessionController.shared.isActive)
     }
 
     /// The transcript with live help beside it (a rail) or over it (a strip

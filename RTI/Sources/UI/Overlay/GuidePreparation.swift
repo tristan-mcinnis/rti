@@ -72,7 +72,9 @@ actor GuideFileReader {
         }
     }
 
-    func loadGuide(at url: URL) async throws -> LoadedGuide {
+    /// `group` (from Prepare, such as "G1") narrows a bold-line guide to that
+    /// group's questions; see `BoldLineGuide`.
+    func loadGuide(at url: URL, group: String? = nil) async throws -> LoadedGuide {
         let file = try guideURL(at: url)
         if file.pathExtension.lowercased() == "json" {
             let data = try Data(contentsOf: file)
@@ -92,8 +94,22 @@ actor GuideFileReader {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            // The skill's parser reads numbered guides. A moderator copy whose
+            // questions are bold lines (2026-11-15) is read
+            // here; a Word guide uses the Markdown copy beside it.
+            if let fallback = boldLineGuide(for: file, group: group) { return fallback }
             throw ReadError.unreadableGuide
         }
+    }
+
+    private func boldLineGuide(for file: URL, group: String?) -> LoadedGuide? {
+        let markdown = file.pathExtension.lowercased() == "md" ? file : file.deletingPathExtension().appendingPathExtension("md")
+        guard let text = try? String(contentsOf: markdown, encoding: .utf8) else { return nil }
+        let base = markdown.deletingPathExtension().lastPathComponent
+        let title = [base, group.map { "(\($0))" }].compactMap(\.self).joined(separator: " ")
+        guard let json = BoldLineGuide.json(markdown: text, title: title, group: group),
+              let document = try? GuideDocument.parse(json) else { return nil }
+        return LoadedGuide(document: document, sourceURL: file, parsedSourceJSON: json)
     }
 
     private static func isGuideSource(_ file: URL) -> Bool {

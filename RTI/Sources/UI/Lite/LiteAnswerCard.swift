@@ -16,11 +16,11 @@ struct LiteAnswerCard: View {
             HStack(spacing: House.Spacing.xs) {
                 Image(systemName: "sparkles")
                     .font(House.TypeToken.meta)
-                    .foregroundStyle(House.ColorToken.textTertiary)
+                    .foregroundStyle(House.ColorToken.accent)
                     .accessibilityHidden(true)
                 Text(llm.streaming ? "Answering…" : "Answer")
                     .font(House.TypeToken.label)
-                    .foregroundStyle(House.ColorToken.textSecondary)
+                    .foregroundStyle(House.ColorToken.accent)
                 Spacer(minLength: 0)
                 QuickAIGlyphButton(symbol: "chevron.down", font: HouseChatType.glyphSmall,
                                    color: House.ColorToken.textSecondary,
@@ -31,6 +31,10 @@ struct LiteAnswerCard: View {
             }
             .padding(.horizontal, House.Spacing.lg)
             .frame(height: House.Control.row)
+            // A tinted header band marks the card as the answer, apart from
+            // the white transcript behind it (2026-11-15: the card read as
+            // white on white).
+            .background(House.ColorToken.accentSoft)
             HouseDivider()
             // One thread with one identity: switching between a hugging and a
             // scrolling copy mid-stream reset its scroll and following state
@@ -42,7 +46,7 @@ struct LiteAnswerCard: View {
         .clipShape(RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: House.Radius.lg, style: .continuous)
-                .strokeBorder(House.ColorToken.stroke, lineWidth: House.hairline)
+                .strokeBorder(House.ColorToken.strokeStrong, lineWidth: House.hairline)
         }
         .overlay(alignment: .top) {
             House.ColorToken.highlightTop
