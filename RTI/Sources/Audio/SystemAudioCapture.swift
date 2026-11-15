@@ -18,6 +18,11 @@ struct SystemAudioCaptureHealth: Sendable, Equatable {
     let lastAudibleBufferAt: Date?
     let lastRMSLevel: Float
     let peakRMSLevel: Float
+    /// When the default output changed and no buffer has arrived since;
+    /// nil once audio flows again. A tap still dead well after an output
+    /// change is swapped for ScreenCaptureKit (2026-11-15: 8 minutes of a
+    /// group lost to a tap that never came back after a switch).
+    var deadSinceOutputChange: Date? = nil
 }
 
 /// A system-audio capture backend. Two conformers exist: the CoreAudio
@@ -33,7 +38,8 @@ protocol SystemAudioCapturing: AnyObject, Sendable {
     func captureHealth() -> SystemAudioCaptureHealth
     func recoverFromSilentAudio() async -> Bool
     /// True for the CoreAudio process tap: the pipeline may swap it for the
-    /// ScreenCaptureKit backend if it never delivers a buffer.
+    /// ScreenCaptureKit backend if it never delivers a buffer, or stays dead
+    /// after an output change.
     var fallsBackToScreenCapture: Bool { get }
 }
 

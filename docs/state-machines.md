@@ -231,6 +231,12 @@ is a counter per leg. Event: `record`. Effect: true for the first packet
 with final tokens and then every 100th, so only those get a log line.
 Tests: `RTI/Tests/FinalPacketLogThrottleTests.swift`.
 
+### Mic rebind pacing and the start probe (2026-11-15)
+
+`MicRebindPacer` (`RTI/Core/Audio/`, tests `MicRebindPacerTests`) decides when an engine configuration change rebinds the mic. A burst waits 0.3 s and becomes one rebind; a change within 1 s of RTI's own rebind is its echo (a fresh engine re-sets the client rate) and is dropped; a fourth rebind inside 10 s waits 5 s. `AudioCaptureManager.stop()` cancels a pending rebind. Before each engine start, `AudioServiceProbe` asks CoreAudio for the input's rate on a background thread and waits 3 s; no answer refuses the start with `audioSystemNotResponding` instead of freezing the main thread.
+
+A tap that stopped delivering buffers has one owner, the tap's stall watchdog: `recoverFromSilentAudio` rebuilds only a tap whose buffers still flow. A tap still dead 30 s after a default-output change (`SystemAudioCaptureHealth.deadSinceOutputChange`) is swapped for ScreenCaptureKit by `fallBackToSCKIfTapDead`, as is one that never delivered.
+
 ## Auto pass timing
 
 `AutoPassState` (`RTI/Core/Live/AutoPassState.swift`), owned by

@@ -3,10 +3,50 @@ import CoreAudio
 import Foundation
 import RTICore
 
-enum AudioCaptureError: Error {
+enum AudioCaptureError: Error, CustomStringConvertible {
     case permissionDenied
     case engineStartFailed(Error)
     case converterCreationFailed
+    /// CoreAudio did not answer the start probe (2026-11-15: a wedged audio
+    /// service froze RTI's window at Start).
+    case audioSystemNotResponding
+
+    var description: String {
+        switch self {
+        case .permissionDenied: "microphone permission denied"
+        case let .engineStartFailed(error): "the audio engine did not start (\(error))"
+        case .converterCreationFailed: "the microphone format could not be converted"
+        case .audioSystemNotResponding:
+            "macOS audio is not responding. Quit and reopen RTI; if it still fails, run `sudo killall coreaudiod` in Terminal, then start again"
+        }
+    }
+}
+
+/// Asks CoreAudio one cheap question on a background thread and waits a
+/// bounded time. AVAudioEngine's first touch of the input node blocks with
+/// no timeout when the audio service is wedged, and on the main thread that
+/// froze the whole window. The probe thread may stay stuck; RTI does not.
+enum AudioServiceProbe {
+    static func responds(within timeout: TimeInterval = 3) -> Bool {
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let device = AudioInputDeviceStore.defaultInputDeviceID() {
+                var rate = Float64(0)
+                var size = UInt32(MemoryLayout<Float64>.size)
+                var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate,
+                                                          mScope: kAudioObjectPropertyScopeGlobal,
+                                                          mElement: kAudioObjectPropertyElementMain)
+                _ = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &rate)
+                var streams = UInt32(0)
+                var streamAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
+                                                                mScope: kAudioDevicePropertyScopeInput,
+                                                                mElement: kAudioObjectPropertyElementMain)
+                _ = AudioObjectGetPropertyDataSize(device, &streamAddress, 0, nil, &streams)
+            }
+            done.signal()
+        }
+        return done.wait(timeout: .now() + timeout) == .success
+    }
 }
 
 /// The capture lifecycle consumed by AudioPipeline. Tests deliver synthetic PCM
@@ -39,6 +79,9 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
 
     private var engine = AVAudioEngine()
     private var configObserver: NSObjectProtocol?
+    /// Configuration-change rebinds, merged and paced (main thread only).
+    private var rebindPacer = MicRebindPacer()
+    private var rebindWork: DispatchWorkItem?
     /// Fired (on main) after the engine was rebound following a configuration
     /// change or a restart request; the pipeline resets its watchdogs.
     var onRestarted: (() -> Void)?
@@ -134,6 +177,10 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
         // sleeps, because `restart()` runs on the main actor (2026-11-15
         // concurrency review). A failure throws to the caller, whose outage
         // backoff retries.
+        guard AudioServiceProbe.responds() else {
+            RTILog.log("CoreAudio did not answer the start probe within 3 s — start refused", category: .audio)
+            throw AudioCaptureError.audioSystemNotResponding
+        }
         engine = AVAudioEngine()
         try startEngine()
     }
@@ -248,6 +295,23 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak self] _ in
             guard let self, isRunning else { return }
+            scheduleRebind()
+        }
+    }
+
+    /// One rebind for a burst of configuration changes, paced: each fresh
+    /// engine re-sets the mic's client rate, which can post another change,
+    /// and on 2026-11-15 that fed a loop of rebinds every 150 ms (133 in a
+    /// row at one start). Changes in the settle window after RTI's own
+    /// restart are its echo and are dropped; repeated rebinds back off.
+    private func scheduleRebind() {
+        let now = Date().timeIntervalSinceReferenceDate
+        guard let delay = rebindPacer.delay(now: now), rebindWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            rebindWork = nil
+            guard isRunning else { return }
+            rebindPacer.didRebind(at: Date().timeIntervalSinceReferenceDate)
             RTILog.log("audio engine configuration changed — rebinding mic", category: .audio)
             do {
                 try restart()
@@ -255,9 +319,13 @@ final class AudioCaptureManager: MicrophoneCapturing, @unchecked Sendable {
                 RTILog.log("mic rebind after configuration change failed: \(error)", category: .audio)
             }
         }
+        rebindWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     func stop() {
+        rebindWork?.cancel()
+        rebindWork = nil
         if let o = configObserver { NotificationCenter.default.removeObserver(o); configObserver = nil }
         guard isRunning else { return }
         let input = engine.inputNode

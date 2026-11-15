@@ -53,6 +53,8 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
     private var audibleFramesCaptured: AVAudioFramePosition = 0
     private var captureSampleRate: Double = CoreAudioTapCapture.targetFormat.sampleRate
     private var lastBufferAt: Date?
+    /// Set when the default output changes, cleared by the next buffer.
+    private var outputChangedAt: Date?
     private var lastAudibleBufferAt: Date?
     private var lastRMSLevel: Float = 0
     private var peakRMSLevel: Float = 0
@@ -108,7 +110,8 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
                 lastBufferAt: lastBufferAt,
                 lastAudibleBufferAt: lastAudibleBufferAt,
                 lastRMSLevel: lastRMSLevel,
-                peakRMSLevel: peakRMSLevel
+                peakRMSLevel: peakRMSLevel,
+                deadSinceOutputChange: outputChangedAt
             )
         }
     }
@@ -117,6 +120,15 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         await withCheckedContinuation { continuation in
             processingQueue.async { [weak self] in
                 guard let self, self.isRecording else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                // A tap that stopped delivering buffers belongs to the stall
+                // watchdog, which rebuilds it on its own cadence. Two owners
+                // rebuilt the same dead tap about 20 times in 8 minutes on
+                // 2026-11-15, which likely left CoreAudio wedged.
+                let flowing = self.lastBufferAt.map { Date().timeIntervalSince($0) < TapStallPolicy.timeout } ?? false
+                guard flowing else {
                     continuation.resume(returning: false)
                     return
                 }
@@ -297,6 +309,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
         captureSampleRate = buffer.format.sampleRate
         framesCaptured += AVAudioFramePosition(buffer.frameLength)
         lastBufferAt = now
+        outputChangedAt = nil
         lastRMSLevel = rms
         peakRMSLevel = max(peakRMSLevel, rms)
         if rms >= Self.audibleRMSThreshold {
@@ -561,6 +574,7 @@ final class CoreAudioTapCapture: SystemAudioCapturing, @unchecked Sendable {
 
     private func restartTapForDefaultOutputDeviceChange() {
         guard isRecording else { return }
+        if outputChangedAt == nil { outputChangedAt = Date() }
         do {
             try rebuildTap(reason: "default output device changed")
         } catch {

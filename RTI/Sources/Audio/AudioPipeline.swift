@@ -278,6 +278,9 @@ final class AudioPipeline {
     private let systemAudioNoticeThreshold: TimeInterval = 30
     private let systemAudioRecoveryCooldown: TimeInterval = 10
     private let systemAudioMaxRecoveryAttempts = 2
+    /// How long a tap may stay dead after an output change before the
+    /// ScreenCaptureKit backend takes over.
+    static let deadAfterOutputChangeLimit: TimeInterval = 30
     private let systemAudioMinimumAudibleDuration: TimeInterval = 0.25
     /// Starting the CoreAudio/SCK system leg immediately can race with Zoom's
     /// own device/app-audio setup if RTI starts before the user has joined the
@@ -954,8 +957,12 @@ final class AudioPipeline {
     /// leaves the tap in place for the slow rebuild cadence. `systemAudio` is
     /// never nil while capturing.
     private func fallBackToSCKIfTapDead(health: SystemAudioCaptureHealth) async -> Bool {
-        guard !didFallBackToSCK, isCapturing,
-              lastSystemBufferAt == nil, health.duration < 0.5,
+        // Dead from the start, or dead for 30 s after an output change.
+        let neverDelivered = lastSystemBufferAt == nil && health.duration < 0.5
+        let deadAfterSwitch = health.deadSinceOutputChange.map {
+            now().timeIntervalSince($0) >= Self.deadAfterOutputChangeLimit
+        } ?? false
+        guard !didFallBackToSCK, isCapturing, neverDelivered || deadAfterSwitch,
               let tap = systemAudio, tap.fallsBackToScreenCapture,
               let onPCM = systemPCMHandler, let onErr = systemCaptureErrorHandler else { return false }
         guard screenCapturePermitted() else {
