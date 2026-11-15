@@ -9,6 +9,29 @@ import XCTest
 /// plus the empty states. Light and dark. Invented fixtures only. PNG prefix
 /// `live-rail-`.
 final class LiveRailRenderProofTests: RenderProofTestCase {
+    /// The progress line under Now asking (2026-11-15).
+    func testGuideProgressCaptionAndShortTitles() {
+        XCTAssertEqual(LiveRailContent.Section.shortTitle("SECTION 2: Athletes (10 min)"), "Athletes")
+        XCTAssertEqual(LiveRailContent.Section.shortTitle("Warm-Up"), "Warm-Up")
+        let sections = [LiveRailContent.Section(id: "S1", title: "Warm-Up", minutes: 10),
+                        LiveRailContent.Section(id: "S2", title: "Athletes", minutes: 15),
+                        LiveRailContent.Section(id: "S3", title: "Close", minutes: nil)]
+        XCTAssertNil(LiveGuideProgress.caption(sections: sections, index: nil, spentMinutes: 3))
+        let onTime = LiveGuideProgress.caption(sections: sections, index: 1, spentMinutes: 7)
+        XCTAssertEqual(onTime?.text, "Section 2 of 3 · Athletes · 7 of 15 min")
+        XCTAssertEqual(onTime?.over, false)
+        let over = LiveGuideProgress.caption(sections: sections, index: 1, spentMinutes: 18)
+        XCTAssertEqual(over?.text, "Section 2 of 3 · Athletes · 18 min, 15 planned")
+        XCTAssertEqual(over?.over, true)
+        XCTAssertEqual(LiveGuideProgress.caption(sections: sections, index: 2, spentMinutes: 4)?.text, "Section 3 of 3 · Close")
+    }
+
+    func testAnswerCardCopiesQuestionSummaryAndEveryQuote() {
+        let answer = LiveRailContent.Answer(qid: "S1Q1", question: "How did you start?", summary: "Two lines name a parent.",
+                                            quotes: ["我爸带我打的。", "小时候看李娜。", "第三句"])
+        XCTAssertEqual(answer.copyText, "**How did you start?**\nTwo lines name a parent.\n- “我爸带我打的。”\n- “小时候看李娜。”\n- “第三句”")
+    }
+
     private static let railSize = CGSize(width: LiveRailLayout.width, height: 640)
     private static let wide = CGSize(width: 860, height: 620)
     private static let narrow = CGSize(width: 720, height: 620)

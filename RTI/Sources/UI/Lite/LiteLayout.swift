@@ -5,8 +5,8 @@ import SwiftUI
 enum LiteLayout {
     /// The answer card: as wide as the house reading column plus its inset.
     static let answerWidth = House.Layout.chatWidth - House.Spacing.xxl * 2
-    /// The card takes at most this share of the page above the ask bar, so
-    /// the newest transcript lines stay readable behind it.
+    /// The card takes at most this share of the page above the ask bar; the
+    /// transcript keeps its newest lines above it (`liteAnswerInset`).
     static let answerHeightShare: CGFloat = 0.55
     /// Room the composer may use for its palette and add-context panes:
     /// half the chat window's height.
@@ -17,11 +17,23 @@ enum LiteLayout {
     static let rise = Animation.easeOut(duration: House.Motion.open)
 }
 
+private struct LiteAnswerInsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
 private struct RTILiteKey: EnvironmentKey {
     static let defaultValue = false
 }
 
 extension EnvironmentValues {
+    /// The height the open Lite answer card covers at the bottom of the
+    /// page. The live transcript keeps its newest line above it (2026-11-15:
+    /// the card hid the live talk behind it).
+    var liteAnswerInset: CGFloat {
+        get { self[LiteAnswerInsetKey.self] }
+        set { self[LiteAnswerInsetKey.self] = newValue }
+    }
+
     /// True inside the Lite workspace: views drop what Lite leaves out.
     var rtiLite: Bool {
         get { self[RTILiteKey.self] }

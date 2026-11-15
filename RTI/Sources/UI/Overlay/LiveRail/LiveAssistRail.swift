@@ -59,6 +59,14 @@ struct LiveRailContent: Equatable {
         let zh: String
     }
 
+    /// One guide section on the progress strip.
+    struct Section: Equatable, Identifiable {
+        let id: String
+        /// "Warm-up", without the "SECTION n:" label and the minutes.
+        let title: String
+        let minutes: Int?
+    }
+
     /// What the group said to one guide question, as the guide pass filed
     /// it: its summary and the respondents' own words.
     struct Answer: Equatable, Identifiable {
@@ -67,6 +75,15 @@ struct LiveRailContent: Equatable {
         let summary: String
         let quotes: [String]
         var id: String { qid }
+
+        /// What a click on the card copies: the question, the summary and
+        /// the quotes, ready to paste into notes.
+        var copyText: String {
+            var lines = ["**\(question)**"]
+            if !summary.isEmpty { lines.append(summary) }
+            lines += quotes.map { "- “\($0)”" }
+            return lines.joined(separator: "\n")
+        }
     }
 
     var kind: Kind
@@ -77,6 +94,9 @@ struct LiveRailContent: Equatable {
     var error: String?
     var guideActive = false
     var question: Question?
+    /// The guide's sections and the one being asked, for the progress strip.
+    var sections: [Section] = []
+    var sectionIndex: Int?
     var gaps: [GuideGap] = []
     /// Listening only (the user observes; someone else moderates): the rail
     /// shows what was said per guide question instead of things to ask.
@@ -146,6 +166,8 @@ struct LiveRailActions {
     var pin: (UUID) -> Void = { _ in }
     var dismiss: (UUID) -> Void = { _ in }
     var copy: (String) -> Void = { _ in }
+    /// Recorded time spent in a guide section, for the progress strip.
+    var sectionElapsed: ((String, Date) -> TimeInterval)?
     /// Client calls only.
     var suggestNow: (() -> Void)?
 }
@@ -181,6 +203,14 @@ extension LiveRailContent {
                 guide.guide?.questions.first { $0.qid == qid }
             }.map { Question(qid: $0.qid, en: $0.en, zh: $0.zh) }
             content.gaps = guide.gaps
+            if let document = guide.guide {
+                content.sections = document.sections.map {
+                    Section(id: $0.id, title: Section.shortTitle($0.title), minutes: $0.minutes)
+                }
+                content.sectionIndex = guide.currentQuestionID.flatMap { qid in
+                    document.sections.firstIndex { $0.questions.contains { $0.qid == qid } }
+                }
+            }
         }
         content.listening = session.isListeningOnly
         if content.listening, guide.isActive, let document = guide.guide, let cells = guide.extraction?.cells {
@@ -193,7 +223,7 @@ extension LiveRailContent {
                 guard let cell = byID[qid], !(cell.summary.isEmpty && cell.quotes.isEmpty),
                       let question = document.questions.first(where: { $0.qid == qid }) else { return nil }
                 return Answer(qid: qid, question: question.en, summary: cell.summary,
-                              quotes: cell.quotes.prefix(2).map(\.original))
+                              quotes: cell.quotes.map(\.original))
             }.prefix(3).map { $0 }
         }
         if autoOn {
@@ -226,6 +256,7 @@ extension LiveRailActions {
             pin: { auto.pin($0) },
             dismiss: { auto.dismiss($0) },
             copy: { NSPasteboard.copyString($0) },
+            sectionElapsed: { guide.elapsed(in: $0, at: $1) },
             suggestNow: callType == .research ? nil : {
                 guard let sid = SessionCoordinator.shared.currentSessionId else { return }
                 Task { _ = await auto.generate(sessionId: sid, explicit: true) }
@@ -312,22 +343,42 @@ struct LiveAssistRail: View {
 
     // MARK: Research
 
+    /// The current question in a card with a strip of the guide's sections
+    /// underneath, so where the group is reads at a glance (2026-11-15).
     private var questionSection: some View {
         VStack(alignment: .leading, spacing: House.Spacing.xxs) {
             SlateSectionLabel(text: "Now asking")
-            if let question = content.question {
-                Text(question.en)
-                    .font(House.TypeToken.label)
-                    .foregroundStyle(House.ColorToken.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !question.zh.isEmpty {
-                    Text(question.zh)
-                        .font(House.TypeToken.bodySmall)
-                        .foregroundStyle(House.ColorToken.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: House.Spacing.xs) {
+                if !content.sections.isEmpty {
+                    LiveGuideProgress(sections: content.sections, index: content.sectionIndex,
+                                      elapsed: actions.sectionElapsed)
                 }
-            } else {
-                LiveRailEmptyLine("The guide's current question shows here.")
+                if let question = content.question {
+                    Text(question.en)
+                        .font(House.TypeToken.label)
+                        .foregroundStyle(House.ColorToken.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !question.zh.isEmpty {
+                        Text(question.zh)
+                            .font(House.TypeToken.bodySmall)
+                            .foregroundStyle(House.ColorToken.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    LiveRailEmptyLine("The guide's current question shows here.")
+                }
+            }
+            .padding(House.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(LiveRailCardSurface(raised: true))
+            .overlay(alignment: .leading) {
+                // An accent edge marks the live question apart from the
+                // answer cards below.
+                UnevenRoundedRectangle(topLeadingRadius: House.Radius.row, bottomLeadingRadius: House.Radius.row,
+                                       style: .continuous)
+                    .fill(House.ColorToken.accent)
+                    .frame(width: 3)
+                    .accessibilityHidden(true)
             }
         }
     }
@@ -358,30 +409,7 @@ struct LiveAssistRail: View {
                     : "Choose a guide on Prepare to see answers by question.")
             } else {
                 ForEach(content.answers) { answer in
-                    VStack(alignment: .leading, spacing: House.Spacing.xxs) {
-                        Text(answer.question)
-                            .font(House.TypeToken.meta)
-                            .foregroundStyle(House.ColorToken.textTertiary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        if !answer.summary.isEmpty {
-                            Text(answer.summary)
-                                .font(House.TypeToken.bodySmall)
-                                .foregroundStyle(House.ColorToken.textPrimary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        ForEach(answer.quotes, id: \.self) { quote in
-                            Text("“\(quote)”")
-                                .font(House.TypeToken.bodySmall)
-                                .foregroundStyle(House.ColorToken.textSecondary)
-                                .lineLimit(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    .padding(House.Spacing.sm)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .modifier(LiveRailCardSurface(raised: true))
+                    LiveRailAnswerCard(answer: answer) { actions.copy(answer.copyText) }
                 }
             }
         }
@@ -643,6 +671,160 @@ enum LiveRailHold {
         guard let held else { return 0 }
         let ids = Set(held.map(\.id))
         return cards.filter { !ids.contains($0.id) }.count
+    }
+}
+
+/// One guide question's answers. A click copies the question, summary and
+/// quotes; "Copied" shows for a moment (2026-11-15).
+private struct LiveRailAnswerCard: View {
+    let answer: LiveRailContent.Answer
+    let copy: () -> Void
+    @State private var copied = false
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            copy()
+            copied = true
+        } label: {
+            VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                HStack(spacing: House.Spacing.xs) {
+                    Text(answer.question)
+                        .font(House.TypeToken.meta)
+                        .foregroundStyle(House.ColorToken.textTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    if copied || hovering {
+                        Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                            .labelStyle(.titleAndIcon)
+                            .font(House.TypeToken.caption)
+                            .foregroundStyle(copied ? House.ColorToken.success : House.ColorToken.textTertiary)
+                            .fixedSize()
+                    }
+                }
+                if !answer.summary.isEmpty {
+                    Text(answer.summary)
+                        .font(House.TypeToken.bodySmall)
+                        .foregroundStyle(House.ColorToken.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(answer.quotes.prefix(2), id: \.self) { quote in
+                    Text("“\(quote)”")
+                        .font(House.TypeToken.bodySmall)
+                        .foregroundStyle(House.ColorToken.textSecondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(House.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .modifier(LiveRailCardSurface(raised: true))
+        .hoverHighlight($hovering)
+        .help("Copy this question's answers")
+        .accessibilityLabel("Answers to \(answer.question)")
+        .accessibilityHint("Copies the question, summary and quotes")
+        .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+    }
+}
+
+/// Where the group is in the guide: one segment per section, as wide as its
+/// planned minutes, done sections filled, the current one filling with the
+/// time spent in it. The line under it names the section and its minutes;
+/// it turns amber past the plan. Redrawn every 30 seconds.
+struct LiveGuideProgress: View {
+    let sections: [LiveRailContent.Section]
+    let index: Int?
+    let elapsed: ((String, Date) -> TimeInterval)?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let spent = current.flatMap { section in elapsed?(section.id, context.date) } ?? 0
+            VStack(alignment: .leading, spacing: House.Spacing.xxs) {
+                strip(spent: spent)
+                    .frame(height: 4)
+                if let line = Self.caption(sections: sections, index: index, spentMinutes: Int(spent / 60)) {
+                    Text(line.text)
+                        .font(House.TypeToken.caption)
+                        .foregroundStyle(line.over ? House.ColorToken.warning : House.ColorToken.textTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var current: LiveRailContent.Section? {
+        index.flatMap { sections.indices.contains($0) ? sections[$0] : nil }
+    }
+
+    private func strip(spent: TimeInterval) -> some View {
+        GeometryReader { geometry in
+            let weights = sections.map { CGFloat(max(1, $0.minutes ?? 5)) }
+            let gap: CGFloat = 2
+            let usable = max(0, geometry.size.width - gap * CGFloat(max(0, sections.count - 1)))
+            let total = weights.reduce(0, +)
+            HStack(spacing: gap) {
+                ForEach(Array(sections.enumerated()), id: \.element.id) { offset, section in
+                    let width = total > 0 ? usable * weights[offset] / total : 0
+                    let fill: CGFloat = {
+                        guard let index else { return 0 }
+                        if offset < index { return 1 }
+                        if offset > index { return 0 }
+                        let planned = Double(max(1, section.minutes ?? 5)) * 60
+                        return CGFloat(min(1, max(0.08, spent / planned)))
+                    }()
+                    let over = offset == index && section.minutes.map { spent > Double($0) * 60 } == true
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(House.ColorToken.surfaceTint)
+                        Capsule()
+                            .fill(over ? House.ColorToken.warning : House.ColorToken.accent)
+                            .opacity(offset == index ? 1 : 0.45)
+                            .frame(width: width * fill)
+                    }
+                    .frame(width: width)
+                }
+            }
+        }
+    }
+
+    /// "Section 3 of 6 · Athletes · 7 of 10 min"; nil before the guide has
+    /// a position.
+    static func caption(sections: [LiveRailContent.Section], index: Int?, spentMinutes: Int)
+        -> (text: String, over: Bool)?
+    {
+        guard let index, sections.indices.contains(index) else { return nil }
+        let section = sections[index]
+        var parts = ["Section \(index + 1) of \(sections.count)"]
+        if !section.title.isEmpty { parts.append(section.title) }
+        var over = false
+        if let minutes = section.minutes {
+            over = spentMinutes > minutes
+            parts.append(over ? "\(spentMinutes) min, \(minutes) planned" : "\(spentMinutes) of \(minutes) min")
+        }
+        return (parts.joined(separator: " · "), over)
+    }
+}
+
+extension LiveRailContent.Section {
+    /// A guide heading without its "SECTION 2:" label and "(10 min)" tail.
+    static func shortTitle(_ heading: String) -> String {
+        var text = heading
+        if let range = text.range(of: #"^\s*(?i:section)\s*\d+\s*[:：.-]?\s*"#, options: .regularExpression) {
+            text.removeSubrange(range)
+        }
+        if let range = text.range(of: #"\s*[(（]\s*\d+\s*(?i:min(ute)?s?)\s*[)）]\s*$"#, options: .regularExpression) {
+            text.removeSubrange(range)
+        }
+        return text.trimmingCharacters(in: .whitespaces)
     }
 }
 

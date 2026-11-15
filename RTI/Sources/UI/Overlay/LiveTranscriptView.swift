@@ -26,6 +26,8 @@ struct LiveTranscriptList: View, Equatable {
     @State private var following = LiveTranscriptList.startsFollowing
     @State private var readingAnchor: LiveTranscriptPresentation.RunID?
     @State private var reader = ReadingPosition()
+    /// The open Lite answer card's height: the newest line stays above it.
+    @Environment(\.liteAnswerInset) private var answerInset
 
     private struct FollowUpdate: Equatable {
         let revision: Int
@@ -68,6 +70,8 @@ struct LiveTranscriptList: View, Equatable {
             .scrollContentBackground(.hidden)
             // Room for the fade above the first line, outside the reading anchor's layout.
             .contentMargins(.top, House.Spacing.lg - House.Spacing.xxs, for: .scrollContent)
+            // The live line sits above an open answer card, never under it.
+            .contentMargins(.bottom, answerInset, for: .scrollContent)
             // Lines leaving the top fade out instead of cutting at the edge.
             .mask {
                 VStack(spacing: 0) {
@@ -99,12 +103,17 @@ struct LiveTranscriptList: View, Equatable {
                         following = true
                         scrollToLatest(proxy)
                     }
-                    .padding(.bottom, House.Spacing.sm)
+                    .padding(.bottom, House.Spacing.sm + answerInset)
                     .transition(.opacity)
                 }
             }
             // Activation, a new session and a new snapshot can arrive in one
             // frame. Resolve their follow policy once before issuing a scroll.
+            // Opening or closing the answer moves the bottom; a follower
+            // keeps the newest line in view.
+            .onChange(of: answerInset) { _, _ in
+                if following, isActive { scrollToLatest(proxy) }
+            }
             .onChange(of: followUpdate, initial: true) { previous, current in
                 if previous.sessionID != current.sessionID {
                     following = true

@@ -45,6 +45,8 @@ struct OverlayPanelView: View {
     @AppStorage(RTILiteSettings.enabledKey) private var liteEnabled = false
     @AppStorage(LiteLayout.railVisibleKey) private var liteRailVisible = true
     @State private var liteAnswerOpen: Bool
+    /// Height of the page under the header, for the answer card's share.
+    @State private var livePageHeight: CGFloat = 0
     @State private var liteGuideOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var panelWidth: CGFloat = 0
@@ -52,6 +54,17 @@ struct OverlayPanelView: View {
     /// In Lite the rail runs the page's full height, so the ask bar and the
     /// answer keep to the transcript's column: this is the rail's width when
     /// it shows, else 0.
+    /// The answer card's height on a page of this height.
+    static func liteAnswerHeight(page: CGFloat) -> CGFloat {
+        max(0, min(page * LiteLayout.answerHeightShare, page - House.Spacing.lg))
+    }
+
+    /// What the open answer card covers at the page's bottom, card and gap.
+    private var liteAnswerInset: CGFloat {
+        guard liteEnabled, liteAnswerOpen, !llm.entries.isEmpty, livePageHeight > 0 else { return 0 }
+        return Self.liteAnswerHeight(page: livePageHeight) + House.Spacing.sm
+    }
+
     private var liteRailInset: CGFloat {
         guard liteEnabled, shownTab == .transcript,
               LiveRailLayout.mode(width: panelWidth, applies: railApplies) == .rail else { return 0 }
@@ -175,6 +188,7 @@ struct OverlayPanelView: View {
                         transcriptPage
                             .environment(\.isWorkspaceEmbedded, embedded)
                             .environment(\.rtiLite, liteEnabled)
+                            .environment(\.liteAnswerInset, liteAnswerInset)
                             .font(.system(size: CGFloat(uiFontSize), weight: .regular))
                             .foregroundStyle(Color.overlayInk)
                             .tint(Color.overlayInk)
@@ -203,6 +217,7 @@ struct OverlayPanelView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { livePageHeight = $0 }
             // The tab content never scrolls up under the header or the
             // transparent title bar.
             .clipped()
@@ -211,8 +226,7 @@ struct OverlayPanelView: View {
                     GeometryReader { geometry in
                         LiteAnswerCard { closeLiteAnswer() }
                             .frame(maxWidth: LiteLayout.answerWidth)
-                            .frame(height: min(geometry.size.height * LiteLayout.answerHeightShare,
-                                               geometry.size.height - House.Spacing.lg))
+                            .frame(height: Self.liteAnswerHeight(page: geometry.size.height))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                             .padding(.horizontal, House.Spacing.lg)
                             .padding(.bottom, House.Spacing.sm)
