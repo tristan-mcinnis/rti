@@ -20,6 +20,7 @@ extension LLMController {
             return
         }
         switch actionID {
+        case "themes": sendThemes()
         case "assist": sendAssist()
         case "answerLatest": sendAnswerLatest()
         case "quickRecap": sendQuickRecap()
@@ -327,6 +328,14 @@ extension LLMController {
 
     /// Recap at the given depth, or the user's sticky default when unspecified
     /// (⌘⌥R and the ⌘⏎ primary action both take the default).
+    /// Emerging themes: a researcher's write-up of the whole call so far
+    /// (2026-11-15: the cited one-line list was not useful mid-group).
+    func sendThemes() {
+        guard hasLiveTranscriptForRecap() else { return }
+        performSend(userInput: PromptStore.shared.text(.themes), action: "Emerging themes", fullTranscript: true,
+                    toolPolicy: ChatToolPolicy(allowsExternalRetrieval: false, allowsScreenTools: false))
+    }
+
     func sendRecap(depth: RecapDepth? = nil) {
         guard hasLiveTranscriptForRecap() else { return }
         performSend(userInput: PromptStore.shared.recap(depth ?? recapDepth), action: "Recap", fullTranscript: true)
@@ -392,6 +401,8 @@ extension LLMController {
         if let id = ChatTurnRecordBuilder.actionID(for: action),
            let research = ResearchModeration.Action(rawValue: id) {
             sendModeration(research)
+        } else if action == "Emerging themes" {
+            sendThemes()
         } else if action == "Ask" {
             // Re-run the deterministic vault search rather than replay through
             // bare performSend, which skipped retrieval entirely and answered

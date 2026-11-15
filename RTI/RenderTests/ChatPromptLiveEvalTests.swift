@@ -61,7 +61,10 @@ final class ChatPromptLiveEvalTests: RenderProofTestCase {
             session.setStartedAtForProof(Date().addingTimeInterval(-TimeInterval(minute * 60)))
             try llm.recentTranscriptText(fullWindow: true)
                 .write(to: folder.appendingPathComponent("transcript-min\(minute).txt"), atomically: true, encoding: .utf8)
-            for item in Self.actions.map({ ("action", $0) }) + Self.questions.map({ ("ask", $0) }) {
+            // `RTI_EVAL_ONLY=themes,recap` runs just those actions.
+            let only = ProcessInfo.processInfo.environment["RTI_EVAL_ONLY"].map { Set($0.split(separator: ",").map(String.init)) }
+            for item in Self.actions.map({ ("action", $0) }) + Self.questions.map({ ("ask", $0) })
+                where only?.contains(item.1) ?? true {
                 llm.newChat()
                 try await Task.sleep(for: .milliseconds(300))
                 let began = Date()

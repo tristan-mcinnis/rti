@@ -63,7 +63,7 @@ final class PromptCatalogueTests: XCTestCase {
     func test_listenerResearchPrompts() {
         XCTAssertTrue(PromptID.keyTensions.defaultText.contains("real tensions"))
         XCTAssertTrue(PromptID.probe.defaultText.contains("an echo"))
-        XCTAssertTrue(PromptID.themes.defaultText.contains("3 to 5 themes"))
+        XCTAssertTrue(PromptID.themes.defaultText.contains("Not covered yet:"))
     }
 
     // MARK: - Auto framing

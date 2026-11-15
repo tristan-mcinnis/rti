@@ -123,7 +123,7 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .keyTensions: "Find an unprobed claim and a question to ask now."
         case .saidVsDone: "Connect a stated value to the same participant’s account of an earlier action."
         case .probe: "Check whether another participant echoed or softened an opinion."
-        case .themes: "Distinguish participant-led themes from prompted answers."
+        case .themes: "A researcher's write-up of the themes so far: claims, evidence, limits and times."
         case .recapBrief: "The bullet-count clause spliced into Recap at Brief depth."
         case .recapStandard: "The clause spliced into Recap at Standard depth."
         case .recapDetailed: "The clause spliced into Recap at Detailed depth."
@@ -257,7 +257,29 @@ public enum PromptDefaults {
             "Find an echo or softening: cite the initiating view and a later turn by a different confirmed participant. Avoid inferring pressure, motives or silence. Without confirmed speakers RTI answers that the check needs them and does not ask the model."
 
         case .themes:
-            "Return 3 to 5 themes across the call, the widest first, each in under 20 words. Name the theme itself; never write participants, the group, respondents, consensus or everyone. Treat a split between voices (for example sweet against less sugar) as a theme. Say how each started (origin). Cite the initiating line first, then up to two lines of substantive evidence. Do not report a lone opinion as consensus."
+            """
+            Write up the emerging themes of this call so far, as a qualitative researcher would. Use only the supplied transcript; add no outside facts.
+
+            First, silently establish: who took part (confirmed information only), how far the transcript runs, whether speakers can be told apart, and which turns are moderator questions ("Me" is the moderator; a "Them" line that asks a question or restates may be the moderator too) and which are participant answers. Note concrete behaviours, preferences, feelings and examples with their times, and group them around a shared meaning.
+
+            A theme explains something about the participants' experience. "Watching tennis" is a topic; "Watching elite players helps them work on their own game" is a theme. For each theme, check what supports it, what contradicts or qualifies it, and whether it rests on several answers or one person's example.
+
+            Rules:
+            - A moderator's suggestion is not a participant finding. Say when a point came only after a prompt.
+            - Keep differences visible; never turn a split into a group view, and claim consensus only when it is clear.
+            - Never merge different participants into one person's story. One detailed comment can matter: say it is one voice.
+            - Separate admiration, awareness, intention and actual behaviour. Remembering advice is not changed behaviour; knowing a sponsor is not purchase influence.
+            - Treat accounts of public events as the participants' perceptions. Do not guess unclear names.
+            - Do not force a number of themes.
+
+            Format:
+            - One or two opening sentences: the strongest supported pattern.
+            - One sentence of scope: who, how far the transcript runs, whether speakers are distinguished.
+            - The themes as bullets: a bold claim, then the supporting examples in your own English words, any qualification, and the times as [mm:ss–mm:ss].
+            - A closing line: "Not covered yet:" and the important questions the call has not reached.
+
+            Check every sentence against the transcript; delete what it does not support and soften what goes past it. Return the write-up only.
+            """
 
         case .recapBrief:
             "in 1–2 short bullets — only the single most important thread or decision right now. No headers."

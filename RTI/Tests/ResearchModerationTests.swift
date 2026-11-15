@@ -88,48 +88,4 @@ final class ResearchModerationTests: XCTestCase {
         XCTAssertFalse(fallback.contains("Them/S"))
         XCTAssertFalse(fallback.contains("Suggested question"))
     }
-
-    func testRefusesGroupClaimsFromOneSpeakerAndOneWordAssent() throws {
-        let s = snapshot(.themes)
-        let unsupported: [String: Any] = ["english": "The group chose paper.", "origin": "participant",
-                                          "leadingAssent": false, "citations": [citation("later", "我只会买纸的。")]]
-        XCTAssertEqual(try s.render(reply([unsupported])), "No supported finding in the selected window.")
-        let yes = ResearchModeration.Turn(id: "yes", startMs: 775_000, text: "是的。", moderator: false,
-                                          label: "Them", person: nil, guideQuestion: "Q2", marker: nil, shown: nil)
-        let leading: [String: Any] = ["english": "A preference for paper emerged.", "origin": "moderator",
-                                      "leadingAssent": false, "citations": [citation("mic", "You prefer paper, right?"), citation("yes", "是的。")]]
-        XCTAssertEqual(try snapshot(.themes, more: [yes]).render(reply([leading])), "No supported finding in the selected window.")
-    }
-
-    /// 2026-11-15 eval: a theme whose citations came out of time order, or
-    /// whose claimed origin the lines do not prove, is kept: lines are sorted
-    /// by time and the unproven tag is dropped. Invented quotes still fail.
-    func testThemesKeepOutOfOrderCitationsAndDropOnlyAnUnprovenOriginTag() throws {
-        let s = snapshot(.themes)
-        let reversed = ["english": "Paper as the default material.", "origin": "moderator", "leadingAssent": false,
-                        "citations": [citation("later", "我只会买纸的。"), citation("mic", "You prefer paper, right?")]] as [String: Any]
-        let output = try s.render(reply([reversed]))
-        XCTAssertTrue(output.contains("(prompted)"), "sorted by time, the question comes first and proves the origin")
-        let unproven = ["english": "Paper as the default material.", "origin": "moderator",
-                        "citations": [citation("later", "我只会买纸的。")]] as [String: Any]
-        let plain = try s.render(reply([unproven]))
-        XCTAssertTrue(plain.hasPrefix("- Paper as the default material."))
-        XCTAssertFalse(plain.contains("(prompted)"))
-        XCTAssertFalse(plain.contains("(spontaneous)"))
-    }
-
-    func testThemesRejectLeadingAgreementAndInventedOrStitchedQuotes() throws {
-        let s = snapshot(.themes)
-        let good = ["english": "Paper was mentioned in response to the moderator.",
-                    "origin": "moderator", "leadingAssent": false,
-                    "citations": [citation("mic", "You prefer paper, right?"), citation("later", "我只会买纸的。")]] as [String: Any]
-        var leading = good; leading["leadingAssent"] = true
-        var invented = good; invented["citations"] = [citation("later", "I prefer paper.")]
-        var stitched = good; stitched["citations"] = [citation("later", "我只会买纸的。I guess")]
-        let output = try s.render(reply([leading, invented, stitched, good]))
-        XCTAssertEqual(output.components(separatedBy: "(prompted)").count - 1, 1)
-        // One source per theme: the participant's words, not the question.
-        try assertVerbatim(output, expected: ["我只会买纸的。"])
-        XCTAssertEqual(s.render("unverified provider prose"), "The reply could not be checked against the transcript.")
-    }
 }
