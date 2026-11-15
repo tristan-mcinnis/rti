@@ -151,13 +151,21 @@ struct AssistThread: View {
                 try? await Task.sleep(for: .milliseconds(250))
                 if startsFollowingBottom, following { scrollToEnd(proxy, animated: false) }
             }
-            // A new question follows the bottom again.
+            // A new question and its streaming answer always land on the
+            // bottom, whatever the reader did before (2026-11-15: an animated
+            // jump stopped part of the way while the new turn was still
+            // laying out). The jump is repeated once the heights settle.
             .onChange(of: model.entries.count) { _, _ in
                 following = true
-                scrollToEnd(proxy, animated: true)
+                settleAtEnd(proxy)
             }
             .onChange(of: liveTextLength) { _, _ in
-                if following { scrollToEnd(proxy, animated: false) }
+                following = true
+                scrollToEnd(proxy, animated: false)
+            }
+            .onChange(of: model.streamingID) { _, id in
+                // The answer finished: its last lines and the Copy row.
+                if id == nil { settleAtEnd(proxy) }
             }
             .onChange(of: model.turnError) { _, error in
                 if following { scrollToEnd(proxy, animated: true) }
@@ -398,6 +406,19 @@ struct AssistThread: View {
         .padding(.bottom, House.Spacing.xs)
         .accessibilityLabel("Jump to latest")
         .help("Jump to latest (\(Self.jumpToLatestKeys.joined()))")
+    }
+
+    /// Jump to the bottom now and again after layout settles, so a turn
+    /// still measuring its height never leaves the view part of the way.
+    private func settleAtEnd(_ proxy: ScrollViewProxy) {
+        scrollToEnd(proxy, animated: false)
+        Task { @MainActor in
+            for delay in [50, 200, 500] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard following else { return }
+                scrollToEnd(proxy, animated: false)
+            }
+        }
     }
 
     private func scrollToEnd(_ proxy: ScrollViewProxy, animated: Bool) {
