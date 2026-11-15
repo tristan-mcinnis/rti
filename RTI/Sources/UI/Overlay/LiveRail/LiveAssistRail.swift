@@ -332,8 +332,19 @@ struct LiveAssistRail: View {
                 }
             }
             .padding(.horizontal, House.Spacing.sm)
-            .padding(.vertical, House.Spacing.sm)
+            .padding(.top, House.Spacing.sm)
+            // Room for the last card to clear the fade below.
+            .padding(.bottom, House.Spacing.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        // Cards running past the bottom fade out instead of cutting at a
+        // hard edge, which says there is more to scroll (2026-11-15).
+        .mask {
+            VStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: House.Spacing.xl)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(House.ColorToken.surfaceSunken)
@@ -674,18 +685,23 @@ enum LiveRailHold {
     }
 }
 
-/// One guide question's answers. A click copies the question, summary and
-/// quotes; "Copied" shows for a moment (2026-11-15).
+/// One guide question's answers. The whole card is the copy target
+/// (2026-11-15): hover shows a pointer and a "Copy" hint, a press sinks the
+/// card a little, and a copy rings it in the accent with "Copied" for 1.5 s
+/// and a spoken "Copied" for VoiceOver. It copies the question, summary and
+/// every quote as Markdown.
 private struct LiveRailAnswerCard: View {
     let answer: LiveRailContent.Answer
     let copy: () -> Void
     @State private var copied = false
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button {
             copy()
-            copied = true
+            QuickAIAnnouncement.post("Copied", priority: .high)
+            withAnimation(reduceMotion ? nil : .easeOut(duration: House.Motion.open)) { copied = true }
         } label: {
             VStack(alignment: .leading, spacing: House.Spacing.xxs) {
                 HStack(spacing: House.Spacing.xs) {
@@ -698,9 +714,13 @@ private struct LiveRailAnswerCard: View {
                     if copied || hovering {
                         Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                             .labelStyle(.titleAndIcon)
-                            .font(House.TypeToken.caption)
-                            .foregroundStyle(copied ? House.ColorToken.success : House.ColorToken.textTertiary)
+                            .font(House.TypeToken.caption.weight(.medium))
+                            .foregroundStyle(copied ? House.ColorToken.accent : House.ColorToken.textSecondary)
+                            .padding(.horizontal, House.Spacing.xs)
+                            .padding(.vertical, House.Spacing.xxs)
+                            .background(copied ? House.ColorToken.accentSoft : House.ColorToken.chipFill, in: Capsule())
                             .fixedSize()
+                            .transition(.opacity)
                     }
                 }
                 if !answer.summary.isEmpty {
@@ -716,22 +736,55 @@ private struct LiveRailAnswerCard: View {
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if answer.quotes.count > 2 {
+                    Text("+\(answer.quotes.count - 2) more quotes in the copy")
+                        .font(House.TypeToken.caption)
+                        .foregroundStyle(House.ColorToken.textTertiary)
+                }
             }
             .padding(House.Spacing.sm)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .modifier(LiveRailCardSurface(raised: true))
+        .buttonStyle(LiveRailCopyCardStyle(hovering: hovering, copied: copied))
         .hoverHighlight($hovering)
-        .help("Copy this question's answers")
+        .onHover { inside in
+            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+        .help("Click to copy this question, its summary and quotes")
         .accessibilityLabel("Answers to \(answer.question)")
         .accessibilityHint("Copies the question, summary and quotes")
         .task(id: copied) {
             guard copied else { return }
             try? await Task.sleep(for: .seconds(1.5))
-            copied = false
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { copied = false }
         }
+    }
+}
+
+/// The copy card's surface: raised white on the rail, a firmer edge on
+/// hover, sunk slightly while pressed, ringed in the accent once copied.
+private struct LiveRailCopyCardStyle: ButtonStyle {
+    let hovering: Bool
+    let copied: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: House.Radius.row, style: .continuous)
+        configuration.label
+            .background(House.ColorToken.surfaceRaised, in: shape)
+            .overlay {
+                if configuration.isPressed || hovering { shape.fill(House.ColorToken.hoverFill) }
+            }
+            .overlay {
+                shape.strokeBorder(copied ? House.ColorToken.accent
+                                          : (hovering ? House.ColorToken.strokeStrong : House.ColorToken.stroke),
+                                   lineWidth: copied ? 1.5 : House.hairline)
+            }
+            .shadow(color: .black.opacity(House.Shadow.card.opacity(dark: scheme == .dark)),
+                    radius: House.Shadow.card.blur / 2, y: House.Shadow.card.y)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

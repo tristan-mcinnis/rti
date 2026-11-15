@@ -47,24 +47,34 @@ struct OverlayPanelView: View {
     @State private var liteAnswerOpen: Bool
     /// Height of the page under the header, for the answer card's share.
     @State private var livePageHeight: CGFloat = 0
+    /// Height of Lite's ask bar, which floats over the transcript column's
+    /// foot so the rail runs the full height beside it.
+    @State private var liteAskBarHeight: CGFloat = 0
     @State private var liteGuideOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var panelWidth: CGFloat = 0
 
-    /// In Lite the rail runs the page's full height, so the ask bar and the
-    /// answer keep to the transcript's column: this is the rail's width when
-    /// it shows, else 0.
     /// The answer card's height on a page of this height.
     static func liteAnswerHeight(page: CGFloat) -> CGFloat {
         max(0, min(page * LiteLayout.answerHeightShare, page - House.Spacing.lg))
     }
 
-    /// What the open answer card covers at the page's bottom, card and gap.
+    /// What covers the transcript column's foot in Lite: the ask bar, and
+    /// above it the open answer card with its gap.
     private var liteAnswerInset: CGFloat {
-        guard liteEnabled, liteAnswerOpen, !llm.entries.isEmpty, livePageHeight > 0 else { return 0 }
-        return Self.liteAnswerHeight(page: livePageHeight) + House.Spacing.sm
+        guard liteEnabled else { return 0 }
+        guard liteAnswerOpen, !llm.entries.isEmpty, livePageHeight > 0 else { return liteAskBarHeight }
+        return liteAskBarHeight + Self.liteAnswerHeight(page: max(0, livePageHeight - liteAskBarHeight)) + House.Spacing.sm
     }
 
+    /// The page's ground colour, also under Lite's floating ask bar.
+    private var pageGround: Color {
+        embedded ? House.ColorToken.surfaceRaised : House.ColorToken.surface
+    }
+
+    /// In Lite the rail runs the page's full height, so the ask bar and the
+    /// answer keep to the transcript's column: this is the rail's width when
+    /// it shows, else 0.
     private var liteRailInset: CGFloat {
         guard liteEnabled, shownTab == .transcript,
               LiveRailLayout.mode(width: panelWidth, applies: railApplies) == .rail else { return 0 }
@@ -226,22 +236,28 @@ struct OverlayPanelView: View {
                     GeometryReader { geometry in
                         LiteAnswerCard { closeLiteAnswer() }
                             .frame(maxWidth: LiteLayout.answerWidth)
-                            .frame(height: Self.liteAnswerHeight(page: geometry.size.height))
+                            .frame(height: Self.liteAnswerHeight(page: max(0, geometry.size.height - liteAskBarHeight)))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                             .padding(.horizontal, House.Spacing.lg)
-                            .padding(.bottom, House.Spacing.sm)
+                            .padding(.bottom, House.Spacing.sm + liteAskBarHeight)
                             .padding(.trailing, liteRailInset)
                     }
                     // Reduce Motion: fade only (DESIGN.md).
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            if liteEnabled {
-                liteAskBar
+            // The ask bar floats over the transcript column's foot; the rail
+            // beside it runs to the window's bottom edge (2026-11-15: a rail
+            // cut short above empty grey read as a false end).
+            .overlay(alignment: .bottomLeading) {
+                if liteEnabled {
+                    liteAskBar
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { liteAskBarHeight = $0 }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(embedded ? House.ColorToken.surfaceRaised : House.ColorToken.surface)
+        .background(pageGround)
         // The header shares the title-bar row with the traffic lights.
         .ignoresSafeArea(.container, edges: embedded ? [] : .top)
         .font(.system(size: CGFloat(uiFontSize), weight: .regular))
@@ -317,18 +333,17 @@ struct OverlayPanelView: View {
         }
         .padding(.horizontal, House.Spacing.xs)
         .padding(.bottom, House.Spacing.xs)
-        .padding(.trailing, liteRailInset)
-        // The rail's ground continues under the bar's row, so the rail reads
-        // as one column from the top of the page to the bottom.
-        .background(alignment: .trailing) {
-            if liteRailInset > 0 {
-                House.ColorToken.surfaceSunken
-                    .frame(width: liteRailInset)
-                    .overlay(alignment: .leading) {
-                        Rectangle().fill(House.ColorToken.divider).frame(width: House.hairline)
-                    }
+        // The transcript scrolls under the bar: an opaque ground with a
+        // short fade above it, so lines soften out instead of cutting.
+        .background(alignment: .bottom) {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [pageGround.opacity(0), pageGround], startPoint: .top, endPoint: .bottom)
+                    .frame(height: House.Spacing.sm)
+                pageGround
             }
+            .padding(.top, -House.Spacing.sm)
         }
+        .padding(.trailing, liteRailInset)
     }
 
     private func markVisited(_ selection: OverlayTab) {
