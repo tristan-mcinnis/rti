@@ -119,10 +119,20 @@ struct AssistThread: View {
             .onPreferenceChange(ContentFrameKey.self) { frame in
                 // Only a move of the view (the reader's scroll, or one the
                 // thread made) decides whether it follows the bottom.
-                let moved = frame.minY != geometry.top
+                // Only a move toward older text (the content's top comes
+                // down) lets go of the bottom. The thread's own animated
+                // scroll moves the other way; reading every move as the
+                // reader's let a new question's answer stream past with the
+                // Latest chip showing (2026-11-15, live group).
+                let previousTop = geometry.top
                 geometry.top = frame.minY
                 geometry.contentHeight = frame.height
-                if moved { following = geometry.distanceFromBottom <= House.Control.row }
+                let nearBottom = geometry.distanceFromBottom <= House.Control.row
+                if frame.minY > previousTop + 0.5 {
+                    following = nearBottom
+                } else if nearBottom {
+                    following = true
+                }
             }
             .overlay {
                 if model.entries.isEmpty, !model.emptyHints.isEmpty { emptyStateHints(model.emptyHints) }
