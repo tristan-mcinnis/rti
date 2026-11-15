@@ -263,8 +263,8 @@ struct OverlaySessionAuxButton: View {
 
     private var help: String {
         switch kind {
-        case .pause: "Pause recording (⌘⇧P)"
-        case .resume: "Resume recording (⌘⇧P)"
+        case .pause: "Pause recording"
+        case .resume: "Resume recording"
         case .none: ""
         }
     }

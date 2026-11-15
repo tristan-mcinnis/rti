@@ -91,7 +91,7 @@ enum RenderFixtures {
     /// palette draws as key caps.
     static var commands: [RTICommand] { [
         RTICommand(id: "session.start", title: "Start Recording", subtitle: "⌘⇧R", perform: {}),
-        RTICommand(id: "session.pause", title: "Pause Recording", subtitle: "⌘⇧P", perform: {}),
+        RTICommand(id: "session.pause", title: "Pause Recording", perform: {}),
         RTICommand(id: "overlay.toggle", title: "Toggle Overlay", subtitle: "⌘\\", perform: {}),
         RTICommand(id: "action.assist", title: "Assist", subtitle: "⌘⏎", perform: {}),
         RTICommand(id: "note.quick", title: "Quick Note", subtitle: "⌘⌥N", perform: {}),

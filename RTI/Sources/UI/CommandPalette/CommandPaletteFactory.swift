@@ -217,17 +217,17 @@ enum CommandBuilder {
             RTICommand(
                 id: "session.pause",
                 title: "Pause / Resume Recording",
-                subtitle: "⌘⇧P",
                 keywords: ["pause", "resume", "hold", "suspend"],
                 isAvailable: { session.phase == .recording || session.phase == .paused },
                 perform: { session.togglePause() },
                 menuSection: .session,
                 menuTitleProvider: {
-                    session.isPaused ? "Resume Recording  ⌘⇧P" : "Pause Recording  ⌘⇧P"
+                    session.isPaused ? "Resume Recording" : "Pause Recording"
                 },
-                hotkeyKeyCode: UInt32(kVK_ANSI_P),
-                hotkeyModifiers: UInt32(cmdKey | shiftKey),
-                hotkeySessionScoped: true
+                // No global shortcut (2026-11-15): ⌘⇧P in another app (a
+                // private browser window, an editor's command palette) paused
+                // a live group for 18 minutes without a sign. Pause stays on
+                // the header button and in this palette.
             ),
         ]
     }
