@@ -123,9 +123,6 @@ private struct PromptEditorView: View {
                             SettingsStatusLabel(text: "The shipped default changed since you edited this.", systemImage: "exclamationmark.triangle.fill", color: RTIDesign.Color.warning)
                         }
 
-                        if let action = ResearchModeration.Action(rawValue: id.rawValue) {
-                            ResearchWindowPreference(action: action)
-                        }
                         TextEditor(text: textBinding)
                             .font(.system(.callout, design: .monospaced))
                             .frame(minHeight: 280)
@@ -189,19 +186,5 @@ private struct PromptEditorView: View {
         case .autoAssistCards: return AutoAssistPrompt.base(text)
         default: return nil
         }
-    }
-}
-
-private struct ResearchWindowPreference: View {
-    @AppStorage private var minutes: Int
-
-    /// 0 is the whole call: the default for Emerging themes and Key tensions.
-    init(action: ResearchModeration.Action) {
-        _minutes = AppStorage(wrappedValue: action.readsWholeCall ? 0 : 10, action.settingsKey)
-    }
-
-    var body: some View {
-        Stepper(minutes == 0 ? "Transcript window: whole call" : "Transcript window: \(minutes) min",
-                value: $minutes, in: 0...1440)
     }
 }

@@ -13,7 +13,7 @@ public enum LiveReplyLanguage {
     public static let compactActions: Set<String> = ["Follow-ups", "Assist", "Answer latest"]
     /// Write-ups in English prose with times, no quote blocks (2026-11-15:
     /// cited one-liners under long Source lines were not a theme read).
-    public static let writeUpActions: Set<String> = ["Emerging themes"]
+    public static let writeUpActions: Set<String> = ["Emerging themes", "Unprobed tension", "Said vs done", "Echo check"]
 
     public static func instructions(history: [ChatEntry], action: String? = nil) -> String {
         var rule = """
@@ -22,7 +22,7 @@ public enum LiveReplyLanguage {
         if let action, summaryActions.contains(action) {
             rule += "\nThis is a summary: give only the English bullets. No Source blocks, quotes, timestamps or pinyin unless the user asks for them."
         } else if let action, writeUpActions.contains(action) {
-            rule += "\nThis is a write-up: follow the action's own format exactly, in English. Give times as the action asks. No Source blocks, quotes in Chinese, pinyin or suggested questions unless the user asks for them."
+            rule += "\nThis is a write-up: follow the action's own format exactly, in English. Give times as the action asks. No Source blocks or quoted Chinese lines unless the user asks; pinyin only under a Mandarin line the action asks for."
         } else if let action, compactActions.contains(action) {
             rule += "\nFollow the action's own format exactly. Add no Source blocks, notes, preamble or extra items. Under each Mandarin line meant to be said aloud, put one **Pinyin** line with tone marks; no pinyin without its Chinese line."
         } else {

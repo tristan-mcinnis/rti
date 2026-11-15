@@ -75,7 +75,7 @@ final class ChatPromptLiveEvalTests: RenderProofTestCase {
                     "seconds": Date().timeIntervalSince(began),
                     "answer": answer ?? "", "error": llm.lastError ?? "",
                 ])
-                print("CHAT EVAL min \(minute) \(item.1): \(answer?.count ?? 0) chars, error: \(llm.lastError ?? "none"), dropped: \(ResearchModeration.lastDropReasons)")
+                print("CHAT EVAL min \(minute) \(item.1): \(answer?.count ?? 0) chars, error: \(llm.lastError ?? "none")")
             }
         }
         llm.newChat()

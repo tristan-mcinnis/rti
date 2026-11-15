@@ -15,12 +15,8 @@ extension LLMController {
     /// place mapping an action to its send function — the ✦ menu, command
     /// palette, global hotkeys, and ⌘⏎ all route through here.
     func perform(actionID: String) {
-        if let research = ResearchModeration.Action(rawValue: actionID) {
-            sendModeration(research)
-            return
-        }
         switch actionID {
-        case "themes": sendThemes()
+        case "themes", "keyTensions", "saidVsDone", "probe": sendResearchWriteUp(actionID)
         case "assist": sendAssist()
         case "answerLatest": sendAnswerLatest()
         case "quickRecap": sendQuickRecap()
@@ -29,56 +25,6 @@ extension LLMController {
         case "followups": sendFollowupQuestions()
         default: break
         }
-    }
-
-    private func sendModeration(_ action: ResearchModeration.Action) {
-        guard !streaming else { return }
-        let session = SessionCoordinator.shared
-        guard session.isRunning, let sessionID = session.currentSessionId else {
-            lastError = "Start a recording to use a live moderation action."
-            return
-        }
-        let guide = GuideSessionController.shared
-        let roleContext = guide.roleContext
-        let configured = UserDefaults.standard.object(forKey: action.settingsKey) as? Int
-        let nowMs = session.startedAt.map { max(0, Int(Date().timeIntervalSince($0) * 1000)) } ?? 0
-        // Themes and tensions are about the whole call unless the user set a
-        // window for them in Settings; a stored 0 is the whole call too.
-        let wholeCall = configured == 0 || (configured == nil && action.readsWholeCall)
-        let minutes = wholeCall ? nowMs / 60000 + 1 : max(1, configured ?? 10)
-        let allSources = GuideTranscript.liveSources()
-        let end = max(nowMs, allSources.last?.endMs ?? 0)
-        // A whole-call list keeps its newest turns within the cap (each turn
-        // carries about 120 characters of fields besides its words).
-        var budget = TranscriptScope.wholeCallCharacterCap
-        let sources = wholeCall ? Array(allSources.reversed().prefix { source in
-            budget -= source.turn.text.count + 120
-            return budget >= 0
-        }.reversed()) : allSources
-        let cutoff = max(0, end - min(minutes, Int.max / 60_000) * 60_000)
-        let turns: [ResearchModeration.Turn] = sources.compactMap { source in
-            let turn = source.turn
-            if action != .saidVsDone && turn.startMs < cutoff { return nil }
-            let quote = ResearchCodebookController.evidence(source, sessionID: sessionID, group: nil)
-            let speaker = quote.speaker
-            let verified = speaker.confidence == SpeakerEvidence.confirmed.rawValue
-            // The shared role rule also marks a moderator who speaks on the
-            // room leg (a question, a summary, guide wording), so a question
-            // is never a theme's evidence (2026-11-15 prompt eval).
-            let moderator = speaker.moderator
-                || TurnRoles.role(speaker: turn.speaker, text: turn.text, context: roleContext) == .moderator
-            return .init(id: quote.turnID, startMs: quote.offsetMs, text: quote.original, moderator: moderator,
-                         label: verified ? speaker.leg + "/" + speaker.label : speaker.leg,
-                         person: verified ? (speaker.seat ?? speaker.label) : nil,
-                         guideQuestion: quote.questionID, marker: quote.markerID, shown: quote.shownCodes)
-        }
-        let snapshot = ResearchModeration(action: action, minutes: minutes, endMs: end, turns: turns,
-                                         roster: Dictionary(guide.roster.map { ($0.code, $0.label) }, uniquingKeysWith: { first, _ in first }),
-                                         guideTitles: Dictionary(uniqueKeysWithValues: (guide.guide?.questions ?? []).map { ($0.qid, $0.en.isEmpty ? $0.zh : $0.en) }),
-                                         guideOn: guide.isActive)
-        performSend(userInput: PromptStore.shared.text(action.promptID), action: action.title,
-                    transcriptSeconds: Double(minutes) * 60, moderation: snapshot,
-                    toolPolicy: ChatToolPolicy(allowsExternalRetrieval: false, allowsScreenTools: false))
     }
 
     func sendAskAnything(_ input: String, attachments: [ExternalDocumentAttachment] = []) {
@@ -328,11 +274,14 @@ extension LLMController {
 
     /// Recap at the given depth, or the user's sticky default when unspecified
     /// (⌘⌥R and the ⌘⏎ primary action both take the default).
-    /// Emerging themes: a researcher's write-up of the whole call so far
-    /// (2026-11-15: the cited one-line list was not useful mid-group).
-    func sendThemes() {
-        guard hasLiveTranscriptForRecap() else { return }
-        performSend(userInput: PromptStore.shared.text(.themes), action: "Emerging themes", fullTranscript: true,
+    /// The research actions (Emerging themes, Unprobed tension, Said vs
+    /// done, Echo check): a researcher's write-up over the whole call
+    /// (2026-11-15). The old cited one-line JSON list was not useful mid-group,
+    /// and its speaker checks answered nothing while live labels are off.
+    func sendResearchWriteUp(_ actionID: String) {
+        guard let id = PromptID(rawValue: actionID), let label = AssistantAction.byID(actionID)?.label,
+              hasLiveTranscriptForRecap() else { return }
+        performSend(userInput: PromptStore.shared.text(id), action: label, fullTranscript: true,
                     toolPolicy: ChatToolPolicy(allowsExternalRetrieval: false, allowsScreenTools: false))
     }
 
@@ -399,10 +348,8 @@ extension LLMController {
         // A local turn is not a model turn; never replay its command as one.
         guard !Self.localActionNames.contains(action) else { return }
         if let id = ChatTurnRecordBuilder.actionID(for: action),
-           let research = ResearchModeration.Action(rawValue: id) {
-            sendModeration(research)
-        } else if action == "Emerging themes" {
-            sendThemes()
+           ["themes", "keyTensions", "saidVsDone", "probe"].contains(id) {
+            sendResearchWriteUp(id)
         } else if action == "Ask" {
             // Re-run the deterministic vault search rather than replay through
             // bare performSend, which skipped retrieval entirely and answered

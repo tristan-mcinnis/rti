@@ -165,7 +165,10 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         XCTAssertTrue(session.transcriptRows.isEmpty, "Ask must not depend on opening Transcript")
     }
 
-    func testModerationDispatchStoresOnlyTheValidatedAnswerAndExportsTheSameSource() async throws {
+    /// The research actions are write-ups over the whole call (2026-11-15):
+    /// no JSON contract, the transcript goes out, and the answer is stored and
+    /// exported exactly as the model wrote it.
+    func testResearchWriteUpSendsTheCallAndStoresTheAnswerAsWritten() async throws {
         try RenderProofHarness.prepare()
         let session = SessionCoordinator.shared
         session.beginTranscriptReplayForProof()
@@ -173,15 +176,11 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         try await SplitWordTranscriptReplay.publish(in: session)
         let sessionID = try XCTUnwrap(session.currentSessionId)
         let source = try XCTUnwrap(GuideTranscript.sources(from: session.liveEntries).first { $0.turn.speaker == "remote_1" })
-        let proposed: [[String: Any]] = [
-            ["english": "What would you test first?", "citations": [["id": source.turn.id, "excerpt": source.turn.text]]],
-            ["english": "Invented answer", "citations": [["id": source.turn.id, "excerpt": "fabricated quotation"]]],
-        ]
-        let wire = try String(decoding: JSONSerialization.data(withJSONObject: ["items": proposed]), as: UTF8.self)
-        let stream: LLMRequest.ToolStream = { messages, tools, _, _, onContent, _ in
-            XCTAssertNil(tools)
-            XCTAssertTrue(messages.contains { ($0.content ?? "").contains("Return only JSON") })
-            XCTAssertTrue(messages.last?.content?.contains(source.turn.text) == true)
+        let wire = "- **Price against habit.** One line puts price first [00:05]; another buys the usual brand anyway [00:09].\n\n**Ask:** What did you buy last time?"
+        let stream: LLMRequest.ToolStream = { messages, _, _, _, onContent, _ in
+            XCTAssertFalse(messages.contains { ($0.content ?? "").contains("Return only JSON") })
+            XCTAssertTrue(messages.contains { ($0.content ?? "").contains("real tensions") })
+            XCTAssertTrue(messages.contains { ($0.content ?? "").contains(source.turn.text) })
             onContent(String(wire.prefix(wire.count / 2)))
             onContent(String(wire.dropFirst(wire.count / 2)))
             return LLMClient.StreamResult(toolCalls: [], finishReason: "stop", reasoningCharacters: 0)
@@ -191,40 +190,10 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         controller.perform(actionID: "keyTensions")
         _ = try await waitForStoredTurns(2)
         let answer = try XCTUnwrap(controller.entries.last?.text)
-        XCTAssertTrue(answer.contains("What would you test first?"))
-        XCTAssertTrue(answer.contains("“" + source.turn.text + "”"))
-        XCTAssertFalse(answer.contains("fabricated quotation"))
-        XCTAssertFalse(answer.contains("Invented answer"))
+        XCTAssertEqual(answer, wire)
         let projection = await store.sessionChatProjection(linkedToSession: sessionID)
         XCTAssertEqual(projection.threads.first?.turns.last?.text, answer)
         XCTAssertTrue(ChatProjectionMarkdown.renderSection(threads: projection.threads).joined(separator: "\n").contains(answer))
-    }
-
-    func testUncertainEchoPersistsWithoutAProviderOrNameAttribution() async throws {
-        try RenderProofHarness.prepare()
-        let session = SessionCoordinator.shared
-        session.beginTranscriptReplayForProof()
-        defer { session.endTranscriptReplayForProof(); SpeakerNameStore.shared.reset() }
-        try await SplitWordTranscriptReplay.publish(in: session)
-        SpeakerNameStore.shared.reset()
-        let counter = Counter()
-        let sessionID = try XCTUnwrap(session.currentSessionId)
-        let controller = makeController(sessionBox: SessionBox(sessionID),
-                                        routeResolver: { _, _, _ in
-                                            XCTFail("The local check requested a provider")
-                                            return .success(Self.route(imageCount: 0))
-                                        }, callTypeStore: .inMemory(.research), stream: countingStream(counter))
-        defer { controller.cancel() }
-        controller.perform(actionID: "probe")
-        _ = try await waitForStoredTurns(2)
-        let answer = try XCTUnwrap(controller.entries.last?.text)
-        // Without confirmed speakers the check says so plainly, with no
-        // generic question built on the last line (2026-11-15 prompt eval).
-        XCTAssertTrue(answer.hasPrefix("Echo check needs confirmed speakers"))
-        XCTAssertFalse(answer.contains("Taylor"))
-        XCTAssertEqual(counter.count, 0)
-        let projection = await store.sessionChatProjection(linkedToSession: sessionID)
-        XCTAssertEqual(projection.threads.first?.turns.last?.text, answer)
     }
 
     // MARK: - Defect 1 & 6: per-attachment bytes

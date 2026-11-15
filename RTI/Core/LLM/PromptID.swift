@@ -120,9 +120,9 @@ public enum PromptID: String, CaseIterable, Sendable {
         case .sayNext: "✦ Say next — a one-line draft reply (hidden in listener mode)."
         case .followupsSpeaker: "✦ Follow-ups when you're a participant."
         case .listenerFollowups: "✦ Follow-ups when observing — questions to pass the moderator."
-        case .keyTensions: "Find an unprobed claim and a question to ask now."
-        case .saidVsDone: "Connect a stated value to the same participant’s account of an earlier action."
-        case .probe: "Check whether another participant echoed or softened an opinion."
+        case .keyTensions: "The real tensions so far, each side with its time, and an open question to ask."
+        case .saidVsDone: "Gaps between what participants say they value and what they describe doing."
+        case .probe: "Views echoed, softened or only given after a leading question."
         case .themes: "A researcher's write-up of the themes so far: claims, evidence, limits and times."
         case .recapBrief: "The bullet-count clause spliced into Recap at Brief depth."
         case .recapStandard: "The clause spliced into Recap at Standard depth."
@@ -242,50 +242,67 @@ public enum PromptDefaults {
             "Given the conversation so far, draft exactly one short reply in my voice. Give the English line first, then a speakable Mandarin version and its tone-marked pinyin in separate paragraphs if needed."
 
         case .followupsSpeaker:
-            "List 3 thoughtful follow-up questions I could ask the other person right now. Give all the questions first in English. Put any useful Mandarin and its tone-marked pinyin below the English."
+            "List 3 follow-up questions I could ask the other person right now. Each builds on something they just said, is open and non-leading, and asks for a concrete example, a last occasion or a reason. Give all the questions first in English. Put any useful Mandarin and its tone-marked pinyin below the English."
 
         case .listenerFollowups:
-            "I'm a passive listener. Give up to three questions I could pass the discussion leader, one line each in English, with no preamble, rationale or notes. Then the suggested Mandarin and its tone-marked pinyin on separate lines when needed."
+            "I'm a passive listener. Give up to three questions I could pass the discussion leader, one line each in English, with no preamble, rationale or notes. Each builds on something said in the last few minutes, is open and non-leading, and asks for a concrete example, a last occasion or a reason rather than an opinion or a yes. Then the suggested Mandarin and its tone-marked pinyin on separate lines when needed."
 
         case .keyTensions:
-            "Find up to three real tensions anywhere in the call: two cited statements that pull against each other (a reversal, a stated rule against a choice, one voice against another). A vague claim with no contrast is not a tension, nor is a naming mix-up or two lines that take the same position; each side must take the opposite position on the same point. Write english as the tension itself in under 20 words, and put the open question to ask in suggestedMandarin."
+            """
+            Find the real tensions in this call so far, as a qualitative researcher would: two positions that pull against each other on the same point (a stated rule against a described choice, a preference that reversed, one line against another, a claim against a reason). Two lines that agree, a vague claim with no contrast, or a naming mix-up is not a tension.
+
+            Use only the supplied transcript; add no outside facts. "Me" is the moderator; a "Them" line that asks a question, restates or calls a show of hands may be the moderator too. All other "Them" lines may be several people under one label: unless names were confirmed, count lines, never people, and never merge lines into one person's story. A moderator's suggestion is not a participant finding. Keep admiration, awareness, intention and actual behaviour apart. Do not guess unclear names. Check every sentence against the transcript; delete what it does not support. Return the write-up only.
+
+            Format:
+            - Up to three bullets, the most useful to the research first. Each: a bold one-line statement of the tension, then each side in your own English words with its time as [mm:ss], then whether it is one line, several lines, or prompted by the moderator.
+            - After each bullet, one open, non-leading question the moderator could ask now, as **Ask:** in English, then the Mandarin on its own line and a **Pinyin** line with tone marks.
+            - If there is no real tension, say so in one line and name the closest open question instead.
+            """
 
         case .saidVsDone:
-            "Compare a recent stated value to what the same verified participant described doing, buying or working around earlier in this session. Cite both turns. Describe actions as self-reported. Two different people's answers are not a contradiction."
+            """
+            Compare what participants say they value or would do with what they describe actually doing, buying or working around, across the call so far. A gap between a stated value and a described action is the finding; a stated intention is not behaviour.
+
+            Use only the supplied transcript; add no outside facts. "Me" is the moderator; a "Them" line that asks a question, restates or calls a show of hands may be the moderator too. All other "Them" lines may be several people under one label: unless names were confirmed, count lines, never people, and never merge lines into one person's story. A moderator's suggestion is not a participant finding. Keep admiration, awareness, intention and actual behaviour apart. Do not guess unclear names. Check every sentence against the transcript; delete what it does not support. Return the write-up only.
+
+            Format:
+            - Up to three bullets. Each: a bold one-line gap, then the stated side and the described-action side in your own English words with times as [mm:ss], and whether both sides can be tied to the same speaker. When they cannot, say "may be different people" plainly.
+            - Then one open question that would test the gap, as **Ask:** in English, the Mandarin on its own line, and a **Pinyin** line with tone marks.
+            - If no gap is supported, say so in one line.
+            """
 
         case .probe:
-            "Find an echo or softening: cite the initiating view and a later turn by a different confirmed participant. Avoid inferring pressure, motives or silence. Without confirmed speakers RTI answers that the check needs them and does not ask the model."
+            """
+            Check the recent talk for views that were echoed, softened or quietly dropped after someone else spoke, and for points that only came after a leading question. This tells the moderator where agreement may be social rather than real.
+
+            Use only the supplied transcript; add no outside facts. "Me" is the moderator; a "Them" line that asks a question, restates or calls a show of hands may be the moderator too. All other "Them" lines may be several people under one label: unless names were confirmed, count lines, never people, and never merge lines into one person's story. A moderator's suggestion is not a participant finding. Keep admiration, awareness, intention and actual behaviour apart. Do not guess unclear names. Check every sentence against the transcript; delete what it does not support. Return the write-up only.
+
+            Format:
+            - Up to three bullets. Each: a bold one-line observation, the first view and the later echo or softening in your own English words with times as [mm:ss], and how sure this is. With one speaker label, say the lines may be the same person.
+            - Then one neutral question that would let a different view come out, as **Ask:** in English, the Mandarin on its own line, and a **Pinyin** line with tone marks.
+            - If nothing supports an echo, say so in one line.
+            """
 
         case .themes:
             """
-            Write up the emerging themes of this call so far, as a qualitative researcher would. Use only the supplied transcript; add no outside facts.
+            Write up the emerging themes of this call so far, as a qualitative researcher would. First, silently note who took part (confirmed information only), how far the transcript runs, whether speakers can be told apart, and which turns are moderator questions and which are participant answers. Note concrete behaviours, preferences, feelings and examples with their times, and group them around a shared meaning.
 
-            First, silently establish: who took part (confirmed information only), how far the transcript runs, whether speakers can be told apart, and which turns are moderator questions ("Me" is the moderator; a "Them" line that asks a question or restates may be the moderator too) and which are participant answers. Note concrete behaviours, preferences, feelings and examples with their times, and group them around a shared meaning.
+            A theme explains something about the participants' experience. "Watching tennis" is a topic; "Watching elite players helps them work on their own game" is a theme. For each theme, check what supports it, what contradicts or qualifies it, and whether it rests on several answers or one person's example. Keep differences visible: never turn a split into a group view, and claim consensus only when it is clear. Say when a point came only after a prompt. Treat accounts of public events as the participants' perceptions. Do not force a number of themes.
 
-            A theme explains something about the participants' experience. "Watching tennis" is a topic; "Watching elite players helps them work on their own game" is a theme. For each theme, check what supports it, what contradicts or qualifies it, and whether it rests on several answers or one person's example.
-
-            Rules:
-            - A moderator's suggestion is not a participant finding. Say when a point came only after a prompt.
-            - Keep differences visible; never turn a split into a group view, and claim consensus only when it is clear.
-            - Never merge different participants into one person's story. One detailed comment can matter: say it is one voice.
-            - Separate admiration, awareness, intention and actual behaviour. Remembering advice is not changed behaviour; knowing a sponsor is not purchase influence.
-            - Treat accounts of public events as the participants' perceptions. Do not guess unclear names.
-            - Do not force a number of themes.
+            Use only the supplied transcript; add no outside facts. "Me" is the moderator; a "Them" line that asks a question, restates or calls a show of hands may be the moderator too. All other "Them" lines may be several people under one label: unless names were confirmed, count lines, never people, and never merge lines into one person's story. A moderator's suggestion is not a participant finding. Keep admiration, awareness, intention and actual behaviour apart. Do not guess unclear names. Check every sentence against the transcript; delete what it does not support. Return the write-up only.
 
             Format:
             - One or two opening sentences: the strongest supported pattern.
             - One sentence of scope: who, how far the transcript runs, whether speakers are distinguished.
             - The themes as bullets: a bold claim, then the supporting examples in your own English words, any qualification, and the times as [mm:ss–mm:ss].
             - A closing line: "Not covered yet:" and the important questions the call has not reached.
-
-            Check every sentence against the transcript; delete what it does not support and soften what goes past it. Return the write-up only.
             """
 
         case .recapBrief:
             "in 1–2 short bullets — only the single most important thread or decision right now. No headers."
 
         case .recapStandard:
-            "in at most 5 bullets of under 20 words each: what was discussed, decisions, open items."
+            "in at most 5 bullets of under 20 words each: what was asked or discussed, what came back (on research calls: what participants said, as lines not people, and whether it was prompted), decisions, open threads."
 
         case .recapDetailed:
             "in 8–12 bullets grouped under short bold topic headers: cover each distinct topic raised, who said what, decisions, points of disagreement, and open threads. Thorough but still skimmable."

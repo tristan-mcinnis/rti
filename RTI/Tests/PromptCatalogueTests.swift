@@ -49,7 +49,7 @@ final class PromptCatalogueTests: XCTestCase {
     func test_followups_switchesOnListenerState() {
         let speaker = PromptComposer.followups(listener: false)
         let listener = PromptComposer.followups(listener: true)
-        XCTAssertTrue(speaker.contains("List 3 thoughtful follow-up questions"))
+        XCTAssertTrue(speaker.contains("List 3 follow-up questions"))
         XCTAssertTrue(listener.contains("I'm a passive listener"))
         XCTAssertNotEqual(speaker, listener)
     }
@@ -62,7 +62,7 @@ final class PromptCatalogueTests: XCTestCase {
 
     func test_listenerResearchPrompts() {
         XCTAssertTrue(PromptID.keyTensions.defaultText.contains("real tensions"))
-        XCTAssertTrue(PromptID.probe.defaultText.contains("an echo"))
+        XCTAssertTrue(PromptID.probe.defaultText.contains("echoed, softened"))
         XCTAssertTrue(PromptID.themes.defaultText.contains("Not covered yet:"))
     }
 
