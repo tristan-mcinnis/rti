@@ -21,6 +21,7 @@ final class ResearchReplayLiveEvalTests: RenderProofTestCase {
         guard environment["RTI_EVAL_DEEPSEEK"] == "1" else {
             throw XCTSkip("Set RTI_EVAL_DEEPSEEK=1 to score live model output (local only, never in CI)")
         }
+        ChatPromptLiveEvalTests.installEvalKey()
         let key = try ResearchReplayFixture.answerKey()
         let checkpoints = ((key["guide"] as? [String: Any])?["checkpoints"] as? [[String: Any]] ?? []).compactMap { $0["minute"] as? Int }
         let client = LLMClient.shared

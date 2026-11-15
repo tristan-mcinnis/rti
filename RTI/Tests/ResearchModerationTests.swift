@@ -47,16 +47,18 @@ final class ResearchModerationTests: XCTestCase {
                         "suggestedMandarin": "上次是什么时候？"] as [String: Any]
         let another = ["english": "Can you give an example?", "citations": [citation("echo", "I guess I would too.")]] as [String: Any]
         let output = try s.render(reply([question, another]))
-        XCTAssertTrue(output.hasPrefix("- **Suggested question for the moderator** When"))
+        XCTAssertTrue(output.hasPrefix("- **Tension** When"))
         XCTAssertLessThan(try XCTUnwrap(output.range(of: "Can you give an example?")?.lowerBound),
                           try XCTUnwrap(output.range(of: "**Source")?.lowerBound))
         XCTAssertTrue(output.contains("[12:34, Them/S2] · Q2 Material choice · shown A"))
         XCTAssertTrue(output.contains("**Suggested question in Mandarin** 上次是什么时候？"))
-        XCTAssertTrue(output.contains("wǒ"))
+        // Pinyin only on the line to say aloud, not on a quoted source.
+        XCTAssertTrue(output.contains("shàng"))
+        XCTAssertFalse(output.contains("wǒ"))
         try assertVerbatim(output, expected: ["我只会买纸的。", "I guess I would too."])
         XCTAssertFalse(s.transcript.contains("I bought the glass one."))
         let repeated = try s.render(reply(Array(repeating: question, count: 6)))
-        XCTAssertLessThanOrEqual(repeated.components(separatedBy: "- **Suggested").count - 1, 3)
+        XCTAssertLessThanOrEqual(repeated.components(separatedBy: "- **Tension").count - 1, 3)
     }
 
     func testSaidVsDoneAllowsEarlierBehaviorOnlyForTheSameVerifiedParticipant() throws {
@@ -79,10 +81,12 @@ final class ResearchModerationTests: XCTestCase {
         let unknown = ResearchModeration.Turn(id: "unverified", startMs: 775_000, text: "I guess I would too.", moderator: false,
                                               label: "Them", person: nil, guideQuestion: "Q2", marker: nil, shown: nil)
         let fallback = try XCTUnwrap(snapshot(.echo, more: [unknown]).localAnswer)
-        XCTAssertTrue(fallback.hasPrefix("speaker labels too uncertain for this check"))
+        // Without confirmed speakers the check says so and offers nothing
+        // generic (2026-11-15 prompt eval).
+        XCTAssertTrue(fallback.hasPrefix("Echo check needs confirmed speakers"))
         XCTAssertFalse(fallback.contains("Seat 4"))
         XCTAssertFalse(fallback.contains("Them/S"))
-        try assertVerbatim(fallback, expected: ["I guess I would too."])
+        XCTAssertFalse(fallback.contains("Suggested question"))
     }
 
     func testRefusesGroupClaimsFromOneSpeakerAndOneWordAssent() throws {
@@ -97,6 +101,23 @@ final class ResearchModerationTests: XCTestCase {
         XCTAssertEqual(try snapshot(.themes, more: [yes]).render(reply([leading])), "No supported finding in the selected window.")
     }
 
+    /// 2026-11-15 eval: a theme whose citations came out of time order, or
+    /// whose claimed origin the lines do not prove, is kept: lines are sorted
+    /// by time and the unproven tag is dropped. Invented quotes still fail.
+    func testThemesKeepOutOfOrderCitationsAndDropOnlyAnUnprovenOriginTag() throws {
+        let s = snapshot(.themes)
+        let reversed = ["english": "Paper as the default material.", "origin": "moderator", "leadingAssent": false,
+                        "citations": [citation("later", "我只会买纸的。"), citation("mic", "You prefer paper, right?")]] as [String: Any]
+        let output = try s.render(reply([reversed]))
+        XCTAssertTrue(output.contains("(prompted)"), "sorted by time, the question comes first and proves the origin")
+        let unproven = ["english": "Paper as the default material.", "origin": "moderator",
+                        "citations": [citation("later", "我只会买纸的。")]] as [String: Any]
+        let plain = try s.render(reply([unproven]))
+        XCTAssertTrue(plain.hasPrefix("- Paper as the default material."))
+        XCTAssertFalse(plain.contains("(prompted)"))
+        XCTAssertFalse(plain.contains("(spontaneous)"))
+    }
+
     func testThemesRejectLeadingAgreementAndInventedOrStitchedQuotes() throws {
         let s = snapshot(.themes)
         let good = ["english": "Paper was mentioned in response to the moderator.",
@@ -106,8 +127,9 @@ final class ResearchModerationTests: XCTestCase {
         var invented = good; invented["citations"] = [citation("later", "I prefer paper.")]
         var stitched = good; stitched["citations"] = [citation("later", "我只会买纸的。I guess")]
         let output = try s.render(reply([leading, invented, stitched, good]))
-        XCTAssertEqual(output.components(separatedBy: "Raised after a moderator question").count - 1, 1)
-        try assertVerbatim(output, expected: ["You prefer paper, right?", "我只会买纸的。"])
+        XCTAssertEqual(output.components(separatedBy: "(prompted)").count - 1, 1)
+        // One source per theme: the participant's words, not the question.
+        try assertVerbatim(output, expected: ["我只会买纸的。"])
         XCTAssertEqual(s.render("unverified provider prose"), "The reply could not be checked against the transcript.")
     }
 }

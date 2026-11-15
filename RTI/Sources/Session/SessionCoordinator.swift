@@ -302,6 +302,12 @@ final class SessionCoordinator {
         postProcessingStatus = nil
     }
 
+    /// Live-eval seam: move the replayed session's start so "now" matches the
+    /// replayed minute (the moderation window counts back from now).
+    func setStartedAtForProof(_ date: Date) {
+        startedAt = date
+    }
+
     func endTranscriptReplayForProof() {
         precondition(isTranscriptReplayForProof)
         isTranscriptReplayForProof = false

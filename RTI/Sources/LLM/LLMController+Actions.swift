@@ -38,6 +38,7 @@ extension LLMController {
             return
         }
         let guide = GuideSessionController.shared
+        let roleContext = guide.roleContext
         let configured = UserDefaults.standard.object(forKey: action.settingsKey) as? Int
         let nowMs = session.startedAt.map { max(0, Int(Date().timeIntervalSince($0) * 1000)) } ?? 0
         // Themes and tensions are about the whole call unless the user set a
@@ -60,7 +61,12 @@ extension LLMController {
             let quote = ResearchCodebookController.evidence(source, sessionID: sessionID, group: nil)
             let speaker = quote.speaker
             let verified = speaker.confidence == SpeakerEvidence.confirmed.rawValue
-            return .init(id: quote.turnID, startMs: quote.offsetMs, text: quote.original, moderator: speaker.moderator,
+            // The shared role rule also marks a moderator who speaks on the
+            // room leg (a question, a summary, guide wording), so a question
+            // is never a theme's evidence (2026-11-15 prompt eval).
+            let moderator = speaker.moderator
+                || TurnRoles.role(speaker: turn.speaker, text: turn.text, context: roleContext) == .moderator
+            return .init(id: quote.turnID, startMs: quote.offsetMs, text: quote.original, moderator: moderator,
                          label: verified ? speaker.leg + "/" + speaker.label : speaker.leg,
                          person: verified ? (speaker.seat ?? speaker.label) : nil,
                          guideQuestion: quote.questionID, marker: quote.markerID, shown: quote.shownCodes)
@@ -242,7 +248,10 @@ extension LLMController {
     }
 
     func sendAssist() {
-        performSend(userInput: PromptStore.shared.assist(listener: listenerMode), action: "Assist")
+        // Research calls read the whole call: a 15-minute window made answers
+        // "correct" true notes from earlier in the group (2026-11-15 eval).
+        performSend(userInput: PromptStore.shared.assist(listener: listenerMode), action: "Assist",
+                    fullTranscript: callTypeStore.active == .research)
     }
 
     func sendAnswerLatest() {
@@ -286,7 +295,7 @@ extension LLMController {
                 searchSources = Self.chatSources(retrieval)
             }
             let prompt = """
-            Answer the MOST recent client question, challenge, or decision point in the live transcript.
+            Answer the most recent question, challenge or decision point spoken in the call (by anyone in it). Treat the user's own notes as context, not as the question.
             If the latest point is answerable from the current transcript, answer directly from that.
             If project context or vault material is relevant, use it and cite the source path briefly.
             Be concise and practical: what should I say now, or what answer should I give?
@@ -300,6 +309,7 @@ extension LLMController {
             performSend(
                 userInput: prompt,
                 action: "Answer latest",
+                fullTranscript: callTypeStore.active == .research,
                 initialTools: searchLine,
                 initialSources: searchSources
             )
@@ -311,7 +321,8 @@ extension LLMController {
     }
 
     func sendFollowupQuestions() {
-        performSend(userInput: PromptStore.shared.followups(listener: listenerMode), action: "Follow-ups")
+        performSend(userInput: PromptStore.shared.followups(listener: listenerMode), action: "Follow-ups",
+                    fullTranscript: callTypeStore.active == .research)
     }
 
     /// Recap at the given depth, or the user's sticky default when unspecified

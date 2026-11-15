@@ -13,7 +13,9 @@ public enum TranscriptScope {
         "theme", "pattern", "so far", "overall", "whole", "entire", "throughout",
         "across", "summar", "recap", "since the start", "from the start", "big picture",
         "takeaway", "tension", "contradict", "consensus", "everyone", "all of them",
+        "did they say", "did anyone", "did anybody", "has anyone", "come up", "came up", "mention",
         "主题", "总体", "整体", "到目前", "目前为止", "总结", "全程", "整场", "大家都",
+        "有没有人", "说了什么", "提到",
     ]
 
     /// True when a typed question asks about the call as a whole.

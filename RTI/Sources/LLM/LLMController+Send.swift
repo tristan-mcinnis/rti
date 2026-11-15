@@ -413,6 +413,10 @@ extension LLMController {
         // Captured before the turn log clears it: the finished answer is filed
         // in the durable thread with its receipt and tool rounds.
         let finished = pendingTurn
+        if let index = entries.firstIndex(where: { $0.id == thisEntryID }) {
+            let cleaned = AnswerCleanup.dropOrphanPinyin(entries[index].text)
+            if cleaned != entries[index].text { entries[index].text = cleaned }
+        }
         let finalText = entries.first { $0.id == thisEntryID }?.text ?? ""
         let checkpoint = stopCheckpointing()
         logCompletedTurn(thisEntryID)

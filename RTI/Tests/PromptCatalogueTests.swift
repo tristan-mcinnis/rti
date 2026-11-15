@@ -16,7 +16,7 @@ final class PromptCatalogueTests: XCTestCase {
         let detailed = PromptComposer.recap(.detailed)
 
         XCTAssertTrue(brief.contains("1–2 short bullets"))
-        XCTAssertTrue(standard.contains("3–5 short bullets"))
+        XCTAssertTrue(standard.contains("at most 5 bullets of under 20 words"))
         XCTAssertTrue(detailed.contains("8–12 bullets grouped"))
 
         // Every depth starts with the same stem and carries the same language rule.
@@ -61,9 +61,9 @@ final class PromptCatalogueTests: XCTestCase {
     // MARK: - Listener research actions
 
     func test_listenerResearchPrompts() {
-        XCTAssertTrue(PromptID.keyTensions.defaultText.contains("unprobed tension"))
+        XCTAssertTrue(PromptID.keyTensions.defaultText.contains("real tensions"))
         XCTAssertTrue(PromptID.probe.defaultText.contains("an echo"))
-        XCTAssertTrue(PromptID.themes.defaultText.contains("raised after a moderator question"))
+        XCTAssertTrue(PromptID.themes.defaultText.contains("3 to 5 themes"))
     }
 
     // MARK: - Auto framing

@@ -203,6 +203,8 @@ public enum PromptDefaults {
             - Suggest probes and follow-ups that are open and never leading.
             - Keep what participants said apart from your own inference. Use their exact words, in their language, when you quote them.
             - Keep an individual view distinct from independent voices. Identify the speaker only if their identity was confirmed; otherwise cite the audio leg.
+            - Count lines, never people, unless speakers are confirmed: write "2 lines (16:15, 16:35)", never several, most, many, independent voices or one speaker.
+            - You may see only part of the call. Never say something was not said, or correct the user's notes, unless the transcript you were given covers the whole call; say "not in the last N minutes" instead.
             """
         case .callInternal:
             """
@@ -243,25 +245,25 @@ public enum PromptDefaults {
             "List 3 thoughtful follow-up questions I could ask the other person right now. Give all the questions first in English. Put any useful Mandarin and its tone-marked pinyin below the English."
 
         case .listenerFollowups:
-            "I'm a passive listener. Give up to three questions I could pass the discussion leader. Give all the questions first in English. Then give the suggested Mandarin and its tone-marked pinyin on separate lines when needed."
+            "I'm a passive listener. Give up to three questions I could pass the discussion leader, one line each in English, with no preamble, rationale or notes. Then the suggested Mandarin and its tone-marked pinyin on separate lines when needed."
 
         case .keyTensions:
-            "Find unprobed tension in the recent participant speech: vague claims, euphemisms or hedged agreement without an example. Give up to three open questions a moderator can ask now. Tie each one to the exact words that prompted it."
+            "Find up to three real tensions anywhere in the call: two cited statements that pull against each other (a reversal, a stated rule against a choice, one voice against another). A vague claim with no contrast is not a tension, nor is a naming mix-up or two lines that take the same position; each side must take the opposite position on the same point. Write english as the tension itself in under 20 words, and put the open question to ask in suggestedMandarin."
 
         case .saidVsDone:
             "Compare a recent stated value to what the same verified participant described doing, buying or working around earlier in this session. Cite both turns. Describe actions as self-reported. Two different people's answers are not a contradiction."
 
         case .probe:
-            "Find an echo or softening: cite the initiating view and a later turn by a different confirmed participant. Avoid inferring pressure, motives or silence. Probe the topic without names when speaker labels are uncertain."
+            "Find an echo or softening: cite the initiating view and a later turn by a different confirmed participant. Avoid inferring pressure, motives or silence. Without confirmed speakers RTI answers that the check needs them and does not ask the model."
 
         case .themes:
-            "Find emerging themes and identify how each started. Tag each as raised by a participant or raised after a moderator question. Omit agreement that only follows a leading question. Cite the initiating line and substantive evidence. Do not report a lone opinion as consensus."
+            "Return 3 to 5 themes across the call, the widest first, each in under 20 words. Name the theme itself; never write participants, the group, respondents, consensus or everyone. Treat a split between voices (for example sweet against less sugar) as a theme. Say how each started (origin). Cite the initiating line first, then up to two lines of substantive evidence. Do not report a lone opinion as consensus."
 
         case .recapBrief:
             "in 1–2 short bullets — only the single most important thread or decision right now. No headers."
 
         case .recapStandard:
-            "in 3–5 short bullets: what was discussed, decisions, open items."
+            "in at most 5 bullets of under 20 words each: what was discussed, decisions, open items."
 
         case .recapDetailed:
             "in 8–12 bullets grouped under short bold topic headers: cover each distinct topic raised, who said what, decisions, points of disagreement, and open threads. Thorough but still skimmable."

@@ -218,8 +218,9 @@ final class ChatRuntimeIntegrationTests: XCTestCase {
         controller.perform(actionID: "probe")
         _ = try await waitForStoredTurns(2)
         let answer = try XCTUnwrap(controller.entries.last?.text)
-        XCTAssertTrue(answer.hasPrefix("speaker labels too uncertain for this check"))
-        XCTAssertTrue(answer.contains(", Them]"))
+        // Without confirmed speakers the check says so plainly, with no
+        // generic question built on the last line (2026-11-15 prompt eval).
+        XCTAssertTrue(answer.hasPrefix("Echo check needs confirmed speakers"))
         XCTAssertFalse(answer.contains("Taylor"))
         XCTAssertEqual(counter.count, 0)
         let projection = await store.sessionChatProjection(linkedToSession: sessionID)
