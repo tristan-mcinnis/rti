@@ -85,11 +85,17 @@ final class RecordingFaultToleranceTests: XCTestCase {
         XCTAssertEqual(Double(frames) / 16000, 121, accuracy: 0.05, "WAV time equals wall time across the sleep")
     }
 
+    /// `CLOCK_MONOTONIC` on Darwin is the continuous clock: it keeps counting
+    /// through sleep. The recorder's clock must read between two reads of it.
+    /// No comparison with `systemUptime`: on a Mac that never slept the two
+    /// differ only by a boot offset, and on hosted CI VMs the continuous clock
+    /// runs up to 0.75 s behind uptime, so that check failed on the runner.
     func testDefaultRecorderClockIsTheSleepInclusiveMonotonicClock() {
-        let monotonic = TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
-        XCTAssertEqual(MeetingRecorder.sleepInclusiveUptime(), monotonic, accuracy: 0.5)
-        XCTAssertGreaterThanOrEqual(MeetingRecorder.sleepInclusiveUptime(), ProcessInfo.processInfo.systemUptime - 0.5,
-                                    "Uptime stops during sleep; the recorder's clock must not")
+        let before = TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
+        let value = MeetingRecorder.sleepInclusiveUptime()
+        let after = TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
+        XCTAssertGreaterThanOrEqual(value, before, "The recorder's clock is the sleep-inclusive monotonic clock")
+        XCTAssertLessThanOrEqual(value, after, "The recorder's clock is the sleep-inclusive monotonic clock")
     }
 
     // MARK: AUD-3: the tap never abandons an idle leg

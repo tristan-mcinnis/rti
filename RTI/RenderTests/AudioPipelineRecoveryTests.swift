@@ -508,11 +508,17 @@ final class AudioPipelineRecoveryTests: XCTestCase {
     }
 
     /// Push a quiet system buffer every 20 ms, keeping the leg's last-buffer
-    /// time fresh so the idle park cannot fire.
+    /// time fresh so the idle park cannot fire. It runs for at least `seconds`
+    /// and pushes at least one buffer per 20 ms of that time: on a loaded CI
+    /// runner a 20 ms sleep can take 100 ms, and a time-only loop then pushed
+    /// a fifth of the buffers the tests count on.
     private func feedSystem(_ backend: InjectedSystemCapture, for seconds: TimeInterval) async throws {
         let end = Date().addingTimeInterval(seconds)
-        while Date() < end {
+        let minimumBuffers = Int((seconds / 0.02).rounded())
+        var pushed = 0
+        while Date() < end || pushed < minimumBuffers {
             backend.onPCMBuffer?(try pcm(value: 3))
+            pushed += 1
             try await Task.sleep(nanoseconds: 20_000_000)
         }
     }
