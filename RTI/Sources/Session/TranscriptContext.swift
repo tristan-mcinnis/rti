@@ -198,6 +198,14 @@ enum TranscriptContext {
         // Provider messages can end halfway through a word. Group complete
         // spoken phrases before adding labels, using the reader's same rule.
         var utterances = LiveTranscriptPresentation.utterances(from: entries)
+        // The other side heard again through the user's speakers is not the
+        // user speaking: every call type leaves those copies out.
+        let leaks = TurnRoles.speakerLeakIDs(utterances.enumerated().map { index, e in
+            TurnRoles.Spoken(id: String(index), speaker: e.speakerId, startMs: e.startMs, endMs: e.endMs, text: e.text)
+        })
+        if !leaks.isEmpty {
+            utterances = utterances.enumerated().filter { !leaks.contains(String($0.offset)) }.map(\.element)
+        }
         var roleOf: [Int: SpeechRole] = [:]
         if let roles {
             utterances = rolePieces(utterances)

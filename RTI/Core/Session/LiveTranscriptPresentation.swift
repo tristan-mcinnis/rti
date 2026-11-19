@@ -544,6 +544,9 @@ extension LiveTranscriptPresentation {
     /// real speaker/stream change or at least one second of measured silence
     /// closes an utterance. Finality and provider packets do not close it.
     /// Interim updates replace only affected rows over the cached collection.
+    /// How far back a settled row sends the echo check (`Projection.judgeEchoes`).
+    static let echoWindowMs = 60_000
+
     public struct Projection {
         private var sources: [UUID: LiveEntry] = [:]
         private var labelsEnabled = true
@@ -560,6 +563,10 @@ extension LiveTranscriptPresentation {
         private var names: [String: String] = [:]
         private var showTranslations = false
         private var revision: UInt64 = 0
+        /// Mic rows that repeat the other side through the speakers
+        /// (`TurnRoles.isSpeakerLeak`). Hidden only once `leakConfirmed`.
+        private var echoGroups: Set<Int> = []
+        private var leakConfirmed = false
 
         public init() {}
         public mutating func reset() { self = Projection() }
@@ -639,6 +646,7 @@ extension LiveTranscriptPresentation {
                 if let companion = assignment.companion { changed.insert(companion) }
             }
             for index in changed { builders[index].body.freeze() }
+            changed.formUnion(judgeEchoes(changed))
             if rebuild || settingsChanged {
                 rowByGroup.removeAll(keepingCapacity: true)
                 cachedRows.removeAll(keepingCapacity: true)
@@ -651,6 +659,14 @@ extension LiveTranscriptPresentation {
                 return
             }
             var firstChanged = cachedRows.count
+            // A row that turned out to be a speaker echo leaves the reader.
+            let leaving = changed.compactMap { group in isVisible(group) ? nil : rowByGroup[group].map { (group, $0) } }
+            for (group, row) in leaving.sorted(by: { $0.1 > $1.1 }) {
+                cachedRows.remove(at: row)
+                rowByGroup[group] = nil
+                for (key, value) in rowByGroup where value > row { rowByGroup[key] = value - 1 }
+                firstChanged = min(firstChanged, row)
+            }
             // Existing groups keep a stable position. New delayed cross-leg
             // groups use a binary insertion; typical live delivery just appends.
             for group in changed.sorted() where isVisible(group) {
@@ -739,7 +755,51 @@ extension LiveTranscriptPresentation {
         }
 
         private func isVisible(_ group: Int) -> Bool {
-            !attachedTranslations.contains(group) && builders[group].isVisible(showTranslations: showTranslations)
+            !attachedTranslations.contains(group) && !isHiddenEcho(group)
+                && builders[group].isVisible(showTranslations: showTranslations)
+        }
+
+        private func isHiddenEcho(_ group: Int) -> Bool {
+            leakConfirmed && echoGroups.contains(group)
+        }
+
+        /// Judge the mic rows near `changed` again (a system row can settle
+        /// after its echo) and return the groups whose visibility flipped.
+        /// The raw pipeline and the archive keep every row; only the reader
+        /// hides the copy.
+        private mutating func judgeEchoes(_ changed: Set<Int>) -> Set<Int> {
+            let timed = changed.filter { builders[$0].id.untimedOrdinal == nil }
+            guard let earliest = timed.map({ builders[$0].id.startMs }).min() else { return [] }
+            let cutoff = earliest - LiveTranscriptPresentation.echoWindowMs
+            var mic: [(Int, TurnRoles.Spoken)] = []
+            var system: [TurnRoles.Spoken] = []
+            for index in builders.indices.reversed() {
+                let builder = builders[index]
+                guard builder.id.untimedOrdinal == nil, !builder.id.translated, builder.hasOriginal,
+                      builder.id.speakerId != "note" else { continue }
+                let end = builder.endMs ?? builder.id.startMs
+                if end < cutoff {
+                    // Groups arrive in rough time order; a late cross-leg group is minutes off at most.
+                    if builder.id.startMs < cutoff - 10 * LiveTranscriptPresentation.echoWindowMs { break }
+                    continue
+                }
+                let text = builder.body.paragraphs.map(\.text).joined(separator: " ")
+                let spoken = TurnRoles.Spoken(id: String(index), speaker: builder.id.speakerId,
+                                              startMs: builder.id.startMs, endMs: end, text: text)
+                if SpeakerEvidence.leg(for: builder.id.speakerId) == "Me" { mic.append((index, spoken)) } else { system.append(spoken) }
+            }
+            var flipped: Set<Int> = []
+            for (index, spoken) in mic {
+                let echo = !system.isEmpty && TurnRoles.isSpeakerLeak(spoken, system: system)
+                guard echo != echoGroups.contains(index) else { continue }
+                if echo { echoGroups.insert(index) } else { echoGroups.remove(index) }
+                if leakConfirmed { flipped.insert(index) }
+            }
+            if !leakConfirmed, echoGroups.count >= TurnRoles.leakMinimum {
+                leakConfirmed = true
+                flipped = echoGroups
+            }
+            return flipped
         }
 
         private func samePresentationEntry(_ lhs: LiveEntry, _ rhs: LiveEntry) -> Bool {
@@ -774,7 +834,7 @@ extension LiveTranscriptPresentation {
             var replacements: [Int: LiveRow] = [:]
             var insertions: [(at: Int, value: LiveRow)] = []
             for (group, builder) in live.sorted(by: { ordered($0.value.id, before: $1.value.id) }) {
-                guard builder.isVisible(showTranslations: showTranslations) else { continue }
+                guard builder.isVisible(showTranslations: showTranslations), !isHiddenEcho(group) else { continue }
                 let row = displayRow(builder, group: group)
                 if let index = rowByGroup[group] {
                     replacements[index] = row

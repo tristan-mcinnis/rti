@@ -34,11 +34,42 @@ final class LiveTranscriptTurnTests: XCTestCase {
                 .sorted { ($0.ordinal ?? -1) < ($1.ordinal ?? -1) }.map(\.text)
             XCTAssertEqual(actual, expected)
         }
+        // The reader shows the other side once: the mic's copy through the
+        // speakers is hidden (misheard word and all), the user's own line stays.
         let result = turns(pipeline.liveEntries, interims: pipeline.interimSegments)
         let text = result.map(\.text).joined(separator: " ")
         XCTAssertTrue(text.contains("Chengdu"))
-        XCTAssertTrue(text.contains("Changdo"))
+        XCTAssertFalse(text.contains("Changdo"))
+        XCTAssertEqual(text.components(separatedBy: "client review").count, 2, "said once")
+        XCTAssertTrue(text.contains("Fine by me."))
         XCTAssertTrue(result.contains(where: \.hasPending))
+    }
+
+    func testLiveDeliveryHidesSpeakerEchoesOnceTheLeakIsClear() {
+        let pipeline = TranscriptPipeline()
+        var projection = LiveTranscriptPresentation.Projection()
+        var shown: [String] = []
+        for frame in EchoMeetingFixture.frames {
+            pipeline.process(words: frame.words, channel: frame.channel)
+            projection.updateLiveFinals(pipeline, labelsEnabled: false)
+            shown = LiveTranscriptPresentation.turns(projection.updateInterims(pipeline.interimSegments)).map(\.text)
+        }
+        let text = shown.joined(separator: " ")
+        XCTAssertFalse(text.contains("Changdo"))
+        XCTAssertEqual(text.components(separatedBy: "Yeah.").count, 2, "a short repeat is hidden too")
+        XCTAssertTrue(text.contains("Fine by me."))
+        XCTAssertTrue(pipeline.liveEntries.flatMap(\.tokens).contains { $0.text.contains("Chang") }, "the raw copy is kept")
+    }
+
+    func testOneMatchingLineIsNotALeak() {
+        // On headphones the user may quote the other side once; nothing is hidden.
+        let result = turns([
+            entry("remote_1", "the launch moves to the second week of March", at: 1_000),
+            entry("self", "the launch moves to the second week of March", at: 1_100),
+            entry("remote_1", "and the budget stays the same", at: 6_000),
+            entry("self", "sounds good to me", at: 9_000),
+        ])
+        XCTAssertEqual(result.filter { $0.speakerLabel == "You" }.count, 2)
     }
 
     // MARK: - Turns

@@ -289,6 +289,44 @@ public enum TurnRoles {
         return Double(pairs.intersection(heard).count) / Double(pairs.count) >= echoShare
     }
 
+    /// A mic turn that repeats the other side through the user's speakers:
+    /// the per-turn test of `micEchoIDs` without its room gate, plus short
+    /// repeats ("Yeah.", "Like,") too small for word pairs, which count when
+    /// they start while the other side is saying the same words (a short
+    /// restating question comes after the answer, so it stays). The live
+    /// transcript asks this only after `leakMinimum` turns of a session
+    /// passed it (`LiveTranscriptPresentation.Projection`), so a call on
+    /// headphones hides nothing.
+    public static func isSpeakerLeak(_ turn: Spoken, system: [Spoken]) -> Bool {
+        guard SpeakerEvidence.leg(for: turn.speaker) == "Me" else { return false }
+        var pairs = EchoPairCache()
+        if isEcho(turn, system: system, pairs: &pairs) { return true }
+        let units = echoUnits(turn.text)
+        guard !units.isEmpty, units.count <= echoMinimumPairs else { return false }
+        return system.contains { other in
+            turn.startMs >= other.startMs - shortEchoLeadMs && turn.startMs <= other.endMs
+                && contains(echoUnits(other.text), units)
+        }
+    }
+
+    /// The IDs of `turns` that are speaker leaks, or none when fewer than
+    /// `leakMinimum` are: one stray match is a coincidence, not a leak.
+    public static func speakerLeakIDs(_ turns: [Spoken]) -> Set<String> {
+        let system = turns.filter { SpeakerEvidence.leg(for: $0.speaker) == "Them" }
+        guard !system.isEmpty else { return [] }
+        let ids = Set(turns.filter { isSpeakerLeak($0, system: system) }.map(\.id))
+        return ids.count >= leakMinimum ? ids : []
+    }
+
+    /// Echo turns a session needs before the transcript hides any.
+    public static let leakMinimum = roomEchoMinimum
+    static let shortEchoLeadMs = 500
+
+    private static func contains(_ haystack: [String], _ needle: [String]) -> Bool {
+        guard needle.count <= haystack.count else { return false }
+        return (0 ... haystack.count - needle.count).contains { Array(haystack[$0 ..< $0 + needle.count]) == needle }
+    }
+
     static let echoShare = 0.8
     static let echoMinimumPairs = 4
     static let roomEchoMinimum = 3
@@ -297,6 +335,12 @@ public enum TurnRoles {
     /// is one unit, a Latin word or a number is one unit. Character pairs in
     /// English repeat too often to tell an echo from a restated question.
     public static func echoPairs(_ text: String) -> Set<String> {
+        let units = echoUnits(text)
+        guard units.count >= 2 else { return [] }
+        return Set((0 ..< units.count - 1).map { units[$0] + " " + units[$0 + 1] })
+    }
+
+    static func echoUnits(_ text: String) -> [String] {
         var units: [String] = []
         var word = ""
         for character in text.lowercased() {
@@ -318,8 +362,7 @@ public enum TurnRoles {
         if !word.isEmpty {
             units.append(word)
         }
-        guard units.count >= 2 else { return [] }
-        return Set((0 ..< units.count - 1).map { units[$0] + " " + units[$0 + 1] })
+        return units
     }
 
     private static func isCJK(_ character: Character) -> Bool {

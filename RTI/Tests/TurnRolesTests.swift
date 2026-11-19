@@ -113,6 +113,24 @@ final class TurnRolesTests: XCTestCase {
         XCTAssertTrue(TurnRoles.micEchoIDs([own], against: [own]).isEmpty, "a mic-only call drops nothing")
     }
 
+    func testSpeakerLeakOnARemoteCallDropsTheCopiesButNotTheUsersOwnWords() {
+        // A client call on laptop speakers: each line of the other side comes
+        // back on the mic 150 ms later. The user also restates and answers.
+        let lines = ["We were on email chains together but that project was just massive.",
+                     "Thank you for making the time, I know it is quite early for you.",
+                     "I am a night owl so I am always up for a midnight meeting.", "Like,"]
+        var turns: [TurnRoles.Spoken] = []
+        for (index, line) in lines.enumerated() {
+            let start = index * 10000
+            turns.append(spoken("r\(index)", "remote", start, start + 4000, line))
+            turns.append(spoken("e\(index)", "self", start + 150, start + 4150, line))
+        }
+        turns.append(spoken("restate", "self", 34200, 35000, "A night owl?"))
+        turns.append(spoken("own", "self", 36000, 39000, "We're good, 7:30 is good for us."))
+        XCTAssertEqual(TurnRoles.speakerLeakIDs(turns), ["e0", "e1", "e2", "e3"])
+        XCTAssertTrue(TurnRoles.speakerLeakIDs(Array(turns.prefix(4))).isEmpty, "two copies are not yet a leak")
+    }
+
     func testEchoPairsAreWordPairsInEnglishAndCharacterPairsInChinese() {
         XCTAssertEqual(TurnRoles.echoPairs("Is that the main reason?"), ["is that", "that the", "the main", "main reason"])
         XCTAssertEqual(TurnRoles.echoPairs("That's fair"), ["thats fair"], "an apostrophe stays inside its word")

@@ -1,5 +1,16 @@
 # RTI Change Log
 
+## 2026-11-19: The other side shows once when your speakers leak
+
+- **Transcript.** On speakers, the mic also hears the other side, so their
+  words came back as extra "Me" rows. The live transcript now hides those
+  copies after it has seen three of them. Your own words stay. On headphones
+  nothing is hidden.
+- **Answers.** Client, internal and personal calls now leave those copies out
+  of what the assistant reads, as research calls already did for in-room echo.
+- **Archive.** The archive, the audio and the transcript upgrade keep both legs
+  as recorded.
+
 ## 2026-11-04: Soniox knows who and what the call is about
 
 - **Context.** Live transcription and the transcript upgrade now tell Soniox
