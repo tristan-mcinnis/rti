@@ -415,6 +415,39 @@ enum SessionArchive {
         return url
     }
 
+    /// Written when the meeting note came from the live transcript (a personal
+    /// call, or an upgrade that failed twice). A later upgrade then refreshes
+    /// the raw transcript but starts no second note.
+    static let liveNoteMarker = "meeting-note-from-live.json"
+
+    static func meetingNoteFromLiveWritten(in dir: URL) -> Bool {
+        FileManager.default.fileExists(atPath: dir.appendingPathComponent(liveNoteMarker).path)
+    }
+
+    /// Export the live transcript and start `/meeting` on it. Returns false
+    /// when no raw transcript could be written (the note then waits for the upgrade).
+    @discardableResult
+    static func runMeetingNoteFromLive(in dir: URL, startedAt: Date, reason: String) -> Bool {
+        guard !meetingNoteFromLiveWritten(in: dir) else { return true }
+        let url: URL?
+        do {
+            url = try requiredCanonicalExport(in: dir, startedAt: startedAt)
+        } catch {
+            RTILog.log("meeting note from the live transcript failed: \(error.localizedDescription)", level: .error, category: .archive)
+            return false
+        }
+        guard let url else { return false }
+        let body = Data(#"{"reason":"\#(reason)"}"#.utf8)
+        let marker = dir.appendingPathComponent(liveNoteMarker)
+        guard FileManager.default.createFile(atPath: marker.path, contents: body, attributes: [.posixPermissions: 0o600]) else {
+            RTILog.log("could not write \(liveNoteMarker); not starting a note that a later upgrade would repeat", level: .error, category: .archive)
+            return false
+        }
+        RTILog.log("meeting note from the live transcript (\(reason)) for \(dir.lastPathComponent)", category: .archive)
+        runMeetingProcessor(transcriptURL: url)
+        return true
+    }
+
     /// Transcripts with a `/meeting` run still alive. A second run on the
     /// same transcript would race the first on its note and on the memory
     /// repo's commit and push.

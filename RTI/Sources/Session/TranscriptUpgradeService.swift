@@ -133,7 +133,7 @@ enum TranscriptUpgradeService {
         if let date = session.date, FileManager.default.fileExists(atPath: pending.path) {
             let saved = try JSONDecoder().decode(PendingExport.self, from: Data(contentsOf: pending))
             if let url = try finishExport(in: session.url, startedAt: date, provider: saved.provider, segmentCount: saved.segmentCount) {
-                SessionArchive.runMeetingProcessor(transcriptURL: url)
+                runMeetingProcessorUnlessWritten(transcriptURL: url, session: session.url)
             }
             progress(.done("Raw transcript exported"))
             return Result(provider: saved.provider, transcriptURL: session.transcriptURL, segmentCount: saved.segmentCount)
@@ -166,7 +166,7 @@ enum TranscriptUpgradeService {
         }
         if let startedAt = session.date,
            let canonicalURL = try finishExport(in: session.url, startedAt: startedAt, provider: provider.displayName, segmentCount: pipelineResult.segmentCount) {
-            SessionArchive.runMeetingProcessor(transcriptURL: canonicalURL)
+            runMeetingProcessorUnlessWritten(transcriptURL: canonicalURL, session: session.url)
         }
         progress(.done("Upgraded with \(provider.displayName)"))
 
@@ -175,6 +175,16 @@ enum TranscriptUpgradeService {
             transcriptURL: pipelineResult.transcriptURL,
             segmentCount: pipelineResult.segmentCount
         )
+    }
+
+    /// One meeting note per session: a note already written from the live
+    /// transcript is not written again when the upgrade lands later.
+    private static func runMeetingProcessorUnlessWritten(transcriptURL: URL, session: URL) {
+        if SessionArchive.meetingNoteFromLiveWritten(in: session) {
+            RTILog.log("upgraded transcript exported; the meeting note was already written from the live transcript", category: .archive)
+            return
+        }
+        SessionArchive.runMeetingProcessor(transcriptURL: transcriptURL)
     }
 
     /// The automatic pass after a recording: one more try if the provider
@@ -216,7 +226,7 @@ enum TranscriptUpgradeService {
     ) throws -> AsyncTranscriptProvider {
         let key = (CredentialStore.soniox ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let metadata = archiveMetadata(in: sessionDirectory)
-        let inputs = audioInputs(in: sessionDirectory)
+        let inputs = TranscriptUpgradeAudioDiscovery.upgradeInputs(in: sessionDirectory)
         let systemAudio = inputs.first { $0.defaultSpeaker == "Remote speaker" }?.url.standardizedFileURL
         if let metadata, metadata.speakerPolicy != nil || metadata.liveTokenJournal != nil || metadata.schemaVersion != nil {
             // Once raw responses are local and remote cleanup is complete,
@@ -229,10 +239,17 @@ enum TranscriptUpgradeService {
             guard !key.isEmpty || available else { throw TranscriptUpgradeError.missingCredentials(option.displayName) }
             return SonioxRawTranscriptProvider(client: .init(apiKey: key), directory: sessionDirectory,
                                                sessionID: metadata.sessionId ?? sessionDirectory.lastPathComponent,
-                                               policy: metadata.speakerPolicy ?? .init(), context: metadata.speechContext, systemAudio: systemAudio)
+                                               policy: roomPolicy(metadata), context: metadata.speechContext, systemAudio: systemAudio)
         }
         guard !key.isEmpty else { throw TranscriptUpgradeError.missingCredentials(option.displayName) }
         return SonioxScriptTranscriptProvider(apiKey: key, context: metadata?.speechContext)
+    }
+
+    /// The stored policy, with speaker labels on the mic for a meeting in the room.
+    static func roomPolicy(_ metadata: SessionArchiveMetadata) -> SessionSpeakerPolicy {
+        var policy = metadata.speakerPolicy ?? .init()
+        policy.roomLabels = metadata.isInRoom
+        return policy
     }
 
     static func audioInputs(in dir: URL) -> [TranscriptUpgradeAudioInput] {
@@ -297,7 +314,7 @@ private struct SonioxRawTranscriptProvider: AsyncTranscriptProvider {
     func transcribe(audioURL: URL, outputBaseURL _: URL) async throws -> TranscriptUpgradePipeline.LegResult {
         let system = audioURL.standardizedFileURL == systemAudio
         let data = try await client.transcript(audio: audioURL, in: directory, sessionID: sessionID,
-                                               leg: system ? .system : .mic, labels: policy.labelsEnabled, context: context)
+                                               leg: system ? .system : .mic, labels: policy.requestsLabels(system: system), context: context)
         return .soniox(data: data, policy: policy)
     }
 }

@@ -48,6 +48,24 @@ public struct SessionArchiveMetadata: Codable {
     /// Stretches a leg did not record (AUD-4). Nil when none, and in files
     /// written before 2026-11-13.
     public var captureGaps: [CaptureGap]?
+    /// A meeting held in the room: picked as such ("In the room" on Prepare,
+    /// stored as the speaker policy's `roomLabels`), or the computer-audio
+    /// leg carried nothing for 90% of a call of a minute or more (2026-11-18
+    /// and 11-19: the tap delivered nothing for the whole meeting). The
+    /// after-call transcript then skips that leg and labels speakers on the mic.
+    public var isInRoom: Bool {
+        if speakerPolicy?.roomLabels == true { return true }
+        return systemLegSilent
+    }
+
+    /// The computer-audio leg recorded nothing worth sending.
+    public var systemLegSilent: Bool {
+        guard let seconds = durationSeconds, seconds >= 60 else { return false }
+        let end = seconds * 1000
+        let missing = (captureGaps ?? []).filter { $0.leg == .system }
+            .reduce(0) { $0 + max(0, min($1.endMs ?? end, end) - $1.startMs) }
+        return Double(missing) >= Double(seconds) * 1000 * 0.9
+    }
 
     private enum CodingKeys: String, CodingKey {
         case sessionId, systemAudioStartOffsetMs, micAudioFile, systemAudioFile, mode, workstream

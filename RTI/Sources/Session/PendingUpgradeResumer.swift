@@ -15,6 +15,8 @@ final class PendingUpgradeResumer {
     private var rerun = false
     private var gate = NetworkReturnGate()
     private var monitor: NWPathMonitor?
+    private var retryTask: Task<Void, Never>?
+    private var retryAttempt = 0
 
     /// Resume now and on every return of the network.
     func start() {
@@ -27,6 +29,21 @@ final class PendingUpgradeResumer {
         }
         monitor.start(queue: DispatchQueue(label: "rti.pending-upgrade.network", qos: .utility))
         self.monitor = monitor
+    }
+
+    /// Try the queue again later. A Soniox upload that drops while the Mac
+    /// stays online never trips the network monitor (2026-11-18: the upgrade
+    /// waited 19 hours for the next launch). Waits 10, 30, then 60 minutes,
+    /// and every hour after while something stays queued.
+    func scheduleRetry() {
+        retryTask?.cancel()
+        let delay = PendingUpgradeRetry.delay(afterAttempt: retryAttempt)
+        retryAttempt += 1
+        retryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            self?.resume(reason: "retry timer")
+        }
     }
 
     func networkChanged(available: Bool) {
@@ -56,8 +73,15 @@ final class PendingUpgradeResumer {
         let pending = await Task.detached(priority: .utility) {
             SessionArchive.pendingAutomaticUpgrades()
         }.value
-        guard !pending.isEmpty else { return }
+        guard !pending.isEmpty else {
+            retryAttempt = 0
+            return
+        }
         RTILog.log("resuming \(pending.count) pending transcript upgrade(s) (\(reason))", category: .archive)
+        var stillQueued = false
+        defer {
+            if stillQueued { scheduleRetry() } else { retryAttempt = 0 }
+        }
         for session in pending {
             // The live session's folder belongs to its own stop and upgrade.
             if SessionCoordinator.shared.ownsArchive(sessionStartedAt: session.date) {
@@ -77,6 +101,7 @@ final class PendingUpgradeResumer {
                 SessionArchive.clearAutomaticUpgradePending(in: session.url)
                 RTILog.log("cleared pending upgrade for \(session.url.lastPathComponent): \(provider) returned an empty transcript and the retained audio is under a minute", category: .archive)
             } catch {
+                stillQueued = stillQueued || TranscriptUpgradeService.isRetryable(error)
                 RTILog.log("pending transcript upgrade remains queued for \(session.url.lastPathComponent): \(error.localizedDescription)", category: .archive)
             }
         }

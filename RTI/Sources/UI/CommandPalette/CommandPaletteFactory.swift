@@ -495,6 +495,7 @@ enum CommandBuilder {
     @MainActor
     static func switchCallType(to type: CallType, callTypes: CallTypeStore, llm: LLMController) {
         callTypes.active = type
+        callTypes.chosenForNextCall = true
         llm.listenerMode = type.listens
     }
 }

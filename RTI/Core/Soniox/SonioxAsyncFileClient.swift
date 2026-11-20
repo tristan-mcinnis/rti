@@ -188,7 +188,7 @@ public struct SonioxAsyncFileClient: Sendable {
                 try Self.save(job, to: checkpoint)
                 var request = request("transcriptions", method: "POST")
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.httpBody = try JSONEncoder().encode(Create(language_hints: languageHints, enable_speaker_diarization: leg == .system && labels,
+                request.httpBody = try JSONEncoder().encode(Create(language_hints: languageHints, enable_speaker_diarization: labels,
                                                                    context: context, file_id: fileID.uuidString, client_reference_id: job.reference))
                 do {
                     let (data, _) = try await exchange(request)

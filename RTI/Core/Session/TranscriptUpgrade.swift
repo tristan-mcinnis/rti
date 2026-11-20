@@ -104,6 +104,19 @@ public enum TranscriptUpgradeAudioDiscovery {
         }
     }
 
+    /// The legs worth sending for the after-call transcript: every retained
+    /// leg, less a computer-audio leg that recorded nothing (an in-room
+    /// meeting sent 86 minutes of silence and got no words back, 2026-11-18).
+    /// The mic leg is always kept.
+    public static func upgradeInputs(in dir: URL) -> [TranscriptUpgradeAudioInput] {
+        let all = inputs(in: dir)
+        guard all.count > 1,
+              let data = try? Data(contentsOf: dir.appendingPathComponent("session.json")),
+              let metadata = try? JSONDecoder().decode(SessionArchiveMetadata.self, from: data),
+              metadata.isInRoom else { return all }
+        return all.filter { $0.defaultSpeaker != "Remote speaker" }
+    }
+
     /// A crash before the delayed system leg receives its first frame leaves
     /// a valid header-only WAV. Ignore it so the complete mic leg can still be
     /// upgraded. Legacy retained formats keep their existing discovery rule.
@@ -209,7 +222,7 @@ public enum TranscriptUpgradePipeline {
         }
         let notes = readsLegacyTranscript ? TranscriptUpgradeMerge.notes(from: originalTranscript) : []
 
-        let inputs = TranscriptUpgradeAudioDiscovery.inputs(in: sessionDir)
+        let inputs = TranscriptUpgradeAudioDiscovery.upgradeInputs(in: sessionDir)
         guard !inputs.isEmpty else { throw TranscriptUpgradePipelineError.missingAudio }
 
         var segments: [TranscriptUpgradeSegment] = []

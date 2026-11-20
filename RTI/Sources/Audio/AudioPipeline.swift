@@ -415,7 +415,9 @@ final class AudioPipeline {
     /// Start mic capture immediately; system audio starts asynchronously
     /// (non-fatal if it fails). `micMuted` applies before capture opens, so a
     /// muted (listening-only) call never records or sends a mic sample.
-    func start(micMuted: Bool) throws {
+    /// `systemAudio: false` is a meeting in the room: no computer-audio leg,
+    /// so no tap to rebuild every minute and no silent file to upload.
+    func start(micMuted: Bool, systemAudio recordsSystemAudio: Bool = true) throws {
         self.micMuted = micMuted
         captureStartWall = now()
         micInputStartedAt = captureStartWall
@@ -436,7 +438,7 @@ final class AudioPipeline {
         // The mic leg already enforces this in `prepare`; this guard
         // mirrors it so we don't silently consume Soniox credits on a
         // doomed second connection.
-        guard systemAudioEnabled, hasSTTKey() else { return }
+        guard systemAudioEnabled, recordsSystemAudio, hasSTTKey() else { return }
 
         Task { @MainActor [weak self] in
             guard let self, isCapturing else { return }

@@ -21,6 +21,11 @@ final class CallTypeStore {
         }
     }
 
+    /// The user chose the call type since the last call ended. While false,
+    /// a recording that picks its calendar event may suggest another type
+    /// (`CallTypeSuggestion`).
+    @ObservationIgnored var chosenForNextCall = false
+
     private init(active: CallType, defaults: UserDefaults?) {
         self.active = active
         self.defaults = defaults

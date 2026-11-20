@@ -86,7 +86,7 @@ final class SonioxAsyncFileClientTests: XCTestCase {
     }
 
     func testNativeRequestsAndExactRawBytesForBothLegs() async throws {
-        for (leg, labels, expectsDiarization) in [(SonioxAsyncFileClient.Leg.mic, true, false), (.system, true, true), (.system, false, false)] {
+        for (leg, labels, expectsDiarization) in [(SonioxAsyncFileClient.Leg.mic, false, false), (.mic, true, true), (.system, true, true), (.system, false, false)] {
             let (dir, audio) = try fixture()
             defer { try? FileManager.default.removeItem(at: dir) }
             let transport = Transport(Self.submitted + [Self.status("processing"), Self.status("completed"), Self.result] + Self.cleanup)

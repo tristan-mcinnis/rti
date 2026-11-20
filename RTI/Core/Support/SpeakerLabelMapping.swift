@@ -118,20 +118,33 @@ public struct SessionSpeakerPolicy: Codable, Equatable, Sendable {
     public var liveLabelsEnabled: Bool
     /// A local review hint. It never creates a speaker or verifies a name.
     public var expectedCount: Int?
+    /// Speaker clusters on the mic leg of the after-call transcript, for a
+    /// meeting in the room: everyone speaks into the one mic, so without them
+    /// every line is "Me" (2026-11-20). Stored when "In the room" was picked;
+    /// the upgrade also sets it when the computer-audio leg was silent
+    /// (`SessionArchiveMetadata.isInRoom`).
+    public var roomLabels: Bool
 
-    public init(labelsEnabled: Bool = true, liveLabelsEnabled: Bool = false, expectedCount: Int? = nil) {
+    public init(labelsEnabled: Bool = true, liveLabelsEnabled: Bool = false, expectedCount: Int? = nil, roomLabels: Bool = false) {
         self.labelsEnabled = labelsEnabled
         self.liveLabelsEnabled = liveLabelsEnabled
         self.expectedCount = expectedCount.flatMap { $0 > 0 ? $0 : nil }
+        self.roomLabels = roomLabels
     }
 
-    private enum CodingKeys: String, CodingKey { case labelsEnabled, liveLabelsEnabled, expectedCount }
+    /// Whether the after-call request for this leg asks for speaker clusters.
+    public func requestsLabels(system: Bool) -> Bool {
+        labelsEnabled && (system || roomLabels)
+    }
+
+    private enum CodingKeys: String, CodingKey { case labelsEnabled, liveLabelsEnabled, expectedCount, roomLabels }
 
     /// Archives written before the live switch existed carry no live field.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(labelsEnabled: try c.decodeIfPresent(Bool.self, forKey: .labelsEnabled) ?? true,
                   liveLabelsEnabled: try c.decodeIfPresent(Bool.self, forKey: .liveLabelsEnabled) ?? false,
-                  expectedCount: try c.decodeIfPresent(Int.self, forKey: .expectedCount))
+                  expectedCount: try c.decodeIfPresent(Int.self, forKey: .expectedCount),
+                  roomLabels: try c.decodeIfPresent(Bool.self, forKey: .roomLabels) ?? false)
     }
 }

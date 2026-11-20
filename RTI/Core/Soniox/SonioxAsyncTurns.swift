@@ -28,7 +28,9 @@ public enum SonioxAsyncTurns {
         func flush() {
             guard !indices.isEmpty else { return }
             if !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                let label = if !system {
+                let label = if !system, policy.requestsLabels(system: false), let cluster {
+                    "Room speaker " + cluster
+                } else if !system {
                     "Me"
                 } else if policy.labelsEnabled, let cluster {
                     "Remote speaker " + cluster
@@ -58,7 +60,7 @@ public enum SonioxAsyncTurns {
             let nextSpeaker = !hasLexicalText && wordSpeaker == nil ? cluster : wordSpeaker
             let time = token.providerStartMs ?? previousEnd
             let finishedSentence = words.last.map { "。！？.!?".contains($0) } == true
-            if !indices.isEmpty, (system && policy.labelsEnabled && cluster != nextSpeaker) ||
+            if !indices.isEmpty, (policy.requestsLabels(system: system) && cluster != nextSpeaker) ||
                 (hasLexicalText && (finishedSentence || time - previousEnd > 1500 || time - displayStart > 20000))
             {
                 flush()

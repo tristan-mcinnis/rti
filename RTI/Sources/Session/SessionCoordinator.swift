@@ -712,7 +712,17 @@ final class SessionCoordinator {
            let suggestion = calendar.suggestion {
             MeetingContextStore.shared.selectCalendarMeeting(suggestion)
             MeetingContextStore.shared.autoLink(toMeetingNamed: suggestion.title)
+            let callTypes = CallTypeStore.shared
+            if !callTypes.chosenForNextCall,
+               let type = CallTypeSuggestion.suggest(title: suggestion.title, attendees: suggestion.attendees,
+                                                     current: callTypes.active, hasGuide: GuidePreparation.shared.guide != nil)
+            {
+                RTILog.log("call type from the calendar event: \(callTypes.active.name) -> \(type.name)", category: .general)
+                callTypes.active = type
+                LLMController.shared.applyCallTypeForSessionStart()
+            }
         }
+        CallTypeStore.shared.chosenForNextCall = false
 
         // Auto-attach a same-day prep brief for this meeting (if one matches),
         // so Meeting-mode Assist works against "what we said we needed from this
@@ -780,7 +790,7 @@ final class SessionCoordinator {
         do {
             // The mic mode holds before the first buffer, so a listening-only
             // call never records or sends the user's voice.
-            try audioPipeline.start(micMuted: mic.reduced(.sessionStarted).micMuted)
+            try audioPipeline.start(micMuted: mic.reduced(.sessionStarted).micMuted, systemAudio: !speakerPolicy.roomLabels)
         } catch {
             closeRawJournal()
             lastError = "Audio start failed: \(error)"
@@ -967,9 +977,26 @@ final class SessionCoordinator {
                 lateChat.archived(sessionID: sessionId, snapshot: snapshot, archiveDir: archiveDir, callType: CallTypeStore.shared.active)
                 speakerPolicy = SessionSpeakerPolicy()
                 SessionArchive.markAutomaticUpgradePending(in: archiveDir)
+                let callType = CallTypeStore.shared.active
                 runUpgradePhase(sessionId: sessionId, llm: LLMController.shared) {
                     guard !TranscriptUpgradeService.audioInputs(in: archiveDir).isEmpty else {
                         return "No audio was saved, so there is no upgraded transcript or meeting note."
+                    }
+                    let seconds = await Task.detached(priority: .utility) {
+                        TranscriptUpgradeService.retainedAudioSeconds(in: archiveDir) / Double(max(1, TranscriptUpgradeService.audioInputs(in: archiveDir).count))
+                    }.value
+                    let plan = AfterCallPlan.decide(callType: callType, audioSeconds: seconds)
+                    switch plan {
+                    case .upgrade:
+                        break
+                    case .liveNote:
+                        SessionArchive.clearAutomaticUpgradePending(in: archiveDir)
+                        SessionArchive.runMeetingNoteFromLive(in: archiveDir, startedAt: startedAt, reason: "personal call")
+                        return plan.statusLine
+                    case .nothing:
+                        SessionArchive.clearAutomaticUpgradePending(in: archiveDir)
+                        RTILog.log("no upgrade or meeting note: recording under \(Int(AfterCallPlan.minimumSeconds)) s", category: .archive)
+                        return plan.statusLine
                     }
                     do {
                         _ = try await TranscriptUpgradeService.upgradeRetryingOnce(
@@ -987,7 +1014,17 @@ final class SessionCoordinator {
                         return nil
                     } catch {
                         RTILog.log("automatic Soniox transcript upgrade failed; retained audio is available for retry: \(error.localizedDescription)", category: .archive)
-                        return "Transcript upgrade failed: \(error.localizedDescription) Audio is kept and RTI retries at next launch, so there is no meeting note yet."
+                        // A provider or network fault: write the note from the
+                        // live transcript now; the upgrade retries on its own
+                        // and refreshes the raw transcript, with no second note.
+                        if TranscriptUpgradeService.isRetryable(error),
+                           SessionArchive.runMeetingNoteFromLive(in: archiveDir, startedAt: startedAt, reason: "upgrade failed")
+                        {
+                            PendingUpgradeResumer.shared.scheduleRetry()
+                            return "Transcript upgrade failed: \(error.localizedDescription) The meeting note uses the live transcript; RTI retries the upgrade."
+                        }
+                        PendingUpgradeResumer.shared.scheduleRetry()
+                        return "Transcript upgrade failed: \(error.localizedDescription) Audio is kept and RTI retries, so there is no meeting note yet."
                     }
                 }
             } else {
