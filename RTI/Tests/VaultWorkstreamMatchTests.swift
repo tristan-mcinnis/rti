@@ -54,4 +54,34 @@ final class VaultWorkstreamMatchTests: XCTestCase {
         let items = [item("Acme Digital", project: true)]
         XCTAssertNil(VaultWorkstreamStore.match(meetingName: "Weekly standup", in: items))
     }
+
+    /// 2026-11-20: real event titles that linked no project.
+    func testDistinctiveWordsMatchAProject() {
+        let items = [
+            item("Acme · acme-lumo-china-agency-research", project: true),
+            item("Acme · acme-prestige-neasia", project: true),
+            item("Northwind · northwind-global-youth", project: true),
+            item("Northwind · northwind-bo-an", project: true),
+            item("Northwind · northwind-running-retail-concept", project: true),
+        ]
+        XCTAssertEqual(VaultWorkstreamStore.match(meetingName: "Lumo Focus Group follow up discussion", in: items)?.name,
+                       "Acme · acme-lumo-china-agency-research")
+        XCTAssertEqual(VaultWorkstreamStore.match(meetingName: "Lumo China Diagnosis - Catch up with Mira", in: items)?.name,
+                       "Acme · acme-lumo-china-agency-research")
+        XCTAssertEqual(VaultWorkstreamStore.match(meetingName: "Northwind x Studio: global youth research", in: items)?.name,
+                       "Northwind · northwind-global-youth")
+        XCTAssertEqual(VaultWorkstreamStore.match(meetingName: "Northwind Bo An: Follow-up interview (Online)", in: items)?.name,
+                       "Northwind · northwind-bo-an")
+    }
+
+    func testClientOrCommonWordsAloneMatchNothing() {
+        let items = [item("Northwind · northwind-global-youth", project: true), item("Northwind · northwind-running-retail-concept", project: true)]
+        XCTAssertNil(VaultWorkstreamStore.match(meetingName: "Northwind China research sync", in: items))
+        XCTAssertNil(VaultWorkstreamStore.match(meetingName: "Director's Meeting", in: items))
+    }
+
+    func testATieMatchesNothing() {
+        let items = [item("Acme · acme-lumo-pack", project: true), item("Acme · acme-lumo-price", project: true)]
+        XCTAssertNil(VaultWorkstreamStore.match(meetingName: "Lumo debrief", in: items))
+    }
 }

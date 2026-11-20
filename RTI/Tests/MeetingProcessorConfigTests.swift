@@ -101,6 +101,34 @@ final class MeetingProcessorConfigTests: XCTestCase {
         XCTAssertFalse(tools.contains("Write") || tools.contains("Edit"))
     }
 
+    /// 2026-11-20: a client folder and the meetings inbox link into a synced
+    /// drive, so the run could not write its notes there.
+    func testLinkedWorkFoldersAreAddedOnce() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fm = FileManager.default
+        let home = root.appendingPathComponent("home")
+        let work = home.appendingPathComponent("Documents/Work")
+        let drive = root.appendingPathComponent("drive")
+        for dir in [work.appendingPathComponent("Real/2026"), work.appendingPathComponent("Studio"),
+                    drive.appendingPathComponent("Acme"), drive.appendingPathComponent("meetings")] {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        try fm.createSymbolicLink(at: work.appendingPathComponent("Acme"), withDestinationURL: drive.appendingPathComponent("Acme"))
+        try fm.createSymbolicLink(at: work.appendingPathComponent("Studio/meetings"), withDestinationURL: drive.appendingPathComponent("meetings"))
+        try fm.createSymbolicLink(at: work.appendingPathComponent("Acme2"), withDestinationURL: drive.appendingPathComponent("Acme"))
+        try fm.createSymbolicLink(at: work.appendingPathComponent("gone"), withDestinationURL: drive.appendingPathComponent("missing"))
+
+        let linked = MeetingProcessorConfig.linkedWorkFolders(home: home)
+        XCTAssertEqual(Set(linked), [drive.appendingPathComponent("Acme").resolvingSymlinksInPath().path,
+                                     drive.appendingPathComponent("meetings").resolvingSymlinksInPath().path])
+        XCTAssertEqual(linked.count, 2)
+        let arguments = MeetingProcessorConfig.permissionArguments(config: [:], home: home)
+        for target in linked {
+            XCTAssertTrue(zip(arguments, arguments.dropFirst()).contains { $0 == "--add-dir" && $1 == target }, target)
+        }
+    }
+
     func testWorkingDirectoryIsTheWorkTree() {
         XCTAssertEqual(
             MeetingProcessorConfig.workingDirectory(home: URL(fileURLWithPath: "/Users/test")).path,

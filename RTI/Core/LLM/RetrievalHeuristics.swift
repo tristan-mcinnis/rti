@@ -33,11 +33,27 @@ public enum RetrievalHeuristics {
     /// Chinese past-work word (上次, 之前, 报告, 访谈, 逐字稿, 他们说), and a
     /// Chinese term in quotes (what do they say about "不会出错").
     public static func asksForPastWork(_ question: String) -> Bool {
-        let pattern = #"\b(vault|previous|prior|earlier|last time|last week|history|look up|find|search|what did we|did we decide|recent meetings?|transcripts?|reports?|what (did|do|does) (they|people|participants|respondents|he|she) say)\b"#
+        let pattern = #"\b(vault|previous|prior|earlier|last time|last week|history|look up|find|search|what did we|did we decide|recent meetings?|transcripts?|reports?|what (did|do|does) (they|people|participants|respondents|consumers?|customers?|users?|he|she) (say|think|feel))\b"#
         if question.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil { return true }
         if question.range(of: #"上次|之前|以前|报告|访谈|转录|逐字稿|他们(怎么|都)?说"#, options: .regularExpression) != nil { return true }
         if question.range(of: #"["“'‘「『]\p{Han}[^"”'’」』]{0,20}["”'’」』]"#, options: .regularExpression) != nil { return true }
         return namesAPlace(question)
+    }
+
+    /// True when, with a project picked, a typed live question asks for a
+    /// fact the project files may hold: a question form that is not a request
+    /// for a line to say, a translation or the screen (2026-11-20: "what did
+    /// consumers say about Solvane" in a client meeting got a line to
+    /// say, with the project search closed).
+    public static func asksAboutProject(_ question: String) -> Bool {
+        let text = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= 6 else { return false }
+        let drafting = #"\b(what should i (say|ask)|what do i (say|ask)|how (do|should|can) i (reply|respond|answer|say|phrase)|draft|reword|rephrase|translate|say (this|that|it)|in (mandarin|chinese|english)|on (my|the) screen)\b"#
+        if text.range(of: drafting, options: [.regularExpression, .caseInsensitive]) != nil { return false }
+        if text.contains("?") || text.contains("？") { return true }
+        let opener = #"^(what|who|which|why|how|when|where|did|do|does|is|are|was|were|can|could|has|have|any|tell me|remind me)\b"#
+        if text.range(of: opener, options: [.regularExpression, .caseInsensitive]) != nil { return true }
+        return text.range(of: #"什么|哪|怎么|为什么|有没有|吗$"#, options: .regularExpression) != nil
     }
 
     /// Words after "in" that name a language, a month or a period, not a place.

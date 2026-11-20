@@ -85,6 +85,41 @@ public enum MeetingProcessorConfig {
             arguments += ["--allowedTools"] + allowedTools(home: home)
             arguments += ["--add-dir", home.appendingPathComponent("memory").path]
         }
+        for target in linkedWorkFolders(home: home) {
+            arguments += ["--add-dir", target]
+        }
         return arguments
+    }
+
+    /// Where the work tree's linked folders really live. Claude Code checks a
+    /// write against the resolved path, so a client folder or the meetings
+    /// inbox that links into Google Drive is outside the working directory
+    /// and every write there was refused (2026-11-18 and 11-19: two meeting
+    /// notes left in a temporary folder). Links two levels deep count
+    /// (`<client>`, `<client>/<folder>`); each target is named once.
+    public static func linkedWorkFolders(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [String] {
+        let fm = FileManager.default
+        let work = workingDirectory(home: home)
+        let workPath = work.resolvingSymlinksInPath().path
+        var targets: [String] = []
+        func visit(_ dir: URL, depth: Int) {
+            guard let children = try? fm.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey], options: [.skipsHiddenFiles]
+            ) else { return }
+            for child in children.sorted(by: { $0.path < $1.path }) {
+                let values = try? child.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+                if values?.isSymbolicLink == true {
+                    let target = child.resolvingSymlinksInPath()
+                    var isDir: ObjCBool = false
+                    guard fm.fileExists(atPath: target.path, isDirectory: &isDir), isDir.boolValue,
+                          !target.path.hasPrefix(workPath + "/"), !targets.contains(target.path) else { continue }
+                    targets.append(target.path)
+                } else if values?.isDirectory == true, depth < 2 {
+                    visit(child, depth: depth + 1)
+                }
+            }
+        }
+        visit(work, depth: 1)
+        return targets
     }
 }

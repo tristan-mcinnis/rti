@@ -104,15 +104,52 @@ public enum VaultWorkstreamStore {
     public static func match(meetingName: String, in items: [VaultItem]) -> VaultItem? {
         let haystack = " \(normalize(meetingName)) "
         guard haystack.count > 2 else { return nil }
-        return items
+        let whole = items
             .filter { item in
-                let needle = normalize(item.name)
-                return needle.count >= 4 && haystack.contains(" \(needle) ")
+                matchNames(item).contains { needle in needle.count >= 4 && haystack.contains(" \(needle) ") }
             }
             .max { a, b in
                 if a.isProject != b.isProject { return !a.isProject } // projects win
                 return normalize(a.name).count < normalize(b.name).count // else longest
             }
+        return whole ?? distinctiveMatch(haystack: haystack, in: items)
+    }
+
+    /// A project's names to look for whole: "Client · slug" and the slug alone,
+    /// so "Northwind Bo An: follow-up" finds `Northwind · northwind-bo-an`.
+    private static func matchNames(_ item: VaultItem) -> [String] {
+        var names = [normalize(item.name)]
+        if let slug = item.name.components(separatedBy: " · ").dropFirst().first {
+            names.append(normalize(slug))
+        }
+        return names
+    }
+
+    /// Words in project names that say nothing about which project it is.
+    static let commonWords: Set<String> = [
+        "china", "chinese", "asia", "global", "research", "project", "agency", "study", "consumer", "consumers",
+        "digital", "retail", "concept", "concepts", "brand", "brands", "market", "markets", "follow", "focus",
+        "group", "groups", "discussion", "interview", "interviews", "online", "meeting", "call", "sync", "weekly",
+        "review", "kickoff", "catch", "update", "team", "inner", "chapter", "with", "workshop", "diagnosis",
+    ]
+
+    /// Fallback when no whole name is in the title (2026-11-20: "Lumo Focus
+    /// Group follow up discussion" never matched `Acme · acme-lumo-china-agency-research`).
+    /// A project matches by its distinctive words: 4 letters or more, not the
+    /// client's name, not a common word, not a year. The project with the
+    /// most such words in the title wins; a tie picks nothing.
+    private static func distinctiveMatch(haystack: String, in items: [VaultItem]) -> VaultItem? {
+        var scored: [(VaultItem, Int)] = []
+        for item in items where item.isProject {
+            let parts = item.name.components(separatedBy: " · ")
+            let client = parts.count > 1 ? Set(normalize(parts[0]).split(separator: " ").map(String.init)) : []
+            let words = Set(normalize(parts.last ?? item.name).split(separator: " ").map(String.init))
+                .filter { $0.count >= 4 && !client.contains($0) && !commonWords.contains($0) && Int($0) == nil }
+            let hits = words.filter { haystack.contains(" \($0) ") }.count
+            if hits > 0 { scored.append((item, hits)) }
+        }
+        guard let best = scored.max(by: { $0.1 < $1.1 }) else { return nil }
+        return scored.filter { $0.1 == best.1 }.count == 1 ? best.0 : nil
     }
 
     // MARK: - Helpers

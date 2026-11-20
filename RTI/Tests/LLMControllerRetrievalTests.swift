@@ -70,6 +70,23 @@ final class LLMControllerRetrievalTests: XCTestCase {
         XCTAssertTrue(open.forLiveCall(question: "Search for the last quote", callType: .client).allowsTool(named: "search_vault"))
     }
 
+    /// 2026-11-20: a project question in a client meeting got a line to say
+    /// and no project search.
+    func testAProjectQuestionOpensProjectSearch() {
+        let open = ChatToolPolicy(allowsExternalRetrieval: true)
+        for question in ["what did consumer say about Solvane", "Which claims did they find hard to read?",
+                         "How big was the sample in Shanghai", "长期用的话她们怎么看？"] {
+            XCTAssertTrue(open.forLiveCall(question: question, callType: .client, hasProject: true).allowsTool(named: "search_vault"), question)
+        }
+        for question in ["What should I say next?", "How do I reply to that?", "Translate this into Mandarin",
+                         "What is on my screen?", "Recap the conversation so far in 1–2 short bullets"] {
+            XCTAssertFalse(open.forLiveCall(question: question, callType: .client, hasProject: true).allowsTool(named: "search_vault"), question)
+        }
+        XCTAssertFalse(open.forLiveCall(question: "what does the launch plan cover?", callType: .client).allowsExternalRetrieval)
+        XCTAssertFalse(open.forLiveCall(question: "what did they say?", callType: .personal, hasProject: true).allowsExternalRetrieval)
+        XCTAssertTrue(RetrievalHeuristics.asksForPastWork("what did consumers say about the texture"))
+    }
+
     func testNamesKnownWorkstreamForcesHard() {
         XCTAssertTrue(RetrievalHeuristics.shouldForceVaultSearch(
             query: "what did we decide about AcmeWear Northport vs Southvale",

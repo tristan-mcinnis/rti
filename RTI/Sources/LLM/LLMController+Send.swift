@@ -36,7 +36,11 @@ extension LLMController {
         let sourcePayloads = acceptsScreens ? sourcePayloads : sourcePayloads.filter { $0.archiveKind != .screenshot }
         let attachments = acceptsScreens ? attachments : attachments.filter { $0.kind != .screen }
         let toolPolicy = SessionCoordinator.shared.isRunning && !broaderSearchEnabled
-            ? toolPolicy.forLiveCall(question: userInput, callType: callTypeStore.active)
+            ? toolPolicy.forLiveCall(
+                question: userInput,
+                callType: callTypeStore.active,
+                hasProject: MeetingContextStore.shared.workstreamScopePath != nil
+            )
             : toolPolicy
         sendTask?.cancel()
         request.cancel()
