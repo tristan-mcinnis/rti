@@ -569,11 +569,11 @@ struct SetupTabView: View {
                 toggleRow(icon: "mic.slash", title: "Listening only", detail: "Record the call with your mic muted",
                           isOn: Binding(get: { Self.listeningOnlyToggleIsOn }, set: { Self.setListeningOnlyToggle($0) }))
                     .help("Record call audio with your microphone muted.")
-                toggleRow(icon: "person.3", title: "In the room", detail: "Record the mic only; label speakers after the call",
-                          isOn: Binding(get: { SessionCoordinator.shared.speakerPolicy.roomLabels },
-                                        set: { SessionCoordinator.shared.speakerPolicy.roomLabels = $0 }))
+                toggleRow(icon: "person.3", title: "In the room", detail: "Everyone is at the table: record the mic only",
+                          isOn: Binding(get: { SessionCoordinator.shared.speakerPolicy.inRoom },
+                                        set: { SessionCoordinator.shared.speakerPolicy.inRoom = $0 }))
                     .disabled(SessionCoordinator.shared.isRunning)
-                    .help("No computer audio is recorded. After the call, speakers on the mic get their own labels.")
+                    .help("No computer audio is recorded. Mic lines stay \"Me\": speaker labels on one room mic were too often wrong.")
             }
         }
     }

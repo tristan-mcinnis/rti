@@ -239,17 +239,10 @@ enum TranscriptUpgradeService {
             guard !key.isEmpty || available else { throw TranscriptUpgradeError.missingCredentials(option.displayName) }
             return SonioxRawTranscriptProvider(client: .init(apiKey: key), directory: sessionDirectory,
                                                sessionID: metadata.sessionId ?? sessionDirectory.lastPathComponent,
-                                               policy: roomPolicy(metadata), context: metadata.speechContext, systemAudio: systemAudio)
+                                               policy: metadata.speakerPolicy ?? .init(), context: metadata.speechContext, systemAudio: systemAudio)
         }
         guard !key.isEmpty else { throw TranscriptUpgradeError.missingCredentials(option.displayName) }
         return SonioxScriptTranscriptProvider(apiKey: key, context: metadata?.speechContext)
-    }
-
-    /// The stored policy, with speaker labels on the mic for a meeting in the room.
-    static func roomPolicy(_ metadata: SessionArchiveMetadata) -> SessionSpeakerPolicy {
-        var policy = metadata.speakerPolicy ?? .init()
-        policy.roomLabels = metadata.isInRoom
-        return policy
     }
 
     static func audioInputs(in dir: URL) -> [TranscriptUpgradeAudioInput] {

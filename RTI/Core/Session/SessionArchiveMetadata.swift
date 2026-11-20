@@ -49,12 +49,12 @@ public struct SessionArchiveMetadata: Codable {
     /// written before 2026-11-13.
     public var captureGaps: [CaptureGap]?
     /// A meeting held in the room: picked as such ("In the room" on Prepare,
-    /// stored as the speaker policy's `roomLabels`), or the computer-audio
+    /// stored as the speaker policy's `inRoom`), or the computer-audio
     /// leg carried nothing for 90% of a call of a minute or more (2026-11-18
     /// and 11-19: the tap delivered nothing for the whole meeting). The
-    /// after-call transcript then skips that leg and labels speakers on the mic.
+    /// after-call transcript then skips that leg.
     public var isInRoom: Bool {
-        if speakerPolicy?.roomLabels == true { return true }
+        if speakerPolicy?.inRoom == true { return true }
         return systemLegSilent
     }
 

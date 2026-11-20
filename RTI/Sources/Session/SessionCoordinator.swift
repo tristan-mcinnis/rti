@@ -790,7 +790,7 @@ final class SessionCoordinator {
         do {
             // The mic mode holds before the first buffer, so a listening-only
             // call never records or sends the user's voice.
-            try audioPipeline.start(micMuted: mic.reduced(.sessionStarted).micMuted, systemAudio: !speakerPolicy.roomLabels)
+            try audioPipeline.start(micMuted: mic.reduced(.sessionStarted).micMuted, systemAudio: !speakerPolicy.inRoom)
         } catch {
             closeRawJournal()
             lastError = "Audio start failed: \(error)"

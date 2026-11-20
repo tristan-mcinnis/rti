@@ -19,7 +19,7 @@ final class AfterCallTests: XCTestCase {
                                        systemAudioFile: "audio-system.wav", mode: "Client call", workstream: nil,
                                        durationSeconds: seconds)
         m.captureGaps = gaps
-        m.speakerPolicy = SessionSpeakerPolicy(roomLabels: room)
+        m.speakerPolicy = SessionSpeakerPolicy(inRoom: room)
         return m
     }
 
@@ -37,22 +37,20 @@ final class AfterCallTests: XCTestCase {
     }
 
     func testTheRoomChoiceIsStoredAndOldFilesLoad() throws {
-        let data = try JSONEncoder().encode(SessionSpeakerPolicy(roomLabels: true))
-        XCTAssertEqual(try JSONDecoder().decode(SessionSpeakerPolicy.self, from: data).roomLabels, true)
+        let data = try JSONEncoder().encode(SessionSpeakerPolicy(inRoom: true))
+        XCTAssertEqual(try JSONDecoder().decode(SessionSpeakerPolicy.self, from: data).inRoom, true)
         let old = try JSONDecoder().decode(SessionSpeakerPolicy.self, from: Data(#"{"labelsEnabled":true}"#.utf8))
-        XCTAssertFalse(old.roomLabels)
+        XCTAssertFalse(old.inRoom)
         XCTAssertFalse(old.requestsLabels(system: false))
         XCTAssertTrue(old.requestsLabels(system: true))
-        XCTAssertTrue(SessionSpeakerPolicy(roomLabels: true).requestsLabels(system: false))
-        XCTAssertFalse(SessionSpeakerPolicy(labelsEnabled: false, roomLabels: true).requestsLabels(system: false))
+        // 2026-11-20 trial: no speaker clusters on the room mic, in the room or not.
+        XCTAssertFalse(SessionSpeakerPolicy(inRoom: true).requestsLabels(system: false))
     }
 
-    func testRoomSpeakersGetTheirOwnLabels() throws {
+    func testRoomMicLinesStayMe() throws {
         let data = Data(#"{"tokens":[{"text":"我们先看","speaker":"1","start_ms":0,"end_ms":400},{"text":"报告。","speaker":"1","start_ms":400,"end_ms":800},{"text":"好的。","speaker":"2","start_ms":900,"end_ms":1200}]}"#.utf8)
-        let room = try SonioxAsyncTurns.segments(data: data, system: false, policy: .init(roomLabels: true), offsetMs: 0)
-        XCTAssertEqual(room.map(\.speaker), ["Room speaker 1", "Room speaker 2"])
-        let call = try SonioxAsyncTurns.segments(data: data, system: false, policy: .init(), offsetMs: 0)
-        XCTAssertEqual(Set(call.map(\.speaker)), ["Me"])
+        let room = try SonioxAsyncTurns.segments(data: data, system: false, policy: .init(inRoom: true), offsetMs: 0)
+        XCTAssertEqual(Set(room.map(\.speaker)), ["Me"])
     }
 
     func testAnEmptyComputerLegIsNotSent() throws {

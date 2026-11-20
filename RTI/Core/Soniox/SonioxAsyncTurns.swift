@@ -28,9 +28,7 @@ public enum SonioxAsyncTurns {
         func flush() {
             guard !indices.isEmpty else { return }
             if !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                let label = if !system, policy.requestsLabels(system: false), let cluster {
-                    "Room speaker " + cluster
-                } else if !system {
+                let label = if !system {
                     "Me"
                 } else if policy.labelsEnabled, let cluster {
                     "Remote speaker " + cluster

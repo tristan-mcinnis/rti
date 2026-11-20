@@ -118,26 +118,27 @@ public struct SessionSpeakerPolicy: Codable, Equatable, Sendable {
     public var liveLabelsEnabled: Bool
     /// A local review hint. It never creates a speaker or verifies a name.
     public var expectedCount: Int?
-    /// Speaker clusters on the mic leg of the after-call transcript, for a
-    /// meeting in the room: everyone speaks into the one mic, so without them
-    /// every line is "Me" (2026-11-20). Stored when "In the room" was picked;
-    /// the upgrade also sets it when the computer-audio leg was silent
-    /// (`SessionArchiveMetadata.isInRoom`).
-    public var roomLabels: Bool
+    /// "In the room" was picked for this call: the mic only, no computer
+    /// audio. The mic leg gets no speaker clusters: tried 2026-11-20 on a
+    /// 67-minute room meeting, one person got two labels and three client
+    /// voices shared one, so a wrong owner on an action is likelier than
+    /// a right one. Every mic line stays "Me".
+    public var inRoom: Bool
 
-    public init(labelsEnabled: Bool = true, liveLabelsEnabled: Bool = false, expectedCount: Int? = nil, roomLabels: Bool = false) {
+    public init(labelsEnabled: Bool = true, liveLabelsEnabled: Bool = false, expectedCount: Int? = nil, inRoom: Bool = false) {
         self.labelsEnabled = labelsEnabled
         self.liveLabelsEnabled = liveLabelsEnabled
         self.expectedCount = expectedCount.flatMap { $0 > 0 ? $0 : nil }
-        self.roomLabels = roomLabels
+        self.inRoom = inRoom
     }
 
-    /// Whether the after-call request for this leg asks for speaker clusters.
+    /// Whether the after-call request for this leg asks for speaker clusters:
+    /// the computer-audio leg only.
     public func requestsLabels(system: Bool) -> Bool {
-        labelsEnabled && (system || roomLabels)
+        labelsEnabled && system
     }
 
-    private enum CodingKeys: String, CodingKey { case labelsEnabled, liveLabelsEnabled, expectedCount, roomLabels }
+    private enum CodingKeys: String, CodingKey { case labelsEnabled, liveLabelsEnabled, expectedCount, inRoom }
 
     /// Archives written before the live switch existed carry no live field.
     public init(from decoder: Decoder) throws {
@@ -145,6 +146,6 @@ public struct SessionSpeakerPolicy: Codable, Equatable, Sendable {
         self.init(labelsEnabled: try c.decodeIfPresent(Bool.self, forKey: .labelsEnabled) ?? true,
                   liveLabelsEnabled: try c.decodeIfPresent(Bool.self, forKey: .liveLabelsEnabled) ?? false,
                   expectedCount: try c.decodeIfPresent(Int.self, forKey: .expectedCount),
-                  roomLabels: try c.decodeIfPresent(Bool.self, forKey: .roomLabels) ?? false)
+                  inRoom: try c.decodeIfPresent(Bool.self, forKey: .inRoom) ?? false)
     }
 }
